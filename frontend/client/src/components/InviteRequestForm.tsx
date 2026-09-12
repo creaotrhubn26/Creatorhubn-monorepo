@@ -79,7 +79,8 @@ interface InviteRequestData {
   businessAddress?: string;
   phoneNumber?: string;
   website?: string;
-  message?: string
+  message?: string;
+  testerProfession?: string;
 }
 
 interface BrregCompany {
@@ -106,6 +107,21 @@ interface BrregCompany {
   };
 }
 
+// Parse utm_* query params off the current URL so admins see the campaign
+// that drove this inbound access request. Returns undefined when none present.
+function parseUtmParams(): Record<string, string> | undefined {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    const utm: Record<string, string> = {};
+    sp.forEach((value, key) => {
+      if (/^utm_/i.test(key) && value) utm[key] = value;
+    });
+    return Object.keys(utm).length > 0 ? utm : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function normalizeNorwegianOrganizationNumber(value: string) {
   return String(value || "")
     .replace(/\D/g, "")
@@ -126,6 +142,10 @@ function isValidNorwegianOrganizationNumber(value: string) {
   return digits[8] === remainder;
 }
 
+
+function isValidEmailAddress(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
 export function InviteRequestForm({
   isOpen,
   onClose,
@@ -452,14 +472,28 @@ export function InviteRequestForm({
       ? `${metaTags.join(' ')}\n\n${formData.message || ''}`
       : formData.message;
 
+    // Same prototype-tester detection used for the success redirect below, so
+    // the CTA label admins see matches the actual button the applicant clicked.
+    const ctaIsPrototypeTester =
+      selectedPlan?.id === 'prototype_tester' ||
+      (selectedPlan as any)?.tier === 'prototype_tester' ||
+      source === 'prototype_tester_pricing';
+
     // Include selected subscription plan in submission
     const submissionData = {
       ...formData,
       message: messageWithMeta,
+      ...(formData.profession === 'prototype_tester'
+        ? { testerProfession }
+        : {}),
       selectedPlan: selectedPlan?.id || null,
       planName: selectedPlan?.name || null,
       planPrice: selectedPlan?.price || null,
       source: source || "landing",
+      cta: ctaIsPrototypeTester
+        ? `Send søknad (Prototype-tester-program — be om tilgang, kilde: ${source || "landing"})`
+        : `Send forespørsel (Be om tilgang til CreatorHub Norge${selectedPlan?.name ? ` — ${selectedPlan.name}` : ""}, kilde: ${source || "landing"})`,
+      ...(parseUtmParams() ? { utm: parseUtmParams() } : {}),
       // Include enterprise team size and pricing if applicable
       ...(isEnterprisePlan ? {
         enterpriseTeamSize: teamSize,
@@ -495,7 +529,13 @@ export function InviteRequestForm({
   // Validate current step
   const isStepValid = (step: number) => {
     if (step === 0) {
-      return formData.firstName && formData.lastName && formData.email && formData.profession;
+      return Boolean(
+        formData.firstName.trim() &&
+        formData.lastName.trim() &&
+        isValidEmailAddress(formData.email) &&
+        formData.profession &&
+        (formData.profession !== 'prototype_tester' || testerProfession),
+      );
     }
     if (step === 1) {
       return formData.companyName && organizationNumberIsValid;
@@ -729,8 +769,10 @@ export function InviteRequestForm({
                   />
 
                   <FormControl fullWidth required sx={{ mt: 2 }}>
-                    <InputLabel>Yrke/Rolle</InputLabel>
+                    <InputLabel id="invite-profession-label">Yrke/Rolle</InputLabel>
                     <Select
+                      id="invite-profession"
+                      labelId="invite-profession-label"
                       value={formData.profession}
                       onChange={handleInputChange("profession")}
                       label="Yrke/Rolle"
@@ -757,8 +799,10 @@ export function InviteRequestForm({
                       </Alert>
 
                       <FormControl fullWidth required sx={{ mt: 2 }}>
-                        <InputLabel>Din faktiske profesjon</InputLabel>
+                        <InputLabel id="tester-profession-label">Din faktiske profesjon</InputLabel>
                         <Select
+                          id="tester-profession"
+                          labelId="tester-profession-label"
                           value={testerProfession}
                           onChange={(e) => setTesterProfession(e.target.value)}
                           label="Din faktiske profesjon"
@@ -815,8 +859,10 @@ export function InviteRequestForm({
                         </Box>
                         {isTesterTeamApplication && (
                           <FormControl size="small" sx={{ mt: 1.5, maxWidth: 220 }}>
-                            <InputLabel>Antall personer (inkl. deg)</InputLabel>
+                            <InputLabel id="tester-team-size-label">Antall personer (inkl. deg)</InputLabel>
                             <Select
+                              id="tester-team-size"
+                              labelId="tester-team-size-label"
                               value={testerTeamSize}
                               onChange={(e) => setTesterTeamSize(Number(e.target.value))}
                               label="Antall personer (inkl. deg)"

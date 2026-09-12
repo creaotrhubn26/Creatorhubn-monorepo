@@ -54,6 +54,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 // Import dynamic profession system
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import { apiRequest } from '@/lib/queryClient';
 
 // Widget types definition
 interface Widget {
@@ -282,11 +283,10 @@ const DashboardWidgets: React.FC<DashboardWidgetsProps> = ({ profession }) => {
 
   // Load user widgets (server first, fallback to local)
   useEffect(() => {
-    fetch(`/api/user/kv/dashboard_widgets_${profession}`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
+    apiRequest(`/api/user/kv/dashboard_widgets_${profession}`)
+      .then((j: { data?: unknown } | null) => {
         if (Array.isArray(j?.data)) {
-          setUserWidgets(j.data);
+          setUserWidgets(j.data as DashboardWidget[]);
         } else {
           const saved = localStorage.getItem(`dashboard_widgets_${profession}`);
           if (saved) {
@@ -370,9 +370,9 @@ const DashboardWidgets: React.FC<DashboardWidgetsProps> = ({ profession }) => {
 
   // Save widgets to server + local fallback
   const saveWidgets = (widgets: DashboardWidget[]) => {
-    fetch('/api/user/kv', {
-      method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ key: `dashboard_widgets_${profession}`, value: widgets })
+    apiRequest('/api/user/kv', {
+      method: 'POST',
+      body: JSON.stringify({ key: `dashboard_widgets_${profession}`, value: widgets }),
     }).catch(() => {});
     localStorage.setItem(`dashboard_widgets_${profession}`, JSON.stringify(widgets));
 };

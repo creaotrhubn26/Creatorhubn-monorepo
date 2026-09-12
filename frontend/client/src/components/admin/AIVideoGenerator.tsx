@@ -7,7 +7,6 @@
 import React, { useState } from 'react';
 import {
   Box,
-  Button,
   TextField,
   Typography,
   Select,
@@ -17,7 +16,6 @@ import {
   Card,
   CardContent,
   Grid,
-  Chip,
   LinearProgress,
   Alert,
   Dialog,
@@ -28,6 +26,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Chip,
 } from '@mui/material';
 import {
   MovieCreation as CreateIcon,
@@ -44,6 +43,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import axios from 'axios';
+import { AdminButton, useIsMobile } from './design-system';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TYPES
@@ -86,16 +86,17 @@ export default function AIVideoGenerator({
   open,
   onClose,
   onVideoGenerated,
-  initialPrompt = ', ',
+  initialPrompt = '',
 }: AIVideoGeneratorProps) {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STATE
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+  const isMobile = useIsMobile();
   const [prompt, setPrompt] = useState(initialPrompt);
   const [style, setStyle] = useState<string>('cinematic');
   const [duration, setDuration] = useState(10);
-  const [aspectRatio, setAspectRatio] = useState('16:9, ');
+  const [aspectRatio, setAspectRatio] = useState('16:9');
   const [resolution, setResolution] = useState('1080p');
   const [fps, setFps] = useState(30);
   const [backend, setBackend] = useState('runway');
@@ -176,14 +177,14 @@ export default function AIVideoGenerator({
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth fullScreen={isMobile}>
       <DialogTitle>
         <Box display="flex" alignItems="center" justifyContent="space-between">
           <Box display="flex" alignItems="center" gap={1}>
             <AIIcon color="primary" />
             <Typography variant="h6">AI Video Generator (Sora-like)</Typography>
           </Box>
-          <IconButton onClick={onClose} size="small">
+          <IconButton onClick={onClose} size="small" aria-label="Lukk">
             <CloseIcon />
           </IconButton>
         </Box>
@@ -341,7 +342,7 @@ export default function AIVideoGenerator({
           </Accordion>
 
           {/* Example Prompts */}
-          {examples && examples.length > 0 && (
+          {Array.isArray(examples) && examples.length > 0 && (
             <Box sx={{ mt: 3 }}>
               <Typography variant="subtitle2" gutterBottom>
                 📝 Example Prompts
@@ -349,14 +350,22 @@ export default function AIVideoGenerator({
               <Grid container spacing={1}>
                 {examples.slice(0, 2).map((category: any, catIdx: number) => (
                   <React.Fragment key={catIdx}>
-                    {category.prompts.slice(0, 2).map((example: any, idx: number) => (
+                    {(Array.isArray(category.prompts) ? category.prompts : []).slice(0, 2).map((example: any, idx: number) => (
                       <Grid item xs={12} sm={6} key={idx}>
                         <Card
                           variant="outlined"
+                          role="button"
+                          tabIndex={0}
                           sx={{
                             cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' },
                             transition: 'all 0.2s'}}
                           onClick={() => handleUseExample(example.prompt)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleUseExample(example.prompt);
+                            }
+                          }}
                         >
                           <CardContent>
                             <Typography variant="body2" fontWeight="bold" gutterBottom>
@@ -433,20 +442,20 @@ export default function AIVideoGenerator({
                   </Typography>
                   <Box display="flex" gap={1} mt={2}>
                     {generatedVideo.videoUrl && (
-                      <Button
+                      <AdminButton
                         component="a"
-                        variant="outlined"
+                        tone="secondary"
                         size="small"
                         startIcon={<DownloadIcon />}
                         href={generatedVideo.videoUrl}
                         download
                       >
                         Download
-                      </Button>
+                      </AdminButton>
                     )}
-                    <Button variant="outlined" size="small" startIcon={<ShareIcon />}>
+                    <AdminButton tone="secondary" size="small" startIcon={<ShareIcon />}>
                       Share
-                    </Button>
+                    </AdminButton>
                   </Box>
                 </CardContent>
               </Card>
@@ -456,18 +465,19 @@ export default function AIVideoGenerator({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={handleReset} disabled={generateMutation.isPending}>
+        <AdminButton tone="ghost" onClick={handleReset} disabled={generateMutation.isPending}>
           Reset
-        </Button>
-        <Button onClick={onClose}>Close</Button>
-        <Button
-          variant="contained"
+        </AdminButton>
+        <AdminButton tone="ghost" onClick={onClose}>Close</AdminButton>
+        <AdminButton
+          tone="primary"
           startIcon={<CreateIcon />}
           onClick={handleGenerate}
+          loading={generateMutation.isPending}
           disabled={!prompt.trim() || generateMutation.isPending}
         >
           {generateMutation.isPending ? 'Generating...' : 'Generate Video'}
-        </Button>
+        </AdminButton>
       </DialogActions>
     </Dialog>
   );

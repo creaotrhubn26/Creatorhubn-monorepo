@@ -141,7 +141,7 @@ const DEFAULT_PRESETS: BrushPreset[] = [
   {
     id: 'airbrush',
     name: 'Airbrush',
-    config: { ...DEFAULT_BRUSH_CONFIG, type: 'brush', size: 40, color: '#8b5cf6', hardness: 0.1, flow: 0.3, opacity: 0.2 },
+    config: { ...DEFAULT_BRUSH_CONFIG, type: 'brush', size: 40, color: 'var(--role-violet, #8b5cf6)', hardness: 0.1, flow: 0.3, opacity: 0.2 },
     favorite: false,
     category: 'Painting',
     icon: '🌫️',

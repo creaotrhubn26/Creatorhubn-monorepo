@@ -36,8 +36,10 @@ import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import PersonIcon from "@mui/icons-material/Person";
 import MusicNoteIcon from "@mui/icons-material/MusicNote";
+import InsightsIcon from "@mui/icons-material/Insights";
 import BusinessCenterIcon from "@mui/icons-material/BusinessCenter";
 import ScreenShareIcon from "@mui/icons-material/ScreenShare";
+import DevicesIcon from "@mui/icons-material/Devices";
 import EventIcon from "@mui/icons-material/Event";
 import LocalMoviesIcon from "@mui/icons-material/LocalMovies";
 import PodcastsIcon from "@mui/icons-material/Podcasts";
@@ -46,11 +48,13 @@ import SaveIcon from "@mui/icons-material/Save";
 import FolderIcon from "@mui/icons-material/Folder";
 import VideoLibraryIcon from "@mui/icons-material/VideoLibrary";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import AutoAwesomeMosaicIcon from "@mui/icons-material/AutoAwesomeMosaic";
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import EditIcon from "@mui/icons-material/Edit";
 import CircleIcon from "@mui/icons-material/Circle";
 import type { SvgIconComponent } from "@mui/icons-material";
 import { RoleRoomProjectSync } from "./RoleRoomProjectSync";
+import { ResolveMcpSkills } from "./ResolveMcpDoctor";
 import { executeScript } from "../api";
 import { loadProjectActivity, logActivity, ACTIVITY_ICONS } from "../lib/projectActivity";
 import type { ActivityKind } from "../lib/projectActivity";
@@ -99,6 +103,10 @@ interface Props {
   onOpenDocumentaryAgent: () => void;
   onOpenPodcastAgent: () => void;
   onOpenShortFilmAgent: () => void;
+  onOpenAdFilmAgent: () => void;
+  onOpenDemoStudio: () => void;
+  onOpenInfographicStudio: () => void;
+  onOpenMockupStudio: () => void;
   onOpenQcVideo: () => void;
   onOpenSavedProject: (picksPath: string) => void;
   signedIn: boolean;
@@ -163,7 +171,7 @@ function formatRelativeTime(ts: number): string {
   if (hours < 24) return `${hours} t siden`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days} d siden`;
-  return new Date(ts).toLocaleDateString();
+  return new Date(ts).toLocaleDateString('nb-NO');
 }
 
 export function HomeView({
@@ -179,6 +187,10 @@ export function HomeView({
   onOpenDocumentaryAgent,
   onOpenPodcastAgent,
   onOpenShortFilmAgent,
+  onOpenAdFilmAgent,
+  onOpenDemoStudio,
+  onOpenInfographicStudio,
+  onOpenMockupStudio,
   onOpenQcVideo,
   onOpenSavedProject,
   signedIn,
@@ -301,6 +313,7 @@ export function HomeView({
                                background: resolveColor }} />
               <span>{resolveText}</span>
             </div>
+            <ResolveMcpSkills />
             {(() => {
               const authColor = authStatus === "ok" ? "var(--accent)"
                 : authStatus === "expired" ? "#f0a500"
@@ -361,18 +374,19 @@ export function HomeView({
         <button
           className="home-action-card primary-action anim-lift anim-press"
           onClick={onOpenWeddingWizard}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/wedding.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
           disabled={!signedIn}
-          title={signedIn ? "Material-scan, multicam, sanger, personer, stil — Claude lærer av valgene dine" : "Logg inn først"}
+          title={signedIn ? "Analyser, godkjenn planen, bygg timelines og kjør QC i Resolve" : "Logg inn først"}
         >
           <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #ef4f6f, #a030c0)" }}>
             <ChurchIcon sx={{ fontSize: 28, color: "white" }} />
           </div>
           <div className="home-action-body">
-            <div className="home-action-title">Bryllups-veiviser</div>
+            <div className="home-action-title">Wedding Editor</div>
             <div className="home-action-desc">
-              8 steg: kilder → multicam → lyd → sanger → personer → stil → live → LUT
+              Kilder → multicam → lyd → story-picks → godkjent Resolve-plan → QC
             </div>
-            <div className="home-action-tag">Anbefalt for nytt prosjekt</div>
+            <div className="home-action-tag">Analyse · plan · godkjenning · bygging</div>
           </div>
           <IconArrowRight />
         </button>
@@ -399,6 +413,7 @@ export function HomeView({
         <button
           className="home-action-card anim-lift anim-press"
           onClick={onOpenMusicVideoAgent}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/music_video.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
           disabled={!signedIn}
           title={signedIn ? "Beat-synkronisert redigering med sang-struktur, genre-aware look-packs og Music Video Director-AI" : "Logg inn først"}
         >
@@ -419,6 +434,7 @@ export function HomeView({
         <button
           className="home-action-card anim-lift anim-press"
           onClick={onOpenCorporateAgent}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/corporate.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
           disabled={!signedIn}
           title={signedIn ? "B2B-promo med hook → problem → løsning → bevis → CTA-struktur og Corporate Director-AI" : "Logg inn først"}
         >
@@ -439,6 +455,7 @@ export function HomeView({
         <button
           className="home-action-card anim-lift anim-press"
           onClick={onOpenScreenRecordingAgent}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/screen_recording.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
           disabled={!signedIn}
           title={signedIn ? "Tutorials og dev-screencasts med auto-trim av silenser, click-zoom og voice-aware editing" : "Logg inn først"}
         >
@@ -458,7 +475,71 @@ export function HomeView({
 
         <button
           className="home-action-card anim-lift anim-press"
+          onClick={onOpenDemoStudio}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/demo.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
+          disabled={!signedIn}
+          title={signedIn ? "Scene-basert produktdemo fra URL — Mac/iPad/iPhone-mockups, manus, teleprompter og guided opptak. Krever Demo Studio-abonnement." : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #8b5cf6, #a030c0)" }}>
+            <DevicesIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Product Demo Studio</div>
+            <div className="home-action-desc">
+              Lim inn en URL og lag en styrt produktdemo i Mac/iPad/iPhone-mockups
+              — scener, manus, teleprompter og guided opptak
+            </div>
+            <div className="home-action-tag">Abonnement · 199 kr/mnd</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onOpenInfographicStudio}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/demo.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
+          disabled={!signedIn}
+          title={signedIn ? "Lag animerte infographics — maler, «Mine infographics»-bibliotek, sosiale formater og eksport. Krever Demo Studio-abonnement." : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #06b6d4, #3b82f6)" }}>
+            <InsightsIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Infographic Studio</div>
+            <div className="home-action-desc">
+              Animerte data-infographics fra maler — stat-callouts, diagrammer og
+              sosiale formater med eget bibliotek og eksport
+            </div>
+            <div className="home-action-tag">Abonnement · 199 kr/mnd</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onOpenMockupStudio}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/mockup.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
+          disabled={!signedIn}
+          title={signedIn ? "Sett sammen en produkt-one-pager med Mac/iPad/iPhone-mockups — last opp skjermbilder, rediger tekst og accent-farger, og eksporter som PNG. Krever Demo Studio-abonnement." : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #06b6d4, #7c3aed)" }}>
+            <AutoAwesomeMosaicIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Mockup Studio</div>
+            <div className="home-action-desc">
+              Lag produkt-one-pagere med enhets-mockups — last opp skjermbilder,
+              rediger tekst og accent-farger, eksporter som PNG
+            </div>
+            <div className="home-action-tag">Abonnement · 199 kr/mnd</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
           onClick={onOpenEventAgent}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/event.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
           disabled={!signedIn}
           title={signedIn ? "Konferanse, keynote, panel og highlight-reel med Event Director-AI som kjenner broadcast-konvensjoner" : "Logg inn først"}
         >
@@ -479,6 +560,7 @@ export function HomeView({
         <button
           className="home-action-card anim-lift anim-press"
           onClick={onOpenDocumentaryAgent}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/documentary.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
           disabled={!signedIn}
           title={signedIn ? "Narrativ long-form: dokumentar, mini-doc, brand-film, case-study, profil — show-don't-tell-prinsipper" : "Logg inn først"}
         >
@@ -499,6 +581,7 @@ export function HomeView({
         <button
           className="home-action-card anim-lift anim-press"
           onClick={onOpenPodcastAgent}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/podcast.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
           disabled={!signedIn}
           title={signedIn ? "Multi-host podkast, video-repurpose og sosial-cutdowns med Podcast Director-AI" : "Logg inn først"}
         >
@@ -519,6 +602,7 @@ export function HomeView({
         <button
           className="home-action-card anim-lift anim-press"
           onClick={onOpenShortFilmAgent}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/short_film.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
           disabled={!signedIn}
           title={signedIn ? "Scripted fiction-short med three-act-pacing, 180-degree-rule og motif-callbacks" : "Logg inn først"}
         >
@@ -532,6 +616,27 @@ export function HomeView({
               rule, match-cuts og festival-klar finish
             </div>
             <div className="home-action-tag">Short Film Director</div>
+          </div>
+          <IconArrowRight />
+        </button>
+
+        <button
+          className="home-action-card anim-lift anim-press"
+          onClick={onOpenAdFilmAgent}
+          style={{ backgroundImage: "linear-gradient(100deg, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.82) 42%, rgba(15,17,23,0.35) 100%), url('/agent-cards/ad_film.jpg')", backgroundSize: "cover", backgroundPosition: "center right" }}
+          disabled={!signedIn}
+          title={signedIn ? "Premium produkt-reklame: én setning → produksjonsark → film med ekte UI keyet" : "Logg inn først"}
+        >
+          <div className="home-action-icon" style={{ background: "linear-gradient(135deg, #e8734a, #6e3fc7)" }}>
+            <MovieIcon sx={{ fontSize: 28, color: "white" }} />
+          </div>
+          <div className="home-action-body">
+            <div className="home-action-title">Ad Film Agent</div>
+            <div className="home-action-desc">
+              Cinematisk produkt-/app-reklame med ekte UI keyet, Shot
+              Plan → film, VO + undertekst og Claude-Vision-QC
+            </div>
+            <div className="home-action-tag">Ad Film Director</div>
           </div>
           <IconArrowRight />
         </button>

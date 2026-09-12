@@ -70,7 +70,7 @@ const STEPS: StepDef[] = [
     description:
       'The Role Room er bygget for digitale markedsførere som jobber med flere klienter samtidig. På 7 raske steg viser vi deg hvordan du kommer i gang — fra trygg passord-håndtering til invitering av din første klient. Trykk "Gå videre" for å starte.',
     Icon: RocketIcon,
-    iconColor: '#22d3ee',
+    iconColor: 'var(--role-cyan, #22d3ee)',
     cta: null, // auto-fullføres når bruker går videre
     whyMatters: 'En guidet start hjelper deg å oppdage alle verktøyene som er bygget for deg.',
   },
@@ -267,7 +267,7 @@ const WelcomeWizard: React.FC = () => {
             <Chip
               label={`${completedSteps.length} / ${STEPS.length} fullført`}
               size="small"
-              sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: '#22d3ee', fontWeight: 700, height: 22 }}
+              sx={{ bgcolor: 'rgba(34,211,238,0.14)', color: 'var(--role-cyan, #22d3ee)', fontWeight: 700, height: 22 }}
             />
           </Stack>
           <IconButton
@@ -287,7 +287,7 @@ const WelcomeWizard: React.FC = () => {
             height: 4,
             borderRadius: 999,
             bgcolor: 'rgba(148,163,184,0.18)',
-            '& .MuiLinearProgress-bar': { bgcolor: '#22d3ee' },
+            '& .MuiLinearProgress-bar': { bgcolor: 'var(--role-cyan, #22d3ee)' },
           }}
         />
 
@@ -309,9 +309,9 @@ const WelcomeWizard: React.FC = () => {
                   px: 1.2,
                   py: 0.3,
                   minHeight: 24,
-                  border: `1px solid ${isActive ? '#22d3ee' : stepDone ? 'rgba(52,211,153,0.4)' : 'rgba(148,163,184,0.2)'}`,
+                  border: `1px solid ${isActive ? 'var(--role-cyan, #22d3ee)' : stepDone ? 'rgba(52,211,153,0.4)' : 'rgba(148,163,184,0.2)'}`,
                   bgcolor: isActive ? 'rgba(34,211,238,0.12)' : stepDone ? 'rgba(52,211,153,0.08)' : 'transparent',
-                  color: isActive ? '#22d3ee' : stepDone ? '#34d399' : 'rgba(226,232,240,0.65)',
+                  color: isActive ? 'var(--role-cyan, #22d3ee)' : stepDone ? '#34d399' : 'rgba(226,232,240,0.65)',
                   '&:hover': { bgcolor: isActive ? 'rgba(34,211,238,0.18)' : 'rgba(148,163,184,0.08)' },
                 }}
                 startIcon={stepDone ? <CheckIcon sx={{ fontSize: 12 }} /> : undefined}
@@ -338,7 +338,7 @@ const WelcomeWizard: React.FC = () => {
             <Button
               onClick={handleDismiss}
               variant="contained"
-              sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#22d3ee', color: '#0b1226', px: 3, '&:hover': { bgcolor: '#06b6d4' } }}
+              sx={{ textTransform: 'none', fontWeight: 700, bgcolor: 'var(--role-cyan, #22d3ee)', color: '#0b1226', px: 3, '&:hover': { bgcolor: '#06b6d4' } }}
             >
               Lukk
             </Button>
@@ -436,7 +436,7 @@ const WelcomeWizard: React.FC = () => {
                   sx={{
                     textTransform: 'none',
                     fontWeight: 700,
-                    bgcolor: '#22d3ee',
+                    bgcolor: 'var(--role-cyan, #22d3ee)',
                     color: '#0b1226',
                     '&:hover': { bgcolor: '#06b6d4' },
                   }}

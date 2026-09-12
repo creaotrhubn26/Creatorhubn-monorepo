@@ -13,7 +13,6 @@ import {
   CardContent,
   Typography,
   Grid,
-  Button,
   Switch,
   FormControlLabel,
   Alert,
@@ -51,6 +50,7 @@ import {
   Security,
   Analytics,
 } from '@mui/icons-material';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface AutomationStatus {
   gtm: {
@@ -73,6 +73,7 @@ interface AutomationStatus {
 export default function GA4AutomationDashboard() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
 
   // State
   const [setupDialogOpen, setSetupDialogOpen] = useState(false);
@@ -224,11 +225,11 @@ export default function GA4AutomationDashboard() {
   return (
     <Box sx={{ mb: 4 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Settings sx={{ color: '#ff6b35', fontSize: 32 }} />
+          <Settings aria-hidden="true" sx={{ color: '#ff6b35', fontSize: 32 }} />
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, color: '#ffffff' }}>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 700, color: '#ffffff' }}>
               GA4 Automation Dashboard
             </Typography>
             <Typography variant="body2" sx={{ color: '#ffa726' }}>
@@ -237,28 +238,21 @@ export default function GA4AutomationDashboard() {
           </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
             startIcon={<PlayArrow />}
             onClick={() => setSetupDialogOpen(true)}
-            sx={{ 
-              background: 'linear-gradient(135deg, #ff6b35 0%, #ffa726 100%)', '&:hover': { background: '#ff6b35' }
-            }}
           >
             Setup Automation
-          </Button>
-          <Button
-            variant="outlined"
+          </AdminButton>
+          <AdminButton
+            tone="secondary"
             startIcon={<Refresh />}
             onClick={() => refetchStatus()}
             disabled={statusLoading}
-            sx={{ 
-              borderColor: '#ff6b35', 
-              color: '#ff6b35','&:hover': { borderColor: '#ffa726' }
-            }}
           >
             Refresh
-          </Button>
+          </AdminButton>
         </Box>
       </Box>
 
@@ -271,8 +265,8 @@ export default function GA4AutomationDashboard() {
           }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <Analytics sx={{ color: getStatusColor(status.gtm.status) }} />
-                <Typography variant="h6" sx={{ color: '#ffffff' }}>
+                <Analytics aria-hidden="true" sx={{ color: getStatusColor(status.gtm.status) }} />
+                <Typography variant="h6" component="h3" sx={{ color: '#ffffff' }}>
                   Google Tag Manager
                 </Typography>
               </Box>
@@ -282,19 +276,16 @@ export default function GA4AutomationDashboard() {
               <Typography variant="body2" sx={{ color: '#ffa726', mb: 2 }}>
                 Status: {status.gtm.status}
               </Typography>
-              <Button
-                variant="outlined"
+              <AdminButton
+                tone="secondary"
                 size="small"
                 startIcon={<Deploy />}
                 onClick={handleDeployGTM}
-                disabled={deployMutation.isPending || status.gtm.status !== 'active'}
-                sx={{ 
-                  borderColor: '#ff6b35', 
-                  color: '#ff6b35','&:hover': { borderColor: '#ffa726' }
-                }}
+                disabled={status.gtm.status !== 'active'}
+                loading={deployMutation.isPending}
               >
                 Deploy Changes
-              </Button>
+              </AdminButton>
             </CardContent>
           </Card>
         </Grid>
@@ -306,8 +297,8 @@ export default function GA4AutomationDashboard() {
           }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <Insights sx={{ color: getStatusColor('active') }} />
-                <Typography variant="h6" sx={{ color: '#ffffff' }}>
+                <Insights aria-hidden="true" sx={{ color: getStatusColor('active') }} />
+                <Typography variant="h6" component="h3" sx={{ color: '#ffffff' }}>
                   Custom Insights
                 </Typography>
               </Box>
@@ -317,18 +308,14 @@ export default function GA4AutomationDashboard() {
               <Typography variant="body2" sx={{ color: '#ffa726', mb: 2 }}>
                 Active: {status.insights.active} | Triggered: {status.insights.triggered}
               </Typography>
-              <Button
-                variant="outlined"
+              <AdminButton
+                tone="secondary"
                 size="small"
                 startIcon={<AutoAwesome />}
                 onClick={() => setCustomInsightDialogOpen(true)}
-                sx={{ 
-                  borderColor: '#ff6b35', 
-                  color: '#ff6b35','&:hover': { borderColor: '#ffa726' }
-                }}
               >
                 Create Insight
-              </Button>
+              </AdminButton>
             </CardContent>
           </Card>
         </Grid>
@@ -340,8 +327,8 @@ export default function GA4AutomationDashboard() {
           }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <Speed sx={{ color: getStatusColor(status.measurementProtocol.status) }} />
-                <Typography variant="h6" sx={{ color: '#ffffff' }}>
+                <Speed aria-hidden="true" sx={{ color: getStatusColor(status.measurementProtocol.status) }} />
+                <Typography variant="h6" component="h3" sx={{ color: '#ffffff' }}>
                   Measurement Protocol
                 </Typography>
               </Box>
@@ -349,20 +336,16 @@ export default function GA4AutomationDashboard() {
                 Status: {status.measurementProtocol.status}
               </Typography>
               <Typography variant="body2" sx={{ color: '#ffa726', mb: 2 }}>
-                Events: {status.measurementProtocol.eventsSupported.length}
+                Events: {(Array.isArray(status.measurementProtocol.eventsSupported) ? status.measurementProtocol.eventsSupported : []).length}
               </Typography>
-              <Button
-                variant="outlined"
+              <AdminButton
+                tone="secondary"
                 size="small"
                 startIcon={<Timeline />}
                 onClick={() => setMonthlyReportDialogOpen(true)}
-                sx={{ 
-                  borderColor: '#ff6b35', 
-                  color: '#ff6b35','&:hover': { borderColor: '#ffa726' }
-                }}
               >
                 Monthly Report
-              </Button>
+              </AdminButton>
             </CardContent>
           </Card>
         </Grid>
@@ -375,19 +358,19 @@ export default function GA4AutomationDashboard() {
         mb: 3
       }}>
         <CardContent>
-          <Typography variant="h6" sx={{ 
-            fontWeight: 600, 
+          <Typography variant="h6" component="h2" sx={{
+            fontWeight: 600,
             color: '#ffffff',
             mb: 2,
             display: 'flex',
             alignItems: 'center',
             gap: 1
           }}>
-            <Security sx={{ color: '#ff6b35' }} />
+            <Security aria-hidden="true" sx={{ color: '#ff6b35' }} />
             Supported Events
           </Typography>
           <Grid container spacing={1}>
-            {status.measurementProtocol.eventsSupported.map((event, index) => (
+            {(Array.isArray(status.measurementProtocol.eventsSupported) ? status.measurementProtocol.eventsSupported : []).map((event, index) => (
               <Grid item key={index}>
                 <Chip
                   label={event.replace('_', ', ')}
@@ -404,7 +387,7 @@ export default function GA4AutomationDashboard() {
       </Card>
 
       {/* Setup Dialog */}
-      <Dialog open={setupDialogOpen} onClose={() => setSetupDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={setupDialogOpen} onClose={() => setSetupDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ color: '#ffffff', backgroundColor: '#2d2d2d' }}>
           Setup GA4 Automation
         </DialogTitle>
@@ -431,25 +414,21 @@ export default function GA4AutomationDashboard() {
           )}
         </DialogContent>
         <DialogActions sx={{ backgroundColor: '#2d2d2d' }}>
-          <Button onClick={() => setSetupDialogOpen(false)} sx={{ color: '#ffa726' }}>
+          <AdminButton tone="ghost" onClick={() => setSetupDialogOpen(false)}>
             Cancel
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleSetupAutomation}
-            disabled={setupMutation.isPending}
-            sx={{ 
-              backgroundColor: '#ff6b35',
-              color: '#ffffff',
-              '&:hover': { backgroundColor: '#ffa726' }
-            }}
+            loading={setupMutation.isPending}
           >
             Setup
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Custom Insight Dialog */}
-      <Dialog open={customInsightDialogOpen} onClose={() => setCustomInsightDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={customInsightDialogOpen} onClose={() => setCustomInsightDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ color: '#ffffff', backgroundColor: '#2d2d2d' }}>
           Create Custom Insight
         </DialogTitle>
@@ -501,24 +480,21 @@ export default function GA4AutomationDashboard() {
           />
         </DialogContent>
         <DialogActions sx={{ backgroundColor: '#2d2d2d' }}>
-          <Button onClick={() => setCustomInsightDialogOpen(false)} sx={{ color: '#ffa726' }}>
+          <AdminButton tone="ghost" onClick={() => setCustomInsightDialogOpen(false)}>
             Cancel
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleCreateCustomInsight}
-            disabled={createInsightMutation.isPending}
-            sx={{ 
-              backgroundColor: '#ff6b35',
-              color: '#ffffff', '&:hover': { backgroundColor: '#ffa726' }
-            }}
+            loading={createInsightMutation.isPending}
           >
             Create
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Monthly Report Dialog */}
-      <Dialog open={monthlyReportDialogOpen} onClose={() => setMonthlyReportDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={monthlyReportDialogOpen} onClose={() => setMonthlyReportDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ color: '#ffffff', backgroundColor: '#2d2d2d' }}>
           Generate Monthly Report
         </DialogTitle>
@@ -555,20 +531,16 @@ export default function GA4AutomationDashboard() {
           />
         </DialogContent>
         <DialogActions sx={{ backgroundColor: '#2d2d2d' }}>
-          <Button onClick={() => setMonthlyReportDialogOpen(false)} sx={{ color: '#ffa726' }}>
+          <AdminButton tone="ghost" onClick={() => setMonthlyReportDialogOpen(false)}>
             Cancel
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleSendMonthlyReport}
-            disabled={monthlyReportMutation.isPending}
-            sx={{ 
-              backgroundColor: '#ff6b35',
-              color: '#ffffff',
-              '&:hover': { backgroundColor: '#ffa726' }
-            }}
+            loading={monthlyReportMutation.isPending}
           >
             Generate & Send
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

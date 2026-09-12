@@ -1,0 +1,46 @@
+name: GEO Visibility weekly digest email
+
+# Sender ukentlig e-post-digest av GEO-synlighet (andel + per-motor-treff,
+# bare-modell vs søk) for alle godkjente prompt-sett. Kjører ETTER probe-cronen
+# (geo-visibility-weekly.yml, 05:15 UTC) så siste-kjørings-rapporten er ferdig.
+# Token-gated via samme GEO_VISIBILITY_CRON_TOKEN. Mottaker: env GEO_DIGEST_EMAIL
+# (default daniel@creatorhubn.com).
+
+on:
+  schedule:
+    # Mandager 08:00 UTC — ~2t etter probe-starten (05:15 + 6 sett × 12min stagger)
+    - cron: '0 8 * * 1'
+  workflow_dispatch: # manuell trigger for testing
+
+permissions:
+  contents: read
+
+concurrency:
+  group: geo-visibility-digest
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
+jobs:
+  email-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /api/geo-visibility/cron/email-digest
+        env:
+          GEO_VISIBILITY_CRON_TOKEN: ${{ secrets.GEO_VISIBILITY_CRON_TOKEN }}
+        run: |
+          if [ -z "$GEO_VISIBILITY_CRON_TOKEN" ]; then
+            echo "::error::GEO_VISIBILITY_CRON_TOKEN GitHub-secret er ikke satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $GEO_VISIBILITY_CRON_TOKEN" \
+            "$BACKEND_URL/api/geo-visibility/cron/email-digest")
+          CODE=$(echo "$RES" | tail -n1)
+          BODY=$(echo "$RES" | sed '$d')
+          echo "HTTP $CODE"
+          echo "$BODY"
+          [ "$CODE" = "200" ] || { echo "::error::Digest-endepunktet svarte $CODE"; exit 1; }

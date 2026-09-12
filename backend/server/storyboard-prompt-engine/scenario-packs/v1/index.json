@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "trr-scenario-pack-index-v1",
+  "packs": [
+    { "id": "medical.healthcare", "version": "1.0.0", "file": "medical.json" },
+    { "id": "restaurant.food-service", "version": "1.0.0", "file": "restaurant.json" },
+    { "id": "police.security", "version": "1.0.0", "file": "extended.json" },
+    { "id": "fire.rescue", "version": "1.0.0", "file": "extended.json" },
+    { "id": "education.school", "version": "1.0.0", "file": "extended.json" },
+    { "id": "hospitality.hotel", "version": "1.0.0", "file": "extended.json" },
+    { "id": "office.production", "version": "1.0.0", "file": "extended.json" },
+    { "id": "retail.shop", "version": "1.0.0", "file": "extended.json" },
+    { "id": "airport.travel", "version": "1.0.0", "file": "extended.json" },
+    { "id": "construction.site", "version": "1.0.0", "file": "extended.json" },
+    { "id": "industrial.workshop", "version": "1.0.0", "file": "extended.json" },
+    { "id": "residential.domestic", "version": "1.0.0", "file": "extended.json" },
+    { "id": "sports.fitness", "version": "1.0.0", "file": "extended.json" },
+    { "id": "event.entertainment", "version": "1.0.0", "file": "extended.json" }
+  ]
+}

@@ -177,7 +177,7 @@ export function setupWeddingAssistantsRoutes(deps: WeddingAssistantsRoutesDeps):
         `SELECT photographer_id FROM wedding_timelines WHERE id = $1 LIMIT 1`,
         [req.params.weddingId],
       );
-      if (own.rowCount === 0 || own.rows[0].photographer_id !== uid) {
+      if (!own.rows.length || own.rows[0].photographer_id !== uid) {
         return res.status(403).json({ error: "Du eier ikke dette bryllupet" });
       }
 
@@ -320,7 +320,7 @@ export function setupWeddingAssistantsRoutes(deps: WeddingAssistantsRoutesDeps):
            WHERE a.invite_token = $1 LIMIT 1`,
         [req.params.token],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: "Invitasjon finnes ikke eller er ferdigbehandlet" });
+      if (!r.rows.length) return res.status(404).json({ error: "Invitasjon finnes ikke eller er ferdigbehandlet" });
       const row = r.rows[0];
       res.json({
         invite: {

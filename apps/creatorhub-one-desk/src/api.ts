@@ -168,6 +168,19 @@ export async function rescanMounts(): Promise<DetectedMount[]> {
   return invoke<DetectedMount[]>("rescan_mounts");
 }
 
+// ── Auto-eject + manuell eject ───────────────────────────────────────
+export async function ejectVolume(mountPath: string): Promise<void> {
+  return invoke<void>("eject_volume", { mountPath });
+}
+
+export async function getAutoEjectPref(): Promise<boolean> {
+  return invoke<boolean>("get_auto_eject_pref");
+}
+
+export async function setAutoEjectPref(autoEject: boolean): Promise<void> {
+  return invoke<void>("set_auto_eject_pref", { autoEject });
+}
+
 /// Manuell iPad-input når Bonjour er blokkert (bedrifts-VLAN, WiFi-
 /// isolasjon). Tar IP + port + visningsnavn fra iPad-appens "Vis
 /// pairing-info"-skjerm.
@@ -185,7 +198,47 @@ export async function addManualIpad(args: {
   });
 }
 
-/// Status-event emit'es hvert 5. sekund fra Bonjour-browseren.
+/// Oppdater Mac-tray-tooltip dynamisk.
+export async function setTrayStatus(tooltip: string): Promise<void> {
+  return invoke<void>("set_tray_status", { tooltip });
+}
+
+export interface DestCapacity {
+  path: string;
+  total_bytes: number | null;
+  free_bytes: number | null;
+  needed_bytes: number;
+  sufficient: boolean;
+  safe_margin: boolean;
+}
+
+export async function checkDestinationsCapacity(
+  destPaths: string[],
+  bytesNeeded: number,
+): Promise<DestCapacity[]> {
+  return invoke<DestCapacity[]>("check_destinations_capacity", {
+    destPaths,
+    bytesNeeded,
+  });
+}
+
+export async function macosNotification(title: string, body: string): Promise<void> {
+  return invoke<void>("macos_notification", { title, body });
+}
+
+export interface Prefs {
+  auto_eject: boolean;
+  default_dest_ids: string[];
+}
+
+export async function getPrefs(): Promise<Prefs> {
+  return invoke<Prefs>("get_prefs");
+}
+
+export async function saveDefaultDestIds(destIds: string[]): Promise<void> {
+  return invoke<void>("save_default_dest_ids", { destIds });
+}
+
 export interface BonjourStatusEvent {
   discovered_count: number;
   elapsed_secs: number;
@@ -243,7 +296,12 @@ export interface SessionStatus {
   session_id: string;
   mount_path: string;
   volume_label: string;
-  state: "running" | "completed" | "cancelled" | "failed";
+  state:
+    | "running"
+    | "completed"
+    | "cancelled"
+    | "failed"
+    | "mount_disappeared";
   file_count: number;
   total_bytes: number;
   succeeded: number;
@@ -269,6 +327,29 @@ export async function cancelCopySession(sessionId: string): Promise<boolean> {
 
 export async function listCopySessions(): Promise<SessionStatus[]> {
   return invoke<SessionStatus[]>("list_copy_sessions");
+}
+
+// ── Crash-recovery (session_log) ─────────────────────────────────────
+export interface InterruptedSession {
+  session_id: string;
+  started_at_ms: number;
+  mount_path: string;
+  volume_label: string;
+  total_files: number;
+  files_completed_per_dest: [string, number][];
+  last_event_ms: number;
+}
+
+export async function listInterruptedSessions(): Promise<InterruptedSession[]> {
+  return invoke<InterruptedSession[]>("list_interrupted_sessions");
+}
+
+export async function resumeInterruptedSession(sessionId: string): Promise<string> {
+  return invoke<string>("resume_interrupted_session", { sessionId });
+}
+
+export async function discardInterruptedSession(sessionId: string): Promise<void> {
+  return invoke<void>("discard_interrupted_session", { sessionId });
 }
 
 // Copy-event payloads from Rust
@@ -305,9 +386,21 @@ export interface CopyFileCompletedEvent {
 
 export interface CopySessionCompletedEvent {
   session_id: string;
+  mount_path: string;
   succeeded: number;
   failed: number;
   cancelled: boolean;
+}
+
+/// Emit'es én gang per destinasjon når den blir deaktivert for resten
+/// av sesjonen pga vedvarende feil. Etterfølgende filer i samme session
+/// skipper denne destinasjonen — andre destinasjoner fortsetter.
+export interface CopyDestDisabledEvent {
+  session_id: string;
+  dest_id: string;
+  dest_label: string;
+  reason_code: "DEST_NO_SPACE" | "DEST_PERM_DENIED" | string;
+  reason_message: string;
 }
 
 // ─── iPad-paring (F5) ──────────────────────────────────────────
@@ -443,4 +536,22 @@ export async function disableMirrorForSession(sessionId: string): Promise<boolea
 
 export async function enabledMirrorSessions(): Promise<string[]> {
   return invoke<string[]>("enabled_mirror_sessions");
+}
+
+// ─── Desk identity + auto-pair result (F5c) ────────────────────────
+
+export interface DeskIdentity {
+  desk_id: string;
+  desk_name: string;
+}
+
+export interface PairResultEvent {
+  fullname: string;
+  success: boolean;
+  ipad_device_id: string | null;
+  error: string | null;
+}
+
+export async function currentDeskIdentity(): Promise<DeskIdentity> {
+  return invoke<DeskIdentity>("current_desk_identity");
 }

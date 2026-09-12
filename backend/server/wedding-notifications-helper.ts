@@ -20,6 +20,16 @@ import { sendEmail, sendSms } from "./casting-reminder-sender";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+// Escape user-styrt tekst (lokasjonsnavn, navn) før det interpoleres i e-post-HTML.
+// Body-strengene bygges av flere kallere og kan inneholde brukerinnhold (venue-labels).
+const htmlEsc = (s: unknown): string =>
+  String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
 interface Recipient {
   type: "photographer" | "couple" | "vip_contact" | "assistant";
   name: string | null;
@@ -112,7 +122,7 @@ async function logAndSend(
       const result = await sendEmail({
         to: recipient.email,
         subject,
-        html: `<div style="font-family: -apple-system, sans-serif; max-width: 600px;">${body.replace(/\n/g, "<br>")}</div>`,
+        html: `<div style="font-family: -apple-system, sans-serif; max-width: 600px;">${htmlEsc(body).replace(/\n/g, "<br>")}</div>`,
         text: body,
         fromName: "Creatorhubn Bryllup",
       });

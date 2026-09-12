@@ -1,0 +1,526 @@
+/**
+ * elementEdits — CreatorHub Design (per-element-lag): lagrede stil-overstyringer pr. element,
+ * anvendt på nytt ved sidelast for ALLE som ser workspacet. Bygger på Edit-modus i
+ * WorkspaceDesignOverlay (som tidligere kun pakket edits til en utvikler-handoff).
+ *
+ * Lagres i design-tokens under `elementEdits`-namespace: { [selektor]: { [css-prop]: verdi } }.
+ * Selektoren er en unik strukturell sti (nth-of-type). BEST-EFFORT: en lagret endring kan drive
+ * hvis sidelayouten senere endres mye. Kun hvitlistede, trygge visuelle props (ikke vilkårlig CSS).
+ */
+import { useEffect } from 'react';
+import DOMPurify from 'dompurify';
+
+// Streng DOMPurify-config for klonede HTML-komponenter (render-tidens sikkerhetsgrense).
+const HTML_PURIFY = { FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'link', 'meta', 'base'], FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'] };
+export function sanitizeHtmlComponent(html: string): string { return DOMPurify.sanitize(html || '', HTML_PURIFY); }
+
+export type ElementEdits = Record<string, Record<string, string>>;
+
+/** Utled design-workspace fra host (leadgrid.no → leadgrid, theroleroom.com → theroleroom, ellers
+ *  creatorhub). Brukes av de globale mount-punktene så editoren lagrer til riktig produkt. */
+export function detectDesignWorkspace(hostname?: string): string {
+  const h = (hostname ?? (typeof window !== 'undefined' ? window.location.hostname : '')).toLowerCase();
+  if (h.includes('leadgrid')) return 'leadgrid';
+  if (h.includes('theroleroom')) return 'theroleroom';
+  return 'creatorhub';
+}
+
+// Hvitlistede CSS-props (må matche ALLOWED i backend design-tokens-store). Trygge visuelle
+// egenskaper — ikke position/display/etc. som lett bryter layout katastrofalt.
+export const EDITABLE_CSS_PROPS = new Set<string>([
+  'color', 'background-color', 'background', 'border-color', 'border-radius',
+  'border-width', 'border-style', 'font-size', 'font-weight', 'font-family', 'letter-spacing',
+  'text-align', 'padding', 'margin', 'opacity', 'box-shadow', 'text-decoration',
+  // Auto-layout (flex).
+  'display', 'flex-direction', 'gap', 'align-items', 'justify-content', 'flex-wrap',
+  // Finjuster-nudge (translate flytter visuelt uten reflow).
+  'transform',
+]);
+
+// Verdi-sanitering: samme trygge tegnsett som backend (hex/rgba/px/nøkkelord). Ikke url()/expression.
+const SAFE_VALUE = /^[A-Za-z0-9#,.()%\-\s/]{0,120}$/;
+// Selektor-sanitering: strukturelle css-selektorer (tag, #id, .class, :nth-of-type, >, mellomrom)
+// + attributt-selektorer for stabile data-edit-id-er ([data-edit-id="..."]). Ingen ;{}@ → ingen breakout.
+const SAFE_SELECTOR = /^[A-Za-z0-9#.\-_ >:()\[\]="']{1,400}$/;
+
+export function isSafeEdit(prop: string, value: string): boolean {
+  // Charsettet blokkerer CSS-breakout (;{}:@ ikke tillatt); nekt i tillegg url() (ekstern last).
+  return EDITABLE_CSS_PROPS.has(prop) && typeof value === 'string' && SAFE_VALUE.test(value) && !/url\(/i.test(value);
+}
+export function isSafeSelector(sel: string): boolean {
+  return typeof sel === 'string' && SAFE_SELECTOR.test(sel) && !sel.includes('..');
+}
+
+/**
+ * uniqueSelector — bygg en unik strukturell selektor for et element. Bruker #id når det finnes
+ * (stabilt), ellers en :nth-of-type-sti opp til <body>. Unik ved fangst-tidspunkt.
+ */
+export function uniqueSelector(el: Element): string {
+  // Foretrekk en eksplisitt, stabil data-edit-id (komponenter kan opt-inne) → drifter aldri.
+  const editId = el.getAttribute('data-edit-id');
+  if (editId && /^[A-Za-z0-9_-]{1,64}$/.test(editId)) return `[data-edit-id="${editId}"]`;
+  if (el.id && /^[A-Za-z][\w-]*$/.test(el.id)) return `#${el.id}`;
+  const parts: string[] = [];
+  let node: Element | null = el;
+  while (node && node.nodeType === 1 && node.tagName.toLowerCase() !== 'body' && node.tagName.toLowerCase() !== 'html') {
+    let part = node.tagName.toLowerCase();
+    const parent: Element | null = node.parentElement;
+    if (parent) {
+      const sameTag = Array.from(parent.children).filter((c) => c.tagName === node!.tagName);
+      if (sameTag.length > 1) part += `:nth-of-type(${sameTag.indexOf(node) + 1})`;
+    }
+    parts.unshift(part);
+    node = node.parentElement;
+  }
+  return parts.join(' > ');
+}
+
+/** Bygg CSS-tekst fra edits (kun trygge props/verdier/selektorer). !important så den vinner. */
+export function buildEditsCss(edits: ElementEdits): string {
+  const rules: string[] = [];
+  for (const [sel, props] of Object.entries(edits || {})) {
+    if (!isSafeSelector(sel)) continue;
+    const decls = Object.entries(props || {})
+      .filter(([p, v]) => isSafeEdit(p, v))
+      .map(([p, v]) => `${p}: ${v} !important;`);
+    if (decls.length) rules.push(`${sel} { ${decls.join(' ')} }`);
+  }
+  return rules.join('\n');
+}
+
+export type ElementText = Record<string, string>;
+export type ElementAnim = Record<string, string>; // selektor → preset-nøkkel
+
+// Animasjons-presets (fast katalog). `anim` = CSS animation-shorthand som peker på keyframes under.
+export const ANIM_PRESETS: Record<string, { label: string; anim: string }> = {
+  'fade-in': { label: 'Fade inn', anim: 'chd-fade-in .6s ease both' },
+  'slide-up': { label: 'Skyv opp', anim: 'chd-slide-up .6s cubic-bezier(.2,.7,.2,1) both' },
+  'slide-down': { label: 'Skyv ned', anim: 'chd-slide-down .6s cubic-bezier(.2,.7,.2,1) both' },
+  'zoom-in': { label: 'Zoom inn', anim: 'chd-zoom-in .5s ease both' },
+  'pulse': { label: 'Puls (loop)', anim: 'chd-pulse 2s ease-in-out infinite' },
+  'bounce': { label: 'Sprett (loop)', anim: 'chd-bounce 1.6s ease-in-out infinite' },
+  'float': { label: 'Sveve (loop)', anim: 'chd-float 3s ease-in-out infinite' },
+};
+
+// Keyframes-katalog — injiseres én gang når minst én animasjon er i bruk.
+export const ANIM_KEYFRAMES = [
+  '@keyframes chd-fade-in { from { opacity: 0 } to { opacity: 1 } }',
+  '@keyframes chd-slide-up { from { opacity: 0; transform: translateY(18px) } to { opacity: 1; transform: none } }',
+  '@keyframes chd-slide-down { from { opacity: 0; transform: translateY(-18px) } to { opacity: 1; transform: none } }',
+  '@keyframes chd-zoom-in { from { opacity: 0; transform: scale(.92) } to { opacity: 1; transform: none } }',
+  '@keyframes chd-pulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.05) } }',
+  '@keyframes chd-bounce { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-9px) } }',
+  '@keyframes chd-float { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-7px) } }',
+].join('\n');
+
+/** Bygg animasjons-CSS: keyframes (én gang) + `selektor { animation: ... }` for hver gyldige preset. */
+export function buildAnimCss(anim: ElementAnim): string {
+  const rules: string[] = [];
+  for (const [sel, key] of Object.entries(anim || {})) {
+    if (!isSafeSelector(sel) || !ANIM_PRESETS[key]) continue;
+    rules.push(`${sel} { animation: ${ANIM_PRESETS[key].anim}; }`);
+  }
+  return rules.length ? `${ANIM_KEYFRAMES}\n${rules.join('\n')}` : '';
+}
+
+/** Anvend tekst-overstyringer via textContent (XSS-trygt). React kan re-rendre og overskrive, så
+ *  vi re-applikerer ved DOM-endringer (rAF-debounced, kun når teksten faktisk avviker). Best-effort. */
+function applyTextEdits(textEdits: ElementText): (() => void) | undefined {
+  const entries = Object.entries(textEdits || {}).filter(([sel]) => isSafeSelector(sel));
+  if (!entries.length) return undefined;
+  const apply = () => {
+    for (const [sel, text] of entries) {
+      try {
+        document.querySelectorAll(sel).forEach((el) => { if (el.textContent !== text) el.textContent = text; });
+      } catch { /* ugyldig selektor — hopp over */ }
+    }
+  };
+  apply();
+  let scheduled = false;
+  const obs = new MutationObserver(() => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => { scheduled = false; apply(); });
+  });
+  try { obs.observe(document.body, { childList: true, subtree: true, characterData: true }); } catch { /* no body */ }
+  return () => obs.disconnect();
+}
+
+export type ElementSrc = Record<string, string>; // selektor → trygg bilde-URL
+
+/** Bytt bildekilde på eksisterende <img> (f.eks. logo). Kun trygge URL-er (relativ/https). React kan
+ *  re-rendre og sette tilbake original src → re-applikeres ved DOM/attributt-endringer (rAF-debounced). */
+function applyElementSrc(srcMap: ElementSrc): (() => void) | undefined {
+  const entries = Object.entries(srcMap || {}).filter(([sel, url]) => isSafeSelector(sel) && isSafeUrl(url));
+  if (!entries.length) return undefined;
+  const apply = () => {
+    for (const [sel, url] of entries) {
+      try {
+        document.querySelectorAll(sel).forEach((el) => {
+          if (el.tagName === 'IMG' && el.getAttribute('src') !== url) el.setAttribute('src', url);
+        });
+      } catch { /* ugyldig selektor — hopp over */ }
+    }
+  };
+  apply();
+  let scheduled = false;
+  const obs = new MutationObserver(() => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => { scheduled = false; apply(); });
+  });
+  try { obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] }); } catch { /* no body */ }
+  return () => obs.disconnect();
+}
+
+export type ElementHref = Record<string, string>; // selektor → trygt lenke-mål
+export type ElementBg = Record<string, string>;   // selektor → trygg bakgrunnsbilde-URL
+
+/** Endre målet på eksisterende lenker (<a>): kun trygge URL-er. Observer-reapply (React kan re-rendre). */
+function applyElementHref(hrefMap: ElementHref): (() => void) | undefined {
+  const entries = Object.entries(hrefMap || {}).filter(([sel, url]) => isSafeSelector(sel) && isSafeUrl(url));
+  if (!entries.length) return undefined;
+  const apply = () => {
+    for (const [sel, url] of entries) {
+      try {
+        document.querySelectorAll(sel).forEach((el) => {
+          if (el.tagName === 'A' && el.getAttribute('href') !== url) el.setAttribute('href', url);
+        });
+      } catch { /* ugyldig selektor */ }
+    }
+  };
+  apply();
+  let scheduled = false;
+  const obs = new MutationObserver(() => { if (scheduled) return; scheduled = true; requestAnimationFrame(() => { scheduled = false; apply(); }); });
+  try { obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['href'] }); } catch { /* no body */ }
+  return () => obs.disconnect();
+}
+
+/** Sett bakgrunnsbilde på elementer. URL-en er allerede validert (isSafeUrl) → bygg url("...") trygt
+ *  (aldri en rå bruker-kontrollert url()-streng). Observer-reapply mot React-overskriving. */
+function applyElementBg(bgMap: ElementBg): (() => void) | undefined {
+  const entries = Object.entries(bgMap || {}).filter(([sel, url]) => isSafeSelector(sel) && isSafeUrl(url));
+  if (!entries.length) return undefined;
+  const apply = () => {
+    for (const [sel, url] of entries) {
+      const val = `url("${url}") center / cover no-repeat`;
+      try {
+        document.querySelectorAll(sel).forEach((el) => {
+          const h = el as HTMLElement;
+          if (h.style.getPropertyValue('background-image').indexOf(url) === -1) h.style.background = val;
+        });
+      } catch { /* ugyldig selektor */ }
+    }
+  };
+  apply();
+  let scheduled = false;
+  const obs = new MutationObserver(() => { if (scheduled) return; scheduled = true; requestAnimationFrame(() => { scheduled = false; apply(); }); });
+  try { obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] }); } catch { /* no body */ }
+  return () => obs.disconnect();
+}
+
+// Notifikasjons-utseende (toasts/snackbars/alerts): flate string-tokens → global .MuiAlert-regel.
+// Nesten alle transiente meldinger i appen rendrer MUI Alert, så dette restyler save/change-meldinger
+// app-vidt. Kun EKSPLISITT satte verdier gir deklarasjoner → ingen override → MUI-standard (identisk).
+const NOTIF_MAP: Array<[string, string]> = [
+  ['notifBg', 'background-color'], ['notifText', 'color'], ['notifRadius', 'border-radius'],
+  ['notifShadow', 'box-shadow'], ['notifBorder', 'border'], ['notifFont', 'font-family'],
+];
+export function buildNotifCss(tokens: Record<string, unknown>): string {
+  const decls: string[] = [];
+  for (const [key, prop] of NOTIF_MAP) {
+    const v = tokens[key];
+    // Verdi-charsettet (backend string-token) blokkerer ;{}:@ → ingen breakout; nekt url() (ekstern last).
+    if (typeof v === 'string' && v && !/url\(/i.test(v)) decls.push(`${prop}: ${v} !important;`);
+  }
+  return decls.length ? `.MuiAlert-root { ${decls.join(' ')} }` : '';
+}
+
+// ── Innsatte elementer (Insert-modus): nye noder fra strukturert data, forankret til et element ──
+export type InsertSpec = { id: string; type: string; pos: 'before' | 'after'; text?: string; href?: string; src?: string; component?: string; slots?: Record<string, string>; source?: string; label?: string };
+export type ElementInserts = Record<string, InsertSpec[]>; // anker-selektor → spesifikasjoner
+export type DesignComponents = Record<string, InsertSpec[]>; // navn → komponent-spesifikasjoner
+
+const INSERT_TYPES = new Set(['heading', 'text', 'button', 'divider', 'image', 'infographic']);
+// URL trygg: relativ (/…) eller https:// — aldri javascript:/data:; ingen anførsel/vinkelparentes.
+export function isSafeUrl(u: unknown): u is string {
+  return typeof u === 'string' && u.length <= 600 && (/^\//.test(u) || /^https:\/\//i.test(u)) && !/[<>"'\\]/.test(u) && !/javascript:/i.test(u);
+}
+
+/** Bygg en TRYGG DOM-node fra en insert-spec (createElement + textContent + saniterte attributter —
+ *  ALDRI innerHTML → ingen XSS). Ukjent type → null. */
+export function buildInsertNode(spec: InsertSpec): HTMLElement | null {
+  let node: HTMLElement;
+  switch (spec.type) {
+    case 'heading': node = document.createElement('h2'); node.textContent = spec.text || ''; break;
+    case 'text': node = document.createElement('p'); node.textContent = spec.text || ''; break;
+    case 'button': {
+      const a = document.createElement('a'); a.textContent = spec.text || 'Knapp';
+      if (isSafeUrl(spec.href)) a.setAttribute('href', spec.href);
+      a.setAttribute('role', 'button');
+      a.style.cssText = 'display:inline-block;padding:10px 18px;border-radius:8px;background:#ff8c00;color:#fff;text-decoration:none;font-weight:700';
+      node = a; break;
+    }
+    case 'divider': node = document.createElement('hr'); node.style.cssText = 'border:none;border-top:1px solid rgba(128,128,128,.3);margin:16px 0'; break;
+    case 'image':
+    case 'infographic': {
+      const img = document.createElement('img');
+      if (isSafeUrl(spec.src)) img.setAttribute('src', spec.src);
+      img.setAttribute('alt', spec.text || '');
+      img.style.cssText = 'max-width:100%;height:auto;display:block';
+      node = img; break;
+    }
+    default: return null;
+  }
+  node.setAttribute('data-chd-insert', spec.id);
+  return node;
+}
+
+/** Sett inn nye elementer forankret til selektorer; re-injiser når React fjerner dem (observer).
+ *  `components` + `workspace` støtter LIVE-lenkede komponent-referanser (type 'component'):
+ *  master-spec'ene ekspanderes ved render, så endring av komponenten slår gjennom på alle instanser;
+ *  per-instans `slots` styrer hvilken datakilde hvert infographic-slot kobles til. */
+/** Formatér en live datakilde-verdi til vis-tekst: «1 247 CV-er bygget» (nb-NO tusenskille). */
+export function formatSourceValue(value: unknown, label?: string): string {
+  let v: string;
+  if (value == null || value === '') v = '—';
+  else if (typeof value === 'number' || (typeof value === 'string' && !isNaN(Number(value)))) v = Number(value).toLocaleString('nb-NO');
+  else v = String(value);
+  return label ? `${v} ${label}` : v;
+}
+
+function applyInserts(inserts: ElementInserts, components: DesignComponents, htmlComponents: Record<string, string>, workspace: string, values: Record<string, { value?: unknown }> = {}): (() => void) | undefined {
+  const entries = Object.entries(inserts || {}).filter(([sel]) => isSafeSelector(sel));
+  if (!entries.length) return undefined;
+  const insertNode = (anchor: Element, spec: InsertSpec, domId: string) => {
+    if (document.querySelector(`[data-chd-insert="${domId}"]`)) return; // allerede satt inn
+    const node = buildInsertNode({ ...spec, id: domId });
+    if (!node || !anchor.parentNode) return;
+    if (spec.pos === 'before') anchor.parentNode.insertBefore(node, anchor);
+    else anchor.parentNode.insertBefore(node, anchor.nextSibling);
+  };
+  const apply = () => {
+    for (const [sel, specs] of entries) {
+      let anchor: Element | null = null;
+      try { anchor = document.querySelector(sel); } catch { continue; }
+      if (!anchor || !anchor.parentNode) continue;
+      for (const spec of specs) {
+        if (!spec || !/^[A-Za-z0-9_-]{1,40}$/.test(spec.id || '')) continue;
+        // HTML-komponent (klonet seksjon) → container-div m/ DOMPurify-sanert innerHTML (render-grense).
+        if (spec.type === 'htmlcomponent' && spec.component) {
+          const html = htmlComponents[spec.component];
+          if (html == null || document.querySelector(`[data-chd-insert="${spec.id}"]`)) continue;
+          const div = document.createElement('div');
+          div.setAttribute('data-chd-insert', spec.id);
+          div.innerHTML = sanitizeHtmlComponent(html);
+          if (spec.pos === 'before') anchor.parentNode.insertBefore(div, anchor);
+          else anchor.parentNode.insertBefore(div, anchor.nextSibling);
+          continue;
+        }
+        // Live-lenket komponent → ekspander master-spec'ene med per-instans slot-kilder.
+        if (spec.type === 'component' && spec.component) {
+          const comp = components[spec.component];
+          if (!comp) continue;
+          for (const child of comp) {
+            if (!INSERT_TYPES.has(child.type)) continue;
+            const c: InsertSpec = { ...child };
+            const slotSrc = spec.slots && spec.slots[child.id];
+            if (child.type === 'infographic' && slotSrc) c.src = `/api/infographics/render.png?tpl=auto&source=${encodeURIComponent(slotSrc)}&ws=${encodeURIComponent(workspace)}`;
+            c.pos = spec.pos;
+            insertNode(anchor, c, `${spec.id}__${child.id}`);
+          }
+          continue;
+        }
+        if (!INSERT_TYPES.has(spec.type)) continue;
+        // Live datakilde: tekst/overskrift med `source` → tekst = connector/metric-verdi (formatert).
+        if (spec.source && (spec.type === 'text' || spec.type === 'heading')) {
+          insertNode(anchor, { ...spec, text: formatSourceValue(values[spec.source]?.value, spec.label) }, spec.id);
+        } else {
+          insertNode(anchor, spec, spec.id);
+        }
+      }
+    }
+  };
+  apply();
+  let scheduled = false;
+  const obs = new MutationObserver(() => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => { scheduled = false; apply(); });
+  });
+  try { obs.observe(document.body, { childList: true, subtree: true }); } catch { /* no body */ }
+  return () => obs.disconnect();
+}
+
+export type ElementBindings = Record<string, string>; // selektor → metric-kilde-nøkkel
+
+/** Data-bind: sett elementets tekst = metrics[<kilde>].value (live, koblet). Observer-reapply. */
+function applyBindings(bindings: ElementBindings, metrics: Record<string, { value?: unknown }>): (() => void) | undefined {
+  const entries = Object.entries(bindings || {}).filter(([sel]) => isSafeSelector(sel));
+  if (!entries.length) return undefined;
+  const apply = () => {
+    for (const [sel, key] of entries) {
+      const m = metrics && metrics[key];
+      if (!m || m.value == null) continue;
+      const val = String(m.value);
+      try { document.querySelectorAll(sel).forEach((el) => { if (el.textContent !== val) el.textContent = val; }); } catch { /* ugyldig selektor */ }
+    }
+  };
+  apply();
+  let scheduled = false;
+  const obs = new MutationObserver(() => { if (scheduled) return; scheduled = true; requestAnimationFrame(() => { scheduled = false; apply(); }); });
+  try { obs.observe(document.body, { childList: true, subtree: true, characterData: true }); } catch { /* no body */ }
+  return () => obs.disconnect();
+}
+
+export type ElementInteractions = Record<string, { action: string; target: string }>;
+
+/** Interaksjoner: gjør elementer klikkbare (scroll til seksjon / naviger). Én delegert lytter. */
+function applyInteractions(intx: ElementInteractions): (() => void) | undefined {
+  const entries = Object.entries(intx || {}).filter(([sel]) => isSafeSelector(sel));
+  if (!entries.length) return undefined;
+  const onClick = (e: Event) => {
+    const tgt = e.target as Element | null;
+    if (!tgt || !tgt.closest) return;
+    for (const [sel, cfg] of entries) {
+      try {
+        if (!tgt.closest(sel)) continue;
+        if (cfg.action === 'scroll' && isSafeSelector(cfg.target)) {
+          const dest = document.querySelector(cfg.target);
+          if (dest) { e.preventDefault(); dest.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+        } else if (cfg.action === 'link' && cfg.target) {
+          e.preventDefault(); window.location.href = cfg.target;
+        }
+        break;
+      } catch { /* ugyldig selektor — hopp over */ }
+    }
+  };
+  document.addEventListener('click', onClick, true);
+  return () => document.removeEventListener('click', onClick, true);
+}
+
+const STYLE_ID = 'chd-element-edits';
+
+/**
+ * useElementEdits — hent lagrede per-element-edits for workspacet (RÅ, raw:true) og injiser dem
+ * som ett <style>-tag. Kjøres i shellene så edits gjelder alle brukere. Ingen edits → tomt → identisk.
+ */
+// Stabil besøkende-id (localStorage) for konsistent A/B-bøtting.
+function chdVisitorId(): string {
+  try {
+    let id = localStorage.getItem('chd_vid');
+    if (!id) { id = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('chd_vid', id); }
+    return id;
+  } catch { return 'anon'; }
+}
+function chdHash(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; } return Math.abs(h); }
+type VariantMaps = { elementEdits?: unknown; elementEditsTablet?: unknown; elementEditsMobile?: unknown; elementText?: unknown; elementAnim?: unknown; elementInserts?: unknown; elementBindings?: unknown };
+/** Velg effektive element-maps: aktiv variant, A/B-bøttet variant (stabil pr. besøkende), ellers base.
+ *  Ved A/B kobles også en konverterings-lytter på målet (fyrer én gang pr. last) → cleanup returneres. */
+function resolveVariantMaps(t: Record<string, unknown>, workspace: string): { maps: VariantMaps; cleanup?: () => void } {
+  const base: VariantMaps = { elementEdits: t.elementEdits, elementEditsTablet: t.elementEditsTablet, elementEditsMobile: t.elementEditsMobile, elementText: t.elementText, elementAnim: t.elementAnim, elementInserts: t.elementInserts, elementBindings: t.elementBindings };
+  const variants = t.designVariants as Record<string, VariantMaps> | undefined;
+  const vc = t.variantConfig as { mode?: string; active?: string; ab?: string[]; goal?: string } | undefined;
+  if (!variants || !vc || vc.mode === 'off') return { maps: base };
+  let chosen: string | null = null;
+  let cleanup: (() => void) | undefined;
+  if (vc.mode === 'active' && vc.active && variants[vc.active]) chosen = vc.active;
+  else if (vc.mode === 'ab' && Array.isArray(vc.ab)) {
+    const valid = vc.ab.filter((n) => variants[n]);
+    if (valid.length) {
+      chosen = valid[chdHash(chdVisitorId()) % valid.length];
+      const variant = chosen;
+      try { fetch('/api/design/ab-exposure', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: workspace, variant }) }).catch(() => {}); } catch { /* ignorer */ }
+      const goal = typeof vc.goal === 'string' ? vc.goal : '';
+      if (goal) {
+        let fired = false;
+        const onClick = (e: Event) => {
+          if (fired) return;
+          const tgt = e.target as Element | null;
+          try { if (tgt && tgt.closest && tgt.closest(goal)) { fired = true; fetch('/api/design/ab-conversion', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: workspace, variant }) }).catch(() => {}); } } catch { /* ugyldig selektor */ }
+        };
+        document.addEventListener('click', onClick, true);
+        cleanup = () => document.removeEventListener('click', onClick, true);
+      }
+    }
+  }
+  return { maps: chosen && variants[chosen] ? variants[chosen] : base, cleanup };
+}
+
+export function useElementEdits(workspace: string): void {
+  useEffect(() => {
+    let live = true;
+    let cleanupText: (() => void) | undefined;
+    let cleanupInserts: (() => void) | undefined;
+    let cleanupBind: (() => void) | undefined;
+    let cleanupVariant: (() => void) | undefined;
+    let cleanupIntx: (() => void) | undefined;
+    let cleanupSrc: (() => void) | undefined;
+    let cleanupHref: (() => void) | undefined;
+    let cleanupBg: (() => void) | undefined;
+    fetch(`/api/design/tokens?ws=${encodeURIComponent(workspace)}&raw=1`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!live || !d || d.raw !== true || !d.tokens) return;
+        const t = d.tokens as Record<string, unknown>;
+        // Variant-resolusjon: aktiv variant / A/B-bøttet variant / base bestemmer element-maps.
+        const rv = resolveVariantMaps(t, workspace);
+        const vm = rv.maps; cleanupVariant = rv.cleanup;
+        // Stil-edits + animasjoner → ett <style>-tag.
+        const editCss = vm.elementEdits ? buildEditsCss(vm.elementEdits as ElementEdits) : '';
+        const animCss = vm.elementAnim ? buildAnimCss(vm.elementAnim as ElementAnim) : '';
+        const notifCss = buildNotifCss(t);
+        // Responsiv: breakpoint-overstyringer pakket i @media. Variant-bevisst — aktiv/A-B-variant
+        // har egne tablet/mobile-maps (faller tilbake til base når varianten ikke overstyrer bredden).
+        const tabletCss = vm.elementEditsTablet ? buildEditsCss(vm.elementEditsTablet as ElementEdits) : '';
+        const mobileCss = vm.elementEditsMobile ? buildEditsCss(vm.elementEditsMobile as ElementEdits) : '';
+        const css = [editCss, animCss, notifCss,
+          tabletCss ? `@media (max-width:900px){\n${tabletCss}\n}` : '',
+          mobileCss ? `@media (max-width:600px){\n${mobileCss}\n}` : '',
+        ].filter(Boolean).join('\n');
+        if (css) {
+          let tag = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
+          if (!tag) { tag = document.createElement('style'); tag.id = STYLE_ID; document.head.appendChild(tag); }
+          tag.textContent = css;
+        }
+        // Tekst-edits → textContent (m/ observer-reapply).
+        if (vm.elementText && typeof vm.elementText === 'object') {
+          cleanupText = applyTextEdits(vm.elementText as ElementText);
+        }
+        // Interaksjoner (klikk → scroll/naviger) — top-nivå (delt på tvers av varianter).
+        if (t.elementInteractions && typeof t.elementInteractions === 'object') {
+          cleanupIntx = applyInteractions(t.elementInteractions as ElementInteractions);
+        }
+        // Bildekilde-overstyringer (bytt logo/bilde) — top-nivå.
+        if (t.elementSrc && typeof t.elementSrc === 'object') {
+          cleanupSrc = applyElementSrc(t.elementSrc as ElementSrc);
+        }
+        // Lenke-mål (endre hvor eksisterende lenker peker) — top-nivå.
+        if (t.elementHref && typeof t.elementHref === 'object') {
+          cleanupHref = applyElementHref(t.elementHref as ElementHref);
+        }
+        // Bakgrunnsbilder — top-nivå.
+        if (t.elementBg && typeof t.elementBg === 'object') {
+          cleanupBg = applyElementBg(t.elementBg as ElementBg);
+        }
+        // Live datakilde-verdier (admin-metrics + publicSafe DB-connectors) driver BÅDE source-
+        // innsettinger (tall plassert på siden) OG data-bindinger. Hentes én gang, fletter inn.
+        const hasInserts = vm.elementInserts && typeof vm.elementInserts === 'object';
+        const hasBindings = vm.elementBindings && typeof vm.elementBindings === 'object';
+        if (hasInserts || hasBindings) {
+          const baseMetrics = (t.metrics as Record<string, { value?: unknown }>) || {};
+          const runWithValues = (values: Record<string, { value?: unknown }>) => {
+            if (!live) return;
+            if (hasInserts) cleanupInserts = applyInserts(vm.elementInserts as ElementInserts, (t.designComponents as DesignComponents) || {}, (t.htmlComponents as Record<string, string>) || {}, workspace, values);
+            if (hasBindings) cleanupBind = applyBindings(vm.elementBindings as ElementBindings, values);
+          };
+          fetch(`/api/design/connector-values?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((cv) => runWithValues({ ...baseMetrics, ...((cv && cv.values) || {}) }))
+            .catch(() => runWithValues(baseMetrics));
+        }
+      })
+      .catch(() => {});
+    return () => { live = false; if (cleanupText) cleanupText(); if (cleanupInserts) cleanupInserts(); if (cleanupBind) cleanupBind(); if (cleanupVariant) cleanupVariant(); if (cleanupIntx) cleanupIntx(); if (cleanupSrc) cleanupSrc(); if (cleanupHref) cleanupHref(); if (cleanupBg) cleanupBg(); };
+  }, [workspace]);
+}

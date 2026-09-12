@@ -60,7 +60,9 @@ import {
   CircularProgress,
   Stack,
   Grid,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Add as AddIcon,
   Key as KeyIcon,
@@ -128,6 +130,7 @@ import {
   Chat as ChatProtocolIcon,
   Shield as ShieldIcon,
   Search as SeoIcon,
+  Search as SearchIcon,
   MovieCreation as _VideoIcon,
   AudioFile as _AudioIcon,
   AutoFixHigh as EnhancementIcon,
@@ -161,6 +164,7 @@ import ApiIntegrationProcessMonitor from './ApiIntegrationProcessMonitor';
 import DatabaseIntegrityChecker from './DatabaseIntegrityChecker';
 import type { APIVersionInfo } from './APIVersionReleaseNotesDialog';
 import { APIVersionReleaseNotesDialog } from './APIVersionReleaseNotesDialog';
+import { AdminButton } from './design-system';
 
 interface ApiKey {
   id: string;
@@ -258,6 +262,8 @@ export default function IntegrationsManagementPanel({
 }: IntegrationsManagementPanelProps) {
   // Theming system
   const theming = useTheming('prototype_tester');
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -280,6 +286,7 @@ export default function IntegrationsManagementPanel({
 
   // State management
   const [tabValue, setTabValue] = useState(0);
+  const [search, setSearch] = useState("");
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
   const [webhookDialogOpen, setWebhookDialogOpen] = useState(false);
   const [oauthDialogOpen, setOAuthDialogOpen] = useState(false);
@@ -978,6 +985,7 @@ export default function IntegrationsManagementPanel({
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
+                      aria-label="Vis eller skjul API-nøkkel"
                       onClick={async () => {
                         const input = document.querySelector('input[type="password"]') as HTMLInputElement;
                         if (input) {
@@ -1072,14 +1080,14 @@ export default function IntegrationsManagementPanel({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setKeyDialogOpen(false)}>Avbryt</Button>
-          <Button onClick={handleSubmit}
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setKeyDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton onClick={handleSubmit}
+            tone="primary"
+            loading={createApiKeyMutation.isPending}
             disabled={createApiKeyMutation.isPending}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
           >
             {createApiKeyMutation.isPending ? 'Oppretter...' : 'Opprett nøkkel'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
   );
@@ -1164,14 +1172,14 @@ export default function IntegrationsManagementPanel({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setWebhookDialogOpen(false)}>Avbryt</Button>
-          <Button onClick={handleSubmit}
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setWebhookDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton onClick={handleSubmit}
+            tone="primary"
+            loading={createWebhookMutation.isPending}
             disabled={createWebhookMutation.isPending}
-            sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
           >
             {createWebhookMutation.isPending ? 'Oppretter...' : 'Opprett webhook'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
   );
@@ -1310,20 +1318,21 @@ export default function IntegrationsManagementPanel({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOAuthDialogOpen(false)}>Avbryt</Button>
-          <Button onClick={handleSubmit}
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setOAuthDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton onClick={handleSubmit}
+            tone="primary"
+            loading={createOAuthMutation.isPending}
             disabled={createOAuthMutation.isPending}
-            sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
           >
             {createOAuthMutation.isPending ? 'Oppretter...' : 'Opprett klient'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
   );
 };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: { xs: 2, sm: 3 } }}>
       <CreateApiKeyDialog />
       <CreateWebhookDialog />
@@ -1332,7 +1341,7 @@ export default function IntegrationsManagementPanel({
       {/* Header */}
       <Box sx={{ mb: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
-          <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 600}}>
+          <Typography variant="h5" sx={{ color: themeColors.primary, fontWeight: 600}}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <LinkIcon />
               Integrasjoner & API-er
@@ -1347,7 +1356,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 600}}>
+                <Typography variant="h4" sx={{ color: themeColors.primary, fontWeight: 600}}>
                   {environmentStatus?.statistics?.total || 0}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -1372,9 +1381,16 @@ export default function IntegrationsManagementPanel({
             <Card>
               <CardContent sx={{ textAlign: 'center', py: 2 }}>
                 <Typography variant="h4" sx={{ color: 'info.main', fontWeight: 600}}>
-                  {webhooksData?.length > 0 ?
-                    Math.round((webhooksData.filter((w: any) => w.status === 'active').length / webhooksData.length) * 100) : 
-                    0 }%
+                  {(() => {
+                    const webhookList = Array.isArray(webhooksData)
+                      ? webhooksData
+                      : Array.isArray(webhooksData?.webhooks)
+                        ? webhooksData.webhooks
+                        : [];
+                    return webhookList.length > 0
+                      ? Math.round((webhookList.filter((w: any) => w.status === 'active').length / webhookList.length) * 100)
+                      : 0;
+                  })()}%
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Webhook suksess
@@ -1638,7 +1654,7 @@ export default function IntegrationsManagementPanel({
 	                display: 'flex',
 	                alignItems: 'center',
 	                gap: 1,
-	                color: theming.colors.primary}}
+	                color: themeColors.primary}}
 	            >
 	              <AiIcon sx={{ color: '#ff8c00' }} />
 	              AI CodeGenerator Status
@@ -1711,7 +1727,7 @@ export default function IntegrationsManagementPanel({
 	                                display: 'flex',
 	                                alignItems: 'center',
 	                                gap: 1,
-	                                color: theming.colors.primary}}
+	                                color: themeColors.primary}}
 	                            >
                               <AiIcon color="primary" />
                               OpenAI GPT-5
@@ -1813,7 +1829,7 @@ export default function IntegrationsManagementPanel({
 	                                display: 'flex',
 	                                alignItems: 'center',
 	                                gap: 1,
-	                                color: theming.colors.primary}}
+	                                color: themeColors.primary}}
 	                            >
 	                              <AiIcon color="secondary" />
 	                              Anthropic Claude
@@ -1879,7 +1895,7 @@ export default function IntegrationsManagementPanel({
 	                                display: 'flex',
 	                                alignItems: 'center',
 	                                gap: 1,
-	                                color: theming.colors.primary}}
+	                                color: themeColors.primary}}
 	                            >
 	                              <AiIcon color="info" />
 	                              Google Gemini
@@ -1938,7 +1954,7 @@ export default function IntegrationsManagementPanel({
 	            <CardContent>
 	              <Typography
 	                variant="h6"
-	                sx={{ mb: 2, color: theming.colors.primary }}
+	                sx={{ mb: 2, color: themeColors.primary }}
 	              >
 	                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
 	                  <ApiIcon sx={{ color: '#ff8c00' }} />
@@ -2050,7 +2066,7 @@ export default function IntegrationsManagementPanel({
 	              {/* Intelligent Problem Solving Section */}
 	              <Card sx={{ mb: 3 }}>
 	                <CardContent>
-	                  <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary, fontWeight: 600}}>
+	                  <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary, fontWeight: 600}}>
 	                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
 	                      <AiIcon sx={{ color: '#4caf50' }} />
                       Intelligent Problemløsning med AI
@@ -2069,6 +2085,7 @@ export default function IntegrationsManagementPanel({
 	                    variant="outlined"
 	                    sx={{ mb: 2 }}
                     id="ai-problem-input"
+                    aria-label="Beskriv hva AI skal hjelpe deg med"
                   />
 
 	                      <Button
@@ -2200,7 +2217,7 @@ export default function IntegrationsManagementPanel({
 	                        fullWidth
 	                        variant="outlined"
 	                        startIcon={<BarChartIcon />}
-	                        sx={{ borderColor: '#9c27b0', color: '#9c27b0' }}
+	                        sx={{ borderColor: '#9c27b0', color: '#ce93d8' }}
 	                        onClick={async () => {
 	                          try {
 	                            const res = await fetch('/api/code-generator/active-implementations');
@@ -2329,7 +2346,7 @@ export default function IntegrationsManagementPanel({
 	          {/* Execute Buttons */}
 	          <Card sx={{ mb: 3 }}>
 	            <CardContent>
-	              <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+	              <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
 	                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <RocketIcon color="primary" />
                   Test CodeGenerator Endpoints
@@ -2500,7 +2517,7 @@ export default function IntegrationsManagementPanel({
 	            <CardContent>
 	              <Typography
 	                variant="h6"
-	                sx={{ mb: 2, color: theming.colors.primary, fontWeight: 600}}
+	                sx={{ mb: 2, color: themeColors.primary, fontWeight: 600}}
 	              >
 	                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
 	                  <ApiIcon sx={{ color: '#2196f3' }} />
@@ -2837,7 +2854,7 @@ export default function IntegrationsManagementPanel({
           {/* Phase 13: Advanced Integration & API Management , *, /}
           <Cardsx={{mb: 3, background: 'linear-gradient(45deg, rgba(255,140,0,0.1) 0%, rgba(255,193,7,0.1) 100%)' }}>
             <CardContent >
-              <Typography variant="h6"sx={{mb: 2, color: '#ff8c00, 0'fontWeight: 600}sx={{color: theming.colors.primary }}>
+              <Typography variant="h6"sx={{mb: 2, color: '#ff8c00, 0'fontWeight: 600}sx={{color: themeColors.primary }}>
                 <Boxsx={{display: 'flex'alignItems:'cente-r'gap: 1}}>
                   <RocketIconsx={{color: '#ff8c00' }} />
                   Phase 13: Advanced Integration & API Management
@@ -2937,7 +2954,7 @@ export default function IntegrationsManagementPanel({
 	            <CardContent>
 	              <Typography
 	                variant="h6"
-	                sx={{ mb: 2, color: theming.colors.primary }}
+	                sx={{ mb: 2, color: themeColors.primary }}
 	              >
 	                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
 	                  <SettingsIcon color="warning" />
@@ -2954,7 +2971,7 @@ export default function IntegrationsManagementPanel({
 	                <CardContent>
 	                  <Typography
 	                    variant="h6"
-	                    sx={{ mb: 2, color: theming.colors.primary }}
+	                    sx={{ mb: 2, color: themeColors.primary }}
 	                  >
 	                    <Box
 	                      sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
@@ -3256,7 +3273,7 @@ export default function IntegrationsManagementPanel({
 	                    <Grid item xs={12} sm={6} md={3}>
 	                      <Typography
 	                        variant="h5"
-	                        sx={{ color: theming.colors.primary, fontWeight: 600}}
+	                        sx={{ color: themeColors.primary, fontWeight: 600}}
 	                      >
 	                        56
 	                      </Typography>
@@ -3267,7 +3284,7 @@ export default function IntegrationsManagementPanel({
 	                    <Grid item xs={12} sm={6} md={3}>
 	                      <Typography
 	                        variant="h5"
-	                        sx={{ color: theming.colors.primary, fontWeight: 600}}
+	                        sx={{ color: themeColors.primary, fontWeight: 600}}
 	                      >
 	                        8
 	                      </Typography>
@@ -3278,7 +3295,7 @@ export default function IntegrationsManagementPanel({
 	                    <Grid item xs={12} sm={6} md={3}>
 	                      <Typography
 	                        variant="h5"
-	                        sx={{ color: theming.colors.primary, fontWeight: 600}}
+	                        sx={{ color: themeColors.primary, fontWeight: 600}}
 	                      >
 	                        35
 	                      </Typography>
@@ -3289,7 +3306,7 @@ export default function IntegrationsManagementPanel({
 	                    <Grid item xs={12} sm={6} md={3}>
 	                      <Typography
 	                        variant="h5"
-	                        sx={{ color: theming.colors.primary, fontWeight: 600}}
+	                        sx={{ color: themeColors.primary, fontWeight: 600}}
 	                      >
 	                        13
 	                      </Typography>
@@ -5152,7 +5169,7 @@ export default function IntegrationsManagementPanel({
       {/* API Keys Tab */}
       <TabPanel value={tabValue} index={1}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>API Nøkler</Typography>
+          <Typography variant="h6" sx={{ color: themeColors.primary }}>API Nøkler</Typography>
           <Button variant="contained"
             startIcon={<AddIcon />}
             onClick={() => setKeyDialogOpen(true)}
@@ -5161,6 +5178,22 @@ export default function IntegrationsManagementPanel({
             Ny API-nøkkel
           </Button>
         </Box>
+
+        <TextField
+          size="small"
+          placeholder="Søk i API-nøkler (tjeneste, navn, type) …"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ mb: 2, maxWidth: 360 }}
+          fullWidth
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
 
         <Card>
           <CardContent sx={{ p: 0 }}>
@@ -5189,7 +5222,13 @@ export default function IntegrationsManagementPanel({
                         </TableRow>
                       ))
                   ) : (
-                    apiKeysData?.apiKeys?.map((apiKey: ApiKey) => (
+                    (Array.isArray(apiKeysData?.apiKeys) ? apiKeysData.apiKeys : [])
+                      .filter((apiKey: ApiKey) =>
+                        `${apiKey.service} ${apiKey.name} ${apiKey.keyType}`
+                          .toLowerCase()
+                          .includes(search.toLowerCase())
+                      )
+                      .map((apiKey: ApiKey) => (
                         <TableRow key={apiKey.id} hover>
                           <TableCell>
                             <Typography variant="body2" fontWeight={600}>
@@ -5202,6 +5241,7 @@ export default function IntegrationsManagementPanel({
                             <Typography variant="caption" color="text.secondary" fontFamily="monospace">
                               {showSecrets[apiKey.id] ? apiKey.maskedKey.replace(/\*+/g, 'sk_live_abc123xyz789') : apiKey.maskedKey}
                                 <IconButton
+                                  aria-label="Vis eller skjul nøkkel"
                                   size="small"
                                   onClick={() => toggleSecretVisibility(apiKey.id)}
                                   sx={{ ml: 1 }}
@@ -5241,12 +5281,13 @@ export default function IntegrationsManagementPanel({
                           <TableCell>
                             <Box sx={{ display: 'flex', gap: 1 }}>
                               <Tooltip title="Roter nøkkel">
-                                <IconButton size="small">
+                                <IconButton size="small" aria-label="Roter nøkkel">
                                   <RefreshIcon fontSize="inherit" />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Kopier nøkkel">
                                 <IconButton
+                                  aria-label="Kopier nøkkel"
                                   size="small"
                                   onClick={() => copyToClipboard(apiKey.maskedKey)}
                                 >
@@ -5268,7 +5309,7 @@ export default function IntegrationsManagementPanel({
       {/* Webhooks Tab */}
       <TabPanel value={tabValue} index={2}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>Webhooks</Typography>
+          <Typography variant="h6" sx={{ color: themeColors.primary }}>Webhooks</Typography>
           <Button variant="contained"
             startIcon={<AddIcon />}
             onClick={() => setWebhookDialogOpen(true)}
@@ -5305,7 +5346,7 @@ export default function IntegrationsManagementPanel({
                         </TableRow>
                       ))
                   ) : (
-                    webhooksData?.webhooks?.map((webhook: Webhook) => (
+                    (Array.isArray(webhooksData?.webhooks) ? webhooksData.webhooks : []).map((webhook: Webhook) => (
                         <TableRow key={webhook.id} hover>
                           <TableCell>
                             <Typography variant="body2" fontWeight={600}>
@@ -5345,12 +5386,12 @@ export default function IntegrationsManagementPanel({
                           <TableCell>
                             <Box sx={{ display: 'flex', gap: 1 }}>
                               <Tooltip title="Test webhook">
-                                <IconButton size="small">
+                                <IconButton size="small" aria-label="Test webhook">
                                   <PlayIcon fontSize="inherit" />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Pause webhook">
-                                <IconButton size="small">
+                                <IconButton size="small" aria-label="Pause webhook">
                                   <PauseIcon fontSize="inherit" />
                                 </IconButton>
                               </Tooltip>
@@ -5369,7 +5410,7 @@ export default function IntegrationsManagementPanel({
       {/* OAuth Tab */}
       <TabPanel value={tabValue} index={3}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>OAuth Klienter</Typography>
+          <Typography variant="h6" sx={{ color: themeColors.primary }}>OAuth Klienter</Typography>
           <Button variant="contained"
             startIcon={<AddIcon />}
             onClick={() => setOAuthDialogOpen(true)}
@@ -5405,7 +5446,7 @@ export default function IntegrationsManagementPanel({
                         </TableRow>
                       ))
                   ) : (
-                    oauthData?.oauthClients?.map((oauthClient: OAuthClient) => (
+                    (Array.isArray(oauthData?.oauthClients) ? oauthData.oauthClients : []).map((oauthClient: OAuthClient) => (
                         <TableRow key={oauthClient.id} hover>
                           <TableCell>
                             <Typography variant="body2" fontWeight={600}>
@@ -5425,6 +5466,7 @@ export default function IntegrationsManagementPanel({
                               {showSecrets[oauthClient.id] ? oauthClient.clientId : `${oauthClient.clientId.substring(0, 12)}...`}
                               </Typography>
                               <IconButton
+                                aria-label="Vis eller skjul Client ID"
                                 size="small"
                                 onClick={() => toggleSecretVisibility(oauthClient.id)}
                               >
@@ -5447,12 +5489,13 @@ export default function IntegrationsManagementPanel({
                           <TableCell>
                             <Box sx={{ display: 'flex', gap: 1 }}>
                               <Tooltip title="Vis scopes">
-                                <IconButton size="small">
+                                <IconButton size="small" aria-label="Vis scopes">
                                   <ViewIcon fontSize="inherit" />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Kopier Client ID">
                                 <IconButton
+                                  aria-label="Kopier Client ID"
                                   size="small"
                                   onClick={() => copyToClipboard(oauthClient.clientId)}
                                 >
@@ -5572,7 +5615,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <ApiIcon sx={{ color: '#2e7d32' }} />
                   REST API Protokoller
                 </Typography>
@@ -5589,8 +5632,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <GraphQLIcon sx={{ color: '#1565c0' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <GraphQLIcon sx={{ color: '#60a5fa' }} />
                   GraphQL Protokoller
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5606,8 +5649,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <WebSocketIcon sx={{ color: '#7b1fa2' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <WebSocketIcon sx={{ color: '#ce93d8' }} />
                   WebSocket Protokoller
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5623,7 +5666,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <GrpcIcon sx={{ color: '#ff8c00' }} />
                   gRPC Protokoller
                 </Typography>
@@ -5640,7 +5683,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <AcmeIcon sx={{ color: '#2e7d32' }} />
                   ACME Protokoller
                 </Typography>
@@ -5657,8 +5700,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <OpenApiIcon sx={{ color: '#1565c0' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <OpenApiIcon sx={{ color: '#60a5fa' }} />
                   OpenAPI/Swagger
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5688,7 +5731,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <RtmpIcon sx={{ color: '#d32f2f' }} />
                   RTMP Streaming
                 </Typography>
@@ -5709,8 +5752,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <HlsIcon sx={{ color: '#1565c0' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <HlsIcon sx={{ color: '#60a5fa' }} />
                   HLS/MPEG-DASH
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5730,8 +5773,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <MLIcon sx={{ color: '#7b1fa2' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <MLIcon sx={{ color: '#ce93d8' }} />
                   AI Protokoller (ONNX)
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5752,7 +5795,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <EnhancementIcon sx={{ color: '#ff8c00' }} />
                   DNG/XMP Metadata
                 </Typography>
@@ -5773,7 +5816,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <WebDavIcon sx={{ color: '#2e7d32' }} />
                   WebDAV Protokoll
                 </Typography>
@@ -5794,8 +5837,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <ActivityPubIcon sx={{ color: '#9c27b0' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <ActivityPubIcon sx={{ color: '#ce93d8' }} />
                   ActivityPub/WebRTC
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5829,8 +5872,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <ChatProtocolIcon sx={{ color: '#1565c0' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <ChatProtocolIcon sx={{ color: '#60a5fa' }} />
                   XMPP Protokoll
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5850,8 +5893,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <ShieldIcon sx={{ color: '#7b1fa2' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <ShieldIcon sx={{ color: '#ce93d8' }} />
                   Matrix Protokoll
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5871,7 +5914,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <SeoIcon sx={{ color: '#2e7d32' }} />
                   JSON-LD & Schema.org
                 </Typography>
@@ -5892,7 +5935,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <CalDavIcon sx={{ color: '#ff8c00' }} />
                   CalDAV/CardDAV
                 </Typography>
@@ -5913,8 +5956,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <EdiIcon sx={{ color: '#9c27b0' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <EdiIcon sx={{ color: '#ce93d8' }} />
                   EDI Protokoll
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5934,8 +5977,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <OpenBankingIcon sx={{ color: '#1565c0' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <OpenBankingIcon sx={{ color: '#60a5fa' }} />
                   Open Banking API
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5955,7 +5998,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <SecurityIcon sx={{ color: '#d32f2f' }} />
                   Sikkerhetsprotokoller
                 </Typography>
@@ -6130,5 +6173,6 @@ export default function IntegrationsManagementPanel({
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
 );
 }

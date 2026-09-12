@@ -1,0 +1,46 @@
+name: Backend Docker Build Gate
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'backend/package.json'
+      - 'backend/package-lock.json'
+      - '.github/workflows/backend-docker-build-gate.yml'
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: backend-docker-build-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-docker-build:
+    name: Backend production Docker build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build production image
+        run: docker build --progress=plain -t creatorhub-backend-ci .
+
+      - name: Verify Node 24 runtime
+        run: |
+          VERSION="$(docker run --rm --entrypoint node creatorhub-backend-ci --version)"
+          echo "Container Node: $VERSION"
+          case "$VERSION" in
+            v24.*) ;;
+            *) echo "Expected Node 24, got $VERSION" >&2; exit 1 ;;
+          esac
+
+      - name: Parse production bundle
+        run: docker run --rm --entrypoint node creatorhub-backend-ci --check /app/backend/dist/index.js
+
+      - name: Verify native runtime modules
+        run: >-
+          docker run --rm --entrypoint node creatorhub-backend-ci
+          --input-type=module -e
+          "await import('better-sqlite3'); await import('canvas'); console.log('better-sqlite3 + canvas: OK')"

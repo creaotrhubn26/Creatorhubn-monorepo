@@ -71,14 +71,14 @@ const ContractSigningPage: React.FC = () => {
     isLoading: contractLoading,
     error: contractError,
 } = useQuery({
-    queryKey: [`/api/contracts/${d}`],
-    enabled: !!d,
+    queryKey: [`/api/contracts/${id}`],
+    enabled: !!id,
 });
 
   // Fetch signature status
   const { data: signatureStatusData, refetch: refetchSignatureStatus } = useQuery({
-    queryKey: [`/api/contracts/${d}/signature-status`],
-    enabled: !!d,
+    queryKey: [`/api/contracts/${id}/signature-status`],
+    enabled: !!id,
 });
 
   // Sign contract mutation
@@ -94,7 +94,7 @@ const ContractSigningPage: React.FC = () => {
     });
   },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/contracts/${d}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/contracts/${id}`] });
       refetchSignatureStatus();
   },
 });
@@ -117,7 +117,7 @@ const ContractSigningPage: React.FC = () => {
 
     // Set canvas background
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect, (0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 }, []);
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -132,7 +132,7 @@ const ContractSigningPage: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.beginPath();
-      ctx.moveTo, (y);
+      ctx.moveTo(x, y);
   }
 };
 
@@ -148,7 +148,7 @@ const ContractSigningPage: React.FC = () => {
 
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      ctx.lineTo, (y);
+      ctx.lineTo(x, y);
       ctx.stroke();
   }
 };

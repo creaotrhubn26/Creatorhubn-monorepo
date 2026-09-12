@@ -21,10 +21,16 @@ fn extract_creds(settings: &State<AppSettings>) -> Result<(String, String), Stri
         .get("RR_BEARER_TOKEN")
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| "Not signed in — RR_BEARER_TOKEN missing. Sign in via Role Room first.".to_string())?;
+        .ok_or_else(|| {
+            "Not signed in — RR_BEARER_TOKEN missing. Sign in via Role Room first.".to_string()
+        })?;
+    // Frontend skriver KUN RR_POST_AGENT_BASE_URL (samme format, inkl. /api/post-agent).
+    // Les den først; RR_API_BASE beholdes som legacy-fallback. Uten dette ble en
+    // egendefinert backend-URL ignorert (Rust falt alltid til DEFAULT_BASE).
     let base = snap
-        .get("RR_API_BASE")
-        .map(|s| s.trim().to_string())
+        .get("RR_POST_AGENT_BASE_URL")
+        .or_else(|| snap.get("RR_API_BASE"))
+        .map(|s| s.trim().trim_end_matches('/').to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| DEFAULT_BASE.to_string());
     Ok((base, token))
@@ -73,7 +79,12 @@ pub async fn role_room_fetch_equipment(
     settings: State<'_, AppSettings>,
 ) -> Result<Value, String> {
     let (base, token) = extract_creds(&settings)?;
-    fetch_json(&base, &format!("/projects/{}/equipment", project_id), &token).await
+    fetch_json(
+        &base,
+        &format!("/projects/{}/equipment", project_id),
+        &token,
+    )
+    .await
 }
 
 /// GET /api/post-agent/projects/:project_id/live-set-state
@@ -98,9 +109,7 @@ pub async fn role_room_fetch_live_set_state(
 /// Returns `{ productions: [{ id, name, projectType, eventDate, activeSeats }] }`.
 /// Used to populate a project-picker in the desktop app.
 #[tauri::command]
-pub async fn role_room_my_productions(
-    settings: State<'_, AppSettings>,
-) -> Result<Value, String> {
+pub async fn role_room_my_productions(settings: State<'_, AppSettings>) -> Result<Value, String> {
     let (base, token) = extract_creds(&settings)?;
     fetch_json(&base, "/team/my-productions", &token).await
 }
@@ -142,8 +151,7 @@ pub async fn role_room_fetch_clip_download_urls(
     if !status.is_success() {
         return Err(format!("HTTP {} from {}: {}", status, url, text));
     }
-    serde_json::from_str::<Value>(&text)
-        .map_err(|e| format!("Parse JSON: {} (body: {})", e, text))
+    serde_json::from_str::<Value>(&text).map_err(|e| format!("Parse JSON: {} (body: {})", e, text))
 }
 
 /// Download a single clip from a presigned URL to a local path. Returns
@@ -165,7 +173,11 @@ pub async fn role_room_download_clip(
         .map_err(|e| format!("Download GET failed: {}", e))?;
     let status = res.status();
     if !status.is_success() {
-        return Err(format!("HTTP {} downloading {}", status, &download_url[..download_url.len().min(80)]));
+        return Err(format!(
+            "HTTP {} downloading {}",
+            status,
+            &download_url[..download_url.len().min(80)]
+        ));
     }
     let bytes = res
         .bytes()
@@ -177,7 +189,6 @@ pub async fn role_room_download_clip(
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("create_dir_all {} failed: {}", parent.display(), e))?;
     }
-    std::fs::write(&dest_path, &bytes)
-        .map_err(|e| format!("Write {} failed: {}", dest_path, e))?;
+    std::fs::write(&dest_path, &bytes).map_err(|e| format!("Write {} failed: {}", dest_path, e))?;
     Ok(len)
 }

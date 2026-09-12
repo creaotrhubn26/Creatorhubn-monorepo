@@ -36,6 +36,7 @@ import {
   InputLabel,
   Alert,
   Divider,
+  InputAdornment,
   alpha,
 } from '@mui/material';
 import {
@@ -47,10 +48,12 @@ import {
   Storefront as StoreIcon,
   Image as ImageIcon,
   AttachMoney as MoneyIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { marketplaceAdminEvents } from '@/utils/creatorhub-events';
+import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminEmpty, AdminError, AdminTableContainer, adminTokens, useIsMobile } from './design-system';
 
 interface SubscriptionTier {
   id: string;
@@ -128,6 +131,7 @@ const MarketplaceAppConfigManager: React.FC = () => {
   const queryClient = useQueryClient();
   const [editingApp, setEditingApp] = useState<MarketplaceApp | null>(null);
   const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState("");
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['admin-marketplace-apps'],
@@ -137,7 +141,15 @@ const MarketplaceAppConfigManager: React.FC = () => {
     },
   });
 
-  const apps = data || [];
+  const apps = Array.isArray(data) ? data : [];
+
+  const filteredApps = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return apps;
+    return apps.filter((app) =>
+      `${app.name || ''} ${app.id || ''} ${app.category || ''}`.toLowerCase().includes(q)
+    );
+  }, [apps, search]);
 
   const saveMutation = useMutation({
     mutationFn: async (app: MarketplaceApp) => {
@@ -175,7 +187,7 @@ const MarketplaceAppConfigManager: React.FC = () => {
       return apiRequest(`/api/admin/marketplace/apps/${id}/publish`, { method: 'POST' });
     },
     onSuccess: (data, id) => {
-      const tiers = data?.data?.subscriptionTiers || [];
+      const tiers = Array.isArray(data?.data?.subscriptionTiers) ? data.data.subscriptionTiers : [];
       const errored = tiers.filter((t: any) => t.stripeSyncError).length;
       marketplaceAdminEvents.publishedToStripe(id, tiers.length, errored);
       queryClient.invalidateQueries({ queryKey: ['admin-marketplace-apps'] });
@@ -193,7 +205,7 @@ const MarketplaceAppConfigManager: React.FC = () => {
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 700, mb: 0.5 }}>
             Marketplace-apper
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -202,20 +214,20 @@ const MarketplaceAppConfigManager: React.FC = () => {
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="secondary"
             onClick={() => driftMutation.mutate()}
-            disabled={driftMutation.isPending}
+            loading={driftMutation.isPending}
           >
             {driftMutation.isPending ? 'Sjekker…' : 'Sjekk pris-drift'}
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<AddIcon />}
             onClick={() => { setEditingApp(emptyApp()); setCreating(true); }}
           >
             Ny app
-          </Button>
+          </AdminButton>
         </Stack>
       </Stack>
 
@@ -232,10 +244,10 @@ const MarketplaceAppConfigManager: React.FC = () => {
               <strong>{driftMutation.data.report.driftsFound} drift(s) oppdaget</strong> av {driftMutation.data.report.totalTiers} tiers sjekket.
               Admin-notifikasjon sendt.
               <ul style={{ margin: '8px 0 0 16px', paddingLeft: 0 }}>
-                {driftMutation.data.report.drifts.slice(0, 5).map((d: any, idx: number) => (
+                {(Array.isArray(driftMutation.data.report.drifts) ? driftMutation.data.report.drifts : []).slice(0, 5).map((d: any, idx: number) => (
                   <li key={idx}><strong>{d.appName} / {d.tierName}</strong>: {d.message}</li>
                 ))}
-                {driftMutation.data.report.drifts.length > 5 && (
+                {(Array.isArray(driftMutation.data.report.drifts) ? driftMutation.data.report.drifts.length : 0) > 5 && (
                   <li>... og {driftMutation.data.report.drifts.length - 5} til</li>
                 )}
               </ul>
@@ -266,7 +278,26 @@ const MarketplaceAppConfigManager: React.FC = () => {
         </Alert>
       )}
 
-      <Card>
+      <Box sx={{ mb: 2 }}>
+        <TextField
+          size="small"
+          fullWidth
+          placeholder="Søk etter navn, ID eller kategori …"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ maxWidth: 420 }}
+        />
+      </Box>
+
+      <AdminCard disablePadding>
+        <AdminTableContainer ariaLabel="Marketplace-apper">
         <Table>
           <TableHead>
             <TableRow>
@@ -294,7 +325,14 @@ const MarketplaceAppConfigManager: React.FC = () => {
                 </TableCell>
               </TableRow>
             )}
-            {apps.map((app) => (
+            {!isLoading && apps.length > 0 && filteredApps.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                  Ingen apper matcher "{search}".
+                </TableCell>
+              </TableRow>
+            )}
+            {filteredApps.map((app) => (
               <TableRow key={app.id} sx={{ opacity: app.isActive === false ? 0.5 : 1 }}>
                 <TableCell>
                   <Avatar
@@ -317,7 +355,7 @@ const MarketplaceAppConfigManager: React.FC = () => {
                 </TableCell>
                 <TableCell>
                   {app.pricing?.free ? (
-                    <Chip size="small" label="Gratis" color="success" />
+                    <StatusChip tone="success" label="Gratis" />
                   ) : (
                     <Typography variant="caption" sx={{ fontWeight: 600 }}>
                       {app.pricing?.displayPrice || (app.pricing?.price ? `${app.pricing.price} ${app.pricing.currency || ''}` : '—')}
@@ -328,7 +366,7 @@ const MarketplaceAppConfigManager: React.FC = () => {
                   <Chip size="small" label={app.subscriptionTiers?.length || 0} />
                   {/* Stripe-sync-indikator */}
                   {(() => {
-                    const tiers = app.subscriptionTiers || [];
+                    const tiers = Array.isArray(app.subscriptionTiers) ? app.subscriptionTiers : [];
                     const synced = tiers.filter((t: any) => t.stripeProductId).length;
                     const errored = tiers.filter((t: any) => t.stripeSyncError).length;
                     if (tiers.length === 0) return null;
@@ -348,11 +386,11 @@ const MarketplaceAppConfigManager: React.FC = () => {
                 </TableCell>
                 <TableCell align="center">
                   {app.isActive === false ? (
-                    <Chip size="small" label="Skjult" />
+                    <StatusChip tone="neutral" label="Skjult" />
                   ) : app.featured ? (
-                    <Chip size="small" label="Utvalgt" color="primary" />
+                    <StatusChip tone="brand" label="Utvalgt" />
                   ) : (
-                    <Chip size="small" label="Aktiv" color="success" />
+                    <StatusChip tone="success" label="Aktiv" />
                   )}
                 </TableCell>
                 <TableCell align="right">
@@ -365,11 +403,12 @@ const MarketplaceAppConfigManager: React.FC = () => {
                   >
                     {publishMutation.isPending && publishMutation.variables === app.id ? 'Publiserer…' : 'Publiser → Stripe'}
                   </Button>
-                  <IconButton size="small" onClick={() => { setEditingApp(app); setCreating(false); }}>
+                  <IconButton size="small" aria-label="Rediger app" onClick={() => { setEditingApp(app); setCreating(false); }}>
                     <EditIcon fontSize="small" />
                   </IconButton>
                   <IconButton
                     size="small"
+                    aria-label="Skjul app fra marketplace"
                     onClick={() => {
                       if (confirm(`Skjul appen "${app.name}" fra marketplace?`)) {
                         deleteMutation.mutate(app.id);
@@ -383,7 +422,8 @@ const MarketplaceAppConfigManager: React.FC = () => {
             ))}
           </TableBody>
         </Table>
-      </Card>
+        </AdminTableContainer>
+      </AdminCard>
 
       {editingApp && (
         <MarketplaceAppEditDialog
@@ -440,13 +480,13 @@ const MarketplaceAppEditDialog: React.FC<{
   };
 
   return (
-    <Dialog open onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth fullScreen={useIsMobile()} PaperProps={{ sx: { borderRadius: 3 } }}>
       <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
           <Typography variant="overline" color="primary">{isNew ? 'Ny app' : 'Rediger'}</Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{form.name || 'Ny marketplace-app'}</Typography>
+          <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>{form.name || 'Ny marketplace-app'}</Typography>
         </Box>
-        <IconButton onClick={onClose}><CloseIcon /></IconButton>
+        <IconButton aria-label="Lukk" onClick={onClose}><CloseIcon /></IconButton>
       </Box>
 
       <DialogContent>
@@ -549,7 +589,7 @@ const MarketplaceAppEditDialog: React.FC<{
           {/* Pris */}
           <Box>
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-              <MoneyIcon fontSize="small" sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
+              <MoneyIcon fontSize="small" aria-hidden sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
               Standard-pris (vises som overskrift)
             </Typography>
             <Stack spacing={2}>
@@ -601,12 +641,12 @@ const MarketplaceAppEditDialog: React.FC<{
               </Button>
             </Stack>
             <Stack spacing={2}>
-              {(form.subscriptionTiers || []).length === 0 && (
+              {(Array.isArray(form.subscriptionTiers) ? form.subscriptionTiers : []).length === 0 && (
                 <Alert severity="info">
                   Ingen tiers definert. Legg til én eller flere planer (f.eks. "Innholdsprodusent", "Produksjonsteam").
                 </Alert>
               )}
-              {(form.subscriptionTiers || []).map((tier, idx) => (
+              {(Array.isArray(form.subscriptionTiers) ? form.subscriptionTiers : []).map((tier, idx) => (
                 <Card key={tier.id || idx} sx={{ p: 2, border: 1, borderColor: 'divider', boxShadow: 'none' }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
                     <Stack direction="row" spacing={1} alignItems="center">
@@ -618,7 +658,7 @@ const MarketplaceAppEditDialog: React.FC<{
                         <Chip size="small" label={`Feil: ${tier.stripeSyncError}`} color="error" sx={{ height: 18, fontSize: '0.65rem' }} />
                       )}
                     </Stack>
-                    <IconButton size="small" onClick={() => removeTier(idx)}>
+                    <IconButton size="small" aria-label="Fjern tier" onClick={() => removeTier(idx)}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Stack>
@@ -635,7 +675,7 @@ const MarketplaceAppEditDialog: React.FC<{
                         placeholder="Innholdsprodusent"
                       />
                       <TextField
-                        label="Pris" size="small" sx={{ width: 220 }}
+                        label="Pris" size="small" sx={{ width: 220, maxWidth: '100%' }}
                         value={tier.price} onChange={(e) => updateTier(idx, { price: e.target.value })}
                         placeholder="495 kr / mnd"
                       />
@@ -649,7 +689,7 @@ const MarketplaceAppEditDialog: React.FC<{
                     <TextField
                       label="Funksjoner (en per linje)"
                       size="small" fullWidth multiline rows={4}
-                      value={(tier.features || []).join('\n')}
+                      value={(Array.isArray(tier.features) ? tier.features : []).join('\n')}
                       onChange={(e) => updateTier(idx, { features: e.target.value.split('\n').filter(Boolean) })}
                     />
                     <FormControl size="small" fullWidth>
@@ -683,12 +723,13 @@ const MarketplaceAppEditDialog: React.FC<{
           {/* Media gallery */}
           <Box>
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-              <ImageIcon fontSize="small" sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
+              <ImageIcon fontSize="small" aria-hidden sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
               Bilde-galleri (URL per linje, valgfri label etter "|")
             </Typography>
             <TextField
               fullWidth multiline rows={4} size="small"
-              value={(form.mediaGallery || []).map((m) => m.label ? `${m.src} | ${m.label}` : m.src).join('\n')}
+              aria-label="Bilde-galleri (URL per linje)"
+              value={(Array.isArray(form.mediaGallery) ? form.mediaGallery : []).map((m) => m.label ? `${m.src} | ${m.label}` : m.src).join('\n')}
               onChange={(e) => {
                 const parsed = e.target.value.split('\n').filter(Boolean).map((line) => {
                   const [src, label] = line.split('|').map((p) => p.trim());
@@ -703,15 +744,16 @@ const MarketplaceAppEditDialog: React.FC<{
       </DialogContent>
 
       <DialogActions sx={{ p: 2.5, borderTop: 1, borderColor: 'divider' }}>
-        <Button onClick={onClose}>Avbryt</Button>
-        <Button
-          variant="contained"
+        <AdminButton tone="ghost" onClick={onClose}>Avbryt</AdminButton>
+        <AdminButton
+          tone="primary"
           startIcon={<SaveIcon />}
+          loading={saving}
           disabled={!form.id || !form.name || saving}
           onClick={() => onSave(form)}
         >
           {saving ? 'Lagrer…' : 'Lagre'}
-        </Button>
+        </AdminButton>
       </DialogActions>
     </Dialog>
   );

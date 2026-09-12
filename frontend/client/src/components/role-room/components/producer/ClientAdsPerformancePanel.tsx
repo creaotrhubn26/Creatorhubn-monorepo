@@ -35,6 +35,7 @@ import {
   Send as SendIcon,
   CheckCircle as CheckIcon,
 } from '@mui/icons-material';
+import { roleRoomAgentDefaultHeaders } from '../../services/roleRoomAgentService';
 
 interface CampaignResult {
   campaignId: string;
@@ -153,7 +154,7 @@ export default function ClientAdsPerformancePanel({
     try {
       const res = await fetch(
         `/api/role-room/ads/results/by-campaign?projectId=${encodeURIComponent(projectId)}&period=${encodeURIComponent(period)}`,
-        { credentials: 'include' },
+        { credentials: 'include', headers: roleRoomAgentDefaultHeaders() },
       );
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -345,7 +346,7 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
     try {
       const res = await fetch(
         `/api/role-room/ads/campaigns/${encodeURIComponent(campaignId)}/client-comments`,
-        { credentials: 'include' },
+        { credentials: 'include', headers: roleRoomAgentDefaultHeaders() },
       );
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
@@ -387,7 +388,7 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
         `/api/role-room/ads/campaigns/${encodeURIComponent(campaignId)}/client-comments`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
           credentials: 'include',
           body: JSON.stringify({
             body: body.trim(),
@@ -414,7 +415,7 @@ function CommentThread({ campaignId, isClient }: { campaignId: string; isClient:
     try {
       const res = await fetch(
         `/api/role-room/ads/client-comments/${encodeURIComponent(commentId)}/resolve`,
-        { method: 'POST', credentials: 'include' },
+        { method: 'POST', credentials: 'include', headers: roleRoomAgentDefaultHeaders() },
       );
       if (res.ok) {
         setComments((cur) =>

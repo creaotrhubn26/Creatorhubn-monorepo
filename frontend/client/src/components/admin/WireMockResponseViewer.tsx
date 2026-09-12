@@ -8,10 +8,9 @@ import {
   IconButton,
   Tabs,
   Tab,
-  Chip,
-  Button,
   Tooltip,
   Alert,
+  Chip,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -20,6 +19,7 @@ import {
   Error as ErrorIcon,
   AccessTime as TimeIcon,
 } from '@mui/icons-material';
+import { AdminButton, useIsMobile } from './design-system';
 
 export interface WireMockTestResult {
   id: string;
@@ -86,7 +86,7 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth fullScreen={useIsMobile()}>
       <DialogTitle>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Box display="flex" alignItems="center" gap={2}>
@@ -98,7 +98,7 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
               size="small"
             />
           </Box>
-          <IconButton onClick={onClose} size="small">
+          <IconButton onClick={onClose} size="small" aria-label="Lukk">
             <CloseIcon />
           </IconButton>
         </Box>
@@ -171,6 +171,7 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
                         <Tooltip title={copied ? 'Copied!' : 'Copy headers'}>
                           <IconButton
                             size="small"
+                            aria-label="Kopier response-headere"
                             onClick={() => handleCopy(formatJSON(result.response?.headers))}
                           >
                             <CopyIcon fontSize="small" />
@@ -203,6 +204,7 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
                       <Tooltip title={copied ? 'Copied!' : 'Copy response'}>
                         <IconButton
                           size="small"
+                          aria-label="Kopier response-body"
                           onClick={() => handleCopy(formatJSON(result.response?.body))}
                         >
                           <CopyIcon fontSize="small" />
@@ -246,6 +248,7 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
                         <Tooltip title={copied ? 'Copied!' : 'Copy headers'}>
                           <IconButton
                             size="small"
+                            aria-label="Kopier request-headere"
                             onClick={() => handleCopy(formatJSON(result.request?.headers))}
                           >
                             <CopyIcon fontSize="small" />
@@ -279,6 +282,7 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
                         <Tooltip title={copied ? 'Copied!' : 'Copy request'}>
                           <IconButton
                             size="small"
+                            aria-label="Kopier request-body"
                             onClick={() => handleCopy(formatJSON(result.request?.body))}
                           >
                             <CopyIcon fontSize="small" />
@@ -318,6 +322,7 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
                 <Tooltip title={copied ? 'Copied!' : 'Copy stack trace'}>
                   <IconButton
                     size="small"
+                    aria-label="Kopier stack trace"
                     onClick={() => handleCopy(result.error?.stack || '')}
                   >
                     <CopyIcon fontSize="small" />
@@ -344,16 +349,16 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
 
         {/* Actions */}
         <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-          <Button variant="outlined" onClick={onClose}>
+          <AdminButton tone="ghost" onClick={onClose}>
             Close
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<CopyIcon />}
             onClick={() => handleCopy(formatJSON(result))}
           >
             Copy All Data
-          </Button>
+          </AdminButton>
         </Box>
       </DialogContent>
     </Dialog>

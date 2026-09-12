@@ -6,10 +6,9 @@
 import { Pool } from 'pg';
 import * as fs from 'fs';
 import * as path from 'path';
+import { requireDatabaseUrl } from '../database-url';
 
-// Neon PostgreSQL connection string
-const connectionString = process.env.DATABASE_URL || 
-  'postgresql://neondb_owner:npg_RIFOSAo81mLc@ep-divine-rice-a6k2cock.us-west-2.aws.neon.tech/neondb?sslmode=require';
+const connectionString = requireDatabaseUrl();
 
 const pool = new Pool({
   connectionString,
@@ -64,4 +63,3 @@ async function main() {
 }
 
 main();
-

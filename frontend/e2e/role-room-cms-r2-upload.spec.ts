@@ -33,7 +33,8 @@
 
 import { test, expect, type APIRequestContext } from '@playwright/test';
 
-const BACKEND_URL = process.env.E2E_BACKEND_URL ?? 'https://creatorhub-backend-rtbl.onrender.com';
+// Default = lokal backend (suiten skriver/laster opp — aldri prod som default).
+const BACKEND_URL = process.env.E2E_BACKEND_URL ?? 'http://localhost:3003';
 const FRONTEND_URL = process.env.E2E_BASE_URL ?? 'https://theroleroom.com';
 const ADMIN_COOKIE = process.env.E2E_ADMIN_SESSION_COOKIE ?? '';
 const R2_PUB_URL = 'https://pub-6556104b51da4540aebfd28b23c0ebea.r2.dev';
@@ -78,8 +79,8 @@ test.describe('CMS media R2 — endpoint smoke (uten auth)', () => {
     expect([404]).toContain(res.status());
   });
 
-  test('Vercel /cdn/-proxy rewriter til R2 pub-URL', async ({ request }) => {
-    // Anonym request mot /cdn/ikke-eksisterende key — Vercel rewrites til R2
+  test('Netlify /cdn/-proxy ruter til R2 pub-URL', async ({ request }) => {
+    // Anonym request mot /cdn/ikke-eksisterende key — Netlify ruter til R2
     // Forventer 404 (R2 svarer på rewriten request)
     const res = await request.get(`${FRONTEND_URL}/cdn/__healthcheck-nonexistent`);
     expect([404]).toContain(res.status());

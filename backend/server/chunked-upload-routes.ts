@@ -33,6 +33,7 @@ import {
   getStorageStatus as getQuotaStatus,
 } from "./storage-quota-service.js";
 import { recordFileAccess } from "./file-access-audit.js";
+import { mirrorUploadToUserB2 } from "./user-b2-mirror-worker.js";
 
 export interface ChunkedUploadRoutesDeps {
   app: express.Application;
@@ -547,6 +548,37 @@ export function setupChunkedUploadRoutes(
         void pushStorageUsageToStripe(pool, userId).catch((err) => {
           console.error("[chunked-upload] Stripe usage push failed:", err);
         });
+
+        // Fire-and-forget: mirror til brukerens egen B2 hvis de har
+        // konfigurert creds. ALDRI await — primær upload skal ikke
+        // blokkeres av B2-svartid eller -feil. Worker'en skipper silent
+        // hvis bruker ikke har creds.
+        //
+        // Vi mirror'er BARE r2-backend med fetchable downloadUrl:
+        //   - encryptAtRest=true → R2 har ciphertext, ubrukelig for
+        //     bruker (de har ikke admin-KEK for dekrypt) → skip
+        //   - Stream-backend → downloadUrl er HLS-manifest, ikke en
+        //     enkelt-fil → skip (vi har ikke originalfilen lenger)
+        //   - filesystem-backend → URL er relativ proxy-path, ikke
+        //     fetchable fra worker'en uten host → skip
+        if (
+          storage.backend === "r2" &&
+          !storage.encryptedAtRest &&
+          storage.downloadUrl &&
+          /^https?:\/\//i.test(storage.downloadUrl)
+        ) {
+          mirrorUploadToUserB2(
+            { pool },
+            {
+              userId,
+              source: "chunked-upload",
+              sourceId: fileId,
+              fileName: row.file_name,
+              contentType: row.mime_type,
+              primaryUrl: storage.downloadUrl,
+            },
+          );
+        }
 
         const finalQuota = await getQuotaStatus(pool, userId).catch(() => null);
 

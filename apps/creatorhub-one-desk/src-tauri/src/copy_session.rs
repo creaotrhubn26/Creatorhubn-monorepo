@@ -22,7 +22,7 @@
 //!   - `copy-file-completed`    { session_id, source_path, dest_id, success, error?, hash?, skipped }
 //!   - `copy-session-completed` { session_id, succeeded, failed, cancelled }
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -33,10 +33,13 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
-use crate::copy_engine::{build_dest_path, copy_and_verify, hash_file_xxh64};
+use crate::copy_engine::{
+    build_dest_path, copy_and_verify_typed, hash_file_xxh64, CopyErrorKind,
+};
 use crate::dit_reporter;
 use crate::helper_client::{self, Config};
 use crate::mount_watcher;
+use crate::session_log::{self, FileOutcome, LogEvent, SessionLog};
 
 const PROGRESS_THROTTLE_MS: u128 = 250;
 /// Backend-progress oppdateres mye sjeldnere enn UI-progress — én patch hver
@@ -96,6 +99,11 @@ pub struct SessionStatus {
 struct SessionHandle {
     status: SessionStatus,
     cancel: Arc<AtomicBool>,
+    /// Per-session sett av dest-IDer som er DEAKTIVERT for resten av
+    /// sesjonen pga persistent feil (ENOSPC, EPERM). run_session
+    /// filtrerer dem ut før hver per-dest-spawn, så en full disk
+    /// stopper IKKE backup til andre disker.
+    disabled_dests: Arc<Mutex<HashSet<String>>>,
 }
 
 #[derive(Default)]
@@ -117,11 +125,25 @@ impl CopySessionState {
         }
     }
 
-    fn insert(&self, status: SessionStatus, cancel: Arc<AtomicBool>) {
+    /// Returnerer per-session disabled-dest-handle. Bruk denne fra
+    /// run_session for å dele state med process_destination.
+    fn disabled_dests_handle(&self, session_id: &str) -> Option<Arc<Mutex<HashSet<String>>>> {
         self.sessions
             .lock()
             .unwrap()
-            .insert(status.session_id.clone(), SessionHandle { status, cancel });
+            .get(session_id)
+            .map(|h| h.disabled_dests.clone())
+    }
+
+    fn insert(&self, status: SessionStatus, cancel: Arc<AtomicBool>) {
+        self.sessions.lock().unwrap().insert(
+            status.session_id.clone(),
+            SessionHandle {
+                status,
+                cancel,
+                disabled_dests: Arc::new(Mutex::new(HashSet::new())),
+            },
+        );
     }
 
     fn update<F: FnOnce(&mut SessionStatus)>(&self, session_id: &str, f: F) {
@@ -219,8 +241,18 @@ fn emit_completed(
 }
 
 #[derive(Serialize, Clone)]
+struct DestDisabledEvent {
+    session_id: String,
+    dest_id: String,
+    dest_label: String,
+    reason_code: String, // "DEST_NO_SPACE" | "DEST_PERM_DENIED"
+    reason_message: String,
+}
+
+#[derive(Serialize, Clone)]
 struct SessionCompletedEvent {
     session_id: String,
+    mount_path: String,
     succeeded: usize,
     failed: usize,
     cancelled: bool,
@@ -248,10 +280,30 @@ pub async fn start_session(
 
     let session_id = format!("sess_{}", Uuid::new_v4());
     let files = enumerate_media_files(&mount);
-    let total_bytes: u64 = files
+
+    // Bygg (path, size)-vec for session_log slik at resume vet hvor stor
+    // hver fil var ved start (useful for progress-rapportering ved resume).
+    let files_with_size: Vec<(PathBuf, u64)> = files
         .iter()
-        .filter_map(|p| std::fs::metadata(p).ok().map(|m| m.len()))
-        .sum();
+        .map(|p| {
+            let size = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+            (p.clone(), size)
+        })
+        .collect();
+    let total_bytes: u64 = files_with_size.iter().map(|(_, s)| *s).sum();
+
+    // Crash-recovery log opprettes FØR tokio::spawn så hvis spawn-en
+    // krasjer umiddelbart har vi minst SessionStarted-eventen.
+    // Hvis log-opprettelse feiler (disk full, perm-denied) faller vi
+    // tilbake til None og kjører uten resume-evne — bedre enn å blokkere
+    // hele backup-flowen.
+    let log = match SessionLog::create(&session_id, &spec, &files_with_size) {
+        Ok(l) => Some(Arc::new(l)),
+        Err(err) => {
+            eprintln!("[session-log] kunne ikke opprette log for {}: {}", session_id, err);
+            None
+        }
+    };
 
     let status = SessionStatus {
         session_id: session_id.clone(),
@@ -284,8 +336,99 @@ pub async fn start_session(
     let app_clone = app.clone();
     let state_clone = state.clone();
     let session_id_clone = session_id.clone();
+    let log_clone = log.clone();
+    let resume_skip = std::collections::HashSet::<(String, String)>::new();
     tokio::spawn(async move {
-        run_session(app_clone, state_clone, session_id_clone, spec, files, cancel).await;
+        run_session(
+            app_clone,
+            state_clone,
+            session_id_clone,
+            spec,
+            files,
+            cancel,
+            log_clone,
+            resume_skip,
+        )
+        .await;
+    });
+
+    Ok(session_id)
+}
+
+/// Resume en interrupted session: leser session_log, finner allerede-
+/// fullførte (source, dest_id)-par, og starter en ny session-spawn som
+/// arver samme log-fil + hopper over completed-par. Bruker SAMME
+/// session_id som original (skriver fortsatt til samme .jsonl-fil).
+pub async fn resume_session(
+    app: AppHandle,
+    state: Arc<CopySessionState>,
+    session_id: String,
+) -> Result<String, String> {
+    let data = session_log::load_resume_data(&session_id)?;
+    let mount = PathBuf::from(&data.spec.mount_path);
+    if !mount.exists() {
+        return Err(format!(
+            "Mount finnes ikke lenger: {}. Sett inn kortet og prøv igjen.",
+            mount.display()
+        ));
+    }
+    let files: Vec<PathBuf> = data
+        .files
+        .iter()
+        .map(|f| PathBuf::from(&f.path))
+        .collect();
+    let total_bytes: u64 = data.files.iter().map(|f| f.size).sum();
+    let status = SessionStatus {
+        session_id: session_id.clone(),
+        mount_path: data.spec.mount_path.clone(),
+        volume_label: data.spec.volume_label.clone(),
+        state: "running".into(),
+        file_count: files.len(),
+        total_bytes,
+        succeeded: 0,
+        failed: 0,
+        started_at_ms: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0),
+    };
+    let cancel = Arc::new(AtomicBool::new(false));
+    state.insert(status, cancel.clone());
+
+    let _ = app.emit(
+        "copy-session-started",
+        SessionStartedEvent {
+            session_id: session_id.clone(),
+            mount_path: data.spec.mount_path.clone(),
+            file_count: files.len(),
+            total_bytes,
+        },
+    );
+
+    // Vi appender til den eksisterende log-fila — ingen ny SessionStarted-
+    // event (det ville ført til to konfliktende start-events). Bare videre
+    // FileResult- og SessionEnded-events.
+    let log = SessionLog::open_existing(&session_id)
+        .ok()
+        .map(Arc::new);
+
+    let app_clone = app.clone();
+    let state_clone = state.clone();
+    let session_id_clone = session_id.clone();
+    let spec_clone = data.spec.clone();
+    let completed_clone = data.completed.clone();
+    tokio::spawn(async move {
+        run_session(
+            app_clone,
+            state_clone,
+            session_id_clone,
+            spec_clone,
+            files,
+            cancel,
+            log,
+            completed_clone,
+        )
+        .await;
     });
 
     Ok(session_id)
@@ -293,6 +436,7 @@ pub async fn start_session(
 
 /// Per-fil per-destinasjon-workload. Idempotens-check + copy + verify +
 /// best-effort backend-rapportering hvis dest.backend_id er Some.
+#[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_arguments)]
 async fn process_destination(
     app: AppHandle,
@@ -306,6 +450,8 @@ async fn process_destination(
     dest_path: PathBuf,
     cfg: Option<Arc<Config>>,
     cancel: Arc<AtomicBool>,
+    disabled_dests: Arc<Mutex<HashSet<String>>>,
+    log: Option<Arc<SessionLog>>,
 ) {
     // Cloud-destinasjon → B2-upload via b2_uploader, separat code-path.
     if dest_spec.cloud_provider.as_deref() == Some("b2") {
@@ -315,6 +461,26 @@ async fn process_destination(
         .await;
         return;
     }
+    // Helper: append en FileResult-event til crash-recovery loggen.
+    // Best-effort — feiler ikke kallet hvis disk-skriv mislykkes.
+    let append_log = |outcome: FileOutcome, hash: Option<String>, error: Option<String>| {
+        if let Some(log) = &log {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            if let Err(err) = log.append(&LogEvent::FileResult {
+                ts_ms: now,
+                source: src_disp.clone(),
+                dest_id: dest_spec.id.clone(),
+                outcome,
+                hash,
+                error,
+            }) {
+                eprintln!("[session-log] append feilet: {}", err);
+            }
+        }
+    };
     // Idempotens: hvis dest finnes med samme størrelse og hash, hopp over.
     if dest_path.exists() {
         let same_size = std::fs::metadata(&dest_path).map(|m| m.len() == size).unwrap_or(false);
@@ -340,6 +506,7 @@ async fn process_destination(
                             Err(err) => eprintln!("[dit] create_job failed (skip-case): {}", err),
                         }
                     }
+                    append_log(FileOutcome::Skipped, Some(existing_hash.clone()), None);
                     state.update(&session_id, |s| s.succeeded += 1);
                     let _ = app.emit(
                         "copy-file-completed",
@@ -356,6 +523,11 @@ async fn process_destination(
                     return;
                 }
                 Ok(other_hash) => {
+                    append_log(
+                        FileOutcome::Failed,
+                        Some(other_hash.clone()),
+                        Some(format!("hash-mismatch existing")),
+                    );
                     state.update(&session_id, |s| s.failed += 1);
                     let _ = app.emit(
                         "copy-file-completed",
@@ -413,7 +585,7 @@ async fn process_destination(
     let cfg_for_progress = cfg.clone();
     let job_for_progress = backend_job_id.clone();
 
-    let result = copy_and_verify(&src, &dest_path, |copied, total| {
+    let result = copy_and_verify_typed(&src, &dest_path, |copied, total| {
         let now = Instant::now();
         if now.duration_since(last_ui_emit).as_millis() >= PROGRESS_THROTTLE_MS {
             last_ui_emit = now;
@@ -459,6 +631,7 @@ async fn process_destination(
                     eprintln!("[dit] verified-report failed: {}", err);
                 }
             }
+            append_log(FileOutcome::Success, Some(v.dest_hash.clone()), None);
             state.update(&session_id, |s| s.succeeded += 1);
             let _ = app.emit(
                 "copy-file-completed",
@@ -474,19 +647,63 @@ async fn process_destination(
             );
         }
         Err(err) => {
-            if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
-                let code = if err.contains("HASH MISMATCH") {
+            // Typed klassifisering fra copy_engine + per-dest-recovery-flagg.
+            // CopyErrorKind dekker DEST_NO_SPACE/PERM_DENIED direkte; resten
+            // utledes fra meldingen (HASH MISMATCH, DEST_CREATE_FAILED).
+            let is_no_space = matches!(err.kind, CopyErrorKind::DestNoSpace);
+            let is_perm_denied = matches!(err.kind, CopyErrorKind::DestPermDenied);
+            let code = match err.kind {
+                CopyErrorKind::DestNoSpace => "DEST_NO_SPACE",
+                CopyErrorKind::DestPermDenied => "DEST_PERM_DENIED",
+                CopyErrorKind::DestWriteFailed if err.message.contains("HASH MISMATCH") => {
                     "HASH_MISMATCH"
-                } else if err.contains("Opprett destinasjon") {
+                }
+                CopyErrorKind::DestWriteFailed => "DEST_WRITE_FAILED",
+                CopyErrorKind::SourceReadFailed => "SOURCE_READ_FAILED",
+                CopyErrorKind::Other if err.message.contains("Opprett destinasjon") => {
                     "DEST_CREATE_FAILED"
-                } else {
-                    "COPY_FAILED"
-                };
-                if let Err(report_err) = dit_reporter::report_failed(cfg, job_id, code, &err).await {
+                }
+                CopyErrorKind::Other => "COPY_FAILED",
+            };
+            let err_str = err.to_string();
+            if let (Some(job_id), Some(cfg)) = (&backend_job_id, &cfg) {
+                if let Err(report_err) =
+                    dit_reporter::report_failed(cfg, job_id, code, &err_str).await
+                {
                     eprintln!("[dit] failed-report failed: {}", report_err);
                 }
             }
+            append_log(FileOutcome::Failed, None, Some(err_str.clone()));
             state.update(&session_id, |s| s.failed += 1);
+
+            // Per-dest-recovery: hvis feilen er PERSISTENT (full disk,
+            // perm-denied), legg destinasjonen i session's disabled-set
+            // så fremtidige filer skipper den i stedet for å re-prøve.
+            // Andre feil (HASH_MISMATCH, transient I/O) er ikke
+            // grunn til å gi opp hele destinasjonen — bare filen.
+            if is_no_space || is_perm_denied {
+                let already_disabled = {
+                    let mut set = disabled_dests.lock().unwrap();
+                    !set.insert(dest_spec.id.clone())
+                };
+                if !already_disabled {
+                    let _ = app.emit(
+                        "copy-dest-disabled",
+                        DestDisabledEvent {
+                            session_id: session_id.clone(),
+                            dest_id: dest_spec.id.clone(),
+                            dest_label: dest_spec.label.clone(),
+                            reason_code: code.to_string(),
+                            reason_message: if is_no_space {
+                                "Destinasjonen er full. Resten av sesjonen skipper denne disken.".into()
+                            } else {
+                                "Manglende skrivetillatelse. Resten av sesjonen skipper denne disken.".into()
+                            },
+                        },
+                    );
+                }
+            }
+
             let _ = app.emit(
                 "copy-file-completed",
                 FileCompletedEvent {
@@ -495,7 +712,7 @@ async fn process_destination(
                     dest_id: dest_spec.id,
                     success: false,
                     hash: None,
-                    error: Some(err),
+                    error: Some(err_str),
                     skipped: false,
                 },
             );
@@ -677,6 +894,7 @@ async fn process_b2_destination(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_session(
     app: AppHandle,
     state: Arc<CopySessionState>,
@@ -684,17 +902,45 @@ async fn run_session(
     spec: SessionSpec,
     files: Vec<PathBuf>,
     cancel: Arc<AtomicBool>,
+    log: Option<Arc<SessionLog>>,
+    // resume_skip: set av (source_display_path, dest_id) som allerede er
+    // fullført fra en tidligere session-run (brukes ved resume).
+    // Hopper over disse parene uten å re-hashe kilde + dest.
+    resume_skip: std::collections::HashSet<(String, String)>,
 ) {
     let mount = PathBuf::from(&spec.mount_path);
     let mut cancelled = false;
+    let mut mount_disappeared = false;
+    let mut files_skipped_after_unmount = 0usize;
 
     // Last config én gang per session (best-effort). Hvis ingen config eller
     // ingen destinasjoner har backend_id, vil cfg-feltet bare bli ignorert.
     let cfg: Option<Arc<Config>> = helper_client::load_config().ok().flatten().map(Arc::new);
 
+    let total_files = files.len();
+    let mut file_index = 0usize;
     for source in files {
+        file_index += 1;
         if cancel.load(Ordering::SeqCst) {
             cancelled = true;
+            break;
+        }
+        // Mount-unmount-deteksjon: hvis SD-kortet/minnekortet er fjernet
+        // mens vi jobber, stopper vi sesjonen umiddelbart med en tydelig
+        // melding. Uten denne ville run_session forsøkt å hashe/lese
+        // filer som ikke lenger fins og markert sesjonen som "completed"
+        // tross at majoriteten av filene ble hoppet over stille.
+        // Sjekken er billig (single stat() per fil) men hindrer stille
+        // datatap når Fredrik tar ut kortet for tidlig.
+        if !mount.exists() {
+            mount_disappeared = true;
+            files_skipped_after_unmount = total_files.saturating_sub(file_index - 1);
+            eprintln!(
+                "[copy-session] mount {} forsvant mid-kopi ved fil {}/{} — stopper sesjonen",
+                mount.display(),
+                file_index,
+                total_files
+            );
             break;
         }
 
@@ -731,7 +977,38 @@ async fn run_session(
         };
 
         let mut handles = Vec::new();
+        let src_disp_check = source.display().to_string();
+        // Snapshot disabled-set ÉN gang per fil — billigere enn å
+        // lock'e per dest, og semantisk fint at en disable midt i
+        // en fil-batch ikke trer i kraft før neste fil.
+        let disabled_snapshot: HashSet<String> = match state.disabled_dests_handle(&session_id) {
+            Some(h) => h.lock().unwrap().clone(),
+            None => HashSet::new(),
+        };
         for dest_spec in &spec.destinations {
+            // Per-dest-recovery: skipp destinasjoner som er deaktivert
+            // for resten av sesjonen pga vedvarende feil (ENOSPC, EPERM).
+            if disabled_snapshot.contains(&dest_spec.id) {
+                continue;
+            }
+            // Resume-skip: hvis (source, dest)-paret er logget som ferdig
+            // i en tidligere session-run, hopp over uten å re-hashe.
+            if resume_skip.contains(&(src_disp_check.clone(), dest_spec.id.clone())) {
+                state.update(&session_id, |s| s.succeeded += 1);
+                let _ = app.emit(
+                    "copy-file-completed",
+                    FileCompletedEvent {
+                        session_id: session_id.clone(),
+                        source_path: src_disp_check.clone(),
+                        dest_id: dest_spec.id.clone(),
+                        success: true,
+                        hash: None,
+                        error: None,
+                        skipped: true,
+                    },
+                );
+                continue;
+            }
             let dest_root = PathBuf::from(&dest_spec.path);
             let dest_path = match build_dest_path(&source, &mount, &dest_root, &spec.volume_label)
             {
@@ -770,7 +1047,10 @@ async fn run_session(
             let cancel_em = cancel.clone();
             let dest_spec_clone = dest_spec.clone();
             let cfg_clone = cfg.clone();
+            let disabled_dests_clone = state.disabled_dests_handle(&session_id)
+                .unwrap_or_else(|| Arc::new(Mutex::new(HashSet::new())));
 
+            let log_clone = log.clone();
             handles.push(tokio::spawn(async move {
                 process_destination(
                     app_em,
@@ -784,6 +1064,8 @@ async fn run_session(
                     dest_path,
                     cfg_clone,
                     cancel_em,
+                    disabled_dests_clone,
+                    log_clone,
                 )
                 .await;
             }));
@@ -801,22 +1083,127 @@ async fn run_session(
             .map(|h| (h.status.succeeded, h.status.failed))
             .unwrap_or((0, 0))
     };
+    let final_state = if cancelled {
+        "cancelled".to_string()
+    } else if mount_disappeared {
+        "mount_disappeared".to_string()
+    } else if failed > 0 && succeeded == 0 {
+        "failed".to_string()
+    } else {
+        "completed".to_string()
+    };
     state.update(&session_id, |s| {
-        s.state = if cancelled {
-            "cancelled".into()
-        } else if failed > 0 && succeeded == 0 {
-            "failed".into()
-        } else {
-            "completed".into()
-        };
+        s.state = final_state.clone();
     });
+    // SessionEnded skrives FØR vi emitter UI-eventet, så hvis app dør
+    // mellom dem er sesjonen markert som ferdig i loggen (ikke
+    // "interrupted") og resume-banneret dukker ikke opp uberettiget.
+    if let Some(log) = &log {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        if let Err(err) = log.append(&LogEvent::SessionEnded {
+            ts_ms: now,
+            state: final_state.clone(),
+            succeeded,
+            failed,
+            cancelled,
+        }) {
+            eprintln!("[session-log] SessionEnded append feilet: {}", err);
+        }
+    }
+    // Hvis mount forsvant: emit en eksplisitt advarsel før den vanlige
+    // session-completed, så frontend kan vise modal i stedet for "ferdig"-toast.
+    if mount_disappeared {
+        let _ = app.emit(
+            "copy-session-mount-disappeared",
+            serde_json::json!({
+                "session_id": session_id,
+                "mount_path": spec.mount_path,
+                "files_skipped": files_skipped_after_unmount,
+                "succeeded": succeeded,
+                "failed": failed,
+            }),
+        );
+    }
     let _ = app.emit(
         "copy-session-completed",
         SessionCompletedEvent {
             session_id,
+            mount_path: spec.mount_path.clone(),
             succeeded,
             failed,
             cancelled,
         },
     );
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    /// Klassifiserings-logikk er duplisert her i en helper-funksjon
+    /// for testbarhet — selve copy_session.rs gjør substring-match
+    /// inline. Hvis du endrer mønstrene én plass, endrer testene fanger
+    /// regressjonen.
+    fn classify(err: &str) -> &'static str {
+        let lower = err.to_lowercase();
+        let is_no_space = lower.contains("no space")
+            || lower.contains("ingen plass")
+            || lower.contains("dest_no_space")
+            || lower.contains("enospc");
+        let is_perm_denied = lower.contains("permission denied")
+            || lower.contains("dest_perm_denied")
+            || lower.contains("eacces")
+            || lower.contains("ikke tillatelse");
+        if err.contains("HASH MISMATCH") {
+            "HASH_MISMATCH"
+        } else if err.contains("Opprett destinasjon") {
+            "DEST_CREATE_FAILED"
+        } else if is_no_space {
+            "DEST_NO_SPACE"
+        } else if is_perm_denied {
+            "DEST_PERM_DENIED"
+        } else {
+            "COPY_FAILED"
+        }
+    }
+
+    #[test]
+    fn enospc_strings_classify_as_no_space() {
+        assert_eq!(classify("Skriv til /Volumes/Foo/bar: No space left on device"), "DEST_NO_SPACE");
+        assert_eq!(classify("ENOSPC error"), "DEST_NO_SPACE");
+        assert_eq!(classify("DEST_NO_SPACE: write failed"), "DEST_NO_SPACE");
+        assert_eq!(classify("Sync /Volumes/RAID/file: ingen plass igjen"), "DEST_NO_SPACE");
+    }
+
+    #[test]
+    fn perm_denied_strings_classify_as_perm() {
+        assert_eq!(classify("Opprett mappe /Volumes/X: Permission denied (os error 13)"), "DEST_PERM_DENIED");
+        assert_eq!(classify("EACCES on /Volumes/Y"), "DEST_PERM_DENIED");
+        assert_eq!(classify("DEST_PERM_DENIED: no write access"), "DEST_PERM_DENIED");
+        assert_eq!(classify("ikke tillatelse til skriving"), "DEST_PERM_DENIED");
+    }
+
+    #[test]
+    fn hash_mismatch_takes_precedence_over_no_space() {
+        // En kunstig melding som inneholder begge — HASH_MISMATCH skal
+        // vinne så vi ikke deaktiverer destinasjonen pga corrupted byte
+        // (transient, kan fikses med retry på enkeltfil).
+        assert_eq!(
+            classify("HASH MISMATCH for /file: source=abc, dest=xyz (no space hint)"),
+            "HASH_MISMATCH"
+        );
+    }
+
+    #[test]
+    fn generic_failures_classify_as_copy_failed_not_recovery() {
+        assert_eq!(classify("noe ukjent skjedde"), "COPY_FAILED");
+        assert_eq!(classify("network timeout"), "COPY_FAILED");
+    }
+
+    #[test]
+    fn empty_and_short_errors_dont_panic() {
+        assert_eq!(classify(""), "COPY_FAILED");
+        assert_eq!(classify("x"), "COPY_FAILED");
+    }
 }

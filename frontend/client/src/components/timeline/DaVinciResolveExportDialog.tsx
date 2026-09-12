@@ -45,7 +45,6 @@ import {
 } from '@mui/icons-material';
 import type { BeatClip, Track } from '../../services/storyArcDataIntegration';
 import { timelineEngine } from '../../services/timeline-engine';
-// @ts-ignore - DaVinci export service
 import { DaVinciResolveExportService } from '../../services/davinciResolveExport';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -514,4 +513,3 @@ export default function DaVinciResolveExportDialog({
     </Dialog>
   );
 }
-

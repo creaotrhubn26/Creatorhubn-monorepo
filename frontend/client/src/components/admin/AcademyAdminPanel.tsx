@@ -20,7 +20,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Paper,
@@ -71,6 +70,7 @@ import {
   CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
+import { AdminButton, StatusChip, AdminTableContainer, useIsMobile } from './design-system';
 
 interface Course {
   id: string;
@@ -177,6 +177,7 @@ export default memo(function AcademyAdminPanel() {
   const professionColor = getUserProfessionColor(currentProfession) || '#ff8c00';
 
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   // Fetch academy statistics
   const { data: stats, isLoading: statsLoading } = useQuery<AcademyStats>({
@@ -202,6 +203,7 @@ export default memo(function AcademyAdminPanel() {
       if (!response.ok) throw new Error('Failed to fetch courses');
       return response.json();
     },
+    select: (d) => (Array.isArray(d) ? d : []),
     staleTime: 30000, // 30 seconds
   });
 
@@ -213,6 +215,7 @@ export default memo(function AcademyAdminPanel() {
       if (!response.ok) throw new Error('Failed to fetch instructors');
       return response.json();
     },
+    select: (d) => (Array.isArray(d) ? d : []),
     staleTime: 60000, // 1 minute
   });
 
@@ -224,6 +227,7 @@ export default memo(function AcademyAdminPanel() {
       if (!response.ok) throw new Error('Failed to fetch enrollments');
       return response.json();
     },
+    select: (d) => (Array.isArray(d) ? d : []),
     staleTime: 30000, // 30 seconds
   });
 
@@ -580,12 +584,12 @@ export default memo(function AcademyAdminPanel() {
 
   const getStatusChip = (status: string) => {
     const statusConfig = {
-      draft: { label: 'Utkast', color: 'default' as const },
-      published: { label: 'Publisert', color: 'success' as const },
-      archived: { label: 'Arkivert', color: 'warning' as const },
+      draft: { label: 'Utkast', tone: 'neutral' as const },
+      published: { label: 'Publisert', tone: 'success' as const },
+      archived: { label: 'Arkivert', tone: 'warning' as const },
     };
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.draft;
-    return <Chip label={config.label} color={config.color} size="small" />;
+    return <StatusChip label={config.label} tone={config.tone} />;
   };
 
   const renderStatsCards = () => {
@@ -607,7 +611,7 @@ export default memo(function AcademyAdminPanel() {
       { title: 'Totalt Kurs', value: stats.totalCourses, icon: <SchoolIcon />, color: '#2196f3', detail: `${stats.publishedCourses} publisert` },
       { title: 'Inntekt', value: `$${stats.totalRevenue?.toLocaleString() || 0}`, icon: <MoneyIcon />, color: '#4caf50', detail: 'Totalt generert' },
       { title: 'Påmeldinger', value: stats.totalEnrollments, icon: <TrendingUpIcon />, color: '#ff9800', detail: 'Aktive studenter' },
-      { title: 'Instruktører', value: stats.totalInstructors, icon: <StarIcon />, color: '#9c27b0', detail: 'Top instruktører' },
+      { title: 'Instruktører', value: stats.totalInstructors, icon: <StarIcon />, color: '#ce93d8', detail: 'Top instruktører' },
     ];
 
     return (
@@ -675,6 +679,7 @@ export default memo(function AcademyAdminPanel() {
                   checked={coursesData.length > 0 && selectedCourseIds.length === coursesData.length}
                   indeterminate={selectedCourseIds.length > 0 && selectedCourseIds.length < coursesData.length}
                   onChange={handleSelectAll}
+                  aria-label="Velg alle kurs"
                 />
               </TableCell>
               <TableCell sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Kurs</strong></TableCell>
@@ -694,6 +699,7 @@ export default memo(function AcademyAdminPanel() {
                 <Checkbox
                   checked={selectedCourseIds.includes(course.id)}
                   onChange={() => handleSelectCourse(course.id)}
+                  aria-label="Velg kurs"
                 />
               </TableCell>
               <TableCell>
@@ -720,6 +726,7 @@ export default memo(function AcademyAdminPanel() {
               <TableCell align="center">
                 <IconButton
                   size="small"
+                  aria-label="Kurshandlinger"
                   onClick={(e) => handleMenuOpen(e, course)}
                 >
                   <MoreVertIcon />
@@ -741,7 +748,7 @@ export default memo(function AcademyAdminPanel() {
     <Box>
       {/* Header */}
       <Box sx={{ mb: 3 }}>
-        <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography variant="h5" component="h2" sx={{ fontWeight: 'bold', mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
           {professionIcon && (
             <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
               {professionIcon}
@@ -828,6 +835,7 @@ export default memo(function AcademyAdminPanel() {
                     fullWidth
                     size="small"
                     placeholder="Søk etter kurs..."
+                    aria-label="Søk etter kurs"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     InputProps={{
@@ -895,15 +903,14 @@ export default memo(function AcademyAdminPanel() {
       {tabValue === 1 && (
         <Box>
           <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="h6">Instruktører</Typography>
-            <Button
-              variant="contained"
+            <Typography variant="h6" component="h2">Instruktører</Typography>
+            <AdminButton
+              tone="primary"
               startIcon={<AddIcon />}
               onClick={() => setAddInstructorDialogOpen(true)}
-              sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
             >
               Legg til instruktør
-            </Button>
+            </AdminButton>
           </Box>
 
           {instructorsLoading ? (
@@ -932,7 +939,7 @@ export default memo(function AcademyAdminPanel() {
                     <TableCell align="center">{instructor.courseCount}</TableCell>
                     <TableCell align="center">
                       <Tooltip title="Se kurs">
-                        <IconButton size="small">
+                        <IconButton size="small" aria-label="Se kurs">
                           <VideoLibraryIcon />
                         </IconButton>
                       </Tooltip>
@@ -954,24 +961,22 @@ export default memo(function AcademyAdminPanel() {
       {tabValue === 2 && (
         <Box>
           <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-            <Typography variant="h6">Påmeldinger</Typography>
+            <Typography variant="h6" component="h2">Påmeldinger</Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
-                variant="outlined"
+              <AdminButton
+                tone="secondary"
                 startIcon={<GroupAddIcon />}
                 onClick={() => setBulkEnrollDialogOpen(true)}
-                sx={{ borderColor: '#ff8c00', color: '#ff8c00','&:hover': { borderColor: '#e67e00', bgcolor: '#fff3e0' } }}
               >
                 Massepåmelding
-              </Button>
-              <Button
-                variant="contained"
+              </AdminButton>
+              <AdminButton
+                tone="primary"
                 startIcon={<AddIcon />}
                 onClick={() => setEnrollDialogOpen(true)}
-                sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
               >
                 Manuell påmelding
-              </Button>
+              </AdminButton>
             </Box>
           </Box>
 
@@ -1004,10 +1009,9 @@ export default memo(function AcademyAdminPanel() {
                     </TableCell>
                     <TableCell>{enrollment.courseTitle}</TableCell>
                     <TableCell>
-                      <Chip
+                      <StatusChip
                         label={enrollment.status}
-                        size="small"
-                        color={enrollment.status === 'active' ? 'success' : 'default'}
+                        tone={enrollment.status === 'active' ? 'success' : 'neutral'}
                       />
                     </TableCell>
                     <TableCell align="center">{enrollment.progress}%</TableCell>
@@ -1019,6 +1023,7 @@ export default memo(function AcademyAdminPanel() {
                         <IconButton
                           size="small"
                           color="error"
+                          aria-label="Fjern påmelding"
                           onClick={() => {
                             setConfirmDeleteDialog({
                               open: true,
@@ -1093,8 +1098,8 @@ export default memo(function AcademyAdminPanel() {
             <Grid item xs={12} md={8}>
               <Card>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>Kurs-ytelse</Typography>
-                  <TableContainer>
+                  <Typography variant="h6" component="h3" gutterBottom>Kurs-ytelse</Typography>
+                  <AdminTableContainer ariaLabel="Kurs-ytelse">
                     <Table size="small">
                       <TableHead>
                         <TableRow>
@@ -1131,16 +1136,16 @@ export default memo(function AcademyAdminPanel() {
                         ))}
                       </TableBody>
                     </Table>
-                  </TableContainer>
+                  </AdminTableContainer>
                 </CardContent>
               </Card>
             </Grid>
-            
+
             {/* Top Students */}
             <Grid item xs={12} md={4}>
               <Card>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>Topp studenter</Typography>
+                  <Typography variant="h6" component="h3" gutterBottom>Topp studenter</Typography>
                   <List dense>
                     {[
                       { name: 'Maria Hansen', courses: 5, completed: 4 },
@@ -1167,7 +1172,7 @@ export default memo(function AcademyAdminPanel() {
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>Månedlig utvikling</Typography>
+                  <Typography variant="h6" component="h3" gutterBottom>Månedlig utvikling</Typography>
                   <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 150, pt: 2 }}>
                     {[
                       { month: 'Jul', revenue: 12400, students: 78 },
@@ -1231,7 +1236,7 @@ export default memo(function AcademyAdminPanel() {
       </Menu>
 
       {/* Edit Course Dialog */}
-      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Rediger kurs</DialogTitle>
         <DialogContent>
           {selectedCourse && (
@@ -1262,7 +1267,7 @@ export default memo(function AcademyAdminPanel() {
       </Dialog>
 
       {/* Add Instructor Dialog */}
-      <Dialog open={addInstructorDialogOpen} onClose={() => setAddInstructorDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={addInstructorDialogOpen} onClose={() => setAddInstructorDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Legg til instruktør</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
@@ -1276,7 +1281,7 @@ export default memo(function AcademyAdminPanel() {
                   onChange={(e) => setSelectedUserId(e.target.value)}
                   label="Velg bruker"
                 >
-                  {usersData?.users?.map((user) => (
+                  {(Array.isArray(usersData?.users) ? usersData.users : []).map((user) => (
                     <MenuItem key={user.id} value={user.id}>
                       {user.firstName} {user.lastName} ({user.email})
                     </MenuItem>
@@ -1287,20 +1292,20 @@ export default memo(function AcademyAdminPanel() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddInstructorDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setAddInstructorDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => addInstructorMutation.mutate(selectedUserId)}
             disabled={!selectedUserId || addInstructorMutation.isPending}
-            sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
+            loading={addInstructorMutation.isPending}
           >
             {addInstructorMutation.isPending ? 'Legger til...' : 'Legg til'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Enroll Student Dialog */}
-      <Dialog open={enrollDialogOpen} onClose={() => setEnrollDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={enrollDialogOpen} onClose={() => setEnrollDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Manuell påmelding</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1311,7 +1316,7 @@ export default memo(function AcademyAdminPanel() {
                 onChange={(e) => setEnrollUserId(e.target.value)}
                 label="Velg student"
               >
-                {usersData?.users?.map((user) => (
+                {(Array.isArray(usersData?.users) ? usersData.users : []).map((user) => (
                   <MenuItem key={user.id} value={user.id}>
                     {user.firstName} {user.lastName} ({user.email})
                   </MenuItem>
@@ -1336,20 +1341,20 @@ export default memo(function AcademyAdminPanel() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEnrollDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setEnrollDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => enrollStudentMutation.mutate({ userId: enrollUserId, courseId: enrollCourseId })}
             disabled={!enrollUserId || !enrollCourseId || enrollStudentMutation.isPending}
-            sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
+            loading={enrollStudentMutation.isPending}
           >
             {enrollStudentMutation.isPending ? 'Melder på...' : 'Meld på'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Bulk Enroll Dialog */}
-      <Dialog open={bulkEnrollDialogOpen} onClose={() => setBulkEnrollDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={bulkEnrollDialogOpen} onClose={() => setBulkEnrollDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Massepåmelding - Meld på flere studenter</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -1375,7 +1380,7 @@ export default memo(function AcademyAdminPanel() {
               <Paper variant="outlined" sx={{ height: 300, overflow: 'hidden' }}>
                 <Virtuoso
                   style={{ height: '100%' }}
-                  data={usersData?.users || []}
+                  data={Array.isArray(usersData?.users) ? usersData.users : []}
                   itemContent={(index, user) => (
                     <Box
                       sx={{
@@ -1386,6 +1391,7 @@ export default memo(function AcademyAdminPanel() {
                     >
                       <Checkbox
                         checked={selectedUserIds.includes(user.id)}
+                        aria-label={`Velg ${user.firstName} ${user.lastName}`}
                         onChange={() => {
                           setSelectedUserIds((prev) =>
                             prev.includes(user.id)
@@ -1409,7 +1415,7 @@ export default memo(function AcademyAdminPanel() {
               <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
                 <Button
                   size="small"
-                  onClick={() => setSelectedUserIds(usersData?.users?.map((u) => u.id) || [])}
+                  onClick={() => setSelectedUserIds(Array.isArray(usersData?.users) ? usersData.users.map((u) => u.id) : [])}
                 >
                   Velg alle
                 </Button>
@@ -1421,15 +1427,15 @@ export default memo(function AcademyAdminPanel() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBulkEnrollDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setBulkEnrollDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => bulkEnrollMutation.mutate({ userIds: selectedUserIds, courseId: bulkEnrollCourseId })}
             disabled={selectedUserIds.length === 0 || !bulkEnrollCourseId || bulkEnrollMutation.isPending}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
+            loading={bulkEnrollMutation.isPending}
           >
             {bulkEnrollMutation.isPending ? 'Melder på...' : `Meld på ${selectedUserIds.length} studenter`}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -1443,10 +1449,10 @@ export default memo(function AcademyAdminPanel() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDeleteDialog(prev => ({ ...prev, open: false }))}>Avbryt</Button>
-          <Button variant="contained" color="error" onClick={confirmDeleteDialog.onConfirm}>
+          <AdminButton tone="ghost" onClick={() => setConfirmDeleteDialog(prev => ({ ...prev, open: false }))}>Avbryt</AdminButton>
+          <AdminButton tone="danger" onClick={confirmDeleteDialog.onConfirm}>
             Slett
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

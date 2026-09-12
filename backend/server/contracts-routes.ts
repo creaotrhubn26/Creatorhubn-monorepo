@@ -45,6 +45,10 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   } = deps;
 
   async function resolveContractUserId(req: any) {
+    // Prefer verified session over attacker-controlled header/body
+    const activeSession = getActiveSessionFromRequest(req);
+    if (activeSession?.userId) return activeSession.userId;
+
     const rawUserId =
       readString(req.headers["x-user-id"]) ??
       readString(req.body?.userId) ??
@@ -336,13 +340,17 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
 
 
   app.get("/api/contracts/summary", async (req, res) => {
+    // SECURITY: previously took userId straight from x-user-id / ?userId=
+    // (spoofable) with no session, so `?userId=<victim>` returned a victim's
+    // pending/expiring/recent contracts (client navn + prosjekt), and
+    // `?projectId=` returned a contract by project with no ownership check.
+    // Now session-bound; the projectId branch confirms ownership.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
       const { projectId } = req.query;
-      const userId =
-        readString(req.headers["x-user-id"]) ??
-        readString(req.query.userId) ??
-        null;
+      const userId = session.userId;
 
       if (!projectId && userId) {
         const [pendingResult, expiringResult, recentResult] = await Promise.all([
@@ -434,6 +442,9 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
 
       if (result.rows.length === 0) return res.json({ hasContract: false });
       const c = mapContractRecord(result.rows[0]);
+      if (c.userId && c.userId !== session.userId) {
+        return res.json({ hasContract: false });
+      }
       res.json({
         hasContract: true,
         contractId: c.id,
@@ -448,12 +459,14 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
 
   // GET /api/contracts/stats — Aggregate contract statistics for BI and CRM
   app.get("/api/contracts/stats", async (req, res) => {
+    // SECURITY: previously took userId from x-user-id / ?userId= (spoofable);
+    // `?userId=<victim>` leaked a victim's stats, and with NO userId the filter
+    // was empty → aggregate totals/value across EVERY tenant. Now session-bound.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
-      const userId =
-        readString(req.headers["x-user-id"]) ??
-        readString(req.query.userId) ??
-        null;
+      const userId: string | null = session.userId;
 
       const values: Array<string> = [];
       const userFilter = userId
@@ -498,6 +511,13 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
 
   // GET /api/contracts/signers — Get contract signers
   app.get("/api/contracts/signers", async (req, res) => {
+    // SECURITY: signer name+e-post are client PII. This previously had no
+    // session gate and keyed on a caller-supplied contractId/projectId, so
+    // anyone could read another tenant's signer contact by id. Now requires a
+    // session and confirms the contract belongs to the caller. Sole caller
+    // (ProjectTimeline, owner-side) sends a Bearer request for its own project.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
       const { projectId, contractId } = req.query;
@@ -516,6 +536,9 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
       if (result.rows.length === 0) return res.json([]);
 
       const contract = mapContractRecord(result.rows[0]);
+      if (contract.userId && contract.userId !== session.userId) {
+        return res.status(403).json([]);
+      }
       const signers = [];
       if (contract.clientName) {
         signers.push({
@@ -532,6 +555,8 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
 
   // GET /api/contracts/:contractId/signers — Get contract signers by contract ID
   app.get("/api/contracts/:contractId/signers", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
       const { contractId } = req.params;
@@ -541,6 +566,11 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
       if (result.rows.length === 0) return res.json({ signers: [] });
 
       const contract = mapContractRecord(result.rows[0]);
+      // Ownership: requireUserSession alone only proves login — confirm the
+      // contract is the caller's before returning signer PII (cross-tenant IDOR).
+      if (contract.userId && contract.userId !== session.userId) {
+        return res.status(403).json({ signers: [] });
+      }
       const signers = [];
       if (contract.clientName) {
         signers.push({
@@ -556,6 +586,12 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.get("/api/projects/:projectId/contract/status", async (req, res) => {
+    // SECURITY: leaks contract status + client navn by projectId. Previously
+    // ungated → cross-tenant read by guessing a projectId. Now session-gated
+    // with an ownership check on the contract. Sole caller (ProjectTimeline,
+    // owner-side) polls this for its own project over a Bearer request.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
       const { projectId } = req.params;
@@ -565,6 +601,9 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
       );
       if (result.rows.length === 0) return res.json({ hasContract: false });
       const c = mapContractRecord(result.rows[0]);
+      if (c.userId && c.userId !== session.userId) {
+        return res.json({ hasContract: false });
+      }
       res.json({
         hasContract: true,
         contractId: c.id,
@@ -697,9 +736,18 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.put("/api/contracts/:contractId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
+
+      const existingForOwnership = await fetchContractById(req.params.contractId);
+      if (!existingForOwnership) {
+        return res.status(404).json({ success: false, message: "Contract not found" });
+      }
+      if (existingForOwnership.userId && existingForOwnership.userId !== session.userId) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
+      }
 
       const contractData = req.body || {};
       const setClauses = ["updated_at = NOW()"];
@@ -811,7 +859,8 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.post("/api/contracts/:contractId/sign", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
 
@@ -827,6 +876,27 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
         return res
           .status(404)
           .json({ success: false, message: "Contract not found" });
+      }
+
+      // SECURITY: only the contract owner or the intended signer (client) may
+      // sign. Previously this required only *a* login, so any logged-in user
+      // could forge a signature on ANY contract by id — flip status to
+      // 'signed', write an arbitrary signer_name/email, and insert a
+      // customer_signatures audit row. Gate to the two legitimate parties:
+      // the owner (userId) or a logged-in session whose e-post matches the
+      // contract's client e-post. Mirrors the signature-status gate above.
+      const isOwner =
+        !!existingContract.userId && existingContract.userId === session.userId;
+      const isIntendedSigner =
+        !!session.email &&
+        !!existingContract.clientEmail &&
+        String(session.email).toLowerCase() ===
+          String(existingContract.clientEmail).toLowerCase();
+      if (existingContract.userId && !isOwner && !isIntendedSigner) {
+        return res.status(403).json({
+          success: false,
+          message: "Not authorized to sign this contract",
+        });
       }
 
       const updateResult = await pool.query(
@@ -952,6 +1022,8 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.get("/api/contracts/:contractId", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
       const contract = await fetchContractById(req.params.contractId);
@@ -961,6 +1033,9 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
           success: false,
           message: "Contract not found",
         });
+      }
+      if (contract.userId && contract.userId !== session.userId) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
       }
 
       // Calculate verification hash for signed contracts
@@ -1001,6 +1076,15 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.get("/api/contracts/:contractId/signature-status", async (req, res) => {
+    // SECURITY: returns the FULL contract (terms, beløp, client PII) + signing
+    // URLs. Previously ungated + no token → anyone with an enumerable
+    // contractId read it. There is no token mechanism for contracts, so serve
+    // only the two legitimate audiences: the owner (userId) or the intended
+    // signer identified by a logged-in session whose e-post matches the
+    // contract's client e-post. Any client-facing unauthenticated flow must
+    // adopt a share token before this can be reopened.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
       const contract = await fetchContractById(req.params.contractId);
@@ -1008,6 +1092,17 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
         return res
           .status(404)
           .json({ success: false, message: "Contract not found" });
+      }
+
+      const isOwner =
+        !!contract.userId && contract.userId === session.userId;
+      const isIntendedSigner =
+        !!session.email &&
+        !!contract.clientEmail &&
+        String(session.email).toLowerCase() ===
+          String(contract.clientEmail).toLowerCase();
+      if (contract.userId && !isOwner && !isIntendedSigner) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
       }
 
       const googleSignature = await getContractGoogleESignature(
@@ -1043,8 +1138,21 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.post("/api/contracts/:contractId/google-esignature", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
+      // Eier-only (BFLA): materialiserer kontraktinnhold i Google Drive via
+      // caller-connection. Uten dette kunne en angriper eksfiltrere en annens
+      // kontrakt til egen Drive. Ikke tiltenkt-signer her (ingen re-materialise).
+      const ownerCheck = await fetchContractById(req.params.contractId);
+      if (!ownerCheck) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Contract not found" });
+      }
+      if (ownerCheck.userId && ownerCheck.userId !== session.userId) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
+      }
       const preferredUserId = await resolveContractUserId(req);
       const response = await sendContractGoogleESignature(pool, {
         contractId: req.params.contractId,
@@ -1078,8 +1186,19 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.post("/api/contracts/:contractId/backup-drive", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
+      // Eier-only (BFLA): samme Drive-materialisering som /google-esignature.
+      const ownerCheck = await fetchContractById(req.params.contractId);
+      if (!ownerCheck) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Contract not found" });
+      }
+      if (ownerCheck.userId && ownerCheck.userId !== session.userId) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
+      }
       const preferredUserId = await resolveContractUserId(req);
       const response = await prepareContractGoogleESignature(pool, {
         contractId: req.params.contractId,
@@ -1111,7 +1230,30 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.get("/api/contracts/:contractId/google-signature", async (req, res) => {
+    // SECURITY: returns the full contract + Google signing URLs. Previously
+    // ungated; no live caller uses it (the app uses the separate /send + /sync
+    // POSTs). Gate to owner or intended signer, like /signature-status.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
+      await ensureContractsCompatibilitySchema(pool);
+      const ownerCheck = await fetchContractById(req.params.contractId);
+      if (!ownerCheck) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Contract not found" });
+      }
+      const isOwner =
+        !!ownerCheck.userId && ownerCheck.userId === session.userId;
+      const isIntendedSigner =
+        !!session.email &&
+        !!ownerCheck.clientEmail &&
+        String(session.email).toLowerCase() ===
+          String(ownerCheck.clientEmail).toLowerCase();
+      if (ownerCheck.userId && !isOwner && !isIntendedSigner) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
+      }
+
       const response = await getContractGoogleESignature(
         pool,
         req.params.contractId,
@@ -1135,8 +1277,21 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   app.post(
     "/api/contracts/:contractId/google-signature/prepare",
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
+        // Eier-only (BFLA): materialiserer/overskriver kontraktens Drive-doc.
+        const ownerCheck = await fetchContractById(req.params.contractId);
+        if (!ownerCheck) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Contract not found" });
+        }
+        if (ownerCheck.userId && ownerCheck.userId !== session.userId) {
+          return res
+            .status(403)
+            .json({ success: false, message: "Forbidden" });
+        }
         const preferredUserId = await resolveContractUserId(req);
         const response = await prepareContractGoogleESignature(pool, {
           contractId: req.params.contractId,
@@ -1173,8 +1328,21 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   app.post(
     "/api/contracts/:contractId/google-signature/send",
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
+        // Eier-only (BFLA): sender kontrakt til signering via caller-connection.
+        const ownerCheck = await fetchContractById(req.params.contractId);
+        if (!ownerCheck) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Contract not found" });
+        }
+        if (ownerCheck.userId && ownerCheck.userId !== session.userId) {
+          return res
+            .status(403)
+            .json({ success: false, message: "Forbidden" });
+        }
         const preferredUserId = await resolveContractUserId(req);
         const response = await sendContractGoogleESignature(pool, {
           contractId: req.params.contractId,
@@ -1209,8 +1377,21 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   app.post(
     "/api/contracts/:contractId/google-signature/sync",
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
+        // Eier-only (BFLA): synk mutates kontrakt-status/artefakter.
+        const ownerCheck = await fetchContractById(req.params.contractId);
+        if (!ownerCheck) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Contract not found" });
+        }
+        if (ownerCheck.userId && ownerCheck.userId !== session.userId) {
+          return res
+            .status(403)
+            .json({ success: false, message: "Forbidden" });
+        }
         const preferredUserId = await resolveContractUserId(req);
         const response = await syncContractGoogleESignature(pool, {
           contractId: req.params.contractId,
@@ -1248,7 +1429,8 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   app.post(
     "/api/contracts/:contractId/google-signature/status",
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
         const preferredUserId = await resolveContractUserId(req);
         const status = readString(req.body?.status) as any;
@@ -1274,6 +1456,30 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
               success: false,
               message: "Unsupported contract Google signature status",
             });
+        }
+        // Eier-eller-tiltenkt-signer (BOLA): uten dette kunne enhver forfalske
+        // signatur-status ('signed'/'rejected') + stemple signer-PII på ENHVER
+        // kontrakt. Speiler /sign (861) og /signature-status (1078).
+        const existingContract = await fetchContractById(req.params.contractId);
+        if (!existingContract) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Contract not found" });
+        }
+        const isOwner =
+          !!existingContract.userId &&
+          existingContract.userId === session.userId;
+        const isIntendedSigner =
+          !!session.email &&
+          !!existingContract.clientEmail &&
+          String(session.email).toLowerCase() ===
+            String(existingContract.clientEmail).toLowerCase();
+        if (existingContract.userId && !isOwner && !isIntendedSigner) {
+          return res.status(403).json({
+            success: false,
+            message:
+              "Not authorized to update signature status for this contract",
+          });
         }
         const response = await updateContractGoogleESignatureStatus(pool, {
           contractId: req.params.contractId,
@@ -1311,9 +1517,23 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   );
 
   app.put("/api/contracts/:contractId/status", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
+      // Object-first eierskap (BOLA): uten dette kunne enhver innlogget bruker
+      // sette status (inkl. 'signed') på ENHVER kontrakt på gjettbar id, og
+      // dermed omgå den eier/tiltenkt-signer-gaten som /sign har. Lenient på
+      // null userId (legacy-rader), som søsterrutene.
+      const existing = await fetchContractById(req.params.contractId);
+      if (!existing) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Contract not found" });
+      }
+      if (existing.userId && existing.userId !== session.userId) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
+      }
       const status = normalizeContractStatusValue(req.body?.status);
       const result = await pool.query(
         `UPDATE contracts
@@ -1347,7 +1567,8 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.delete("/api/contracts/:contractId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
       const contract = await fetchContractById(req.params.contractId);
@@ -1355,6 +1576,9 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
         return res
           .status(404)
           .json({ success: false, message: "Contract not found" });
+      }
+      if (contract.userId && contract.userId !== session.userId) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
       }
 
       await pool.query(`DELETE FROM contracts WHERE id = $1`, [
@@ -1391,12 +1615,31 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.get("/api/contracts/:contractId/pdf", async (req, res) => {
+    // SECURITY: renders the full contract PDF (terms, beløp, client PII).
+    // Previously ungated → anyone with an enumerable contractId downloaded any
+    // tenant's contract. All live consumers are owner-facing dashboards, so
+    // gate to the owner or the intended signer (same audiences as
+    // signature-status). Consumers that used window.open now fetch with a
+    // Bearer token and open the resulting blob.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const contract = await fetchContractById(req.params.contractId);
       if (!contract) {
         return res
           .status(404)
           .json({ success: false, message: "Contract not found" });
+      }
+      const isOwner = !!contract.userId && contract.userId === session.userId;
+      const isIntendedSigner =
+        !!session.email &&
+        !!contract.clientEmail &&
+        String(session.email).toLowerCase() ===
+          String(contract.clientEmail).toLowerCase();
+      if (contract.userId && !isOwner && !isIntendedSigner) {
+        return res
+          .status(403)
+          .json({ success: false, message: "Forbidden" });
       }
       const pdfBuffer = await buildContractPdfBuffer(contract);
       const safeFileName = (contract.contractNumber || contract.id).replace(
@@ -1480,6 +1723,15 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.get("/api/contracts", async (req, res) => {
+    // SECURITY: session-scoped list. This previously derived the owner from
+    // resolveContractUserId, which falls back to "default-user" when
+    // unauthenticated — and "default-user" DISABLED the user_id filter, so an
+    // anonymous caller got `WHERE 1=1` with NO LIMIT: every contract in the
+    // database (incl. joined client navn/e-post), or a targeted tenant via
+    // x-user-id / ?projectId=. Now a session is required and the list is bound
+    // to session.userId. All callers use apiRequest/default-fetcher (Bearer).
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
 
@@ -1488,7 +1740,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
       const sourceQuoteId = readString(req.query.sourceQuoteId);
       const status = readString(req.query.status);
       const signatureStatus = readString(req.query.signature_status);
-      const userId = await resolveContractUserId(req);
+      const userId = session.userId;
 
       const whereClauses = ["1 = 1"];
       const params: any[] = [];

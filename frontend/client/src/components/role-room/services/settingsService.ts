@@ -35,6 +35,9 @@ const cacheKey = (userId: string, namespace: string, projectId?: string) =>
   `${STORAGE_PREFIX}:${userId}:${projectId || ''}:${namespace}`;
 
 const settingsCache = new Map<string, unknown>();
+const REMOTE_SETTING_FRESH_TTL_MS = 2_000;
+const remoteSettingFreshAt = new Map<string, number>();
+const inFlightRemoteSettings = new Map<string, Promise<unknown | null>>();
 
 const parseCacheKey = (key: string): { userId: string; projectId: string; namespace: string } | null => {
   if (!key.startsWith(`${STORAGE_PREFIX}:`)) {
@@ -142,6 +145,18 @@ const fetchRemoteSetting = async <T>(
   if (typeof fetch !== 'function') {
     return null;
   }
+  const key = cacheKey(userId, namespace, projectId);
+  const cached = readCache<T>(userId, namespace, projectId);
+  const freshAt = remoteSettingFreshAt.get(key) ?? 0;
+  if (cached !== null && Date.now() - freshAt < REMOTE_SETTING_FRESH_TTL_MS) {
+    return cached;
+  }
+
+  const existingRequest = inFlightRemoteSettings.get(key);
+  if (existingRequest) {
+    return existingRequest as Promise<T | null>;
+  }
+
   const params = new URLSearchParams({
     user_id: userId,
     namespace,
@@ -150,23 +165,31 @@ const fetchRemoteSetting = async <T>(
     params.set('project_id', projectId);
   }
 
-  try {
-    const response = await fetch(`/api/settings?${params.toString()}`, {
-      cache: 'no-store',
-      headers: getAuthHeaders(),
-    });
-    if (!response.ok) {
+  const request = (async (): Promise<T | null> => {
+    try {
+      const response = await fetch(`/api/settings?${params.toString()}`, {
+        cache: 'no-store',
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) {
+        return null;
+      }
+      const payload = await response.json() as { data?: T | null };
+      if (payload.data === undefined || payload.data === null) {
+        return null;
+      }
+      writeCache(userId, namespace, payload.data, projectId);
+      remoteSettingFreshAt.set(key, Date.now());
+      return payload.data;
+    } catch {
       return null;
+    } finally {
+      inFlightRemoteSettings.delete(key);
     }
-    const payload = await response.json() as { data?: T | null };
-    if (payload.data === undefined || payload.data === null) {
-      return null;
-    }
-    writeCache(userId, namespace, payload.data, projectId);
-    return payload.data;
-  } catch {
-    return null;
-  }
+  })();
+
+  inFlightRemoteSettings.set(key, request as Promise<unknown | null>);
+  return request;
 };
 
 const fetchRemoteSettingsList = async (
@@ -340,11 +363,14 @@ export const settingsService = {
   async setSetting<T>(namespace: string, data: T, options?: { userId?: string; projectId?: string }): Promise<T> {
     const userId = options?.userId || getCurrentUserId();
     const projectId = options?.projectId;
+    const key = cacheKey(userId, namespace, projectId);
     const cached = readCache<unknown>(userId, namespace, projectId);
     if (cached !== null && stableSerialize(cached) === stableSerialize(data)) {
+      remoteSettingFreshAt.set(key, Date.now());
       return data;
     }
     writeCache(userId, namespace, data, projectId);
+    remoteSettingFreshAt.set(key, Date.now());
     await writeRemoteSetting(userId, namespace, data, projectId);
     return data;
   },
@@ -377,6 +403,9 @@ export const settingsService = {
   async deleteSetting(namespace: string, options?: { userId?: string; projectId?: string }): Promise<boolean> {
     const userId = options?.userId || getCurrentUserId();
     const projectId = options?.projectId;
+    const key = cacheKey(userId, namespace, projectId);
+    remoteSettingFreshAt.delete(key);
+    inFlightRemoteSettings.delete(key);
     deleteCache(userId, namespace, projectId);
     await deleteRemoteSetting(userId, namespace, projectId);
     return true;

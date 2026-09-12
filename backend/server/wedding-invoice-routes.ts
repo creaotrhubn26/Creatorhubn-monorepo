@@ -100,7 +100,7 @@ async function pushWeddingInvoiceToPowerOffice(
       WHERE photographer_id = $1 AND provider = 'poweroffice' LIMIT 1`,
     [input.photographerId],
   );
-  if (intQ.rowCount === 0) {
+  if (!intQ.rows.length) {
     return {
       ok: false,
       status: 412,
@@ -119,7 +119,7 @@ async function pushWeddingInvoiceToPowerOffice(
       WHERE id = $1 AND wedding_id = $2 AND photographer_id = $3 LIMIT 1`,
     [input.invoiceId, input.weddingId, input.photographerId],
   );
-  if (invQ.rowCount === 0) {
+  if (!invQ.rows.length) {
     return { ok: false, status: 404, error: "invoice_not_found", message: "Faktura finnes ikke" };
   }
   const invoice = invQ.rows[0];

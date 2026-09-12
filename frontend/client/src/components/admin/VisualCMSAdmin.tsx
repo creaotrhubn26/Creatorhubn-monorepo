@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -15,6 +14,7 @@ import {
   FormControlLabel,
   Grid,
   IconButton,
+  InputAdornment,
   InputLabel,
   LinearProgress,
   List,
@@ -48,6 +48,7 @@ import { useTheming } from '../../utils/theming-helper';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import { AdminCard, AdminButton, StatusChip, useIsMobile } from './design-system';
 
 interface CMSField {
   id?: string;
@@ -318,7 +319,7 @@ export default function VisualCMSAdmin() {
     <Box sx={{ p: 3 }}>
       <Stack direction="row" spacing={2} justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
         <Box>
-          <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
+          <Typography variant="h4" component="h2" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
             Visual CMS Admin
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -326,8 +327,8 @@ export default function VisualCMSAdmin() {
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="secondary"
             startIcon={<SearchIcon />}
             onClick={() => {
               refetchFields();
@@ -335,9 +336,9 @@ export default function VisualCMSAdmin() {
             }}
           >
             Oppdater data
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<AddIcon />}
             onClick={() => {
               setEditingField(EMPTY_FIELD);
@@ -345,7 +346,7 @@ export default function VisualCMSAdmin() {
             }}
           >
             Nytt felt
-          </Button>
+          </AdminButton>
         </Stack>
       </Stack>
 
@@ -541,53 +542,81 @@ function FieldsPanel({
   onEdit: (field: CMSField) => void;
   onDelete: (id: string) => void;
 }) {
+  const [search, setSearch] = useState('');
+
+  const visibleFields = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (query.length === 0) {
+      return fields;
+    }
+    return fields.filter((field) =>
+      [field.label, field.name, field.type, field.beskrivelse]
+        .filter((value): value is string => typeof value === 'string')
+        .some((value) => value.toLowerCase().includes(query)),
+    );
+  }, [fields, search]);
+
   return (
-    <Card>
-      <CardContent>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-          <Typography variant="h6">CMS-felter</Typography>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={onCreate}>
-            Legg til felt
-          </Button>
-        </Stack>
-        <Divider sx={{ mb: 2 }} />
-        <List disablePadding>
-          {fields.map((field) => (
-            <ListItem
-              key={field.id ?? field.name}
-              secondaryAction={
-                <Stack direction="row" spacing={1}>
-                  <IconButton onClick={() => onEdit(field)} size="small">
-                    <EditIcon fontSize="small" />
+    <AdminCard
+      title="CMS-felter"
+      action={
+        <AdminButton tone="primary" startIcon={<AddIcon />} onClick={onCreate}>
+          Legg til felt
+        </AdminButton>
+      }
+    >
+      <Divider sx={{ mb: 2 }} />
+      <TextField
+        size="small"
+        fullWidth
+        placeholder="Søk i felter …"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        sx={{ mb: 2 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
+      <List disablePadding>
+        {visibleFields.map((field) => (
+          <ListItem
+            key={field.id ?? field.name}
+            secondaryAction={
+              <Stack direction="row" spacing={1}>
+                <IconButton onClick={() => onEdit(field)} size="small" aria-label="Rediger felt">
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                {field.id && (
+                  <IconButton onClick={() => onDelete(field.id ?? '')} size="small" color="error" aria-label="Slett felt">
+                    <DeleteIcon fontSize="small" />
                   </IconButton>
-                  {field.id && (
-                    <IconButton onClick={() => onDelete(field.id ?? '')} size="small" color="error">
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  )}
+                )}
+              </Stack>
+            }
+          >
+            <ListItemText
+              primary={
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography>{field.label}</Typography>
+                  <Chip size="small" label={field.type} />
+                  {field.påkrevd && <StatusChip tone="warning" label="Påkrevd" />}
                 </Stack>
               }
-            >
-              <ListItemText
-                primary={
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography>{field.label}</Typography>
-                    <Chip size="small" label={field.type} />
-                    {field.påkrevd && <Chip size="small" color="warning" label="Påkrevd" />}
-                  </Stack>
-                }
-                secondary={field.beskrivelse || field.name}
-              />
-            </ListItem>
-          ))}
-          {fields.length === 0 && (
-            <ListItem>
-              <ListItemText primary="Ingen felter funnet" />
-            </ListItem>
-          )}
-        </List>
-      </CardContent>
-    </Card>
+              secondary={field.beskrivelse || field.name}
+            />
+          </ListItem>
+        ))}
+        {visibleFields.length === 0 && (
+          <ListItem>
+            <ListItemText primary="Ingen felter funnet" />
+          </ListItem>
+        )}
+      </List>
+    </AdminCard>
   );
 }
 
@@ -617,26 +646,26 @@ function ContentTypesPanel({
   }, [fields]);
 
   return (
-    <Card>
-      <CardContent>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-          <Typography variant="h6">Innholdstyper</Typography>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={onCreate}>
-            Ny innholdstype
-          </Button>
-        </Stack>
-        <Divider sx={{ mb: 2 }} />
-        <List disablePadding>
-          {contentTypes.map((contentType) => (
+    <AdminCard
+      title="Innholdstyper"
+      action={
+        <AdminButton tone="primary" startIcon={<AddIcon />} onClick={onCreate}>
+          Ny innholdstype
+        </AdminButton>
+      }
+    >
+      <Divider sx={{ mb: 2 }} />
+      <List disablePadding>
+        {contentTypes.map((contentType) => (
             <ListItem
               key={contentType.id ?? contentType.navn}
               secondaryAction={
                 <Stack direction="row" spacing={1}>
-                  <IconButton onClick={() => onEdit(contentType)} size="small">
+                  <IconButton onClick={() => onEdit(contentType)} size="small" aria-label="Rediger innholdstype">
                     <EditIcon fontSize="small" />
                   </IconButton>
                   {contentType.id && (
-                    <IconButton onClick={() => onDelete(contentType.id ?? '')} size="small" color="error">
+                    <IconButton onClick={() => onDelete(contentType.id ?? '')} size="small" color="error" aria-label="Slett innholdstype">
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   )}
@@ -673,8 +702,7 @@ function ContentTypesPanel({
             </ListItem>
           )}
         </List>
-      </CardContent>
-    </Card>
+    </AdminCard>
   );
 }
 
@@ -692,11 +720,7 @@ function SEOAndPublishingPanel({
   return (
     <Grid container spacing={2}>
       <Grid item xs={12} md={8}>
-        <Card>
-          <CardContent>
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              Viral showcase-score
-            </Typography>
+        <AdminCard title="Viral showcase-score">
             <List disablePadding>
               {topShowcases.map((showcase) => (
                 <ListItem key={showcase.id}>
@@ -719,7 +743,7 @@ function SEOAndPublishingPanel({
                       </Stack>
                     }
                   />
-                  <Chip label={showcase.status} size="small" />
+                  <StatusChip status={showcase.status} />
                 </ListItem>
               ))}
               {topShowcases.length === 0 && (
@@ -728,23 +752,23 @@ function SEOAndPublishingPanel({
                 </ListItem>
               )}
             </List>
-          </CardContent>
-        </Card>
+        </AdminCard>
       </Grid>
       <Grid item xs={12} md={4}>
-        <Card>
-          <CardContent>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+        <AdminCard
+          title={
+            <Stack direction="row" spacing={1} alignItems="center">
               <VideoLibraryIcon />
-              <Typography variant="h6">YouTube snapshot</Typography>
+              <span>YouTube snapshot</span>
             </Stack>
+          }
+        >
             <Metric label="Kanal" value={youtube.channelName} />
             <Metric label="Abonnenter" value={String(youtube.subscribers)} />
             <Metric label="Visninger" value={String(youtube.views)} />
             <Metric label="Watch time (timer)" value={String(youtube.watchTimeHours)} />
             <Metric label="CTR" value={`${youtube.ctrPercent}%`} />
-          </CardContent>
-        </Card>
+        </AdminCard>
       </Grid>
     </Grid>
   );
@@ -754,11 +778,7 @@ function IntegrationsPanel() {
   return (
     <Grid container spacing={2}>
       <Grid item xs={12} md={6}>
-        <Card>
-          <CardContent>
-            <Typography variant="h6" sx={{ mb: 1 }}>
-              Integrasjonsstatus
-            </Typography>
+        <AdminCard title="Integrasjonsstatus">
             <Alert severity="success" sx={{ mb: 1 }}>
               CMS API tilgjengelig
             </Alert>
@@ -768,25 +788,19 @@ function IntegrationsPanel() {
             <Alert severity="warning">
               Kontroller OAuth-scopes før publiseringsjobb
             </Alert>
-          </CardContent>
-        </Card>
+        </AdminCard>
       </Grid>
       <Grid item xs={12} md={6}>
-        <Card>
-          <CardContent>
-            <Typography variant="h6" sx={{ mb: 1 }}>
-              Hurtighandlinger
-            </Typography>
+        <AdminCard title="Hurtighandlinger">
             <Stack spacing={1}>
-              <Button variant="contained" startIcon={<PublishIcon />} onClick={() => window.open('/showcase-admin', '_blank')}>
+              <AdminButton tone="primary" startIcon={<PublishIcon />} onClick={() => window.open('/showcase-admin', '_blank')}>
                 Åpne showcase admin
-              </Button>
-              <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => window.open('/admin', '_blank')}>
+              </AdminButton>
+              <AdminButton tone="secondary" startIcon={<SettingsIcon />} onClick={() => window.open('/admin', '_blank')}>
                 Åpne systemadmin
-              </Button>
+              </AdminButton>
             </Stack>
-          </CardContent>
-        </Card>
+        </AdminCard>
       </Grid>
     </Grid>
   );
@@ -808,7 +822,7 @@ function FieldDialog({
   onSave: () => void;
 }) {
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth fullScreen={useIsMobile()}>
       <DialogTitle>{value.id ? 'Rediger felt' : 'Nytt felt'}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
@@ -859,14 +873,15 @@ function FieldDialog({
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Avbryt</Button>
-        <Button
-          variant="contained"
+        <AdminButton tone="ghost" onClick={onClose}>Avbryt</AdminButton>
+        <AdminButton
+          tone="primary"
+          loading={pending}
           onClick={onSave}
           disabled={pending || value.name.trim().length === 0 || value.label.trim().length === 0}
         >
           Lagre
-        </Button>
+        </AdminButton>
       </DialogActions>
     </Dialog>
   );
@@ -890,7 +905,7 @@ function ContentTypeDialog({
   onSave: () => void;
 }) {
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth fullScreen={useIsMobile()}>
       <DialogTitle>{value.id ? 'Rediger innholdstype' : 'Ny innholdstype'}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
@@ -944,14 +959,15 @@ function ContentTypeDialog({
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Avbryt</Button>
-        <Button
-          variant="contained"
+        <AdminButton tone="ghost" onClick={onClose}>Avbryt</AdminButton>
+        <AdminButton
+          tone="primary"
+          loading={pending}
           onClick={onSave}
           disabled={pending || value.navn.trim().length === 0}
         >
           Lagre
-        </Button>
+        </AdminButton>
       </DialogActions>
     </Dialog>
   );
@@ -979,10 +995,10 @@ function ConfirmDialog({
         <Typography variant="body2">{description}</Typography>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onCancel}>Avbryt</Button>
-        <Button variant="contained" color="error" onClick={onConfirm} disabled={pending}>
+        <AdminButton tone="ghost" onClick={onCancel}>Avbryt</AdminButton>
+        <AdminButton tone="danger" loading={pending} onClick={onConfirm} disabled={pending}>
           Slett
-        </Button>
+        </AdminButton>
       </DialogActions>
     </Dialog>
   );

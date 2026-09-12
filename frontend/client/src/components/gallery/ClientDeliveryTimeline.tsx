@@ -172,7 +172,7 @@ export const ClientDeliveryTimeline: React.FC<Props> = ({
       return {
         title: 'Venter på din tilbakemelding',
         detail: activeStage.blockedReason || activeStage.label,
-        color: '#991b1b',
+        color: '#fca5a5',
       };
     }
     if (activeStage) {
@@ -184,7 +184,7 @@ export const ClientDeliveryTimeline: React.FC<Props> = ({
         detail: nextPending
           ? `Neste: ${nextPending.label}${eta}`
           : `${activeStage.label}${eta}`,
-        color: '#9a3412',
+        color: '#fdba74',
       };
     }
     if (nextPending) {
@@ -194,13 +194,13 @@ export const ClientDeliveryTimeline: React.FC<Props> = ({
       return {
         title: `Neste: ${nextPending.label}${eta}`,
         detail: 'Vi gir beskjed når denne starter.',
-        color: '#0f172a',
+        color: '#fff',
       };
     }
     return {
       title: 'Alt er ferdig',
       detail: 'Hele leveransen er fullført.',
-      color: '#166534',
+      color: '#86efac',
     };
   })();
 
@@ -209,8 +209,10 @@ export const ClientDeliveryTimeline: React.FC<Props> = ({
       <Card
         sx={{
           borderRadius: 2,
-          border: '1px solid rgba(15,23,42,0.08)',
-          bgcolor: 'rgba(255,255,255,0.85)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          bgcolor: 'rgba(15,23,42,0.6)',
+          backdropFilter: 'blur(8px)',
+          color: '#fff',
         }}
       >
         <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
@@ -228,7 +230,7 @@ export const ClientDeliveryTimeline: React.FC<Props> = ({
               >
                 {summary.title}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                 {summary.detail}
               </Typography>
             </Box>
@@ -296,9 +298,17 @@ export const ClientDeliveryTimeline: React.FC<Props> = ({
 
   // detailed-variant
   return (
-    <Card sx={{ borderRadius: 2 }}>
+    <Card
+      sx={{
+        borderRadius: 2,
+        bgcolor: 'rgba(15,23,42,0.6)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        color: '#fff',
+        backdropFilter: 'blur(8px)',
+      }}
+    >
       <CardContent>
-        <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#fff' }}>
           Leveranseprosessen
         </Typography>
         <Stack spacing={1}>
@@ -327,10 +337,10 @@ export const ClientDeliveryTimeline: React.FC<Props> = ({
                   {c.icon}
                 </Box>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#fff' }}>
                     {m.label}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                     {m.status === 'completed' && m.completedAt
                       ? `Ferdig ${formatDate(m.completedAt)}`
                       : m.status === 'in_progress'

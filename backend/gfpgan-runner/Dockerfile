@@ -23,7 +23,11 @@ COPY requirements.txt ./
 RUN python -m pip install --upgrade pip setuptools wheel \
   && python -m pip install -r requirements.txt
 
-COPY app.py ./
+# Copy the app PLUS its sibling modules (cube_lut, lut_library, hsl_retouch,
+# portrait_retouch, subject_retouch, freq_sep_save) — app.py imports these at
+# module load, so copying app.py alone crashes the container on startup with
+# ModuleNotFoundError: No module named 'cube_lut'.
+COPY *.py ./
 
 EXPOSE 10000
 

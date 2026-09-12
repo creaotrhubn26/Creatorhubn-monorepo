@@ -1,0 +1,45 @@
+name: Prototype-tester feedback-påminnelser
+
+# Ukentlig e-post-påminnelse til FORFALTE prototype-testere. 0%-fordelen
+# forutsetter jevnlig tilbakemelding; dashboard-banneret dekker innlogget,
+# denne er den proaktive e-post-kanalen. Token-gated via CRON_TRIGGER_TOKEN.
+# Idempotent — ukentlig cadence ER throttlen (ingen per-bruker last_reminded).
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'   # mandager 08:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prototype-feedback-reminders
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+  CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+
+jobs:
+  remind:
+    name: Send påminnelser
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Trigger feedback-reminders
+        run: |
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN secret er ikke satt"
+            exit 1
+          fi
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-trigger-token: $CRON_TRIGGER_TOKEN" \
+            -d '{}' \
+            "$BACKEND_URL/api/cron/prototype-feedback-reminders")
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          CODE=$(echo "$RESPONSE" | tail -n1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || exit 1

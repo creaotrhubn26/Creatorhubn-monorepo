@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider'
@@ -321,6 +322,7 @@ export default function UniversalVendorDashboard({
   // Show onboarding if not completed
   if (!compact && onboardingStatus && !onboardingStatus.isComplete) {
     return (
+      <ErrorBoundary componentName="vendor-onboarding">
       <React.Suspense fallback={
         <Box sx={{ p: 3, textAlign: 'center' }}>
           <Typography>Laster onboarding...</Typography>
@@ -336,6 +338,7 @@ export default function UniversalVendorDashboard({
         }}
         />
       </React.Suspense>
+      </ErrorBoundary>
     );
 }
 

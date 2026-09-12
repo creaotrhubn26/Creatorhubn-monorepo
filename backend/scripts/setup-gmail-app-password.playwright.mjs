@@ -9,7 +9,7 @@
  *   3. Du oppretter app-passord ved å fylle inn navn + klikk "Opprett"
  *   4. Script leser det 16-tegns passordet fra DOM når Google viser det
  *   5. Script skriver GMAIL_USER + GMAIL_APP_PASSWORD til Render env-vars
- *      via API → trigger automatisk redeploy
+ *      via API, uten å omgå den kanoniske produksjonsworkflowen
  *
  * Forutsetninger:
  *   • node 18+ (innebygd fetch)
@@ -84,8 +84,8 @@ async function main() {
       console.log(`  ${c.green}1.${c.reset} PUT  /v1/services/${RENDER_SERVICE_ID}/env-vars/${key}`);
       console.log(`         body: {"value": "${'*'.repeat(value.length)}"} (${value.length} tegn) → ${action}`);
     }
-    console.log(`  ${c.green}2.${c.reset} POST /v1/services/${RENDER_SERVICE_ID}/deploys`);
-    console.log(`         body: {"clearCache": "do_not_clear"} → trigger redeploy`);
+    console.log(`  ${c.green}2.${c.reset} Ingen direkte produksjonsdeploy`);
+    console.log('         kjør «Deploy shared Render backend» fra current main etterpå');
     console.log('');
 
     // Forventet etter-state
@@ -217,7 +217,7 @@ async function main() {
     // (DRY_RUN håndteres på toppnivå før browser-launch — ingen ekstra
     // sjekk her. Kun reell setup når DRY_RUN er false.)
 
-    const confirm = await ask('Skal jeg sette disse på Render og redeploy? [Y/n]:');
+    const confirm = await ask('Skal jeg sette disse på Render uten å deploye? [Y/n]:');
     if (confirm.toLowerCase() === 'n' || confirm.toLowerCase() === 'no') {
       console.log(`${c.yellow}Avbryter — du kan kjøre setup på nytt senere.${c.reset}`);
       return;
@@ -271,28 +271,10 @@ async function main() {
       console.log(`${c.green}✓ Snapshot etter: ${afterList.length} env-vars (forventet ${expected.size}). Ingen vars droppet.${c.reset}`);
     }
 
-    // Trigger deploy
-    const deployRes = await fetch(
-      `https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${RENDER_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ clearCache: 'do_not_clear' }),
-      },
-    );
-    if (deployRes.ok || deployRes.status === 202) {
-      console.log(`${c.green}✓ Render-deploy trigget${c.reset}`);
-    } else {
-      console.log(`${c.yellow}⚠ Deploy-trigger returnerte ${deployRes.status} — sjekk Render dashboard${c.reset}`);
-    }
-
     console.log('');
     console.log(`${c.bold}${c.green}═══ Ferdig! ═══${c.reset}`);
-    console.log(`${c.dim}Render redeploy bygges nå (~2 min). Etter at health-endepunktet rapporterer ny commit,${c.reset}`);
-    console.log(`${c.dim}kan du kjøre smoke-testen for å verifisere e-post-sending.${c.reset}`);
+    console.log(`${c.dim}Env-vars er lagret uten produksjonsdeploy. Kjør GitHub Actions-workflowen${c.reset}`);
+    console.log(`${c.dim}«Deploy shared Render backend» fra current main; den migrerer og verifiserer eksakt SHA.${c.reset}`);
 
   } catch (err) {
     console.error(`${c.red}✗ Feil:${c.reset}`, err.message);

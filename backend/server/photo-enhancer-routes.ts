@@ -188,6 +188,25 @@ type PhotoEnhancerR2Source = {
   size: number;
   uploadId?: string | null;
   originalHash?: string | null;
+  // Where the source object lives. "r2" = the photo-enhancer Cloudflare R2
+  // upload bucket (legacy). "b2" = the Backblaze B2 staging bucket that the
+  // rest of the photographer pipeline (capture, gallery, editing handoff) uses
+  // — keeps the photographer-facing path on one provider, no cross-provider
+  // egress. The backend already holds B2 creds; the GFPGAN runner never sees
+  // the source (the backend downloads + forwards it), so B2 support is
+  // backend-only.
+  storage?: "r2" | "b2";
+};
+
+type LensCorrection = {
+  enabled: boolean;
+  // When true, derive the correction amounts from the matched lens profile
+  // (or the RAW's embedded correction / Lensfun). When false, the manual
+  // 0-100 strengths below are used.
+  auto: boolean;
+  distortion: number;
+  vignette: number;
+  chromaticAberration: number;
 };
 
 type PhotoEnhancerSettings = {
@@ -248,6 +267,9 @@ type PhotoEnhancerSettings = {
   // only. Faces whose index is NOT listed inherit the global sliders.
   // ``faceIndex`` matches the index returned by POST /faces.
   perFaceOverrides: PerFaceOverride[];
+  // Optical lens correction. Honoured by the runner / RAW converter when a
+  // matched lens profile (or Lensfun/LCP) is available.
+  lensCorrection: LensCorrection;
 };
 
 type PerFaceOverride = {
@@ -330,6 +352,56 @@ const PHOTO_ENHANCER_BUILTIN_LUTS = [
     size: 17,
   },
 ] as const;
+
+const PHOTO_ENHANCER_BUILTIN_LUT_SIZE = 17;
+const PHOTO_ENHANCER_BUILTIN_LUT_IDS = new Set(
+  PHOTO_ENHANCER_BUILTIN_LUTS.map((l) => l.id),
+);
+
+// Parabolic bump peaking at x=0.5, zero at the endpoints — keeps black at
+// black and white at white so the look never clips/lifts endpoints.
+function photoEnhancerMidtoneBump(x: number, amount: number): number {
+  return amount * 4.0 * x * (1.0 - x);
+}
+
+function clamp01(x: number): number {
+  return x < 0 ? 0 : x > 1 ? 1 : x;
+}
+
+// Built-in LUT table fallback. Exact TypeScript mirror of
+// backend/gfpgan-runner/lut_library.py (_identity/_warm_soft/_cool_soft):
+// r-fastest flat order, size**3 * 3 entries, domain [0,1]. Used when the
+// runner is absent or stale so the /luts catalog's fallback slugs always
+// have a matching /luts/:id/table — keeping the two endpoints consistent.
+function buildBuiltinLutTable(
+  lutId: string,
+  size = PHOTO_ENHANCER_BUILTIN_LUT_SIZE,
+): { size: number; table: number[] } | null {
+  if (!PHOTO_ENHANCER_BUILTIN_LUT_IDS.has(lutId as never)) return null;
+  const denom = size - 1;
+  const table: number[] = [];
+  for (let bi = 0; bi < size; bi++) {
+    for (let gi = 0; gi < size; gi++) {
+      for (let ri = 0; ri < size; ri++) {
+        let r = ri / denom;
+        let g = gi / denom;
+        let b = bi / denom;
+        if (lutId === "warm_soft") {
+          r = clamp01(r + photoEnhancerMidtoneBump(r, 0.06));
+          g = clamp01(g + photoEnhancerMidtoneBump(g, 0.01));
+          b = clamp01(b - photoEnhancerMidtoneBump(b, 0.05));
+        } else if (lutId === "cool_soft") {
+          r = clamp01(r - photoEnhancerMidtoneBump(r, 0.05));
+          g = clamp01(g + photoEnhancerMidtoneBump(g, 0.01));
+          b = clamp01(b + photoEnhancerMidtoneBump(b, 0.07));
+        }
+        // "neutral" is the identity LUT — no per-channel adjustment.
+        table.push(r, g, b);
+      }
+    }
+  }
+  return { size, table };
+}
 
 const HSL_IDENTITY: HslAdjustments = {
   red: { h: 0, s: 0, l: 0 },
@@ -923,6 +995,7 @@ async function runPhotoEnhancerQueuedJob(job: PhotoEnhancerQueuedJob) {
       fileName: job.source.fileName,
       expectedMimeType: job.source.mimeType,
       expectedSize: job.source.size,
+      storage: job.source.storage,
     });
     job.source.originalHash = downloaded.originalHash;
     job.progress = 25;
@@ -1013,6 +1086,9 @@ async function runPhotoEnhancerQueuedJob(job: PhotoEnhancerQueuedJob) {
       processingMs,
       jobId: job.id,
       checksum,
+      rawConverter: readString(enhancementResult.prepared.raw.converter),
+      lensCorrectionApplied: Boolean(enhancementResult.prepared.raw.lensCorrectionApplied),
+      conversionErrors: enhancementResult.prepared.raw.attemptErrors ?? null,
     };
     addPhotoEnhancerJobEvent(job, "completed", "Enhancement completed.", {
       modelUsed: enhancementResult.modelUsed,
@@ -1208,6 +1284,13 @@ const defaultSettings: PhotoEnhancerSettings = {
   },
   lut: { name: null, strength: 0 },
   perFaceOverrides: [],
+  lensCorrection: {
+    enabled: false,
+    auto: true,
+    distortion: 0,
+    vignette: 0,
+    chromaticAberration: 0,
+  },
 };
 
 const PER_FACE_OVERRIDE_KEYS: ReadonlyArray<keyof PerFaceOverride["controls"]> = [
@@ -1509,6 +1592,60 @@ function isAllowedPhotoEnhancerR2Object(bucket: string | null | undefined, key: 
   );
 }
 
+// ── Backblaze B2 source support (same staging bucket as capture/editing) ──
+// B2 is S3-compatible; reuse the Role Room staging creds the editing handoff
+// already uses. Sources live under PHOTO_ENHANCER_B2_STAGING_PREFIX.
+const PHOTO_ENHANCER_B2_STAGING_PREFIX = "photo-enhancer-staging";
+
+let photoEnhancerB2Client: S3Client | null = null;
+
+function buildPhotoEnhancerB2Config(): { enabled: boolean; endpoint: string; bucket: string; region: string } {
+  const region = process.env.B2_REGION || "eu-central-003";
+  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME || "";
+  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID || "";
+  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY || "";
+  return {
+    enabled: Boolean(bucket && keyId && appKey),
+    endpoint: `https://s3.${region}.backblazeb2.com`,
+    bucket,
+    region,
+  };
+}
+
+function getPhotoEnhancerB2Client(): S3Client | null {
+  const cfg = buildPhotoEnhancerB2Config();
+  if (!cfg.enabled) return null;
+  if (photoEnhancerB2Client) return photoEnhancerB2Client;
+  photoEnhancerB2Client = new S3Client({
+    region: cfg.region,
+    endpoint: cfg.endpoint,
+    credentials: {
+      accessKeyId: process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID || "",
+      secretAccessKey: process.env.B2_ROLE_ROOM_APPLICATION_KEY || "",
+    },
+    forcePathStyle: true,
+  });
+  return photoEnhancerB2Client;
+}
+
+function isAllowedPhotoEnhancerB2Object(bucket: string | null | undefined, key: string | null | undefined) {
+  const cfg = buildPhotoEnhancerB2Config();
+  return Boolean(
+    cfg.enabled &&
+      bucket === cfg.bucket &&
+      typeof key === "string" &&
+      key.startsWith(`${PHOTO_ENHANCER_B2_STAGING_PREFIX}/`) &&
+      !key.includes(".."),
+  );
+}
+
+function buildPhotoEnhancerB2UploadKey(params: { fileName: string; projectId?: string | null }): string {
+  const datePrefix = new Date().toISOString().slice(0, 10);
+  const projectSegment = sanitizeR2KeySegment(params.projectId || "unassigned", "unassigned");
+  const baseName = sanitizeR2KeySegment(path.basename(params.fileName || "source.raw"), "source.raw");
+  return [PHOTO_ENHANCER_B2_STAGING_PREFIX, projectSegment, datePrefix, crypto.randomUUID(), baseName].join("/");
+}
+
 function readPhotoEnhancerR2Source(value: unknown, fallback: Record<string, unknown> = {}): PhotoEnhancerR2Source | null {
   const sourceRecord = parseJsonObject(value);
   const bucket = readString(sourceRecord.bucket) || readString(fallback.bucket);
@@ -1522,6 +1659,7 @@ function readPhotoEnhancerR2Source(value: unknown, fallback: Record<string, unkn
     "application/octet-stream";
   const size = readNumber(sourceRecord.size) || readNumber(fallback.size) || 0;
   if (!bucket || !key || !size) return null;
+  const storageRaw = (readString(sourceRecord.storage) || readString(fallback.storage) || "r2").toLowerCase();
   return {
     bucket,
     key,
@@ -1530,6 +1668,7 @@ function readPhotoEnhancerR2Source(value: unknown, fallback: Record<string, unkn
     size,
     uploadId: readString(sourceRecord.uploadId) || null,
     originalHash: readString(sourceRecord.originalHash) || null,
+    storage: storageRaw === "b2" ? "b2" : "r2",
   };
 }
 
@@ -1566,12 +1705,24 @@ async function downloadPhotoEnhancerR2ObjectToTemp(params: {
   fileName: string;
   expectedSize?: number | null;
   expectedMimeType?: string | null;
+  storage?: "r2" | "b2";
 }) {
-  const config = buildPhotoEnhancerUploadR2Config();
-  const client = getPhotoEnhancerUploadR2Client(config);
-  if (!client || !config.bucket) throw new Error("photo_enhancer_r2_upload_not_configured");
-  if (!isAllowedPhotoEnhancerR2Object(params.bucket, params.key)) {
-    throw new Error("photo_enhancer_r2_object_not_allowed");
+  // B2 sources fetch from the Backblaze staging bucket (S3-compatible); the
+  // default R2 path is unchanged.
+  let client: S3Client | null;
+  if (params.storage === "b2") {
+    client = getPhotoEnhancerB2Client();
+    if (!client) throw new Error("photo_enhancer_b2_not_configured");
+    if (!isAllowedPhotoEnhancerB2Object(params.bucket, params.key)) {
+      throw new Error("photo_enhancer_b2_object_not_allowed");
+    }
+  } else {
+    const config = buildPhotoEnhancerUploadR2Config();
+    client = getPhotoEnhancerUploadR2Client(config);
+    if (!client || !config.bucket) throw new Error("photo_enhancer_r2_upload_not_configured");
+    if (!isAllowedPhotoEnhancerR2Object(params.bucket, params.key)) {
+      throw new Error("photo_enhancer_r2_object_not_allowed");
+    }
   }
 
   const head = await client.send(
@@ -1621,6 +1772,17 @@ async function downloadPhotoEnhancerR2ObjectToTemp(params: {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
     throw error;
   }
+}
+
+function normalizeLensCorrection(raw: unknown): LensCorrection {
+  const obj = parseJsonObject(raw);
+  return {
+    enabled: typeof obj.enabled === "boolean" ? obj.enabled : false,
+    auto: typeof obj.auto === "boolean" ? obj.auto : true,
+    distortion: clampNumber(readNumber(obj.distortion) ?? 0, 0, 100),
+    vignette: clampNumber(readNumber(obj.vignette) ?? 0, 0, 100),
+    chromaticAberration: clampNumber(readNumber(obj.chromaticAberration) ?? 0, 0, 100),
+  };
 }
 
 function normalizeSettings(
@@ -1707,6 +1869,7 @@ function normalizeSettings(
     hsl: normalizeHsl(raw.hsl ?? merged.hsl),
     lut: normalizeLut(raw.lut ?? merged.lut),
     perFaceOverrides: normalizePerFaceOverrides(raw.perFaceOverrides ?? merged.perFaceOverrides),
+    lensCorrection: normalizeLensCorrection(raw.lensCorrection ?? merged.lensCorrection),
   };
 }
 
@@ -2508,7 +2671,7 @@ async function execRawConverter(
 }
 
 async function resolveRuntimeSupport() {
-  const [imageMagick, darktable, rawtherapee, dcraw, dcrawEmu, simpleDcraw, heifConvert, exiftool] = await Promise.all([
+  const [imageMagick, darktable, rawtherapee, dcraw, dcrawEmu, simpleDcraw, heifConvert, exiftool, lensfunUpdate] = await Promise.all([
     commandPath("magick", "convert"),
     commandPath("darktable-cli"),
     commandPath("rawtherapee-cli"),
@@ -2517,6 +2680,7 @@ async function resolveRuntimeSupport() {
     commandPath("simple_dcraw"),
     commandPath("heif-convert"),
     commandPath("exiftool"),
+    commandPath("lensfun-update-data"),
   ]);
 
   return {
@@ -2531,6 +2695,19 @@ async function resolveRuntimeSupport() {
         dcrawEmu: Boolean(dcrawEmu),
         simpleDcraw: Boolean(simpleDcraw),
         heifConvert: Boolean(heifConvert),
+      },
+      // Optical lens correction readiness. RawTherapee has Lensfun compiled
+      // in, so its presence is enough to run LcMode=lfauto; the system
+      // Lensfun database (lensfun-update-data from liblensfun-bin) just
+      // widens lens coverage beyond RawTherapee's bundled data.
+      lensCorrection: {
+        // Only "available" when the heavy RawTherapee+Lensfun pass is
+        // opted in (PHOTO_ENHANCER_LENSFUN_ENABLED=true) AND rawtherapee is
+        // installed — otherwise enabling it in the UI is a safe no-op.
+        available: Boolean(rawtherapee) && process.env.PHOTO_ENHANCER_LENSFUN_ENABLED === "true",
+        enabledByConfig: process.env.PHOTO_ENHANCER_LENSFUN_ENABLED === "true",
+        converter: rawtherapee ? "rawtherapee" : null,
+        systemLensfunDatabase: Boolean(lensfunUpdate),
       },
       available: Boolean(imageMagick || darktable || rawtherapee || dcraw || dcrawEmu || simpleDcraw),
       heic: {
@@ -2685,7 +2862,34 @@ async function extractEmbeddedPreviewImage(file: Express.Multer.File): Promise<E
   }
 }
 
-async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
+// RawTherapee processing profile (.pp3) that enables Lensfun automatic lens
+// correction from the file's EXIF. Lensfun corrections are per-type on/off
+// (no partial strength), so we map the photographer's request to which
+// correction types to enable. Requires rawtherapee-cli + a Lensfun database
+// on the runner box; if absent we simply fall through to a plain conversion.
+function buildRawTherapeeLensfunPp3(lens: LensCorrection): string {
+  const useDistortion = lens.auto || lens.distortion > 0;
+  const useVignette = lens.auto || lens.vignette > 0;
+  const useCA = lens.chromaticAberration > 0;
+  return [
+    "[Version]",
+    "AppVersion=5.9",
+    "Version=346",
+    "",
+    "[Lens Profile]",
+    "LcMode=lfauto",
+    "LCPFile=",
+    `UseDistortion=${useDistortion ? "true" : "false"}`,
+    `UseVignette=${useVignette ? "true" : "false"}`,
+    `UseCA=${useCA ? "true" : "false"}`,
+    "",
+  ].join("\n");
+}
+
+async function convertRawWithExternalTool(
+  file: Express.Multer.File,
+  options?: { lensCorrection?: LensCorrection },
+): Promise<{
   file: Express.Multer.File;
   conversion: Record<string, unknown>;
 } | null> {
@@ -2696,7 +2900,24 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
   const inputPath = path.join(tempDir, `source${extension}`);
   const outputPath = path.join(tempDir, "converted.png");
   const outputTiffPath = path.join(tempDir, "source.tiff");
+  const lensfunPp3Path = path.join(tempDir, "lensfun.pp3");
   await fs.writeFile(inputPath, file.buffer);
+
+  // When the photographer enabled lens correction, write a Lensfun PP3 so we
+  // can prefer a RawTherapee pass that applies optical correction. dcraw /
+  // ImageMagick can't do Lensfun, so this only fires when correction is on.
+  // Full-resolution RawTherapee + Lensfun needs ~1-2 GB RAM. On a small
+  // instance that OOM-kills the process and 502s the whole request, so the
+  // heavy pass is gated behind an explicit opt-in env (default off) — only
+  // turn it on where the box can afford it (≥ ~2 GB). Without it, enhance
+  // proceeds through the normal converters (no correction) instead of
+  // crashing.
+  const lensfunRuntimeEnabled = process.env.PHOTO_ENHANCER_LENSFUN_ENABLED === "true";
+  const lens = options?.lensCorrection;
+  const lensfunEnabled = Boolean(lens?.enabled) && lensfunRuntimeEnabled;
+  if (lensfunEnabled && lens) {
+    await fs.writeFile(lensfunPp3Path, buildRawTherapeeLensfunPp3(lens));
+  }
 
   const attempts: Array<{
     id: string;
@@ -2734,7 +2955,10 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
     {
       id: "rawtherapee",
       binaries: ["rawtherapee-cli"],
-      args: ["-o", outputPath, "-c", inputPath],
+      // -n (PNG output) + -Y (overwrite) are required, else rawtherapee-cli
+      // writes a differently-named/format file and our outputPath stays
+      // empty ("no output"). -c must remain last.
+      args: ["-o", outputPath, "-n", "-Y", "-c", inputPath],
       outputPath,
       outputMimeType: "image/png",
       resolutionMode: "converter-default",
@@ -2748,6 +2972,24 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
       resolutionMode: "converter-default",
     },
   ];
+
+  // Prefer a RawTherapee pass with Lensfun lens correction when requested.
+  // If rawtherapee-cli is missing, commandPath() returns null below and we
+  // fall through to the normal converters (without correction).
+  if (lensfunEnabled) {
+    attempts.unshift({
+      id: "rawtherapee-lensfun",
+      binaries: ["rawtherapee-cli"],
+      // -n (PNG) + -Y (overwrite); -c last. Without -n, rawtherapee-cli
+      // produced no file at outputPath ("no output") and lens correction
+      // silently fell back to dcraw.
+      args: ["-o", outputPath, "-p", lensfunPp3Path, "-n", "-Y", "-c", inputPath],
+      outputPath,
+      outputMimeType: "image/png",
+      resolutionMode: "converter-default",
+    });
+  }
+
   const configuredOrder = (process.env.PHOTO_ENHANCER_RAW_CONVERTER_ORDER || "")
     .split(",")
     .map((value) => value.trim().toLowerCase())
@@ -2793,6 +3035,15 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
           if (!metadata.width || !metadata.height) {
             throw new Error("converted image has no dimensions");
           }
+          // Surface (and log) the failures of any converter attempts that were
+          // tried and fell through before this one succeeded — otherwise a
+          // failing rawtherapee-lensfun pass is invisible because dcraw then
+          // succeeds and swallows it.
+          if (errors.length) {
+            console.warn(
+              `[photo-enhancer] raw-convert: "${attempt.id}" succeeded after earlier failures → ${errors.join(" | ")}`,
+            );
+          }
           return {
             file: {
               ...file,
@@ -2813,6 +3064,8 @@ async function convertRawWithExternalTool(file: Express.Multer.File): Promise<{
               height: metadata.height ?? null,
               format: metadata.format ?? null,
               resolutionMode: attempt.resolutionMode,
+              lensCorrectionApplied: attempt.id === "rawtherapee-lensfun",
+              attemptErrors: errors.length ? [...errors] : undefined,
             },
           };
         } catch (validationError) {
@@ -2927,7 +3180,10 @@ async function convertHeicWithExternalTool(file: Express.Multer.File): Promise<{
   }
 }
 
-async function prepareProcessableImage(file: Express.Multer.File): Promise<{
+async function prepareProcessableImage(
+  file: Express.Multer.File,
+  options?: { lensCorrection?: LensCorrection },
+): Promise<{
   file: Express.Multer.File;
   raw: Record<string, unknown>;
 }> {
@@ -2962,7 +3218,7 @@ async function prepareProcessableImage(file: Express.Multer.File): Promise<{
     };
   }
 
-  const converted = await convertRawWithExternalTool(file);
+  const converted = await convertRawWithExternalTool(file, options);
   if (!converted || converted.file === file) {
     const conversion = converted?.conversion || {
       raw: true,
@@ -3374,7 +3630,9 @@ async function buildPhotoEnhancerEnhancementPayload(params: {
   pool?: Pool;
   ownerUserId?: string | null;
 }) {
-  const prepared = await prepareProcessableImage(params.file);
+  const prepared = await prepareProcessableImage(params.file, {
+    lensCorrection: params.settings?.lensCorrection,
+  });
   if (hasUnavailableSourceConversion(prepared.raw)) {
     return {
       ok: false as const,
@@ -3527,14 +3785,28 @@ async function runGfpganService(params: {
     PHOTO_ENHANCER_MODEL_TIMEOUT_MS,
   );
 
+  // RunPod Serverless speaks a job API (POST /v2/<endpointId>/runsync with
+  // {input:…} -> {output:…}) instead of the runner's native /enhance. Detect it
+  // from the endpoint host and adapt the envelope + bearer auth; the CPU Render
+  // runner, the GPU Pod and Modal all speak the native contract unchanged.
+  // Fully gated by PHOTO_ENHANCER_GFPGAN_URL — prod is untouched until that env
+  // var points at api.runpod.ai.
+  let isRunpodServerless = false;
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
+    isRunpodServerless = new URL(endpoint).host.endsWith("api.runpod.ai");
+  } catch {
+    isRunpodServerless = false;
+  }
+  const runpodApiKey = process.env.RUNPOD_API_KEY || process.env.RUNPOD_KEY || "";
+  const runnerHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (isRunpodServerless && runpodApiKey) {
+    runnerHeaders.Authorization = `Bearer ${runpodApiKey}`;
+  }
+
+  try {
+    const runnerRequestBody = {
         filename: params.file.originalname,
         mimeType: params.file.mimetype,
         preset: params.preset,
@@ -3590,11 +3862,37 @@ async function runGfpganService(params: {
           weightsKey: params.model.weights?.key || params.model.r2Key,
         },
         imageBase64: params.file.buffer.toString("base64"),
-      }),
+    };
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: runnerHeaders,
+      signal: controller.signal,
+      body: JSON.stringify(
+        isRunpodServerless ? { input: runnerRequestBody } : runnerRequestBody,
+      ),
     });
 
     if (!response.ok) return null;
-    const payload = (await response.json()) as Record<string, unknown>;
+    let payload = (await response.json()) as Record<string, unknown>;
+    // RunPod runsync wraps the handler's return in { output, status, error }.
+    // Unwrap to the runner's native dict; treat job- or handler-level errors as
+    // a runner miss so the caller falls back to the CPU path instead of 5xx-ing.
+    if (isRunpodServerless) {
+      const jobError = readString((payload as { error?: unknown }).error);
+      if (jobError) {
+        console.warn("[photo-enhancer] RunPod serverless job error:", jobError);
+        return null;
+      }
+      const out = (payload as { output?: unknown }).output;
+      if (out && typeof out === "object") {
+        payload = out as Record<string, unknown>;
+      }
+      const handlerError = readString((payload as { error?: unknown }).error);
+      if (handlerError) {
+        console.warn("[photo-enhancer] RunPod handler error:", handlerError);
+        return null;
+      }
+    }
     const directUrl =
       readString(payload.enhancedImageUrl) ||
       readString(payload.imageUrl) ||
@@ -3643,7 +3941,7 @@ async function enhanceWithSharp(
   }
 
   if (settings.sharpness > 0) {
-    pipeline = pipeline.sharpen(clampNumber(settings.sharpness / 35, 0.3, 2.4));
+    pipeline = pipeline.sharpen({ sigma: clampNumber(settings.sharpness / 35, 0.3, 2.4) });
   } else if (settings.sharpness < -15) {
     pipeline = pipeline.blur(clampNumber(Math.abs(settings.sharpness) / 80, 0.3, 1.5));
   }
@@ -3725,7 +4023,8 @@ async function persistEnhancedBuffer(params: {
   settings: PhotoEnhancerSettings;
   namePrefix?: string;
 }): Promise<PhotoEnhancerSavedFile> {
-  const projectDirectory = path.join(projectFileStorageRoot, params.projectId);
+  const safeProjectId = sanitizeR2KeySegment(params.projectId || "photo-enhancer", "photo-enhancer");
+  const projectDirectory = path.join(projectFileStorageRoot, safeProjectId);
   await fs.mkdir(projectDirectory, { recursive: true });
   const id = crypto.randomUUID();
   const extension = extensionForMime(params.mimeType);
@@ -3765,7 +4064,9 @@ async function enhanceUploadedFile(params: {
   metadata: Record<string, unknown>;
   raw: Record<string, unknown>;
 }> {
-  const prepared = await prepareProcessableImage(params.file);
+  const prepared = await prepareProcessableImage(params.file, {
+    lensCorrection: params.settings?.lensCorrection,
+  });
   if (hasUnavailableSourceConversion(prepared.raw)) {
     throw new Error(`${conversionErrorCode(prepared.raw)}: ${conversionErrorMessage(prepared.raw)}`);
   }
@@ -4393,6 +4694,36 @@ export function getPhotoEnhancerJobStatusSnapshot(jobId: string): {
   return { state, enhancedUrl };
 }
 
+/// Workspace-bro: list in-memory enhancer-jobber for ETT prosjekt, i en
+/// kompakt form Team Workspace sin enhance-status kan flette med DB-tabellen
+/// (`photo_enhancement_jobs`). Capture-deliver/workspace-jobber lever bare i
+/// minnet (photoEnhancerJobs), så uten dette ville nyutløste jobber være
+/// usynlige i workspacet til de evt. persisteres.
+export function listPhotoEnhancerJobsByProjectId(projectId: string): Array<{
+  id: string; projectId: string; status: string; progress: number;
+  fileName: string | null; enhancedUrl: string | null; thumbUrl: string | null;
+  preset: string | null; createdAt: string | null; completedAt: string | null;
+}> {
+  if (!projectId) return [];
+  const out: Array<ReturnType<typeof toCompact>> = [];
+  const toCompact = (job: PhotoEnhancerQueuedJob) => ({
+    id: job.id,
+    projectId: job.projectId,
+    status: job.status,
+    progress: typeof job.progress === "number" ? job.progress : 0,
+    fileName: job.source?.fileName ?? null,
+    enhancedUrl: job.artifacts?.find((a) => a.type === "enhanced-image")?.url ?? null,
+    thumbUrl: job.artifacts?.find((a) => { const t = a.type as string; return t === "preview" || t === "thumbnail"; })?.url ?? null,
+    preset: job.preset ?? null,
+    createdAt: job.createdAt ?? null,
+    completedAt: job.completedAt ?? null,
+  });
+  for (const job of photoEnhancerJobs.values()) {
+    if (job.projectId === projectId) out.push(toCompact(job));
+  }
+  return out;
+}
+
 export function createPhotoEnhancerRouter(pool?: Pool) {
   const router = express.Router();
 
@@ -4686,10 +5017,19 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         });
       }
       try {
+        // Camera RAW / HEIC can't be decoded by Sharp directly — rasterise
+        // first (same path as /analyze) so face detection works on RAW too,
+        // not just JPEG/PNG.
+        const preparedForFaces = await prepareProcessableImage(req.file as Express.Multer.File);
+        if (hasUnavailableSourceConversion(preparedForFaces.raw)) {
+          return res
+            .status(422)
+            .json({ success: false, available: false, error: "raw_conversion_unavailable" });
+        }
         const result = await withTimeout(
           runFaceApiExclusive(async () => {
             const runtime = await loadFaceApiRuntime();
-            const faceInput = await prepareFaceApiInput(req.file as Express.Multer.File);
+            const faceInput = await prepareFaceApiInput(preparedForFaces.file);
             const image = await runtime.canvas.loadImage(faceInput.buffer);
             const options = new runtime.faceApi.TinyFaceDetectorOptions({
               inputSize: PHOTO_ENHANCER_FACE_API_INPUT_SIZE,
@@ -4802,6 +5142,68 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
       }
     }
     return res.json({ success: true, luts: [...builtIn, ...userLuts], source });
+  });
+
+  // Subject-matte proxy — forwards to the runner's /subject-matte (U²-Net default,
+  // BiRefNet opt-in via modelKey). Returns the foreground matte (+ optional cutout /
+  // subject-protected graded look) so the CaptureApp editor can use a SERVER-quality
+  // subject mask (the on-device tier is iOS Vision person-segmentation). Thin
+  // synchronous proxy: small preview-res image in, matte out — no queue/R2 needed.
+  router.post("/subject-matte", async (req, res) => {
+    const runnerEndpoint = resolvePhotoEnhancerRunnerEndpoint({
+      runnerEnvKeys: ["PHOTO_ENHANCER_GFPGAN_URL", "GFPGAN_SERVICE_URL"],
+      defaultRunnerUrl:
+        process.env.RENDER === "true"
+          ? "https://creatorhub-gfpgan-runner.onrender.com/enhance"
+          : null,
+    });
+    if (!runnerEndpoint) {
+      return res
+        .status(503)
+        .json({ success: false, error: "subject_matte_runner_not_configured" });
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const imageBase64 = typeof body.imageBase64 === "string" ? body.imageBase64 : "";
+    if (!imageBase64) {
+      return res.status(400).json({ success: false, error: "imageBase64_required" });
+    }
+
+    const url = new URL(runnerEndpoint);
+    url.pathname = url.pathname.replace(/\/(enhance|)$/, "/subject-matte") || "/subject-matte";
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      Number(process.env.PHOTO_ENHANCER_MATTE_TIMEOUT_MS || 60_000),
+    );
+    try {
+      const response = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageBase64,
+          modelKey: typeof body.modelKey === "string" ? body.modelKey : undefined,
+          returnCutout: body.returnCutout === true,
+          applyBackgroundLook: body.applyBackgroundLook === true,
+          backgroundStrength:
+            typeof body.backgroundStrength === "number" ? body.backgroundStrength : undefined,
+        }),
+        signal: controller.signal,
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        return res
+          .status(response.status === 503 ? 503 : 502)
+          .json({ success: false, error: `runner_${response.status}`, detail: text.slice(0, 300) });
+      }
+      const payload = JSON.parse(text) as Record<string, unknown>;
+      return res.json({ success: true, ...payload });
+    } catch (err) {
+      return res
+        .status(502)
+        .json({ success: false, error: "subject_matte_request_failed" });
+    } finally {
+      clearTimeout(timer);
+    }
   });
 
   // Frequency-sep 16-bit save proxy. Frontend POSTs raw little-endian
@@ -4921,11 +5323,25 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         ? keywordsRaw.split(",").map((s) => s.trim()).filter(Boolean)
         : [];
 
+      const SAFE_IMAGE_MIMES: Record<string, string> = {
+        "image/jpeg": "image/jpeg",
+        "image/jpg": "image/jpeg",
+        "image/png": "image/png",
+        "image/webp": "image/webp",
+        "image/tiff": "image/tiff",
+        "image/heic": "image/heic",
+        "image/heif": "image/heif",
+      };
+      const safeContentType =
+        SAFE_IMAGE_MIMES[(req.file.mimetype || "").toLowerCase()] ||
+        "application/octet-stream";
+
       if (!copyright && !artist && !creator && keywords.length === 0) {
         // Nothing to stamp — send the input back unchanged so the
         // frontend can use the same code path whether or not the user
         // configured metadata.
-        res.setHeader("Content-Type", req.file.mimetype || "application/octet-stream");
+        res.setHeader("Content-Type", safeContentType);
+        res.setHeader("Content-Disposition", "attachment");
         return res.status(200).end(req.file.buffer);
       }
 
@@ -4945,10 +5361,8 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         // Don't fail the export just because exiftool isn't on the
         // dev box — fall back to passing through untouched.
         if (result.error === "exiftool_unavailable") {
-          res.setHeader(
-            "Content-Type",
-            req.file.mimetype || "application/octet-stream",
-          );
+          res.setHeader("Content-Type", safeContentType);
+          res.setHeader("Content-Disposition", "attachment");
           res.setHeader("X-Exif-Stamp", "skipped_exiftool_unavailable");
           return res.status(200).end(req.file.buffer);
         }
@@ -4958,8 +5372,9 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
           detail: result.detail,
         });
       }
-      res.setHeader("Content-Type", req.file.mimetype || "application/octet-stream");
+      res.setHeader("Content-Type", safeContentType);
       res.setHeader("Content-Length", result.bytes.length.toString());
+      res.setHeader("Content-Disposition", "attachment");
       res.setHeader("X-Exif-Stamp", "applied");
       return res.status(200).end(result.bytes);
     },
@@ -5111,7 +5526,7 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         meta = parseCubeMetadata(text);
       } catch (err) {
         if (err instanceof CubeParseError) {
-          return res.status(400).json({ success: false, error: err.code, detail: err.message });
+          return res.status(400).json({ success: false, error: err.code, detail: "internal_error" });
         }
         return res.status(400).json({ success: false, error: "parse_failed" });
       }
@@ -5238,6 +5653,9 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
       }
     }
 
+    // Try the runner first when configured — it is the source of truth.
+    // A non-OK response or an unreachable/stale runner falls through to the
+    // built-in table below for known slugs rather than failing the request.
     const runnerEndpoint = resolvePhotoEnhancerRunnerEndpoint({
       runnerEnvKeys: ["PHOTO_ENHANCER_GFPGAN_URL", "GFPGAN_SERVICE_URL"],
       defaultRunnerUrl:
@@ -5245,31 +5663,47 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
           ? "https://creatorhub-gfpgan-runner.onrender.com/enhance"
           : null,
     });
-    if (!runnerEndpoint) {
-      return res.status(503).json({ success: false, error: "runner_not_configured" });
-    }
-    const url = new URL(runnerEndpoint);
-    url.pathname = url.pathname.replace(/\/(enhance|)$/, `/luts/${lutId}/table`);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 6000);
-    try {
-      const response = await fetch(url.toString(), {
-        method: "GET",
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        return res.status(response.status === 404 ? 404 : 502).json({
-          success: false,
-          error: response.status === 404 ? "lut_not_found" : "runner_error",
+    if (runnerEndpoint) {
+      const url = new URL(runnerEndpoint);
+      url.pathname = url.pathname.replace(/\/(enhance|)$/, `/luts/${lutId}/table`);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+      try {
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          signal: controller.signal,
         });
+        if (response.ok) {
+          const payload = (await response.json()) as Record<string, unknown>;
+          return res.json(payload);
+        }
+        // Non-OK (e.g. a stale runner deploy lacking the LUT library, or a
+        // genuine 404 for a non-built-in slug) — fall through to fallback.
+      } catch {
+        // Runner unreachable/timeout — fall through to built-in fallback.
+      } finally {
+        clearTimeout(timer);
       }
-      const payload = (await response.json()) as Record<string, unknown>;
-      return res.json(payload);
-    } catch {
-      return res.status(504).json({ success: false, error: "runner_timeout" });
-    } finally {
-      clearTimeout(timer);
     }
+
+    // Built-in fallback keeps /luts/:id/table consistent with the /luts
+    // catalog's fallback slugs even when the runner is absent or stale.
+    const builtin = buildBuiltinLutTable(lutId);
+    if (builtin) {
+      return res.json({
+        success: true,
+        id: lutId,
+        size: builtin.size,
+        domainMin: [0, 0, 0],
+        domainMax: [1, 1, 1],
+        table: builtin.table,
+      });
+    }
+
+    return res.status(runnerEndpoint ? 404 : 503).json({
+      success: false,
+      error: runnerEndpoint ? "lut_not_found" : "runner_not_configured",
+    });
   });
 
   router.get("/improvements", (_req, res) => {
@@ -5307,8 +5741,11 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     if (!source) {
       return res.status(400).json({ success: false, error: "r2_source_required" });
     }
-    if (!isAllowedPhotoEnhancerR2Object(source.bucket, source.key)) {
-      return res.status(403).json({ success: false, error: "photo_enhancer_r2_object_not_allowed" });
+    const sourceAllowed = source.storage === "b2"
+      ? isAllowedPhotoEnhancerB2Object(source.bucket, source.key)
+      : isAllowedPhotoEnhancerR2Object(source.bucket, source.key);
+    if (!sourceAllowed) {
+      return res.status(403).json({ success: false, error: "photo_enhancer_source_object_not_allowed" });
     }
     if (!isSupportedPhotoUpload({ originalname: source.fileName, mimetype: source.mimeType })) {
       return res.status(415).json({ success: false, error: "unsupported_photo_upload_type" });
@@ -5494,6 +5931,41 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     }
     schedulePhotoEnhancerQueue();
     res.json({ success: true, queue: getPhotoEnhancerQueueRuntime() });
+  });
+
+  // Presigned single PUT to the Backblaze B2 staging bucket — the
+  // photographer pipeline's storage. The client uploads the source here, then
+  // POSTs /jobs with { source: { bucket, key, storage: "b2", size, fileName,
+  // mimeType } } for async enhancement. Keeps the photo path on B2 (no R2).
+  router.post("/uploads/b2-presign", async (req, res) => {
+    const body = parseJsonObject(req.body);
+    const fileName = readString(body.fileName) || "source.raw";
+    const contentType = readString(body.contentType) || "application/octet-stream";
+    const projectId = readString(body.projectId);
+    const cfg = buildPhotoEnhancerB2Config();
+    const client = getPhotoEnhancerB2Client();
+    if (!cfg.enabled || !client) {
+      return res.status(503).json({ success: false, error: "photo_enhancer_b2_not_configured" });
+    }
+    try {
+      const key = buildPhotoEnhancerB2UploadKey({ fileName, projectId });
+      const url = await getSignedUrl(
+        client,
+        new PutObjectCommand({ Bucket: cfg.bucket, Key: key, ContentType: contentType }),
+        { expiresIn: 3600 },
+      );
+      res.json({
+        success: true,
+        storage: "b2",
+        bucket: cfg.bucket,
+        key,
+        uploadUrl: url,
+        expiresInSeconds: 3600,
+      });
+    } catch (error) {
+      console.error("[photo-enhancer] b2-presign failed:", error);
+      res.status(500).json({ success: false, error: "b2_presign_failed" });
+    }
   });
 
   router.post("/uploads/multipart", async (req, res) => {
@@ -6169,6 +6641,52 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     },
   );
 
+  // POST /preview — a browser-renderable raster of any upload, including
+  // every camera RAW format (Nikon NEF, Sony ARW, Fujifilm RAF, Canon
+  // CR2/CR3, Panasonic RW2, Olympus ORF, Pentax, DNG, …) and HEIC. The
+  // browser can't decode RAW, so the UI calls this to get a JPEG it can
+  // display in the preview and feed to the AI / face-detection endpoints.
+  // The original RAW is still sent to /enhance, where it is converted at
+  // full quality server-side — this is only the lightweight preview.
+  router.post("/preview", photoEnhancerUpload.single("image"), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: "image_required" });
+    }
+    try {
+      // Fast path: most RAWs embed a full-size JPEG preview we can pull
+      // with exiftool — far cheaper than a full dcraw/darktable decode.
+      let rasterBuffer: Buffer | null = null;
+      const embedded = await extractEmbeddedPreviewImage(req.file).catch(() => null);
+      if (embedded && embedded.buffer && embedded.buffer.byteLength > 1024) {
+        rasterBuffer = embedded.buffer;
+      } else {
+        // Full RAW/HEIC decode (or passthrough for already-raster uploads).
+        const prepared = await prepareProcessableImage(req.file);
+        if (hasUnavailableSourceConversion(prepared.raw)) {
+          return res
+            .status(422)
+            .json({ success: false, error: "raw_conversion_unavailable" });
+        }
+        rasterBuffer = prepared.file.buffer;
+      }
+
+      const sharpModule = await import("sharp");
+      const sharp = sharpModule.default;
+      const jpeg = await sharp(rasterBuffer, { failOn: "none" })
+        .rotate()
+        .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 82 })
+        .toBuffer();
+
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Cache-Control", "no-store");
+      return res.send(jpeg);
+    } catch (error) {
+      console.error("[photo-enhancer] preview failed:", error);
+      return res.status(500).json({ success: false, error: "preview_failed" });
+    }
+  });
+
   // POST /suggest-recipe — Claude Vision-driven first-draft recipe.
   // Takes a JPEG/PNG/WebP upload, asks Claude Opus 4.7 to read the
   // image and propose values for every slider the enhancer exposes
@@ -6215,11 +6733,15 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
             );
           }
         }
+        const styleInstruction =
+          readString((req.body as Record<string, unknown> | undefined)?.instruction) ||
+          undefined;
         const result = await suggestPortraitRecipe({
           imageBase64,
           mime: mime as "image/jpeg" | "image/png" | "image/webp",
           presetHint,
           userPreferenceSummary,
+          styleInstruction,
         });
         if (!result.ok) {
           const status =
@@ -6548,6 +7070,9 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         res.json({
           ...enhancementResult.payload,
           processingMs,
+          rawConverter: readString(enhancementResult.prepared.raw.converter),
+          lensCorrectionApplied: Boolean(enhancementResult.prepared.raw.lensCorrectionApplied),
+          conversionErrors: enhancementResult.prepared.raw.attemptErrors ?? null,
         });
         trackPhotoEnhancerEvent({
           route: "enhance",

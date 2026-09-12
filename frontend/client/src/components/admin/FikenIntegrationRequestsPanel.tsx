@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
@@ -14,10 +14,8 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Chip,
   Button,
   IconButton,
@@ -32,13 +30,13 @@ import {
   InputLabel,
   Alert,
   Tooltip,
-  CircularProgress,
   Tabs,
   Tab,
   Checkbox,
   FormControlLabel,
   FormGroup,
   Divider,
+  InputAdornment,
 } from '@mui/material';
 import {
   AccountBalance,
@@ -52,10 +50,12 @@ import {
   Edit,
   Sync,
   PictureAsPdf,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { AdminButton, AdminLoading, AdminTableContainer, useIsMobile } from './design-system';
 
 interface FikenRequest {
   id: string;
@@ -108,12 +108,14 @@ export default function FikenIntegrationRequestsPanel() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
 
   const [selectedRequest, setSelectedRequest] = useState<FikenRequest | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [newStatus, setNewStatus] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
   const [currentTab, setCurrentTab] = useState(0);
+  const [search, setSearch] = useState("");
 
   // Export dialog state
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -146,7 +148,7 @@ export default function FikenIntegrationRequestsPanel() {
     },
   });
 
-  const requests: FikenRequest[] = fikenData?.requests || [];
+  const requests: FikenRequest[] = Array.isArray(fikenData?.requests) ? fikenData.requests : [];
   const stats: FikenStats = fikenData?.stats || { total: 0, pending: 0, contacted: 0, connected: 0, declined: 0 };
 
   const getStatusColor = (status: string) => {
@@ -186,12 +188,21 @@ export default function FikenIntegrationRequestsPanel() {
     }
   };
 
-  const filteredRequests = currentTab === 0
-    ? requests
-    : requests.filter(r => {
-        const statusMap = ['all','pending','contacted','connected','declined'];
-        return r.fikenIntegrationStatus === statusMap[currentTab];
-      });
+  const filteredRequests = useMemo(() => {
+    const byTab = currentTab === 0
+      ? requests
+      : requests.filter(r => {
+          const statusMap = ['all','pending','contacted','connected','declined'];
+          return r.fikenIntegrationStatus === statusMap[currentTab];
+        });
+    const q = search.trim().toLowerCase();
+    if (!q) return byTab;
+    return byTab.filter(r =>
+      [r.vendorName, r.vendorType, r.businessInfo?.name, r.businessInfo?.email, r.businessInfo?.organizationNumber]
+        .filter(Boolean)
+        .some(field => String(field).toLowerCase().includes(q))
+    );
+  }, [requests, currentTab, search]);
 
   // Toggle export column
   const handleToggleExportColumn = (key: string) => {
@@ -356,11 +367,7 @@ export default function FikenIntegrationRequestsPanel() {
   };
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <AdminLoading label="Laster forespørsler …" />;
   }
 
   return (
@@ -369,14 +376,14 @@ export default function FikenIntegrationRequestsPanel() {
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', p: 1.5, bgcolor: 'white', borderRadius: 2, boxShadow: 1, mr: 2 }}>
-            <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+            <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <path d="M12.462,15.174C11.743,15.174 11.055,14.892 10.548,14.391C10.041,13.89 9.757,13.211 9.759,12.504L9.759,11.471C9.752,5.672 14.515,0.962 20.405,0.944C22.528,0.941 24.603,1.568 26.359,2.743C27.573,3.575 27.884,5.212 27.058,6.421C26.233,7.629 24.576,7.962 23.335,7.169C22.471,6.591 21.45,6.283 20.405,6.285C17.504,6.295 15.16,8.616 15.164,11.471L15.164,12.509C15.166,13.216 14.882,13.894 14.375,14.395C13.868,14.896 13.18,15.178 12.462,15.179" fill="#75ABF7"/>
               <path d="M21.45,17.681L15.161,17.681L15.161,11.472C15.195,10.5 14.688,9.587 13.838,9.092C12.989,8.596 11.932,8.596 11.082,9.092C10.233,9.587 9.725,10.5 9.759,11.472L9.759,17.686L3.47,17.686C1.972,17.686 0.758,18.881 0.758,20.356C0.758,21.831 1.972,23.027 3.47,23.027L9.759,23.027L9.759,29.241C9.735,30.206 10.245,31.109 11.091,31.599C11.937,32.088 12.985,32.088 13.831,31.599C14.677,31.109 15.187,30.206 15.163,29.241L15.163,23.022L21.452,23.022C22.95,23.022 24.164,21.826 24.164,20.352C24.164,18.877 22.95,17.681 21.452,17.681" fill="#5239BA"/>
             </svg>
             <Typography variant="h6" sx={{ ml: 1, fontWeight: 500, color: '#5239BA' }}>fiken</Typography>
           </Box>
           <Box>
-            <Typography variant="h5" fontWeight="bold">Fiken Integrasjonsforespørsler</Typography>
+            <Typography variant="h5" component="h2" fontWeight="bold">Fiken Integrasjonsforespørsler</Typography>
             <Typography variant="body2" color="text.secondary">
               Oversikt over leverandører som ønsker Fiken-integrasjon
             </Typography>
@@ -438,8 +445,25 @@ export default function FikenIntegrationRequestsPanel() {
         <Tab label={`Avslått (${stats.declined})`} />
       </Tabs>
 
+      {/* Search */}
+      <TextField
+        size="small"
+        fullWidth
+        placeholder="Søk etter leverandør, e-post, org.nr …"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ mb: 2 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
+
       {/* Requests Table */}
-      <TableContainer component={Paper}>
+      <AdminTableContainer ariaLabel="Fiken-integrasjonsforespørsler">
         <Table>
           <TableHead>
             <TableRow>
@@ -500,12 +524,12 @@ export default function FikenIntegrationRequestsPanel() {
                   </TableCell>
                   <TableCell align="right">
                     <Tooltip title="Se detaljer">
-                      <IconButton size="small" onClick={() => handleViewDetails(request)}>
+                      <IconButton size="small" aria-label="Se detaljer" onClick={() => handleViewDetails(request)}>
                         <Visibility />
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Send e-post">
-                      <IconButton size="small" href={`mailto:${request.businessInfo?.email}`}>
+                      <IconButton size="small" aria-label="Send e-post" href={`mailto:${request.businessInfo?.email}`}>
                         <Email />
                       </IconButton>
                     </Tooltip>
@@ -515,10 +539,10 @@ export default function FikenIntegrationRequestsPanel() {
             )}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
 
       {/* Details Dialog */}
-      <Dialog open={showDetailsDialog} onClose={() => setShowDetailsDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog open={showDetailsDialog} onClose={() => setShowDetailsDialog(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <AccountBalance color="primary" />
@@ -570,15 +594,15 @@ export default function FikenIntegrationRequestsPanel() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowDetailsDialog(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setShowDetailsDialog(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleUpdateStatus}
-            disabled={updateStatusMutation.isPending}
-            startIcon={updateStatusMutation.isPending ? <CircularProgress size={16} /> : <Sync />}
+            loading={updateStatusMutation.isPending}
+            startIcon={<Sync />}
           >
             Oppdater status
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -588,6 +612,7 @@ export default function FikenIntegrationRequestsPanel() {
         onClose={() => setShowExportDialog(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <PictureAsPdf sx={{ color: '#f59e0b' }} />
@@ -643,19 +668,17 @@ export default function FikenIntegrationRequestsPanel() {
           </Alert>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setShowExportDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setShowExportDialog(false)}>
             Avbryt
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleExportPDF}
             disabled={exportColumns.filter(c => c.enabled).length === 0}
             startIcon={<PictureAsPdf />}
-            sx={{
-              bgcolor: '#f59e0b','&:hover': { bgcolor: '#d97706' }}}
           >
             Last ned PDF
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

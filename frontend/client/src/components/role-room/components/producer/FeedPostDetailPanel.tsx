@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -25,10 +25,12 @@ import {
   Close as CloseIcon,
   Collections as CollectionsIcon,
   DeleteOutline as DeleteOutlineIcon,
+  GridView as GridViewIcon,
   LockOpen as LockOpenIcon,
   Lock as LockIcon,
   Movie as MovieIcon,
   Tag as TagIcon,
+  UploadFile as UploadFileIcon,
 } from '@mui/icons-material';
 import roleRoomAgentService, {
   RoleRoomFeedEntitlementError,
@@ -38,6 +40,7 @@ import type {
   RoleRoomAgentBrandColor,
   RoleRoomAgentProducerBootstrapResult,
   RoleRoomFeedBrandSnapshot,
+  RoleRoomFeedGridAspect,
   RoleRoomFeedLogoPlacement,
   RoleRoomFeedMediaType,
   RoleRoomFeedPlatform,
@@ -47,10 +50,16 @@ import type {
   RoleRoomFeedTemplatePayload,
 } from '../../services/roleRoomAgentService';
 import { CONCEPT_LABELS, FEED_POST_CONCEPT_ORDER, buildFeedPost } from '../../utils/feedPlanner';
+import { describeProducerError } from '../../utils/producerErrorMessage';
 import FeedPostTile from './FeedPostTile';
 import GoogleDriveImagePicker from './GoogleDriveImagePicker';
 import FeedPostApprovalActions from './FeedPostApprovalActions';
 import LinkedInPublishAsSelector from './LinkedInPublishAsSelector';
+import FeedPostMockupLinks from './FeedPostMockupLinks';
+import {
+  roleRoomMediaToDataUrl,
+  useRoleRoomMediaUrl,
+} from "../../utils/protectedMedia";
 
 type FeedPostDetailPanelProps = {
   projectId: string;
@@ -81,6 +90,64 @@ const MEDIA_TYPE_OPTIONS: { value: RoleRoomFeedMediaType; label: string }[] = [
   { value: 'carousel', label: 'Karusell' },
 ];
 
+const GRID_ASPECT_OPTIONS: { value: RoleRoomFeedGridAspect; label: string; hint: string }[] = [
+  { value: '1:1', label: '1:1', hint: 'Kvadrat' },
+  { value: '4:5', label: '4:5', hint: 'Portrett (anbefalt for feed)' },
+  { value: '16:9', label: '16:9', hint: 'Liggende / nettside' },
+];
+
+// Cover/thumbnail lagres som data: URL i samme JSONB-rad som posten.
+// 2 MB matcher backendens MAX_CUSTOM_IMAGE_LENGTH.
+const MAX_COVER_BYTES = 2_000_000;
+
+function ProtectedImageThumbnail({
+  src,
+  index,
+}: {
+  src: string;
+  index: number;
+}) {
+  const { url } = useRoleRoomMediaUrl(src);
+  return (
+    <Box
+      sx={{
+        flexShrink: 0,
+        width: 56,
+        height: 56,
+        borderRadius: 1.2,
+        border: "1px solid rgba(148,163,184,0.22)",
+        bgcolor: "#0f172a",
+        overflow: "hidden",
+        position: "relative",
+      }}
+    >
+      {url ? (
+        <Box
+          component="img"
+          src={url}
+          alt=""
+          sx={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      ) : null}
+      <Box
+        sx={{
+          position: "absolute",
+          top: 2,
+          left: 2,
+          bgcolor: "rgba(15,23,42,0.82)",
+          color: "#fff",
+          fontSize: "0.64rem",
+          fontWeight: 800,
+          px: 0.5,
+          borderRadius: 0.6,
+        }}
+      >
+        {index + 1}
+      </Box>
+    </Box>
+  );
+}
+
 function formatScheduleInputValue(iso: string | null): string {
   if (!iso) return '';
   try {
@@ -89,7 +156,7 @@ function formatScheduleInputValue(iso: string | null): string {
     const pad = (value: number) => value.toString().padStart(2, '0');
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
   } catch {
-    return '';
+    return "";
   }
 }
 
@@ -107,12 +174,55 @@ export default function FeedPostDetailPanel({
   onClose,
   onEntitlementBlocked,
 }: FeedPostDetailPanelProps) {
-  const hashtagsText = useMemo(() => post.hashtags.join(' '), [post.hashtags]);
+  const { url: resolvedImageUrl } = useRoleRoomMediaUrl(post.customImageUrl);
+  const { url: resolvedVideoUrl } = useRoleRoomMediaUrl(
+    post.customVideoDataUrl,
+  );
+  const hashtagsText = useMemo(() => post.hashtags.join(" "), [post.hashtags]);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const [coverError, setCoverError] = useState<string | null>(null);
+
+  const gridAspect: RoleRoomFeedGridAspect = post.gridAspect ?? "4:5";
+
+  // Les en enhetsopplastet thumbnail som data: URL og lagre på posten.
+  // Auto-saven i FeedPlannerPanel persisterer den videre til backend.
+  const handleCoverFile = (file: File | null) => {
+    setCoverError(null);
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setCoverError("Coveret må være et bilde (JPG/PNG/WebP).");
+      return;
+    }
+    if (file.size > MAX_COVER_BYTES) {
+      setCoverError(
+        "Bildet er for stort — maks 2 MB. Komprimer og prøv igjen.",
+      );
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : null;
+      if (!dataUrl) {
+        setCoverError("Kunne ikke lese bildet. Prøv et annet.");
+        return;
+      }
+      onUpdate({ coverImageUrl: dataUrl, coverImageName: file.name });
+    };
+    reader.onerror = () =>
+      setCoverError("Kunne ikke lese bildet. Prøv et annet.");
+    reader.readAsDataURL(file);
+  };
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [aiNote, setAiNote] = useState<{ strategyNotes: string; bestTimeRationale: string; freshness: string } | null>(null);
-  const [tierSlug, setTierSlug] = useState<'spotlight' | 'headliner' | 'showrunner' | 'admin' | null>(null);
+  const [aiNote, setAiNote] = useState<{
+    strategyNotes: string;
+    bestTimeRationale: string;
+    freshness: string;
+  } | null>(null);
+  const [tierSlug, setTierSlug] = useState<
+    "spotlight" | "headliner" | "showrunner" | "admin" | null
+  >(null);
   const [templates, setTemplates] = useState<RoleRoomFeedTemplate[]>([]);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateError, setTemplateError] = useState<string | null>(null);
@@ -121,7 +231,10 @@ export default function FeedPostDetailPanel({
     let cancelled = false;
     void (async () => {
       try {
-        const list = await roleRoomAgentService.listFeedTemplates(projectId, platform);
+        const list = await roleRoomAgentService.listFeedTemplates(
+          projectId,
+          platform,
+        );
         if (!cancelled) setTemplates(list);
       } catch {
         /* templates are optional */
@@ -153,7 +266,7 @@ export default function FeedPostDetailPanel({
 
   const saveCurrentAsTemplate = async () => {
     const name = window.prompt(
-      'Navn på malen?',
+      "Navn på malen?",
       `${post.title?.slice(0, 40) || 'Mal'} — ${new Date().toLocaleDateString('nb-NO')}`,
     );
     if (!name?.trim()) return;
@@ -198,6 +311,9 @@ export default function FeedPostDetailPanel({
   const [fbSelectedPageId, setFbSelectedPageId] = useState<string>('');
   const [fbPublishing, setFbPublishing] = useState(false);
   const [fbPublishStatus, setFbPublishStatus] = useState<string | null>(null);
+  // Skille mellom «klarte ikke å hente sider» (nettverk/feil) og «ingen sider
+  // koblet» — ellers ser Stig samme «koble Meta på nytt»-melding uansett årsak.
+  const [fbPagesError, setFbPagesError] = useState<string | null>(null);
   const [hashtagSuggesting, setHashtagSuggesting] = useState(false);
   const [hashtagSuggestError, setHashtagSuggestError] = useState<string | null>(null);
   const [hashtagSuggestions, setHashtagSuggestions] = useState<Array<{
@@ -224,15 +340,21 @@ export default function FeedPostDetailPanel({
     const headers: Record<string, string> = {};
     const tok = resolveAuthToken();
     if (tok) headers['Authorization'] = `Bearer ${tok}`;
+    setFbPagesError(null);
     fetch('/api/role-room/facebook/pages', { headers, credentials: 'include' })
-      .then((r) => r.json().catch(() => ({})))
-      .then((body) => {
-        if (body?.success && Array.isArray(body.pages)) {
+      .then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) }))
+      .then(({ ok, body }) => {
+        if (ok && body?.success && Array.isArray(body.pages)) {
           setFbPages(body.pages);
           if (body.pages.length > 0) setFbSelectedPageId(body.pages[0].id);
+        } else {
+          // Svaret kom, men ikke som forventet (auth/scope/feil) — vis tydelig.
+          setFbPagesError('Kunne ikke hente Facebook-sider. Sjekk at Meta-kontoen er koblet med riktige rettigheter, og prøv igjen.');
         }
       })
-      .catch(() => { /* silently ignore — button handles errors */ });
+      .catch(() => {
+        setFbPagesError('Klarte ikke å hente Facebook-sider (offline eller nettverksfeil). Prøv igjen når du er tilkoblet.');
+      });
   }, []);
 
   const publishToFacebookPage = async () => {
@@ -248,23 +370,44 @@ export default function FeedPostDetailPanel({
     setFbPublishing(true);
     setFbPublishStatus(null);
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const [videoDataUrl, coverDataUrl] = await Promise.all([
+        roleRoomMediaToDataUrl(post.customVideoDataUrl),
+        roleRoomMediaToDataUrl(post.coverImageUrl),
+      ]);
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
       const tok = resolveAuthToken();
-      if (tok) headers['Authorization'] = `Bearer ${tok}`;
-      const response = await fetch('/api/role-room/facebook/publish-video', {
-        method: 'POST',
+      if (tok) headers["Authorization"] = `Bearer ${tok}`;
+      const response = await fetch("/api/role-room/facebook/publish-video", {
+        method: "POST",
         headers,
-        credentials: 'include',
+        credentials: "include",
         body: JSON.stringify({
           pageId: fbSelectedPageId,
-          videoDataUrl: post.customVideoDataUrl,
-          description: `${post.title}\n\n${post.caption}\n\n${post.callToAction}\n\n${post.hashtags.join(' ')}`.trim(),
+          videoDataUrl,
+          description:
+            `${post.title}\n\n${post.caption}\n\n${post.callToAction}\n\n${post.hashtags.join(' ')}`.trim(),
+          // Egendefinert cover/thumbnail → Graph `thumb` på FB-videoen.
+          coverDataUrl,
           scheduledFor: post.scheduledFor,
         }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setFbPublishStatus(body?.error || `HTTP ${response.status}`);
+        const backendMsg = typeof body?.error === "string" ? body.error : "";
+        const human =
+          response.status === 401
+            ? "Meta-tilkoblingen har utløpt. Koble Meta-kontoen på nytt og prøv igjen."
+            : response.status === 403
+              ? "Ingen tilgang til denne Facebook-siden. Sjekk at Meta-kontoen er koblet med riktige rettigheter."
+              : response.status === 429
+                ? "For mange forespørsler mot Facebook akkurat nå. Vent et øyeblikk og prøv igjen."
+                : response.status >= 500
+                  ? "Facebook svarer ikke akkurat nå. Prøv igjen om litt."
+                  : backendMsg ||
+                    `Publisering feilet (kode ${response.status}). Prøv igjen.`;
+        setFbPublishStatus(backendMsg && response.status < 500 && response.status !== 403 ? `${human} (${backendMsg})` : human);
         return;
       }
       if (body?.video?.scheduled) {
@@ -314,6 +457,9 @@ export default function FeedPostDetailPanel({
         imageDataUrl: post.mediaType === 'image' ? post.customImageUrl ?? undefined : undefined,
         imageDataUrls: post.mediaType === 'carousel' ? post.customImageUrls ?? undefined : undefined,
         videoDataUrl: post.mediaType === 'reel' ? post.customVideoDataUrl ?? undefined : undefined,
+        // Egendefinert cover/thumbnail → cover_url på reel-containeren.
+        coverDataUrl:
+          post.mediaType === 'reel' && post.coverImageUrl ? post.coverImageUrl : undefined,
         scheduledFor: post.scheduledFor,
       });
       if (result.rateLimited) {
@@ -399,7 +545,7 @@ export default function FeedPostDetailPanel({
         setAiError(message);
         onEntitlementBlocked?.(message);
       } else {
-        setAiError(caught instanceof Error ? caught.message : 'Kunne ikke hente AI-anbefaling.');
+        setAiError(describeProducerError(caught, 'hente AI-anbefalingen'));
       }
     } finally {
       setAiLoading(false);
@@ -450,41 +596,63 @@ export default function FeedPostDetailPanel({
       sx={{
         p: 1.8,
         borderRadius: 2.5,
-        bgcolor: 'rgba(15,23,42,0.72)',
-        border: '1px solid rgba(148,163,184,0.16)',
-        height: '100%',
+        bgcolor: "rgba(15,23,42,0.72)",
+        border: "1px solid rgba(148,163,184,0.16)",
+        height: "100%",
         minHeight: 520,
       }}
     >
       <Stack direction="row" alignItems="center" justifyContent="space-between">
         <Stack spacing={0.2}>
-          <Typography sx={{ color: '#e2e8f0', fontWeight: 800, fontSize: '0.98rem' }}>
+          <Typography
+            sx={{ color: "#e2e8f0", fontWeight: 800, fontSize: "0.98rem" }}
+          >
             Rediger post
           </Typography>
-          <Typography sx={{ color: 'rgba(226,232,240,0.58)', fontSize: '0.78rem' }}>
-            Post {postIndex + 1} · {CONCEPT_LABELS[post.concept as RoleRoomFeedPostConcept] || 'Post'}
+          <Typography
+            sx={{ color: "rgba(226,232,240,0.58)", fontSize: "0.78rem" }}
+          >
+            Post {postIndex + 1} ·{" "}
+            {CONCEPT_LABELS[post.concept as RoleRoomFeedPostConcept] || "Post"}
           </Typography>
         </Stack>
         <Stack direction="row" spacing={0.5}>
-          <Tooltip title={post.locked ? 'Lås opp' : 'Lås denne posten mot regenerering'}>
+          <Tooltip
+            title={
+              post.locked ? "Lås opp" : "Lås denne posten mot regenerering"
+            }
+          >
             <IconButton
               size="small"
               onClick={() => onUpdate({ locked: !post.locked })}
-              sx={{ color: post.locked ? '#fbbf24' : 'rgba(226,232,240,0.7)' }}
+              sx={{ color: post.locked ? "#fbbf24" : "rgba(226,232,240,0.7)" }}
             >
-              {post.locked ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}
+              {post.locked ? (
+                <LockIcon fontSize="small" />
+              ) : (
+                <LockOpenIcon fontSize="small" />
+              )}
             </IconButton>
           </Tooltip>
           {onClose ? (
-            <IconButton size="small" onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(226,232,240,0.7)' }}>
+            <IconButton
+              size="small"
+              onClick={onClose}
+              aria-label="Lukk"
+              sx={{ color: "rgba(226,232,240,0.7)" }}
+            >
               <CloseIcon fontSize="small" />
             </IconButton>
           ) : null}
         </Stack>
       </Stack>
 
-      <Box sx={{ mx: 'auto', width: 180 }}>
-        <FeedPostTile post={post} index={postIndex} brandSnapshot={brandSnapshot} />
+      <Box sx={{ mx: "auto", width: 180 }}>
+        <FeedPostTile
+          post={post}
+          index={postIndex}
+          brandSnapshot={brandSnapshot}
+        />
       </Box>
 
       <FeedPostApprovalActions
@@ -500,7 +668,14 @@ export default function FeedPostDetailPanel({
         }
       />
 
-      {platform === 'linkedin' ? (
+      <FeedPostMockupLinks
+        projectId={projectId}
+        platform={platform}
+        postId={post.id}
+        mediaType={post.mediaType}
+      />
+
+      {platform === "linkedin" ? (
         <LinkedInPublishAsSelector
           value={post.linkedInOrganizationUrn ?? null}
           onChange={(urn) => onUpdate({ linkedInOrganizationUrn: urn })}
@@ -511,27 +686,31 @@ export default function FeedPostDetailPanel({
           picker, carousel = multi-pick (2-10), reel = video picker. All
           three surface the same Drive flow; kind= filters the listing
           server-side. */}
-      {post.mediaType === 'carousel' ? (
+      {post.mediaType === "carousel" ? (
         <Stack
           spacing={0.8}
           sx={{
             p: 1,
             borderRadius: 1.8,
-            bgcolor: 'rgba(15,23,42,0.55)',
-            border: '1px solid rgba(148,163,184,0.16)',
+            bgcolor: "rgba(15,23,42,0.55)",
+            border: "1px solid rgba(148,163,184,0.16)",
           }}
         >
           <Stack direction="row" spacing={0.8} alignItems="center">
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
+              <Typography
+                sx={{ color: "#e2e8f0", fontSize: "0.78rem", fontWeight: 700 }}
+              >
                 {post.customImageUrls && post.customImageUrls.length > 0
                   ? `${post.customImageUrls.length} bilder valgt`
-                  : 'Carousel trenger 2-10 bilder'}
+                  : "Carousel trenger 2-10 bilder"}
               </Typography>
-              <Typography sx={{ color: 'rgba(226,232,240,0.58)', fontSize: '0.72rem' }}>
+              <Typography
+                sx={{ color: "rgba(226,232,240,0.58)", fontSize: "0.72rem" }}
+              >
                 {post.customImageUrls && post.customImageUrls.length > 0
-                  ? (post.customImageNames ?? []).join(', ')
-                  : 'Velg flere bilder fra Drive — holdes sammen som én carousel.'}
+                  ? (post.customImageNames ?? []).join(", ")
+                  : "Velg flere bilder fra Drive — holdes sammen som én carousel."}
               </Typography>
             </Box>
             <Button
@@ -540,21 +719,28 @@ export default function FeedPostDetailPanel({
               startIcon={<CollectionsIcon fontSize="small" />}
               onClick={() => setDrivePickerOpen(true)}
               sx={{
-                textTransform: 'none',
+                textTransform: "none",
                 fontWeight: 700,
-                color: '#22d3ee',
-                borderColor: 'rgba(34,211,238,0.5)',
-                '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+                color: "var(--role-cyan, #22d3ee)",
+                borderColor: "rgba(34,211,238,0.5)",
+                "&:hover": {
+                  borderColor: "var(--role-cyan, #22d3ee)",
+                  bgcolor: "rgba(34,211,238,0.08)",
+                },
               }}
             >
-              {post.customImageUrls && post.customImageUrls.length > 0 ? 'Endre utvalg' : 'Velg fra Drive'}
+              {post.customImageUrls && post.customImageUrls.length > 0
+                ? "Endre utvalg"
+                : "Velg fra Drive"}
             </Button>
             {post.customImageUrls && post.customImageUrls.length > 0 ? (
               <Tooltip title="Fjern alle">
                 <IconButton
                   size="small"
-                  onClick={() => onUpdate({ customImageUrls: null, customImageNames: null })}
-                  sx={{ color: 'rgba(248,113,113,0.9)' }}
+                  onClick={() =>
+                    onUpdate({ customImageUrls: null, customImageNames: null })
+                  }
+                  sx={{ color: "rgba(248,113,113,0.9)" }}
                 >
                   <DeleteOutlineIcon fontSize="small" />
                 </IconButton>
@@ -562,67 +748,51 @@ export default function FeedPostDetailPanel({
             ) : null}
           </Stack>
           {post.customImageUrls && post.customImageUrls.length > 0 ? (
-            <Stack direction="row" spacing={0.6} sx={{ overflowX: 'auto', py: 0.4 }}>
+            <Stack
+              direction="row"
+              spacing={0.6}
+              sx={{ overflowX: "auto", py: 0.4 }}
+            >
               {post.customImageUrls.map((url, index) => (
-                <Box
+                <ProtectedImageThumbnail
                   key={`${url.slice(-16)}-${index}`}
-                  sx={{
-                    flexShrink: 0,
-                    width: 56,
-                    height: 56,
-                    borderRadius: 1.2,
-                    border: '1px solid rgba(148,163,184,0.22)',
-                    background: `center/cover no-repeat url(${url})`,
-                    position: 'relative',
-                  }}
-                >
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      top: 2,
-                      left: 2,
-                      bgcolor: 'rgba(15,23,42,0.82)',
-                      color: '#fff',
-                      fontSize: '0.64rem',
-                      fontWeight: 800,
-                      px: 0.5,
-                      borderRadius: 0.6,
-                    }}
-                  >
-                    {index + 1}
-                  </Box>
-                </Box>
+                  src={url}
+                  index={index}
+                />
               ))}
             </Stack>
           ) : null}
         </Stack>
-      ) : post.mediaType === 'reel' ? (
+      ) : post.mediaType === "reel" ? (
         <Stack
           spacing={0.8}
           sx={{
             p: 1,
             borderRadius: 1.8,
-            bgcolor: 'rgba(15,23,42,0.55)',
-            border: '1px solid rgba(148,163,184,0.16)',
+            bgcolor: "rgba(15,23,42,0.55)",
+            border: "1px solid rgba(148,163,184,0.16)",
           }}
         >
           <Stack direction="row" spacing={0.8} alignItems="center">
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
-                {post.customVideoDataUrl ? 'Video valgt' : 'Ingen video ennå'}
+              <Typography
+                sx={{ color: "#e2e8f0", fontSize: "0.78rem", fontWeight: 700 }}
+              >
+                {post.customVideoDataUrl ? "Video valgt" : "Ingen video ennå"}
               </Typography>
               <Typography
                 sx={{
-                  color: 'rgba(226,232,240,0.58)',
-                  fontSize: '0.72rem',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
+                  color: "rgba(226,232,240,0.58)",
+                  fontSize: "0.72rem",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
                 }}
               >
                 {post.customVideoDataUrl
-                  ? post.customVideoName || 'Importert fra Drive (konverteres automatisk til 1080×1920 ved publisering)'
-                  : 'Velg en video fra Drive — konverteres til IG-reel-spec ved publisering.'}
+                  ? post.customVideoName ||
+                    "Importert fra Drive (konverteres automatisk til 1080×1920 ved publisering)"
+                  : "Velg en video fra Drive — konverteres til IG-reel-spec ved publisering."}
               </Typography>
             </Box>
             <Button
@@ -631,21 +801,29 @@ export default function FeedPostDetailPanel({
               startIcon={<MovieIcon fontSize="small" />}
               onClick={() => setDrivePickerOpen(true)}
               sx={{
-                textTransform: 'none',
+                textTransform: "none",
                 fontWeight: 700,
-                color: '#22d3ee',
-                borderColor: 'rgba(34,211,238,0.5)',
-                '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+                color: "var(--role-cyan, #22d3ee)",
+                borderColor: "rgba(34,211,238,0.5)",
+                "&:hover": {
+                  borderColor: "var(--role-cyan, #22d3ee)",
+                  bgcolor: "rgba(34,211,238,0.08)",
+                },
               }}
             >
-              {post.customVideoDataUrl ? 'Bytt video' : 'Fra Drive'}
+              {post.customVideoDataUrl ? "Bytt video" : "Fra Drive"}
             </Button>
             {post.customVideoDataUrl ? (
               <Tooltip title="Fjern video">
                 <IconButton
                   size="small"
-                  onClick={() => onUpdate({ customVideoDataUrl: null, customVideoName: null })}
-                  sx={{ color: 'rgba(248,113,113,0.9)' }}
+                  onClick={() =>
+                    onUpdate({
+                      customVideoDataUrl: null,
+                      customVideoName: null,
+                    })
+                  }
+                  sx={{ color: "rgba(248,113,113,0.9)" }}
                 >
                   <DeleteOutlineIcon fontSize="small" />
                 </IconButton>
@@ -657,18 +835,23 @@ export default function FeedPostDetailPanel({
               sx={{
                 mt: 0.4,
                 borderRadius: 1.4,
-                overflow: 'hidden',
-                bgcolor: '#000',
+                overflow: "hidden",
+                bgcolor: "#000",
                 maxWidth: 260,
-                aspectRatio: '9 / 16',
+                aspectRatio: "9 / 16",
               }}
             >
               <Box
                 component="video"
-                src={post.customVideoDataUrl}
+                src={resolvedVideoUrl ?? undefined}
                 controls
                 playsInline
-                sx={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                sx={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  display: "block",
+                }}
               />
             </Box>
           ) : null}
@@ -679,27 +862,31 @@ export default function FeedPostDetailPanel({
           sx={{
             p: 1,
             borderRadius: 1.8,
-            bgcolor: 'rgba(15,23,42,0.55)',
-            border: '1px solid rgba(148,163,184,0.16)',
+            bgcolor: "rgba(15,23,42,0.55)",
+            border: "1px solid rgba(148,163,184,0.16)",
           }}
         >
           <Stack direction="row" spacing={0.8} alignItems="center">
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
-                {post.customImageUrl ? 'Eget bilde valgt' : 'Ingen egne bilder ennå'}
+              <Typography
+                sx={{ color: "#e2e8f0", fontSize: "0.78rem", fontWeight: 700 }}
+              >
+                {post.customImageUrl
+                  ? "Eget bilde valgt"
+                  : "Ingen egne bilder ennå"}
               </Typography>
               <Typography
                 sx={{
-                  color: 'rgba(226,232,240,0.58)',
-                  fontSize: '0.72rem',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
+                  color: "rgba(226,232,240,0.58)",
+                  fontSize: "0.72rem",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
                 }}
               >
                 {post.customImageUrl
-                  ? post.customImageName || 'Importert fra Google Drive'
-                  : 'Velg et bilde fra Google Drive for å erstatte placeholder.'}
+                  ? post.customImageName || "Importert fra Google Drive"
+                  : "Velg et bilde fra Google Drive for å erstatte placeholder."}
               </Typography>
             </Box>
             <Button
@@ -708,21 +895,26 @@ export default function FeedPostDetailPanel({
               startIcon={<AddPhotoAlternateIcon fontSize="small" />}
               onClick={() => setDrivePickerOpen(true)}
               sx={{
-                textTransform: 'none',
+                textTransform: "none",
                 fontWeight: 700,
-                color: '#22d3ee',
-                borderColor: 'rgba(34,211,238,0.5)',
-                '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+                color: "var(--role-cyan, #22d3ee)",
+                borderColor: "rgba(34,211,238,0.5)",
+                "&:hover": {
+                  borderColor: "var(--role-cyan, #22d3ee)",
+                  bgcolor: "rgba(34,211,238,0.08)",
+                },
               }}
             >
-              {post.customImageUrl ? 'Bytt bilde' : 'Fra Drive'}
+              {post.customImageUrl ? "Bytt bilde" : "Fra Drive"}
             </Button>
             {post.customImageUrl ? (
               <Tooltip title="Fjern eget bilde">
                 <IconButton
                   size="small"
-                  onClick={() => onUpdate({ customImageUrl: null, customImageName: null })}
-                  sx={{ color: 'rgba(248,113,113,0.9)' }}
+                  onClick={() =>
+                    onUpdate({ customImageUrl: null, customImageName: null })
+                  }
+                  sx={{ color: "rgba(248,113,113,0.9)" }}
                 >
                   <DeleteOutlineIcon fontSize="small" />
                 </IconButton>
@@ -732,16 +924,16 @@ export default function FeedPostDetailPanel({
           {post.customImageUrl ? (
             <Box
               component="img"
-              src={post.customImageUrl}
-              alt={post.customImageName ?? 'valgt bilde'}
+              src={resolvedImageUrl ?? undefined}
+              alt={post.customImageName ?? "valgt bilde"}
               sx={{
                 mt: 0.4,
                 maxWidth: 260,
                 maxHeight: 260,
                 borderRadius: 1.4,
-                border: '1px solid rgba(148,163,184,0.18)',
-                objectFit: 'cover',
-                display: 'block',
+                border: "1px solid rgba(148,163,184,0.18)",
+                objectFit: "cover",
+                display: "block",
               }}
             />
           ) : null}
@@ -751,13 +943,21 @@ export default function FeedPostDetailPanel({
       <GoogleDriveImagePicker
         open={drivePickerOpen}
         onClose={() => setDrivePickerOpen(false)}
-        kind={post.mediaType === 'reel' ? 'video' : 'image'}
-        multiSelect={post.mediaType === 'carousel' ? { min: 2, max: 10 } : undefined}
+        kind={post.mediaType === "reel" ? "video" : "image"}
+        multiSelect={
+          post.mediaType === "carousel" ? { min: 2, max: 10 } : undefined
+        }
         onPick={(media) => {
-          if (post.mediaType === 'reel') {
-            onUpdate({ customVideoDataUrl: media.dataUrl, customVideoName: media.name });
+          if (post.mediaType === "reel") {
+            onUpdate({
+              customVideoDataUrl: media.dataUrl,
+              customVideoName: media.name,
+            });
           } else {
-            onUpdate({ customImageUrl: media.dataUrl, customImageName: media.name });
+            onUpdate({
+              customImageUrl: media.dataUrl,
+              customImageName: media.name,
+            });
           }
         }}
         onPickMultiple={(items) => {
@@ -768,6 +968,145 @@ export default function FeedPostDetailPanel({
           });
         }}
       />
+
+      {/* Cover & format i grid — styrer hvordan ruten ser ut i feed-grid,
+          nettside-portfolio, deling & link-preview. */}
+      <Stack
+        spacing={1}
+        sx={{
+          p: 1,
+          borderRadius: 1.8,
+          bgcolor: "rgba(15,23,42,0.55)",
+          border: "1px solid rgba(148,163,184,0.16)",
+        }}
+      >
+        <Stack direction="row" spacing={0.8} alignItems="center">
+          <GridViewIcon sx={{ fontSize: 16, color: "#a78bfa" }} />
+          <Typography
+            sx={{ color: "#e2e8f0", fontSize: "0.78rem", fontWeight: 700 }}
+          >
+            Cover &amp; format i grid
+          </Typography>
+        </Stack>
+
+        {/* Format-velger */}
+        <Box>
+          <Typography
+            sx={{ color: "rgba(226,232,240,0.6)", fontSize: "0.7rem", mb: 0.6 }}
+          >
+            Beskjæring i grid &amp; portfolio
+          </Typography>
+          <Stack direction="row" spacing={0.6}>
+            {GRID_ASPECT_OPTIONS.map((option) => {
+              const active = gridAspect === option.value;
+              return (
+                <Button
+                  key={option.value}
+                  size="small"
+                  onClick={() => onUpdate({ gridAspect: option.value })}
+                  title={option.hint}
+                  sx={{
+                    minWidth: 0,
+                    px: 1.2,
+                    py: 0.4,
+                    textTransform: "none",
+                    fontWeight: 700,
+                    fontSize: "0.74rem",
+                    color: active ? "#0b1220" : "rgba(226,232,240,0.82)",
+                    bgcolor: active ? "#a78bfa" : "transparent",
+                    border: `1px solid ${active ? 'transparent' : 'rgba(148,163,184,0.3)'}`,
+                    '&:hover': { bgcolor: active ? '#a78bfa' : 'rgba(167,139,250,0.12)' },
+                  }}
+                >
+                  {option.label}
+                </Button>
+              );
+            })}
+          </Stack>
+        </Box>
+
+        {/* Cover/thumbnail-opplasting fra enhet */}
+        <Box>
+          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.7rem', mb: 0.6 }}>
+            Eget cover {post.mediaType === 'reel' ? '(poster-frame for reel)' : '(overstyrer grid-bildet)'}
+          </Typography>
+          <Stack direction="row" spacing={0.8} alignItems="center">
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography
+                sx={{
+                  color: post.coverImageUrl ? '#e2e8f0' : 'rgba(226,232,240,0.58)',
+                  fontSize: '0.74rem',
+                  fontWeight: post.coverImageUrl ? 700 : 400,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {post.coverImageUrl
+                  ? post.coverImageName || 'Eget cover lastet opp'
+                  : 'Last opp et eget cover fra enheten din.'}
+              </Typography>
+            </Box>
+            <input
+              ref={coverInputRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(event) => {
+                handleCoverFile(event.target.files?.[0] ?? null);
+                // Nullstill så samme fil kan velges igjen etter fjerning.
+                if (event.target) event.target.value = '';
+              }}
+            />
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<UploadFileIcon fontSize="small" />}
+              onClick={() => coverInputRef.current?.click()}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 700,
+                color: '#a78bfa',
+                borderColor: 'rgba(167,139,250,0.5)',
+                '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(167,139,250,0.08)' },
+              }}
+            >
+              {post.coverImageUrl ? 'Bytt cover' : 'Last opp'}
+            </Button>
+            {post.coverImageUrl ? (
+              <Tooltip title="Fjern eget cover">
+                <IconButton
+                  size="small"
+                  onClick={() => onUpdate({ coverImageUrl: null, coverImageName: null })}
+                  sx={{ color: 'rgba(248,113,113,0.9)' }}
+                >
+                  <DeleteOutlineIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : null}
+          </Stack>
+          {coverError ? (
+            <Typography sx={{ color: '#fca5a5', fontSize: '0.7rem', mt: 0.5 }}>{coverError}</Typography>
+          ) : null}
+          {post.coverImageUrl ? (
+            <Box
+              component="img"
+              src={post.coverImageUrl}
+              alt={post.coverImageName ?? 'cover'}
+              sx={{
+                mt: 0.6,
+                width: '100%',
+                maxWidth: 220,
+                aspectRatio: gridAspect === '1:1' ? '1 / 1' : gridAspect === '16:9' ? '16 / 9' : '4 / 5',
+                objectFit: 'cover',
+                borderRadius: 1.4,
+                border: '1px solid rgba(148,163,184,0.18)',
+                display: 'block',
+              }}
+            />
+          ) : null}
+        </Box>
+      </Stack>
 
       {/* Brand-fargekontrollere — applied template-farger kan finjusteres her */}
       <Stack
@@ -790,7 +1129,7 @@ export default function FeedPostDetailPanel({
           />
           <ColorSwatchInput
             label="Accent"
-            value={post.accentColor || '#22d3ee'}
+            value={post.accentColor || 'var(--role-cyan, #22d3ee)'}
             onChange={(value) => onUpdate({ accentColor: value })}
           />
           <ColorSwatchInput
@@ -880,10 +1219,10 @@ export default function FeedPostDetailPanel({
               fontWeight: 700,
               fontSize: '0.72rem',
               color: concept === post.concept ? '#0b1220' : 'rgba(226,232,240,0.8)',
-              bgcolor: concept === post.concept ? '#22d3ee' : 'transparent',
+              bgcolor: concept === post.concept ? 'var(--role-cyan, #22d3ee)' : 'transparent',
               borderColor: 'rgba(148,163,184,0.28)',
               '&:hover': {
-                bgcolor: concept === post.concept ? '#22d3ee' : 'rgba(34,211,238,0.08)',
+                bgcolor: concept === post.concept ? 'var(--role-cyan, #22d3ee)' : 'rgba(34,211,238,0.08)',
               },
             }}
           />
@@ -1225,8 +1564,9 @@ export default function FeedPostDetailPanel({
             </Typography>
           </Stack>
           {fbPages.length === 0 ? (
-            <Typography sx={{ color: 'rgba(226,232,240,0.62)', fontSize: '0.72rem' }}>
-              Ingen FB Pages funnet — koble Meta-kontoen på nytt for å få pages_manage_posts + publish_video scopes.
+            <Typography sx={{ color: fbPagesError ? '#fca5a5' : 'rgba(226,232,240,0.62)', fontSize: '0.72rem' }}>
+              {fbPagesError
+                ?? 'Ingen Facebook-sider er koblet ennå — koble Meta-kontoen for å få pages_manage_posts + publish_video scopes.'}
             </Typography>
           ) : (
             <TextField
@@ -1281,9 +1621,9 @@ export default function FeedPostDetailPanel({
         sx={{
           textTransform: 'none',
           fontWeight: 700,
-          color: '#22d3ee',
+          color: 'var(--role-cyan, #22d3ee)',
           borderColor: 'rgba(34,211,238,0.5)',
-          '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+          '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
         }}
       >
         Regenerer mal (placeholder)
@@ -1304,7 +1644,7 @@ const textFieldSx = {
     color: 'rgba(226,232,240,0.65)',
   },
   '& .Mui-focused .MuiOutlinedInput-notchedOutline': {
-    borderColor: '#22d3ee',
+    borderColor: 'var(--role-cyan, #22d3ee)',
   },
 };
 

@@ -19,7 +19,11 @@ use serde::{Deserialize, Serialize};
 use crate::helper_client;
 use crate::projects::ProjectEntry;
 
-const DEFAULT_API_BASE: &str = "https://creatorhubn.com";
+// www, ikke apex: creatorhubn.com 301/308-redirecter til www.creatorhubn.com
+// (Netlify), og reqwest fjerner Authorization-headeren på cross-host-
+// redirects — apex-URL her gjorde at Bearer-tokenet ble borte før /me/
+// projects nådde backend ("Bearer-token påkrevd" selv med gyldig token).
+const DEFAULT_API_BASE: &str = "https://www.creatorhubn.com";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceToken {

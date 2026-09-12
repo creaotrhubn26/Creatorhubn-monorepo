@@ -79,7 +79,7 @@ import { palette, radius } from '../theme';
 // Helpers
 // ──────────────────────────────────────────────────────────────────
 
-const AVATAR_COLORS = ['#a855f7', '#ec4899', '#8b5cf6', '#f59e0b', '#10b981', '#7dd3fc', '#fb7185'];
+const AVATAR_COLORS = ['#a855f7', '#ec4899', '#8b5cf6', '#f59e0b', '#10b981', 'var(--role-cyan, #7dd3fc)', '#fb7185'];
 const colorForKey = (key: string) => AVATAR_COLORS[hashString(key) % AVATAR_COLORS.length];
 function hashString(s: string): number {
   let h = 0;
@@ -107,7 +107,7 @@ function accessChip(access: PartnerOverviewRow['access_level']) {
     full:      { label: 'Full tilgang',     fg: '#4ade80', Icon: CheckCircleIcon },
     limited:   { label: 'Begrenset',        fg: '#fbbf24', Icon: HourglassEmptyIcon },
     custom:    { label: 'Tilpasset',        fg: '#c084fc', Icon: ShieldIcon },
-    view_only: { label: 'Kun visning',      fg: '#7dd3fc', Icon: VisibilityOutlinedIcon },
+    view_only: { label: 'Kun visning',      fg: 'var(--role-cyan, #7dd3fc)', Icon: VisibilityOutlinedIcon },
   };
   const { label, fg, Icon } = map[access];
   return (
@@ -149,13 +149,23 @@ export default function PartnersCollaborationPage() {
 
   const reload = useCallback(async () => {
     setError(null);
-    const data = await roleRoomTalentsService.fetchPartnersOverview({ demo: demoMode });
-    setOverview(data);
-    setLoading(false);
-    if (data.partners.length > 0 && !selectedId) {
-      setSelectedId(data.partners[0].id);
+    try {
+      const data = await roleRoomTalentsService.fetchPartnersOverview({ demo: demoMode });
+      setOverview(data);
+      // Functional update so selectedId is NOT a dependency — otherwise reload
+      // was recreated on every partner selection, re-running the effect and
+      // re-fetching the whole overview on each click.
+      if (data.partners.length > 0) {
+        setSelectedId((cur) => cur || data.partners[0].id);
+      }
+    } catch (e) {
+      // Without this, a failed fetch left the spinner up forever and surfaced
+      // as an unhandled rejection.
+      setError(e instanceof Error ? e.message : 'Kunne ikke laste partnere');
+    } finally {
+      setLoading(false);
     }
-  }, [selectedId, demoMode]);
+  }, [demoMode]);
 
   useEffect(() => {
     void reload();
@@ -311,7 +321,7 @@ export default function PartnersCollaborationPage() {
         {error ? <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert> : null}
 
         {/* ─── 3 stat-cards (fjernet Shared Talent Pools — ikke implementert) ─── */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, mb: 3 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2, mb: 3 }}>
           <StatCard label="Aktive partnere" value={String(overview.stats.activePartners)} desc="Har tilgang til profilen din" Icon={GroupIcon} />
           <StatCard label="Ventende invitasjoner" value={String(overview.stats.pendingRequests)} desc="Sendt, ikke svart ennå" Icon={HourglassEmptyIcon} />
           <StatCard label="GDPR-trygg" value={`${overview.stats.gdprCompliantPercent}%`} desc="All datatilgang er styrt av samtykke" Icon={ShieldIcon} />
@@ -362,9 +372,9 @@ export default function PartnersCollaborationPage() {
         ) : filteredPartners.length === 0 ? (
           <EmptyTabState onInvite={() => setInviteOpen(true)} hasAnyPartners={overview.partners.length > 0} />
         ) : (
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 2, mb: 3 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.4fr 1fr' }, gap: 2, mb: 3 }}>
             <Box sx={{ ...cardSx, p: 0, overflow: 'hidden' }}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: '36px 1.6fr 1fr 1fr 1fr 36px', gap: 1.2, px: 2, py: 1.4, borderBottom: `1px solid ${palette.borderSubtle}`, color: palette.textMuted, fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '36px 1fr 36px', md: '36px 1.6fr 1fr 1fr 1fr 36px' }, gap: 1.2, px: 2, py: 1.4, borderBottom: `1px solid ${palette.borderSubtle}`, color: palette.textMuted, fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 <Box />
                 <Box>Partner</Box>
                 <Box>Type</Box>
@@ -381,7 +391,7 @@ export default function PartnersCollaborationPage() {
                     onClick={() => setSelectedId(p.id)}
                     sx={{
                       display: 'grid',
-                      gridTemplateColumns: '36px 1.6fr 1fr 1fr 1fr 36px',
+                      gridTemplateColumns: { xs: '36px 1fr 36px', md: '36px 1.6fr 1fr 1fr 1fr 36px' },
                       gap: 1.2,
                       px: 2,
                       py: 1.4,
@@ -503,7 +513,7 @@ export default function PartnersCollaborationPage() {
               Ingen aktivitet ennå. Når en partner ser profilen din, dukker det opp her.
             </Typography>
           ) : (
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 1.4 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(5, 1fr)' }, gap: 1.4 }}>
               {overview.feed.slice(0, 5).map((f) => (
                 <FeedCard key={`${f.kind}-${f.id}`} event={f} />
               ))}

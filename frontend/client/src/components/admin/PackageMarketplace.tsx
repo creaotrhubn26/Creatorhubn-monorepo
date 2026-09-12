@@ -2,7 +2,6 @@ import { useMemo, useState, type FC } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -44,6 +43,17 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import {
+  AdminCard,
+  AdminButton,
+  StatusChip,
+  AdminLoading,
+  AdminEmpty,
+  AdminError,
+  AdminTableContainer,
+  adminTokens,
+  useIsMobile,
+} from './design-system';
 
 interface MarketplacePackage {
   name: string;
@@ -248,6 +258,7 @@ echo "Done"
 
 const PackageMarketplace: FC = () => {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const [tabValue, setTabValue] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -313,7 +324,7 @@ const PackageMarketplace: FC = () => {
     },
   });
 
-  const packages = marketplaceQuery.data?.packages ?? fallbackPackages;
+  const packages = Array.isArray(marketplaceQuery.data?.packages) ? marketplaceQuery.data.packages : fallbackPackages;
   const summary = marketplaceQuery.data?.summary ?? {
     total: fallbackPackages.length,
     installed: fallbackPackages.filter((pkg) => pkg.installed).length,
@@ -321,7 +332,7 @@ const PackageMarketplace: FC = () => {
     vulnerable: fallbackPackages.filter((pkg) => pkg.vulnerabilities > 0).length,
   };
 
-  const repositories = repositoriesQuery.data ?? fallbackRepositories;
+  const repositories = Array.isArray(repositoriesQuery.data) ? repositoriesQuery.data : fallbackRepositories;
   const isLoading = marketplaceQuery.isLoading || repositoriesQuery.isLoading;
 
   const categories = useMemo(() => {
@@ -374,7 +385,7 @@ const PackageMarketplace: FC = () => {
         <Stack direction="row" spacing={1.5} alignItems="center">
           <Store color="primary" sx={{ fontSize: 36 }} />
           <Box>
-            <Typography variant="h5" fontWeight={700}>
+            <Typography variant="h5" component="h2" fontWeight={700}>
               Package Marketplace
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -384,12 +395,12 @@ const PackageMarketplace: FC = () => {
         </Stack>
 
         <Stack direction="row" spacing={1}>
-          <Button startIcon={<Refresh />} variant="outlined" onClick={handleRefresh}>
+          <AdminButton tone="secondary" startIcon={<Refresh />} onClick={handleRefresh}>
             Refresh
-          </Button>
-          <Button startIcon={<Download />} variant="outlined" onClick={openScriptDialog}>
+          </AdminButton>
+          <AdminButton tone="secondary" startIcon={<Download />} onClick={openScriptDialog}>
             Generate Script
-          </Button>
+          </AdminButton>
         </Stack>
       </Stack>
 
@@ -486,12 +497,12 @@ const PackageMarketplace: FC = () => {
             </FormControl>
             <Stack direction="row" alignItems="center" spacing={1}>
               <Typography variant="body2">Installed only</Typography>
-              <Switch checked={showInstalledOnly} onChange={(event) => setShowInstalledOnly(event.target.checked)} />
+              <Switch aria-label="Vis kun installerte pakker" checked={showInstalledOnly} onChange={(event) => setShowInstalledOnly(event.target.checked)} />
             </Stack>
           </Stack>
 
-          <Card>
-            <CardContent sx={{ p: 0 }}>
+          <AdminCard disablePadding>
+            <AdminTableContainer ariaLabel="Packages">
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -528,28 +539,30 @@ const PackageMarketplace: FC = () => {
                       <TableCell>
                         <Stack direction="row" spacing={1}>
                           <Tooltip title="View package details">
-                            <Button size="small" variant="outlined" onClick={() => openDetails(pkg)}>
+                            <AdminButton tone="secondary" size="small" onClick={() => openDetails(pkg)}>
                               Details
-                            </Button>
+                            </AdminButton>
                           </Tooltip>
                           {pkg.installed ? (
-                            <Button
+                            <AdminButton
+                              tone="primary"
                               size="small"
-                              variant="contained"
+                              loading={updateMutation.isPending}
                               onClick={() => updateMutation.mutate({ name: pkg.name, version: pkg.latest })}
                               disabled={!pkg.isOutdated || updateMutation.isPending}
                             >
                               Update
-                            </Button>
+                            </AdminButton>
                           ) : (
-                            <Button
+                            <AdminButton
+                              tone="primary"
                               size="small"
-                              variant="contained"
+                              loading={installMutation.isPending}
                               onClick={() => installMutation.mutate({ name: pkg.name, version: pkg.latest })}
                               disabled={installMutation.isPending}
                             >
                               Install
-                            </Button>
+                            </AdminButton>
                           )}
                         </Stack>
                       </TableCell>
@@ -557,13 +570,13 @@ const PackageMarketplace: FC = () => {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+            </AdminTableContainer>
+          </AdminCard>
         </TabPanel>
 
         <TabPanel value={tabValue} index={1}>
-          <Card>
-            <CardContent sx={{ p: 0 }}>
+          <AdminCard disablePadding>
+            <AdminTableContainer ariaLabel="Repositories">
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -581,14 +594,13 @@ const PackageMarketplace: FC = () => {
                       <TableCell>{repository.name}</TableCell>
                       <TableCell>{repository.type}</TableCell>
                       <TableCell>
-                        <Chip
-                          size="small"
+                        <StatusChip
                           label={repository.status}
-                          color={repository.status === 'active' ? 'success' : repository.status === 'error' ? 'error' : 'default'}
+                          tone={repository.status === 'active' ? 'success' : repository.status === 'error' ? 'error' : 'neutral'}
                         />
                       </TableCell>
                       <TableCell>
-                        <Chip size="small" label={repository.trusted ? 'Trusted' : 'Untrusted'} color={repository.trusted ? 'success' : 'warning'} />
+                        <StatusChip label={repository.trusted ? 'Trusted' : 'Untrusted'} tone={repository.trusted ? 'success' : 'warning'} />
                       </TableCell>
                       <TableCell>{repository.packageCount.toLocaleString('nb-NO')}</TableCell>
                       <TableCell>
@@ -600,8 +612,8 @@ const PackageMarketplace: FC = () => {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+            </AdminTableContainer>
+          </AdminCard>
         </TabPanel>
 
         <TabPanel value={tabValue} index={2}>
@@ -618,7 +630,7 @@ const PackageMarketplace: FC = () => {
         </TabPanel>
       </Box>
 
-      <Dialog open={detailsDialogOpen} onClose={() => setDetailsDialogOpen(false)} fullWidth maxWidth="sm">
+      <Dialog open={detailsDialogOpen} onClose={() => setDetailsDialogOpen(false)} fullScreen={isMobile} fullWidth maxWidth="sm">
         <DialogTitle>Package Details</DialogTitle>
         <DialogContent>
           {packageDetails ? (
@@ -639,14 +651,15 @@ const PackageMarketplace: FC = () => {
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDetailsDialogOpen(false)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setDetailsDialogOpen(false)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={scriptDialogOpen} onClose={() => setScriptDialogOpen(false)} fullWidth maxWidth="md">
+      <Dialog open={scriptDialogOpen} onClose={() => setScriptDialogOpen(false)} fullScreen={isMobile} fullWidth maxWidth="md">
         <DialogTitle>Generated Install Script</DialogTitle>
         <DialogContent>
           <TextField
+            aria-label="Generert installasjons-skript"
             multiline
             minRows={10}
             value={generatedScript}
@@ -655,10 +668,10 @@ const PackageMarketplace: FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button startIcon={<ContentCopy />} onClick={copyScript}>
+          <AdminButton tone="ghost" startIcon={<ContentCopy />} onClick={copyScript}>
             Copy
-          </Button>
-          <Button onClick={() => setScriptDialogOpen(false)}>Close</Button>
+          </AdminButton>
+          <AdminButton tone="ghost" onClick={() => setScriptDialogOpen(false)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
 

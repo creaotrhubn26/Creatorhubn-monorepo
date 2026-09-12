@@ -529,6 +529,13 @@ export interface SuggestPortraitRecipeInput {
   /// next suggestion so the photographer sees values closer to what
   /// they'd have dialled in themselves.
   userPreferenceSummary?: string;
+  /// Optional free-text style request from the photographer, e.g.
+  /// "give me a warm, airy pastel film look" or "moody editorial,
+  /// crushed blacks". When present, Claude treats it as the primary
+  /// creative brief and translates it into concrete slider/HSL/LUT
+  /// values for this specific image. Sanitised (clipped + newline-
+  /// stripped) before it reaches the prompt.
+  styleInstruction?: string;
   db?: Db; // reserved for future telemetry writes; unused today.
 }
 
@@ -698,10 +705,28 @@ export function sanitiseSuggestion(raw: unknown):
 function buildUserMessage(
   presetHint?: string,
   userPreferenceSummary?: string,
+  styleInstruction?: string,
 ): string {
   const base =
     'Assess this upload and call suggest_portrait_recipe with your full recipe. Every slider value is required.';
   const parts: string[] = [base];
+
+  if (styleInstruction) {
+    // The photographer's own free-text brief. It is their input (not an
+    // untrusted third party), but we still clip and strip newlines so it
+    // can't break out of its sentence and rewrite the surrounding
+    // instructions.
+    const cleaned = styleInstruction
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/["`]/g, "'")
+      .trim()
+      .slice(0, 240);
+    if (cleaned) {
+      parts.push(
+        `The photographer has requested a specific look: "${cleaned}". Treat this as the PRIMARY creative brief — translate it into concrete slider, HSL band and LUT values that reproduce that aesthetic on THIS image (e.g. a "pastel film" or "Jose Villa" brief implies low contrast, warm/creamy highlights, lifted/desaturated shadows and soft skin). Stay photographic and avoid clipping; if part of the request can't be expressed with the available controls, get as close as the sliders allow.`,
+      );
+    }
+  }
 
   if (presetHint) {
     // Whitelist known preset names to avoid prompt-injecting with the
@@ -792,7 +817,7 @@ export async function suggestPortraitRecipe(
             },
             {
               type: 'text',
-              text: buildUserMessage(input.presetHint, input.userPreferenceSummary),
+              text: buildUserMessage(input.presetHint, input.userPreferenceSummary, input.styleInstruction),
             },
           ],
         },

@@ -328,7 +328,7 @@ export default function PressKitPage({ locale = DEFAULT_LOCALE }: PressKitPagePr
                     bgcolor: '#a78bfa',
                     color: '#121218',
                     fontWeight: 600,
-                    '&:hover': { bgcolor: '#8b5cf6' },
+                    '&:hover': { bgcolor: 'var(--role-violet, #8b5cf6)' },
                   }}
                 >
                   {PRESS_CONTACT_EMAIL}

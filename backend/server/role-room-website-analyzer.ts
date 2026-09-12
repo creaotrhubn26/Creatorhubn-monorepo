@@ -25,6 +25,13 @@ import { createHash } from "node:crypto";
 import { Vibrant } from "node-vibrant/node";
 import Anthropic from "@anthropic-ai/sdk";
 import { logAIUsage } from './ai-usage-tracker.js';
+import { assertPublicUrl, ssrfSafeHttpAgent, ssrfSafeHttpsAgent } from './ssrf-guard.js';
+
+function assertNotSsrf(rawUrl: string): void {
+  // Cheap literal pre-check; the guarded agents on the axios call below
+  // enforce the resolved-address / redirect-hop protection (see ssrf-guard.ts).
+  assertPublicUrl(rawUrl);
+}
 
 // ─────────────────────────────────────────────────────────
 // Public types
@@ -93,11 +100,17 @@ type HttpFetcher = (url: string, options?: { timeoutMs?: number; binary?: boolea
 }>;
 
 const defaultHttp: HttpFetcher = async (url, options = {}) => {
+  assertNotSsrf(url);
   const res = await axios.get(url, {
     timeout: options.timeoutMs ?? 15_000,
     responseType: options.binary ? "arraybuffer" : "text",
     headers: { "User-Agent": "RoleRoomWebsiteAnalyzer/1.0" },
     maxRedirects: 5,
+    // Guarded lookup rejects any hostname that resolves to a private address,
+    // and re-runs on every redirect hop — closes the DNS-rebinding / redirect
+    // SSRF holes the literal hostname check could not see.
+    httpAgent: ssrfSafeHttpAgent,
+    httpsAgent: ssrfSafeHttpsAgent,
     validateStatus: () => true,
   });
   return {
@@ -157,7 +170,15 @@ export async function analyzeWebsite(
   if (options.skipClaude) {
     claudeRefinement = staticToClaudeFallback(staticSignals);
   } else {
-    claudeRefinement = await refineWithClaude(staticSignals);
+    try {
+      claudeRefinement = await refineWithClaude(staticSignals);
+    } catch (error) {
+      console.warn(
+        "[website-analyzer] Claude refinement unavailable; using static signals",
+        error instanceof Error ? error.name : "unknown_error",
+      );
+      claudeRefinement = staticToClaudeFallback(staticSignals);
+    }
   }
 
   return {
@@ -575,7 +596,23 @@ async function refineWithClaude(s: StaticSignals): Promise<ClaudeRefinement> {
     .trim();
 
   const jsonText = text.replace(/^```(?:json)?|```$/gm, "").trim();
-  const parsed = JSON.parse(jsonText) as ClaudeRefinement;
+  let parsed: ClaudeRefinement;
+  try {
+    parsed = JSON.parse(jsonText) as ClaudeRefinement;
+  } catch {
+    // Claude-svaret var ikke gyldig JSON — degradert fallback fra de statiske
+    // signalene (StaticSignals mangler toneOfVoice/usps/industry/targetAudience).
+    return {
+      businessName: s.businessName,
+      tagline: s.tagline,
+      description: s.description,
+      primaryCTA: s.primaryCTA,
+      toneOfVoice: {} as ToneOfVoice,
+      usps: [],
+      industry: '',
+      targetAudience: '',
+    };
+  }
 
   // Defensive: clip array length + enforce ToneOfVoice union
   return {

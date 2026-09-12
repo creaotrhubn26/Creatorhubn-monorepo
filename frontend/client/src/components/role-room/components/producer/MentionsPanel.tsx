@@ -11,6 +11,7 @@ import {
 } from '@mui/material';
 import { CampaignOutlined as MentionsIcon, OpenInNew as OpenIcon, AutoAwesome as AiIcon } from '@mui/icons-material';
 import ConnectionPicker from './ConnectionPicker';
+import { LoadingSkeleton, PanelHeader } from './ui';
 
 type Status = 'svart' | 'lead' | 'skjult';
 const STATUSES: { key: Status; label: string; color: string }[] = [
@@ -46,7 +47,7 @@ export default function MentionsPanel() {
 
   const { data: connData, isLoading: connLoading } = useQuery<{ connections: IgConnection[] }>({
     queryKey: ['mentions-connections'],
-    queryFn: () => apiRequest('/api/role-room/instagram/messaging/connections'),
+    queryFn: () => apiRequest('/api/role-room/instagram/connections'),
   });
   const connections = connData?.connections || [];
   useEffect(() => {
@@ -99,19 +100,15 @@ export default function MentionsPanel() {
 
   return (
     <Stack spacing={1.6} sx={{ p: { xs: 1, md: 2 } }}>
-      <Stack direction="row" spacing={1} alignItems="center">
-        <MentionsIcon sx={{ color: '#22d3ee' }} />
-        <Box sx={{ flex: 1 }}>
-          <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem' }}>Hvem snakker om kunden</Typography>
-          <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.84rem' }}>
-            Innlegg der kundens Facebook-side er tagget eller nevnt. Følg med, svar, og gjør positive omtaler til innhold eller varme leads.
-          </Typography>
-        </Box>
-        <ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg Facebook-side" />
-      </Stack>
+      <PanelHeader
+        icon={<MentionsIcon />}
+        title="Hvem snakker om kunden"
+        subtitle="Innlegg der kundens Facebook-side er tagget eller nevnt. Følg med, svar, og gjør positive omtaler til innhold eller varme leads."
+        actions={<ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg Facebook-side" />}
+      />
 
       {connLoading ? (
-        <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
+        <LoadingSkeleton variant="list" />
       ) : connections.length === 0 ? (
         <Alert severity="info">Koble til kundens Facebook-side først (under Feed-planner) for å se omtaler.</Alert>
       ) : (
@@ -129,7 +126,7 @@ export default function MentionsPanel() {
               size="small" label={`Alle (${counts.alle})`} clickable
               onClick={() => setStatusFilter('alle')}
               variant={statusFilter === 'alle' ? 'filled' : 'outlined'}
-              sx={{ fontWeight: 700, bgcolor: statusFilter === 'alle' ? 'rgba(34,211,238,0.18)' : 'transparent', color: statusFilter === 'alle' ? '#22d3ee' : 'rgba(226,232,240,0.7)' }}
+              sx={{ fontWeight: 700, bgcolor: statusFilter === 'alle' ? 'rgba(34,211,238,0.18)' : 'transparent', color: statusFilter === 'alle' ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)' }}
             />
             {STATUSES.map((s) => (
               <Chip

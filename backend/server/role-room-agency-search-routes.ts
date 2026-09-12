@@ -32,7 +32,7 @@ export interface RoleRoomAgencySearchRoutesDeps {
 }
 
 /** Hent agency for innlogget user. Returnerer null hvis ikke koblet. */
-async function fetchAgencyForUser(pool: Pool, userId: string) {
+export async function fetchAgencyForUser(pool: Pool, userId: string) {
   const r = await pool.query(
     `SELECT a.id, a.type, a.name, a.slug, u.agency_role
        FROM users u JOIN agency_orgs a ON a.id = u.agency_org_id
@@ -124,7 +124,7 @@ type SearchFilters = {
   offset?: number;
 };
 
-function parseFilters(query: Record<string, unknown>): SearchFilters {
+export function parseFilters(query: Record<string, unknown>): SearchFilters {
   const arrFromCsv = (v: unknown): string[] | undefined => {
     if (Array.isArray(v)) return v.map(String).filter(Boolean);
     if (typeof v === "string" && v.trim().length > 0) {
@@ -155,7 +155,7 @@ function parseFilters(query: Record<string, unknown>): SearchFilters {
  * til denne agency-en for å være synlige. Felter maskeres etter scopes
  * agency-en har — basic_profile gir minimum, media_portfolio gir bilder etc.
  */
-function buildSearchSql(
+export function buildSearchSql(
   agencyType: string,
   agencyId: string,
   filters: SearchFilters,
@@ -238,11 +238,18 @@ function buildSearchSql(
                      ELSE 2 END) ASC, MAX(c.granted_at) DESC`;
   }
 
+  // Consent gate: a talent only appears in agency search if they explicitly
+  // granted basic_profile (or full_profile). Granting only a narrow scope
+  // (e.g. availability) must NOT expose their identity/bio. bool_or runs over
+  // the already-granted, non-expired consent rows for this partner.
+  const identityHaving =
+    "HAVING bool_or(c.scope IN ('basic_profile', 'full_profile'))";
   const baseFrom = `
     FROM talent_consent_registry c
     JOIN talents t ON t.id = c.talent_id
     WHERE ${where.join(" AND ")}
     GROUP BY t.id
+    ${identityHaving}
   `;
 
   params.push(filters.limit);
@@ -253,8 +260,11 @@ function buildSearchSql(
       t.headshot_url, t.showreel_url, t.resume_url,
       t.playing_age_min, t.playing_age_max, t.gender,
       t.skills, t.languages, t.dialects,
-      t.availability_status, t.willing_to_travel,
+      t.availability_status, t.availability_notes,
+      t.availability_windows, t.availability_confirmed_at,
+      t.willing_to_travel,
       t.represented, t.agency_name,
+      t.badges, t.metadata,
       t.created_at, t.updated_at,
       array_agg(DISTINCT c.scope) AS granted_scopes,
       MAX(c.granted_at) AS last_consent_at
@@ -263,29 +273,45 @@ function buildSearchSql(
     LIMIT $${p} OFFSET $${p + 1}
   `;
 
-  // Count-query bruker samme WHERE-clause (men dropper GROUP+ORDER+LIMIT)
-  const countSql = `SELECT count(DISTINCT t.id)::int AS n FROM talent_consent_registry c
-                    JOIN talents t ON t.id = c.talent_id
-                    WHERE ${where.join(" AND ")}`;
+  // Count-query må bruke samme consent-gate (GROUP+HAVING) for å matche
+  // resultatsettet — ellers teller den talenter som ikke vises.
+  const countSql = `SELECT count(*)::int AS n FROM (
+                      SELECT t.id FROM talent_consent_registry c
+                      JOIN talents t ON t.id = c.talent_id
+                      WHERE ${where.join(" AND ")}
+                      GROUP BY t.id
+                      ${identityHaving}
+                    ) sub`;
   return { sql, params, countSql };
 }
 
-function maskByScopes(row: Record<string, unknown>): Record<string, unknown> {
+export function maskByScopes(row: Record<string, unknown>): Record<string, unknown> {
   const scopes = new Set<string>(Array.isArray(row.granted_scopes) ? row.granted_scopes as string[] : []);
   const has = (s: string) => scopes.has("full_profile") || scopes.has(s);
   const masked: Record<string, unknown> = {
     id: row.id,
-    display_name: row.display_name,
-    city: row.city,
-    country: row.country,
-    bio: row.bio,
-    represented: row.represented,
-    skills: row.skills,
-    languages: row.languages,
-    dialects: row.dialects,
     granted_scopes: Array.from(scopes),
     last_consent_at: row.last_consent_at,
   };
+  // Identity + profile fields require basic_profile (or full_profile). The
+  // search query's HAVING already guarantees this for search results; this is
+  // defense-in-depth so any other caller can't leak identity on a narrow scope.
+  if (has("basic_profile")) {
+    masked.display_name = row.display_name;
+    masked.city = row.city;
+    masked.country = row.country;
+    masked.bio = row.bio;
+    masked.represented = row.represented;
+    masked.skills = row.skills;
+    masked.languages = row.languages;
+    masked.dialects = row.dialects;
+    // Skole-verifisert utdanning + NSF-medlemskap = tillitssignaler.
+    const badges = Array.isArray(row.badges) ? row.badges as string[] : [];
+    masked.education_verified = badges.includes("education_verified");
+    masked.nsf_member = badges.includes("nsf_member");
+    const edu = (row.metadata as { education?: { institution?: string | null; program?: string | null; year?: number | null } } | null)?.education;
+    if (edu) masked.education = { institution: edu.institution ?? null, program: edu.program ?? null, year: edu.year ?? null };
+  }
   if (has("media_portfolio")) {
     masked.headshot_url = row.headshot_url;
     masked.showreel_url = row.showreel_url;
@@ -296,8 +322,14 @@ function maskByScopes(row: Record<string, unknown>): Record<string, unknown> {
     masked.playing_age_max = row.playing_age_max;
     masked.gender = row.gender;
   }
+  // availability_visible gjøres ALLTID eksplisitt slik at UI kan vise «skjult
+  // (ikke delt)» i stedet for stille å utelate feltet — samtykke-transparens.
+  masked.availability_visible = has("availability");
   if (has("availability")) {
     masked.availability_status = row.availability_status;
+    masked.availability_notes = row.availability_notes;
+    masked.availability_windows = row.availability_windows;
+    masked.availability_confirmed_at = row.availability_confirmed_at;
     masked.willing_to_travel = row.willing_to_travel;
   }
   if (has("contact_info")) {
@@ -356,7 +388,7 @@ export function setupRoleRoomAgencySearchRoutes(deps: RoleRoomAgencySearchRoutes
       });
     } catch (err) {
       console.error("[agency/talents/search] failed", err);
-      return res.status(500).json({ error: "Søk feilet", detail: String(err) });
+      return res.status(500).json({ error: "Søk feilet", detail: "internal_error" });
     }
   });
 
@@ -517,7 +549,7 @@ export function setupRoleRoomAgencySearchRoutes(deps: RoleRoomAgencySearchRoutes
       return res.status(201).json({ search: r.rows[0] });
     } catch (err) {
       console.error("[saved-searches POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å lagre søket", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å lagre søket", detail: "internal_error" });
     }
   });
 

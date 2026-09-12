@@ -35,9 +35,13 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Stack,
+  CircularProgress,
   LinearProgress,
   Avatar,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   BugReport,
   Lightbulb,
@@ -68,6 +72,8 @@ import {
 } from '@mui/icons-material';
 import { PrototypeTesterIcon } from '../icons/PrototypeTesterIcon';
 import { apiRequest, isApiEndpointMissing } from '@/lib/queryClient';
+import { AdminButton, useIsMobile } from './design-system';
+import FeedbackConversation from '../universal/editing-marketplace/FeedbackConversation';
 import RichTextEditor from '../RichTextEditor';
 import 'quill/dist/quill.snow.css';
 
@@ -226,6 +232,16 @@ interface VideoRecording {
   timestamp: number;
 }
 
+// Improvement D — AI-temaklynging: Claude grupperer åpen feedback i temaer.
+interface ClusterTheme {
+  theme: string;
+  summary: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  count: number;
+  feedbackIds: string[];
+  suggestedAction: string;
+}
+
 interface FeedbackItem {
   id: string;
   userId: string;
@@ -361,6 +377,7 @@ export default function PrototypeFeedbackPanel({
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -414,7 +431,7 @@ export default function PrototypeFeedbackPanel({
 
   // Use theme-aware colors
   const themeColors = useMemo(() => ({
-    primary: theming.colors.primary || '#ff8c00',
+    primary: '#ff8c00',
     secondary: theming.colors.secondary || '#ffa726',
     error: '#f44336',
     warning: '#ff9800',
@@ -445,14 +462,29 @@ export default function PrototypeFeedbackPanel({
         throw queryError;
       }
     },
-    refetchInterval: 3000,
-    staleTime: 0,
+    refetchInterval: 30000,
+    staleTime: 15000,
     retry: false,
     placeholderData: [],
   });
   const feedbackItems = useMemo(() => normalizeFeedbackItems(feedbackList), [feedbackList]);
 
   // Update feedback status mutation
+  // Improvement D — AI-temaanalyse av åpen feedback.
+  const clusterMutation = useMutation<
+    { clusters: ClusterTheme[]; degraded?: boolean; message?: string; count: number },
+    Error
+  >({
+    mutationFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/prototype-testing/cluster', {
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        method: 'POST',
+        body: JSON.stringify({ limit: 200 }),
+      });
+    },
+  });
+
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, adminNotes }: { id: string; status: string; adminNotes: string }) => {
       const headers = await auth.getAuthHeader();
@@ -762,7 +794,7 @@ export default function PrototypeFeedbackPanel({
   if (isLoading) {
     return (
       <Box sx={{ p: 3 }}>
-        <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Typography variant="h5" gutterBottom sx={{ color: themeColors.primary, display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <PrototypeTesterIcon size={32} /> Prototype Feedback Management
         </Typography>
         <Alert severity="info">Laster prototype feedback...</Alert>
@@ -771,6 +803,7 @@ export default function PrototypeFeedbackPanel({
 }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       <Typography variant="h5" gutterBottom sx={{ color: '#ff8c00', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <PrototypeTesterIcon size={32} /> Prototype Feedback Management
@@ -779,6 +812,81 @@ export default function PrototypeFeedbackPanel({
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Administrer tilbakemeldinger fra prototype testere for kontinuerlig forbedring av plattformen.
       </Typography>
+
+      {/* Improvement D — AI-temaanalyse */}
+      <Accordion sx={{ mb: 3 }}>
+        <AccordionSummary expandIcon={<ExpandMore />}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Psychology sx={{ color: '#ff8c00' }} />
+            <Typography sx={{ fontWeight: 600 }}>AI-temaanalyse</Typography>
+            <Typography variant="caption" color="text.secondary">
+              — grupper åpen feedback i temaer med foreslåtte tiltak
+            </Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <AdminButton
+            tone="primary"
+            loading={clusterMutation.isPending}
+            startIcon={<Psychology />}
+            onClick={() => clusterMutation.mutate()}
+            sx={{ mb: 2 }}
+          >
+            {clusterMutation.isPending ? 'Analyserer…' : 'Analyser temaer'}
+          </AdminButton>
+
+          {clusterMutation.isError ? (
+            <Typography variant="body2" color="error" sx={{ mb: 1 }}>
+              Klynging feilet: {clusterMutation.error?.message || 'ukjent feil'}
+            </Typography>
+          ) : null}
+
+          {clusterMutation.data?.degraded ? (
+            <Typography variant="body2" color="text.secondary">
+              {clusterMutation.data.message}
+            </Typography>
+          ) : null}
+
+          {clusterMutation.data && !clusterMutation.data.degraded ? (
+            (clusterMutation.data.clusters?.length ?? 0) === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                {clusterMutation.data.message || 'Ingen temaer funnet.'}
+              </Typography>
+            ) : (
+              <Stack spacing={1.5}>
+                <Typography variant="caption" color="text.secondary">
+                  {clusterMutation.data.count} tilbakemeldinger analysert → {clusterMutation.data.clusters.length} temaer
+                </Typography>
+                {clusterMutation.data.clusters.map((c, i) => {
+                  const sevColor =
+                    c.severity === 'critical'
+                      ? 'error'
+                      : c.severity === 'high'
+                        ? 'warning'
+                        : c.severity === 'medium'
+                          ? 'info'
+                          : 'default';
+                  return (
+                    <Paper key={`${c.theme}-${i}`} variant="outlined" sx={{ p: 1.5 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
+                        <Chip size="small" color={sevColor as any} label={c.severity} />
+                        <Typography sx={{ fontWeight: 600 }}>{c.theme}</Typography>
+                        <Chip size="small" variant="outlined" label={`${c.count ?? c.feedbackIds?.length ?? 0} saker`} />
+                      </Box>
+                      <Typography variant="body2" sx={{ mb: 0.5 }}>{c.summary}</Typography>
+                      {c.suggestedAction ? (
+                        <Typography variant="body2" color="success.main">
+                          → {c.suggestedAction}
+                        </Typography>
+                      ) : null}
+                    </Paper>
+                  );
+                })}
+              </Stack>
+            )
+          ) : null}
+        </AccordionDetails>
+      </Accordion>
 
       {/* Search, Filter, and Sort Controls */}
       <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.default' }}>
@@ -799,7 +907,7 @@ export default function PrototypeFeedbackPanel({
                 ),
                 endAdornment: searchTerm && (
                   <InputAdornment position="end">
-                    <IconButton size="small" onClick={() => setSearchTerm('')}>
+                    <IconButton size="small" aria-label="Tøm søk" onClick={() => setSearchTerm('')}>
                       <Clear />
                     </IconButton>
                   </InputAdornment>
@@ -903,9 +1011,10 @@ export default function PrototypeFeedbackPanel({
           {/* Sort Order */}
           <Grid item xs={12} sm={6} md={1}>
             <MuiTooltip title={sortOrder === 'asc' ? 'Stigende' : 'Synkende'}>
-              <IconButton 
+              <IconButton
+                aria-label={sortOrder === 'asc' ? 'Stigende' : 'Synkende'}
                 onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                sx={{ 
+                sx={{
                   border: '1px solid',
                   borderColor: 'divider',
                   bgcolor: '#ff8c00',
@@ -921,7 +1030,8 @@ export default function PrototypeFeedbackPanel({
           <Grid item xs={12} md={2}>
             <Box sx={{ display: 'flex', gap: 1 }}>
               <MuiTooltip title={groupByProfession ? "Vis som liste" : "Grupper etter profesjon"}>
-                <IconButton 
+                <IconButton
+                  aria-label={groupByProfession ? "Vis som liste" : "Grupper etter profesjon"}
                   onClick={() => {
                     const newValue = !groupByProfession;
                     setGroupByProfession(newValue);
@@ -943,9 +1053,10 @@ export default function PrototypeFeedbackPanel({
                 </IconButton>
               </MuiTooltip>
               <MuiTooltip title="Eksporter til CSV">
-                <IconButton 
+                <IconButton
+                  aria-label="Eksporter til CSV"
                   onClick={exportToCSV}
-                  sx={{ 
+                  sx={{
                     border: '1px solid',
                     borderColor: 'divider',
                     color: '#4caf50'
@@ -956,9 +1067,10 @@ export default function PrototypeFeedbackPanel({
               </MuiTooltip>
               {(searchTerm || filterStatus.length > 0 || filterPriority.length > 0 || filterProfession.length > 0) && (
                 <MuiTooltip title="Nullstill filtre">
-                  <IconButton 
+                  <IconButton
+                    aria-label="Nullstill filtre"
                     onClick={clearFilters}
-                    sx={{ 
+                    sx={{
                       border: '1px solid',
                       borderColor: 'divider',
                       color: '#f44336'
@@ -1023,7 +1135,7 @@ export default function PrototypeFeedbackPanel({
         <Grid item xs={12} sm={6} md={2.4}>
           <Card sx={{ background: 'linear-gradient(135deg, #2196F3 0%, #21CBF3 100%)', ...theming.getThemedCardSx() }}>
             <CardContent sx={{ color: 'white', textAlign: 'center', ...theming.getThemedCardSx() }}>
-              <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', color: themeColors.primary }}>
                 {stats.total}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -1040,7 +1152,7 @@ export default function PrototypeFeedbackPanel({
               background: 'linear-gradient(135deg, #FF9800 0%, #FFB74D 100%)'}}
           >
             <CardContent sx={{ color: 'white', textAlign: 'center', ...theming.getThemedCardSx() }}>
-              <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', color: themeColors.primary }}>
                 {stats.open + stats.in_progress}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -1058,7 +1170,7 @@ export default function PrototypeFeedbackPanel({
           >
 
             <CardContent sx={{ color: 'white', textAlign: 'center', ...theming.getThemedCardSx() }}>
-              <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', color: themeColors.primary }}>
                 {stats.critical + stats.high}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -1071,7 +1183,7 @@ export default function PrototypeFeedbackPanel({
         <Grid item xs={12} sm={6} md={2.4}>
           <Card sx={{ background: 'linear-gradient(135deg, #4CAF50 0%, #66BB6A 100%)', ...theming.getThemedCardSx() }}>
             <CardContent sx={{ color: 'white', textAlign: 'center', ...theming.getThemedCardSx() }}>
-              <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', color: themeColors.primary }}>
                 {stats.verified}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -1088,7 +1200,7 @@ export default function PrototypeFeedbackPanel({
               background: 'linear-gradient(135deg, #9C27B0 0%, #BA68C8 100%)'}}
           >
             <CardContent sx={{ color: 'white', textAlign: 'center', ...theming.getThemedCardSx() }}>
-              <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', color: themeColors.primary }}>
                 {stats.failed}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -1101,7 +1213,7 @@ export default function PrototypeFeedbackPanel({
 
       {/* Profession Breakdown */}
       <Paper sx={{ p: 2, mb: 3 }}>
-        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
           <People /> 
           Fordeling per profesjon
         </Typography>
@@ -1111,8 +1223,12 @@ export default function PrototypeFeedbackPanel({
             const config = professionConfig[profession] || professionConfig.other;
             return (
               <Grid item xs={6} sm={4} md={2.4} key={profession}>
-                <Card 
-                  sx={{ 
+                <Card
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={filterProfession.includes(profession)}
+                  aria-label={`Filtrer på ${config.label}`}
+                  sx={{
                     cursor: 'pointer',
                     border: '2px solid',
                     borderColor: filterProfession.includes(profession) ? config.color : 'transparent',
@@ -1129,11 +1245,26 @@ export default function PrototypeFeedbackPanel({
                     } else {
                       setFilterProfession([...filterProfession, profession]);
                     }
-                    
+
                     analytics.trackEvent('profession_card_clicked', {
                       profession,
                       action: isAdding ? 'add_filter' : 'remove_filter',
                       totalFilteredProfessions: isAdding ? filterProfession.length + 1 : filterProfession.length - 1 });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      const isAdding = !filterProfession.includes(profession);
+                      if (filterProfession.includes(profession)) {
+                        setFilterProfession(filterProfession.filter(p => p !== profession));
+                      } else {
+                        setFilterProfession([...filterProfession, profession]);
+                      }
+                      analytics.trackEvent('profession_card_clicked', {
+                        profession,
+                        action: isAdding ? 'add_filter' : 'remove_filter',
+                        totalFilteredProfessions: isAdding ? filterProfession.length + 1 : filterProfession.length - 1 });
+                    }
                   }}
                 >
                   <CardContent sx={{ textAlign: 'center', p: 2 }}>
@@ -1159,7 +1290,7 @@ export default function PrototypeFeedbackPanel({
       {/* Feedback List */}
       <Card sx={theming.getThemedCardSx()}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
             <Comment sx={{ mr: 1 }} />
             Alle tilbakemeldinger
             <Badge badgeContent={stats.open} color="primary" sx={{ ml: 1 }} />
@@ -1279,7 +1410,8 @@ export default function PrototypeFeedbackPanel({
                               />
                               <ListItemSecondaryAction>
                                 <Box sx={{ display: 'flex', gap: 1 }}>
-                                  <IconButton 
+                                  <IconButton
+                                    aria-label="Se detaljer"
                                     onClick={() => {
                                       setSelectedFeedback(feedback);
                                       setDetailDialogOpen(true);
@@ -1289,6 +1421,7 @@ export default function PrototypeFeedbackPanel({
                                     <OpenInNew />
                                   </IconButton>
                                   <IconButton
+                                    aria-label="Rediger status"
                                     onClick={() => {
                                       setSelectedFeedback(feedback);
                                       setNewStatus(feedback.status);
@@ -1607,6 +1740,7 @@ export default function PrototypeFeedbackPanel({
                           </IconButton>
                           {/* Status redigering */}
                           <IconButton
+                            aria-label="Rediger status"
                             onClick={() => {
                               setSelectedFeedback(feedback);
                               setNewStatus(feedback.status);
@@ -1634,6 +1768,7 @@ export default function PrototypeFeedbackPanel({
         onClose={() => setStatusDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           Oppdater tilbakemelding status
@@ -1669,7 +1804,7 @@ export default function PrototypeFeedbackPanel({
                 </Box>
               </Box>
 
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                 {selectedFeedback.title}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -1751,23 +1886,29 @@ export default function PrototypeFeedbackPanel({
                   💡 Tips: Bruk malene for konsistent dokumentasjon. Rich text editor støtter formatering, lister, lenker og mer.
                 </Typography>
               </Box>
+
+              {/* Trådet samtale — admin svarer testeren direkte i tråden */}
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: '#ff8c00' }}>
+                  💬 Samtale med testeren
+                </Typography>
+                <FeedbackConversation feedbackId={selectedFeedback.id} locale="no" viewer="admin" />
+              </Box>
             </Box>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setStatusDialogOpen(false)}>
+          <AdminButton tone="ghost" onClick={() => setStatusDialogOpen(false)}>
             Avbryt
-          </Button>
-          <Button 
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            loading={updateStatusMutation.isPending}
             onClick={handleStatusUpdate}
             disabled={updateStatusMutation.isPending || !newStatus}
-            sx={{
-              background: 'linear-gradient(135deg, #ff8c00, #ffa726)', '&:hover': { background: 'linear-gradient(135deg, #ffa726, #ff8c00)' }
-          }}
           >
             {updateStatusMutation.isPending ? 'Oppdaterer...' : 'Oppdater'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -1788,11 +1929,12 @@ export default function PrototypeFeedbackPanel({
     }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Comment sx={{ fontSize: 28 }} />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" sx={{ color: themeColors.primary }}>
               Detaljert Feedback Visning
             </Typography>
           </Box>
           <IconButton
+            aria-label="Lukk"
             onClick={() => setDetailDialogOpen(false)}
             sx={{ color: 'white' }}
           >
@@ -1845,7 +1987,7 @@ export default function PrototypeFeedbackPanel({
                           );
                       })()}
                         <Box>
-                          <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+                          <Typography variant="h4" gutterBottom sx={{ color: themeColors.primary }}>
                             {selectedFeedback.title}
                           </Typography>
                           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -1877,7 +2019,7 @@ export default function PrototypeFeedbackPanel({
 
                       <Divider sx={{ mb: 3 }} />
 
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                      <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                         Beskrivelse
                       </Typography>
                       <Typography variant="body1" sx={{ mb: 3, lineHeight: 1.8 }}>
@@ -1886,7 +2028,7 @@ export default function PrototypeFeedbackPanel({
 
                       {selectedFeedback.component && (
                         <Box sx={{ mb: 3 }}>
-                          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                          <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                             Berørt komponent
                           </Typography>
                           <Chip 
@@ -1899,7 +2041,7 @@ export default function PrototypeFeedbackPanel({
 
                       {selectedFeedback.tags.length > 0 && (
                         <Box sx={{ mb: 3 }}>
-                          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                          <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                             Tags
                           </Typography>
                           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -1916,7 +2058,7 @@ export default function PrototypeFeedbackPanel({
                 <Grid item xs={12} md={4}>
                   <Card sx={theming.getThemedCardSx()}>
                     <CardContent sx={theming.getThemedCardSx()}>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                      <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                         <Star sx={{ mr: 1, verticalAlign: 'middle' }} />
                         Rating & Info
                       </Typography>
@@ -1925,7 +2067,7 @@ export default function PrototypeFeedbackPanel({
                           Bruker rating
                         </Typography>
                         <Rating value={selectedFeedback.rating} readOnly size="large" />
-                        <Typography variant="h6" sx={{ mt: 1, color: theming.colors.primary }}>
+                        <Typography variant="h6" sx={{ mt: 1, color: themeColors.primary }}>
                           {selectedFeedback.rating}/5
                         </Typography>
                       </Box>
@@ -1945,7 +2087,7 @@ export default function PrototypeFeedbackPanel({
                   {selectedFeedback.screenshotUrl && (
                     <Card sx={{ mt: 2, ...theming.getThemedCardSx() }}>
                       <CardContent sx={theming.getThemedCardSx()}>
-                        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                           <Screenshot sx={{ mr: 1, verticalAlign: 'middle' }} />
                           Screenshot
                         </Typography>
@@ -1973,7 +2115,7 @@ export default function PrototypeFeedbackPanel({
                   {selectedFeedback.audioRecording && (
                     <Card sx={{ mt: 2, ...theming.getThemedCardSx() }}>
                       <CardContent sx={theming.getThemedCardSx()}>
-                        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                           <Mic sx={{ mr: 1, verticalAlign: 'middle' }} />
                           Audio Recording
                         </Typography>
@@ -2002,7 +2144,7 @@ export default function PrototypeFeedbackPanel({
                   {selectedFeedback.videoRecording && (
                     <Card sx={{ mt: 2, ...theming.getThemedCardSx() }}>
                       <CardContent sx={theming.getThemedCardSx()}>
-                        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                           <Videocam sx={{ mr: 1, verticalAlign: 'middle' }} />
                           Screen Recording
                         </Typography>
@@ -2023,7 +2165,7 @@ export default function PrototypeFeedbackPanel({
                   {(selectedFeedback.testerXP || selectedFeedback.testerLevel) && (
                     <Card sx={{ mt: 2, ...theming.getThemedCardSx() }}>
                       <CardContent sx={theming.getThemedCardSx()}>
-                        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                           <EmojiEvents sx={{ mr: 1, verticalAlign: 'middle' }} />
                           Tester Stats
                         </Typography>
@@ -2289,14 +2431,14 @@ export default function PrototypeFeedbackPanel({
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2, bgcolor: 'grey.50' }}>
-          <Button 
+          <AdminButton
+            tone="ghost"
             onClick={() => setDetailDialogOpen(false)}
-            variant="outlined"
           >
             Lukk
-          </Button>
-          <Button 
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => {
               if (selectedFeedback) {
                 setDetailDialogOpen(false);
@@ -2305,15 +2447,12 @@ export default function PrototypeFeedbackPanel({
                 setStatusDialogOpen(true);
             }
           }}
-            sx={{
-              background: 'linear-gradient(135deg, #ff8c00, #ffa726)',
-              '&:hover': { background: 'linear-gradient(135deg, #ffa726, #ff8c00)' }
-          }}
           >
             Administrer Status & Notater
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }

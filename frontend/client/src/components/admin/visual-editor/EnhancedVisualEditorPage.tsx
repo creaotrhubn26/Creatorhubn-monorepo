@@ -94,6 +94,7 @@ import { LogoManagementPanel } from './LogoManagementPanel';
 import ThemingAdminPanel from './ThemingAdminPanel';
 import LandingSettingsPanel from './LandingSettingsPanel';
 import ShowcasePublisherPanel from '../../showcase/ShowcasePublisherPanel';
+import { NotificationStack } from './NotificationStack';
 import {
   BREAKPOINT_MEDIA_QUERIES,
   buildComponentManifest,
@@ -577,6 +578,11 @@ export const EnhancedVisualEditorContent: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [showCodeEditor, setShowCodeEditor] = useState(false);
   const [showLivePreviewPanel, setShowLivePreviewPanel] = useState(false);
+  // The accessibility scanner reads the live-preview iframe's document, so it
+  // needs that panel actually mounted to have anything to scan.
+  useEffect(() => {
+    if (showAccessibility) setShowLivePreviewPanel(true);
+  }, [showAccessibility]);
   const [showAdvancedWorkspace, setShowAdvancedWorkspace] = useState(false);
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<AdvancedWorkspaceTab>('templates');
   const [showLibrarySuggestions, setShowLibrarySuggestions] = useState(false);
@@ -592,6 +598,10 @@ export const EnhancedVisualEditorContent: React.FC = () => {
   const [lastIntegrationEvent, setLastIntegrationEvent] = useState('Idle');
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const autoSaveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Shared with LivePreviewPanel and AccessibilityChecker below so the a11y
+  // scanner actually targets the rendered preview iframe (it previously got a
+  // fresh, never-attached React.createRef() every render and could never scan).
+  const previewIframeRef = useRef<HTMLIFrameElement>(null);
   const selectedProjectForPanels = {
     id: state.currentProject?.id ?? 'visual-editor-project',
     name: state.currentProject?.name ?? 'Visual Editor Project',
@@ -3092,7 +3102,7 @@ export const EnhancedVisualEditorContent: React.FC = () => {
         <AccessibilityChecker
           open={showAccessibility}
           onClose={() => setShowAccessibility(false)}
-          iframeRef={React.createRef()}
+          iframeRef={previewIframeRef}
         />
       )}
 
@@ -3147,6 +3157,7 @@ export const EnhancedVisualEditorContent: React.FC = () => {
           <LivePreviewPanel
             code={generatedCode}
             mode={exportFormat === 'react' ? 'react' : 'html'}
+            iframeRef={previewIframeRef}
           />
         </Box>
       )}
@@ -3177,6 +3188,8 @@ export const EnhancedVisualEditorContent: React.FC = () => {
       {logoManagerOpen && (
         <LogoManagementPanel open={logoManagerOpen} onClose={() => setLogoManagerOpen(false)} />
       )}
+
+      <NotificationStack />
     </Box>
   );
 };

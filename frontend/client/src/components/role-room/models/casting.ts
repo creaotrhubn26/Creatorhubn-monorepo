@@ -10,6 +10,9 @@ export type UserRoleType =
   | 'producer'
   | 'casting_director'
   | 'production_manager'
+  | 'production_coordinator'
+  | 'first_ad'
+  | 'second_ad'
   | 'camera_team'
   | 'content_producer'
   | 'client_reviewer'
@@ -22,6 +25,7 @@ export interface UserRolePermissions {
   canViewAll?: boolean;
   canEditCasting?: boolean;
   canEditProduction?: boolean;
+  canCoordinateProduction?: boolean;
   canManageCrew?: boolean;
   canManageLocations?: boolean;
   canEditShots?: boolean;
@@ -401,6 +405,7 @@ export type CrewRole =
   | 'producer'
   | 'casting_director'
   | 'production_manager'
+  | 'production_coordinator'
   | 'production_assistant'
   | 'script_supervisor'
   | 'location_manager'
@@ -507,6 +512,12 @@ export interface Candidate {
   personality?: string;
   reminderPrefs?: CandidateReminderPrefs;
   reminder_prefs?: CandidateReminderPrefs;
+  /**
+   * Produsent-satt tilgjengelighet for kandidaten. Kandidater er casting-poster
+   * (ingen medlemskonto / egen `role_room_member_availability`), så produsenten
+   * maler dette på kandidat-kortet. Persisteres inline i prosjekt-JSON.
+   */
+  availabilityCells?: AvailabilityCell[];
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;
@@ -1063,6 +1074,17 @@ export interface ProductionDay {
     days: number;
     source: 'fallback' | 'yr_api';
   };
+  secondAd?: SecondAssistantDirectorOperations;
+  productionManagement?: ProductionManagementOperations;
+  /** Server-owned optimistic concurrency counter for production-management edits. */
+  managementVersion?: number;
+  managementUpdatedAt?: string;
+  managementUpdatedBy?: string;
+  productionCoordination?: ProductionCoordinationOperations;
+  /** Server-owned optimistic concurrency counter for production-coordination edits. */
+  coordinationVersion?: number;
+  coordinationUpdatedAt?: string;
+  coordinationUpdatedBy?: string;
   lastModifiedBy?: string;
   createdBy?: string;
   changeLog?: Array<{
@@ -1074,6 +1096,210 @@ export interface ProductionDay {
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
+}
+
+export type ProductionManagementDayStatus = 'not_started' | 'ready' | 'at_risk' | 'completed';
+export type ProductionManagementCallSheetApproval = 'not_ready' | 'ready_for_review' | 'approved';
+export type ProductionManagementCheckpointStatus = 'not_started' | 'in_progress' | 'ready' | 'blocked';
+export type ProductionManagementIssueStatus = 'open' | 'in_progress' | 'resolved';
+export type ProductionManagementIssueSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type ProductionManagementCostStatus = 'draft' | 'pending' | 'approved' | 'rejected';
+export type ProductionManagementCrewStatus = 'pending' | 'confirmed' | 'declined';
+
+export interface ProductionManagementCrewConfirmation {
+  crewId: string;
+  status: ProductionManagementCrewStatus;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionManagementCheckpoint {
+  id: string;
+  category: 'location' | 'transport' | 'catering' | 'equipment' | 'permit';
+  title: string;
+  status: ProductionManagementCheckpointStatus;
+  owner?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionManagementIssue {
+  id: string;
+  title: string;
+  severity: ProductionManagementIssueSeverity;
+  status: ProductionManagementIssueStatus;
+  owner?: string;
+  dueAt?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionManagementCostItem {
+  id: string;
+  category: string;
+  title: string;
+  estimatedCost: number;
+  actualCost: number;
+  status: ProductionManagementCostStatus;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionManagementActivityEntry {
+  id: string;
+  type: 'workspace_saved';
+  message: string;
+  actorUserId?: string;
+  createdAt: string;
+}
+
+export interface ProductionManagementOperations {
+  dayStatus: ProductionManagementDayStatus;
+  callSheetApproval: ProductionManagementCallSheetApproval;
+  crewConfirmations: ProductionManagementCrewConfirmation[];
+  checkpoints: ProductionManagementCheckpoint[];
+  issues: ProductionManagementIssue[];
+  costItems: ProductionManagementCostItem[];
+  notes?: string;
+  activity: ProductionManagementActivityEntry[];
+}
+
+export type ProductionCoordinationTaskCategory =
+  | 'crew'
+  | 'supplier'
+  | 'transport'
+  | 'catering'
+  | 'equipment'
+  | 'permit'
+  | 'document'
+  | 'other';
+export type ProductionCoordinationTaskStatus = 'todo' | 'in_progress' | 'blocked' | 'done';
+export type ProductionCoordinationPriority = 'low' | 'normal' | 'high' | 'urgent';
+export type ProductionCoordinationCrewStatus = 'pending' | 'contacted' | 'confirmed' | 'problem';
+export type ProductionCoordinationReadinessStatus = 'not_started' | 'in_progress' | 'ready' | 'blocked';
+export type ProductionCoordinationDocumentStatus = 'missing' | 'requested' | 'received' | 'verified';
+export type ProductionCoordinationEscalationStatus = 'open' | 'acknowledged' | 'resolved';
+
+export interface ProductionCoordinationTask {
+  id: string;
+  title: string;
+  category: ProductionCoordinationTaskCategory;
+  status: ProductionCoordinationTaskStatus;
+  priority: ProductionCoordinationPriority;
+  assignee?: string;
+  dueAt?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionCoordinationCrewFollowUp {
+  crewId: string;
+  status: ProductionCoordinationCrewStatus;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionCoordinationLogisticsItem {
+  id: string;
+  category: 'transport' | 'catering' | 'equipment' | 'permit' | 'supplier' | 'other';
+  title: string;
+  status: ProductionCoordinationReadinessStatus;
+  supplier?: string;
+  contact?: string;
+  dueAt?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionCoordinationDocument {
+  id: string;
+  title: string;
+  category: 'permit' | 'agreement' | 'insurance' | 'safety' | 'schedule' | 'other';
+  status: ProductionCoordinationDocumentStatus;
+  owner?: string;
+  dueAt?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionCoordinationCallSheetItem {
+  id: string;
+  title: string;
+  status: ProductionCoordinationReadinessStatus;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionCoordinationEscalation {
+  id: string;
+  title: string;
+  severity: 'info' | 'warning' | 'critical';
+  status: ProductionCoordinationEscalationStatus;
+  owner?: string;
+  dueAt?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionCoordinationHandover {
+  status: 'draft' | 'ready_for_review';
+  summary?: string;
+  blockers?: string;
+  nextActions?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionCoordinationActivityEntry {
+  id: string;
+  type: 'workspace_saved';
+  message: string;
+  actorUserId?: string;
+  createdAt: string;
+}
+
+export interface ProductionCoordinationOperations {
+  tasks: ProductionCoordinationTask[];
+  crewFollowUps: ProductionCoordinationCrewFollowUp[];
+  logistics: ProductionCoordinationLogisticsItem[];
+  documents: ProductionCoordinationDocument[];
+  callSheetChecklist: ProductionCoordinationCallSheetItem[];
+  escalations: ProductionCoordinationEscalation[];
+  handover: ProductionCoordinationHandover;
+  activity: ProductionCoordinationActivityEntry[];
+}
+
+export type SecondAdMovementStatus =
+  | 'not_called'
+  | 'call_sent'
+  | 'acknowledged'
+  | 'arrived'
+  | 'makeup'
+  | 'wardrobe'
+  | 'ready'
+  | 'on_set'
+  | 'wrapped';
+
+export interface SecondAdMovementEntry {
+  id: string;
+  personType: 'cast' | 'stand_in' | 'background';
+  personId?: string;
+  name: string;
+  roleName?: string;
+  pickupTime?: string;
+  callTime?: string;
+  makeupTime?: string;
+  wardrobeTime?: string;
+  onSetTime?: string;
+  transport?: string;
+  status: SecondAdMovementStatus;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface SecondAssistantDirectorOperations {
+  entries: SecondAdMovementEntry[];
+  notes?: string;
+  updatedAt?: string;
 }
 
 export type ProducerPlanningPhase = 'preproduction' | 'production' | 'postproduction';
@@ -1329,15 +1555,21 @@ export interface ProducerClientIntake {
   additionalNotes?: string;
   updatedAt?: string;
   updatedByRole?: string;
+  /** NULL/undefined = draft (privat), satt = publisert/synlig for klient. */
+  publishedAt?: string | null;
 }
 
 export type ProducerClientMaterialType =
   | 'brief_note'
   | 'asset_link'
   | 'brand_asset'
+  | 'brand_logo'
+  | 'brand_colors'
+  | 'brand_fonts'
   | 'reference'
   | 'document'
-  | 'feedback';
+  | 'feedback'
+  | 'other';
 
 export interface ProducerClientMaterial {
   id: string;
@@ -1485,6 +1717,10 @@ export interface RoleRoomAccessVaultSecretSummary {
   projectId: string;
   platform: ProducerAccountAccessPlatform;
   label?: string | null;
+  accountLabel?: string | null;
+  ownerSide?: 'client' | 'producer' | string | null;
+  rotatedAt?: string | null;
+  revealTtlSeconds?: number | null;
   secretType?: string | null;
   maskedReference?: string | null;
   tier?: ProducerAccountAccessTier | string | null;
@@ -1575,6 +1811,8 @@ export interface ProducerAccountAccessEntry {
   notes?: string;
   twoFactorRequired?: boolean;
   lastUpdatedAt?: string;
+  /** TTL i sekunder for reveal-vinduet (vault v2). */
+  revealTtlSeconds?: number;
 }
 
 export interface ProducerAccountAccessWorkspace {
@@ -1737,6 +1975,13 @@ export type ProducerWorkflowProjectStatus =
   | 'changes_requested'
   | 'approved';
 
+export interface ProducerPhaseCompletion {
+  /** ISO-tidspunkt da Levering ble markert fullført, ellers null. */
+  delivery?: string | null;
+  /** ISO-tidspunkt da Økonomi ble markert fullført, ellers null. */
+  economy?: string | null;
+}
+
 export interface ProducerWorkflowProjectMeta {
   totalReviews: number;
   pendingReviews: number;
@@ -1831,6 +2076,13 @@ export interface CastingProject {
   producerPlanning?: ProducerProjectPlanning;
   producerWorkflowStatus?: ProducerWorkflowProjectStatus;
   producerWorkflowMeta?: ProducerWorkflowProjectMeta;
+  /**
+   * Eksplisitt fullført-markering for Levering- og Økonomi-fasene. Disse
+   * fasene har ingen pålitelig avledet «ferdig»-signal (delivery er ren
+   * konfig, økonomi lever utenfor planning), så produsenten markerer dem
+   * manuelt. ISO-tidspunkt = fullført, null/undefined = ikke fullført.
+   */
+  producerPhaseCompletion?: ProducerPhaseCompletion;
   roles: Role[];
   candidates: Candidate[];
   crew: CrewMember[];
@@ -1928,12 +2180,16 @@ export interface ScriptRevision {
   id: string;
   manuscriptId: string;
   version: string;
+  kind?: 'manual' | 'automatic_snapshot' | 'before_restore' | 'restore_marker';
+  sourceCloudVersion?: number;
   changeSummary?: string;
   changesSummary?: string;
   revisionNotes?: string;
   content?: string;
+  snapshot?: Partial<Manuscript>;
   createdAt?: string;
   createdBy?: string;
+  changedBy?: string;
   [key: string]: unknown;
 }
 
@@ -1945,7 +2201,8 @@ export interface Manuscript {
   subtitle?: string;
   author?: string;
   status?: string;
-  version?: string;
+  /** Numeric values are the API's optimistic-concurrency revision. */
+  version?: string | number;
   format?: 'markdown' | 'fountain' | 'final-draft';
   pageCount?: number;
   wordCount?: number;
@@ -2731,4 +2988,3 @@ export interface AISuggestionFilter {
   status?: AISuggestionStatus | AISuggestionStatus[];
   minConfidence?: number;
 }
-

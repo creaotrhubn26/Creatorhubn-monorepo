@@ -109,7 +109,8 @@ export class LiveSetRealtimeService {
     if (this.destroyed) return;
     const wsBase = import.meta.env.VITE_WS_URL
       ?? window.location.origin.replace(/^http/, 'ws');
-    const url = `${wsBase}/ws?userId=${encodeURIComponent(this.userId)}&room=liveset:${this.projectId}:${this.shootingDayId}&role=${encodeURIComponent(this.role)}`;
+    const wsToken = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token') || '';
+    const url = `${wsBase}/ws?userId=${encodeURIComponent(this.userId)}&room=liveset:${this.projectId}:${this.shootingDayId}&role=${encodeURIComponent(this.role)}${wsToken ? `&token=${encodeURIComponent(wsToken)}` : ''}`;
 
     try {
       this.ws = new WebSocket(url);

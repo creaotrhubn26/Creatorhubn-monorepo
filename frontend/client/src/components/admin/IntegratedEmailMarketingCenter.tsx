@@ -36,6 +36,7 @@ import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 import { useTheming } from '../../utils/theming-helper';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 
 interface EmailContact {
   id: string;
@@ -147,6 +148,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
 
   const currentUser = auth.state.user;
   const adminEmail = currentUser?.email;
@@ -308,7 +310,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
       >
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: 800, mb: 1 }}>
+            <Typography variant="h4" component="h2" sx={{ fontWeight: 800, mb: 1 }}>
               Integrert E-postmarkedsføring & CRM
             </Typography>
             <Typography variant="subtitle1" color="text.secondary">
@@ -318,6 +320,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
           {isSupported && (
             <Tooltip title="Push-varsler innstillinger">
               <IconButton
+                aria-label="Push-varsler innstillinger"
                 onClick={() => setPushSettingsOpen(true)}
                 sx={{ color: pushEnabled ? theming.colors.primary : 'text.secondary' }}
               >
@@ -340,7 +343,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
 
       <TabPanel value={tabValue} index={0}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-          <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
+          <Typography variant="h5" component="h3" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
             CRM Kontakter
           </Typography>
           <Button variant="contained" onClick={() => setContactDialogOpen(true)} sx={theming.getThemedButtonSx()}>
@@ -402,7 +405,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
                     <Typography variant="body2" color="text.secondary">
                       {contact.company || 'Ingen bedrift'}
                     </Typography>
-                    <Chip label={contact.status} size="small" sx={{ mt: 1 }} />
+                    <StatusChip status={contact.status} sx={{ mt: 1 }} />
                   </Paper>
                 </Grid>
               ))}
@@ -412,7 +415,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
       </TabPanel>
 
       <TabPanel value={tabValue} index={1}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
+        <Typography variant="h5" component="h3" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
           E-postkampanjer
         </Typography>
         {campaignsQuery.isLoading ? (
@@ -427,7 +430,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                       {campaign.subject}
                     </Typography>
-                    <Chip label={campaign.status} size="small" />
+                    <StatusChip status={campaign.status} />
                     <Divider sx={{ my: 1.5 }} />
                     <Typography variant="body2">Sendt: {campaign.totalSent ?? 0}</Typography>
                     <Typography variant="body2">Åpnet: {campaign.totalOpen ?? 0}</Typography>
@@ -440,7 +443,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
       </TabPanel>
 
       <TabPanel value={tabValue} index={2}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
+        <Typography variant="h5" component="h3" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
           Kampanjelister
         </Typography>
         <Grid container spacing={2}>
@@ -463,7 +466,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
       </TabPanel>
 
       <TabPanel value={tabValue} index={3}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
+        <Typography variant="h5" component="h3" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
           E-postmaler
         </Typography>
         <Grid container spacing={2}>
@@ -484,7 +487,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
       </TabPanel>
 
       <TabPanel value={tabValue} index={4}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
+        <Typography variant="h5" component="h3" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
           Kampanjeanalyse
         </Typography>
         {analytics ? (
@@ -537,13 +540,14 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
 
       <Fab
         color="primary"
+        aria-label="Send hurtig e-post"
         sx={{ position: 'fixed', bottom: 16, right: 16 }}
         onClick={() => setQuickEmailOpen(true)}
       >
         <Send />
       </Fab>
 
-      <Dialog open={contactDialogOpen} onClose={() => setContactDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={contactDialogOpen} onClose={() => setContactDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Opprett ny kontakt</DialogTitle>
         <DialogContent>
           <TextField
@@ -589,14 +593,14 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setContactDialogOpen(false)}>Avbryt</Button>
-          <Button onClick={handleCreateContact} disabled={createContactMutation.isPending}>
-            {createContactMutation.isPending ? 'Oppretter...' : 'Opprett'}
-          </Button>
+          <AdminButton tone="ghost" onClick={() => setContactDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton tone="primary" onClick={handleCreateContact} loading={createContactMutation.isPending}>
+            Opprett
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={quickEmailOpen} onClose={() => setQuickEmailOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={quickEmailOpen} onClose={() => setQuickEmailOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Send hurtig e-post</DialogTitle>
         <DialogContent>
           <TextField
@@ -625,15 +629,15 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setQuickEmailOpen(false)}>Avbryt</Button>
-          <Button onClick={handleSendQuickEmail} disabled={sendQuickEmailMutation.isPending}>
-            {sendQuickEmailMutation.isPending ? 'Sender...' : 'Send'}
-          </Button>
+          <AdminButton tone="ghost" onClick={() => setQuickEmailOpen(false)}>Avbryt</AdminButton>
+          <AdminButton tone="primary" onClick={handleSendQuickEmail} loading={sendQuickEmailMutation.isPending}>
+            Send
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {isSupported && (
-        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
+        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
           <DialogTitle>Push-varsler innstillinger</DialogTitle>
           <DialogContent>
             <Box sx={{ mt: 2 }}>
@@ -641,7 +645,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+            <AdminButton tone="ghost" onClick={() => setPushSettingsOpen(false)}>Lukk</AdminButton>
           </DialogActions>
         </Dialog>
       )}

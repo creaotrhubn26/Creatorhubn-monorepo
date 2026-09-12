@@ -1,6 +1,9 @@
 import { Box, Chip, Container, Stack, Typography } from '@mui/material';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Norsk casting-ordliste — terminologi-pillar for AI-citation.
@@ -72,7 +75,12 @@ const TERMS: Term[] = [
 ];
 
 export function NorskCastingOrdlistePage() {
+  const cmsBlocks = useCmsBlocks('norsk-casting-ordliste');
   const sortedTerms = [...TERMS].sort((a, b) => a.term.localeCompare(b.term, 'no'));
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
 
   return (
     <Box

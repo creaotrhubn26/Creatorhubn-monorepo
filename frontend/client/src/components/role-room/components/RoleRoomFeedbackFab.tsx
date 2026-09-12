@@ -225,7 +225,7 @@ export const RoleRoomFeedbackFab = ({
             zIndex: 1400,
             bgcolor: '#a78bfa',
             color: '#0b1120',
-            '&:hover': { bgcolor: '#8b5cf6' },
+            '&:hover': { bgcolor: 'var(--role-violet, #8b5cf6)' },
             boxShadow: '0 4px 14px rgba(167,139,250,0.45)',
           }}
         >
@@ -403,7 +403,7 @@ export const RoleRoomFeedbackFab = ({
                   bgcolor: '#a78bfa',
                   color: '#0b1120',
                   fontWeight: 700,
-                  '&:hover': { bgcolor: '#8b5cf6' },
+                  '&:hover': { bgcolor: 'var(--role-violet, #8b5cf6)' },
                   '&:disabled': { bgcolor: 'rgba(167,139,250,0.3)' },
                 }}
               >

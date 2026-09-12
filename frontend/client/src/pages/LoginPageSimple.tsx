@@ -22,6 +22,19 @@ export default function LoginPageSimple() {
     return candidate && candidate.startsWith('/') ? candidate : null;
   }, []);
 
+  // Standard-landing etter innlogging avhenger av hosten. På den admin-dedikerte
+  // hosten (admin.creatorhubn.com) lastes KUN admin-entry-bundlet, som ikke har
+  // noen /workspace-rute → et /workspace-default ga «Siden ikke funnet» (404)
+  // rett etter innlogging. Der er /admin hjemme-flaten. På hoved-hosten er
+  // /workspace fortsatt hovedflaten (prosjektvelger).
+  const defaultPostLoginPath = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return '/workspace';
+    }
+    const hostname = window.location.hostname.trim().toLowerCase();
+    return hostname === 'admin.creatorhubn.com' ? '/admin' : '/workspace';
+  }, []);
+
   const hasStoredToken =
     typeof window !== 'undefined'
       ? Boolean(window.localStorage.getItem(CREATORHUB_AUTH_TOKEN_KEY))
@@ -43,8 +56,12 @@ export default function LoginPageSimple() {
       return;
     }
 
-    setLocation(redirectTarget || '/dashboard');
-  }, [currentUserCanAccessRedirect, hasStoredToken, isAuthenticated, redirectTarget, setLocation]);
+    // Workspace er hovedflaten: send innloggede brukere til /workspace-hjem
+    // (prosjektvelger) i stedet for UniversalDashboard. Eksplisitt redirectTarget
+    // (f.eks. dyplenke eller /admin) respekteres fortsatt. På admin-hosten er
+    // default /admin (se defaultPostLoginPath) siden /workspace ikke finnes der.
+    setLocation(redirectTarget || defaultPostLoginPath);
+  }, [currentUserCanAccessRedirect, defaultPostLoginPath, hasStoredToken, isAuthenticated, redirectTarget, setLocation]);
 
   if (isAuthenticated && hasStoredToken && currentUserCanAccessRedirect) {
     return (
@@ -58,7 +75,7 @@ export default function LoginPageSimple() {
             'radial-gradient(circle at top, rgba(255, 186, 108, 0.28) 0%, rgba(20, 16, 11, 0.96) 52%, #060709 100%)',
         }}
       >
-        <CircularProgress sx={{ color: '#ffba6c' }} />
+        <CircularProgress sx={{ color: 'var(--chl-accent, #ffba6c)' }} />
       </Box>
     );
   }
@@ -121,7 +138,7 @@ export default function LoginPageSimple() {
         context="general"
         initialError={googleError}
         initialLoginType={null}
-        redirectTo={redirectTarget || '/dashboard'}
+        redirectTo={redirectTarget || undefined}
       />
     </Box>
   );

@@ -28,6 +28,7 @@ import {
   Info,
 } from '@mui/icons-material';
 import { getFolderAccessOverview, getAccessibleFoldersForUser } from '../../../../shared/profession-feature-matrix';
+import { StatusChip } from './design-system';
 
 interface UserFolderAccessViewerProps {
   userId: string;
@@ -201,7 +202,7 @@ export const UserFolderAccessViewer: React.FC<UserFolderAccessViewerProps> = ({
                     <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
                       {featureFolder.featureName}
                     </Typography>
-                    <Chip label="Låst" size="small" color="warning" />
+                    <StatusChip tone="warning" label="Låst" />
                   </Stack>
                   <Grid container spacing={1}>
                     {featureFolder.folders.map((folderName) => (

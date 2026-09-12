@@ -42,6 +42,8 @@ import {
 } from '@mui/icons-material';
 import { QUERY_KEYS } from '../../lib/queryKeys';
 import { useToast } from '../../hooks/use-toast';
+import { AdminButton, AdminEmpty, useIsMobile } from './design-system';
+import DOMPurify from 'dompurify';
 
 type SortBy = 'recent' | 'popular' | 'name';
 type CategoryValue =
@@ -146,6 +148,7 @@ export default function EmailTemplateLibrary({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const {
     data: templates = [],
@@ -230,7 +233,7 @@ export default function EmailTemplateLibrary({
   });
 
   const filteredTemplates = useMemo(() => {
-    const filtered = templates.filter((template) => {
+    const filtered = (Array.isArray(templates) ? templates : []).filter((template) => {
       const query = searchQuery.toLowerCase();
       const matchesSearch =
         template.name.toLowerCase().includes(query) ||
@@ -306,7 +309,7 @@ export default function EmailTemplateLibrary({
           lineHeight: template.globalStyles.lineHeight ?? 1.6,
           borderRadius: 1,
         }}
-        dangerouslySetInnerHTML={{ __html: previewHtml }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }}
       />
     );
   };
@@ -314,7 +317,7 @@ export default function EmailTemplateLibrary({
   return (
     <Stack spacing={3}>
       <Box>
-        <Typography variant="h4" fontWeight={700}>
+        <Typography variant="h4" component="h2" fontWeight={700}>
           Email Template Library
         </Typography>
         <Typography variant="body2" color="text.secondary">
@@ -326,6 +329,7 @@ export default function EmailTemplateLibrary({
         <TextField
           fullWidth
           placeholder="Search templates..."
+          aria-label="Søk i e-postmaler"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
           InputProps={{
@@ -342,6 +346,7 @@ export default function EmailTemplateLibrary({
             value={sortBy}
             onChange={(event) => setSortBy(event.target.value as SortBy)}
             displayEmpty
+            aria-label="Sorter maler"
           >
             <MenuItem value="recent">Most Recent</MenuItem>
             <MenuItem value="popular">Most Popular</MenuItem>
@@ -389,15 +394,11 @@ export default function EmailTemplateLibrary({
       )}
 
       {!isLoading && filteredTemplates.length === 0 ? (
-        <Card>
-          <CardContent sx={{ py: 8, textAlign: 'center' }}>
-            <Email sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
-            <Typography>No templates found</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Try adjusting your search or filters.
-            </Typography>
-          </CardContent>
-        </Card>
+        <AdminEmpty
+          icon={<Email sx={{ fontSize: 48 }} />}
+          title="No templates found"
+          description="Try adjusting your search or filters."
+        />
       ) : (
         <Grid2 container spacing={2}>
           {filteredTemplates.map((template) => {
@@ -492,26 +493,35 @@ export default function EmailTemplateLibrary({
 
                   <CardActions sx={{ px: 2, pb: 2 }}>
                     <Tooltip title="Preview template">
-                      <IconButton onClick={() => setPreviewTemplate(template)}>
+                      <IconButton
+                        aria-label="Forhåndsvis mal"
+                        onClick={() => setPreviewTemplate(template)}
+                      >
                         <Visibility />
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Duplicate template">
-                      <IconButton onClick={() => duplicateMutation.mutate(template.id)}>
+                      <IconButton
+                        aria-label="Dupliser mal"
+                        onClick={() => duplicateMutation.mutate(template.id)}
+                      >
                         <ContentCopy />
                       </IconButton>
                     </Tooltip>
                     {!template.isDefault && (
                       <Tooltip title="Delete template">
-                        <IconButton onClick={() => setDeleteConfirmId(template.id)}>
+                        <IconButton
+                          aria-label="Slett mal"
+                          onClick={() => setDeleteConfirmId(template.id)}
+                        >
                           <Delete />
                         </IconButton>
                       </Tooltip>
                     )}
                     <Box sx={{ flexGrow: 1 }} />
-                    <Button variant="contained" onClick={() => handleUseTemplate(template)}>
+                    <AdminButton tone="primary" onClick={() => handleUseTemplate(template)}>
                       Use Template
-                    </Button>
+                    </AdminButton>
                   </CardActions>
                 </Card>
               </Grid2>
@@ -525,6 +535,7 @@ export default function EmailTemplateLibrary({
         onClose={() => setPreviewTemplate(null)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>{previewTemplate?.name ?? 'Template Preview'}</DialogTitle>
         <DialogContent dividers>
@@ -538,22 +549,24 @@ export default function EmailTemplateLibrary({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPreviewTemplate(null)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setPreviewTemplate(null)}>
+            Close
+          </AdminButton>
           {previewTemplate && (
             <>
-              <Button
-                variant="outlined"
+              <AdminButton
+                tone="secondary"
                 startIcon={<ContentCopy />}
                 onClick={() => duplicateMutation.mutate(previewTemplate.id)}
               >
                 Duplicate
-              </Button>
-              <Button
-                variant="contained"
+              </AdminButton>
+              <AdminButton
+                tone="primary"
                 onClick={() => handleUseTemplate(previewTemplate)}
               >
                 Use Template
-              </Button>
+              </AdminButton>
             </>
           )}
         </DialogActions>
@@ -564,6 +577,7 @@ export default function EmailTemplateLibrary({
         onClose={() => setDeleteConfirmId(null)}
         maxWidth="xs"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Delete Template</DialogTitle>
         <DialogContent>
@@ -573,10 +587,12 @@ export default function EmailTemplateLibrary({
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={executeDelete}>
+          <AdminButton tone="ghost" onClick={() => setDeleteConfirmId(null)}>
+            Cancel
+          </AdminButton>
+          <AdminButton tone="danger" onClick={executeDelete}>
             Delete
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Stack>

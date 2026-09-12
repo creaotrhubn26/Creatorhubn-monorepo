@@ -5,10 +5,9 @@
  * sessions as candidates for a carousel slide.
  *
  * Match heuristics (ranked):
- *   1. Tag overlap — gallery_assets.tags ∩ slide-prompt-tags
- *   2. Caption / alt_text full-text match
- *   3. Project link — when carousel-draft is bound to a project,
- *      prefer assets from that project's gallery
+ *   1. Tag overlap — showcase_items.tags ∩ slide-prompt-tags
+ *   2. Title/description match
+ *   3. Project link — when carousel-draft is bound to a project
  *
  * No Claude Vision yet — the embedding pass ships with Slice 5.5.
  * Pattern leaves a hook (matchMode='vision') for that future upgrade.
@@ -47,8 +46,8 @@ export async function findGalleryMatches(
 
   const limit = input.limit ?? 12;
 
-  // The gallery-asset shape varies across this codebase — try the most
-  // canonical layout first (showcase_assets) and gracefully degrade.
+  // Showcase bruker showcase_items som kanonisk asset-tabell. Eldre kode
+  // pekte på showcase_assets, en tabell som aldri har eksistert i migrasjonene.
   try {
     const result = await pool.query<{
       asset_id: string;
@@ -64,28 +63,31 @@ export async function findGalleryMatches(
       `WITH base AS (
          SELECT
            a.id              AS asset_id,
-           a.gallery_id      AS gallery_id,
-           a.url             AS url,
+           COALESCE(a.delivery_id, a.project_id, a.id) AS gallery_id,
+           COALESCE(NULLIF(a.image_url, ''), a.media_url) AS url,
            a.thumbnail_url   AS thumbnail_url,
-           a.alt_text        AS alt_text,
-           a.captured_at     AS captured_at,
+           COALESCE(a.description, a.title) AS alt_text,
+           a.created_at::text AS captured_at,
            CARDINALITY(
-             ARRAY(SELECT UNNEST(COALESCE(a.tags, ARRAY[]::text[]))
+             ARRAY(SELECT jsonb_array_elements_text(
+                            CASE WHEN jsonb_typeof(a.tags) = 'array'
+                                 THEN a.tags ELSE '[]'::jsonb END)
                    INTERSECT
                    SELECT UNNEST($2::text[]))
            ) AS tag_overlap,
            CASE
-             WHEN a.alt_text ILIKE ANY($3::text[]) THEN 1
+             WHEN COALESCE(a.title, '') ILIKE ANY($3::text[])
+               OR COALESCE(a.description, '') ILIKE ANY($3::text[]) THEN 1
              ELSE 0
            END AS caption_match,
            CASE
-             WHEN $4::varchar IS NOT NULL AND g.project_id = $4 THEN 1
+             WHEN $4::varchar IS NOT NULL AND a.project_id = $4 THEN 1
              ELSE 0
            END AS project_match
-         FROM showcase_assets a
-         JOIN showcase_galleries g ON g.id = a.gallery_id
-         WHERE g.user_id = $1
-           AND a.is_active = TRUE
+         FROM showcase_items a
+         WHERE a.user_id = $1
+           AND COALESCE(a.is_active, TRUE) = TRUE
+           AND COALESCE(NULLIF(a.image_url, ''), a.media_url) IS NOT NULL
        )
        SELECT * FROM base
        WHERE tag_overlap > 0 OR caption_match > 0 OR project_match > 0
@@ -123,7 +125,7 @@ export async function findGalleryMatches(
       };
     });
   } catch {
-    // Schema may not yet expose showcase_assets.tags; fail soft so the
+    // Schema may not yet expose the latest showcase_items columns; fail soft so the
     // caller falls through to other strategies (stock / AI / color-only).
     return [];
   }

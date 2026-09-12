@@ -249,6 +249,19 @@ export interface ClientDashboardData {
   upcoming: PersistedPlanPost[];
   /** Når tokenet går ut — vises i footer så klient vet. */
   sessionExpiresAt: string;
+  /** Proaktive oppdateringer produsenten har sendt — vises som en tidslinje
+   *  øverst i portalen så klienten ser fremdrift + innsikt uten å spørre. */
+  clientUpdates: ClientPortalUpdate[];
+}
+
+export interface ClientPortalUpdate {
+  id: string;
+  periodLabel: string;
+  headline: string;
+  highlights: Array<{ key: string; label: string; value: string }>;
+  bestTimeTip: string | null;
+  producerNote: string | null;
+  createdAt: string;
 }
 
 function computeProgress(
@@ -325,6 +338,39 @@ export async function fetchClientDashboard(
     /* projects table may be called differently in some schemas; leave null */
   }
 
+  let clientUpdates: ClientPortalUpdate[] = [];
+  try {
+    const updateRows = await pool.query<{
+      id: string;
+      period_label: string;
+      digest: {
+        headline?: string;
+        highlights?: Array<{ key: string; label: string; value: string }>;
+        bestTimeTip?: string | null;
+        producerNote?: string | null;
+      } | null;
+      created_at: string;
+    }>(
+      `SELECT id, period_label, digest, created_at
+         FROM role_room_client_updates
+        WHERE project_id = $1
+        ORDER BY created_at DESC
+        LIMIT 10`,
+      [session.projectId],
+    );
+    clientUpdates = updateRows.rows.map((r) => ({
+      id: r.id,
+      periodLabel: r.period_label,
+      headline: r.digest?.headline ?? r.period_label,
+      highlights: Array.isArray(r.digest?.highlights) ? r.digest!.highlights! : [],
+      bestTimeTip: r.digest?.bestTimeTip ?? null,
+      producerNote: r.digest?.producerNote ?? null,
+      createdAt: r.created_at,
+    }));
+  } catch {
+    /* table may not exist yet in some envs — portal still works without it */
+  }
+
   return {
     project: { id: session.projectId, title: projectTitle },
     plan,
@@ -332,5 +378,6 @@ export async function fetchClientDashboard(
     progress: computeProgress(plan, posts),
     upcoming: pickUpcoming(posts),
     sessionExpiresAt: session.expiresAt.toISOString(),
+    clientUpdates,
   };
 }

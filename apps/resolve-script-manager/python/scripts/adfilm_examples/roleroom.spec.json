@@ -1,0 +1,92 @@
+{
+  "product": "The Role Room",
+  "workdir": "/tmp/roleroom-film",
+  "setting": "Oslo casting-studio + audition-rom, golden hour",
+  "brand": {
+    "wordmark_asset": "TheRoleRoom_Logo_Tagline",
+    "accent": "#aa36c5",
+    "tagline": "Casting. Roles. Together."
+  },
+  "character": {
+    "ref_still": "stills/ref.jpg",
+    "lock": "kvinnelig casting-ansvarlig/produsent, 30-år, avslappet-elegant (mørk blazer, hvit t-skjorte), rolig og profesjonell"
+  },
+  "fps": 25,
+  "vo": {
+    "provider": "elevenlabs",
+    "voice": "Rachel",
+    "lang_spoken": "en",
+    "lang_sub": "no"
+  },
+  "music": "music_seamless.m4a",
+  "out": "~/Desktop/ROLEROOM-final.mp4",
+  "shots": [
+    {
+      "id": "s01",
+      "prompt": "casting director holding a tablet at a sunlit audition studio, warm morning light, plain green tablet screen facing camera for chroma key",
+      "dur": 4.0,
+      "ui_key": true,
+      "shot_type": "medium hero",
+      "camera": "slow push-in",
+      "mood": "calm, inviting",
+      "ui_recording": "recordings/role-board.mov"
+    },
+    {
+      "id": "s02",
+      "prompt": "scattered printed headshots, casting notes and coffee on a studio table, no legible product UI",
+      "dur": 3.2,
+      "ui_key": false,
+      "shot_type": "insert",
+      "camera": "top-down drift",
+      "mood": "the search before the match"
+    },
+    {
+      "id": "s03",
+      "prompt": "product reveal: she holds up the tablet, plain green screen facing camera, ready for the casting role board",
+      "dur": 5.0,
+      "ui_key": true,
+      "shot_type": "reveal wide-to-medium",
+      "camera": "dolly pull-back",
+      "mood": "the hero appears",
+      "ui_recording": "recordings/role-board.mov"
+    },
+    {
+      "id": "s04",
+      "prompt": "reviewing an audition shortlist over the shoulder on a rooftop at golden hour, plain green tablet screen facing camera",
+      "dur": 3.6,
+      "ui_key": true,
+      "shot_type": "over-the-shoulder close",
+      "camera": "handheld drift",
+      "mood": "effortless flow",
+      "ui_recording": "recordings/shortlist.mov"
+    },
+    {
+      "id": "s05",
+      "prompt": "close-up of the tablet held in both hands, plain green screen facing camera, warm rim light on device",
+      "dur": 3.5,
+      "ui_key": true,
+      "shot_type": "close-up on screen",
+      "camera": "push-in",
+      "mood": "the role is booked",
+      "ui_recording": "recordings/booked.mov"
+    },
+    {
+      "id": "s06",
+      "prompt": "golden-hour rooftop silhouette holding the tablet, city behind, coffee, plain green tablet screen for wordmark reveal",
+      "dur": 4.5,
+      "ui_key": true,
+      "shot_type": "silhouette outro",
+      "camera": "static hold",
+      "mood": "quiet confidence",
+      "ui_recording": "recordings/role-board.mov"
+    }
+  ],
+  "vo_lines": [
+    { "en": "Every great role starts with the right people.", "no": "Hver god rolle starter med de rette menneskene." },
+    { "en": "Talent, auditions, casting — in one room.", "no": "Talent, auditioner, casting — i ett rom." },
+    { "en": "Find, shortlist, book — together.", "no": "Finn, kortlist, book — sammen." },
+    { "en": "See every role's status at a glance.", "no": "Se statusen på hver rolle med ett blikk." },
+    { "en": "From first audition to final cast.", "no": "Fra første audition til ferdig rollebesetning." },
+    { "en": "The Role Room. Casting. Roles. Together.", "no": "The Role Room. Casting. Roller. Sammen." }
+  ]
+}

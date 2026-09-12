@@ -54,6 +54,23 @@ final class CameraDiscovery: ObservableObject {
         permissionDenied = false
         isSearching = true
 
+        #if DEBUG
+        // QA/skjermbilde: `--fake-cameras` seeder to funn så flerkamera-UI-et kan
+        // verifiseres uten ekte kameraer på nettverket.
+        if ProcessInfo.processInfo.arguments.contains("--fake-cameras") {
+            cameras = [
+                Found(id: "fake1", serviceName: "Studio R5",
+                      baseURL: URL(string: "https://192.168.1.11")!,
+                      deviceName: "Canon EOS R5", firmware: "1.8.1", serial: "013021000123"),
+                Found(id: "fake2", serviceName: "Backup R6",
+                      baseURL: URL(string: "https://192.168.1.12")!,
+                      deviceName: "Canon EOS R6 Mark II", firmware: "1.6.0", serial: "023041000456")
+            ]
+            isSearching = false
+            return
+        }
+        #endif
+
         // Bonjour first. Most Canon bodies don't advertise via mDNS in
         // CCAPI mode (verified against R5 + R6 mkII 2026-04-18), but
         // running the browser is essentially free and catches bodies that
@@ -71,7 +88,7 @@ final class CameraDiscovery: ObservableObject {
                 switch state {
                 case .failed(let error):
                     self.permissionDenied = true
-                    print("CameraDiscovery: browser failed — \(error)")
+                    AppLog.capture.error("CameraDiscovery: browser failed — \(error.localizedDescription, privacy: .public)")
                 case .cancelled:
                     break
                 default:
@@ -112,11 +129,11 @@ final class CameraDiscovery: ObservableObject {
     private func scanLocalSubnets() async {
         let subnets = Self.localIPv4Subnets()
         if subnets.isEmpty {
-            print("CameraDiscovery: no private IPv4 subnets found — getifaddrs empty")
+            AppLog.capture.error("CameraDiscovery: no private IPv4 subnets found — getifaddrs empty")
             return
         }
         for s in subnets {
-            print("CameraDiscovery: scanning \(s.base).1-254 (skipping \(s.base).\(s.mine))")
+            AppLog.capture.notice("CameraDiscovery: scanning \(s.base, privacy: .public).1-254 (skipping \(s.base, privacy: .public).\(s.mine, privacy: .public))")
         }
         let hosts = subnets.flatMap(\.hosts)
         let batchSize = 16
@@ -136,7 +153,7 @@ final class CameraDiscovery: ObservableObject {
         }
         await MainActor.run {
             self.isSearching = false
-            print("CameraDiscovery: scan complete — \(self.cameras.count) camera(s) found")
+            AppLog.capture.notice("CameraDiscovery: scan complete — \(self.cameras.count, privacy: .public) camera(s) found")
         }
     }
 
@@ -147,9 +164,9 @@ final class CameraDiscovery: ObservableObject {
     ///   - https://host:8443  — alternate TLS port some newer bodies use
     /// Probe all three in parallel per IP and take the first valid responder.
     private static let probeVariants: [(scheme: String, port: Int?)] = [
-        ("http",  8080),
+        ("http", 8080),
         ("https", nil),   // default 443
-        ("https", 8443),
+        ("https", 8443)
     ]
 
     private func probeIP(host: String) async {
@@ -179,7 +196,7 @@ final class CameraDiscovery: ObservableObject {
             _ = try await withTimeout(seconds: 3.5) {
                 try await client.connect()
             }
-            print("CameraDiscovery: CCAPI responder at \(baseURL.absoluteString)")
+            AppLog.capture.notice("CameraDiscovery: CCAPI responder at \(baseURL.absoluteString, privacy: .public)")
             let info = try? await client.deviceInformation()
             let found = Found(
                 id: key,
@@ -264,12 +281,17 @@ final class CameraDiscovery: ObservableObject {
     private func reconcile(results: [NWBrowser.Result]) {
         let activeKeys = Set(results.compactMap(Self.key(for:)))
 
-        // Drop probes + cameras for services that vanished.
+        // Drop probes + cameras for BONJOUR services that vanished.
         for (key, task) in probes where !activeKeys.contains(key) {
             task.cancel()
             probes.removeValue(forKey: key)
         }
-        cameras.removeAll { !activeKeys.contains($0.id) }
+        // 🔑 IKKE rør IP-skannede kameraer (id «ip:<host>») — de eies av subnett-
+        // skanningen, ikke Bonjour. Før tømte `removeAll` alle IP-funn ved ethvert
+        // Bonjour-delta (Canon annonserer ikke via mDNS i CCAPI-modus → IP-skann ER
+        // funn-stien), så kameraet forsvant fra lista i det en urelatert mDNS-tjeneste
+        // dukket opp/forsvant. Fjern kun VANISHED Bonjour-oppføringer.
+        cameras.removeAll { !$0.id.hasPrefix("ip:") && !activeKeys.contains($0.id) }
 
         // Start a probe for each new service we haven't seen yet.
         for result in results {

@@ -39,6 +39,7 @@ import {
   Storage as SizeIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 
 interface RecentUpload {
   id: number;
@@ -70,25 +71,18 @@ export default function RecentUploadsWidget({
   // Hent nylige opplastinger
   const { data: recentUploads = [], isLoading } = useQuery({
     queryKey: ['/api/recent-uploads', userId],
-    queryFn: async () => {
-      const response = await fetch(`/api/recent-uploads?userId=${userId}&limit=${maxItems}`);
-      if (!response.ok) throw new Error('Kunne ikke hente nylige opplastinger');
-      return response.json();
-  },
+    queryFn: async () => apiRequest(`/api/recent-uploads?userId=${userId}&limit=${maxItems}`),
     refetchInterval: 3000, // Oppdater hvert 30 sekund
 });
 
   // Flytt fil til foreslått mappe
   const relocateFileMutation = useMutation({
     mutationFn: async ({ filed, targetFolder }: { fileId: number; targetFolder: string }) => {
-      const response = await fetch('/api/relocate-file', {
+      return await apiRequest('/api/relocate-file', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify({ filed, targetFolder, userId }),
-    });
-      if (!response.ok) throw new Error('Kunne ikke flytte fil');
-      return response.json();
-  },
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/recent-uploads', ],});
       setIsActionDialogOpen(false);

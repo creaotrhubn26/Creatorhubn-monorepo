@@ -705,7 +705,7 @@ export const TutorialEditorPanel: React.FC<TutorialEditorPanelProps> = ({
                         <IconButton
                           onClick={(e: React.MouseEvent) => { e.stopPropagation(); startEditingStep(step); }}
                           aria-label="Rediger steg"
-                          sx={{ color: '#00d4ff', minWidth: iconButtonSize, minHeight: iconButtonSize }}
+                          sx={{ color: 'var(--role-cyan, #00d4ff)', minWidth: iconButtonSize, minHeight: iconButtonSize }}
                         >
                           <EditIcon sx={{ fontSize: iconSize }} />
                         </IconButton>

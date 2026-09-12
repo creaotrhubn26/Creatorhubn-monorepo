@@ -15,6 +15,7 @@
  * service-laget returnerer 403 ellers).
  */
 
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import {
   Alert,
   Box,
@@ -353,6 +354,7 @@ export default function AgencyPartnershipsPage() {
       ) : null}
 
       {proposeDialog ? (
+        <ErrorBoundary componentName="agency-propose-talents-dialog">
         <Suspense fallback={null}>
           <ProposeTalentsDialog
             open
@@ -362,6 +364,7 @@ export default function AgencyPartnershipsPage() {
             onClose={() => setProposeDialog(null)}
           />
         </Suspense>
+        </ErrorBoundary>
       ) : null}
 
       {/* Pause-anbefaling-dialog (felles for både close og revoke) */}

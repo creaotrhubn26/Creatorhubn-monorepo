@@ -155,6 +155,9 @@ class AuditLogger {
     });
 
       window.addEventListener('unhandledrejection', (event) => {
+        // Benign kansellering (AbortError) skal ikke trigge high_error_rate.
+        const reason: any = (event as PromiseRejectionEvent).reason;
+        if (reason?.name === 'AbortError' || /abort/i.test(String(reason?.message ?? reason ?? ''))) return;
         this.log({
           action: 'unhandled_promise_rejection',
           resource: 'browser',

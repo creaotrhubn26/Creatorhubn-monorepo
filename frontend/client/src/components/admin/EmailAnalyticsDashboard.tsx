@@ -23,7 +23,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Paper,
@@ -40,7 +39,11 @@ import {
   ToggleButtonGroup,
   ToggleButton,
   CircularProgress,
+  ThemeProvider,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Email,
   OpenInNew,
@@ -55,6 +58,7 @@ import {
   CompareArrows,
   Visibility,
   Mouse,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -64,6 +68,7 @@ import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions'
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
+import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminTableContainer, useIsMobile } from './design-system';
 
 interface EmailCampaign {
   id: string;
@@ -114,10 +119,14 @@ export default function EmailAnalyticsDashboard() {
   
   // Theming system - use dynamic profession
   const theming = useTheming(currentProfession);
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
+
+  const isMobile = useIsMobile();
 
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<string>('7d');
   const [showABTestDialog, setShowABTestDialog] = useState(false);
+  const [search, setSearch] = useState("");
 
   // Fetch email analytics
   const { data: analytics, isLoading } = useQuery({
@@ -130,7 +139,7 @@ export default function EmailAnalyticsDashboard() {
   });
 
   // Fetch campaigns
-  const { data: campaigns = [] } = useQuery({
+  const { data: campaignsData = [] } = useQuery({
     queryKey: ['/api/admin/email-campaigns'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -138,9 +147,10 @@ export default function EmailAnalyticsDashboard() {
     },
     staleTime: 5 * 60 * 1000,
   });
+  const campaigns = Array.isArray(campaignsData) ? campaignsData : [];
 
   // Fetch link analytics for selected campaign
-  const { data: linkAnalytics = [] } = useQuery({
+  const { data: linkAnalyticsData = [] } = useQuery({
     queryKey: ['/api/admin/email-link-analytics', selectedCampaign],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -148,6 +158,7 @@ export default function EmailAnalyticsDashboard() {
     },
     enabled: !!selectedCampaign,
   });
+  const linkAnalytics = Array.isArray(linkAnalyticsData) ? linkAnalyticsData : [];
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['/api/admin/email-analytics'] });
@@ -155,6 +166,7 @@ export default function EmailAnalyticsDashboard() {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       {/* Header */}
       <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
@@ -166,7 +178,7 @@ export default function EmailAnalyticsDashboard() {
           )}
           <Email sx={{ fontSize: 32, color: '#ea4335' }} />
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 600, color: themeColors.primary }}>
               {enhancedProfessionConfig?.displayName || professionConfig?.displayName
                 ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Email Analytics Dashboard`
                 : 'Email Analytics Dashboard'}
@@ -192,16 +204,14 @@ export default function EmailAnalyticsDashboard() {
             </Select>
           </FormControl>
           
-          <IconButton onClick={handleRefresh}>
+          <IconButton onClick={handleRefresh} aria-label="Oppdater">
             <Refresh />
           </IconButton>
         </Stack>
       </Stack>
 
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
+        <AdminLoading />
       ) : (
         <>
           {/* Overview Stats */}
@@ -284,7 +294,7 @@ export default function EmailAnalyticsDashboard() {
                       <Typography variant="caption" color="text.secondary">
                         Conversion Rate
                       </Typography>
-                      <CheckCircle sx={{ color: '#9c27b0', fontSize: 24 }} />
+                      <CheckCircle sx={{ color: '#ce93d8', fontSize: 24 }} />
                     </Stack>
                     <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
                       {analytics?.averageConversionRate || 0}%
@@ -301,13 +311,24 @@ export default function EmailAnalyticsDashboard() {
           </Grid>
 
           {/* Campaign Performance Table */}
-          <Card sx={{ mb: 4 }}>
-            <CardContent>
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600}}>
-                Campaign Performance
-              </Typography>
-              
-              <TableContainer>
+          <AdminCard title="Campaign Performance" disablePadding sx={{ mb: 4 }}>
+              <Box sx={{ px: 2, pt: 2 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Søk kampanje eller emne …"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
+              <AdminTableContainer ariaLabel="Campaign Performance">
                 <Table>
                   <TableHead>
                     <TableRow>
@@ -323,7 +344,9 @@ export default function EmailAnalyticsDashboard() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {campaigns.map((campaign: EmailCampaign) => (
+                    {campaigns.filter((campaign: EmailCampaign) =>
+                      `${campaign.name || ''} ${campaign.subject || ''}`.toLowerCase().includes(search.toLowerCase())
+                    ).map((campaign: EmailCampaign) => (
                       <TableRow key={campaign.id} hover>
                         <TableCell>
                           <Stack>
@@ -351,39 +374,37 @@ export default function EmailAnalyticsDashboard() {
                         <TableCell align="right">{campaign.openCount}</TableCell>
                         <TableCell align="right">{campaign.clickCount}</TableCell>
                         <TableCell align="right">
-                          <Chip 
+                          <StatusChip
                             label={`${campaign.openRate}%`}
-                            size="small"
-                            color={campaign.openRate > 30 ? 'success' : campaign.openRate > 15 ? 'warning' : 'error'}
+                            tone={campaign.openRate > 30 ? 'success' : campaign.openRate > 15 ? 'warning' : 'error'}
                           />
                         </TableCell>
                         <TableCell align="right">
-                          <Chip 
+                          <StatusChip
                             label={`${campaign.clickRate}%`}
-                            size="small"
-                            color={campaign.clickRate > 5 ? 'success' : campaign.clickRate > 2 ? 'warning' : 'error'}
+                            tone={campaign.clickRate > 5 ? 'success' : campaign.clickRate > 2 ? 'warning' : 'error'}
                           />
                         </TableCell>
                         <TableCell align="right">
-                          <Chip 
+                          <StatusChip
                             label={`${campaign.conversionRate}%`}
-                            size="small"
-                            variant="outlined"
+                            tone="neutral"
                           />
                         </TableCell>
                         <TableCell>
                           <Stack direction="row" spacing={1}>
                             <Tooltip title="View link analytics">
-                              <IconButton 
+                              <IconButton
                                 size="small"
                                 onClick={() => setSelectedCampaign(campaign.id)}
+                                aria-label="Vis lenke-analyse"
                               >
                                 <BarChart fontSize="small" />
                               </IconButton>
                             </Tooltip>
                             {campaign.isABTest && (
                               <Tooltip title="View A/B test results">
-                                <IconButton size="small">
+                                <IconButton size="small" aria-label="Vis A/B-testresultater">
                                   <CompareArrows fontSize="small" />
                                 </IconButton>
                               </Tooltip>
@@ -394,27 +415,25 @@ export default function EmailAnalyticsDashboard() {
                     ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
-            </CardContent>
-          </Card>
+              </AdminTableContainer>
+          </AdminCard>
 
           {/* A/B Testing Section */}
-          <Card>
-            <CardContent>
+          <AdminCard>
               <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
                 <Stack direction="row" spacing={2} alignItems="center">
-                  <Science sx={{ color: '#9c27b0', fontSize: 28 }} />
-                  <Typography variant="h6" sx={{ fontWeight: 600}}>
+                  <Science sx={{ color: '#ce93d8', fontSize: 28 }} />
+                  <Typography variant="h6" component="h3" sx={{ fontWeight: 600}}>
                     A/B Testing
                   </Typography>
                 </Stack>
-                <Button
-                  variant="contained"
+                <AdminButton
+                  tone="primary"
                   startIcon={<Science />}
                   onClick={() => setShowABTestDialog(true)}
                 >
                   Create A/B Test
-                </Button>
+                </AdminButton>
               </Stack>
 
               <Alert severity="info" sx={{ mb: 2 }}>
@@ -432,7 +451,7 @@ export default function EmailAnalyticsDashboard() {
                       
                       <Stack direction="row" spacing={2}>
                         {/* Variant A */}
-                        <Box sx={{ flex: 1, p: 2, borderRadius: 1, bgcolor: 'success.light' }}>
+                        <Box sx={{ flex: 1, p: 2, borderRadius: 1, bgcolor: 'rgba(76,175,80,0.18)' }}>
                           <Typography variant="caption" color="success.dark" sx={{ fontWeight: 600}}>
                             VARIANT A {campaign.variantA && campaign.variantA.openCount > (campaign.variantB?.openCount || 0) && '(Winner)'}
                           </Typography>
@@ -447,7 +466,7 @@ export default function EmailAnalyticsDashboard() {
                         <CompareArrows sx={{ alignSelf: 'center', color: 'text.secondary' }} />
                         
                         {/* Variant B */}
-                        <Box sx={{ flex: 1, p: 2, borderRadius: 1, bgcolor: 'info.light' }}>
+                        <Box sx={{ flex: 1, p: 2, borderRadius: 1, bgcolor: 'rgba(33,150,243,0.18)' }}>
                           <Typography variant="caption" color="info.dark" sx={{ fontWeight: 600}}>
                             VARIANT B {campaign.variantB && campaign.variantB.openCount > (campaign.variantA?.openCount || 0) && '(Winner)'}
                           </Typography>
@@ -472,17 +491,17 @@ export default function EmailAnalyticsDashboard() {
                   </Grid>
                 ))}
               </Grid>
-            </CardContent>
-          </Card>
+          </AdminCard>
         </>
       )}
 
       {/* Link Analytics Dialog */}
-      <Dialog 
-        open={!!selectedCampaign} 
-        onClose={() => setSelectedCampaign(null)} 
-        maxWidth="md" 
+      <Dialog
+        open={!!selectedCampaign}
+        onClose={() => setSelectedCampaign(null)}
+        maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Stack direction="row" spacing={2} alignItems="center">
@@ -495,7 +514,7 @@ export default function EmailAnalyticsDashboard() {
             Track which links in your emails get the most clicks
           </Typography>
           
-          <TableContainer>
+          <AdminTableContainer ariaLabel="Link Analytics">
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -516,10 +535,9 @@ export default function EmailAnalyticsDashboard() {
                     <TableCell align="right">{link.clicks}</TableCell>
                     <TableCell align="right">{link.uniqueClicks}</TableCell>
                     <TableCell align="right">
-                      <Chip 
-                        label={`${link.clickRate}%`} 
-                        size="small"
-                        color={link.clickRate > 10 ? 'success' : 'default'}
+                      <StatusChip
+                        label={`${link.clickRate}%`}
+                        tone={link.clickRate > 10 ? 'success' : 'neutral'}
                       />
                     </TableCell>
                   </TableRow>
@@ -535,15 +553,15 @@ export default function EmailAnalyticsDashboard() {
                 )}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSelectedCampaign(null)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setSelectedCampaign(null)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Create A/B Test Dialog */}
-      <Dialog open={showABTestDialog} onClose={() => setShowABTestDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog open={showABTestDialog} onClose={() => setShowABTestDialog(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Create A/B Test</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }}>
@@ -561,10 +579,11 @@ export default function EmailAnalyticsDashboard() {
           </ul>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowABTestDialog(false)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setShowABTestDialog(false)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }
 

@@ -39,7 +39,9 @@ import {
   FormControl,
   InputLabel,
   Select,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Send as SendIcon,
   Search as SearchIcon,
@@ -71,6 +73,7 @@ import SubscriberStatsPanel from './SubscriberStatsPanel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CommunicationStatusProvider } from '../../contexts/CommunicationStatusContext';
 import { FileManagementStatusProvider } from '../../contexts/FileManagementStatusContext';
+import { AdminButton, adminTokens, useIsMobile } from './design-system';
 
 interface ChatUser {
   id: string;
@@ -142,8 +145,13 @@ export default function AdminCommunicationPanel({
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
 
+  // Responsiv: full-skjerm dialoger på mobil
+  const isMobile = useIsMobile();
+
   // Theming system
   const theming = useTheming('prototype_tester');
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const userProfession = 'photographer';
 
   // Use dynamic profession system
@@ -176,6 +184,7 @@ export default function AdminCommunicationPanel({
       const response = await fetch('/api/admin/communication/users', { headers });
       return response.json();
   },
+    select: (data) => (Array.isArray(data) ? data : []),
     staleTime: 30000
 });
 
@@ -187,6 +196,7 @@ export default function AdminCommunicationPanel({
       const response = await fetch('/api/admin/communication/rooms', { headers });
       return response.json();
   },
+    select: (data) => (Array.isArray(data) ? data : []),
     staleTime: 10000,
     refetchInterval: 5000 // Real-time updates
 });
@@ -200,6 +210,7 @@ export default function AdminCommunicationPanel({
       const response = await fetch(`/api/admin/communication/messages/${selectedChat}`, { headers });
       return response.json();
   },
+    select: (data) => (Array.isArray(data) ? data : []),
     enabled: !!selectedChat,
     staleTime: 5000,
     refetchInterval: 2000 // Real-time message updates
@@ -391,6 +402,7 @@ export default function AdminCommunicationPanel({
   const selectedChatInfo = getSelectedChatInfo();
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ height: '80vh', display: 'flex', flexDirection: 'column' }}>
       {/* Main Tabs */}
       <Tabs
@@ -478,12 +490,12 @@ export default function AdminCommunicationPanel({
                 <Grid xs={12} lg={4}>
                   <Card sx={{ mb: 2 }}>
                     <CardContent>
-                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                         <Payment color="primary" />
                         Betalingsstatistikk
                       </Typography>
                       <Box sx={{ textAlign: 'center', py: 2 }}>
-                        <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h4" color="primary" sx={{ color: themeColors.primary }}>
                           0
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -491,7 +503,7 @@ export default function AdminCommunicationPanel({
                         </Typography>
                       </Box>
                       <Box sx={{ textAlign: 'center', py: 1 }}>
-                        <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" color="success.main" sx={{ color: themeColors.primary }}>
                           100%
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -503,12 +515,12 @@ export default function AdminCommunicationPanel({
                   
                   <Card sx={{ mb: 2 }}>
                     <CardContent>
-                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                         <CardMembership color="primary" />
                         Medlemskort
                       </Typography>
                       <Box sx={{ textAlign: 'center', py: 2 }}>
-                        <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h4" color="primary" sx={{ color: themeColors.primary }}>
                           0
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -516,7 +528,7 @@ export default function AdminCommunicationPanel({
                         </Typography>
                       </Box>
                       <Box sx={{ textAlign: 'center', py: 1 }}>
-                        <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" color="success.main" sx={{ color: themeColors.primary }}>
                           0
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -528,12 +540,12 @@ export default function AdminCommunicationPanel({
                   
                   <Card sx={theming.getThemedCardSx()}>
                     <CardContent sx={theming.getThemedCardSx()}>
-                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                         <Speed color="primary" />
                         Ytelse
                       </Typography>
                       <Box sx={{ textAlign: 'center', py: 2 }}>
-                        <Typography variant="h4" color="success.main" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h4" color="success.main" sx={{ color: themeColors.primary }}>
                           &lt;100ms
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -541,7 +553,7 @@ export default function AdminCommunicationPanel({
                         </Typography>
                       </Box>
                       <Box sx={{ textAlign: 'center', py: 1 }}>
-                        <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" color="success.main" sx={{ color: themeColors.primary }}>
                           99.9%
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -585,28 +597,28 @@ export default function AdminCommunicationPanel({
             <CardContent sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Kommunikasjon</Typography>
+                  <Typography variant="h6" sx={{ color: themeColors.primary }}>Kommunikasjon</Typography>
                   <div><GooglePayStatusIndicator compact={true} /></div>
                   <div><div>{/* SubscriberStatsPanel temporarily disabled - component returns void */}<div>Subscriber Stats</div></div></div>
                   <div><DemoModeToggle compact={true} /></div>
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <Tooltip title="Legg til ny bruker">
-                    <IconButton 
+                    <IconButton
+                      aria-label="Legg til ny bruker"
                       size="small"
                       onClick={() => setAddUserDialogOpen(true)}
                     >
                       <PersonAddIcon />
                     </IconButton>
                   </Tooltip>
-                  <Button variant="contained"
+                  <AdminButton tone="primary"
                     size="small"
                     startIcon={<NotificationsIcon />}
                     onClick={handleCreateBroadcast}
-                    sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
                   >
                     Broadcast
-                  </Button>
+                  </AdminButton>
                 </Box>
               </Box>
 
@@ -659,8 +671,14 @@ export default function AdminCommunicationPanel({
                       primary={user.name}
                       secondary={
                         <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            {user.profession || 'Bruker'}
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: user.isOnline ? 700 : 400,
+                              color: user.isOnline ? '#4ade80' : 'rgba(255,255,255,0.55)',
+                            }}
+                          >
+                            {user.isOnline ? 'Pålogget nå' : (user.profession || 'Frakoblet')}
                           </Typography>
                           {user.unreadCount > 0 && (
                             <Chip
@@ -721,7 +739,7 @@ export default function AdminCommunicationPanel({
                         {selectedChatInfo.name?.charAt(0).toUpperCase()}
                       </Avatar>
                       <Box>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>{selectedChatInfo.name}</Typography>
+                        <Typography variant="h6" sx={{ color: themeColors.primary }}>{selectedChatInfo.name}</Typography>
                         <Typography variant="body2" color="text.secondary">
                           {selectedChatInfo.profession || selectedChatInfo.type || 'Aktiv'}
                         </Typography>
@@ -729,16 +747,16 @@ export default function AdminCommunicationPanel({
                     </Box>
                     <Box>
                       <Tooltip title="Video samtale">
-                        <IconButton>
+                        <IconButton aria-label="Video samtale">
                           <VideoCallIcon />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Ring">
-                        <IconButton>
+                        <IconButton aria-label="Ring">
                           <PhoneIcon />
                         </IconButton>
                       </Tooltip>
-                      <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
+                      <IconButton aria-label="Flere valg" onClick={(e) => setAnchorEl(e.currentTarget)}>
                         <MoreVertIcon />
                       </IconButton>
                     </Box>
@@ -760,7 +778,7 @@ export default function AdminCommunicationPanel({
                         sx={{
                           p: 1.5,
                           maxWidth: '70%',
-                          bgcolor: message.senderId === 'admin' ? '#ff8c00' : 'grey.100',
+                          bgcolor: message.senderId === 'admin' ? adminTokens.color.brand : 'grey.100',
                           color: message.senderId === 'admin' ? 'white' : 'text.primary'
                     }}>
                         <Typography variant="body2">{message.content}</Typography>
@@ -800,21 +818,21 @@ export default function AdminCommunicationPanel({
                       InputProps={{
                         startAdornment: (
                           <InputAdornment position="start">
-                            <IconButton size="small">
+                            <IconButton aria-label="Legg ved fil" size="small">
                               <AttachFileIcon />
                             </IconButton>
                           </InputAdornment>
                         )
                   }}
                     />
-                    <Button variant="contained"
+                    <AdminButton tone="primary"
                       endIcon={<SendIcon />}
                       onClick={handleSendMessage}
-                      disabled={!messageText.trim() || sendMessageMutation.isPending}
-                      sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
+                      loading={sendMessageMutation.isPending}
+                      disabled={!messageText.trim()}
                     >
                       Send
-                    </Button>
+                    </AdminButton>
                   </Box>
                 </Box>
               </>
@@ -829,7 +847,7 @@ export default function AdminCommunicationPanel({
             }}
               >
                 <ChatIcon sx={{ fontSize: 64, color: 'grey.400', mb: 2 }} />
-                <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" color="text.secondary" sx={{ color: themeColors.primary }}>
                   Velg en bruker eller gruppe for å starte en samtale
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -859,13 +877,14 @@ export default function AdminCommunicationPanel({
       </Menu>
 
       {/* Broadcast Dialog */}
-      <Dialog 
-        open={broadcastDialogOpen} 
+      <Dialog
+        open={broadcastDialogOpen}
         onClose={() => setBroadcastDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
-        <DialogTitle sx={{ bgcolor: '#ff8c00', color: 'white' }}>
+        <DialogTitle sx={{ bgcolor: adminTokens.color.brand, color: 'white' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <NotificationsIcon />
             Send Broadcast til alle brukere
@@ -906,24 +925,23 @@ export default function AdminCommunicationPanel({
           />
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setBroadcastDialogOpen(false)}>Avbryt</Button>
-          <Button 
-            variant="contained" 
+          <AdminButton tone="ghost" onClick={() => setBroadcastDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton tone="primary"
             onClick={handleSendBroadcast}
             startIcon={<SendIcon />}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
           >
             Send til alle ({users.length})
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Add User Dialog */}
-      <Dialog 
-        open={addUserDialogOpen} 
+      <Dialog
+        open={addUserDialogOpen}
         onClose={() => setAddUserDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -950,16 +968,16 @@ export default function AdminCommunicationPanel({
           />
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setAddUserDialogOpen(false)}>Avbryt</Button>
-          <Button 
-            variant="contained" 
+          <AdminButton tone="ghost" onClick={() => setAddUserDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton tone="primary"
             onClick={handleAddUser}
             startIcon={<PersonAddIcon />}
           >
             Legg til bruker
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }

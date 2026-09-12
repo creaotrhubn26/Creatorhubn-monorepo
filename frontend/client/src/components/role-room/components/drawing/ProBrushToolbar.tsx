@@ -454,7 +454,7 @@ export const ProBrushToolbar: React.FC<ProBrushToolbarProps> = ({
           min={1}
           max={100}
           sx={{
-            color: '#8b5cf6',
+            color: 'var(--role-violet, #8b5cf6)',
             '& .MuiSlider-thumb': {
               width: 16,
               height: 16,

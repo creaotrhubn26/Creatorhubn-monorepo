@@ -1,5 +1,5 @@
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
   Typography,
@@ -28,7 +28,9 @@ import {
   Divider,
   Paper,
   Tooltip,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Send,
   Notifications,
@@ -51,6 +53,13 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { nb } from 'date-fns/locale';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import {
+  AdminCard,
+  AdminButton,
+  AdminLoading,
+  AdminEmpty,
+  useIsMobile,
+} from './design-system';
 
 interface NotificationFormData {
   title: string;
@@ -91,13 +100,16 @@ const priorityColors = {
 
 export default function AdminNotificationManager() {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
 
   // Theming system
   const theming = useTheming('prototype_tester');
-  
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
+
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -128,6 +140,20 @@ export default function AdminNotificationManager() {
     refetchInterval: 30000, // Refresh every 30 seconds
 });
 
+  const notificationList = Array.isArray(notifications?.data) ? notifications.data : [];
+
+  const activeNotificationCount = useMemo(
+    () => notificationList.filter((n: any) => n.isActive).length,
+    [notificationList],
+  );
+  const highPriorityNotificationCount = useMemo(
+    () =>
+      notificationList.filter(
+        (n: any) => n.priority === 'high' || n.priority === 'urgent',
+      ).length,
+    [notificationList],
+  );
+
   // Fetch pending provisioning requests for notifications
   const { data: pendingRequests, isLoading: pendingLoading } = useQuery({
     queryKey: ['/api/admin-provisioning/pending-approvals'],
@@ -137,6 +163,8 @@ export default function AdminNotificationManager() {
     },
     refetchInterval: 10000, // Refresh every 10 seconds for real-time updates
 });
+
+  const pendingRequestList = Array.isArray(pendingRequests?.data) ? pendingRequests.data : [];
 
   // Fetch provisioning metrics for dashboard notifications
   const { data: provisioningMetrics, isLoading: metricsLoading } = useQuery({
@@ -287,6 +315,7 @@ export default function AdminNotificationManager() {
 
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={nb}>
       <Box sx={{ p: 3 }}>
         <Box
@@ -298,33 +327,30 @@ export default function AdminNotificationManager() {
         >
           {isSupported && (
             <Tooltip title="Push-varsler innstillinger">
-              <IconButton onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
+              <IconButton aria-label="Push-varsler innstillinger" onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
                 {pushEnabled ? <NotificationsActive /> : <Notifications />}
               </IconButton>
             </Tooltip>
           )}
-          <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+          <Typography variant="h4" component="h2" sx={{ fontWeight: 600, color: themeColors.primary }}>
             <Notifications sx={{ mr: 2, verticalAlign: 'middle' }} />
             Admin Notifikasjoner
           </Typography>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
             {isSupported && (
               <Tooltip title="Push-varsler innstillinger">
-                <IconButton onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
+                <IconButton aria-label="Push-varsler innstillinger" onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
                   {pushEnabled ? <NotificationsActive /> : <Notifications />}
                 </IconButton>
               </Tooltip>
             )}
-            <Button variant="contained"
+            <AdminButton
+              tone="primary"
               startIcon={theming.getThemedIcon('add')}
               onClick={() => setShowCreateDialog(true)}
-              sx={{
-                background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
-                boxShadow: '0 4px 15px rgba(25, 118, 210, 0.3)',
-                borderRadius: 2}}
             >
               Ny Notifikasjon
-            </Button>
+            </AdminButton>
           </Box>
         </Box>
 
@@ -344,9 +370,9 @@ export default function AdminNotificationManager() {
               color: 'white'}}
           >
             <CardContent>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Aktive</Typography>
-              <Typography variant="h4" sx={{ color: theming.colors.primary }}>
-                {notifications?.data?.filter((n: any) => n.isActive).length || 0}
+              <Typography variant="h6" sx={{ color: themeColors.primary }}>Aktive</Typography>
+              <Typography variant="h4" sx={{ color: themeColors.primary }}>
+                {activeNotificationCount || 0}
               </Typography>
             </CardContent>
           </MuiCard>
@@ -356,11 +382,9 @@ export default function AdminNotificationManager() {
               color: 'white'}}
           >
             <CardContent>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Høy Prioritet</Typography>
-              <Typography variant="h4" sx={{ color: theming.colors.primary }}>
-                {notifications?.data?.filter(
-                  (n: any) => n.priority === 'high' || n.priority === 'urgent',
-                ).length || 0}
+              <Typography variant="h6" sx={{ color: themeColors.primary }}>Høy Prioritet</Typography>
+              <Typography variant="h4" sx={{ color: themeColors.primary }}>
+                {highPriorityNotificationCount || 0}
               </Typography>
             </CardContent>
           </MuiCard>
@@ -370,8 +394,8 @@ export default function AdminNotificationManager() {
               color: 'white'}}
           >
             <CardContent>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Totalt</Typography>
-              <Typography variant="h4" sx={{ color: theming.colors.primary }}>{notifications?.data?.length || 0}</Typography>
+              <Typography variant="h6" sx={{ color: themeColors.primary }}>Totalt</Typography>
+              <Typography variant="h4" sx={{ color: themeColors.primary }}>{notificationList.length || 0}</Typography>
             </CardContent>
           </MuiCard>
           <MuiCard
@@ -380,21 +404,21 @@ export default function AdminNotificationManager() {
               color: 'white'}}
           >
             <CardContent>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Venter på godkjenning</Typography>
-              <Typography variant="h4" sx={{ color: theming.colors.primary }}>
-                {pendingRequests?.data?.length || 0}
+              <Typography variant="h6" sx={{ color: themeColors.primary }}>Venter på godkjenning</Typography>
+              <Typography variant="h4" sx={{ color: themeColors.primary }}>
+                {pendingRequestList.length || 0}
               </Typography>
             </CardContent>
           </MuiCard>
         </Box>
 
         {/* Pending User Requests Section */}
-        {pendingRequests?.data?.length > 0 && (
+        {pendingRequestList.length > 0 && (
           <MuiCard sx={{ mb: 3 }}>
             <CardContent>
-              <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+              <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                 <People color="primary" />
-                Venter på godkjenning ({pendingRequests.data.length})
+                Venter på godkjenning ({pendingRequestList.length})
               </Typography>
               <Alert severity="info" sx={{ mb: 2 }}>
                 Disse brukerne har sendt inn søknader og venter på godkjenning. Du kan opprette notifikasjoner for dem.
@@ -407,7 +431,7 @@ export default function AdminNotificationManager() {
                 },
                   gap: 2}}
               >
-                {pendingRequests.data.slice(0, 3).map((request: any) => (
+                {pendingRequestList.slice(0, 3).map((request: any) => (
                   <Paper key={request.id} sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
                     <Typography variant="subtitle1" fontWeight={600}>
                       {request.businessName || 'Ukjent bedrift'}
@@ -439,9 +463,9 @@ export default function AdminNotificationManager() {
                   </Paper>
                 ))}
               </Box>
-              {pendingRequests.data.length > 3 && (
+              {pendingRequestList.length > 3 && (
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-                  ... og {pendingRequests.data.length - 3} flere
+                  ... og {pendingRequestList.length - 3} flere
                 </Typography>
               )}
             </CardContent>
@@ -449,18 +473,14 @@ export default function AdminNotificationManager() {
         )}
 
         {/* Notifications List */}
-        <MuiCard>
-          <CardContent>
-            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
-              Alle Notifikasjoner
-            </Typography>
+        <AdminCard title="Alle Notifikasjoner">
             {isLoading ? (
-              <Typography>Laster notifikasjoner...</Typography>
-            ) : notifications?.data?.length === 0 ? (
-              <Typography color="text.secondary">Ingen notifikasjoner opprettet ennå.</Typography>
+              <AdminLoading label="Laster notifikasjoner..." />
+            ) : notificationList.length === 0 ? (
+              <AdminEmpty title="Ingen notifikasjoner opprettet ennå." />
             ) : (
               <List>
-                {notifications?.data?.map((notification: any, index: number) => (
+                {notificationList.map((notification: any, index: number) => (
                   <React.Fragment key={notification.id}>
                     <ListItem
                       sx={{
@@ -479,7 +499,7 @@ export default function AdminNotificationManager() {
                               alignItems: 'center',
                               gap: 1}}
                           >
-                            <Typography variant="h6" sx={{ color: theming.colors.primary }}>{notification.title}</Typography>
+                            <Typography variant="h6" sx={{ color: themeColors.primary }}>{notification.title}</Typography>
                             <Chip
                               label={notification.type}
                               size="small"
@@ -521,6 +541,7 @@ export default function AdminNotificationManager() {
                       <ListItemSecondaryAction>
                         <Box sx={{ display: 'flex', gap: 1 }}>
                           <IconButton
+                            aria-label={notification.isActive ? 'Deaktiver notifikasjon' : 'Aktiver notifikasjon'}
                             onClick={() =>
                               toggleNotificationMutation.mutate({
                                 id: notification.id,
@@ -531,10 +552,11 @@ export default function AdminNotificationManager() {
                           >
                             {notification.isActive ? theming.getThemedIcon('visibility') : theming.getThemedIcon('visibilityOff')}
                           </IconButton>
-                          <IconButton onClick={() => handleEdit(notification)}>
+                          <IconButton aria-label="Rediger notifikasjon" onClick={() => handleEdit(notification)}>
                             {theming.getThemedIcon('edit')}
                           </IconButton>
                           <IconButton
+                            aria-label="Slett notifikasjon"
                             onClick={() => deleteNotificationMutation.mutate(notification.id)}
                             color="error"
                           >
@@ -543,13 +565,12 @@ export default function AdminNotificationManager() {
                         </Box>
                       </ListItemSecondaryAction>
                     </ListItem>
-                    {index < notifications.data.length - 1 && <Divider />}
+                    {index < notificationList.length - 1 && <Divider />}
                   </React.Fragment>
                 ))}
               </List>
             )}
-          </CardContent>
-        </MuiCard>
+        </AdminCard>
 
         {/* Create/Edit Dialog */}
         <Dialog
@@ -560,6 +581,7 @@ export default function AdminNotificationManager() {
         }}
           maxWidth="md"
           fullWidth
+          fullScreen={isMobile}
         >
           <DialogTitle
             sx={{
@@ -567,10 +589,11 @@ export default function AdminNotificationManager() {
               justifyContent: 'space-between',
               alignItems: 'center'}}
           >
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" sx={{ color: themeColors.primary }}>
               {editingNotification ? 'Rediger Notifikasjon' : 'Opprett Ny Notifikasjon'}
             </Typography>
             <IconButton
+              aria-label="Lukk dialog"
               onClick={() => {
                 setShowCreateDialog(false);
                 resetForm();
@@ -711,15 +734,18 @@ export default function AdminNotificationManager() {
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button
+            <AdminButton
+              tone="ghost"
               onClick={() => {
                 setShowCreateDialog(false);
                 resetForm();
             }}
             >
               Avbryt
-            </Button>
-            <Button variant="contained"
+            </AdminButton>
+            <AdminButton
+              tone="primary"
+              loading={createNotificationMutation.isPending}
               onClick={handleSubmit}
               disabled={
                 !formData.title.trim() ||
@@ -732,13 +758,13 @@ export default function AdminNotificationManager() {
                 ? 'Sender...'
                 : editingNotification
                   ? 'Oppdater' : 'Send Notifikasjon'}
-            </Button>
+            </AdminButton>
           </DialogActions>
         </Dialog>
 
         {/* Push Notification Settings Dialog */}
         {isSupported && (
-          <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
+          <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
             <DialogTitle>Push-varsler innstillinger</DialogTitle>
             <DialogContent>
               <Box sx={{ mt: 2 }}>
@@ -746,11 +772,12 @@ export default function AdminNotificationManager() {
               </Box>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+              <AdminButton tone="ghost" onClick={() => setPushSettingsOpen(false)}>Lukk</AdminButton>
             </DialogActions>
           </Dialog>
         )}
       </Box>
     </LocalizationProvider>
+    </ThemeProvider>
   );
 }

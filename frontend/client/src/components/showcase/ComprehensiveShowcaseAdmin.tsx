@@ -2026,7 +2026,21 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
         maxWidth="lg"
         fullWidth
         PaperProps={{
-          sx: { minHeight: '80vh',}}}
+          sx: {
+            minHeight: '80vh',
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiOutlinedInput-root': { color: '#fff' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+            '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' },
+            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.6)' },
+            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.5)', opacity: 1 },
+          },
+        }}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
@@ -2099,6 +2113,14 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
         onClose={() => setTemplatesDialog(false)}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+          },
+        }}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -2132,7 +2154,7 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
                         <Typography variant="h6" sx={{ color: theming.colors.primary }}>{template.name}</Typography>
                         {template.isPopular && <StarIcon sx={{ color: '#FFD700' }} />}
                       </Box>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      <Typography variant="body2" sx={{ mb: 2, color: 'rgba(255,255,255,0.7)' }}>
                         {template.description}
                       </Typography>
                       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
@@ -2140,7 +2162,7 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
                         {template.isPopular && <Chip label="Populær" color="success" size="small" icon={<TrendingUpIcon />} />}
                       </Box>
                       <Box sx={{ mb: 2 }}>
-                        <Typography variant="caption" color="text.secondary">Vurdering</Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>Vurdering</Typography>
                         <Rating value={template.rating || 4} readOnly size="small" sx={{ display: 'block' }} />
                       </Box>
                     </CardContent>
@@ -2178,7 +2200,18 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
       </Dialog>
 
       {/* Confirm Delete Config Dialog */}
-      <Dialog open={!!confirmDeleteConfigId} onClose={() => setConfirmDeleteConfigId(null)}>
+      <Dialog
+        open={!!confirmDeleteConfigId}
+        onClose={() => setConfirmDeleteConfigId(null)}
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+          },
+        }}
+      >
         <DialogTitle>Bekreft sletting</DialogTitle>
         <DialogContent>
           <Typography>Er du sikker på at du vil slette denne konfigurasjonen? Denne handlingen kan ikke angres.</Typography>

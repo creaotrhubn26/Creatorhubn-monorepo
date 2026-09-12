@@ -92,10 +92,10 @@ async function main() {
     }
 
     console.log('Neste steg:');
-    console.log('  1. Send denne URL-en til Claude så hen oppdaterer vercel.json + Render-env-var');
+    console.log('  1. Send denne URL-en til Claude så hen oppdaterer netlify.toml + Render-env-var');
     console.log('  2. Eller bytt ut <PUB-URL> i kommandoene under selv:\n');
     console.log(`     CMS_R2_PUBLIC_URL_BASE=https://theroleroom.com/cdn   (i Render)`);
-    console.log(`     # vercel.json rewrite: /cdn/(.*) → ${foundUrl}/$1\n`);
+    console.log(`     # netlify.toml proxy: /cdn/* → ${foundUrl}/:splat\n`);
     console.log('  3. Trykk Enter her for å lukke nettleseren …');
 
     await new Promise((resolve) => process.stdin.once('data', resolve));

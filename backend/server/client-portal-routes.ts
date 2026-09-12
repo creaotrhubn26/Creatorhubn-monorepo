@@ -5,6 +5,15 @@ import {
   resolveClientPortalSession,
 } from "./role-room-client-portal.js";
 import { persistAuthSession } from "./auth-session-store.js";
+import { markClientPresent } from "./client-portal-presence-service.js";
+import {
+  loadConnectedPlatforms,
+  loadProjectProducerInfo,
+} from "./client-portal-connected-platforms.js";
+import {
+  upsertProducerProjectNotification,
+  notifyProducerTeamByEmail,
+} from "./role-room-producer-notifications.js";
 
 export interface ClientPortalRoutesDeps {
   app: express.Application;
@@ -12,11 +21,64 @@ export interface ClientPortalRoutesDeps {
   activeSessions: Map<string, any>;
 }
 
+/** Minimal HTML-escaping for klient-leverte strenger i e-post-maler. */
+function escapeHtmlPortal(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export function setupClientPortalRoutes(
   deps: ClientPortalRoutesDeps,
 ): void {
   const { app, pool, activeSessions } = deps;
   type ActiveSessionData = any;
+
+  // Klient-tilstedeværelse: klientportalen sender en heartbeat mens fanen er
+  // åpen, så produsenten kan se «Klienten ser på prosjektet nå» i sanntid.
+  app.post("/api/client/portal/presence", async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token) return res.status(400).json({ error: "missing_token" });
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) return res.status(404).json({ error: "invalid_or_expired_token" });
+    const workspace =
+      req.body && typeof req.body.workspace === "string" ? req.body.workspace : null;
+    markClientPresent(session.projectId, session.clientEmail, session.clientName, workspace);
+    return res.json({ status: "ok" });
+  });
+
+  // Koblede plattformer: klienten ser hvilke kontoer de har gitt produsenten
+  // tilgang til (Instagram, Facebook, TikTok, LinkedIn, Google Workspace) og
+  // status på koblingen. Returnerer ALDRI tokens eller scopes — kun
+  // {platform, status, kontonavn}.
+  app.get("/api/client/portal/connected-platforms", async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token) return res.status(400).json({ error: "missing_token" });
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) return res.status(404).json({ error: "invalid_or_expired_token" });
+    try {
+      const [platforms, producer] = await Promise.all([
+        loadConnectedPlatforms(pool, session.projectId),
+        loadProjectProducerInfo(pool, session.projectId),
+      ]);
+      return res.json({
+        status: "ok",
+        platforms,
+        producer: producer
+          ? { name: producer.name, agency: producer.agency, email: producer.email }
+          : null,
+      });
+    } catch {
+      // Aldri la denne oversikten velte klientportalen — degrader til tom liste.
+      return res.json({ status: "ok", platforms: [], producer: null });
+    }
+  });
+
+  // (Klient-samtykke flyttet til role-room-routerens /client-portal/oauth-consent
+  //  for å kunne varsle produsent-teamet via upsertProducerProjectNotification.)
 
   app.get("/api/client/portal/requests", async (req, res) => {
     const token = typeof req.query.token === "string" ? req.query.token : "";
@@ -118,6 +180,36 @@ export function setupClientPortalRoutes(
         bodyMarkdown,
         markAnswered: true,
       });
+
+      // Varsle produsent-teamet — tidligere ble klient-svaret lagret stille
+      // (Creative Sync-audit #1). Inbox-rad + best-effort e-post, ingen av
+      // dem skal kunne velte selve svaret.
+      const clientLabel = session.clientName ?? request.clientEmail;
+      const reqTitle = request.title || "forespørsel";
+      void upsertProducerProjectNotification(pool, {
+        projectId: session.projectId,
+        audience: "producer_team",
+        eventType: "client_request_reply",
+        title: `${clientLabel} svarte på «${reqTitle}»`,
+        message: bodyMarkdown.slice(0, 280),
+        linkedEntityType: "client_request",
+        linkedEntityId: id,
+        createdByRole: "client_reviewer",
+        metadata: { clientName: session.clientName, clientEmail: request.clientEmail },
+      });
+      void notifyProducerTeamByEmail(pool, {
+        projectId: session.projectId,
+        subject: `Klient-svar: ${reqTitle.slice(0, 60)}`,
+        html: `<div style="font-family:system-ui,sans-serif;max-width:560px;line-height:1.6;color:#1a0f2e">
+            <h2 style="color:#6e3fc7;margin:0 0 16px">Nytt klient-svar</h2>
+            <p><strong>${escapeHtmlPortal(clientLabel)}</strong> svarte på forespørselen <strong>"${escapeHtmlPortal(reqTitle)}"</strong>:</p>
+            <blockquote style="border-left:3px solid #a030c0;margin:12px 0;padding:8px 12px;background:#f5f0fa;color:#3a2050">${escapeHtmlPortal(bodyMarkdown.slice(0, 600))}</blockquote>
+            <p style="color:#6b7280;font-size:13px;margin-top:24px">Se hele tråden i Creative Sync Workspace.</p>
+          </div>`,
+        text: `${clientLabel} svarte på "${reqTitle}":\n\n${bodyMarkdown.slice(0, 600)}\n\nSe hele tråden i Creative Sync Workspace.`,
+        kind: "client_request_reply",
+      });
+
       return res.json({ status: "ok", message });
     } catch (error) {
       console.error("[client/portal/requests/reply] failed", error);
@@ -369,6 +461,31 @@ export function setupClientPortalRoutes(
           console.warn("[client-portal/review] producer-email feilet", e);
         }
       })();
+
+      // In-app inbox-varsel (e-posten over når innboksen, denne når
+      // produsentens varsel-/inbox-panel + mater den samlede klient-
+      // innboksen). Creative Sync-audit #2.
+      const clientLabel = session.clientName ?? session.clientEmail;
+      void upsertProducerProjectNotification(pool, {
+        projectId,
+        audience: "producer_team",
+        eventType: status === "approved"
+          ? "client_post_approved"
+          : "client_post_changes_requested",
+        title: status === "approved"
+          ? `${clientLabel} godkjente en post`
+          : `${clientLabel} ba om endring på en post`,
+        message: note ? note.slice(0, 280) : null,
+        linkedEntityType: "marketing_plan_post",
+        linkedEntityId: postId,
+        createdByRole: "client_reviewer",
+        metadata: {
+          clientName: session.clientName,
+          clientEmail: session.clientEmail,
+          reviewStatus: status,
+          inboxType: "approval",
+        },
+      });
 
       return res.json({
         ok: true,

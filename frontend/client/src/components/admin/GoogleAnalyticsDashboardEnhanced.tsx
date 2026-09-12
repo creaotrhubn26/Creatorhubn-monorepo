@@ -13,7 +13,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Typography,
@@ -46,6 +45,7 @@ import {
   isApiEndpointMissing,
 } from '../../lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { AdminCard, AdminTableContainer } from './design-system';
 
 interface GoogleAnalyticsDashboardProps {
   hideHeader?: boolean;
@@ -391,18 +391,24 @@ export default function GoogleAnalyticsDashboardEnhanced({
   );
 
   const seriesPoints = useMemo(
-    () => timeseriesData?.series ?? [],
+    () => (Array.isArray(timeseriesData?.series) ? timeseriesData.series : []),
     [timeseriesData],
   );
 
-  const roles = useMemo(() => overviewData?.roles ?? [], [overviewData]);
-  const sources = useMemo(() => overviewData?.sources ?? [], [overviewData]);
+  const roles = useMemo(
+    () => (Array.isArray(overviewData?.roles) ? overviewData.roles : []),
+    [overviewData],
+  );
+  const sources = useMemo(
+    () => (Array.isArray(overviewData?.sources) ? overviewData.sources : []),
+    [overviewData],
+  );
   const eventTypes = useMemo(
-    () => overviewData?.eventTypes.slice(0, 5) ?? [],
+    () => (Array.isArray(overviewData?.eventTypes) ? overviewData.eventTypes.slice(0, 5) : []),
     [overviewData],
   );
   const topPages = useMemo(
-    () => overviewData?.topPages.slice(0, 5) ?? [],
+    () => (Array.isArray(overviewData?.topPages) ? overviewData.topPages.slice(0, 5) : []),
     [overviewData],
   );
   const primaryMetricCards = useMemo(() => metricCards.slice(0, 4), [metricCards]);
@@ -1131,20 +1137,8 @@ export default function GoogleAnalyticsDashboardEnhanced({
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, lg: 6 }}>
               {eventTypes.length > 0 ? (
-                <Box
-                  sx={{
-                    borderRadius: '24px',
-                    border: surfaceBorder,
-                    background: surface,
-                    boxShadow: surfaceShadow,
-                    backdropFilter: 'blur(16px)',
-                    p: 3,
-                  }}
-                >
-                  <Typography variant="h6" sx={{ fontWeight: 800, color: ink, mb: 2 }}>
-                    Topp hendelser
-                  </Typography>
-                  <TableContainer>
+                <AdminCard title="Topp hendelser" disablePadding>
+                  <AdminTableContainer ariaLabel="Topp hendelser">
                     <Table size="small">
                       <TableHead>
                         <TableRow>
@@ -1175,8 +1169,8 @@ export default function GoogleAnalyticsDashboardEnhanced({
                         ))}
                       </TableBody>
                     </Table>
-                  </TableContainer>
-                </Box>
+                  </AdminTableContainer>
+                </AdminCard>
               ) : (
                 <PlaceholderTable
                   title="Topp hendelser"
@@ -1187,20 +1181,8 @@ export default function GoogleAnalyticsDashboardEnhanced({
 
             <Grid size={{ xs: 12, lg: 6 }}>
               {topPages.length > 0 ? (
-                <Box
-                  sx={{
-                    borderRadius: '24px',
-                    border: surfaceBorder,
-                    background: surface,
-                    boxShadow: surfaceShadow,
-                    backdropFilter: 'blur(16px)',
-                    p: 3,
-                  }}
-                >
-                  <Typography variant="h6" sx={{ fontWeight: 800, color: ink, mb: 2 }}>
-                    Mest viste sider
-                  </Typography>
-                  <TableContainer>
+                <AdminCard title="Mest viste sider" disablePadding>
+                  <AdminTableContainer ariaLabel="Mest viste sider">
                     <Table size="small">
                       <TableHead>
                         <TableRow>
@@ -1225,8 +1207,8 @@ export default function GoogleAnalyticsDashboardEnhanced({
                         ))}
                       </TableBody>
                     </Table>
-                  </TableContainer>
-                </Box>
+                  </AdminTableContainer>
+                </AdminCard>
               ) : (
                 <PlaceholderTable
                   title="Mest viste sider"

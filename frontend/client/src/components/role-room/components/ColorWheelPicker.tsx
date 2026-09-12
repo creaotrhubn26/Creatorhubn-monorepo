@@ -361,7 +361,7 @@ export const ColorWheelPicker: FC<ColorWheelPickerProps> = ({
               min={0}
               max={100}
               sx={{
-                color: '#8b5cf6',
+                color: 'var(--role-violet, #8b5cf6)',
                 '& .MuiSlider-track': {
                   background: `linear-gradient(to right, #000, ${hsbToHex({ ...hsb, b: 100 })})`,
                 },

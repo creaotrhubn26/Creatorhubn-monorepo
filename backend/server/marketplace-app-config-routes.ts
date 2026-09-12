@@ -19,7 +19,11 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Pool } from "pg";
 import Stripe from "stripe";
 
-type RequireAdminSession = (req: Request, res: Response, next: NextFunction) => void;
+type AdminSession = { userId: string; email: string; name: string; role: string; loginAt: string };
+type RequireAdminSession = (
+  req: Request,
+  res: Response,
+) => AdminSession | null | Promise<AdminSession | null>;
 
 // ─── Stripe-klient (delt med resten av backend) ─────────────────────
 let stripeClient: Stripe | null = null;
@@ -181,7 +185,23 @@ export function registerMarketplaceAppConfigRoutes(
   app: Express,
   pool: Pool,
   requireAdminSession: RequireAdminSession,
+  // SECURITY: resolves the caller's user id from the validated server-side
+  // session (Bearer token → activeSessions) ONLY. Returns null for anonymous
+  // callers. Never derives identity from the spoofable x-user-id header — that
+  // is exactly the attribution-forgery hole this closes on the checkout path.
+  resolveSessionUserId: (req: Request) => string | null = () => null,
 ) {
+  // requireAdminSession is a GUARD (returns session | null, sends 401/403), not
+  // Express middleware. It may resolve a persisted session asynchronously when
+  // another production instance created the session, so await it before next().
+  const adminGuard = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (await requireAdminSession(req, res)) next();
+    } catch (error) {
+      next(error);
+    }
+  };
+
   // ─── Public: motta event-log fra frontend (fire-and-forget) ────
   // Lar creatorhub-events.ts skrive til samme analytics_events-tabell
   // som backend bruker, slik at admin-overview-card kan vise lokale tall.
@@ -241,7 +261,7 @@ export function registerMarketplaceAppConfigRoutes(
   });
 
   // ─── Admin: analytics overview (inline GA4-erstatning) ─────────
-  app.get("/api/admin/analytics/overview", requireAdminSession, async (_req, res) => {
+  app.get("/api/admin/analytics/overview", adminGuard, async (_req, res) => {
     const result: any = {
       totals: { last24h: 0, last7d: 0, last30d: 0 },
       topEvents: [],
@@ -308,7 +328,7 @@ export function registerMarketplaceAppConfigRoutes(
   // ─── Admin: per-bruker installasjoner + Stripe-abonnement ─────
   app.get(
     "/api/admin/users/:userId/installations",
-    requireAdminSession,
+    adminGuard,
     async (req, res) => {
       const userId = req.params.userId;
       const result: any = {
@@ -492,8 +512,8 @@ export function registerMarketplaceAppConfigRoutes(
       res.json(result);
     };
   // Registreres under generelt navn + bakoverkompatibelt marketplace-path
-  app.get("/api/admin/stripe/payment-status", requireAdminSession, stripePaymentStatusHandler);
-  app.get("/api/admin/marketplace/stripe-status", requireAdminSession, stripePaymentStatusHandler);
+  app.get("/api/admin/stripe/payment-status", adminGuard, stripePaymentStatusHandler);
+  app.get("/api/admin/marketplace/stripe-status", adminGuard, stripePaymentStatusHandler);
 
   // ─── Public: hent aktive apper ─────────────────────────────────
   app.get("/api/marketplace/apps", async (_req, res) => {
@@ -518,7 +538,7 @@ export function registerMarketplaceAppConfigRoutes(
   // ─── Admin: hent alle apper (inkludert deaktiverte) ────────────
   app.get(
     "/api/admin/marketplace/apps",
-    requireAdminSession,
+    adminGuard,
     async (_req, res) => {
       try {
         const result = await pool.query(
@@ -539,7 +559,7 @@ export function registerMarketplaceAppConfigRoutes(
   // ─── Admin: opprett ny app ─────────────────────────────────────
   app.post(
     "/api/admin/marketplace/apps",
-    requireAdminSession,
+    adminGuard,
     async (req, res) => {
       const b = req.body || {};
       const adminEmail = (req.headers["x-user-email"] as string) || "admin";
@@ -578,7 +598,7 @@ export function registerMarketplaceAppConfigRoutes(
         res.json({ success: true, data: mapRow(result.rows[0]) });
       } catch (err: any) {
         console.error("[admin/marketplace/apps POST] failed:", err);
-        res.status(500).json({ success: false, error: err.message || "create_failed" });
+        res.status(500).json({ success: false, error: "create_failed" });
       }
     },
   );
@@ -587,7 +607,7 @@ export function registerMarketplaceAppConfigRoutes(
   // ?skipStripe=1 hopper over Stripe-sync (for raske utkast-lagringer)
   app.put(
     "/api/admin/marketplace/apps/:id",
-    requireAdminSession,
+    adminGuard,
     async (req, res) => {
       const b = req.body || {};
       const id = req.params.id;
@@ -660,7 +680,7 @@ export function registerMarketplaceAppConfigRoutes(
         res.json({ success: true, data: mapRow(result.rows[0]) });
       } catch (err: any) {
         console.error("[admin/marketplace/apps PUT] failed:", err);
-        res.status(500).json({ success: false, error: err.message || "update_failed" });
+        res.status(500).json({ success: false, error: "update_failed" });
       }
     },
   );
@@ -670,7 +690,7 @@ export function registerMarketplaceAppConfigRoutes(
   // Henter eksisterende DB-rad, syncer tiers til Stripe, lagrer tilbake.
   app.post(
     "/api/admin/marketplace/apps/:id/publish",
-    requireAdminSession,
+    adminGuard,
     async (req, res) => {
       const id = req.params.id;
       try {
@@ -711,7 +731,7 @@ export function registerMarketplaceAppConfigRoutes(
         });
       } catch (err: any) {
         console.error('[marketplace publish] failed:', err);
-        res.status(500).json({ success: false, error: err.message || 'publish_failed' });
+        res.status(500).json({ success: false, error: 'publish_failed' });
       }
     },
   );
@@ -719,7 +739,7 @@ export function registerMarketplaceAppConfigRoutes(
   // ─── Admin: soft-delete ────────────────────────────────────────
   app.delete(
     "/api/admin/marketplace/apps/:id",
-    requireAdminSession,
+    adminGuard,
     async (req, res) => {
       try {
         await pool.query(
@@ -729,7 +749,7 @@ export function registerMarketplaceAppConfigRoutes(
         res.json({ success: true });
       } catch (err: any) {
         console.error("[admin/marketplace/apps DELETE] failed:", err);
-        res.status(500).json({ success: false, error: err.message || "delete_failed" });
+        res.status(500).json({ success: false, error: "delete_failed" });
       }
     },
   );
@@ -792,8 +812,12 @@ export function registerMarketplaceAppConfigRoutes(
       const publicHost = (
         process.env.CREATORHUB_PUBLIC_URL ?? "https://app.creatorhubn.com"
       ).replace(/\/$/, "");
-      const xUserId =
-        (req.headers["x-user-id"] as string | undefined) ?? null;
+      // SECURITY: attribute the subscription to the authenticated session user,
+      // NOT the client-supplied x-user-id header (which any caller can forge to
+      // pin a paid subscription/entitlement onto an arbitrary account). Anonymous
+      // checkout keeps an empty attribution — the Stripe webhook reconciles the
+      // owner via the customer email instead of trusting a spoofed id.
+      const attributedUserId = resolveSessionUserId(req) ?? "";
       try {
         const session = await stripe.checkout.sessions.create({
           mode: "subscription",
@@ -807,7 +831,7 @@ export function registerMarketplaceAppConfigRoutes(
             metadata: {
               app_id: app_.id as string,
               tier_id: tier.id as string,
-              user_id: xUserId ?? "",
+              user_id: attributedUserId,
             },
             // 14-dagers trial for standard og pro (kun ved første kjøp)
             trial_period_days: tier.id === "trial" ? undefined : 14,
@@ -815,7 +839,7 @@ export function registerMarketplaceAppConfigRoutes(
           metadata: {
             app_id: app_.id as string,
             tier_id: tier.id as string,
-            user_id: xUserId ?? "",
+            user_id: attributedUserId,
           },
           allow_promotion_codes: true,
           locale: "nb",

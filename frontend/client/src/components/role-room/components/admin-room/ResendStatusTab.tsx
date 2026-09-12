@@ -28,7 +28,14 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import authSessionService from '../../services/authSessionService';
 
 interface StatusResponse {
-  primaryProvider: 'resend' | 'smtp' | null;
+  primaryProvider: 'resend' | 'smtp' | 'gmail_api' | null;
+  adminAlertDelivery: {
+    recipient: string;
+    verified: boolean;
+    provider: string | null;
+    messageId: string | null;
+    lastVerifiedAt: string | null;
+  };
   providers: {
     resend: {
       configured: boolean;
@@ -42,6 +49,10 @@ interface StatusResponse {
       configured: boolean;
       user: string | null;
     };
+    gmailApi: {
+      configured: boolean;
+      user: string | null;
+    };
   };
   freeTier: { monthly: number; daily: number };
 }
@@ -49,7 +60,7 @@ interface StatusResponse {
 interface UsageResponse {
   monthly: { sent: number; failed: number; limit: number; usagePct: number; remaining: number };
   daily: { sent: number; failed: number; limit: number; usagePct: number; remaining: number };
-  breakdownByProvider: { resend: number; smtp: number };
+  breakdownByProvider: { resend: number; smtp: number; gmailApi: number };
 }
 
 interface RecentItem {
@@ -160,6 +171,7 @@ export function ResendStatusTab() {
 
   const resend = status.providers.resend;
   const gmail = status.providers.gmail;
+  const gmailApi = status.providers.gmailApi;
   const monthlyColor = usage.monthly.usagePct >= 90 ? 'error' : usage.monthly.usagePct >= 70 ? 'warning' : 'primary';
   const dailyColor = usage.daily.usagePct >= 90 ? 'error' : usage.daily.usagePct >= 70 ? 'warning' : 'primary';
 
@@ -167,7 +179,7 @@ export function ResendStatusTab() {
     <Stack spacing={3}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
-          Resend transactional email
+          Transaksjons-e-post
         </Typography>
         <Button startIcon={<RefreshIcon />} onClick={() => void load()} disabled={loading} size="small">
           Oppdater
@@ -180,7 +192,7 @@ export function ResendStatusTab() {
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
             <Chip
               label={status.primaryProvider ?? 'ikke konfigurert'}
-              color={status.primaryProvider === 'resend' ? 'success' : status.primaryProvider === 'smtp' ? 'warning' : 'error'}
+              color={status.primaryProvider === 'resend' || status.primaryProvider === 'gmail_api' ? 'success' : status.primaryProvider === 'smtp' ? 'warning' : 'error'}
               size="small"
             />
             {resend.configured && <Chip label={`API-key ${resend.apiKeyMasked}`} size="small" variant="outlined" />}
@@ -188,9 +200,14 @@ export function ResendStatusTab() {
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
             Fra-adresse: <code>{resend.fromEmail}</code>
           </Typography>
+          {gmailApi.configured && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              Gmail API-fallback: <code>{gmailApi.user}</code>
+            </Typography>
+          )}
           {gmail.configured && (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-              Gmail-fallback: <code>{gmail.user}</code>
+              Gmail SMTP-fallback: <code>{gmail.user}</code>
             </Typography>
           )}
         </Paper>
@@ -246,6 +263,22 @@ export function ResendStatusTab() {
 
       <Paper sx={{ p: 2 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>Domener</Typography>
+        {status.adminAlertDelivery.verified ? (
+          <Alert severity="success" sx={{ mb: 1.5 }}>
+            Adminvarsling til <code>{status.adminAlertDelivery.recipient}</code> er verifisert via{' '}
+            <strong>{status.adminAlertDelivery.provider}</strong>
+            {status.adminAlertDelivery.lastVerifiedAt && (
+              <> · {formatDate(status.adminAlertDelivery.lastVerifiedAt)}</>
+            )}
+            {status.adminAlertDelivery.messageId && (
+              <> · meldings-ID <code>{status.adminAlertDelivery.messageId}</code></>
+            )}
+          </Alert>
+        ) : (
+          <Alert severity="warning" sx={{ mb: 1.5 }}>
+            Ingen vellykket adminvarsling til <code>{status.adminAlertDelivery.recipient}</code> er logget ennå.
+          </Alert>
+        )}
         {resend.configured && resend.domains.length === 0 && (
           <Alert severity="warning">
             Ingen domener verifisert i Resend ennå. Legg til <code>theroleroom.com</code> i Resend-dashboard og verifiser DKIM/SPF.
@@ -287,7 +320,7 @@ export function ResendStatusTab() {
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Siste sendinger</Typography>
           <Typography variant="caption" color="text.secondary">
-            Resend: {usage.breakdownByProvider.resend} · SMTP: {usage.breakdownByProvider.smtp}
+            Resend: {usage.breakdownByProvider.resend} · Gmail API: {usage.breakdownByProvider.gmailApi} · SMTP: {usage.breakdownByProvider.smtp}
           </Typography>
         </Stack>
         {recent.length === 0 ? (
@@ -322,7 +355,16 @@ export function ResendStatusTab() {
                     <TableCell>
                       <Chip size="small" label={item.provider} variant="outlined" />
                     </TableCell>
-                    <TableCell>{statusChip(item.status, item.errorReason)}</TableCell>
+                    <TableCell>
+                      <Stack spacing={0.5} alignItems="flex-start">
+                        {statusChip(item.status, item.errorReason)}
+                        {item.messageId && (
+                          <Typography variant="caption" color="text.secondary">
+                            ID: <code>{item.messageId}</code>
+                          </Typography>
+                        )}
+                      </Stack>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "../migrations/schema.js";
 import { readBoolean, readString, readStringArray } from "./_shared";
+import { notifyAdmins } from "./admin-notify";
 
 export interface VendorOnboardingRoutesDeps {
   app: express.Application;
@@ -176,17 +177,18 @@ export function setupVendorOnboardingRoutes(
   });
 
   app.post("/api/vendor-onboarding/complete", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const vendorType = readString(req.body?.vendorType);
       const vendorName = readString(req.body?.vendorName);
-      const userId = readString(req.body?.userId);
+      const userId = String(session.userId || "").trim();
       const onboardingData = req.body?.onboardingData || {};
 
       if (!vendorType || !vendorName || !userId) {
         return res
           .status(400)
-          .json({ error: "vendorType, vendorName og userId er påkrevd" });
+          .json({ error: "vendorType og vendorName er påkrevd" });
       }
 
       const now = new Date().toISOString();
@@ -325,6 +327,20 @@ export function setupVendorOnboardingRoutes(
           updatedAt: now,
         } as any);
       }
+
+      void notifyAdmins(pool, {
+        type: "vendor_onboarding_completed",
+        source: "Vendor-onboarding · fullført vendor-profil",
+        title: `Vendor-onboarding ${isComplete ? "fullført" : "lagret"}: ${vendorName} (${vendorType})`,
+        summary: `${businessInfo.businessName}${businessInfo.contactEmail ? ` · ${businessInfo.contactEmail}` : ""}${businessInfo.website ? ` · ${businessInfo.website}` : ""}${businessInfo.organizationNumber ? ` · org.nr ${businessInfo.organizationNumber}` : ""}`,
+        link: "/admin",
+        cta: (req.body && req.body.cta) || null,
+        page: req.get("referer") || (req.body && req.body.page) || null,
+        utm: (req.body && req.body.utm) || null,
+        relatedId: vendorId,
+        contactName: vendorName || null,
+        contactEmail: businessInfo.contactEmail || null,
+      });
 
       return res.json({
         status: isComplete ? "completed" : "saved",

@@ -1,0 +1,4 @@
+-- 0326_api_rate_limiting_and_onboarding.sql
+-- API rate-limiting (sliding-window buckets + per-tier quotas + overage-log)
+-- + Leadgrid in-app onboarding-tour-state.
+-- Body kjørt via psql; denne filen er for sporbarhet.

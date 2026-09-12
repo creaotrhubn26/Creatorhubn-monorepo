@@ -165,17 +165,73 @@ const getEffectivePlanLimits = async (
   return { storageGB, allowsOverage, overagePriceNok };
 };
 
+// Schema-drift guard: Neon-prod's `subscriptions` table has no `plan_type`
+// column (it uses `tier_id`), so a hardcoded `SELECT plan_type` throws
+// `column "plan_type" does not exist` on every call — silently degrading
+// every user to the "unknown" plan and spamming the error log. Detect the
+// real columns once and alias them, mirroring admin-storage-cost-routes.ts.
+let subscriptionColCache:
+  | { planCol: string | null; hasStripeSub: boolean; hasMeter: boolean }
+  | null = null;
+
+async function resolveSubscriptionColumns(pool: Pool): Promise<{
+  planCol: string | null;
+  hasStripeSub: boolean;
+  hasMeter: boolean;
+}> {
+  if (subscriptionColCache) return subscriptionColCache;
+  try {
+    const r = await pool.query<{ column_name: string }>(
+      `SELECT column_name
+         FROM information_schema.columns
+        WHERE table_name = 'subscriptions'
+          AND column_name IN (
+            'plan_type', 'plan_id', 'subscription_plan_id', 'tier_id',
+            'stripe_subscription_id', 'stripe_storage_meter_item_id'
+          )`,
+    );
+    const cols = new Set(r.rows.map((row) => row.column_name));
+    const planCol = cols.has("plan_type")
+      ? "plan_type"
+      : cols.has("plan_id")
+        ? "plan_id"
+        : cols.has("subscription_plan_id")
+          ? "subscription_plan_id"
+          : cols.has("tier_id")
+            ? "tier_id"
+            : null;
+    subscriptionColCache = {
+      planCol,
+      hasStripeSub: cols.has("stripe_subscription_id"),
+      hasMeter: cols.has("stripe_storage_meter_item_id"),
+    };
+  } catch {
+    subscriptionColCache = { planCol: null, hasStripeSub: false, hasMeter: false };
+  }
+  return subscriptionColCache;
+}
+
 export async function getUserPlan(
   pool: Pool,
   userId: string,
 ): Promise<UserPlanInfo> {
   try {
+    const cols = await resolveSubscriptionColumns(pool);
+    const planSel = cols.planCol
+      ? `${cols.planCol} AS plan_type`
+      : `'unknown'::text AS plan_type`;
+    const subSel = cols.hasStripeSub
+      ? "stripe_subscription_id"
+      : "NULL::text AS stripe_subscription_id";
+    const meterSel = cols.hasMeter
+      ? "stripe_storage_meter_item_id"
+      : "NULL::text AS stripe_storage_meter_item_id";
     const r = await pool.query<{
       plan_type: string;
       stripe_subscription_id: string | null;
       stripe_storage_meter_item_id: string | null;
     }>(
-      `SELECT plan_type, stripe_subscription_id, stripe_storage_meter_item_id
+      `SELECT ${planSel}, ${subSel}, ${meterSel}
          FROM subscriptions
         WHERE user_id = $1
           AND status IN ('active', 'trialing')

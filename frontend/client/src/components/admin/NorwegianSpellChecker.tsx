@@ -29,6 +29,7 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { AdminButton } from './design-system';
 
 type SpellErrorType = 'spelling' | 'grammar' | 'style';
 
@@ -444,25 +445,26 @@ export const NorwegianSpellChecker: React.FC<NorwegianSpellCheckerProps> = ({
   return (
     <Box sx={{ p: 3 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Typography variant="h5" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Spellcheck color="primary" />
+        <Typography variant="h5" component="h2" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Spellcheck color="primary" aria-hidden />
           Norsk stavekontroll
         </Typography>
 
         <Stack direction="row" spacing={1}>
           <Tooltip title="Kopier korrigert tekst">
-            <IconButton onClick={() => void copyCorrectedText()}>
+            <IconButton aria-label="Kopier korrigert tekst" onClick={() => void copyCorrectedText()}>
               <ContentCopy />
             </IconButton>
           </Tooltip>
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
+            loading={isChecking}
             startIcon={<Refresh />}
             disabled={isChecking || text.trim().length === 0}
             onClick={() => void runSpellCheck()}
           >
             {isChecking ? 'Sjekker...' : 'Sjekk nå'}
-          </Button>
+          </AdminButton>
         </Stack>
       </Stack>
 
@@ -521,8 +523,8 @@ export const NorwegianSpellChecker: React.FC<NorwegianSpellCheckerProps> = ({
       {result && result.errorCount > 0 && (
         <Card>
           <CardContent>
-            <Typography variant="h6" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Lightbulb color="warning" />
+            <Typography variant="h6" component="h3" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Lightbulb color="warning" aria-hidden />
               Forslag ({result.errorCount})
             </Typography>
             <Divider sx={{ mb: 1 }} />

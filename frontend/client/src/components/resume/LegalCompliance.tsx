@@ -168,7 +168,7 @@ export const PrivacyPolicyDialog: React.FC<{
             2. Databehandler
           </Typography>
           <Typography variant="body2" paragraph>
-            <strong>Navn:</strong> CreatorHub Norge AS<br />
+            <strong>Navn:</strong> Creatorhub AS<br />
             <strong>Epostadresse:</strong> privacy@creatorhubnorge.no<br />
             <strong>Adresse:</strong> [Selskapsadresse]
           </Typography>
@@ -256,7 +256,7 @@ export const PrivacyPolicyDialog: React.FC<{
           </Typography>
           <Typography variant="body2" component="ul" sx={{ ml: 2 }} paragraph>
             <li><strong>Anthropic PBC (USA):</strong> Som AI-databehandler ved bruk av AI-funksjoner — se pkt. 5</li>
-            <li><strong>Tjenesteleverandører:</strong> Hosting (Vercel/Render), database (Postgres), e-post (transaksjonelle utsendelser)</li>
+            <li><strong>Tjenesteleverandører:</strong> Hosting (Netlify/Render), database (Postgres), e-post (transaksjonelle utsendelser)</li>
             <li><strong>Offentlige myndigheter:</strong> Når lovpålagt</li>
             <li><strong>Andre brukere:</strong> Kun hvis du selv deler CV offentlig</li>
           </Typography>

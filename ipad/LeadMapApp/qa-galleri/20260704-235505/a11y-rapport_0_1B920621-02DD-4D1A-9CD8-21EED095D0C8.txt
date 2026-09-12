@@ -1,0 +1,76 @@
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[oversikt] XCUIAccessibilityAuditType(rawValue: 131072): Text clipped
+[oversikt] XCUIAccessibilityAuditType(rawValue: 131072): Text clipped
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[moter] XCUIAccessibilityAuditType(rawValue: 4): Hit area is too small
+[moter] XCUIAccessibilityAuditType(rawValue: 4): Hit area is too small
+[moter] XCUIAccessibilityAuditType(rawValue: 4): Hit area is too small
+[moter] XCUIAccessibilityAuditType(rawValue: 1): Contrast nearly passed
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported

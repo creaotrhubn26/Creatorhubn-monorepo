@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 
 interface DemoModeContextType {
   isDemoMode: boolean;
@@ -388,11 +389,7 @@ const getDemoData = <T,>(dataType: string): T[] => {
     refetch,
 } = useQuery({
     queryKey: ['/api/settings/demo-mode'],
-    queryFn: async () => {
-      const response = await fetch('/api/settings/demo-mode');
-      if (!response.ok) throw new Error('Failed to fetch demo mode');
-      return response.json();
-  },
+    queryFn: async () => apiRequest('/api/settings/demo-mode'),
     staleTime: 1000 * 60 * 5, // 5 minutes
     refetchOnWindowFocus: false,
 });
@@ -408,15 +405,10 @@ const getDemoData = <T,>(dataType: string): T[] => {
     try {
       const newMode = !localDemoMode;
 
-      const response = await fetch('/api/settings/demo-mode', {
+      await apiRequest('/api/settings/demo-mode', {
         method: 'PUT',
-        headers: {
-          'Content-Type' : 'application/json',
-      },
         body: JSON.stringify({ demoMode: newMode }),
-    });
-
-      if (!response.ok) throw new Error('Failed to update demo mode');
+      });
 
       setLocalDemoMode(newMode);
       await refetch(); // Refresh the query data

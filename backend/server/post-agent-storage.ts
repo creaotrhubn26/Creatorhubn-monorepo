@@ -110,6 +110,55 @@ export async function ensurePostAgentTables(pool: Pool): Promise<boolean> {
         CREATE INDEX IF NOT EXISTS ${TEAM_SEATS_TABLE}_project_idx
         ON ${TEAM_SEATS_TABLE} (project_id)
       `);
+      // À la carte per-modul-entitlements (speiler migrasjon 259 — opprettes
+      // også her så modul-rutene + webhooken aldri treffer en manglende tabell
+      // hvis auto-migrate skulle feile stille).
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS post_agent_module_entitlements (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id TEXT NOT NULL,
+          module TEXT NOT NULL CHECK (module IN ('demo_studio','marketing','capture','resolve','bundle')),
+          status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','revoked')),
+          source TEXT NOT NULL DEFAULT 'stripe' CHECK (source IN ('stripe','bundle','admin_grant')),
+          stripe_subscription_id TEXT,
+          stripe_price_id TEXT,
+          notes TEXT,
+          granted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          revoked_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+      `);
+      await pool.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS post_agent_module_entitlements_active_idx
+        ON post_agent_module_entitlements (user_id, module) WHERE revoked_at IS NULL
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS post_agent_module_entitlements_sub_idx
+        ON post_agent_module_entitlements (stripe_subscription_id)
+      `);
+      // Delt lærings-lager (Demo Studio): hvor interaktive elementer er per
+      // host, keyed på host (IKKE bruker) → læringen komponerer på tvers av
+      // demoer og brukere. Speiler den lokale LearnedTarget-strukturen.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS post_agent_learned_targets (
+          id BIGSERIAL PRIMARY KEY,
+          host TEXT NOT NULL,
+          label TEXT NOT NULL,
+          selector TEXT,
+          hotspot JSONB,
+          action_type TEXT,
+          correct_label TEXT,
+          reject_selectors JSONB,
+          count INTEGER NOT NULL DEFAULT 1,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          UNIQUE (host, label)
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS post_agent_learned_targets_host_idx
+        ON post_agent_learned_targets (host)
+      `);
       return true;
     } catch (error) {
       console.warn('[post-agent] storage init failed:', error);

@@ -23,6 +23,7 @@
 
 import type express from "express";
 import type { Pool } from "pg";
+import { idempotencyMiddleware } from "./_shared-idempotency";
 import { eq, and, desc, asc, inArray, sql } from "drizzle-orm";
 import {
   type CompatCatalogItem,
@@ -41,6 +42,9 @@ import {
 export interface EquipmentFirmwareRoutesDeps {
   app: express.Application;
   pool: Pool;
+  // Returns the authenticated session ({ userId, ... }) or null after sending 401.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  requireUserSession: (req: any, res: any) => any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -96,6 +100,7 @@ export interface EquipmentFirmwareRoutesDeps {
 export function setupEquipmentFirmwareRoutes(deps: EquipmentFirmwareRoutesDeps): void {
   const {
     app, pool, db, schema,
+    requireUserSession,
     buildEquipmentImageAttachmentMap,
     buildInventoryRecommendedMemoryCards,
     ensureEquipmentImageEnvelope,
@@ -118,6 +123,17 @@ export function setupEquipmentFirmwareRoutes(deps: EquipmentFirmwareRoutesDeps):
     resolveSoftwareOrderColumn,
     toIsoString,
   } = deps;
+
+  const equipmentInventoryIdempotency = async (req: any, res: any, next: any) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    req._equipmentInventorySession = session;
+    return idempotencyMiddleware({
+      pool,
+      // A caller can only replay its own cached response.
+      scope: `equipment-inventory:${session.userId}`,
+    })(req, res, next);
+  };
 
   app.get("/api/equipment/software", async (req, res) => {
     const profession =
@@ -268,9 +284,13 @@ export function setupEquipmentFirmwareRoutes(deps: EquipmentFirmwareRoutesDeps):
   });
 
   app.get("/api/equipment/firmware-updates/:userId", async (req, res) => {
+    const _session = requireUserSession(req, res);
+    if (!_session) return;
     try {
-      const userIdRaw = req.params.userId;
-      const userId = userIdRaw && userIdRaw !== "guest" ? userIdRaw : null;
+      // Ownership: ignore the client-supplied :userId path param and scope to
+      // the authenticated session — otherwise any caller could read another
+      // user's firmware devices/history by enumerating ids.
+      const userId = _session.userId || null;
       const profession =
         typeof req.query.profession === "string" ? req.query.profession : null;
       const firmwareCandidates = await loadFirmwareSeedCandidates(null, {
@@ -289,9 +309,12 @@ export function setupEquipmentFirmwareRoutes(deps: EquipmentFirmwareRoutesDeps):
   // ── role-room/vendor-links setup-call flyttet til top-level setup-blokken.
 
   app.get("/api/equipment/inventory", async (req, res) => {
+    const _session = requireUserSession(req, res);
+    if (!_session) return;
     try {
-      const userId =
-        typeof req.query.userId === "string" ? req.query.userId : null;
+      // Force ownership scope to the session user; profession stays as an
+      // optional sub-filter within the caller's own equipment.
+      const userId = _session.userId || null;
       const profession =
         typeof req.query.profession === "string" ? req.query.profession : null;
       const conditions = [];
@@ -391,8 +414,10 @@ export function setupEquipmentFirmwareRoutes(deps: EquipmentFirmwareRoutesDeps):
   });
 
   app.get("/api/equipment/maintenance-schedule", async (req, res) => {
+    const _session = requireUserSession(req, res);
+    if (!_session) return;
     try {
-      const userId = readString(req.query.userId) || "";
+      const userId = _session.userId || "";
       const profession = readString(req.query.profession);
 
       if (!userId && !profession) {
@@ -477,8 +502,10 @@ export function setupEquipmentFirmwareRoutes(deps: EquipmentFirmwareRoutesDeps):
   });
 
   app.get("/api/equipment/rentals", async (req, res) => {
+    const _session = requireUserSession(req, res);
+    if (!_session) return;
     try {
-      const userId = readString(req.query.userId) || "";
+      const userId = _session.userId || "";
       const profession = readString(req.query.profession);
 
       if (!userId && !profession) {
@@ -570,8 +597,10 @@ export function setupEquipmentFirmwareRoutes(deps: EquipmentFirmwareRoutesDeps):
   });
 
   app.get("/api/equipment/images", async (req, res) => {
+    const _session = requireUserSession(req, res);
+    if (!_session) return;
     try {
-      const userId = readString(req.query.userId) || "";
+      const userId = _session.userId || "";
       const profession = readString(req.query.profession);
 
       if (!userId && !profession) {
@@ -664,10 +693,11 @@ export function setupEquipmentFirmwareRoutes(deps: EquipmentFirmwareRoutesDeps):
     }
   });
 
-  app.post("/api/equipment/inventory", async (req, res) => {
+  app.post("/api/equipment/inventory", equipmentInventoryIdempotency, async (req: any, res) => {
+    const _session = req._equipmentInventorySession;
+    if (!_session) return;
     try {
       const {
-        userId,
         profession,
         name,
         brand,
@@ -678,6 +708,10 @@ export function setupEquipmentFirmwareRoutes(deps: EquipmentFirmwareRoutesDeps):
         status,
         condition,
       } = req.body || {};
+
+      // Ownership: the new row is always attributed to the session user — never
+      // a client-supplied body.userId (which let anyone plant rows on any account).
+      const userId = _session.userId || null;
 
       if (!userId || !brand || !model) {
         res.status(400).json({ error: "Missing required fields" });
@@ -781,13 +815,10 @@ export function setupEquipmentFirmwareRoutes(deps: EquipmentFirmwareRoutesDeps):
   });
 
   app.post("/api/equipment/sync-firmware", async (req, res) => {
+    const _session = requireUserSession(req, res);
+    if (!_session) return;
     try {
-      const userId =
-        typeof req.body?.userId === "string"
-          ? req.body.userId
-          : typeof req.query.userId === "string"
-            ? req.query.userId
-            : null;
+      const userId = _session.userId || null;
       const profession =
         typeof req.body?.profession === "string"
           ? req.body.profession

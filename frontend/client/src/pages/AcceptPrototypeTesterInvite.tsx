@@ -1,55 +1,57 @@
-// @ts-nocheck
-/**
- * AcceptPrototypeTesterInvite — Slice 9X.53
- *
- * Public-side hvor en godkjent prototype-tester:
- *   1. Ser hva som forventes i 12-ukers-perioden (program-vilkår)
- *   2. Leser NDA-en
- *   3. Krysser av begge (program-terms + NDA)
- *   4. Signerer med fullt navn
- *   5. Blir aktivert og redirectes til dashboard med velkomst-modal
- *
- * Adskilt fra /role-room/accept-invite — det er kun for Role Room.
- */
-
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
-  Container,
+  Alert,
+  Box,
+  Button,
   Card,
   CardContent,
-  Stack,
-  Typography,
-  Button,
-  Alert,
-  CircularProgress,
-  Chip,
-  Box,
-  Divider,
   Checkbox,
+  Chip,
+  CircularProgress,
+  Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
   FormControlLabel,
-  TextField,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  Stepper,
-  Step,
-  StepLabel,
+  IconButton,
+  LinearProgress,
   Paper,
-} from '@mui/material';
+  Stack,
+  TextField,
+  Typography,
+  useMediaQuery,
+} from "@mui/material";
+import { ThemeProvider } from "@mui/material/styles";
 import {
-  Science as TesterIcon,
-  Gavel as NdaIcon,
+  AssignmentOutlined,
   CheckCircle as CheckIcon,
-  Cancel as XIcon,
-  Drafts as MailIcon,
-  Schedule as ClockIcon,
-} from '@mui/icons-material';
-import { useLocation } from 'wouter';
-import { apiRequest } from '@/lib/queryClient';
-import { TESTER_PROGRAM_TERMS, PROGRAM_TERMS_VERSION, programTermsAsText } from '@/lib/tester-program-terms';
-import { trackEvent } from '@/utils/ga4-client-tracking';
-import { testerEvents } from '@/utils/creatorhub-events';
+  Close as CloseIcon,
+  GavelOutlined,
+  HandshakeOutlined,
+  HowToRegOutlined,
+  LockOutlined,
+  MailOutline,
+  MenuBookOutlined,
+  PrivacyTipOutlined,
+} from "@mui/icons-material";
+import { useLocation } from "wouter";
+import { apiRequest } from "@/lib/queryClient";
+import { trackEvent } from "@/utils/ga4-client-tracking";
+import { testerEvents } from "@/utils/creatorhub-events";
+import { ws, workspaceDarkTheme } from "@/components/workspace/workspaceTheme";
+import type {
+  PrototypeTesterAgreementDocument,
+  PrototypeTesterAgreementKey,
+} from "@shared/prototype-tester-agreements";
+
+type MemberProfession =
+  | "photographer"
+  | "videographer"
+  | "music_producer"
+  | "vendor"
+  | null;
 
 interface Invite {
   id: string;
@@ -57,296 +59,905 @@ interface Invite {
   name: string;
   testingAreas: string[];
   personalMessage: string | null;
-  ndaVersion: string;
-  programTermsVersion: string;
-  status: 'pending' | 'accepted' | 'revoked' | 'expired';
+  status: "pending" | "accepted" | "revoked" | "expired";
   expiresAt: string;
   programDurationWeeks: number;
+  memberProfession: MemberProfession;
+  memberCompany: string | null;
+  memberOrganizationNumber?: string | null;
+  memberBusinessAddress?: string | null;
+  agreements: PrototypeTesterAgreementDocument[];
+  accountProvisioningComplete: boolean;
+  agreementAcceptance?: {
+    complete: boolean;
+    signerName: string | null;
+    confirmedSigningAuthority: boolean;
+    documents: Array<{ key: PrototypeTesterAgreementKey; accepted: boolean }>;
+  };
 }
 
-const readToken = (): string => {
-  try { return new URLSearchParams(window.location.search).get('token') ?? ''; } catch { return ''; }
+const dashboardForProfession = (profession: MemberProfession): string => {
+  const routes: Record<Exclude<MemberProfession, null>, string> = {
+    photographer: "/photographer-dashboard-material",
+    videographer: "/videographer-dashboard-material",
+    music_producer: "/music_producer-dashboard-material",
+    vendor: "/vendor-dashboard-material",
+  };
+  return profession ? routes[profession] : "/workspace";
 };
+
+const readToken = (): string => {
+  try {
+    return new URLSearchParams(window.location.search).get("token") ?? "";
+  } catch {
+    return "";
+  }
+};
+
+const agreementIcon = (
+  key: PrototypeTesterAgreementKey,
+  completed: boolean,
+) => {
+  const sx = { color: completed ? ws.green : ws.accent, fontSize: 23 };
+  switch (key) {
+    case "program_terms":
+      return <AssignmentOutlined sx={sx} />;
+    case "nda":
+      return <GavelOutlined sx={sx} />;
+    case "dpa":
+      return <PrivacyTipOutlined sx={sx} />;
+    case "letter_of_intent":
+      return <HandshakeOutlined sx={sx} />;
+  }
+};
+
+const emptyDocumentState = (): Record<
+  PrototypeTesterAgreementKey,
+  boolean
+> => ({
+  program_terms: false,
+  nda: false,
+  dpa: false,
+  letter_of_intent: false,
+});
+
+function PrototypeInvitePageFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <ThemeProvider theme={workspaceDarkTheme}>
+      <Box
+        sx={{
+          minHeight: "100vh",
+          bgcolor: ws.bg,
+          color: ws.text,
+          backgroundImage:
+            "radial-gradient(circle at 80% 0%, rgba(255,140,0,0.13), transparent 32%), radial-gradient(circle at 12% 65%, rgba(96,165,250,0.07), transparent 30%)",
+          py: { xs: 2, sm: 4 },
+        }}
+      >
+        <Container maxWidth="md">
+          <Box component="header" sx={{ mb: { xs: 2.5, sm: 3.5 } }}>
+            <Box
+              component="img"
+              src="/creatorhub-wordmark-light.png"
+              alt="Creatorhub"
+              referrerPolicy="no-referrer"
+              sx={{
+                width: { xs: 154, sm: 184 },
+                height: "auto",
+                display: "block",
+              }}
+            />
+          </Box>
+          {children}
+        </Container>
+      </Box>
+    </ThemeProvider>
+  );
+}
 
 const AcceptPrototypeTesterInvite: React.FC = () => {
   const [, navigate] = useLocation();
+  const compactReader = useMediaQuery(
+    workspaceDarkTheme.breakpoints.down("sm"),
+  );
   const token = readToken();
   const [invite, setInvite] = useState<Invite | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Steg
-  const [activeStep, setActiveStep] = useState(0);
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [acceptedNda, setAcceptedNda] = useState(false);
-  const [signerName, setSignerName] = useState('');
+  const [accepted, setAccepted] = useState(emptyDocumentState);
+  const [reviewed, setReviewed] = useState(emptyDocumentState);
+  const [activeDocumentKey, setActiveDocumentKey] =
+    useState<PrototypeTesterAgreementKey | null>(null);
+  const [confirmedAuthority, setConfirmedAuthority] = useState(false);
+  const [signerName, setSignerName] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
+  const [maskedEmail, setMaskedEmail] = useState("");
+  const [codeExpiresAt, setCodeExpiresAt] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [receiptEmailSent, setReceiptEmailSent] = useState(false);
 
   useEffect(() => {
-    if (!token) { setError('Token mangler i URL'); setLoading(false); return; }
+    if (!token) {
+      setError("Token mangler i URL-en.");
+      setLoading(false);
+      return;
+    }
     apiRequest(`/api/prototype-tester-invites/${encodeURIComponent(token)}`)
-      .then((r: any) => {
-        setInvite(r);
-        setSignerName(r.name || '');
+      .then((response: Invite) => {
+        if (
+          !Array.isArray(response.agreements) ||
+          response.agreements.length !== 4
+        ) {
+          throw new Error(
+            "Avtaledokumentene er ikke tilgjengelige. Kontakt CreatorHub.",
+          );
+        }
+        setInvite(response);
+        setSignerName(response.name || "");
+        if (
+          response.status === "accepted" &&
+          !response.accountProvisioningComplete &&
+          response.agreementAcceptance?.complete
+        ) {
+          const restoredAcceptance = emptyDocumentState();
+          const restoredReview = emptyDocumentState();
+          for (const document of response.agreementAcceptance.documents) {
+            restoredAcceptance[document.key] = document.accepted;
+            restoredReview[document.key] = document.accepted;
+          }
+          setAccepted(restoredAcceptance);
+          setReviewed(restoredReview);
+          setConfirmedAuthority(
+            response.agreementAcceptance.confirmedSigningAuthority,
+          );
+          setSignerName(
+            response.agreementAcceptance.signerName || response.name || "",
+          );
+        }
       })
-      .catch((e: any) => setError(e?.message || 'Invitasjon ikke funnet'))
+      .catch((cause: unknown) => {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Invitasjonen ble ikke funnet.",
+        );
+      })
       .finally(() => setLoading(false));
   }, [token]);
 
+  const agreements = invite?.agreements ?? [];
+  const activeDocument =
+    agreements.find((document) => document.key === activeDocumentKey) ?? null;
+  const acceptedCount = agreements.filter(
+    (document) => accepted[document.key],
+  ).length;
+  const allAccepted =
+    agreements.length === 4 &&
+    agreements.every((document) => accepted[document.key]);
+  const activationRetry = Boolean(
+    invite?.status === "accepted" &&
+    !invite.accountProvisioningComplete &&
+    invite.agreementAcceptance?.complete,
+  );
+
+  const markActiveDocumentReviewed = () => {
+    if (!activeDocument) return;
+    setReviewed((current) => ({ ...current, [activeDocument.key]: true }));
+    setActiveDocumentKey(null);
+  };
+
+  const handleSendVerificationCode = async () => {
+    setSendingCode(true);
+    setError(null);
+    try {
+      const result = await apiRequest(
+        `/api/prototype-tester-invites/${encodeURIComponent(token)}/signing-code`,
+        { method: "POST" },
+      );
+      setCodeSent(true);
+      setMaskedEmail(String(result?.maskedEmail || invite?.email || ""));
+      setCodeExpiresAt(result?.expiresAt ? String(result.expiresAt) : null);
+      setVerificationCode("");
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Kunne ikke sende bekreftelseskoden.",
+      );
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
   const handleAccept = async () => {
-    if (!acceptedTerms || !acceptedNda) { setError('Du må krysse av begge boksene'); return; }
-    if (!signerName.trim() || signerName.trim().length < 2) { setError('Skriv fullt navn'); return; }
+    if (!allAccepted) {
+      setError("Du må lese og godta alle fire dokumentene.");
+      return;
+    }
+    if (!confirmedAuthority) {
+      setError("Du må bekrefte at du kan inngå avtalene.");
+      return;
+    }
+    if (signerName.trim().length < 2) {
+      setError("Skriv fullt navn.");
+      return;
+    }
+    if (!activationRetry && !/^\d{6}$/.test(verificationCode)) {
+      setError("Skriv inn den sekssifrede koden fra e-posten.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
-      await apiRequest(`/api/prototype-tester-invites/${encodeURIComponent(token)}/accept`, {
-        method: 'POST',
-        body: {
-          ndaName: signerName.trim(),
-          acceptedProgramTerms: true,
-          programTermsVersion: PROGRAM_TERMS_VERSION,
+      const agreementVersions = Object.fromEntries(
+        agreements.map((document) => [document.key, document.version]),
+      );
+      const result = await apiRequest(
+        `/api/prototype-tester-invites/${encodeURIComponent(token)}/accept`,
+        {
+          method: "POST",
+          body: {
+            ndaName: signerName.trim(),
+            acceptedProgramTerms: true,
+            programTermsVersion: agreementVersions.program_terms,
+            acceptedAgreements: accepted,
+            agreementVersions,
+            confirmedSigningAuthority: true,
+            verificationCode,
+          },
         },
-      });
-      trackEvent('prototype_tester_nda_signed', {
-        program_terms_version: PROGRAM_TERMS_VERSION,
-      });
+      );
+      setReceiptEmailSent(Boolean(result?.receiptEmailDelivery?.sent));
+      trackEvent(
+        activationRetry
+          ? "prototype_tester_activation_retried"
+          : "prototype_tester_agreements_signed",
+        { agreement_versions: agreementVersions },
+      );
       testerEvents.sessionStarted(token);
       setSuccess(true);
-      // Sett flag som velkomst-modalen leser
-      try { sessionStorage.setItem('prototype-tester-just-signed', '1'); } catch { /* ignore */ }
-      setTimeout(() => navigate('/photographer-dashboard-material'), 2500);
-    } catch (e: any) {
-      setError(e?.message || 'Signering feilet — prøv igjen');
+      try {
+        sessionStorage.setItem("prototype-tester-just-signed", "1");
+      } catch {
+        // Storage can be disabled; activation has already succeeded server-side.
+      }
+      setTimeout(() => {
+        const dashboard = dashboardForProfession(
+          invite?.memberProfession ?? null,
+        );
+        navigate(`/login?redirect=${encodeURIComponent(dashboard)}`);
+      }, 2500);
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Signering feilet — prøv igjen.",
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading) return <Container sx={{ py: 6, textAlign: 'center' }}><CircularProgress /></Container>;
+  if (loading) {
+    return (
+      <PrototypeInvitePageFrame>
+        <Box sx={{ py: 8, textAlign: "center" }}>
+          <CircularProgress aria-label="Laster avtaledokumenter" />
+        </Box>
+      </PrototypeInvitePageFrame>
+    );
+  }
   if (error && !invite) {
-    return <Container maxWidth="sm" sx={{ py: 4 }}><Alert severity="error">{error}</Alert></Container>;
+    return (
+      <PrototypeInvitePageFrame>
+        <Alert severity="error">{error}</Alert>
+      </PrototypeInvitePageFrame>
+    );
   }
   if (!invite) return null;
-  if (invite.status !== 'pending') {
+  if (invite.status !== "pending" && !activationRetry) {
     return (
-      <Container maxWidth="sm" sx={{ py: 4 }}>
-        <Alert severity={invite.status === 'accepted' ? 'success' : 'warning'}>
-          Denne invitasjonen er {invite.status === 'accepted' ? 'allerede signert' : invite.status}.
+      <PrototypeInvitePageFrame>
+        <Alert severity={invite.status === "accepted" ? "success" : "warning"}>
+          Denne invitasjonen er{" "}
+          {invite.status === "accepted" ? "allerede signert" : invite.status}.
         </Alert>
-      </Container>
+      </PrototypeInvitePageFrame>
     );
   }
   if (success) {
     return (
-      <Container maxWidth="sm" sx={{ py: 6 }}>
-        <Card>
-          <CardContent sx={{ textAlign: 'center', py: 6 }}>
-            <CheckIcon sx={{ fontSize: 72, color: 'success.main' }} />
-            <Typography variant="h5" sx={{ mt: 2 }}>Velkommen som tester!</Typography>
-            <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
-              Du redirectes til dashbordet om noen sekunder…
+      <PrototypeInvitePageFrame>
+        <Card sx={{ bgcolor: ws.panel, border: `1px solid ${ws.border}` }}>
+          <CardContent sx={{ py: 7, textAlign: "center" }}>
+            <CheckIcon sx={{ color: ws.green, fontSize: 72 }} />
+            <Typography variant="h5" sx={{ mt: 2, fontWeight: 800 }}>
+              Avtalene er registrert
+            </Typography>
+            <Typography sx={{ color: ws.textDim, mt: 1 }}>
+              CreatorHub-tilgangen er aktivert. Du sendes til innlogging og
+              deretter videre til dashbordet.
+            </Typography>
+            <Typography variant="body2" sx={{ color: ws.textDim, mt: 1.5 }}>
+              En etterprøvbar PDF-kvittering ligger i Mine avtaler
+              {receiptEmailSent ? " og lenken er sendt til e-posten din." : "."}
             </Typography>
           </CardContent>
         </Card>
-      </Container>
+      </PrototypeInvitePageFrame>
     );
   }
 
+  const daysRemaining = Math.max(
+    0,
+    Math.ceil(
+      (new Date(invite.expiresAt).getTime() - Date.now()) /
+        (24 * 60 * 60 * 1000),
+    ),
+  );
+
   return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
-      <Card>
-        <CardContent>
-          <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1 }}>
-            <TesterIcon color="primary" sx={{ fontSize: 32 }} />
-            <Stack>
-              <Typography variant="overline" color="primary">Du er invitert!</Typography>
-              <Typography variant="h5">Velkommen som prototype-tester</Typography>
-            </Stack>
+    <PrototypeInvitePageFrame>
+      <Card
+        data-testid="prototype-agreement-card"
+        sx={{
+          bgcolor: ws.panel,
+          border: `1px solid ${ws.border}`,
+          borderRadius: `${ws.radius}px`,
+          backdropFilter: "blur(18px)",
+          overflow: "hidden",
+        }}
+      >
+        <CardContent sx={{ p: { xs: 2, sm: 3.5 } }}>
+          <Stack direction="row" alignItems="flex-start" spacing={1.5}>
+            <Box
+              sx={{
+                width: 46,
+                height: 46,
+                borderRadius: 2.5,
+                bgcolor: ws.accentSoft,
+                border: `1px solid ${ws.accentBorder}`,
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0,
+              }}
+            >
+              <LockOutlined sx={{ color: ws.accent }} />
+            </Box>
+            <Box>
+              <Typography
+                variant="overline"
+                sx={{
+                  color: ws.accent,
+                  fontWeight: 800,
+                  letterSpacing: "0.13em",
+                }}
+              >
+                Godkjent prototype-tester
+              </Typography>
+              <Typography variant="h4" sx={{ fontWeight: 800, mt: -0.25 }}>
+                Les og signer avtalegrunnlaget
+              </Typography>
+            </Box>
           </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Hei {invite.name}! CreatorHub har godkjent søknaden din. Før du får tilgang må du
-            gå gjennom forpliktelses-vilkårene og signere NDA-en.
+
+          <Typography sx={{ color: ws.textDim, mt: 2, maxWidth: 700 }}>
+            Hei {invite.name}. Åpne hvert dokument, les hele teksten og bekreft
+            det separat før du signerer samlet.
           </Typography>
 
+          {invite.memberCompany && (
+            <Alert
+              severity="info"
+              variant="outlined"
+              sx={{ mt: 2, color: ws.text, bgcolor: ws.blueSoft }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                Avtalepart: {invite.memberCompany}
+              </Typography>
+              <Typography variant="caption" sx={{ color: ws.textDim, display: "block" }}>
+                {invite.memberOrganizationNumber
+                  ? `BRREG-verifisert · Org.nr. ${invite.memberOrganizationNumber.replace(
+                      /(\d{3})(\d{3})(\d{3})/,
+                      "$1 $2 $3",
+                    )}`
+                  : "Virksomhetsnavn oppgitt i invitasjonen"}
+                {invite.memberBusinessAddress ? ` · ${invite.memberBusinessAddress}` : ""}
+              </Typography>
+            </Alert>
+          )}
+
+          <Box sx={{ mt: 3, mb: 3 }}>
+            <Stack
+              direction="row"
+              justifyContent="space-between"
+              sx={{ mb: 0.75 }}
+            >
+              <Typography variant="caption" sx={{ color: ws.textDim }}>
+                Avtalegjennomgang
+              </Typography>
+              <Typography
+                variant="caption"
+                sx={{ color: ws.text, fontWeight: 700 }}
+              >
+                {acceptedCount} av 4 godkjent
+              </Typography>
+            </Stack>
+            <LinearProgress
+              variant="determinate"
+              value={(acceptedCount / 4) * 100}
+              sx={{ height: 7, borderRadius: 99, bgcolor: ws.panelAlt }}
+            />
+          </Box>
+
+          {activationRetry && (
+            <Alert severity="warning" sx={{ mb: 2.5 }}>
+              Avtalene er allerede registrert, men kontoaktiveringen ble ikke
+              fullført. Kontroller navnet og prøv aktiveringen på nytt.
+            </Alert>
+          )}
+          <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
+            Databehandleravtalen gjelder behandling av personopplysninger.
+            Intensjonsavtalen er ikke-bindende; de tre øvrige dokumentene er
+            bindende når de aksepteres.
+          </Alert>
+
           {invite.personalMessage && (
-            <Paper variant="outlined" sx={{ p: 2, mb: 3, bgcolor: 'action.hover' }}>
-              <Typography variant="caption" color="text.secondary">Personlig melding fra CreatorHub:</Typography>
-              <Typography variant="body2" sx={{ mt: 0.5, fontStyle: 'italic' }}>"{invite.personalMessage}"</Typography>
+            <Paper
+              variant="outlined"
+              sx={{
+                p: 2,
+                mb: 3,
+                bgcolor: ws.panelInput,
+                borderColor: ws.border,
+              }}
+            >
+              <Typography variant="caption" sx={{ color: ws.textDim }}>
+                Personlig melding fra CreatorHub
+              </Typography>
+              <Typography sx={{ mt: 0.5, fontStyle: "italic" }}>
+                “{invite.personalMessage}”
+              </Typography>
             </Paper>
           )}
 
-          <Stepper activeStep={activeStep} orientation="vertical" sx={{ mb: 3 }}>
-            {/* Steg 1: Program-vilkår */}
-            <Step expanded>
-              <StepLabel icon={<ClockIcon color={activeStep >= 0 ? 'primary' : 'disabled'} />}>
-                <b>Hva du forplikter deg til</b>
-              </StepLabel>
-              <Box sx={{ ml: 4, mb: 2 }}>
-                <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
-                  <Chip size="small" label={`${TESTER_PROGRAM_TERMS.durationWeeks} uker`} color="primary" />
-                  <Chip size="small" label={`~${TESTER_PROGRAM_TERMS.expectedHoursPerWeek} t/uke`} variant="outlined" />
-                  <Chip size="small" label={`Min ${TESTER_PROGRAM_TERMS.feedbackMinimumPerMonth} feedback/mnd`} variant="outlined" />
-                </Stack>
-
-                <Typography variant="subtitle2" sx={{ mt: 1 }}>Forpliktelser</Typography>
-                <List dense disablePadding>
-                  {TESTER_PROGRAM_TERMS.obligations.map((o, i) => (
-                    <ListItem key={i} sx={{ py: 0.25 }}>
-                      <ListItemIcon sx={{ minWidth: 30 }}><CheckIcon fontSize="small" color="action" /></ListItemIcon>
-                      <ListItemText primaryTypographyProps={{ variant: 'body2' }} primary={o} />
-                    </ListItem>
-                  ))}
-                </List>
-
-                <Typography variant="subtitle2" sx={{ mt: 2 }}>Du får</Typography>
-                <List dense disablePadding>
-                  {TESTER_PROGRAM_TERMS.benefits.map((b, i) => (
-                    <ListItem key={i} sx={{ py: 0.25 }}>
-                      <ListItemIcon sx={{ minWidth: 30 }}><CheckIcon fontSize="small" color="success" /></ListItemIcon>
-                      <ListItemText primaryTypographyProps={{ variant: 'body2' }} primary={b} />
-                    </ListItem>
-                  ))}
-                </List>
-
-                <Typography variant="subtitle2" sx={{ mt: 2 }}>Hva du IKKE får</Typography>
-                <List dense disablePadding>
-                  {TESTER_PROGRAM_TERMS.whatYouDoNotGet.map((b, i) => (
-                    <ListItem key={i} sx={{ py: 0.25 }}>
-                      <ListItemIcon sx={{ minWidth: 30 }}><XIcon fontSize="small" color="action" /></ListItemIcon>
-                      <ListItemText primaryTypographyProps={{ variant: 'body2' }} primary={b} />
-                    </ListItem>
-                  ))}
-                </List>
-
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-                  Exit-klausul: {TESTER_PROGRAM_TERMS.exitClause}
-                </Typography>
-
-                <FormControlLabel
-                  sx={{ mt: 2, alignItems: 'flex-start' }}
-                  control={
-                    <Checkbox
-                      checked={acceptedTerms}
-                      onChange={(e) => setAcceptedTerms(e.target.checked)}
-                      sx={{ pt: 0.5 }}
-                    />
-                  }
-                  label={
-                    <Typography variant="body2">
-                      Jeg har lest og forstår forpliktelses-vilkårene (versjon {PROGRAM_TERMS_VERSION}).
-                      Jeg vil teste minst 1 funksjon per uke og logge minst {TESTER_PROGRAM_TERMS.feedbackMinimumPerMonth} feedback-items per måned.
-                    </Typography>
-                  }
-                />
-
-                <Box sx={{ mt: 1.5 }}>
-                  <Button
-                    variant="contained"
-                    size="small"
-                    disabled={!acceptedTerms}
-                    onClick={() => setActiveStep(1)}
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "1fr",
+                md: "repeat(2, minmax(0, 1fr))",
+              },
+              gap: 2,
+            }}
+          >
+            {agreements.map((document) => {
+              const hasBeenRead = reviewed[document.key];
+              const hasBeenAccepted = accepted[document.key];
+              return (
+                <Card
+                  key={document.key}
+                  variant="outlined"
+                  data-testid={`agreement-summary-${document.key}`}
+                  sx={{
+                    bgcolor: ws.panelInput,
+                    borderColor: hasBeenAccepted ? ws.green : ws.border,
+                    borderRadius: `${ws.radiusSm}px`,
+                    display: "flex",
+                  }}
+                >
+                  <CardContent
+                    sx={{
+                      p: 2.25,
+                      width: "100%",
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
                   >
-                    Fortsett til NDA
-                  </Button>
-                </Box>
-              </Box>
-            </Step>
-
-            {/* Steg 2: NDA + signering */}
-            <Step expanded={activeStep >= 1}>
-              <StepLabel icon={<NdaIcon color={activeStep >= 1 ? 'primary' : 'disabled'} />}>
-                <b>NDA + signering</b>
-              </StepLabel>
-              {activeStep >= 1 && (
-                <Box sx={{ ml: 4, mb: 2 }}>
-                  <Paper variant="outlined" sx={{ p: 2, maxHeight: 280, overflow: 'auto', mb: 2 }}>
-                    <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
-{`NON-DISCLOSURE AGREEMENT (NDA) — Prototype Tester Program (v${invite.ndaVersion})
-
-Mellom:
-  Creatorhubn AS ("Creatorhubn")
-og
-  ${invite.name} ("Tester")
-
-1. KONFIDENSIELL INFORMASJON
-Tester får tilgang til Creatorhubns ikke-frigjorte funksjoner, interne
-roadmap, design-iterasjoner og feilrapport-detaljer. Alt dette behandles
-som konfidensielt.
-
-2. FORPLIKTELSER
-Tester forplikter seg til:
-  a) Ikke dele skjermbilder, video eller funksjons-beskrivelser fra
-     plattformen offentlig (sosiale medier, blogger, presentasjoner).
-  b) Ikke vise plattformen til personer utenfor programmet uten
-     skriftlig samtykke fra Creatorhubn.
-  c) Ikke benytte informasjon om kommende funksjoner kommersielt
-     før de er offentlig frigjort.
-
-3. VARIGHET
-Konfidensialiteten gjelder under hele test-perioden og 12 måneder etter
-at programmet er avsluttet, uansett årsak.
-
-4. UNNTAK
-NDA-en gjelder ikke informasjon som:
-  - Er eller blir offentlig kjent uten Testers feil.
-  - Tester allerede besatt før programmet startet.
-  - Lovkrav (offentlig myndighet) krever offentliggjøring av.
-
-5. KONSEKVENSER VED BRUDD
-Brudd kan medføre umiddelbar utestengelse fra programmet, tap av
-post-program-belønning, og krav om kompensasjon for dokumentert skade.
-
-6. SIGNATUR
-Ved å skrive ditt fulle navn og klikke "Signer og aktiver"-knappen,
-bekrefter du elektronisk denne avtalen. Signatur, IP-adresse og
-tidspunkt lagres som juridisk dokumentasjon.`}
-                    </Typography>
-                  </Paper>
-
-                  <FormControlLabel
-                    control={<Checkbox checked={acceptedNda} onChange={(e) => setAcceptedNda(e.target.checked)} />}
-                    label="Jeg har lest og godtar NDA-en"
-                  />
-
-                  <TextField
-                    fullWidth
-                    label="Fullt navn (slik det står på legitimasjon)"
-                    value={signerName}
-                    onChange={(e) => setSignerName(e.target.value)}
-                    sx={{ mt: 2 }}
-                    required
-                    helperText="Din elektroniske signatur"
-                  />
-
-                  {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
-
-                  <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                    <Button onClick={() => setActiveStep(0)} disabled={submitting}>Tilbake</Button>
-                    <Button
-                      variant="contained"
-                      color="success"
-                      onClick={handleAccept}
-                      disabled={submitting || !acceptedNda || !signerName.trim()}
+                    <Stack
+                      direction="row"
+                      spacing={1.25}
+                      alignItems="flex-start"
                     >
-                      {submitting ? 'Signerer…' : 'Signer og aktiver tester-tilgang'}
+                      <Box
+                        sx={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 2,
+                          bgcolor: hasBeenAccepted
+                            ? ws.greenSoft
+                            : ws.accentSoft,
+                          display: "grid",
+                          placeItems: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {agreementIcon(document.key, hasBeenAccepted)}
+                      </Box>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography fontWeight={800} sx={{ lineHeight: 1.3 }}>
+                          {document.title}
+                        </Typography>
+                        <Stack
+                          direction="row"
+                          spacing={0.75}
+                          useFlexGap
+                          flexWrap="wrap"
+                          sx={{ mt: 1 }}
+                        >
+                          <Chip
+                            size="small"
+                            label={`v${document.version}`}
+                            variant="outlined"
+                          />
+                          <Chip
+                            size="small"
+                            label={
+                              document.bindingNature === "binding"
+                                ? "Bindende"
+                                : "Ikke-bindende"
+                            }
+                            color={
+                              document.bindingNature === "binding"
+                                ? "warning"
+                                : "default"
+                            }
+                          />
+                          {hasBeenRead && (
+                            <Chip size="small" label="Lest" color="success" />
+                          )}
+                        </Stack>
+                      </Box>
+                    </Stack>
+
+                    <Typography
+                      variant="body2"
+                      sx={{ color: ws.textDim, mt: 2, mb: 2 }}
+                    >
+                      Åpne dokumentleseren for å se hele teksten før du godtar.
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      startIcon={<MenuBookOutlined />}
+                      data-testid={`read-${document.key}`}
+                      onClick={() => setActiveDocumentKey(document.key)}
+                      sx={{ alignSelf: "flex-start", mb: 1.5 }}
+                    >
+                      {hasBeenRead
+                        ? "Les dokumentet igjen"
+                        : "Åpne og les dokumentet"}
                     </Button>
+                    <FormControlLabel
+                      sx={{ alignItems: "flex-start", mt: "auto", mr: 0 }}
+                      disabled={!hasBeenRead}
+                      control={
+                        <Checkbox
+                          disabled={!hasBeenRead}
+                          checked={hasBeenAccepted}
+                          data-testid={`accept-${document.key}`}
+                          onChange={(event) =>
+                            setAccepted((current) => ({
+                              ...current,
+                              [document.key]: event.target.checked,
+                            }))
+                          }
+                          sx={{ pt: 0.35 }}
+                        />
+                      }
+                      label={
+                        <Typography
+                          variant="body2"
+                          sx={{ color: hasBeenRead ? ws.text : ws.textFaint }}
+                        >
+                          {document.acceptanceLabel}
+                        </Typography>
+                      }
+                    />
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </Box>
+
+          <Divider sx={{ my: 3.5, borderColor: ws.border }} />
+
+          <Card
+            variant="outlined"
+            sx={{
+              bgcolor: ws.panelInput,
+              borderColor: allAccepted ? ws.accentBorder : ws.border,
+              borderRadius: `${ws.radiusSm}px`,
+            }}
+          >
+            <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
+              <Stack
+                direction="row"
+                spacing={1.25}
+                alignItems="center"
+                sx={{ mb: 2 }}
+              >
+                <HowToRegOutlined
+                  sx={{ color: allAccepted ? ws.accent : ws.textFaint }}
+                />
+                <Box>
+                  <Typography fontWeight={800}>Elektronisk signatur</Typography>
+                  <Typography variant="caption" sx={{ color: ws.textDim }}>
+                    Aktiveres når alle fire dokumentene er lest og godkjent.
+                  </Typography>
+                </Box>
+              </Stack>
+              <Typography variant="body2" sx={{ color: ws.textDim, mb: 2 }}>
+                Vi lagrer navn, e-post, tidspunkt, IP-adresse, brukeragent, full
+                dokumenttekst, versjoner og SHA-256-kontrollsum som
+                dokumentasjon. Dette er en enkel elektronisk signatur med
+                e-postbekreftelse, ikke BankID eller en kvalifisert elektronisk
+                signatur. Ved å fullføre bekrefter du at aksepten er ment å være
+                bindende for de tre dokumentene som er merket «Bindende».
+              </Typography>
+              <FormControlLabel
+                disabled={!allAccepted}
+                sx={{ alignItems: "flex-start", mb: 1 }}
+                control={
+                  <Checkbox
+                    disabled={!allAccepted}
+                    checked={confirmedAuthority}
+                    data-testid="confirm-signing-authority"
+                    onChange={(event) =>
+                      setConfirmedAuthority(event.target.checked)
+                    }
+                    sx={{ pt: 0.5 }}
+                  />
+                }
+                label={
+                  <Typography variant="body2">
+                    Jeg bekrefter at jeg inngår avtalene for meg selv og, dersom
+                    virksomhet er oppgitt, at jeg har fullmakt til å akseptere
+                    databehandleravtalen på dens vegne.
+                  </Typography>
+                }
+              />
+              <TextField
+                fullWidth
+                required
+                disabled={!allAccepted}
+                label="Fullt navn"
+                value={signerName}
+                onChange={(event) => setSignerName(event.target.value)}
+                helperText="Navnet brukes som din elektroniske signatur"
+                inputProps={{ "data-testid": "agreement-signer-name" }}
+                sx={{ mt: 1 }}
+              />
+              {!activationRetry && (
+                <Box
+                  sx={{
+                    mt: 2,
+                    p: 2,
+                    borderRadius: `${ws.radiusSm}px`,
+                    bgcolor: ws.bg,
+                    border: `1px solid ${codeSent ? ws.accentBorder : ws.border}`,
+                  }}
+                >
+                  <Typography variant="subtitle2" fontWeight={800}>
+                    Bekreft den inviterte e-postadressen
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: ws.textDim, mt: 0.5 }}>
+                    Vi sender en engangskode til {maskedEmail || invite.email}.
+                    Koden må oppgis sammen med navnet for å signere.
+                  </Typography>
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    spacing={1.25}
+                    alignItems={{ sm: "flex-start" }}
+                    sx={{ mt: 1.5 }}
+                  >
+                    <Button
+                      variant={codeSent ? "outlined" : "contained"}
+                      disabled={!allAccepted || sendingCode}
+                      onClick={handleSendVerificationCode}
+                      data-testid="send-signing-code"
+                      sx={!codeSent ? {
+                        bgcolor: ws.accent,
+                        color: ws.accentContrast,
+                        fontWeight: 800,
+                      } : undefined}
+                    >
+                      {sendingCode
+                        ? "Sender…"
+                        : codeSent
+                          ? "Send ny kode"
+                          : "Send bekreftelseskode"}
+                    </Button>
+                    <TextField
+                      label="Sekssifret kode"
+                      value={verificationCode}
+                      disabled={!codeSent}
+                      onChange={(event) =>
+                        setVerificationCode(
+                          event.target.value.replace(/\D/g, "").slice(0, 6),
+                        )
+                      }
+                      inputProps={{
+                        inputMode: "numeric",
+                        autoComplete: "one-time-code",
+                        maxLength: 6,
+                        "data-testid": "signing-verification-code",
+                        "aria-label": "Sekssifret bekreftelseskode",
+                      }}
+                      helperText={
+                        codeSent
+                          ? `Koden er gyldig i 10 minutter${
+                              codeExpiresAt ? ` (til ${new Date(codeExpiresAt).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })})` : ""
+                            }.`
+                          : "Be om en kode for å fortsette"
+                      }
+                      sx={{ flex: 1, minWidth: { sm: 240 } }}
+                    />
                   </Stack>
                 </Box>
               )}
-            </Step>
-          </Stepper>
+              {error && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {error}
+                </Alert>
+              )}
+              <Button
+                variant="contained"
+                data-testid="sign-and-activate"
+                onClick={handleAccept}
+                disabled={
+                  submitting ||
+                  !allAccepted ||
+                  !confirmedAuthority ||
+                  signerName.trim().length < 2 ||
+                  (!activationRetry && !/^\d{6}$/.test(verificationCode))
+                }
+                sx={{
+                  mt: 2,
+                  bgcolor: ws.accent,
+                  color: ws.accentContrast,
+                  fontWeight: 800,
+                }}
+              >
+                {submitting
+                  ? "Registrerer…"
+                  : activationRetry
+                    ? "Prøv kontoaktivering på nytt"
+                    : "Signer alle og aktiver tilgang"}
+              </Button>
+            </CardContent>
+          </Card>
 
-          <Divider sx={{ my: 2 }} />
-          <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" sx={{ color: 'text.secondary' }}>
-            <MailIcon fontSize="small" />
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1}
+            alignItems="center"
+            justifyContent="center"
+            sx={{ color: ws.textDim, mt: 3, textAlign: "center" }}
+          >
+            <MailOutline fontSize="small" />
             <Typography variant="caption">
-              Du har {new Date(invite.expiresAt).getTime() > Date.now() ? Math.ceil((new Date(invite.expiresAt).getTime() - Date.now()) / (24 * 3600 * 1000)) : 0} dager igjen før invitasjonen utløper.
+              Den personlige invitasjonen utløper om {daysRemaining} dager.
+              Spørsmål kan sendes til daniel@creatorhubn.com.
             </Typography>
           </Stack>
         </CardContent>
       </Card>
-    </Container>
+
+      <Dialog
+        open={Boolean(activeDocument)}
+        onClose={() => setActiveDocumentKey(null)}
+        maxWidth="md"
+        fullWidth
+        fullScreen={compactReader}
+        aria-labelledby="agreement-reader-title"
+        PaperProps={{
+          sx: {
+            bgcolor: ws.panelSolid,
+            color: ws.text,
+            border: `1px solid ${ws.border}`,
+            backgroundImage: "none",
+          },
+        }}
+      >
+        {activeDocument && (
+          <>
+            <DialogTitle id="agreement-reader-title" sx={{ pr: 7 }}>
+              <Stack
+                direction="row"
+                spacing={1}
+                useFlexGap
+                flexWrap="wrap"
+                alignItems="center"
+              >
+                <Typography variant="h6" component="span" fontWeight={800}>
+                  {activeDocument.title}
+                </Typography>
+                <Chip
+                  size="small"
+                  label={`v${activeDocument.version}`}
+                  variant="outlined"
+                />
+                <Chip
+                  size="small"
+                  label={
+                    activeDocument.bindingNature === "binding"
+                      ? "Bindende"
+                      : "Ikke-bindende"
+                  }
+                  color={
+                    activeDocument.bindingNature === "binding"
+                      ? "warning"
+                      : "default"
+                  }
+                />
+              </Stack>
+              <IconButton
+                onClick={() => setActiveDocumentKey(null)}
+                aria-label="Lukk dokumentet"
+                sx={{
+                  position: "absolute",
+                  right: 14,
+                  top: 14,
+                  color: ws.textDim,
+                }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </DialogTitle>
+            <DialogContent
+              dividers
+              sx={{ borderColor: ws.border, p: { xs: 2, sm: 3 } }}
+            >
+              <Paper
+                variant="outlined"
+                data-testid={`agreement-content-${activeDocument.key}`}
+                sx={{
+                  p: { xs: 2, sm: 3 },
+                  bgcolor: ws.bg,
+                  borderColor: ws.border,
+                  minHeight: { sm: 420 },
+                }}
+              >
+                <Typography
+                  component="pre"
+                  variant="body2"
+                  sx={{
+                    m: 0,
+                    color: ws.text,
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere",
+                    fontFamily: "inherit",
+                    fontSize: { xs: "0.88rem", sm: "0.95rem" },
+                    lineHeight: 1.75,
+                  }}
+                >
+                  {activeDocument.content}
+                </Typography>
+              </Paper>
+            </DialogContent>
+            <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2 }}>
+              <Button onClick={() => setActiveDocumentKey(null)}>Lukk</Button>
+              <Button
+                variant="contained"
+                data-testid={`mark-read-${activeDocument.key}`}
+                onClick={markActiveDocumentReviewed}
+                sx={{
+                  bgcolor: ws.accent,
+                  color: ws.accentContrast,
+                  fontWeight: 800,
+                }}
+              >
+                Merk som lest og lukk
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+    </PrototypeInvitePageFrame>
   );
 };
 

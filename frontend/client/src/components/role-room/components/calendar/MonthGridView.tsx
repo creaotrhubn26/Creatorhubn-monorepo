@@ -178,7 +178,7 @@ export const MonthGridView: React.FC<MonthGridViewProps> = ({
                     width: 24,
                     height: 24,
                     borderRadius: '50%',
-                    bgcolor: '#8b5cf6',
+                    bgcolor: 'var(--role-violet, #8b5cf6)',
                     color: '#fff',
                     display: 'flex',
                     alignItems: 'center',

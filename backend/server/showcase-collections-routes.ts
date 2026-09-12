@@ -231,8 +231,13 @@ export function setupShowcaseCollectionsRoutes(
 
       res.json(collections.filter(Boolean));
     } catch (error) {
-      console.error("Error loading showcase collections:", error);
-      res.status(500).json({ error: "Kunne ikke hente samlinger" });
+      // Manglende showcase_collections-tabell skal ikke krasje showcase-fane.
+      // Returner tom liste i stedet for 500.
+      console.warn(
+        "[showcase-collections] list degraded:",
+        (error as any)?.message || error,
+      );
+      res.json([]);
     }
   });
 

@@ -51,11 +51,20 @@ export function setupWeddingProjectsRoutes(
   app.get("/api/wedding-projects/:projectId", async (req, res) => {
     if (!requireUserSession(req, res)) return;
     try {
+      // Eierskaps-scope: samme modell som listen over (legacy.projects.user_id).
+      // Uten dette kunne enhver innlogget bruker hente et vilkårlig prosjekt
+      // (inkl. klient-/pris-data) ved å gjette/enumere id (IDOR).
+      const userId = compatResolveUserId(req);
+      if (!userId || userId === "guest") {
+        return res
+          .status(404)
+          .json({ success: false, error: "Project not found" });
+      }
       const result = await pool.query(
-        "SELECT * FROM legacy.projects WHERE id = $1 LIMIT 1",
-        [req.params.projectId],
+        "SELECT * FROM legacy.projects WHERE id = $1 AND user_id = $2 LIMIT 1",
+        [req.params.projectId, userId],
       );
-      if (!result.rowCount || result.rowCount === 0) {
+      if (!result.rowCount || !result.rows.length) {
         return res
           .status(404)
           .json({ success: false, error: "Project not found" });
@@ -68,10 +77,14 @@ export function setupWeddingProjectsRoutes(
         },
       });
     } catch (error) {
-      console.error("Error fetching wedding project:", error);
-      res
-        .status(500)
-        .json({ success: false, error: "Failed to load wedding project" });
+      // Manglende legacy.projects-tabell/kolonner skal ikke krasje wedding-
+      // dashbordet. Logg som warning og returner not-found istedet for 500
+      // — frontend håndterer 404 som "ingen prosjekt" og rendrer tom state.
+      console.warn(
+        "[wedding-projects] detail degraded:",
+        (error as Error).message,
+      );
+      res.status(404).json({ success: false, error: "Project not found" });
     }
   });
 }

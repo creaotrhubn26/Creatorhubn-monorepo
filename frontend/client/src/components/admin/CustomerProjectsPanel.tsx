@@ -14,18 +14,24 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  Chip,
   IconButton,
   TextField,
   InputAdornment,
   Tabs,
   Tab,
-  Button,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
+import {
+  AdminButton,
+  StatusChip,
+  AdminLoading,
+  AdminEmpty,
+  AdminTableContainer,
+  adminTokens,
+} from './design-system';
 import {
   Group,
   Business,
@@ -94,6 +100,8 @@ export default function CustomerProjectsPanel({
   
   // Theming system
   const theming = useTheming('prototype_tester');
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const [searchTerm, setSearchTerm] = useState('');
 
   // Fetch real customer and project data
@@ -120,9 +128,9 @@ export default function CustomerProjectsPanel({
 
   if (isLoading) {
     return (
-      <Box sx={{ p: 3 }}>
-        <Typography variant="h6" sx={{ color: theming.colors.primary }}>Laster kunder og prosjekter...</Typography>
-      </Box>
+      <ThemeProvider theme={adminDarkTheme}>
+        <AdminLoading label="Laster kunder og prosjekter..." />
+      </ThemeProvider>
     );
 }
 
@@ -134,27 +142,26 @@ export default function CustomerProjectsPanel({
     totalRevenue: 0
 };
 
-  const projects = (projectsData as any)?.projects || [];
-  const customers = (customersData as any)?.customers || [];
+  const projects = Array.isArray((projectsData as any)?.projects) ? (projectsData as any).projects : [];
+  const customers = Array.isArray((customersData as any)?.customers) ? (customersData as any).customers : [];
+  const vendors = Array.isArray((customersData as any)?.vendors) ? (customersData as any).vendors : [];
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Group color="primary" sx={{ fontSize: 32 }} />
-          <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 600, color: themeColors.primary }}>
             Kunder & Prosjekter
           </Typography>
         </Box>
-        <Button variant="contained"
+        <AdminButton
+          tone="primary"
           startIcon={<Add />}
-          sx={{ 
-            bgcolor: '#ff8c00',
-            '&:hover': { bgcolor: '#e67c00' }
-        }}
         >
           Ny Kunde
-        </Button>
+        </AdminButton>
       </Box>
 
       {/* Summary Cards */}
@@ -165,7 +172,7 @@ export default function CustomerProjectsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <People color="primary" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.totalCustomers}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -183,7 +190,7 @@ export default function CustomerProjectsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Assignment color="warning" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.activeProjects}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -201,7 +208,7 @@ export default function CustomerProjectsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Work color="success" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.completedProjects}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -219,7 +226,7 @@ export default function CustomerProjectsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <TrendingUp color="info" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.totalRevenue.toLocaleString('no-NO')} kr
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -242,12 +249,12 @@ export default function CustomerProjectsPanel({
               '& .MuiTab-root': {
                 color: 'text.secondary',
                 '&.Mui-selected': {
-                  color: '#ff8c00',
+                  color: adminTokens.color.brand,
                   fontWeight: 600
                 }
               },
               '& .MuiTabs-indicator': {
-                backgroundColor: '#ff8c00'
+                backgroundColor: adminTokens.color.brand
               }
             }}
           >
@@ -264,10 +271,11 @@ export default function CustomerProjectsPanel({
             placeholder="Søk kunder, prosjekter eller leverandører..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            inputProps={{ 'aria-label': 'Søk kunder, prosjekter eller leverandører' }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <Search />
+                  <Search aria-hidden="true" />
                 </InputAdornment>
               )}}
             sx={{ mb: 3 }}
@@ -275,7 +283,7 @@ export default function CustomerProjectsPanel({
 
           {/* Tab Panels */}
           <TabPanel value={tabValue} index={0}>
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Alle prosjekter">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -302,19 +310,18 @@ export default function CustomerProjectsPanel({
                         <TableCell>{project.name || 'Uten navn'}</TableCell>
                         <TableCell>{project.customerName || 'Ukjent kunde'}</TableCell>
                         <TableCell>
-                          <Chip 
+                          <StatusChip
                             label={project.status || 'Aktiv'}
-                            color={project.status === 'completed' ? 'success' : 'warning'}
-                            size="small"
+                            tone={project.status === 'completed' ? 'success' : 'warning'}
                           />
                         </TableCell>
                         <TableCell>{project.value || 0} kr</TableCell>
                         <TableCell>{project.deadline || 'Ikke satt'}</TableCell>
                         <TableCell>
-                          <IconButton size="small">
+                          <IconButton size="small" aria-label="Vis prosjekt">
                             <Visibility />
                           </IconButton>
-                          <IconButton size="small">
+                          <IconButton size="small" aria-label="Rediger prosjekt">
                             <Edit />
                           </IconButton>
                         </TableCell>
@@ -323,11 +330,11 @@ export default function CustomerProjectsPanel({
                   )}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </TabPanel>
 
           <TabPanel value={tabValue} index={1}>
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Kunder">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -357,10 +364,10 @@ export default function CustomerProjectsPanel({
                         <TableCell>{customer.activeProjects || 0}</TableCell>
                         <TableCell>{customer.totalValue || 0} kr</TableCell>
                         <TableCell>
-                          <IconButton size="small">
+                          <IconButton size="small" aria-label="Vis kunde">
                             <Visibility />
                           </IconButton>
-                          <IconButton size="small">
+                          <IconButton size="small" aria-label="Rediger kunde">
                             <Edit />
                           </IconButton>
                         </TableCell>
@@ -369,12 +376,12 @@ export default function CustomerProjectsPanel({
                   )}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </TabPanel>
 
           <TabPanel value={tabValue} index={2}>
-            {(customersData as any)?.vendors?.length > 0 ? (
-              <TableContainer component={Paper}>
+            {vendors.length > 0 ? (
+              <AdminTableContainer ariaLabel="Leverandører">
                 <Table>
                   <TableHead>
                     <TableRow>
@@ -387,30 +394,28 @@ export default function CustomerProjectsPanel({
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {(customersData as any).vendors.map((vendor: any) => (
+                    {vendors.map((vendor: any) => (
                       <TableRow key={vendor.id}>
                         <TableCell>{vendor.businessName}</TableCell>
                         <TableCell>
-                          <Chip 
+                          <StatusChip
                             label={vendor.vendorType || 'Leverandør'}
-                            size="small" 
-                            color="secondary" 
+                            tone="neutral"
                           />
                         </TableCell>
                         <TableCell>
-                          <Chip 
+                          <StatusChip
                             label={vendor.status || 'Aktiv'}
-                            size="small" 
-                            color={vendor.status === 'active' ? 'success' : 'default'}
+                            tone={vendor.status === 'active' ? 'success' : 'neutral'}
                           />
                         </TableCell>
                         <TableCell>{vendor.activeOrders || 0}</TableCell>
                         <TableCell>kr {vendor.totalRevenue?.toLocaleString() || '0'}</TableCell>
                         <TableCell>
-                          <IconButton size="small" color="primary">
+                          <IconButton size="small" color="primary" aria-label="Vis leverandør">
                             <Visibility />
                           </IconButton>
-                          <IconButton size="small" color="secondary">
+                          <IconButton size="small" color="secondary" aria-label="Rediger leverandør">
                             <Edit />
                           </IconButton>
                         </TableCell>
@@ -418,21 +423,18 @@ export default function CustomerProjectsPanel({
                     ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
+              </AdminTableContainer>
             ) : (
-              <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Business sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
-                  Leverandør-administrasjon
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Ingen leverandører registrert ennå
-                </Typography>
-              </Box>
+              <AdminEmpty
+                icon={<Business sx={{ fontSize: 48 }} />}
+                title="Leverandør-administrasjon"
+                description="Ingen leverandører registrert ennå"
+              />
             )}
           </TabPanel>
         </CardContent>
       </MuiCard>
     </Box>
+    </ThemeProvider>
   );
 }

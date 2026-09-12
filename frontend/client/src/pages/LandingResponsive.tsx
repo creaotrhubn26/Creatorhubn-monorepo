@@ -6,7 +6,7 @@ import LandingMobile from'./landing-mobile';
 
 const LandingResponsive: React.FC = () => {
   const theme = useTheme();
-  
+
   // Theming system
   const theming = useTheming('photographer');
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));

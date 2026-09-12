@@ -426,7 +426,7 @@ export function setupRoleRoomTalentPartnersRoutes(
       });
     } catch (err) {
       console.error("[partners-overview] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å hente partners-oversikten", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å hente partners-oversikten", detail: "internal_error" });
     }
   });
 
@@ -465,7 +465,7 @@ export function setupRoleRoomTalentPartnersRoutes(
       return res.json({ ok: true, paused_scopes: r.rows.map((row) => row.scope), days: pauseDays });
     } catch (err) {
       console.error("[consents/pause] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å pause", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å pause", detail: "internal_error" });
     }
   });
 
@@ -545,7 +545,7 @@ export function setupRoleRoomTalentPartnersRoutes(
       return res.json({ ok: true, perms });
     } catch (err) {
       console.error("[consents/bulk-set] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å oppdatere tillatelser", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å oppdatere tillatelser", detail: "internal_error" });
     }
   });
 
@@ -661,7 +661,7 @@ The Role Room Talents
       });
     } catch (err) {
       console.error("[partner-invites POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å opprette invite", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å opprette invite", detail: "internal_error" });
     }
   });
 
@@ -757,60 +757,107 @@ The Role Room Talents
         return res.status(410).json({ error: "Invite er utløpt" });
       }
 
-      // Slå opp eller opprett agency_org basert på partner_email
       const emailLower = invite.partner_email.toLowerCase();
-      let agency = await pool.query(
+      const scopesArr: string[] = Array.isArray(invite.scopes) ? invite.scopes : JSON.parse(invite.scopes);
+
+      // SIKKERHET (BOLA / privilege-escalation): invite-tokenet returneres OGSÅ
+      // til INVITEREREN (POST /me/partner-invites-svaret + acceptUrl, for
+      // mailto-fallback), så token-besittelse alene kan IKKE autorisere en
+      // agency-innmelding. Å koble den innloggede brukeren til et EKSISTERENDE
+      // byrå (som kan ha andre medlemmer + aktive consents fra mange talenter)
+      // krever bevis på at akseptøren faktisk kontrollerer den inviterte
+      // e-posten — ellers kunne enhver innlogget bruker opprette en invite til
+      // et kjent byrås contact_email, self-akseptere med tokenet fra sitt eget
+      // POST-svar, og arve byråets lese-tilgang til ALLE samtykkede talenter
+      // (cross-tenant PII-lekkasje: role-room-agency-search / talent-selftapes /
+      // media-proxy stoler ubetinget på users.agency_org_id som medlemskaps-
+      // bevis via fetchAgencyForUser). Nytt byrå (ingen contact_email-match) =
+      // akseptøren blir grunnlegger av et tomt byrå → trygt, ingen match kreves.
+      const existingAgencyForEmail = await pool.query<{ id: string }>(
         `SELECT id FROM agency_orgs WHERE contact_email = $1 LIMIT 1`,
         [emailLower],
       );
+      if (existingAgencyForEmail.rowCount) {
+        const alreadyMember = await pool.query(
+          `SELECT 1 FROM users WHERE id = $1 AND agency_org_id = $2 LIMIT 1`,
+          [session.userId, existingAgencyForEmail.rows[0].id],
+        );
+        const sessionEmail = (session.email || "").trim().toLowerCase();
+        if (!alreadyMember.rowCount && sessionEmail !== emailLower) {
+          return res.status(403).json({
+            error: "Dette byrået finnes allerede. Logg inn med e-posten invitasjonen ble sendt til for å bli med i byrået.",
+          });
+        }
+      }
+
+      // Accept = agency upsert + user link + per-scope consents + invite
+      // status, all in one transaction. Previously these ran as independent
+      // queries, so a mid-flow failure left inconsistent state (user linked
+      // but invite still pending, or only some scopes granted).
+      const client = await pool.connect();
       let agencyId: string;
-      if (agency.rowCount) {
-        agencyId = agency.rows[0].id;
-      } else {
-        const slug = emailLower.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 100);
-        const newAgency = await pool.query(
-          `INSERT INTO agency_orgs (type, name, slug, contact_email, status)
-           VALUES ($1, $2, $3, $4, 'active')
-           ON CONFLICT (slug) DO UPDATE SET contact_email = EXCLUDED.contact_email
-           RETURNING id`,
-          [invite.partner_type, invite.partner_display_name || emailLower, `${slug}-${crypto.randomBytes(3).toString("hex")}`, emailLower],
+      try {
+        await client.query("BEGIN");
+
+        // Slå opp eller opprett agency_org basert på partner_email
+        const agency = await client.query(
+          `SELECT id FROM agency_orgs WHERE contact_email = $1 LIMIT 1`,
+          [emailLower],
         );
-        agencyId = newAgency.rows[0].id;
-      }
+        if (agency.rowCount) {
+          agencyId = agency.rows[0].id;
+        } else {
+          const slug = emailLower.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 100);
+          const newAgency = await client.query(
+            `INSERT INTO agency_orgs (type, name, slug, contact_email, status)
+             VALUES ($1, $2, $3, $4, 'active')
+             ON CONFLICT (slug) DO UPDATE SET contact_email = EXCLUDED.contact_email
+             RETURNING id`,
+            [invite.partner_type, invite.partner_display_name || emailLower, `${slug}-${crypto.randomBytes(3).toString("hex")}`, emailLower],
+          );
+          agencyId = newAgency.rows[0].id;
+        }
 
-      // Koble accepting user til agency
-      await pool.query(
-        `UPDATE users SET agency_org_id = $1, agency_role = COALESCE(agency_role, 'admin') WHERE id = $2`,
-        [agencyId, session.userId],
-      );
-
-      // Grant consents på alle scopes i invite
-      const scopesArr: string[] = Array.isArray(invite.scopes) ? invite.scopes : JSON.parse(invite.scopes);
-      for (const scope of scopesArr) {
-        await pool.query(
-          `INSERT INTO talent_consent_registry
-             (talent_id, partner_type, partner_ref, partner_display_name, scope, status, granted_at, granted_by)
-           VALUES ($1, $2, $3, $4, $5, 'granted', now(), $6)
-           ON CONFLICT (talent_id, partner_type, partner_ref, scope) DO UPDATE SET
-             status = 'granted', granted_at = now(),
-             granted_by = EXCLUDED.granted_by, revoked_at = NULL, revoked_by = NULL,
-             updated_at = now()`,
-          [invite.talent_id, invite.partner_type, agencyId, invite.partner_display_name, scope, session.userId],
+        // Koble accepting user til agency
+        await client.query(
+          `UPDATE users SET agency_org_id = $1, agency_role = COALESCE(agency_role, 'admin') WHERE id = $2`,
+          [agencyId, session.userId],
         );
-      }
 
-      // Marker invite som akseptert
-      await pool.query(
-        `UPDATE talent_partner_invites
-            SET status = 'accepted', accepted_at = now(), accepted_by = $2, resolved_agency_org_id = $3
-          WHERE id = $1`,
-        [invite.id, session.userId, agencyId],
-      );
+        // Grant consents på alle scopes i invite
+        for (const scope of scopesArr) {
+          await client.query(
+            `INSERT INTO talent_consent_registry
+               (talent_id, partner_type, partner_ref, partner_display_name, scope, status, granted_at, granted_by)
+             VALUES ($1, $2, $3, $4, $5, 'granted', now(), $6)
+             ON CONFLICT (talent_id, partner_type, partner_ref, scope) DO UPDATE SET
+               status = 'granted', granted_at = now(),
+               granted_by = EXCLUDED.granted_by, revoked_at = NULL, revoked_by = NULL,
+               updated_at = now()`,
+            [invite.talent_id, invite.partner_type, agencyId, invite.partner_display_name, scope, session.userId],
+          );
+        }
+
+        // Marker invite som akseptert
+        await client.query(
+          `UPDATE talent_partner_invites
+              SET status = 'accepted', accepted_at = now(), accepted_by = $2, resolved_agency_org_id = $3
+            WHERE id = $1`,
+          [invite.id, session.userId, agencyId],
+        );
+
+        await client.query("COMMIT");
+      } catch (txErr) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw txErr;
+      } finally {
+        client.release();
+      }
 
       return res.json({ ok: true, agencyId, scopes: scopesArr });
     } catch (err) {
       console.error("[partner-invites/:token/accept] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å akseptere invite", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å akseptere invite", detail: "internal_error" });
     }
   });
 }

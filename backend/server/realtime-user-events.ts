@@ -1,8 +1,33 @@
 import type { IncomingMessage, Server as HttpServer } from "http";
 import type { Duplex } from "stream";
+import type express from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import type { Pool } from "pg";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
+import {
+  USER_EVENTS_PROTOCOL_VERSION,
+  type UserEvent,
+  type UserEventsFrame,
+} from "../../frontend/shared/realtime-user-events-contract.js";
+import {
+  consumeUserEventsTicket,
+  issueUserEventsTicket,
+  USER_EVENTS_TICKET_TTL_MS,
+} from "./realtime-user-event-ticket-store.js";
+import { publishRealtimeUserEvent } from "./realtime-user-event-fanout.js";
+import {
+  normalizeUserEventsClientMetadata,
+  readUserEventsAuthMetrics,
+  recordUserEventsAuthConnection,
+  USER_EVENTS_AUTH_METRICS_PATH,
+  type UserEventsClientMetadata,
+} from "./realtime-user-event-auth-metrics.js";
+
+export {
+  consumeUserEventsTicket,
+  issueUserEventsTicket,
+  USER_EVENTS_TICKET_TTL_MS,
+} from "./realtime-user-event-ticket-store.js";
 
 /**
  * User-scoped realtime events channel. Complements the existing
@@ -14,8 +39,8 @@ import { loadPersistedAuthSession } from "./auth-session-store.js";
  *
  * Why a separate channel?
  *   * Different authorization model: session-scoped WS checks
- *     ``session.ownerUserId``; this channel authorises by the bearer
- *     token only, then routes by userId.
+ *     ``session.ownerUserId``; this channel consumes a short-lived
+ *     user-scoped ticket, then routes by userId.
  *   * Different lifecycle: the iPad needs to subscribe on sign-in
  *     and keep the socket open across app launches. Session-scoped
  *     WS is created + torn down per capture session.
@@ -24,8 +49,8 @@ import { loadPersistedAuthSession } from "./auth-session-store.js";
  *     land immediately wherever the photographer is looking.
  *
  * Protocol: server → client JSON frames
- *   { type: "connection_established", serverTime }
- *   { type: "user_event", event: UserEvent, serverTime }
+ *   { version: 1, type: "connection_established", serverTime }
+ *   { version: 1, type: "user_event", event: UserEvent, serverTime }
  *   UserEvent is a discriminated union on ``kind``; unknown kinds
  *   are preserved verbatim so older clients can safely drop frames.
  *
@@ -43,126 +68,84 @@ interface SessionData {
   [key: string]: unknown;
 }
 
-/// Supported event shapes. Each event is tagged with a ``kind`` so
-/// the client can switch on it without `instanceof` checks. Adding a
-/// new kind is additive — old clients ignore unknown kinds.
-export type UserEvent =
-  | {
-      kind: "asset.hearted";
-      assetId: string;
-      sessionId: string;
-      clientName: string | null;
-      hearted: boolean;
-      timestamp: string;
-    }
-  | {
-      kind: "asset.commented";
-      assetId: string;
-      sessionId: string;
-      clientName: string | null;
-      preview: string;
-      timestamp: string;
-    }
-  | {
-      kind: "quote.signed";
-      quoteId: string;
-      clientName: string | null;
-      signerKind: "client" | "photographer";
-      timestamp: string;
-    }
-  | {
-      kind: "contract.signed";
-      contractId: string;
-      clientName: string | null;
-      signerKind: "client" | "photographer";
-      timestamp: string;
-    }
-  /// Shot-list item gained or lost a captured asset link (via the
-  /// iPad ``linkShotToAsset`` PATCH). Live Set dashboards observe to
-  /// refresh thumbnails without polling.
-  | {
-      kind: "shot.captured";
-      projectId: string;
-      shotId: string;
-      capturedAssetId: string | null;
-      timestamp: string;
-    }
-  /// Photographer manually toggled a shot's completion flag (without
-  /// linking an asset — e.g. "got it on the backup body"). Same
-  /// audience as ``shot.captured``: dashboards refresh their summary
-  /// counters + tile state.
-  | {
-      kind: "shot.completion-toggled";
-      projectId: string;
-      shotId: string;
-      isCompleted: boolean;
-      timestamp: string;
-    }
-  /// Phase 5.3 — multi-photographer presence. Fires when an iPad
-  /// connects to a session OR sends an explicit join via the
-  /// presence endpoint. `actorUserId` and `displayName` identify
-  /// the new peer so existing connected iPads can render an
-  /// avatar in the StatusBar.
-  | {
-      kind: "presence.joined";
-      sessionId: string;
-      actorUserId: string;
-      displayName: string | null;
-      timestamp: string;
-    }
-  /// Counterpart to `presence.joined` — fires when an iPad
-  /// explicitly leaves OR when its presence entry expires from the
-  /// stale-cleanup pass (~5 min idle).
-  | {
-      kind: "presence.left";
-      sessionId: string;
-      actorUserId: string;
-      timestamp: string;
-    }
-  /// Phase 5.3 — broadcast when ANY photographer with access to
-  /// the session changes a label axis (rating / pick flag /
-  /// rejected / colorLabel) on an asset. Other iPads in the same
-  /// shoot reconcile their local SessionStore by re-fetching the
-  /// asset row. `actorUserId` lets the receiver suppress the echo
-  /// of its own change (we'd otherwise round-trip our own toggle
-  /// and clobber it).
-  | {
-      kind: "asset.labels-changed";
-      assetId: string;
-      sessionId: string;
-      actorUserId: string;
-      rating: number | null;
-      colorLabel: string | null;
-      flaggedForClient: boolean | null;
-      rejected: boolean | null;
-      timestamp: string;
-    }
-  /// Slice 9X.82 — videograf-leveranse: klient legger inn timecode-
-  /// kommentar (Frame.io-stil) på en CinematicVideoPlayer/Audio.
-  /// Brukt for både video-, audio- og chapter-comments.
-  | {
-      kind: "video.comment-added";
-      galleryId: string;
-      chapterId: string | null;
-      timecodeSec: number;
-      commentId: string;
-      clientLabel: string | null;
-      category: string | null;
-      priority: string | null;
-      timestamp: string;
-    }
-  /// Slice 9X.80 — klient submitter favoritt-utvalg (Pixieset).
-  | {
-      kind: "gallery.selection-submitted";
-      galleryId: string;
-      clientEmail: string | null;
-      clientName: string | null;
-      selectedCount: number;
-      submissionNote: string | null;
-      timestamp: string;
-    };
+export type { UserEvent } from "../../frontend/shared/realtime-user-events-contract.js";
 
 export const USER_EVENTS_WS_PATH = "/api/ipad/ws/events";
+export const USER_EVENTS_TICKET_PATH = "/api/realtime/user-events-ticket";
+export { USER_EVENTS_AUTH_METRICS_PATH } from "./realtime-user-event-auth-metrics.js";
+
+export function isLegacyUserEventsTokenAllowed(): boolean {
+  const configured =
+    process.env.REALTIME_ALLOW_LEGACY_TOKEN?.trim().toLowerCase();
+  if (!configured) return true;
+  return !["0", "false", "no", "off"].includes(configured);
+}
+
+interface UserEventsTicketDeps {
+  app: express.Application;
+  pool: Pool;
+  requireUserSession: (
+    req: express.Request,
+    res: express.Response,
+  ) => { userId: string } | null;
+  requireAdminSession: (
+    req: express.Request,
+    res: express.Response,
+  ) => unknown | null;
+}
+
+export function setupUserEventsTicketRoute({
+  app,
+  pool,
+  requireUserSession,
+  requireAdminSession,
+}: UserEventsTicketDeps): void {
+  app.post(USER_EVENTS_TICKET_PATH, async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const client = normalizeUserEventsClientMetadata(
+        req.header("x-creatorhub-client"),
+        req.header("x-creatorhub-client-version"),
+      );
+      const issued = await issueUserEventsTicket(
+        pool,
+        session.userId,
+        Date.now(),
+        client,
+      );
+      res.setHeader("Cache-Control", "no-store, max-age=0");
+      res.setHeader("Pragma", "no-cache");
+      res.status(201).json({
+        ...issued,
+        websocketPath: USER_EVENTS_WS_PATH,
+        protocolVersion: USER_EVENTS_PROTOCOL_VERSION,
+      });
+    } catch (error) {
+      console.error("Failed to issue realtime user-events ticket:", error);
+      res.status(503).json({ error: "realtime_ticket_store_unavailable" });
+    }
+  });
+
+  app.get(USER_EVENTS_AUTH_METRICS_PATH, async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const requestedHours = Number(req.query.hours ?? 168);
+    try {
+      const report = await readUserEventsAuthMetrics(pool, requestedHours);
+      res.setHeader("Cache-Control", "no-store, max-age=0");
+      res.json({
+        ...report,
+        legacyTokenAllowed: isLegacyUserEventsTokenAllowed(),
+      });
+    } catch (error) {
+      console.error(
+        "Failed to read realtime auth metrics:",
+        error instanceof Error ? error.message : "unknown error",
+      );
+      res.status(503).json({ error: "realtime_auth_metrics_unavailable" });
+    }
+  });
+}
 
 /// Client registry: userId → set of open WebSocket instances. A
 /// single photographer might have two tabs + one iPad, and we want
@@ -176,13 +159,30 @@ const userClients = new Map<string, Set<WebSocket>>();
 /// swallowed because the socket's own ``error``/``close`` handlers
 /// will clean up the entry.
 export function broadcastUserEvent(userId: string, event: UserEvent): void {
+  deliverUserEventLocally(userId, event);
+  void publishRealtimeUserEvent(userId, event).catch((error) => {
+    console.error(
+      "[realtime-fanout] Could not publish user event:",
+      error instanceof Error ? error.message : "unknown error",
+    );
+  });
+}
+
+/// Deliver only to sockets owned by this process. Redis subscribers call this
+/// path directly so a remote event is never published back into the channel.
+export function deliverUserEventLocally(
+  userId: string,
+  event: UserEvent,
+): void {
   const clients = userClients.get(userId);
   if (!clients || clients.size === 0) return;
-  const message = JSON.stringify({
+  const frame = {
+    version: USER_EVENTS_PROTOCOL_VERSION,
     type: "user_event",
     event,
     serverTime: new Date().toISOString(),
-  });
+  } satisfies UserEventsFrame;
+  const message = JSON.stringify(frame);
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN) {
       try {
@@ -207,7 +207,9 @@ export function resetUserClientsForTests(): void {
     for (const ws of set) {
       try {
         ws.close();
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
   userClients.clear();
@@ -247,39 +249,109 @@ export function attachUserEventsWebSocket(
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head) => {
-    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    const url = new URL(
+      req.url ?? "/",
+      `http://${req.headers.host ?? "localhost"}`,
+    );
     if (url.pathname !== USER_EVENTS_WS_PATH) return;
 
-    const token = (url.searchParams.get("token") ?? "").trim();
+    const ticket = (url.searchParams.get("ticket") ?? "").trim();
+    const token = isLegacyUserEventsTokenAllowed()
+      ? (url.searchParams.get("token") ?? "").trim()
+      : "";
 
     void (async () => {
-      const session = await resolveBearerSession(pool, activeSessions, token);
-      if (!session?.userId) {
+      // Browser clients use a short-lived, single-use ticket. The token query
+      // remains behind a kill switch only for native/older clients. Disable it
+      // after the ticket-capable Capture build is the enforced minimum.
+      const ticketSession = ticket
+        ? await consumeUserEventsTicket(pool, ticket)
+        : null;
+      const bearerSession = ticket
+        ? null
+        : await resolveBearerSession(pool, activeSessions, token);
+      const userId = ticketSession?.userId ?? bearerSession?.userId ?? null;
+      if (!userId) {
         socket.destroy();
         return;
       }
+      const authMethod = ticketSession ? "ticket" : "legacy";
+      const client: UserEventsClientMetadata = ticketSession
+        ? {
+            clientKind: ticketSession.clientKind,
+            clientVersion: ticketSession.clientVersion,
+          }
+        : { clientKind: "unknown", clientVersion: null };
+      void recordUserEventsAuthConnection(pool, authMethod, client).catch(
+        (error) => {
+          console.error(
+            "Failed to record realtime auth metric:",
+            error instanceof Error ? error.message : "unknown error",
+          );
+        },
+      );
       wss.handleUpgrade(req, socket, head, (ws) => {
-        registerClient(session.userId, ws);
+        registerClient(userId, ws);
       });
     })().catch(() => {
       socket.destroy();
     });
   });
+
+  // Keep-alive sweep — the iPad keeps this socket open across app launches, so
+  // half-open connections are likely; without it userClients grows unbounded
+  // and broadcastUserEvent fans out to dead sockets. Terminate any that missed
+  // the previous ping.
+  const heartbeat = setInterval(() => {
+    for (const set of userClients.values()) {
+      for (const ws of set) {
+        const live = ws as LiveWebSocket;
+        if (live.isAlive === false) {
+          try {
+            ws.terminate();
+          } catch {
+            /* ignore */
+          }
+          continue;
+        }
+        live.isAlive = false;
+        try {
+          ws.ping();
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }, 30000);
+  heartbeat.unref?.();
+  wss.on("close", () => clearInterval(heartbeat));
+  server.on("close", () => {
+    clearInterval(heartbeat);
+    wss.close();
+  });
 }
+
+type LiveWebSocket = WebSocket & { isAlive?: boolean };
 
 function registerClient(userId: string, ws: WebSocket): () => void {
   const set = userClients.get(userId) ?? new Set<WebSocket>();
   set.add(ws);
   userClients.set(userId, set);
+  (ws as LiveWebSocket).isAlive = true;
+  ws.on("pong", () => {
+    (ws as LiveWebSocket).isAlive = true;
+  });
 
   try {
-    ws.send(
-      JSON.stringify({
-        type: "connection_established",
-        serverTime: new Date().toISOString(),
-      }),
-    );
-  } catch { /* closed before first frame */ }
+    const frame = {
+      version: USER_EVENTS_PROTOCOL_VERSION,
+      type: "connection_established",
+      serverTime: new Date().toISOString(),
+    } satisfies UserEventsFrame;
+    ws.send(JSON.stringify(frame));
+  } catch {
+    /* closed before first frame */
+  }
 
   const cleanup = () => {
     set.delete(ws);
@@ -290,9 +362,15 @@ function registerClient(userId: string, ws: WebSocket): () => void {
 
   ws.on("close", cleanup);
   ws.on("error", () => {
+    // RT-3: kall cleanup() eksplisitt før terminate slik at Map-entry
+    // fjernes selv om 'close' skulle forsinkes (terminate's close-
+    // event er da idempotent — set.delete er no-op andre gang).
+    cleanup();
     try {
       ws.terminate();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   });
 
   return cleanup;

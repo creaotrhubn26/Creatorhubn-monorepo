@@ -63,7 +63,7 @@ async function fetchInstagramSnapshot(
       fields: `business_discovery.username(${igUsername}){username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website,media.limit(50){id,timestamp}}`,
       access_token: accessToken,
     });
-    const r = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(callerIgUserId)}?${params.toString()}`);
+    const r = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(callerIgUserId)}?${params.toString()}`, { signal: AbortSignal.timeout(10_000) });
     const body = (await r.json().catch(() => ({}))) as Record<string, unknown>;
     if (!r.ok || !body.business_discovery) {
       const err = body.error as Record<string, unknown> | undefined;
@@ -113,7 +113,7 @@ async function fetchPageSnapshot(pageId: string, accessToken: string): Promise<S
       fields: 'id,name,fan_count,category,website,about,picture.type(large)',
       access_token: accessToken,
     });
-    const profileR = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(pageId)}?${profileParams}`);
+    const profileR = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(pageId)}?${profileParams}`, { signal: AbortSignal.timeout(10_000) });
     const profile = (await profileR.json().catch(() => ({}))) as Record<string, unknown>;
     if (!profileR.ok) {
       const err = profile.error as Record<string, unknown> | undefined;
@@ -125,7 +125,7 @@ async function fetchPageSnapshot(pageId: string, accessToken: string): Promise<S
       limit: '100',
       access_token: accessToken,
     });
-    const postsR = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(pageId)}/posts?${postsParams}`);
+    const postsR = await fetch(`${META_GRAPH_BASE}/${encodeURIComponent(pageId)}/posts?${postsParams}`, { signal: AbortSignal.timeout(10_000) });
     const posts = (await postsR.json().catch(() => ({}))) as Record<string, unknown>;
 
     // Count posts in last 7 days and last 30 days (best-effort — null if posts unavailable).
@@ -209,7 +209,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         })),
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -276,7 +276,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         },
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -323,7 +323,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         },
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -334,7 +334,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
       const result = await runCompetitorSnapshotWorkerOnce(pool);
       res.json(result);
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -350,7 +350,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
       const r = await pool.query('DELETE FROM marketing_competitor_pages WHERE id = $1', [id]);
       res.json({ ok: true, deleted: r.rowCount ?? 0 });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -375,7 +375,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         'SELECT page_id, account_type, ig_username FROM marketing_competitor_pages WHERE id = $1',
         [id],
       );
-      if (!compR.rowCount || compR.rowCount === 0) {
+      if (!compR.rowCount || !compR.rows.length) {
         res.status(404).json({ ok: false, error: 'competitor not found' });
         return;
       }
@@ -460,7 +460,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         fetchError: snapshot.fetchError,
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -499,7 +499,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         })),
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -522,7 +522,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
          ORDER BY added_at ASC`,
         [brandKey],
       );
-      if (!compR.rowCount || compR.rowCount === 0) {
+      if (!compR.rowCount || !compR.rows.length) {
         res.status(400).json({ ok: false, error: 'no active competitors tracked for this brand' });
         return;
       }
@@ -765,7 +765,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         report,
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -782,7 +782,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
          ORDER BY generated_at DESC LIMIT 1`,
         [brandKey],
       );
-      if (!r.rowCount || r.rowCount === 0) {
+      if (!r.rowCount || !r.rows.length) {
         res.status(404).json({ ok: false, error: 'no_reports_yet' });
         return;
       }
@@ -818,7 +818,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         competitorPictures,
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -849,7 +849,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         })),
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 }

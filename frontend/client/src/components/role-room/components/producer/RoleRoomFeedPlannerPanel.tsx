@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, Box, Button, Chip, CircularProgress, Skeleton, Stack, Typography } from '@mui/material';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Box, Button, Chip, CircularProgress, Stack, Typography } from '@mui/material';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AutoAwesome as AutoAwesomeIcon,
@@ -51,7 +51,9 @@ import FeedPostDetailPanel from './FeedPostDetailPanel';
 import FeedPlanTimeline from './FeedPlanTimeline';
 import SocialBrandLogo, { InstagramBrandLogo } from './SocialBrandLogo';
 import { buildFeedPost } from '../../utils/feedPlanner';
+import { describeProducerError } from '../../utils/producerErrorMessage';
 import SortableFeedPostTile from './SortableFeedPostTile';
+import { LoadingSkeleton } from './ui';
 
 type RoleRoomFeedPlannerPanelProps = {
   projectId: string;
@@ -117,6 +119,41 @@ export default function RoleRoomFeedPlannerPanel({
   // touches something, so reopening the dialog doesn't write a no-op.
   const [dirty, setDirty] = useState(false);
 
+  // Identifies which (project, platform) the current `posts` were loaded for.
+  // The debounced auto-save below only fires when this matches the live
+  // (project, platform) — otherwise a slow load during a platform switch
+  // could let the previous platform's posts get written under the new
+  // platform's plan (cross-platform clobber).
+  const loadedKeyRef = useRef<string | null>(null);
+
+  // Single persistence path shared by the debounced auto-save and the
+  // flush-before-switch below, so both behave identically.
+  const persistFeedPlan = useCallback(
+    async (
+      targetPlatform: RoleRoomFeedPlatform,
+      postsSnapshot: RoleRoomFeedPost[],
+      snapshotBrand: RoleRoomFeedBrandSnapshot | null,
+    ) => {
+      setSaving(true);
+      setSaveError(null);
+      try {
+        const result = await roleRoomAgentService.saveFeedPlan(
+          projectId,
+          targetPlatform,
+          postsSnapshot,
+          snapshotBrand,
+        );
+        if (result?.updatedAt) setLastSavedAt(result.updatedAt);
+        setDirty(false);
+      } catch (error) {
+        setSaveError(describeProducerError(error, 'lagre feed-planen'));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [projectId],
+  );
+
   const brandSnapshot = useMemo<RoleRoomFeedBrandSnapshot | null>(
     () => (bootstrap ? deriveBrandSnapshot(bootstrap) : null),
     [bootstrap],
@@ -138,6 +175,7 @@ export default function RoleRoomFeedPlannerPanel({
       return;
     }
     let cancelled = false;
+    const loadKey = `${projectId}::${platform}`;
     setLoadingPlan(true);
     setSaveError(null);
     void (async () => {
@@ -160,7 +198,12 @@ export default function RoleRoomFeedPlannerPanel({
           setDirty(false);
         }
       } finally {
-        if (!cancelled) setLoadingPlan(false);
+        if (!cancelled) {
+          // Mark the posts now in state as belonging to this key, which
+          // re-enables auto-save for it.
+          loadedKeyRef.current = loadKey;
+          setLoadingPlan(false);
+        }
       }
     })();
     return () => {
@@ -172,26 +215,16 @@ export default function RoleRoomFeedPlannerPanel({
   // is short enough to feel reactive, long enough to coalesce caption typing.
   useEffect(() => {
     if (!dirty || !bootstrap) return;
-    const handle = window.setTimeout(async () => {
-      setSaving(true);
-      setSaveError(null);
-      try {
-        const result = await roleRoomAgentService.saveFeedPlan(
-          projectId,
-          platform,
-          posts,
-          brandSnapshot,
-        );
-        if (result?.updatedAt) setLastSavedAt(result.updatedAt);
-        setDirty(false);
-      } catch (error) {
-        setSaveError(error instanceof Error ? error.message : 'Kunne ikke lagre feed-planen.');
-      } finally {
-        setSaving(false);
-      }
+    // Only persist posts that belong to the live (project, platform). During
+    // a platform switch the new plan hasn't loaded yet, so the in-state posts
+    // still belong to the old platform — saving them now would write them
+    // under the wrong plan.
+    if (loadedKeyRef.current !== `${projectId}::${platform}`) return;
+    const handle = window.setTimeout(() => {
+      void persistFeedPlan(platform, posts, brandSnapshot);
     }, 1500);
     return () => window.clearTimeout(handle);
-  }, [dirty, posts, projectId, platform, brandSnapshot, bootstrap]);
+  }, [dirty, posts, projectId, platform, brandSnapshot, bootstrap, persistFeedPlan]);
 
   // Bulk-godkjenning: alle utkast (state='draft' eller 'needs_changes')
   // settes til 'approved'. Brukes av producer som har gått gjennom
@@ -220,6 +253,7 @@ export default function RoleRoomFeedPlannerPanel({
       return;
     }
     setBulkApproving(true);
+    setSaveError(null);
     try {
       const result = await roleRoomAgentService.setFeedPostApproval({
         projectId,
@@ -236,7 +270,15 @@ export default function RoleRoomFeedPlannerPanel({
               : p,
           ),
         );
+      } else {
+        // Server rejected the batch (e.g. client-approval policy) — surface it
+        // instead of leaving the button silently doing nothing.
+        setSaveError(
+          (result as { error?: string }).error || 'Kunne ikke godkjenne postene.',
+        );
       }
+    } catch (error) {
+      setSaveError(describeProducerError(error, 'godkjenne postene'));
     } finally {
       setBulkApproving(false);
     }
@@ -261,11 +303,14 @@ export default function RoleRoomFeedPlannerPanel({
         if (existing?.locked) {
           return existing;
         }
-        if (existing?.customImageUrl) {
+        if (existing?.customImageUrl || existing?.coverImageUrl || existing?.gridAspect) {
           return {
             ...next,
             customImageUrl: existing.customImageUrl,
             customImageName: existing.customImageName,
+            coverImageUrl: existing.coverImageUrl,
+            coverImageName: existing.coverImageName,
+            gridAspect: existing.gridAspect,
           };
         }
         return next;
@@ -298,6 +343,9 @@ export default function RoleRoomFeedPlannerPanel({
               ...rebuilt,
               customImageUrl: entry.customImageUrl ?? null,
               customImageName: entry.customImageName ?? null,
+              coverImageUrl: entry.coverImageUrl ?? null,
+              coverImageName: entry.coverImageName ?? null,
+              gridAspect: entry.gridAspect ?? null,
               scheduledFor: entry.scheduledFor,
             }
           : entry,
@@ -353,8 +401,14 @@ export default function RoleRoomFeedPlannerPanel({
       if (result.success) {
         setStrategyRefreshNote(`Strategi for ${platform} oppdatert.`);
       } else {
-        setStrategyRefreshNote(`Refresh feilet: ${result.error ?? 'ukjent feil'}`);
+        setStrategyRefreshNote(
+          result.error
+            ? `Strategioppdateringen feilet: ${result.error}`
+            : 'Strategioppdateringen kunne ikke fullføres. Prøv igjen.',
+        );
       }
+    } catch (refreshError) {
+      setStrategyRefreshNote(describeProducerError(refreshError, 'oppdatere feed-strategien'));
     } finally {
       setRefreshingStrategy(false);
       window.setTimeout(() => setStrategyRefreshNote(null), 6000);
@@ -396,7 +450,7 @@ export default function RoleRoomFeedPlannerPanel({
           textAlign: 'center',
         }}
       >
-        <AutoAwesomeIcon sx={{ color: '#22d3ee', fontSize: 40 }} />
+        <AutoAwesomeIcon sx={{ color: 'var(--role-cyan, #22d3ee)', fontSize: 40 }} />
         <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '1.05rem' }}>
           Analyser kunden først
         </Typography>
@@ -485,6 +539,17 @@ export default function RoleRoomFeedPlannerPanel({
                 label={allowed ? option.label : `${option.label} · ${requiredTier.shortName}`}
                 onClick={() => {
                   if (allowed) {
+                    if (option.id === platform) return;
+                    // Flush unsaved edits for the platform we're leaving before
+                    // switching — the 1.5s auto-save debounce would otherwise be
+                    // cancelled by the platform change and the edits lost.
+                    if (
+                      dirty &&
+                      bootstrap &&
+                      loadedKeyRef.current === `${projectId}::${platform}`
+                    ) {
+                      void persistFeedPlan(platform, posts, brandSnapshot);
+                    }
                     setPlatform(option.id);
                   } else {
                     // Åpne paywall så bruker kan oppgradere fra Spotlight til Headliner.
@@ -556,7 +621,7 @@ export default function RoleRoomFeedPlannerPanel({
               startIcon={<RestartAltIcon fontSize="small" />}
               onClick={refreshStrategy}
               disabled={refreshingStrategy}
-              title={strategyRefreshNote ?? 'Tving Claude+web_search-oppdatering av plattform-strategi'}
+              title={strategyRefreshNote ?? 'Tving CI-oppdatering av plattform-strategi'}
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
@@ -588,7 +653,7 @@ export default function RoleRoomFeedPlannerPanel({
             sx={{
               textTransform: 'none',
               fontWeight: 700,
-              color: '#22d3ee',
+              color: 'var(--role-cyan, #22d3ee)',
               '&:hover': { bgcolor: 'rgba(34,211,238,0.08)' },
             }}
           >
@@ -639,7 +704,7 @@ export default function RoleRoomFeedPlannerPanel({
           bgcolor: 'rgba(34,211,238,0.06)',
           color: 'rgba(226,232,240,0.84)',
           border: '1px solid rgba(34,211,238,0.18)',
-          '& .MuiAlert-icon': { color: '#22d3ee' },
+          '& .MuiAlert-icon': { color: 'var(--role-cyan, #22d3ee)' },
         }}
       >
         Klikk på en post for å redigere, hente bilde fra Google Drive eller be AI om caption og publiseringstidspunkt. Dra for å endre rekkefølge.
@@ -663,18 +728,7 @@ export default function RoleRoomFeedPlannerPanel({
         }}
       >
         {loadingPlan ? (
-          <Stack alignItems="center" spacing={1.4} sx={{ py: 6 }}>
-            <CircularProgress size={28} sx={{ color: '#22d3ee' }} />
-            <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.84rem' }}>
-              Henter lagret feed-plan…
-            </Typography>
-            <Skeleton
-              variant="rectangular"
-              width="100%"
-              height={420}
-              sx={{ maxWidth: 420, borderRadius: 4, bgcolor: 'rgba(34,211,238,0.08)' }}
-            />
-          </Stack>
+          <LoadingSkeleton variant="cards" count={9} />
         ) : posts.length === 0 ? (
           <Stack alignItems="center" spacing={1.2} sx={{ py: 6, px: 2, textAlign: 'center' }}>
             <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>Ingen poster ennå</Typography>
@@ -812,7 +866,7 @@ function SaveStatusBadge({
   }
   if (saving) {
     return (
-      <Typography sx={{ color: '#22d3ee', fontSize: '0.74rem', fontWeight: 700 }}>
+      <Typography sx={{ color: 'var(--role-cyan, #22d3ee)', fontSize: '0.74rem', fontWeight: 700 }}>
         Lagrer…
       </Typography>
     );
@@ -909,7 +963,7 @@ function BrandSummaryStrip({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#22d3ee',
+              color: 'var(--role-cyan, #22d3ee)',
               fontWeight: 800,
             }}
           >

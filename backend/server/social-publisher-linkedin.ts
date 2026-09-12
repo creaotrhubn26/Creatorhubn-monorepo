@@ -28,8 +28,8 @@ import type {
   SocialPublisher,
 } from './social-publisher.js';
 import { registerPublisher } from './social-publisher.js';
+import { LINKEDIN_API_VERSION } from './linkedin-api-version.js';
 
-const LINKEDIN_API_VERSION = '202404'; // bumpe når Meta deprecates
 const LINKEDIN_UGC_ENDPOINT = 'https://api.linkedin.com/v2/ugcPosts';
 const LINKEDIN_ASSETS_REGISTER_ENDPOINT = 'https://api.linkedin.com/v2/assets?action=registerUpload';
 const LINKEDIN_ASSETS_BASE = 'https://api.linkedin.com/v2/assets';
@@ -100,7 +100,7 @@ async function loadLinkedInConnection(
       `SELECT id, user_id, linkedin_member_id, access_token_encrypted, expiry_date,
               connection_state, scopes
          FROM role_room_linkedin_connections
-        WHERE user_id = $1 AND connection_state IN ('connected', 'active')
+        WHERE user_id = $1 AND project_id IS NULL AND connection_state IN ('connected', 'active')
         LIMIT 1`,
       [userId],
     );
@@ -116,6 +116,37 @@ async function loadLinkedInConnection(
   } catch (error) {
     console.warn('[linkedin-publish] loadLinkedInConnection failed', error);
     return null;
+  }
+}
+
+/**
+ * Verifiserings-broen: levende sjekk av tilkoblingen FØR publisering —
+ * kaller LinkedIn /v2/userinfo med tokenet og returnerer identiteten
+ * brukeren faktisk vil publisere som. Utløpt/trukket token → ærlig
+ * 'reconnect_required' i stedet for en feilet publisering.
+ */
+export async function verifyLinkedInIdentity(
+  pool: Pool,
+  userId: string,
+): Promise<
+  | { ok: true; name: string | null; memberId: string; scopes: string[] }
+  | { ok: false; reason: 'not_connected' | 'reconnect_required' | 'verify_failed' }
+> {
+  const conn = await loadLinkedInConnection(pool, userId);
+  if (!conn) return { ok: false, reason: 'not_connected' };
+  try {
+    const resp = await fetch('https://api.linkedin.com/v2/userinfo', {
+      headers: { Authorization: `Bearer ${conn.accessToken}` },
+    });
+    if (resp.status === 401 || resp.status === 403) {
+      return { ok: false, reason: 'reconnect_required' };
+    }
+    if (!resp.ok) return { ok: false, reason: 'verify_failed' };
+    const body = (await resp.json()) as { name?: string; given_name?: string; family_name?: string };
+    const name = body.name ?? [body.given_name, body.family_name].filter(Boolean).join(' ') ?? null;
+    return { ok: true, name: name || null, memberId: conn.memberId, scopes: conn.scopes };
+  } catch {
+    return { ok: false, reason: 'verify_failed' };
   }
 }
 

@@ -180,8 +180,8 @@ const VersionsTab: React.FC<{ galleryId: string }> = ({ galleryId }) => {
 
   return (
     <Stack spacing={2}>
-      <Box sx={{ p: 2, bgcolor: '#f8fafc', borderRadius: 1 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
+      <Box sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 1 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5, color: '#fff' }}>
           Opprett ny versjon
         </Typography>
         <Stack spacing={1.5}>
@@ -192,7 +192,13 @@ const VersionsTab: React.FC<{ galleryId: string }> = ({ galleryId }) => {
               placeholder="R1, R2, Final, Sosial-versjon"
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
-              sx={{ width: 200 }}
+              sx={{
+                width: 200,
+                '& .MuiOutlinedInput-root': { color: '#fff' },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+                '& .Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' },
+                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+              }}
             />
             <Button
               variant="contained"
@@ -211,6 +217,12 @@ const VersionsTab: React.FC<{ galleryId: string }> = ({ galleryId }) => {
             placeholder="Lagt til drone-shots. Trimmet ned tale fra Per."
             value={newNotes}
             onChange={(e) => setNewNotes(e.target.value)}
+            sx={{
+              '& .MuiOutlinedInput-root': { color: '#fff' },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+              '& .Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' },
+              '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+            }}
           />
         </Stack>
       </Box>
@@ -225,7 +237,7 @@ const VersionsTab: React.FC<{ galleryId: string }> = ({ galleryId }) => {
             <Box
               key={v.id}
               sx={{
-                border: '1px solid rgba(15,23,42,0.08)',
+                border: '1px solid rgba(255,255,255,0.12)',
                 borderRadius: 1,
                 p: 2,
               }}
@@ -248,7 +260,7 @@ const VersionsTab: React.FC<{ galleryId: string }> = ({ galleryId }) => {
                     )}
                     {decisionChip(v.decision)}
                   </Stack>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)' }}>
                     {v.imageCount} fil(er)
                     {v.publishedAt
                       ? ` · publisert ${formatDate(v.publishedAt)}`
@@ -269,7 +281,7 @@ const VersionsTab: React.FC<{ galleryId: string }> = ({ galleryId }) => {
               {v.notes && (
                 <Typography
                   variant="body2"
-                  sx={{ mt: 1, fontStyle: 'italic', color: '#475569' }}
+                  sx={{ mt: 1, fontStyle: 'italic', color: 'rgba(255,255,255,0.7)' }}
                 >
                   Notat: "{v.notes}"
                 </Typography>
@@ -343,7 +355,7 @@ const TimelineTab: React.FC<{ galleryId: string }> = ({ galleryId }) => {
   if (milestones.length === 0) {
     return (
       <Box sx={{ textAlign: 'center', py: 4 }}>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography variant="body2" sx={{ mb: 2, color: 'rgba(255,255,255,0.7)' }}>
           Ingen leveranse-milepæler satt opp. Klikk under for å opprette standard
           12-stegs prosess (Booking → Arkivert).
         </Typography>
@@ -361,7 +373,7 @@ const TimelineTab: React.FC<{ galleryId: string }> = ({ galleryId }) => {
 
   return (
     <Stack spacing={1.5}>
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)' }}>
         Klient ser kun milepæler som har "Synlig for klient" på. Endringer her
         oppdaterer klient-galleriet umiddelbart.
       </Typography>
@@ -370,7 +382,7 @@ const TimelineTab: React.FC<{ galleryId: string }> = ({ galleryId }) => {
         <Box
           key={m.id}
           sx={{
-            border: '1px solid rgba(15,23,42,0.08)',
+            border: '1px solid rgba(255,255,255,0.12)',
             borderRadius: 1,
             p: 1.5,
           }}
@@ -380,11 +392,21 @@ const TimelineTab: React.FC<{ galleryId: string }> = ({ galleryId }) => {
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
                 {m.order}. {m.label}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)' }}>
                 {m.stage}
               </Typography>
             </Box>
-            <FormControl size="small" sx={{ minWidth: 140 }}>
+            <FormControl
+              size="small"
+              sx={{
+                minWidth: 140,
+                '& .MuiOutlinedInput-root': { color: '#fff' },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+                '& .Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' },
+                '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+                '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+              }}
+            >
               <InputLabel>Status</InputLabel>
               <Select
                 label="Status"
@@ -407,7 +429,7 @@ const TimelineTab: React.FC<{ galleryId: string }> = ({ galleryId }) => {
               size="small"
               label="Forventet"
               type="date"
-              InputLabelProps={{ shrink: true }}
+              InputLabelProps={{ shrink: true, sx: { color: 'rgba(255,255,255,0.7)' } }}
               value={
                 m.estimatedAt
                   ? new Date(m.estimatedAt).toISOString().slice(0, 10)
@@ -423,7 +445,13 @@ const TimelineTab: React.FC<{ galleryId: string }> = ({ galleryId }) => {
                   },
                 })
               }
-              sx={{ width: 160 }}
+              sx={{
+                width: 160,
+                '& .MuiOutlinedInput-root': { color: '#fff' },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+                '& .Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' },
+                '& input[type="date"]::-webkit-calendar-picker-indicator': { filter: 'invert(1)' },
+              }}
             />
             <FormControlLabel
               control={
@@ -453,7 +481,13 @@ const TimelineTab: React.FC<{ galleryId: string }> = ({ galleryId }) => {
                   patch: { blockedReason: e.target.value },
                 })
               }
-              sx={{ mt: 1 }}
+              sx={{
+                mt: 1,
+                '& .MuiOutlinedInput-root': { color: '#fff' },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+                '& .Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' },
+                '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.5)', opacity: 1 },
+              }}
             />
           )}
         </Box>
@@ -469,14 +503,27 @@ export const GalleryVersionsTimelineDialog: React.FC<Props> = ({
 }) => {
   const [tab, setTab] = useState(0);
   return (
-    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog
+      open
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      PaperProps={{
+        sx: {
+          bgcolor: 'rgba(15,23,42,0.96)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          color: '#fff',
+        },
+      }}
+    >
       <DialogTitle>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               Versjoner & leveranseplan
             </Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)' }}>
               {galleryTitle}
             </Typography>
           </Box>
@@ -488,7 +535,7 @@ export const GalleryVersionsTimelineDialog: React.FC<Props> = ({
       <Tabs
         value={tab}
         onChange={(_, v) => setTab(v as number)}
-        sx={{ borderBottom: '1px solid rgba(15,23,42,0.08)', px: 3 }}
+        sx={{ borderBottom: '1px solid rgba(255,255,255,0.12)', px: 3 }}
       >
         <Tab label="Versjoner" />
         <Tab label="Leveranseplan" />

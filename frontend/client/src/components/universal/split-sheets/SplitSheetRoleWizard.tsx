@@ -37,7 +37,12 @@ import {
   InputAdornment,
   Divider,
   alpha,
+  Switch,
+  Select,
+  MenuItem,
 } from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import {
   Close as CloseIcon,
   Group as TeamIcon,
@@ -111,7 +116,7 @@ const ROLE_CATALOG_BY_PROFESSION: Record<string, RoleDef[]> = {
 export const ROLE_CATALOG = ROLE_CATALOG_VISUAL;
 
 const CATEGORY_COLORS = {
-  lead: '#ffba6c',
+  lead: '#ff8c00',
   capture: '#4cc9f0',
   edit: '#9b87f5',
   support: '#a8dadc',
@@ -119,12 +124,38 @@ const CATEGORY_COLORS = {
 
 type SplitModel = 'equal' | 'weighted' | 'manual' | 'hybrid';
 
+interface ExternalLine {
+  serviceName: string;
+  pricePerImage: number; // fra vendorens katalog
+  currency: string;
+  qty: number; // antall bilder
+}
 interface Participant {
   id: string; // local id
   name: string;
   email?: string;
   roleId: string;
   manualPct?: number; // brukes i manual + hybrid
+  // Eksternt firma (kostnad av-toppen, hentet fra vendorens katalog):
+  isExternal?: boolean;
+  vendorUserId?: string;
+  vendorName?: string;
+  vendorIsForeign?: boolean;
+  vendorCurrency?: string;
+  externalLines?: ExternalLine[];
+}
+
+// Sum av en ekstern deltakers katalog-linjer (pris/bilde × antall).
+function externalCostOf(p: Participant): number {
+  if (!p.isExternal || !p.externalLines) return 0;
+  return p.externalLines.reduce((s, l) => s + (Number(l.pricePerImage) || 0) * (Number(l.qty) || 0), 0);
+}
+
+interface VendorCatalog {
+  vendorUserId: string;
+  vendorName: string;
+  isInternational: boolean;
+  services: Array<{ name: string | null; price: number | null; currency: string }>;
 }
 
 interface Props {
@@ -226,71 +257,75 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
     if (open) splitSheetEvents.modelSelected(model);
   }, [model, open]);
 
-  // ─── Beregn shares ─────────────────────────────────────────────
+  // Vendor-katalog (samme kilde som discovery) — for eksterne deltakere.
+  const { data: vendorsData } = useQuery<{ vendors: VendorCatalog[] }>({
+    queryKey: ["/api/editing/vendors"],
+    queryFn: () => apiRequest("/api/editing/vendors"),
+    enabled: open,
+  });
+  const vendorCatalog: VendorCatalog[] = vendorsData?.vendors ?? [];
+
+  // Valutakurs → NOK. Backend /api/fx/nok: Norges Bank offisiell daglig referansekurs
+  // (primær), open.er-api.com (fallback). rates[X] = NOK per 1 enhet av X.
+  const { data: fxData, dataUpdatedAt: fxFetchedAt, isFetching: fxFetching, refetch: refetchFx } = useQuery<{
+    rates?: Record<string, number>;
+    source?: string;
+    asOf?: string | null;
+  }>({
+    queryKey: ["fx-nok"],
+    queryFn: () => apiRequest("/api/fx/nok"),
+    enabled: open,
+    staleTime: 60 * 60 * 1000, // 1t: kursen refetches automatisk når den blir stale
+    refetchOnWindowFocus: true,
+  });
+  const fxRates = fxData?.rates || {};
+  const fxSource = fxData?.source || "";
+  const fxAsOf = fxData?.asOf || (fxFetchedAt ? new Date(fxFetchedAt).toISOString().slice(0, 10) : null);
+  const toNok = (amount: number, currency: string): number => {
+    if (!currency || currency === "NOK") return amount;
+    const r = fxRates[currency.toUpperCase()]; // NOK per enhet
+    return r && r > 0 ? amount * r : amount; // fallback: anta NOK om kurs mangler
+  };
+  // Ekstern deltakers kostnad i NOK (konvertert fra katalog-valuta).
+  const costNok = (p: Participant): number => {
+    if (!p.isExternal || !p.externalLines) return 0;
+    return p.externalLines.reduce((s, l) => s + toNok((Number(l.pricePerImage) || 0) * (Number(l.qty) || 0), l.currency), 0);
+  };
+
+  // ─── Beregn shares (ekstern vendor-kostnad av-toppen i NOK, så splitt resten) ──
+  const externalTotal = participants.reduce((s, p) => s + costNok(p), 0);
+  const splittable = Math.max(0, projectAmount - externalTotal);
+
   const computedSplits = useMemo(() => {
     if (participants.length === 0) return [];
-
-    if (model === 'equal') {
-      const pct = 100 / participants.length;
-      return participants.map((p) => {
-        const role = activeRoleCatalog.find((r) => r.id === p.roleId);
-        return {
-          ...p,
-          sharePct: pct,
-          shareKr: (pct / 100) * projectAmount,
-          roleLabel: role?.label || '—',
-        };
-      });
-    }
-
-    if (model === 'weighted') {
-      const totalWeight = participants.reduce((sum, p) => {
-        const role = activeRoleCatalog.find((r) => r.id === p.roleId);
-        return sum + (role?.weight || 1);
-      }, 0);
-      return participants.map((p) => {
-        const role = activeRoleCatalog.find((r) => r.id === p.roleId);
-        const pct = totalWeight > 0 ? ((role?.weight || 1) / totalWeight) * 100 : 0;
-        return {
-          ...p,
-          sharePct: pct,
-          shareKr: (pct / 100) * projectAmount,
-          roleLabel: role?.label || '—',
-        };
-      });
-    }
-
-    if (model === 'manual') {
-      return participants.map((p) => {
-        const role = activeRoleCatalog.find((r) => r.id === p.roleId);
-        const pct = p.manualPct ?? (100 / participants.length);
-        return {
-          ...p,
-          sharePct: pct,
-          shareKr: (pct / 100) * projectAmount,
-          roleLabel: role?.label || '—',
-        };
-      });
-    }
-
-    // hybrid: base + vekt på resten
-    const remainingPct = Math.max(0, 100 - hybridBasePct * participants.length);
-    const totalWeight = participants.reduce((sum, p) => {
-      const role = activeRoleCatalog.find((r) => r.id === p.roleId);
-      return sum + (role?.weight || 1);
-    }, 0);
+    const internals = participants.filter((p) => !p.isExternal);
+    const n = internals.length;
+    const totalWeight = internals.reduce(
+      (sum, q) => sum + (activeRoleCatalog.find((r) => r.id === q.roleId)?.weight || 1), 0,
+    );
+    // Intern andel (% av splittable) per intern deltaker, basert på modell.
+    const internalPct = (p: Participant): number => {
+      if (n === 0) return 0;
+      const w = activeRoleCatalog.find((r) => r.id === p.roleId)?.weight || 1;
+      if (model === 'equal') return 100 / n;
+      if (model === 'manual') return p.manualPct ?? 100 / n;
+      if (model === 'weighted') return totalWeight > 0 ? (w / totalWeight) * 100 : 0;
+      // hybrid: base + vekt på resten
+      const remainingPct = Math.max(0, 100 - hybridBasePct * n);
+      return hybridBasePct + (totalWeight > 0 ? (w / totalWeight) * remainingPct : 0);
+    };
+    const pctOfTotal = (kr: number) => (projectAmount > 0 ? (kr / projectAmount) * 100 : 0);
     return participants.map((p) => {
+      if (p.isExternal) {
+        const cost = costNok(p); // i NOK (konvertert fra katalog-valuta)
+        return { ...p, sharePct: pctOfTotal(cost), shareKr: cost, roleLabel: p.vendorName || 'Eksternt firma' };
+      }
       const role = activeRoleCatalog.find((r) => r.id === p.roleId);
-      const bonus = totalWeight > 0 ? ((role?.weight || 1) / totalWeight) * remainingPct : 0;
-      const pct = hybridBasePct + bonus;
-      return {
-        ...p,
-        sharePct: pct,
-        shareKr: (pct / 100) * projectAmount,
-        roleLabel: role?.label || '—',
-      };
+      const kr = (internalPct(p) / 100) * splittable;
+      return { ...p, sharePct: pctOfTotal(kr), shareKr: kr, roleLabel: role?.label || '—' };
     });
-  }, [participants, model, projectAmount, hybridBasePct, activeRoleCatalog]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [participants, model, projectAmount, splittable, hybridBasePct, activeRoleCatalog, fxData]);
 
   const totalPct = computedSplits.reduce((s, p) => s + p.sharePct, 0);
 
@@ -353,24 +388,24 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
       PaperProps={{
         sx: {
           borderRadius: '24px',
-          background: 'radial-gradient(circle at top, rgba(255,186,108,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
+          background: 'radial-gradient(circle at top, rgba(255, 140, 0,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
           color: '#fff5e8',
-          border: '1px solid rgba(255,186,108,0.18)',
+          border: '1px solid rgba(255, 140, 0,0.18)',
           boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
           minHeight: '70vh',
-          '& .MuiInputLabel-root': { color: 'rgba(246,242,234,0.72)' },
-          '& .MuiInputLabel-root.Mui-focused': { color: '#ffba6c' },
+          '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255,0.72)' },
+          '& .MuiInputLabel-root.Mui-focused': { color: 'var(--ws-accent, #ff8c00)' },
           '& .MuiOutlinedInput-root': {
             color: '#fff5e8',
             '& fieldset': { borderColor: 'rgba(255,255,255,0.18)' },
-            '&:hover fieldset': { borderColor: 'rgba(255,186,108,0.4)' },
-            '&.Mui-focused fieldset': { borderColor: '#ffba6c' },
+            '&:hover fieldset': { borderColor: 'rgba(255, 140, 0,0.4)' },
+            '&.Mui-focused fieldset': { borderColor: 'var(--ws-accent, #ff8c00)' },
           },
-          '& .MuiStepLabel-label': { color: 'rgba(246,242,234,0.62)' },
-          '& .MuiStepLabel-label.Mui-active': { color: '#ffba6c', fontWeight: 700 },
+          '& .MuiStepLabel-label': { color: 'rgba(255, 255, 255,0.62)' },
+          '& .MuiStepLabel-label.Mui-active': { color: 'var(--ws-accent, #ff8c00)', fontWeight: 700 },
           '& .MuiStepLabel-label.Mui-completed': { color: '#fff5e8' },
           '& .MuiStepIcon-root': { color: 'rgba(255,255,255,0.22)' },
-          '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#ffba6c' },
+          '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: 'var(--ws-accent, #ff8c00)' },
         },
       }}
     >
@@ -379,16 +414,16 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
         px: 3,
         pt: 3,
         pb: 2,
-        background: 'linear-gradient(135deg, rgba(255,186,108,0.16), rgba(255,186,108,0.02))',
-        borderBottom: '1px solid rgba(255,186,108,0.18)',
+        background: 'linear-gradient(135deg, rgba(255, 140, 0,0.16), rgba(255, 140, 0,0.02))',
+        borderBottom: '1px solid rgba(255, 140, 0,0.18)',
       }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
           <Stack direction="row" alignItems="center" spacing={1.5}>
-            <Avatar sx={{ bgcolor: 'rgba(255,186,108,0.18)', color: '#ffba6c' }}>
+            <Avatar sx={{ bgcolor: 'rgba(255, 140, 0,0.18)', color: 'var(--ws-accent, #ff8c00)' }}>
               <MoneyIcon />
             </Avatar>
             <Box>
-              <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.18em' }}>
+              <Typography variant="overline" sx={{ color: 'var(--ws-accent, #ff8c00)', letterSpacing: '0.18em' }}>
                 {source === 'inquiry-suggestion' ? 'Forslag fra forespørsel' : 'Split Sheet'}
               </Typography>
               <Typography variant="h5" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontWeight: 700, letterSpacing: '-0.02em' }}>
@@ -396,7 +431,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
               </Typography>
             </Box>
           </Stack>
-          <IconButton onClick={onClose} size="small" sx={{ color: 'rgba(246,242,234,0.72)' }}>
+          <IconButton onClick={onClose} size="small" sx={{ color: 'rgba(255, 255, 255,0.72)' }}>
             <CloseIcon />
           </IconButton>
         </Stack>
@@ -432,8 +467,8 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      bgcolor: active || completed ? '#ffba6c' : 'rgba(255,255,255,0.10)',
-                      color: active || completed ? '#150d05' : 'rgba(246,242,234,0.5)',
+                      bgcolor: active || completed ? 'var(--ws-accent, #ff8c00)' : 'rgba(255,255,255,0.10)',
+                      color: active || completed ? '#150d05' : 'rgba(255, 255, 255,0.5)',
                       transition: 'all 0.3s',
                     }}>
                       <Icon fontSize="small" />
@@ -466,7 +501,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                 value={projectAmount || ''}
                 onChange={(e) => setProjectAmount(Number(e.target.value) || 0)}
                 sx={{ minWidth: 200 }}
-                InputProps={{ endAdornment: <InputAdornment position="end" sx={{ color: 'rgba(246,242,234,0.72)' }}>kr</InputAdornment> }}
+                InputProps={{ endAdornment: <InputAdornment position="end" sx={{ color: 'rgba(255, 255, 255,0.72)' }}>kr</InputAdornment> }}
               />
             </Stack>
 
@@ -487,8 +522,8 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       py: 0.75,
                       textTransform: 'none',
                       color: '#fff5e8',
-                      borderColor: 'rgba(255,186,108,0.32)',
-                      '&:hover': { borderColor: '#ffba6c', bgcolor: 'rgba(255,186,108,0.08)' },
+                      borderColor: 'rgba(255, 140, 0,0.32)',
+                      '&:hover': { borderColor: 'var(--ws-accent, #ff8c00)', bgcolor: 'rgba(255, 140, 0,0.08)' },
                     }}
                   >
                     Velg fra team
@@ -501,7 +536,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       borderRadius: '999px',
                       px: 2,
                       py: 0.75,
-                      bgcolor: '#ffba6c',
+                      bgcolor: 'var(--ws-accent, #ff8c00)',
                       color: '#150d05',
                       fontWeight: 700,
                       textTransform: 'none',
@@ -517,13 +552,13 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                 <Card sx={{
                   p: 4,
                   textAlign: 'center',
-                  border: '1px dashed rgba(255,186,108,0.32)',
-                  bgcolor: 'rgba(255,186,108,0.03)',
+                  border: '1px dashed rgba(255, 140, 0,0.32)',
+                  bgcolor: 'rgba(255, 140, 0,0.03)',
                   borderRadius: 3,
                   boxShadow: 'none',
-                  color: 'rgba(246,242,234,0.72)',
+                  color: 'rgba(255, 255, 255,0.72)',
                 }}>
-                  <TeamIcon sx={{ fontSize: 48, color: 'rgba(255,186,108,0.4)', mb: 1 }} />
+                  <TeamIcon sx={{ fontSize: 48, color: 'rgba(255, 140, 0,0.4)', mb: 1 }} />
                   <Typography variant="body2">
                     Legg til minst 2 personer for å starte
                   </Typography>
@@ -540,13 +575,13 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                         borderRadius: 2,
                         boxShadow: 'none',
                         transition: 'all 0.2s',
-                        '&:hover': { borderColor: 'rgba(255,186,108,0.32)' },
+                        '&:hover': { borderColor: 'rgba(255, 140, 0,0.32)' },
                       }}
                     >
                       <Stack direction="row" spacing={2} alignItems="center">
                         <Avatar sx={{
-                          bgcolor: alpha('#ffba6c', 0.18),
-                          color: '#ffba6c',
+                          bgcolor: alpha('#ff8c00', 0.18),
+                          color: 'var(--ws-accent, #ff8c00)',
                           fontSize: 14,
                           fontWeight: 700,
                         }}>
@@ -569,11 +604,120 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                         <IconButton
                           size="small"
                           onClick={() => removeParticipant(p.id)}
-                          sx={{ color: 'rgba(246,242,234,0.5)', '&:hover': { color: '#f44336' } }}
+                          sx={{ color: 'rgba(255, 255, 255,0.5)', '&:hover': { color: '#f44336' } }}
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </Stack>
+
+                      {/* Eksternt firma: velg vendor + flere produkter fra katalogen × antall (kostnad av-toppen). */}
+                      <FormControlLabel
+                        sx={{ mt: 1 }}
+                        control={
+                          <Switch
+                            size="small"
+                            checked={!!p.isExternal}
+                            onChange={(e) =>
+                              updateParticipant(p.id, e.target.checked
+                                ? { isExternal: true }
+                                : { isExternal: false, vendorUserId: undefined, externalLines: [] })}
+                          />
+                        }
+                        label={<Typography variant="caption">Eksternt firma (kostnad av-toppen)</Typography>}
+                      />
+                      {p.isExternal && (
+                        <Stack spacing={1} sx={{ mt: 0.5, pl: 1 }}>
+                          <Select
+                            size="small"
+                            displayEmpty
+                            value={p.vendorUserId || ''}
+                            onChange={(e) => {
+                              const v = vendorCatalog.find((x) => x.vendorUserId === e.target.value);
+                              updateParticipant(p.id, {
+                                vendorUserId: v?.vendorUserId,
+                                vendorName: v?.vendorName,
+                                name: p.name || v?.vendorName || '',
+                                vendorIsForeign: !!v?.isInternational,
+                                vendorCurrency: v?.services?.[0]?.currency || 'NOK',
+                                externalLines: [],
+                              });
+                            }}
+                          >
+                            <MenuItem value=""><em>Velg leverandør…</em></MenuItem>
+                            {vendorCatalog.map((v) => (
+                              <MenuItem key={v.vendorUserId} value={v.vendorUserId}>
+                                {v.vendorName}{v.isInternational ? ' (utland)' : ''}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                          {p.vendorUserId && (() => {
+                            const v = vendorCatalog.find((x) => x.vendorUserId === p.vendorUserId);
+                            const services = v?.services || [];
+                            const lines = p.externalLines || [];
+                            return (
+                              <>
+                                {lines.map((l, li) => (
+                                  <Stack key={li} direction="row" spacing={1} alignItems="center">
+                                    <Select
+                                      size="small"
+                                      value={l.serviceName}
+                                      sx={{ flex: 1 }}
+                                      onChange={(e) => {
+                                        const svc = services.find((s) => (s.name || '') === e.target.value);
+                                        const next = [...lines];
+                                        next[li] = { ...l, serviceName: String(e.target.value), pricePerImage: svc?.price || 0, currency: svc?.currency || p.vendorCurrency || 'NOK' };
+                                        updateParticipant(p.id, { externalLines: next });
+                                      }}
+                                    >
+                                      {services.map((s, si) => (
+                                        <MenuItem key={si} value={s.name || ''}>
+                                          {s.name} ({s.price ?? '—'} {s.currency}/bilde)
+                                        </MenuItem>
+                                      ))}
+                                    </Select>
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      placeholder="Antall"
+                                      value={l.qty || ''}
+                                      sx={{ width: 90 }}
+                                      InputProps={{ endAdornment: <InputAdornment position="end">stk</InputAdornment> }}
+                                      onChange={(e) => {
+                                        const next = [...lines];
+                                        next[li] = { ...l, qty: Number(e.target.value) || 0 };
+                                        updateParticipant(p.id, { externalLines: next });
+                                      }}
+                                    />
+                                    <Typography variant="caption" sx={{ minWidth: 84, textAlign: 'right' }}>
+                                      {((l.pricePerImage || 0) * (l.qty || 0)).toLocaleString('nb-NO')} {l.currency}
+                                    </Typography>
+                                    <IconButton size="small" onClick={() => updateParticipant(p.id, { externalLines: lines.filter((_, i) => i !== li) })}>
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </Stack>
+                                ))}
+                                <Button
+                                  size="small"
+                                  startIcon={<AddIcon />}
+                                  onClick={() => updateParticipant(p.id, {
+                                    externalLines: [...lines, { serviceName: services[0]?.name || '', pricePerImage: services[0]?.price || 0, currency: services[0]?.currency || 'NOK', qty: 1 }],
+                                  })}
+                                  sx={{ alignSelf: 'flex-start' }}
+                                >
+                                  Legg til produkt
+                                </Button>
+                                <Typography variant="caption" sx={{ color: p.vendorIsForeign ? '#ffb74d' : 'rgba(255, 255, 255,0.6)' }}>
+                                  Kostnad: {externalCostOf(p).toLocaleString('nb-NO')} {p.vendorCurrency}
+                                  {p.vendorCurrency && p.vendorCurrency !== 'NOK' && (
+                                    <> · ≈ {Math.round(costNok(p)).toLocaleString('nb-NO')} kr (1 {p.vendorCurrency} = {fxRates[p.vendorCurrency.toUpperCase()] ? fxRates[p.vendorCurrency.toUpperCase()].toFixed(2) : '—'} kr)</>
+                                  )}
+                                  {' · '}{p.vendorIsForeign ? 'utland → snudd avregning (ingen norsk MVA på andelen)' : 'innenlands → 25 % MVA'}
+                                </Typography>
+                              </>
+                            );
+                          })()}
+                        </Stack>
+                      )}
                     </Card>
                   ))}
                 </Stack>
@@ -612,12 +756,12 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                   }}
                 >
                   <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1.5 }}>
-                    <Avatar sx={{ bgcolor: alpha('#ffba6c', 0.18), color: '#ffba6c' }}>
+                    <Avatar sx={{ bgcolor: alpha('#ff8c00', 0.18), color: 'var(--ws-accent, #ff8c00)' }}>
                       {p.name.charAt(0).toUpperCase() || '?'}
                     </Avatar>
                     <Box sx={{ flex: 1 }}>
                       <Typography variant="body1" sx={{ fontWeight: 700 }}>{p.name || 'Uten navn'}</Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.62)' }}>
+                      <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)' }}>
                         {role ? `Vekt: ${role.weight.toFixed(1)}` : 'Velg rolle nedenfor'}
                       </Typography>
                     </Box>
@@ -658,7 +802,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                               }}
                             />
                           </Stack>
-                          <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.62)', display: 'block', lineHeight: 1.4 }}>
+                          <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)', display: 'block', lineHeight: 1.4 }}>
                             {r.description}
                           </Typography>
                         </Card>
@@ -689,8 +833,8 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                     sx={{
                       p: 2,
                       cursor: 'pointer',
-                      bgcolor: active ? 'rgba(255,186,108,0.12)' : 'rgba(255,255,255,0.04)',
-                      border: `1px solid ${active ? '#ffba6c' : 'rgba(255,255,255,0.08)'}`,
+                      bgcolor: active ? 'rgba(255, 140, 0,0.12)' : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${active ? 'var(--ws-accent, #ff8c00)' : 'rgba(255,255,255,0.08)'}`,
                       borderRadius: 2,
                       boxShadow: 'none',
                       transition: 'all 0.2s',
@@ -698,13 +842,13 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                   >
                     <FormControlLabel
                       value={opt.v}
-                      control={<Radio sx={{ color: 'rgba(246,242,234,0.5)', '&.Mui-checked': { color: '#ffba6c' } }} />}
+                      control={<Radio sx={{ color: 'rgba(255, 255, 255,0.5)', '&.Mui-checked': { color: 'var(--ws-accent, #ff8c00)' } }} />}
                       label={
                         <Box sx={{ ml: 0.5 }}>
-                          <Typography variant="body1" sx={{ fontWeight: 700, color: active ? '#ffba6c' : '#fff5e8' }}>
+                          <Typography variant="body1" sx={{ fontWeight: 700, color: active ? 'var(--ws-accent, #ff8c00)' : '#fff5e8' }}>
                             {opt.label}
                           </Typography>
-                          <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.62)' }}>
+                          <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)' }}>
                             {opt.desc}
                           </Typography>
                         </Box>
@@ -717,7 +861,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
             </RadioGroup>
 
             {model === 'hybrid' && (
-              <Card sx={{ p: 2.5, bgcolor: 'rgba(255,186,108,0.06)', border: '1px solid rgba(255,186,108,0.18)', boxShadow: 'none' }}>
+              <Card sx={{ p: 2.5, bgcolor: 'rgba(255, 140, 0,0.06)', border: '1px solid rgba(255, 140, 0,0.18)', boxShadow: 'none' }}>
                 <Typography variant="body2" sx={{ mb: 1.5, fontWeight: 600 }}>
                   Base per person: {hybridBasePct}%
                 </Typography>
@@ -728,11 +872,11 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                   max={Math.floor(100 / Math.max(1, participants.length))}
                   step={1}
                   sx={{
-                    color: '#ffba6c',
+                    color: 'var(--ws-accent, #ff8c00)',
                     '& .MuiSlider-rail': { bgcolor: 'rgba(255,255,255,0.12)' },
                   }}
                 />
-                <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.62)' }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)' }}>
                   Resterende {100 - hybridBasePct * participants.length}% fordeles etter rolle-vekt.
                 </Typography>
               </Card>
@@ -750,7 +894,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                         type="number"
                         value={p.manualPct ?? 0}
                         onChange={(e) => updateParticipant(p.id, { manualPct: Number(e.target.value) })}
-                        InputProps={{ endAdornment: <InputAdornment position="end" sx={{ color: 'rgba(246,242,234,0.72)' }}>%</InputAdornment> }}
+                        InputProps={{ endAdornment: <InputAdornment position="end" sx={{ color: 'rgba(255, 255, 255,0.72)' }}>%</InputAdornment> }}
                         sx={{ width: 120 }}
                       />
                     </Stack>
@@ -776,21 +920,60 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
           <Stack spacing={2.5}>
             <Card sx={{
               p: 3,
-              background: 'linear-gradient(135deg, rgba(255,186,108,0.16), rgba(255,186,108,0.04))',
-              border: '1px solid rgba(255,186,108,0.32)',
+              background: 'linear-gradient(135deg, rgba(255, 140, 0,0.16), rgba(255, 140, 0,0.04))',
+              border: '1px solid rgba(255, 140, 0,0.32)',
               borderRadius: 2,
               boxShadow: 'none',
             }}>
-              <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.18em' }}>Total</Typography>
+              <Typography variant="overline" sx={{ color: 'var(--ws-accent, #ff8c00)', letterSpacing: '0.18em' }}>Total</Typography>
               <Stack direction="row" alignItems="baseline" spacing={1}>
                 <Typography variant="h3" sx={{ fontWeight: 800, fontFamily: '"Space Grotesk", sans-serif' }}>
                   {projectAmount.toLocaleString('nb-NO')}
                 </Typography>
-                <Typography variant="h6" sx={{ color: 'rgba(246,242,234,0.62)' }}>kr</Typography>
+                <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255,0.62)' }}>kr</Typography>
               </Stack>
-              <Typography variant="body2" sx={{ color: 'rgba(246,242,234,0.72)' }}>
+              {/* MVA-oppdeling (samme modell som editing-marketplace + Fiken). */}
+              {(() => {
+                // Utenlandske eksterne andeler = snudd avregning (ingen norsk MVA).
+                const foreignExternal = participants
+                  .filter((p) => p.isExternal && p.vendorIsForeign)
+                  .reduce((s, p) => s + externalCostOf(p), 0);
+                const mvaBase = Math.max(0, projectAmount - foreignExternal);
+                const mva = Math.round(mvaBase * 0.25);
+                return (
+                  <Box sx={{ mt: 1, mb: 1, color: 'rgba(255, 255, 255,0.82)' }}>
+                    {foreignExternal > 0 && (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                        <span>Snudd avregning (utland)</span><span>{foreignExternal.toLocaleString('nb-NO')} kr</span>
+                      </Box>
+                    )}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                      <span>+ 25 % MVA (MVA-grunnlag {mvaBase.toLocaleString('nb-NO')})</span><span>{mva.toLocaleString('nb-NO')} kr</span>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, borderTop: '1px solid rgba(255,255,255,0.12)', mt: 0.5, pt: 0.5 }}>
+                      <span>Totalt inkl. MVA</span><span>{(projectAmount + mva).toLocaleString('nb-NO')} kr</span>
+                    </Box>
+                    <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: 'rgba(255, 255, 255,0.55)' }}>
+                      Utenlandsk eksternt firma: snudd avregning — andelen utbetales uten norsk MVA; mottaker selv-avregner. Innenlands andel + provisjon: 25 % MVA.
+                    </Typography>
+                  </Box>
+                );
+              })()}
+              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255,0.72)' }}>
                 {projectName || 'Uten prosjektnavn'} · {participants.length} personer · {model === 'weighted' ? 'Vekt-basert' : model === 'equal' ? 'Lik splitt' : model === 'hybrid' ? 'Hybrid' : 'Manuelt'}
               </Typography>
+              {/* Valutakurs-info — vises når en ekstern vendor har annen valuta enn NOK. */}
+              {participants.some((p) => p.isExternal && p.vendorCurrency && p.vendorCurrency !== 'NOK') && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  onClick={() => refetchFx()}
+                  label={fxFetching
+                    ? 'Henter kurs…'
+                    : `Kurs: ${fxSource === 'norges-bank' ? 'Norges Bank' : (fxSource || '—')} · ${fxAsOf || '—'} · trykk for å oppdatere`}
+                  sx={{ mt: 1, height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.5, fontSize: 11 } }}
+                />
+              )}
             </Card>
 
             {/* Pie chart visualisering */}
@@ -801,7 +984,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
               borderRadius: 2,
               boxShadow: 'none',
             }}>
-              <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.14em', mb: 1, display: 'block' }}>
+              <Typography variant="overline" sx={{ color: 'var(--ws-accent, #ff8c00)', letterSpacing: '0.14em', mb: 1, display: 'block' }}>
                 Fordeling
               </Typography>
               <Box sx={{ width: '100%', height: 280 }}>
@@ -819,17 +1002,17 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       stroke="rgba(15,10,7,0.95)"
                       strokeWidth={2}
                       label={({ name, pct }) => `${name} · ${pct.toFixed(1)}%`}
-                      labelLine={{ stroke: 'rgba(246,242,234,0.4)' }}
+                      labelLine={{ stroke: 'rgba(255, 255, 255,0.4)' }}
                     >
                       {computedSplits.map((_, idx) => {
-                        const palette = ['#ffba6c', '#4cc9f0', '#9b87f5', '#a8dadc', '#f4a261', '#e76f51', '#80ed99', '#ffd166'];
+                        const palette = ['#ff8c00', '#4cc9f0', '#9b87f5', '#a8dadc', '#f4a261', '#e76f51', '#80ed99', '#ffd166'];
                         return <Cell key={idx} fill={palette[idx % palette.length]} />;
                       })}
                     </Pie>
                     <RTooltip
                       contentStyle={{
                         background: 'rgba(15,10,7,0.96)',
-                        border: '1px solid rgba(255,186,108,0.32)',
+                        border: '1px solid rgba(255, 140, 0,0.32)',
                         borderRadius: 8,
                         color: '#fff5e8',
                       }}
@@ -856,20 +1039,20 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                   }}
                 >
                   <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1 }}>
-                    <Avatar sx={{ bgcolor: alpha('#ffba6c', 0.18), color: '#ffba6c', fontWeight: 700 }}>
+                    <Avatar sx={{ bgcolor: alpha('#ff8c00', 0.18), color: 'var(--ws-accent, #ff8c00)', fontWeight: 700 }}>
                       {split.name.charAt(0).toUpperCase() || (idx + 1).toString()}
                     </Avatar>
                     <Box sx={{ flex: 1 }}>
                       <Typography variant="body1" sx={{ fontWeight: 700 }}>{split.name}</Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.62)' }}>
+                      <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)' }}>
                         {split.roleLabel}
                       </Typography>
                     </Box>
                     <Box sx={{ textAlign: 'right' }}>
-                      <Typography variant="h6" sx={{ fontWeight: 700, color: '#ffba6c', fontFamily: '"Space Grotesk", sans-serif' }}>
+                      <Typography variant="h6" sx={{ fontWeight: 700, color: 'var(--ws-accent, #ff8c00)', fontFamily: '"Space Grotesk", sans-serif' }}>
                         {split.shareKr.toLocaleString('nb-NO', { maximumFractionDigits: 0 })} kr
                       </Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.62)' }}>
+                      <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)' }}>
                         {split.sharePct.toFixed(1)}%
                       </Typography>
                     </Box>
@@ -882,7 +1065,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
                       borderRadius: 3,
                       bgcolor: 'rgba(255,255,255,0.06)',
                       '& .MuiLinearProgress-bar': {
-                        bgcolor: '#ffba6c',
+                        bgcolor: 'var(--ws-accent, #ff8c00)',
                         borderRadius: 3,
                       },
                     }}
@@ -894,10 +1077,10 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
             <Alert
               severity="info"
               sx={{
-                bgcolor: 'rgba(255,186,108,0.08)',
+                bgcolor: 'rgba(255, 140, 0,0.08)',
                 color: '#fff5e8',
-                border: '1px solid rgba(255,186,108,0.22)',
-                '& .MuiAlert-icon': { color: '#ffba6c' },
+                border: '1px solid rgba(255, 140, 0,0.22)',
+                '& .MuiAlert-icon': { color: 'var(--ws-accent, #ff8c00)' },
               }}
             >
               Etter "Opprett & send" får hvert team-medlem en e-post med signerings-lenke. Splitt-en aktiveres når alle har signert.
@@ -917,7 +1100,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
           startIcon={<BackIcon />}
           onClick={() => setStep((s) => Math.max(0, s - 1))}
           disabled={step === 0}
-          sx={{ color: 'rgba(246,242,234,0.72)', textTransform: 'none' }}
+          sx={{ color: 'rgba(255, 255, 255,0.72)', textTransform: 'none' }}
         >
           Tilbake
         </Button>
@@ -933,10 +1116,10 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
               py: 1.1,
               fontWeight: 700,
               textTransform: 'none',
-              bgcolor: '#ffba6c',
+              bgcolor: 'var(--ws-accent, #ff8c00)',
               color: '#150d05',
               '&:hover': { bgcolor: '#ffc788' },
-              '&.Mui-disabled': { bgcolor: 'rgba(255,186,108,0.3)', color: 'rgba(21,13,5,0.5)' },
+              '&.Mui-disabled': { bgcolor: 'rgba(255, 140, 0,0.3)', color: 'rgba(21,13,5,0.5)' },
             }}
           >
             Fortsett
@@ -952,7 +1135,7 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
               py: 1.1,
               fontWeight: 700,
               textTransform: 'none',
-              bgcolor: '#ffba6c',
+              bgcolor: 'var(--ws-accent, #ff8c00)',
               color: '#150d05',
               '&:hover': { bgcolor: '#ffc788' },
             }}
@@ -971,9 +1154,9 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
         PaperProps={{
           sx: {
             borderRadius: '20px',
-            background: 'radial-gradient(circle at top, rgba(255,186,108,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
+            background: 'radial-gradient(circle at top, rgba(255, 140, 0,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
             color: '#fff5e8',
-            border: '1px solid rgba(255,186,108,0.18)',
+            border: '1px solid rgba(255, 140, 0,0.18)',
             maxHeight: '85vh',
           },
         }}
@@ -981,12 +1164,12 @@ const SplitSheetRoleWizard: React.FC<Props> = ({
         <Box sx={{ p: 3 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
             <Box>
-              <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.18em' }}>
+              <Typography variant="overline" sx={{ color: 'var(--ws-accent, #ff8c00)', letterSpacing: '0.18em' }}>
                 Velg medlemmer
               </Typography>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>Fra team-direktoratet</Typography>
             </Box>
-            <IconButton onClick={() => setPickerOpen(false)} sx={{ color: 'rgba(246,242,234,0.72)' }}>
+            <IconButton onClick={() => setPickerOpen(false)} sx={{ color: 'rgba(255, 255, 255,0.72)' }}>
               <CloseIcon />
             </IconButton>
           </Stack>

@@ -141,7 +141,7 @@ export default function ReportDialog({
           ...COMMUNITY_DIALOG_CONTENT_SX,
           '& .MuiFormLabel-root': { color: COMMUNITY_DIALOG_MUTED },
           '& .MuiRadio-root': { color: COMMUNITY_DIALOG_MUTED },
-          '& .MuiRadio-root.Mui-checked': { color: '#f5a623' },
+          '& .MuiRadio-root.Mui-checked': { color: '#ff8c00' },
         }}
       >
         {success ? (

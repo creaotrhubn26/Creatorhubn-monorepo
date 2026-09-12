@@ -31,14 +31,20 @@ import {
   Group as GroupIcon,
   Logout as LogoutIcon,
   Person as PersonIcon,
+  StorageOutlined as StorageOutlinedIcon,
   SwapHoriz as ModeIcon,
+  EventAvailable as EventAvailableIcon,
 } from '@mui/icons-material';
+import { IconButton as MuiIconButton } from '@mui/material';
 
 import type { RoleRoomViewportMode } from '../hooks/useRoleRoomViewportMode';
 import ProfessionModeSwitcher from './ProfessionModeSwitcher';
 import { getActiveProfessionMode } from '../config/professionMode';
 import RoleRoomOnboardingDialog from './RoleRoomOnboardingDialog';
 import RoleRoomMemberDirectoryDialog from './RoleRoomMemberDirectoryDialog';
+import { AvailabilityCalendar } from './AvailabilityCalendar';
+import RoleRoomStoragePanel from './RoleRoomStoragePanel';
+import RoleRoomAffiliateConnectCard from './RoleRoomAffiliateConnectCard';
 import { roleRoomMemberProfileService } from '../services/roleRoomMemberProfileService';
 import type { RoleRoomMemberProfile } from '../services/roleRoomMemberProfileService';
 
@@ -60,6 +66,7 @@ interface RoleRoomMobileProfileSheetProps {
   onLogout?: () => void;
   /** Admin-only: vis profession-mode-switcher i profilen. */
   isAdmin?: boolean;
+  organizationId?: string | null;
 }
 
 function initialsOf(name?: string | null, email?: string | null): string {
@@ -81,6 +88,7 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
   workspaceSummary,
   onLogout,
   isAdmin,
+  organizationId,
 }) => {
   const usePopover =
     mode === 'tabletPortrait' || mode === 'tabletLandscape' || mode === 'desktop';
@@ -90,6 +98,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
   const [modeSwitcherOpen, setModeSwitcherOpen] = React.useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [directoryOpen, setDirectoryOpen] = useState(false);
+  const [storageOpen, setStorageOpen] = useState(false);
+  const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [memberProfile, setMemberProfile] = useState<RoleRoomMemberProfile | null>(null);
   const activeProfessionMode = getActiveProfessionMode();
 
@@ -188,6 +198,22 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
         >
           Finn medlemmer
         </Button>
+        <Button
+          fullWidth
+          variant="outlined"
+          startIcon={<EventAvailableIcon />}
+          onClick={() => setAvailabilityOpen(true)}
+          sx={{
+            minHeight: 'var(--rr-touch-target-min, 44px)',
+            justifyContent: 'flex-start',
+            borderColor: 'rgba(124,58,237,0.35)',
+            color: '#6d28d9',
+            textTransform: 'none',
+            fontWeight: 600,
+          }}
+        >
+          Min tilgjengelighet
+        </Button>
       </Stack>
 
       {showWorkspace ? (
@@ -240,6 +266,24 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
           </Stack>
         </>
       ) : null}
+
+      <Divider />
+      <Button
+        fullWidth
+        variant="outlined"
+        startIcon={<StorageOutlinedIcon />}
+        onClick={() => setStorageOpen(true)}
+        sx={{
+          minHeight: 'var(--rr-touch-target-min, 44px)',
+          justifyContent: 'flex-start',
+          borderColor: 'rgba(168,85,247,0.35)',
+          color: '#a855f7',
+          textTransform: 'none',
+          fontWeight: 600,
+        }}
+      >
+        Lagring (1 GB gratis · BYO støttet)
+      </Button>
 
       {onLogout ? (
         <>
@@ -301,6 +345,53 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
     />
   );
 
+  const availabilityDialog = (
+    <Dialog
+      open={availabilityOpen}
+      onClose={() => setAvailabilityOpen(false)}
+      maxWidth="md"
+      fullWidth
+      PaperProps={{ sx: { bgcolor: '#0a0118', color: '#f5f3ff' } }}
+    >
+      <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        Min tilgjengelighet
+        <MuiIconButton onClick={() => setAvailabilityOpen(false)} sx={{ color: '#c4b5fd' }}>
+          <CloseIcon />
+        </MuiIconButton>
+      </DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" sx={{ color: 'rgba(245,243,255,0.7)', mb: 2 }}>
+          Mal inn dagene du er ledig, opptatt eller tentativ. Produksjonsteam ser dette
+          direkte når de setter sammen crew i The Role Room.
+        </Typography>
+        <AvailabilityCalendar editable months={2} />
+      </DialogContent>
+    </Dialog>
+  );
+
+  const storageDialog = (
+    <Dialog
+      open={storageOpen}
+      onClose={() => setStorageOpen(false)}
+      maxWidth="md"
+      fullWidth
+      PaperProps={{ sx: { bgcolor: '#0a0118', color: '#f5f3ff' } }}
+    >
+      <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        Lagring
+        <MuiIconButton onClick={() => setStorageOpen(false)} sx={{ color: '#c4b5fd' }}>
+          <CloseIcon />
+        </MuiIconButton>
+      </DialogTitle>
+      <DialogContent>
+        <RoleRoomStoragePanel />
+        {organizationId ? (
+          <RoleRoomAffiliateConnectCard organizationId={organizationId} />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+
   if (usePopover) {
     return (
       <>
@@ -325,6 +416,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
         {modeSwitcherDialog}
         {editDialog}
         {directoryDialog}
+        {availabilityDialog}
+        {storageDialog}
       </>
     );
   }
@@ -373,6 +466,8 @@ export const RoleRoomMobileProfileSheet: React.FC<RoleRoomMobileProfileSheetProp
       </Dialog>
       {modeSwitcherDialog}
       {editDialog}
+      {directoryDialog}
+      {storageDialog}
     </>
   );
 };

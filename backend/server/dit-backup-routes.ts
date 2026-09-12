@@ -236,7 +236,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
           body.path ?? null,
           body.storage_type ?? 'raid',
           Number.isFinite(body.priority) ? body.priority : 1,
-          body.status ?? 'configured',
+          (['configured', 'active', 'error', 'offline'].includes(String(body.status ?? '')) ? String(body.status) : 'configured'),
           body.notes ?? null,
         ],
       );
@@ -288,11 +288,25 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
       );
       // Returner KLAR-TEKST kun NÅ — admin må kopiere umiddelbart.
       // Vi har bare hash-en lagret videre, så det vises ALDRI igjen.
+      //
+      // `connection_url` er en pre-formatert chub://-URI som Creatorhub
+      // One Desk-appen parser med ETT paste — admin trenger ikke
+      // kopiere token + projectId separat. Backend-URL inkluderes kun
+      // når en eksplisitt PUBLIC_APP_URL skiller seg fra app-defaulten.
+      const appDefault = 'https://creatorhubn.com';
+      const publicBase = (process.env.PUBLIC_APP_URL || appDefault).replace(/\/+$/, '');
+      const params = new URLSearchParams({ p: projectId, t: rawToken });
+      if (publicBase && publicBase !== appDefault) {
+        params.set('b', publicBase);
+      }
+      const connectionUrl = `chub://connect?${params.toString()}`;
+
       return res.json({
         success: true,
         token: rawToken,
         token_id: tokenId,
         expires_at: expiresAt.toISOString(),
+        connection_url: connectionUrl,
         warning: 'Tokenet vises kun NÅ. Kopiér til DIT-station-config. Det kan ikke gjenfinnes.',
       });
     } catch (error) {
@@ -389,7 +403,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
           body.source_size_bytes ?? null,
           body.source_hash ?? null,
           body.hash_algorithm ?? 'xxh64',
-          body.status ?? 'queued',
+          (['queued', 'in_progress', 'completed', 'failed', 'cancelled'].includes(String(body.status ?? '')) ? String(body.status) : 'queued'),
           auth.token_id,
           body.helper_hostname ?? null,
           body.helper_version ?? null,
@@ -698,7 +712,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
         `SELECT id FROM user_storage_providers WHERE id = $1 AND user_id = $2`,
         [providerId, userId],
       );
-      if (provCheck.rowCount === 0) {
+      if (!provCheck.rows.length) {
         return res
           .status(403)
           .json({ success: false, error: 'Provider tilhører ikke deg' });
@@ -709,7 +723,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
         `SELECT id FROM legacy.projects WHERE id = $1 AND user_id = $2`,
         [projectId, userId],
       );
-      if (projCheck.rowCount === 0) {
+      if (!projCheck.rows.length) {
         return res
           .status(403)
           .json({ success: false, error: 'Prosjekt tilhører ikke deg' });

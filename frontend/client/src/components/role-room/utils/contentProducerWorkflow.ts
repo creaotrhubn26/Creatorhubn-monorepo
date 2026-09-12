@@ -40,18 +40,23 @@ export function deriveActiveWorkflowStep(
 }
 
 /**
- * Approksimasjon av hvilke steg som er fullført basert på producerWorkflowStatus.
- * Mangler granulær backend-signaler — vi gjør et best-effort som er bedre enn
- * ingenting.
+ * Hvilke steg er fullført. Brief/story/storyboard/approval avledes fra
+ * producerWorkflowStatus (review-drevet). Levering og Økonomi har ingen
+ * pålitelig avledet «ferdig»-signal, så de markeres eksplisitt av produsenten
+ * og leses fra `producerPhaseCompletion` (et ISO-tidspunkt = fullført).
  */
 export function deriveCompletedWorkflowSteps(
   status: 'planning' | 'awaiting_client' | 'changes_requested' | 'approved' | null | undefined,
+  phaseCompletion?: { delivery?: string | null; economy?: string | null } | null,
 ): ReadonlyArray<WorkflowStepKey> {
+  const completed: WorkflowStepKey[] = [];
   if (status === 'approved') {
-    return ['brief', 'story', 'storyboard', 'approval'];
+    completed.push('brief', 'story', 'storyboard', 'approval');
+  } else if (status === 'awaiting_client' || status === 'changes_requested') {
+    completed.push('brief', 'story', 'storyboard');
   }
-  if (status === 'awaiting_client' || status === 'changes_requested') {
-    return ['brief', 'story', 'storyboard'];
-  }
-  return [];
+  // Eksplisitt markerte faser — uavhengig av review-status.
+  if (phaseCompletion?.delivery) completed.push('delivery');
+  if (phaseCompletion?.economy) completed.push('economy');
+  return completed;
 }

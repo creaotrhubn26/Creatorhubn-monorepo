@@ -1,9 +1,11 @@
 /**
  * Storyboard AI Generation Service
- * 
+ *
  * Service for generating storyboard frames using OpenAI gpt-image-1.
  * Uses Replit AI Integrations - charges are billed to your Replit credits.
  */
+
+import { apiFetch } from '@/lib/queryClient';
 
 export interface StoryboardTemplate {
   id: string;
@@ -45,7 +47,7 @@ export class StoryboardAIGenerationService {
     }
     
     try {
-      const response = await fetch('/api/storyboards/templates');
+      const response = await apiFetch('/api/storyboards/templates');
       if (response.ok) {
         this.templatesCache = await response.json();
         return this.templatesCache!;
@@ -68,7 +70,7 @@ export class StoryboardAIGenerationService {
     }
     
     try {
-      const response = await fetch('/api/storyboards/camera-angles');
+      const response = await apiFetch('/api/storyboards/camera-angles');
       if (response.ok) {
         this.cameraAnglesCache = await response.json();
         return this.cameraAnglesCache!;
@@ -91,7 +93,7 @@ export class StoryboardAIGenerationService {
     }
     
     try {
-      const response = await fetch('/api/storyboards/camera-movements');
+      const response = await apiFetch('/api/storyboards/camera-movements');
       if (response.ok) {
         this.cameraMovementsCache = await response.json();
         return this.cameraMovementsCache!;
@@ -109,11 +111,8 @@ export class StoryboardAIGenerationService {
 
   async generateFrame(request: GenerateFrameRequest): Promise<GenerateFrameResponse> {
     try {
-      const response = await fetch('/api/storyboards/generate-frame', {
+      const response = await apiFetch('/api/storyboards/generate-frame', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           prompt: request.prompt,
           template: request.template || 'cinematic',

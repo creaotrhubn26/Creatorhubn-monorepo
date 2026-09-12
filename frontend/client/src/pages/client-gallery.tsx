@@ -64,6 +64,10 @@ import {
   AccessTime,
   GridView,
   PlayArrow,
+  Visibility,
+  VisibilityOff,
+  RemoveDone as RemoveDoneIcon,
+  PlaylistAddCheck,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useClientSession } from '@/contexts/ClientSessionContext';
@@ -77,8 +81,10 @@ import PostSessionInsightsCard from '@/components/PostSessionInsightsCard';
 import ExtraImagePricingDialog from '@/components/ExtraImagePricingDialog';
 import ImageSelectionWarning from '@/components/ImageSelectionWarning';
 import ContractPreviewModal from '@/components/ContractPreviewModal';
+import ClientReviewForm from '@/components/showcase/ClientReviewForm';
 import TermsAcceptanceDialog from '@/components/TermsAcceptanceDialog';
 import PrintStoreSection from '@/components/client-gallery/PrintStoreSection';
+import ClientSharedChat from '@/components/client-gallery/ClientSharedChat';
 import GallerySelectionSubmitDialog from '@/components/gallery/GallerySelectionSubmitDialog';
 import GallerySlideshow from '@/components/gallery/GallerySlideshow';
 import PrintOrderDialog from '@/components/gallery/PrintOrderDialog';
@@ -128,6 +134,9 @@ interface Gallery {
   clientName: string;
   clientEmail: string;
   projectTitle: string;
+  /** Bilder lagt til etter opprettelse, siste 7 dager — driver «N nye
+   *  bilder lagt til»-banneret. 0 ved førstegangs-levering. */
+  recentlyAddedCount?: number;
   /** Slice 9P — surfaced by GET /api/client/gallery/:token so the
    *  viewer renders the right copy ("foto-galleri" vs "video-galleri"
    *  vs "lyd-galleri"). Null when the photographer has no profession
@@ -163,6 +172,12 @@ export default function ClientGallery({}: ClientGalleryProps) {
 
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
   const [favoriteImages, setFavoriteImages] = useState<Set<string>>(new Set());
+  // Bilder klient eksplisitt har avvist. Filtreres bort fra grid-en
+  // som default (hideRejected = true) — klient kan toggle for å se
+  // og evt. angre. Backend tar uansett ikke med rejected i submit-
+  // utvalget. Gap #7 fra Irlin-UX-analyse.
+  const [rejectedImages, setRejectedImages] = useState<Set<string>>(new Set());
+  const [hideRejected, setHideRejected] = useState<boolean>(true);
   // Slice 9X.82 — submit-dialog state for "send mitt utvalg"-flyt
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   // Slice 9X.82 — slideshow-state
@@ -460,17 +475,21 @@ export default function ClientGallery({}: ClientGalleryProps) {
     if (selections?.selections) {
       const selected = new Set<string>();
       const favorites = new Set<string>();
+      const rejected = new Set<string>();
 
       selections.selections.forEach((selection: Selection) => {
         if (selection.selectionType === 'selected') {
           selected.add(selection.imageId);
       } else if (selection.selectionType === 'favorite') {
           favorites.add(selection.imageId);
+      } else if (selection.selectionType === 'rejected') {
+          rejected.add(selection.imageId);
       }
     });
 
       setSelectedImages(selected);
       setFavoriteImages(favorites);
+      setRejectedImages(rejected);
   }
 }, [selections]);
 
@@ -774,9 +793,15 @@ export default function ClientGallery({}: ClientGalleryProps) {
   }
 };
 
-  const filteredImages = showOnlySelected
-    ? images.filter((img: GalleryImage) => selectedImages.has(img.id) || favoriteImages.has(img.id))
+  // Bilder klient eksplisitt har avvist filtreres bort by default
+  // (hideRejected = true). Klient kan toggle for å se + angre via en
+  // chip i filter-bar-en.
+  const visibleImages = hideRejected
+    ? images.filter((img: GalleryImage) => !rejectedImages.has(img.id))
     : images;
+  const filteredImages = showOnlySelected
+    ? visibleImages.filter((img: GalleryImage) => selectedImages.has(img.id) || favoriteImages.has(img.id))
+    : visibleImages;
 
   if (galleryLoading || imagesLoading) {
     return (
@@ -797,6 +822,11 @@ export default function ClientGallery({}: ClientGalleryProps) {
     );
 }
 
+  const showReviewPrompt =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('review') === '1' &&
+    !!accessToken;
+
   return (
     <Box
       sx={{
@@ -806,6 +836,17 @@ export default function ClientGallery({}: ClientGalleryProps) {
         display: 'flex',
     }}
     >
+      {/* Omtale-landing (#4) — åpnes via «be om omtale»-e-postlenken. */}
+      {showReviewPrompt && (
+        <Box sx={{
+          position: 'fixed', inset: 0, zIndex: 1400, overflowY: 'auto',
+          bgcolor: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center', p: 2, pt: { xs: 6, md: 10 },
+        }}>
+          <ClientReviewForm accessToken={accessToken as string} />
+        </Box>
+      )}
+
       {/* Left Sidebar — pro-foto-portal */}
       <Box
         sx={(() => {
@@ -1029,8 +1070,13 @@ export default function ClientGallery({}: ClientGalleryProps) {
             Ditt valg
           </Typography>
 
-          {/* Progress visualization */}
+          {/* Progress visualization — kun når galleriet faktisk har en
+              contracted-image-count. Uten det (mange galleries i
+              prod har contractedImages = 0) viste teksten "0 av 0
+              inkluderte" som ga inntrykk av at klient ikke kunne
+              velge noe. UX-gap #13. */}
           <Box sx={{ mb: 2 }}>
+            {(gallery?.gallerySettings?.contractedImages ?? 0) > 0 ? (
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                 {selectedImages.size} av {gallery?.gallerySettings?.contractedImages || 0},{' '}
@@ -1043,6 +1089,13 @@ export default function ClientGallery({}: ClientGalleryProps) {
                 </Typography>
               )}
             </Box>
+            ) : (
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 1 }}>
+                {selectedImages.size === 0
+                  ? `Velg så mange ${terms.itemPlural} du vil`
+                  : `${selectedImages.size} valgt`}
+              </Typography>
+            )}
 
             <Box
               sx={{
@@ -1067,17 +1120,21 @@ export default function ClientGallery({}: ClientGalleryProps) {
             </Box>
 
             {selectedImages.size > (gallery?.gallerySettings?.contractedImages || 0) && (
-              <Typography
-                variant="caption"
+              <Stack
+                direction="row"
+                spacing={0.5}
                 sx={{
+                  alignItems: 'center',
                   color: '#ffa726',
-                  display: 'block',
                   mt: 1,
                   fontStyle: 'italic',
-              }}
+                }}
               >
-                💝 Du har funnet ekstra fine minner!
-              </Typography>
+                <Favorite sx={{ fontSize: 14 }} />
+                <Typography variant="caption" sx={{ color: 'inherit', fontStyle: 'inherit' }}>
+                  Du har funnet ekstra fine minner!
+                </Typography>
+              </Stack>
             )}
           </Box>
 
@@ -1168,6 +1225,41 @@ export default function ClientGallery({}: ClientGalleryProps) {
             }
             />
 
+            {/* Gap #7-fix: skjul-toggler for avviste bilder. Default på
+                så klient slipper å se skrap mens hun browser. Toggler
+                kun synlig hvis det FINNES avviste — ellers støy.
+                Ikon = VisibilityOff (skjult) / Visibility (vises) — MUI
+                per feedback no-emojis-use-mui-icons. */}
+            {rejectedImages.size > 0 && (
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={hideRejected}
+                    onChange={(e) => setHideRejected(e.target.checked)}
+                    size="small"
+                    sx={{
+                      '& .MuiSwitch-switchBase.Mui-checked': {
+                        color: config.primaryColor,
+                      },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                        backgroundColor: config.primaryColor,
+                      },
+                    }}
+                  />
+                }
+                label={
+                  <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+                    {hideRejected
+                      ? <VisibilityOff sx={{ fontSize: 16, color: 'rgba(255,255,255,0.7)' }} />
+                      : <Visibility sx={{ fontSize: 16, color: 'rgba(255,255,255,0.7)' }} />}
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                      Skjul avviste ({rejectedImages.size})
+                    </Typography>
+                  </Stack>
+                }
+              />
+            )}
+
             <FormControlLabel
               control={
                 <Switch
@@ -1224,6 +1316,52 @@ export default function ClientGallery({}: ClientGalleryProps) {
         {/* Action Buttons */}
         {selectedImages.size > 0 && (
           <Stack spacing={1} sx={{ mt: 'auto' }}>
+            {/* UX-gap-fix (2026-05-31): "Velg alle"-toggle. Tidligere
+                måtte klient klikke hver enkelt thumbnail for å laste
+                ned hele galleriet — typisk Irlin-frustrasjon ved
+                200-bilders portfolio-shoot. Knappen viser eksakt
+                bilde-count + er bevisst om at extra utover
+                contractedImages koster mer (eksisterende UX i
+                progress-bar over). */}
+            {gallery?.gallerySettings?.allowDownload !== false && visibleImages.length > 0 && (
+              <Button
+                variant="text"
+                size="small"
+                fullWidth
+                onClick={() => {
+                  if (selectedImages.size === visibleImages.length) {
+                    setSelectedImages(new Set());
+                  } else {
+                    setSelectedImages(new Set(visibleImages.map((img: GalleryImage) => img.id)));
+                  }
+                }}
+                sx={{ color: 'rgba(255,255,255,0.85)' }}
+              >
+                {selectedImages.size === visibleImages.length
+                  ? 'Fjern alle'
+                  : `Velg alle (${visibleImages.length} ${terms.itemPlural})`}
+              </Button>
+            )}
+            {/* UX-gap #11: hvis klient har hjertet noen bilder, gi dem
+                en snarvei til "velg alle favoritter". Vanlig flow:
+                browse → hjerte 30 av 200 → bestem seg for å ta dem som
+                final. Uten snarveien måtte man re-klikke alle 30. */}
+            {gallery?.gallerySettings?.allowDownload !== false && favoriteImages.size > 0 && (
+              <Button
+                variant="text"
+                size="small"
+                fullWidth
+                onClick={() => {
+                  // Union av eksisterende selections + alle favoritter
+                  const union = new Set(selectedImages);
+                  favoriteImages.forEach((id) => union.add(id));
+                  setSelectedImages(union);
+                }}
+                sx={{ color: 'rgba(255,255,255,0.85)' }}
+              >
+                Velg alle favoritter ({favoriteImages.size})
+              </Button>
+            )}
             {/* Slice 9.3 — bulk download. Only shown when allowDownload
                 is on (default true) and there's at least one selection.
                 The button calls /download-zip directly via fetch (not
@@ -1235,7 +1373,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
               <Button
                 variant="outlined"
                 fullWidth
-                disabled={busyDownloading}
+                disabled={busyDownloading || selectedImages.size === 0}
                 onClick={async () => {
                   galleryEvents.downloadRequested(gallery?.id || '', selectedImages.size);
                   setDownloadError(null);
@@ -1274,7 +1412,11 @@ export default function ClientGallery({}: ClientGalleryProps) {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `${gallery?.projectTitle || terms.collection}-${selectedImages.size}-${terms.itemPlural}.zip`;
+                    // Inkluder ISO-dato i zip-navnet så klient kan se når
+                    // hun lastet ned (vanlig at man laster ned 2-3 ganger
+                    // for sortering, da hjelper datoen å skille filene).
+                    const today = new Date().toISOString().slice(0, 10);
+                    a.download = `${gallery?.projectTitle || terms.collection}-${today}-${selectedImages.size}-${terms.itemPlural}.zip`;
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
@@ -1423,6 +1565,23 @@ export default function ClientGallery({}: ClientGalleryProps) {
 
         {/* Gallery Content */}
         <Box sx={{ flex: 1, p: 3, bgcolor: '#0a0f1a' }}>
+          {/* «Nye bilder»-banner: fotografen har lastet opp mer siden galleriet
+              ble opprettet. Tidsbasert signal fra GET-metaen. */}
+          {!!gallery?.recentlyAddedCount && gallery.recentlyAddedCount > 0 && (
+            <Alert
+              severity="success"
+              sx={{
+                mb: 3,
+                bgcolor: 'rgba(16,185,129,0.12)',
+                border: '1px solid rgba(16,185,129,0.35)',
+                color: '#fff', '& .MuiAlert-icon': { color: '#10B981' },
+              }}
+            >
+              {gallery.recentlyAddedCount === 1
+                ? '1 nytt bilde lagt til nylig — bla ned for å se det.'
+                : `${gallery.recentlyAddedCount} nye bilder lagt til nylig — bla ned for å se dem.`}
+            </Alert>
+          )}
           {/* Leveranse-progress + versjons-historikk.
               Begge mountes kun når galleriet er ferdig lastet og passordet
               er løst (samme gating som images-query bruker). */}
@@ -2557,6 +2716,97 @@ export default function ClientGallery({}: ClientGalleryProps) {
           imageTitle={printOrderImage.imageTitle || null}
           clientEmail={gallery?.clientEmail || null}
           clientName={gallery?.clientName || null}
+        />
+      )}
+
+      {/*
+        UX-gap #16-fix: mobile selection-bar.
+        Sidebar er skjult på xs (se Box-en med 'Left Sidebar'-komment).
+        Denne fixed-bottom-bar gir mobile-bruker de viktigste hand-
+        lingene uten å ta over hele skjermen. Vises kun på xs.
+        Bruker MUI-ikoner (Checklist, Send) per feedback-memory
+        'no-emojis-use-mui-icons'.
+      */}
+      <Paper
+        elevation={8}
+        sx={{
+          display: { xs: 'flex', md: 'none' },
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          zIndex: 1200,
+          bgcolor: 'rgba(15, 20, 25, 0.96)',
+          backdropFilter: 'blur(12px)',
+          borderTop: '1px solid rgba(255,255,255,0.12)',
+          color: '#fff',
+          flexDirection: 'column',
+          gap: 1,
+          p: 1.5,
+          pb: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+        }}
+      >
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{ alignItems: 'center', justifyContent: 'space-between' }}
+        >
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)' }}>
+            {selectedImages.size === 0
+              ? 'Ingen valgt ennå'
+              : `${selectedImages.size} valgt${
+                  (gallery?.gallerySettings?.contractedImages ?? 0) > 0
+                    ? ` av ${gallery?.gallerySettings?.contractedImages} inkluderte`
+                    : ''
+                }`}
+          </Typography>
+          {visibleImages.length > 0 && (
+            <Button
+              variant="text"
+              size="small"
+              startIcon={
+                selectedImages.size === visibleImages.length
+                  ? <RemoveDoneIcon sx={{ fontSize: 18 }} />
+                  : <PlaylistAddCheck sx={{ fontSize: 18 }} />
+              }
+              onClick={() => {
+                if (selectedImages.size === visibleImages.length) {
+                  setSelectedImages(new Set());
+                } else {
+                  setSelectedImages(new Set(visibleImages.map((img: GalleryImage) => img.id)));
+                }
+              }}
+              sx={{ color: 'rgba(255,255,255,0.85)' }}
+            >
+              {selectedImages.size === visibleImages.length ? 'Fjern alle' : `Velg alle (${visibleImages.length})`}
+            </Button>
+          )}
+        </Stack>
+        <Button
+          variant="contained"
+          fullWidth
+          size="large"
+          startIcon={<Send />}
+          disabled={selectedImages.size === 0 || submitSelectionMutation.isPending}
+          onClick={() => setShowSubmitDialog(true)}
+          sx={{
+            bgcolor: config.primaryColor,
+            color: 'white',
+            py: 1.25,
+            '&:hover': { bgcolor: alpha(config.primaryColor, 0.85) },
+            '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)' },
+          }}
+        >
+          {selectedImages.size === 0 ? 'Velg bilder først' : 'Send valg'}
+        </Button>
+      </Paper>
+      {/* Delt chat med teamet — flytende boble; kun visibility='shared'-meldinger */}
+      {accessToken && (
+        <ClientSharedChat
+          accessToken={accessToken}
+          clientName={gallery?.clientName || null}
+          primaryColor={config.primaryColor}
+          passwordHeaders={galleryPassword ? { 'x-gallery-password': galleryPassword } : undefined}
         />
       )}
     </Box>

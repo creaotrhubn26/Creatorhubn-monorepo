@@ -10,6 +10,8 @@ import SwiftUI
 /// ``@Environment`` without threading the service through manually.
 @main
 struct CaptureAppMain: App {
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -24,6 +26,12 @@ struct CaptureAppMain: App {
                     if ProcessInfo.processInfo.arguments.contains("--record-session") {
                         _ = try? await CCAPISessionRecorder.shared.start(label: "launch")
                     }
+
+                    // Annonser denne iPad-en via Bonjour så Creatorhub
+                    // One Desk (Mac-companion) kan finne den under
+                    // shoot. Idempotent — multiple start()-kall no-op.
+                    // Spec: docs/capture/desk-pairing.md.
+                    PairingAdvertiser.shared.start()
                 }
         }
     }
@@ -52,22 +60,94 @@ struct RootView: View {
     private let launchArguments = ProcessInfo.processInfo.arguments
 
     var body: some View {
-        switch resolvedSurface {
-        case .legacyCapture:
-            LiveCaptureView()
-        case .onboardingForced:
-            // Dev/test-only: wipe the persisted flag so the flow
-            // runs even on a previously-completed install. ``.task``
-            // runs once when the view mounts, so screenshot
-            // recorders can count on the reset happening before
-            // the first snapshot.
-            OnboardingView(onFinish: finishOnboarding)
-                .task { OnboardingCompletionFlag().reset() }
-        case .onboarding:
-            OnboardingView(onFinish: finishOnboarding)
-        case .mainShell:
-            CreatorHubOneRootView()
+        Group {
+            switch resolvedSurface {
+            case .legacyCapture:
+                LiveCaptureView()
+            case .onboardingForced:
+                // Dev/test-only: wipe the persisted flag so the flow
+                // runs even on a previously-completed install. ``.task``
+                // runs once when the view mounts, so screenshot
+                // recorders can count on the reset happening before
+                // the first snapshot.
+                OnboardingView(onFinish: finishOnboarding)
+                    .task { OnboardingCompletionFlag().reset() }
+            case .onboarding:
+                OnboardingView(onFinish: finishOnboarding)
+            case .mainShell:
+                CreatorHubOneRootView()
+                    .task {
+                        // Innlogget → be om push-tillatelse + registrer APNs-token.
+                        PushNotificationService.shared.requestAuthorizationAndRegister()
+                    }
+            case .demoAI:
+                DemoAIView()
+            case .demoRedigering:
+                RedigeringDemoView()
+            case .demoShotList:
+                ShotListDemoView()
+            case .demoMessages:
+                MessagesDemoView()
+            case .demoBrief:
+                ShotListFromBriefView(
+                    onSave: { _ in },
+                    fetchTimeline: {
+                        "Bryllup: Nora & Jonas.\nDagsplan (fra bryllups-timeline):\n"
+                            + "- 12:30 Forberedelser (brudesuiten) — sminke, detaljer: ringer, bukett, sko\n"
+                            + "- 13:30 First look (hagen)\n"
+                            + "- 14:30 Vielse (kapellet)\n"
+                            + "- 15:15 Gratulasjoner + familiebilder (utenfor kapellet)\n"
+                            + "- 16:00 Brudepar-portretter (gyllen time ved vannet)\n"
+                            + "- 18:00 Middag + taler (festsalen)\n"
+                            + "- 21:00 Kake + første dans\n"
+                            + "- 22:00 Fest på dansegulvet"
+                    },
+                    callSheetURL: { scenes in
+                        let steps: [[String: String]] = scenes.map { s in
+                            if let r = s.range(of: " — ") {
+                                return ["label": String(s[..<r.lowerBound]).trimmingCharacters(in: .whitespaces),
+                                        "desc": String(s[r.upperBound...]).trimmingCharacters(in: .whitespaces)]
+                            }
+                            return ["label": s]
+                        }
+                        let data: [String: Any] = ["title": "Nora & Jonas — Call-sheet", "accent": "#FF6B35", "steps": steps]
+                        return BackendClient(baseURL: URL(string: "https://creatorhub-backend-rtbl.onrender.com")!)
+                            .infographicRenderURL(tpl: "/embed/templates/call-sheet.html", width: 1200, height: 1500, data: data, accentHex: "FF6B35")
+                    },
+                    initialBrief: "Bryllup: Nora & Jonas.\nDagsplan (fra bryllups-timeline):\n"
+                        + "- 13:30 First look (hagen)\n- 14:30 Vielse (kapellet)\n"
+                        + "- 16:00 Brudepar-portretter (gyllen time)\n- 21:00 Kake + første dans",
+                    autoGenerate: true)
+                    .preferredColorScheme(.dark)
+            }
         }
+        // Globalt overlegg som dukker opp uansett hvilken surface som
+        // er aktiv. Drives av PairingRequestStore.shared som
+        // PairingConnection setter ved innkommende Desk-pair-request.
+        .sheet(item: pairingBinding) { request in
+            PairWithDeskPromptView(
+                request: request,
+                onAccept: { PairingRequestStore.shared.accept() },
+                onReject: { PairingRequestStore.shared.reject() },
+            )
+        }
+    }
+
+    /// SwiftUI .sheet(item:) krever Identifiable — wrappes så
+    /// activeRequest blir bundet via dens id (deskId).
+    private var pairingBinding: Binding<IdentifiablePairRequest?> {
+        Binding(
+            get: {
+                PairingRequestStore.shared.activeRequest.map(IdentifiablePairRequest.init)
+            },
+            set: { new in
+                if new == nil {
+                    // Sheet dismissed uten knapp — behandle som avvist
+                    // for protokoll-konsistens.
+                    PairingRequestStore.shared.reject(reason: "dismissed")
+                }
+            },
+        )
     }
 
     // MARK: - Routing
@@ -77,9 +157,29 @@ struct RootView: View {
         case onboardingForced
         case onboarding
         case mainShell
+        case demoAI
+        case demoRedigering
+        case demoShotList
+        case demoMessages
+        case demoBrief
     }
 
     private var resolvedSurface: Surface {
+        if launchArguments.contains("--demo-redigering") {
+            return .demoRedigering
+        }
+        if launchArguments.contains("--demo-brief") {
+            return .demoBrief
+        }
+        if launchArguments.contains("--demo-messages") {
+            return .demoMessages
+        }
+        if launchArguments.contains("--demo-shotlist") {
+            return .demoShotList
+        }
+        if launchArguments.contains("--demo-ai") {
+            return .demoAI
+        }
         if launchArguments.contains("--legacy-capture-only") {
             return .legacyCapture
         }
@@ -91,5 +191,26 @@ struct RootView: View {
 
     private func finishOnboarding() {
         hasOnboarded = true
+    }
+}
+
+/// PairRequest er ikke Identifiable selv (struct fra protokoll-laget).
+/// Wrapper'en gir den en id slik at SwiftUI .sheet(item:) kan binde
+/// den, og pairingBinding kan oversette mellom store og sheet-API.
+private struct IdentifiablePairRequest: Identifiable {
+    let request: PairingProtocol.PairRequest
+    var id: String { request.deskId }
+    init(_ request: PairingProtocol.PairRequest) {
+        self.request = request
+    }
+}
+
+extension PairWithDeskPromptView {
+    fileprivate init(
+        request: IdentifiablePairRequest,
+        onAccept: @escaping () -> Void,
+        onReject: @escaping () -> Void,
+    ) {
+        self.init(request: request.request, onAccept: onAccept, onReject: onReject)
     }
 }

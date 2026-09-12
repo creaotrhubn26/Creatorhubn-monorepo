@@ -378,7 +378,56 @@ const ASPECT_RATIOS: Record<string, number> = {
 };
 
 const STANDARD_BRUSH_OPTIONS: BrushType[] = ['pen', 'marker', 'highlighter'];
-const PRO_BRUSH_OPTIONS: ProBrushType[] = ['pen', 'marker', 'highlighter'];
+// Full tørrmedie-palett — graphite/charcoal/conté/ink/watercolor rendres av
+// stamp-motoren i commit-laget; smudge drar piksler; eraser er piksel-basert.
+const PRO_BRUSH_OPTIONS: ProBrushType[] = [
+  // Story Brush Engine (DRAW / TONE / CLEAN — iPad-paritet)
+  'layout', 'pencil', 'heavy', 'detail', 'ink',
+  'hatch', 'crosshatch', 'shade', 'graintex', 'smudge',
+  'eraser', 'kneaded', 'lightlift',
+  'forest', 'debris', 'organictex', 'fur', 'toneblock', 'speedlines',
+  'airbrush', 'wethair', 'softfocus', 'skintex', 'rocktex', 'gloss',
+  'wash', 'spikes', 'fill', 'halftone', 'stamp', 'custom',
+  // Klassiske
+  'graphite', 'charcoal', 'conte', 'pen', 'marker', 'highlighter', 'watercolor',
+];
+const PRO_BRUSH_LABELS: Record<string, string> = {
+  layout: 'Layout',
+  heavy: 'Heavy',
+  detail: 'Detalj',
+  hatch: 'Skraver',
+  crosshatch: 'Kryss',
+  shade: 'Skygge',
+  graintex: 'Korn',
+  kneaded: 'Kna',
+  lightlift: 'Lysløft',
+  forest: 'Skog',
+  debris: 'Bunn',
+  organictex: 'Bark',
+  fur: 'Pels',
+  toneblock: 'Tone',
+  speedlines: 'Fart',
+  airbrush: 'Luft',
+  wethair: 'Hår',
+  softfocus: 'Fokus',
+  skintex: 'Hud',
+  rocktex: 'Stein',
+  gloss: 'Glans',
+  wash: 'Vask',
+  spikes: 'Pigg',
+  fill: 'Fyll', halftone: 'Raster', stamp: 'Stamp', custom: 'Egen',
+  pencil: 'Pencil',
+  graphite: 'Graphite',
+  charcoal: 'Charcoal',
+  conte: 'Conté',
+  pen: 'Pen',
+  ink: 'Ink',
+  marker: 'Marker',
+  highlighter: 'Highlight',
+  watercolor: 'Akvarell',
+  smudge: 'Smudge',
+  eraser: 'Viskelær',
+};
 const STUDIO_DECK_TABS = ['ROUGH', 'INK', 'SHADOW', 'LIGHT', 'FX', 'TEXT'] as const;
 const STUDIO_ANIMATION_OUTPUTS = ['Storyboards', 'GIFs', 'Animatics', 'Simple Anim'] as const;
 const STUDIO_GUIDE_MODES = ['Perspective', 'Isometric', '2D', 'Symmetry'] as const;
@@ -8801,6 +8850,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
         color: brushSettings.color,
         opacity: brushSettings.opacity,
       }}
+      streamlineOverride={(stabilizeValue / 100) * 0.92}
       showToolbar={showEmbeddedCanvasToolbar}
       showPressureIndicator={device.hasPencilSupport}
       showReferenceImageControls={boardPolishPresentationActive ? false : showWorkspaceChrome ? false : showReferenceImageControls}
@@ -9146,9 +9196,9 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                     },
                   }}
                 >
-                  <ToggleButton value="pen">Pen</ToggleButton>
-                  <ToggleButton value="marker">Marker</ToggleButton>
-                  <ToggleButton value="highlighter">Highlight</ToggleButton>
+                  {(proMode ? PRO_BRUSH_OPTIONS : STANDARD_BRUSH_OPTIONS).map((type) => (
+                    <ToggleButton key={type} value={type}>{PRO_BRUSH_LABELS[type] ?? type}</ToggleButton>
+                  ))}
                 </ToggleButtonGroup>
               </Stack>
 
@@ -9314,7 +9364,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Brush sx={{ color: '#8b5cf6' }} />
+                <Brush sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
                 <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600 }}>
                   {editorTitle}
                 </Typography>
@@ -9330,7 +9380,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                 <Chip
                   label={`Frame: ${frameId.slice(-6)}`}
                   size="small"
-                  sx={{ bgcolor: 'rgba(139,92,246,0.2)', color: '#8b5cf6' }}
+                  sx={{ bgcolor: 'rgba(139,92,246,0.2)', color: 'var(--role-violet, #8b5cf6)' }}
                 />
               )}
 
@@ -9425,9 +9475,9 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                   },
                 }}
               >
-                <ToggleButton value="pen">Pen</ToggleButton>
-                <ToggleButton value="marker">Marker</ToggleButton>
-                <ToggleButton value="highlighter">Highlight</ToggleButton>
+                {(proMode ? PRO_BRUSH_OPTIONS : STANDARD_BRUSH_OPTIONS).map((type) => (
+                  <ToggleButton key={type} value={type}>{PRO_BRUSH_LABELS[type] ?? type}</ToggleButton>
+                ))}
               </ToggleButtonGroup>
 
               <ToggleButtonGroup
@@ -9455,14 +9505,14 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
 
               <Tooltip title="Undo">
                 <span>
-                  <IconButton onClick={handleUndo} sx={{ color: 'rgba(255,255,255,0.87)' }} disabled={!strokes.length}>
+                  <IconButton onClick={handleUndo} sx={{ color: 'rgba(255,255,255,0.87)' }}>
                     <Undo />
                   </IconButton>
                 </span>
               </Tooltip>
               <Tooltip title="Redo">
                 <span>
-                  <IconButton onClick={handleRedo} sx={{ color: 'rgba(255,255,255,0.87)' }} disabled={!strokes.length}>
+                  <IconButton onClick={handleRedo} sx={{ color: 'rgba(255,255,255,0.87)' }}>
                     <Redo />
                   </IconButton>
                 </span>
@@ -18363,7 +18413,7 @@ export const QuickDrawButton: FC<QuickDrawButtonProps> = ({
             '&:hover': { bgcolor: 'rgba(139,92,246,0.2)' },
           }}
         >
-          <Brush sx={{ color: '#8b5cf6' }} />
+          <Brush sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
         </IconButton>
       </Tooltip>
 

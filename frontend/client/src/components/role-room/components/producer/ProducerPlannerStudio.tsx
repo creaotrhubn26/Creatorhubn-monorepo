@@ -81,6 +81,7 @@ import {
 } from '../../utils/producerProjectPlanning';
 import type { ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
 import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
+import { CollapsibleSection } from '../CollapsibleSection';
 
 type PlannerViewMode = 'timeline' | 'calendar' | 'coordination';
 type TimelineActionKind = 'milestone' | 'task';
@@ -2833,24 +2834,30 @@ export default function ProducerPlannerStudio({
           }}
         >
           <Stack spacing={1.25} sx={{ minWidth: 0 }}>
-            <ProducerMeetingWorkspace
-              project={liveProject}
-              projectId={project.id}
-              planning={planningDraft}
-              intake={clientIntake}
-              reviews={reviews}
-              timelineItems={timelineItems}
-              googleArtifacts={googleArtifacts}
-              readOnly={readOnly}
-              saving={savingPlanning}
-              onPlanningChange={(updater) => {
-                setPlanningDraft((previous) => updater(previous));
-              }}
-              onSavePlanning={() => savePlanning(planningDraft)}
-              onRefreshGoogleAssets={async () => {
-                await refreshGoogleArtifacts();
-              }}
-            />
+            <CollapsibleSection
+              title="Møte"
+              defaultOpen={false}
+              summary={`${(planningDraft.meetingWorkspace.agenda ?? []).length} agenda · ${(planningDraft.meetingWorkspace.decisions ?? []).length} beslutninger · ${(planningDraft.meetingWorkspace.followUps ?? []).filter((followUp) => followUp.status !== 'done').length} åpne oppfølginger`}
+            >
+              <ProducerMeetingWorkspace
+                project={liveProject}
+                projectId={project.id}
+                planning={planningDraft}
+                intake={clientIntake}
+                reviews={reviews}
+                timelineItems={timelineItems}
+                googleArtifacts={googleArtifacts}
+                readOnly={readOnly}
+                saving={savingPlanning}
+                onPlanningChange={(updater) => {
+                  setPlanningDraft((previous) => updater(previous));
+                }}
+                onSavePlanning={() => savePlanning(planningDraft)}
+                onRefreshGoogleAssets={async () => {
+                  await refreshGoogleArtifacts();
+                }}
+              />
+            </CollapsibleSection>
 
             <Box
               sx={{

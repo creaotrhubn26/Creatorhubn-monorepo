@@ -162,7 +162,7 @@ export function setupWeddingAssistantCollabRoutes(deps: WeddingAssistantCollabDe
         `SELECT photographer_id FROM wedding_timelines WHERE id = $1 LIMIT 1`,
         [weddingId],
       );
-      if (own.rowCount === 0 || own.rows[0].photographer_id !== uid) {
+      if (!own.rows.length || own.rows[0].photographer_id !== uid) {
         return res.status(403).json({ error: "Du eier ikke dette bryllupet" });
       }
 
@@ -219,7 +219,7 @@ export function setupWeddingAssistantCollabRoutes(deps: WeddingAssistantCollabDe
            WHERE a.id = $1 AND a.wedding_id = $2 AND a.primary_photographer_id = $3 LIMIT 1`,
         [req.params.assistantId, req.params.weddingId, uid],
       );
-      if (a.rowCount === 0) return res.status(404).json({ error: "Assistent finnes ikke" });
+      if (!a.rows.length) return res.status(404).json({ error: "Assistent finnes ikke" });
       const row = a.rows[0];
       if (!row.assistant_email) return res.status(400).json({ error: "Mangler assistent-e-post" });
 
@@ -273,7 +273,7 @@ export function setupWeddingAssistantCollabRoutes(deps: WeddingAssistantCollabDe
       });
     } catch (err: any) {
       console.error("POST schedule-brief:", err);
-      res.status(500).json({ error: err?.message || "Kunne ikke opprette brief-møte" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 

@@ -53,6 +53,10 @@ const ALLOWED_MIME = new Set([
 const previewVideoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_VIDEO_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("video/")) cb(null, true);
+    else cb(new Error("Kun videofiler er tillatt") as any, false);
+  },
 });
 
 function getUserIdFromRequest(

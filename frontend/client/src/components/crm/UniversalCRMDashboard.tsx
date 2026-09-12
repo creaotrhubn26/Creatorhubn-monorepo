@@ -1403,7 +1403,7 @@ export default function UniversalCRMDashboard({
                     minWidth: 130,
                     borderColor: alpha(colors.primary, 0.25),
                     color: colors.primary,
-                    bgcolor: alpha('#fff', 0.86),
+                    bgcolor: 'rgba(255,255,255,0.06)',
                     '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
                   }}
                 >
@@ -1418,7 +1418,7 @@ export default function UniversalCRMDashboard({
                     minWidth: 120,
                     borderColor: alpha(colors.primary, 0.25),
                     color: colors.primary,
-                    bgcolor: alpha('#fff', 0.86),
+                    bgcolor: 'rgba(255,255,255,0.06)',
                     '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
                   }}
                 >
@@ -1433,7 +1433,7 @@ export default function UniversalCRMDashboard({
                     minWidth: 176,
                     borderColor: alpha(colors.primary, 0.25),
                     color: colors.primary,
-                    bgcolor: alpha('#fff', 0.86),
+                    bgcolor: 'rgba(255,255,255,0.06)',
                     '&:hover': {
                       borderColor: colors.secondary,
                       bgcolor: alpha(colors.primary, 0.08),
@@ -1451,7 +1451,7 @@ export default function UniversalCRMDashboard({
                     minWidth: 140,
                     borderColor: alpha(colors.primary, 0.25),
                     color: colors.primary,
-                    bgcolor: alpha('#fff', 0.86),
+                    bgcolor: 'rgba(255,255,255,0.06)',
                     '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
                   }}
                 >
@@ -1466,7 +1466,7 @@ export default function UniversalCRMDashboard({
                     minWidth: 140,
                     borderColor: alpha(colors.primary, 0.25),
                     color: colors.primary,
-                    bgcolor: alpha('#fff', 0.86),
+                    bgcolor: 'rgba(255,255,255,0.06)',
                     '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
                   }}
                 >
@@ -1481,7 +1481,7 @@ export default function UniversalCRMDashboard({
                     minWidth: 140,
                     borderColor: (stats.tasks?.overdue || 0) > 0 ? '#d32f2f' : alpha(colors.primary, 0.25),
                     color: (stats.tasks?.overdue || 0) > 0 ? '#d32f2f' : colors.primary,
-                    bgcolor: alpha('#fff', 0.86),
+                    bgcolor: 'rgba(255,255,255,0.06)',
                     '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
                   }}
                 >
@@ -1496,7 +1496,7 @@ export default function UniversalCRMDashboard({
                     minWidth: 140,
                     borderColor: alpha(colors.primary, 0.25),
                     color: colors.primary,
-                    bgcolor: alpha('#fff', 0.86),
+                    bgcolor: 'rgba(255,255,255,0.06)',
                     '&:hover': { borderColor: colors.secondary, bgcolor: alpha(colors.primary, 0.08) },
                   }}
                 >
@@ -1510,7 +1510,7 @@ export default function UniversalCRMDashboard({
                     minWidth: 150,
                     borderColor: alpha(colors.primary, 0.25),
                     color: colors.primary,
-                    bgcolor: alpha('#fff', 0.86),
+                    bgcolor: 'rgba(255,255,255,0.06)',
                     '&:hover': {
                       borderColor: colors.secondary,
                       bgcolor: alpha(colors.primary, 0.08),
@@ -1547,7 +1547,7 @@ export default function UniversalCRMDashboard({
                 label={`Adopsjon ${Math.round(features.getFeatureAnalytics().featureAdoptionRate * 100)}%`}
                 size="small"
                 variant="outlined"
-                sx={{ borderColor: alpha(colors.primary, 0.2), bgcolor: alpha('#fff', 0.72) }}
+                sx={{ borderColor: alpha(colors.primary, 0.2), bgcolor: 'rgba(255,255,255,0.06)' }}
               />
             </Stack>
           </Stack>

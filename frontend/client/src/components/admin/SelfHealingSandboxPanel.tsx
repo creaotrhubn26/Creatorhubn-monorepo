@@ -6,18 +6,17 @@ import {
   Typography,
   Switch,
   FormControlLabel,
-  Button,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Chip,
   IconButton,
   Tooltip,
   Alert,
   Grid,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   AutoFixHigh as AutoFixIcon,
@@ -26,10 +25,12 @@ import {
   Delete as ClearIcon,
   Visibility as ViewIcon,
   CheckCircle as SuccessIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import type { RecordedCall, WireMockMapping } from '../../utils/selfHealingSandbox';
 import { selfHealingSandbox } from '../../utils/selfHealingSandbox';
 import { toast } from '../../hooks/use-toast';
+import { AdminButton, StatusChip, AdminTableContainer, AdminEmpty } from './design-system';
 
 export const SelfHealingSandboxPanel: React.FC = () => {
   const [autoConvertEnabled, setAutoConvertEnabled] = useState(false);
@@ -42,6 +43,7 @@ export const SelfHealingSandboxPanel: React.FC = () => {
   });
   const [selectedCall, setSelectedCall] = useState<RecordedCall | null>(null);
   const [selectedMapping, setSelectedMapping] = useState<WireMockMapping | null>(null);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -130,7 +132,7 @@ export const SelfHealingSandboxPanel: React.FC = () => {
       <CardContent>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
           <Box display="flex" alignItems="center" gap={1}>
-            <AutoFixIcon />
+            <AutoFixIcon aria-hidden />
             <Typography variant="h6">
               🔧 Self-Healing Sandbox
             </Typography>
@@ -199,37 +201,48 @@ export const SelfHealingSandboxPanel: React.FC = () => {
         </Grid>
 
         {/* Actions */}
-        <Box display="flex" gap={1} mb={2}>
-          <Button
-            size="small"
-            variant="outlined"
+        <Box display="flex" gap={1} mb={2} sx={{ flexWrap: 'wrap' }}>
+          <AdminButton
+            tone="secondary"
             startIcon={<ExportIcon />}
             onClick={handleExport}
             disabled={recordedCalls.length === 0}
           >
             Export Mappings
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            color="error"
+          </AdminButton>
+          <AdminButton
+            tone="danger"
             startIcon={<ClearIcon />}
             onClick={handleClear}
             disabled={recordedCalls.length === 0}
           >
             Clear
-          </Button>
+          </AdminButton>
         </Box>
 
         {/* Recorded Calls Table */}
         {recordedCalls.length === 0 ? (
-          <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-            <Typography>
-              No calls recorded yet. {autoConvertEnabled ? 'Make API calls to see them here.' : 'Enable auto-convert to start recording.'}
-            </Typography>
-          </Box>
+          <AdminEmpty
+            title="No calls recorded yet"
+            description={autoConvertEnabled ? 'Make API calls to see them here.' : 'Enable auto-convert to start recording.'}
+          />
         ) : (
-          <TableContainer sx={{ maxHeight: 400 }}>
+          <>
+          <TextField
+            size="small"
+            placeholder="Søk URL eller metode …"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            sx={{ mb: 2, width: { xs: '100%', sm: 320 } }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+          <AdminTableContainer ariaLabel="Recorded API calls" sx={{ maxHeight: 400 }}>
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
@@ -242,13 +255,15 @@ export const SelfHealingSandboxPanel: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {recordedCalls.map((call) => (
+                {recordedCalls.filter((call) =>
+                  `${call.request.url} ${call.request.method}`.toLowerCase().includes(search.toLowerCase())
+                ).map((call) => (
                   <TableRow key={call.id} hover>
                     <TableCell>
                       {new Date(call.timestamp).toLocaleTimeString()}
                     </TableCell>
                     <TableCell>
-                      <Chip label={call.request.method} size="small" color="primary" />
+                      <StatusChip tone="brand" label={call.request.method} />
                     </TableCell>
                     <TableCell>
                       <Tooltip title={call.request.url}>
@@ -258,10 +273,9 @@ export const SelfHealingSandboxPanel: React.FC = () => {
                       </Tooltip>
                     </TableCell>
                     <TableCell>
-                      <Chip
-                        label={call.response.status}
-                        size="small"
-                        color={call.response.status >= 200 && call.response.status < 300 ? 'success' : 'error'}
+                      <StatusChip
+                        label={String(call.response.status)}
+                        tone={call.response.status >= 200 && call.response.status < 300 ? 'success' : 'error'}
                       />
                     </TableCell>
                     <TableCell align="right">
@@ -269,12 +283,12 @@ export const SelfHealingSandboxPanel: React.FC = () => {
                     </TableCell>
                     <TableCell align="center">
                       <Tooltip title="View Mapping">
-                        <IconButton size="small" onClick={() => handleViewMapping(call)}>
+                        <IconButton size="small" aria-label="Vis mapping" onClick={() => handleViewMapping(call)}>
                           <ViewIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Save to WireMock">
-                        <IconButton size="small" onClick={() => handleSaveMapping(call)} color="success">
+                        <IconButton size="small" aria-label="Lagre til WireMock" onClick={() => handleSaveMapping(call)} color="success">
                           <SaveIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -283,7 +297,8 @@ export const SelfHealingSandboxPanel: React.FC = () => {
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
+          </>
         )}
 
         {/* Mapping Preview */}

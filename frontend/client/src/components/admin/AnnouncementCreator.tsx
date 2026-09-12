@@ -11,8 +11,6 @@ import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions'
 import { useMutation } from '@tanstack/react-query';
 import {
   Box,
-  Card,
-  CardContent,
   TextField,
   Button,
   FormControl,
@@ -48,6 +46,7 @@ import WhatsNewModal from '../WhatsNewModal';
 import MarketingWorkflowIntegration from './MarketingWorkflowIntegration';
 import EmailDesigner from '../EmailDesigner/EmailDesigner';
 import { PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
+import { AdminCard, AdminButton, useIsMobile } from './design-system';
 
 interface AnnouncementForm {
   title: string;
@@ -103,6 +102,7 @@ export default function AnnouncementCreator() {
   const { professionConfigs: apiProfessionConfigs, hasData: hasApiProfessionConfigs } = useProfessionConfigs();
   const professionAdapter = useProfessionAdapter();
   const { getAllProfessionTypes, getProfessionDisplayName, getUserProfessionColor } = useDynamicProfessions();
+  const isMobile = useIsMobile();
 
   const [form, setForm] = useState<AnnouncementForm>({
     title: '',
@@ -349,12 +349,7 @@ export default function AnnouncementCreator() {
 
   return (
     <Box>
-      <Card>
-        <CardContent>
-          <Typography variant="h5" sx={{ mb: 3, fontWeight: 600}}>
-            Opprett Ny Kunngjøring
-          </Typography>
-
+      <AdminCard title="Opprett Ny Kunngjøring">
           {successMessage && (
             <Alert severity="success" sx={{ mb: 3 }}>
               {successMessage}
@@ -476,7 +471,7 @@ export default function AnnouncementCreator() {
 
             <Grid item xs={12}>
               <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" sx={{ mb: 2 }}>
+              <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
                 Tilleggsinformasjon
               </Typography>
             </Grid>
@@ -516,7 +511,7 @@ export default function AnnouncementCreator() {
 
             <Grid item xs={12}>
               <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" sx={{ mb: 2 }}>
+              <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
                 Tutorial Video med Marketing (valgfritt)
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -538,7 +533,7 @@ export default function AnnouncementCreator() {
               >
                 {uploadedVideoUrl ? (
                   <Box>
-                    <CheckIcon sx={{ fontSize: 48, color: 'success.main', mb: 1 }} />
+                    <CheckIcon aria-hidden sx={{ fontSize: 48, color: 'success.main', mb: 1 }} />
                     <Typography variant="h6" sx={{ mb: 1, color: 'success.main' }}>
                       Video lastet opp til YouTube!
                     </Typography>
@@ -557,7 +552,7 @@ export default function AnnouncementCreator() {
                   </Box>
                 ) : isUploading ? (
                   <Box>
-                    <YouTubeIcon sx={{ fontSize: 48, color: '#ff0000', mb: 1 }} />
+                    <YouTubeIcon aria-hidden sx={{ fontSize: 48, color: '#ff0000', mb: 1 }} />
                     <Typography variant="h6" sx={{ mb: 2 }}>
                       Laster opp til YouTube...
                     </Typography>
@@ -570,7 +565,7 @@ export default function AnnouncementCreator() {
                   </Box>
                 ) : (
                   <Box>
-                    <UploadIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+                    <UploadIcon aria-hidden sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
                     <Typography variant="h6" sx={{ mb: 1 }}>
                       Last opp video til YouTube
                     </Typography>
@@ -752,7 +747,7 @@ export default function AnnouncementCreator() {
 
             {/* Action Buttons */}
             <Grid item xs={12}>
-                <Box display="flex" gap={2} justifyContent="space-between">
+                <Box display="flex" gap={2} justifyContent="space-between" sx={{ flexWrap: 'wrap' }}>
                 <Button
                   variant="outlined"
                   startIcon={<CampaignIcon />}
@@ -761,7 +756,7 @@ export default function AnnouncementCreator() {
                 >
                   Marketing Workflow
                 </Button>
-                <Box display="flex" gap={2}>
+                <Box display="flex" gap={2} sx={{ flexWrap: 'wrap' }}>
                   <Button
                     variant="outlined"
                     startIcon={<SendIcon />}
@@ -770,13 +765,14 @@ export default function AnnouncementCreator() {
                   >
                     Design E-post
                   </Button>
-                  <Button
+                  <AdminButton
+                    tone="ghost"
                     startIcon={<ClearIcon />}
                     onClick={handleClear}
                     disabled={createMutation.isPending}
                   >
                     Tøm
-                  </Button>
+                  </AdminButton>
                   <Button
                     variant="outlined"
                     startIcon={<PreviewIcon />}
@@ -786,22 +782,20 @@ export default function AnnouncementCreator() {
                   >
                     Forhåndsvis
                   </Button>
-                  <Button
-                    variant="contained"
+                  <AdminButton
+                    tone="primary"
                     startIcon={<SaveIcon />}
                     onClick={handleCreate}
+                    loading={createMutation.isPending}
                     disabled={!form.title || !form.content || createMutation.isPending}
-                    sx={{
-                      bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' }}}
                   >
                     {form.sendEmail ? 'Opprett & Send E-post' : 'Opprett Kunngjøring'}
-                  </Button>
+                  </AdminButton>
                 </Box>
               </Box>
             </Grid>
           </Grid>
-        </CardContent>
-      </Card>
+      </AdminCard>
 
       {/* Preview Modal */}
       <WhatsNewModal
@@ -835,6 +829,7 @@ export default function AnnouncementCreator() {
       <Dialog
         open={emailDesignerOpen}
         onClose={() => setEmailDesignerOpen(false)}
+        fullScreen={isMobile}
         fullWidth
         maxWidth="xl"
       >

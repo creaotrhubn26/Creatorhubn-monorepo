@@ -153,6 +153,23 @@ final class UserEventDecoderTests: XCTestCase {
         XCTAssertEqual(kind, "project.invited")
     }
 
+    func testVersionOneFrameDecodes() {
+        let json = """
+        {"version":1,"type":"user_event","event":{"kind":"asset.hearted","assetId":"a","sessionId":"s","hearted":true,"timestamp":"2026-04-19T10:00:00Z"}}
+        """
+        XCTAssertNotNil(UserEvent.decode(jsonText: json))
+    }
+
+    func testUnsupportedProtocolVersionIsDropped() {
+        let json = """
+        {"version":2,"type":"user_event","event":{"kind":"asset.hearted","assetId":"a","sessionId":"s","hearted":true,"timestamp":"2026-04-19T10:00:00Z"}}
+        """
+        XCTAssertNil(
+            UserEvent.decode(jsonText: json),
+            "unknown protocol versions must not be decoded against the v1 contract"
+        )
+    }
+
     // MARK: - Filters
 
     func testConnectionEstablishedFrameIsDropped() {

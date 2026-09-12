@@ -1,0 +1,1943 @@
+// AppState.swift
+//
+// Global observable state. Sentralisert auth + last-fetched data så
+// vi unngår å re-fetche samme info i forskjellige views.
+//
+// Offline-strategi:
+//   - bootstrap() laster fra cache først (umiddelbart synlig UI) →
+//     forsøker refresh (overskriver hvis suksess)
+//   - refreshAll() lagrer vellykkede snapshots til cache
+//   - VisitLogModal sin save() går via enqueueOrSendVisit() som
+//     bruker actor-/workspace-bundet, idempotent offline-kø
+
+import Foundation
+import Observation
+#if canImport(UIKit)
+import UIKit
+#endif
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
+
+enum WorkspacePlanLoadState: Equatable {
+    case idle
+    case loading
+    case loaded
+    case failed
+}
+
+@MainActor
+@Observable
+final class AppState {
+    // Auth
+    var authToken: String?
+    var userEmail: String?
+    var currentUserId: String?
+    var isAuthenticated: Bool { authToken != nil }
+
+    /// Vist navn i header, kart og profil. Serverprofilen er autoritativ;
+    /// e-postens local-part er kun fallback mens profilen lastes.
+    var displayName: String {
+        if let fullName = profileStore.profile?.fullName, !fullName.isEmpty {
+            return fullName
+        }
+        guard let email = userEmail, let local = email.split(separator: "@").first else {
+            return "Gjest"
+        }
+        let parts = local.split { $0 == "." || $0 == "_" || $0 == "-" }
+        return parts
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
+    }
+
+    /// Profilbilde fra backend. Avviser andre skjema enn HTTP(S) før UI laster.
+    var profileImageURL: URL? {
+        guard let raw = profileStore.profile?.profileImageUrl,
+              let url = URL(string: raw),
+              ["https", "http"].contains(url.scheme?.lowercased() ?? "")
+        else { return nil }
+        return url
+    }
+
+    /// 1-2 bokstavers initialer for avatar-badge. Faller tilbake til «?»
+    /// hvis brukeren ikke er innlogget (så UI ikke krasjer på nil).
+    var initials: String {
+        let name = displayName
+        guard name != "Gjest" else { return "?" }
+        let parts = name.split(separator: " ")
+        if parts.count >= 2 {
+            return String(parts[0].prefix(1) + parts[1].prefix(1)).uppercased()
+        }
+        return String(name.prefix(2)).uppercased()
+    }
+
+    /// Aktivt valg i iPad-sidebar. Bevares mellom portrait/landscape så
+    /// rotasjon ikke mister kontekst. Default = .oversikt (matcher mocken).
+    var selectedSidebarItem: SidebarItem = .oversikt
+
+    /// «Min bil»-profil (drivstoff/type) — skreddersyr POI-default, kjøre-
+    /// godtgjørelse-sats og anbefalinger i nav. Persistert i UserDefaults.
+    var vehicleProfile: VehicleProfile = VehicleProfileStore.load() {
+        didSet { VehicleProfileStore.save(vehicleProfile) }
+    }
+
+    // ── Pondus deep-link (App Intents / Watch → Leadbook > Pondus) ─────
+    /// Set av `AppStateBridge.navigateToPondus(...)` når en Siri Shortcut,
+    /// Spotlight-treff eller Watch-aktivering vil åpne Pondus-fanen. Består
+    /// gjennom cold-start: intent kjører → `perform()` setter dette → app
+    /// blir launched → LeadbookView-observer plukker opp første `.task`.
+    ///
+    /// `deepLinkPondusTemplateName` støtter aktivering m/ navn (Siri:
+    /// «Aktiver pondus første kontakt»), `deepLinkPondusTemplateId` for
+    /// stabil id-basert routing (Watch-siden sender uuid).
+    var deepLinkPondusTemplateId: String?
+    var deepLinkPondusTemplateName: String?
+    var deepLinkPondusStepIndex: Int?
+    /// Tid da deep-link ble satt — brukes til å ignorere gamle deep-links
+    /// (>60s) som kan ha kommet fra en tidligere session-kø.
+    var deepLinkPondusRequestedAt: Date?
+
+    /// Backend notifications and copied links route here. LeadbookExamplesView
+    /// consumes the id after it has fetched tenant-authorized detail.
+    var deepLinkLeadbookExampleId: String?
+    var deepLinkLeadbookRequestedAt: Date?
+
+    /// Singleton for lettvekts observable pondus-store som App Intents kan
+    /// lese uten å gå via SwiftUI-view-hierarkiet. LeadbookView bytter til
+    /// denne (i stedet for lokal @State) slik at `PondusScoreIntent` og
+    /// `ActivatePondusIntent` kan matche mot live data.
+    let pondusStore: PondusStore = PondusStore()
+
+    /// Én profilkilde for header, kart og redigeringsarket.
+    let profileStore = ProfileStore()
+
+    /// Durable Discovery v2 state lives above every sheet/tab so a backend run
+    /// survives dismissal, rotation, Split View and scene recreation.
+    let discoveryCoordinator = DiscoveryRunCoordinator()
+
+    /// Sett deep-link + tidsstempel. Kalles av AppStateBridge (og indirekte
+    /// av App Intents). LeadbookView.onAppear/task/onChange plukker opp
+    /// dette og switch-er til Pondus-fanen.
+    func setPondusDeepLink(
+        templateId: String? = nil,
+        templateName: String? = nil,
+        stepIndex: Int? = nil
+    ) {
+        self.deepLinkPondusTemplateId = templateId
+        self.deepLinkPondusTemplateName = templateName
+        self.deepLinkPondusStepIndex = stepIndex
+        self.deepLinkPondusRequestedAt = Date()
+        self.selectedSidebarItem = .leadbook
+    }
+
+    /// Klarer deep-linken etter at LeadbookView har konsumert den. Vi
+    /// nuller ikke `selectedSidebarItem` — brukeren skal bli i Leadbook.
+    func clearPondusDeepLink() {
+        self.deepLinkPondusTemplateId = nil
+        self.deepLinkPondusTemplateName = nil
+        self.deepLinkPondusStepIndex = nil
+        self.deepLinkPondusRequestedAt = nil
+    }
+
+    @discardableResult
+    func handleLeadgridURL(_ url: URL) async -> Bool {
+        guard let route = LeadbookDeepLinkRouter.parse(url) else { return false }
+        if let scope = route.scope {
+            guard await activateLeadgridDeepLinkScope(scope) else { return false }
+        } else {
+            // Legacy copied links contain no tenant identifiers. They may only
+            // resolve inside an already-selected, server-validated context.
+            guard activeOrganizationId != nil, activeProjectId != nil else { return false }
+        }
+        switch route.destination {
+        case .example(let id):
+            deepLinkLeadbookExampleId = id.uuidString.lowercased()
+            deepLinkLeadbookRequestedAt = Date()
+            selectedSidebarItem = .leadbook
+        case .template(let id):
+            setPondusDeepLink(templateId: id.uuidString.lowercased())
+        }
+        return true
+    }
+
+    private func activateLeadgridDeepLinkScope(
+        _ scope: LeadbookDeepLinkScope
+    ) async -> Bool {
+        guard let api else { return false }
+        if organizations.isEmpty {
+            await loadOrganizations()
+        }
+        guard organizations.contains(where: {
+            $0.id.lowercased() == scope.organizationId
+        }) else { return false }
+
+        if activeOrganizationId?.lowercased() != scope.organizationId {
+            activeOrganizationId = scope.organizationId
+        }
+        await api.setActiveOrganizationId(scope.organizationId)
+
+        do {
+            let fetched = try await api.fetchProjects(
+                organizationId: scope.organizationId
+            )
+            guard activeOrganizationId?.lowercased() == scope.organizationId else {
+                return false
+            }
+            let scopedProjects = fetched.filter {
+                $0.organizationId == nil
+                    || $0.organizationId?.lowercased() == scope.organizationId
+            }
+            guard scopedProjects.contains(where: { $0.id == scope.projectId }) else {
+                return false
+            }
+            projects = scopedProjects
+            projectsLoadState = .loaded
+            if activeProjectId != scope.projectId {
+                activeProjectId = scope.projectId
+            }
+            return true
+        } catch {
+            handleAPIError(error)
+            print("[AppState] deep-link project scope failed: \(error)")
+            return false
+        }
+    }
+
+    func clearLeadbookExampleDeepLink() {
+        deepLinkLeadbookExampleId = nil
+        deepLinkLeadbookRequestedAt = nil
+    }
+
+    // ── Nav deep-link (Møter «Naviger» → Kart ekte turn-by-turn-motor) ──
+    /// Set av Møter-fanen når brukeren trykker «Naviger» på et møte. KartView
+    /// plukker opp dette (`.task(id: deepLinkNavRequestedAt)`), bygger en
+    /// `MapLeadMock` av destinasjonen og starter ekte navigasjon (POV/Kjøre,
+    /// MKDirections, stemme). Erstatter den frosne mock-`NavigationFullScreenView`.
+    /// Speiler Pondus-mønsteret så det overlever tab-switch/cold-start.
+    var deepLinkNavLat: Double?
+    var deepLinkNavLon: Double?
+    var deepLinkNavName: String?
+    var deepLinkNavAddress: String?
+    /// `true` = start turn-by-turn med én gang. `false` = bare senter/velg
+    /// lead-en på kartet (rute-forhåndsvisning uten å gå inn i nav-modus).
+    var deepLinkNavStart: Bool = true
+    /// Transport-hint: "driving" fra «Start kjøring» (Leadgrid Go) — uten
+    /// dette arvet nav-en gå-modus selv når du setter deg i firmabilen.
+    var deepLinkNavTransport: String?
+    var deepLinkNavRequestedAt: Date?
+
+    /// Be Kart-fanen navigere til en koordinat. `start=true` går rett inn i
+    /// turn-by-turn; `start=false` senterer og velger lead-en (forhåndsvisning).
+    func requestNavigation(lat: Double, lon: Double, name: String, address: String,
+                           start: Bool = true, transport: String? = nil) {
+        self.deepLinkNavLat = lat
+        self.deepLinkNavLon = lon
+        self.deepLinkNavName = name
+        self.deepLinkNavAddress = address
+        self.deepLinkNavStart = start
+        self.deepLinkNavTransport = transport
+        self.deepLinkNavRequestedAt = Date()
+        self.selectedSidebarItem = .kart
+    }
+
+    /// Klarer nav-deep-linken etter at KartView har konsumert den. `selectedSidebarItem`
+    /// nulles ikke — brukeren skal bli på Kart-fanen.
+    func clearNavigationDeepLink() {
+        self.deepLinkNavLat = nil
+        self.deepLinkNavLon = nil
+        self.deepLinkNavName = nil
+        self.deepLinkNavAddress = nil
+        self.deepLinkNavTransport = nil
+        self.deepLinkNavRequestedAt = nil
+    }
+
+    // ── Aktiv fler-stopp-rute (Ruteplanlegger nivå 1) ──────────────────
+    /// Planlagt besøksrute fra RoutePlannerSheet. Persistert i UserDefaults
+    /// så dagens rute overlever app-restart. KartViews ankomst-tilstand
+    /// leser denne og tilbyr «Neste stopp (2/6)» — hele dagen kjøres uten
+    /// å åpne planleggeren igjen.
+    struct RuteStopp: Codable, Equatable {
+        let id: String
+        let name: String
+        let address: String
+        let lat: Double
+        let lon: Double
+        /// Avtalt tid (møte-anker fra nextFollowUpAt) — brukes til
+        /// konflikt-varsling i planleggeren og info underveis.
+        var ankerTid: Date? = nil
+    }
+    struct RutePlan: Codable, Equatable {
+        var stopp: [RuteStopp]
+        /// Indeks for NESTE stopp som skal besøkes.
+        var index: Int
+        var opprettet: Date
+        /// Backend-id når ruta kom fra en leder-tildeling (nivå 3) —
+        /// brukes til statusrapportering (akseptert/fullfort).
+        var fjernId: String? = nil
+    }
+
+    private static let rutePlanKey = "leadgrid.aktiv_rute_plan"
+
+    var rutePlan: RutePlan? = AppState.lesRutePlanFraDisk() {
+        didSet {
+            if let plan = rutePlan, let data = try? JSONEncoder().encode(plan) {
+                UserDefaults.standard.set(data, forKey: Self.rutePlanKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.rutePlanKey)
+            }
+        }
+    }
+
+    /// Last persistert rute ved oppstart. Ruter eldre enn 24t er ikke
+    /// «dagens» — rydd i stedet for å gjenoppta.
+    private static func lesRutePlanFraDisk() -> RutePlan? {
+        guard let data = UserDefaults.standard.data(forKey: rutePlanKey),
+              let plan = try? JSONDecoder().decode(RutePlan.self, from: data)
+        else { return nil }
+        if Date().timeIntervalSince(plan.opprettet) > 24 * 3600 {
+            UserDefaults.standard.removeObject(forKey: rutePlanKey)
+            return nil
+        }
+        return plan
+    }
+
+    /// Start planlagt rute: lagre plan + naviger til første stopp.
+    func startRutePlan(_ stopp: [RuteStopp]) {
+        guard let first = stopp.first else { return }
+        rutePlan = RutePlan(stopp: stopp, index: 0, opprettet: Date())
+        requestNavigation(lat: first.lat, lon: first.lon,
+                          name: first.name, address: first.address,
+                          start: true, transport: "driving")
+    }
+
+    /// Gå videre til neste stopp i ruta (fra ankomst-kortet). Returnerer
+    /// stoppet det skal navigeres til, eller nil når ruta er ferdig.
+    @discardableResult
+    func avanserRute() -> RuteStopp? {
+        guard var plan = rutePlan else { return nil }
+        plan.index += 1
+        guard plan.index < plan.stopp.count else {
+            meldRuteStatus(plan, "fullfort")
+            rutePlan = nil
+            return nil
+        }
+        rutePlan = plan
+        return plan.stopp[plan.index]
+    }
+
+    func avsluttRute() {
+        if let plan = rutePlan { meldRuteStatus(plan, "avvist") }
+        rutePlan = nil
+    }
+
+    /// Rapportér status til backend for leder-tildelte ruter (best effort).
+    private func meldRuteStatus(_ plan: RutePlan, _ status: String) {
+        guard let id = plan.fjernId, let api else { return }
+        Task { try? await api.settRuteStatus(id: id, status: status) }
+    }
+
+    /// Hent nyeste tildelte rute fra backend → rett inn i rute-motoren
+    /// (varsel-tap eller manuell henting). Kvitterer «akseptert».
+    @MainActor
+    func hentTildeltRute() async {
+        guard let api else { return }
+        guard let dto = try? await api.hentMinTildelteRute() else { return }
+        let iso = ISO8601DateFormatter()
+        let stopp = dto.stopp.map { s in
+            RuteStopp(id: s.id, name: s.name, address: s.address,
+                      lat: s.lat, lon: s.lon,
+                      ankerTid: s.ankerTid.flatMap { iso.date(from: $0) })
+        }
+        guard !stopp.isEmpty else { return }
+        rutePlan = RutePlan(stopp: stopp, index: 0, opprettet: Date(), fjernId: dto.id)
+        try? await api.settRuteStatus(id: dto.id, status: "akseptert")
+    }
+
+    // ── Etter-møte-deep-link (lokalt varsel → EtterMoteSheet) ──────────
+    var pendingEtterMoteSelskap: String?
+    var pendingEtterMoteId: String?
+    func clearEtterMoteDeepLink() {
+        pendingEtterMoteSelskap = nil
+        pendingEtterMoteId = nil
+    }
+
+    // ── Canvas-deep-link (Møter «Tegn i Canvas» → notat pre-koblet) ────
+    var pendingCanvasSelskap: String?
+    var pendingCanvasLeadId: String?
+    var pendingCanvasRequestedAt: Date?
+    /// Hopp til Canvas-fanen og åpne/opprett notat koblet til selskapet.
+    func requestCanvasNotat(selskap: String, leadId: String?) {
+        pendingCanvasSelskap = selskap
+        pendingCanvasLeadId = leadId
+        pendingCanvasRequestedAt = Date()
+        selectedSidebarItem = .canvas
+    }
+    func clearCanvasDeepLink() {
+        pendingCanvasSelskap = nil
+        pendingCanvasLeadId = nil
+        pendingCanvasRequestedAt = nil
+    }
+
+    // Klienter (lazy-init når token er satt)
+    private(set) var api: APIClient?
+
+    // Cached data (refreshes ved pull-down + periodisk)
+    var leads: [LeadModel] = []
+    /// Eksplisitt load-state for leads (uke 2) — samme mønster som
+    /// projectsLoadState: skiller «laster fortsatt» fra «ekte tom liste»
+    /// så Leads-fanen kan vise skeleton i stedet for å blinke tom-tilstand
+    /// ved app-start.
+    var leadsLoadState: ProjectsLoadState = .idle
+    /// Load-state for kalender (Møter-fanen) — samme mønster.
+    var calendarLoadState: ProjectsLoadState = .idle
+    /// Lead-id-er som er kommet inn via real-time WebSocket-event
+    /// (typisk `lead.created` fra batch-research). Pin-viewen sjekker
+    /// dette settet og pulserer i 3 sek før vi tar id-en ut igjen.
+    /// Brukes kun visuelt — påvirker ikke filter/sort.
+    var recentlyAddedLeadIds: Set<String> = []
+    /// Lett mock-hook så tester kan injisere fake "just landed" leads.
+    func markLeadAsNew(_ leadId: String, duration: TimeInterval = 3.0) {
+        guard !leadId.isEmpty else { return }
+        recentlyAddedLeadIds.insert(leadId)
+        // AppState er @MainActor, så vi trenger ikke MainActor.run; Task
+        // arver MainActor-kontekst og pulse-flagget tas ut igjen rent på
+        // main-thread etter `duration` sekunder.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+            self?.recentlyAddedLeadIds.remove(leadId)
+        }
+    }
+
+    /// Håndter et `lead.created`-WebSocket-event fra LeadgridRealtimeClient.
+    /// userInfo-formatet er flat-string-konvertert av klienten.
+    /// Effekt: trigger pulse-animasjon + sørger for at lead-en blir hentet
+    /// inn i `leads` (selv om listen ikke har refresh-et enda).
+    func handleLeadCreatedEvent(userInfo: [String: String]) {
+        guard userInfo["type"] == "lead.created" else { return }
+        let leadId = userInfo["data.lead_id"] ?? ""
+        guard !leadId.isEmpty else { return }
+        // Org-filter: hvis backend sendte org-id og den ikke matcher aktivt,
+        // ignorer (brukeren har byttet org siden eventet ble produsert).
+        if let orgIdInEvent = userInfo["data.organization_id"],
+           !orgIdInEvent.isEmpty,
+           let activeOrg = activeOrganizationId,
+           orgIdInEvent != activeOrg {
+            return
+        }
+        // Subtle haptic feedback når et nytt lead lander — kun hvis user er
+        // i appen (UIImpactFeedbackGenerator er no-op når app er i bg).
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+
+        markLeadAsNew(leadId, duration: 3.0)
+
+        // Hvis lead-en ikke finnes i listen, trigger refresh slik at pinen
+        // dukker opp på kartet. Vi unngår å refresh på hver event ved å
+        // bare gjøre det når leadId mangler — listen blir konsolidert via
+        // refreshAll() etter en kort delay.
+        if !leads.contains(where: { $0.id == leadId }) {
+            Task { await refreshLeads() }
+        }
+    }
+
+    /// Kun lead-fetch — billigere enn full refreshAll. Brukes av real-time-
+    /// pulse-flyten for å unngå å refreshe metrics/calendar samtidig.
+    func refreshLeads() async {
+        guard let api else { return }
+        let organizationId = activeOrganizationId
+        let projectId = activeProjectId
+        do {
+            let fresh = try await api.fetchLeads(projectId: projectId, organizationId: organizationId)
+            // Et org-/prosjektbytte mens requesten er i flight skal verken erstatte
+            // skjermdata eller feilmerke et Watch-snapshot med ny aktiv org.
+            guard activeOrganizationId == organizationId,
+                  activeProjectId == projectId else { return }
+            self.leads = fresh
+            self.leadsLoadState = .loaded
+            if let actorUserId = currentUserId,
+               let organizationId,
+               let projectId {
+                WatchSession.shared.pushLeads(
+                    fresh,
+                    actorUserId: actorUserId,
+                    organizationId: organizationId,
+                    projectId: projectId
+                )
+            } else {
+                WatchSession.shared.clearLeads()
+            }
+        } catch {
+            print("[AppState] refreshLeads failed: \(error)")
+            if case .loaded = leadsLoadState {} else {
+                let retryable = (error as? APIError)?.isRetryable ?? true
+                leadsLoadState = .failed(error.localizedDescription, isRetryable: retryable)
+            }
+        }
+    }
+    var competitors: [CompetitorModel] = []
+    var metrics: MetricsModel?
+    var calendar: [CalendarEvent] = []
+    var reminders: RemindersResponse?
+
+    // Prosjekt-kontekst — hvilken bedrift jobber jeg for?
+    var projects: [ProjectListItem] = []
+    /// Eksplisitt load-state for prosjekter slik at UI kan skille mellom
+    /// «laster fortsatt» og «ekte tom liste». Default `.idle` betyr at vi
+    /// ikke har trigget fetch enda — vises som loading-skeleton i kortet
+    /// så vi ikke blinker "Ingen prosjekter ennå" i 1-2 sek ved app-start.
+    /// Bug fra PR #993: empty-state ble vist mens projects fortsatt lastes.
+    var projectsLoadState: ProjectsLoadState = .idle
+    var activeProjectSummary: ProjectSummary?
+    var activeProjectId: String? {
+        didSet {
+            guard oldValue != activeProjectId else { return }
+            if let actorUserId = currentUserId {
+                Task {
+                    await OfflineActionQueue.shared.cancelDrains(
+                        actorUserId: actorUserId)
+                }
+            }
+            if let id = activeProjectId {
+                UserDefaults.standard.set(id, forKey: "rr.lead_map.active_project")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "rr.lead_map.active_project")
+            }
+            clearProjectBoundPresentation()
+            clearWidgetSnapshot()
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["QA_TOUR"] == "domain-onboarding" {
+                return
+            }
+            #endif
+            Task {
+                await loadFromCache()
+                await refreshAll()
+            }
+            if let id = activeProjectId {
+                Task { await loadProjectSummary(id: id) }
+            } else {
+                self.activeProjectSummary = nil
+            }
+            Task { await configureDiscovery() }
+        }
+    }
+
+    // Aktivt valgt
+    var selectedLead: LeadModel?
+    var selectedCompetitor: CompetitorModel?
+
+    // Offline-state
+    var lastSyncAt: Date?
+    var pendingVisitsCount: Int = 0
+    var isUsingStaleCache: Bool = false
+
+    private var offlineCacheScope: OfflineCache.Scope? {
+        OfflineCache.Scope(
+            actorUserId: currentUserId,
+            organizationId: activeOrganizationId,
+            projectId: activeProjectId
+        )
+    }
+
+    private func clearProjectBoundPresentation() {
+        RouteTracker.shared.clearProjectScope()
+        WatchSession.shared.clearLeads()
+        leads = []
+        competitors = []
+        metrics = nil
+        calendar = []
+        reminders = nil
+        selectedLead = nil
+        selectedCompetitor = nil
+        activeProjectSummary = nil
+        lastSyncAt = nil
+        isUsingStaleCache = false
+        leadsLoadState = isAuthenticated && activeProjectId != nil ? .loading : .idle
+        calendarLoadState = isAuthenticated && activeProjectId != nil ? .loading : .idle
+    }
+
+    private func clearWidgetSnapshot() {
+        WidgetSnapshotStore.clear()
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
+    }
+
+    // ── Session-expiry (PR fix/leadmap-apierror-localized-description) ──
+    /// True når en API-call returnerte 401 (token utløpt eller ugyldig).
+    /// `RootView` observer dette og presenter et "Logg inn på nytt"-sheet
+    /// så brukeren slipper å se "APIError error 0" eller en evig spinner.
+    /// Resetter til false ved `signOut()` / `signIn(...)`.
+    var sessionExpired: Bool = false
+
+    /// Sentralisert error-handler som setter `sessionExpired = true` hvis
+    /// feilen er en `APIError.unauthorized`. Per-fetch sites kan kalle
+    /// dette i sin `catch`-blokk for å trigge re-login-flyt uten å duplisere
+    /// 401-sjekken overalt.
+    @discardableResult
+    func handleAPIError(_ error: Error) -> Bool {
+        if let apiError = error as? APIError, apiError.requiresReauth {
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["QA_CAPTURE"] == "1" { return true }
+            #endif
+            self.sessionExpired = true
+            return true
+        }
+        return false
+    }
+
+    // ── Org + RBAC (PR #611–#615) ───────────────────────────────
+    var organizations: [OrganizationSummary] = []
+    @ObservationIgnored private var organizationSelectionGeneration: UInt64 = 0
+    var activeOrganizationId: String? {
+        didSet {
+            if let id = activeOrganizationId {
+                UserDefaults.standard.set(id, forKey: "rr.lead_map.active_org")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "rr.lead_map.active_org")
+            }
+            // Org-bytte MÅ oppdatere ALT org-avhengig, ikke bare org-
+            // kontekst — ellers viste Leads/Oversikt/Kart forrige org sine
+            // data til noe annet trigget refreshAll (QA 2026-07-06). Og
+            // entitlements/gating må re-hentes for den nye aktive org-en
+            // (før: kun ved bootstrap → gating frosset til primær-org).
+            if oldValue != activeOrganizationId {
+                clearProjectBoundPresentation()
+                clearWidgetSnapshot()
+                organizationSelectionGeneration &+= 1
+                let generation = organizationSelectionGeneration
+                let selectedOrganizationId = activeOrganizationId
+                leadgridDiscoveryEnabled = false
+                workspacePlanSummary = nil
+                workspacePlanOrganizationId = selectedOrganizationId
+                workspacePlanLoadState = selectedOrganizationId == nil ? .idle : .loading
+                EntitlementStore.shared.resetForOrganization(selectedOrganizationId)
+                LeadbookLiveStore.shared.resetForOrganization(selectedOrganizationId)
+                AcademyLiveStore.shared.resetForOrganization(selectedOrganizationId)
+                pondusStore.resetForOrganization(selectedOrganizationId)
+                if api != nil {
+                    projects = projects.filter { $0.organizationId == selectedOrganizationId }
+                    if let activeProjectId,
+                       !projects.contains(where: { $0.id == activeProjectId }) {
+                        self.activeProjectId = nil
+                    }
+                    activeProjectSummary = nil
+                    projectsLoadState = .loading
+                }
+                #if DEBUG
+                // UI-testturene bruker prosesslokale fixtures. Et org-bytte
+                // skal derfor verken nullstille rolle/permissions via
+                // loadOrgContext() eller validere den syntetiske tokenen mot
+                // produksjons-API-et. Det gjorde blant annet en eksplisitt
+                // Dentum-admin til «ingen rolle» før Salgsledelse åpnet.
+                if ProcessInfo.processInfo.environment["QA_TOUR"] != nil {
+                    return
+                }
+                #endif
+                Task {
+                    await api?.setActiveOrganizationId(selectedOrganizationId)
+                    await loadOrgContext()
+                    guard generation == organizationSelectionGeneration,
+                          selectedOrganizationId == activeOrganizationId else { return }
+                    await loadMyEntitlements()
+                    guard generation == organizationSelectionGeneration,
+                          selectedOrganizationId == activeOrganizationId else { return }
+                    await refreshAll()
+                    guard generation == organizationSelectionGeneration,
+                          selectedOrganizationId == activeOrganizationId else { return }
+                    await configureDiscovery()
+                }
+            }
+        }
+    }
+    /// Effective permissions for current user i active org.
+    var permissions: Set<String> = []
+    var roleInOrg: String?
+    /// Abonnementet tilhører valgt workspace, ikke brukeren. Oppsummeringen
+    /// deles av Profil, Verktøy og Abonnement så flatene aldri viser ulike
+    /// plan-navn eller bruker tre parallelle nettverkskall.
+    var workspacePlanSummary: LeadgridPlanSummary?
+    var workspacePlanOrganizationId: String?
+    var workspacePlanLoadState: WorkspacePlanLoadState = .idle
+    var canManageWorkspaceBilling: Bool {
+        // Stripe-kunden og abonnementet eies av organisasjonen. Super Admin
+        // bruker den separate, auditerte provisioning-flyten og arver aldri
+        // kundens Checkout-/Portal-rettighet i iPad-klienten.
+        roleInOrg == "admin"
+    }
+    var canManageWorkspaceReports: Bool {
+        ["owner", "admin", "markedssjef", "salgssjef"].contains(roleInOrg ?? "")
+            || isSuperAdmin
+    }
+    var workspaceIsBillingReadOnly: Bool {
+        workspacePlanOrganizationId == activeOrganizationId
+            && workspacePlanSummary?.isBillingReadOnly == true
+    }
+    var activeWorkspacePlanDisplayName: String {
+        guard workspacePlanOrganizationId == activeOrganizationId else {
+            return "Laster …"
+        }
+        if let summary = workspacePlanSummary {
+            return summary.displayName
+        }
+        switch workspacePlanLoadState {
+        case .idle, .loading: return "Laster …"
+        case .loaded: return "Ingen aktiv plan"
+        case .failed: return "Utilgjengelig"
+        }
+    }
+    /// Fail-closed server capability; never inferred from an entitlement plan.
+    var leadgridDiscoveryEnabled = false
+    var locationConsentGranted: Bool = false
+
+    // ── Varsel-tap (Notification-QA 2026-07-06) ─────────────────
+    /// Settes når brukeren tapper et push-varsel. Den delte header-en
+    /// (montert på hver fane) observerer og åpner varsel-inboksen. Nil-es
+    /// etter konsum. Buffres for cold-start-tap via AppStateBridge.
+    var pendingNotificationTap: [String: String]?
+
+    // ── Fokusér nyopprettet lead på kartet (2026-08-19, Daniel-feedback) ──
+    /// Settes av alle 4 «Legg til lead»-inngangspunktene (Kart/Oversikt/
+    /// Leads/header-snarveien) rett etter vellykket lagring — man visste
+    /// aldri hvor leaden faktisk havnet på kartet, kun en toast. MainTabView
+    /// observerer og bytter til Kart-fanen; KartView konsumerer og
+    /// kamera-zoomer + velger pinnen (samme mønster som eksisterende
+    /// pin-tap via `selectAndZoom`). Nil-es etter konsum.
+    struct PendingMapFocus: Equatable {
+        let id: String
+        let name: String
+        let address: String
+        let lat: Double
+        let lon: Double
+    }
+    var pendingMapFocus: PendingMapFocus?
+
+    // ── Super-admin (fase 18) ──────────────────────────────────
+    /// User-level role fra /api/auth/user (uavhengig av active org).
+    /// 'super_admin' låser opp SuperAdminHub for Daniel's B2B-pipeline.
+    var userRole: String?
+    /// True hvis user.role == 'super_admin' eller user.isPlatformAdmin.
+    var isSuperAdmin: Bool { userRole == "super_admin" }
+
+    // ── Admin-room multi-produkt (#1318, portet i main-mergen) ──
+    /// Hvilket produkt admin-room-flatene (pipeline, industry-targets)
+    /// er i kontekst for. Default `.leadgrid`; persistert i UserDefaults.
+    var activeAdminProduct: AdminProductKey = .leadgrid {
+        didSet {
+            guard oldValue != activeAdminProduct else { return }
+            UserDefaults.standard.set(
+                activeAdminProduct.rawValue,
+                forKey: AdminProductDefaultsKey.activeProduct
+            )
+        }
+    }
+
+    // ── Min dag (PR #616) ───────────────────────────────────────
+    var workloadLeads: [WorkloadLead] = []
+    var quota: QuotaProgress?
+
+    // ── Live selger-pins (PR #612) ─────────────────────────────
+    var memberLocations: [MemberLocation] = []
+
+    // ── Varsler (PR #622) ──────────────────────────────────────
+    var unreadNotificationsCount: Int = 0
+    private var notificationsPollTask: Task<Void, Never>?
+
+    // ── Leadgrid v2 (PR #730+) ─────────────────────────────────
+    /// Uleste in-app Leadgrid-varsler. Polles parallelt m/ lead-map-varsler.
+    var leadgridUnreadCount: Int = 0
+    /// Siste 50 Leadgrid-varsler. Caches for inbox-dropdown.
+    var leadgridNotifications: [LeadgridNotification] = []
+    private var leadgridPollTask: Task<Void, Never>?
+
+    /// Sheet-presentation-state for Leadgrid-flater.
+    var presentingLeadgridInbox = false
+    var presentingLeadgridDashboard = false
+    var presentingLeadgridReports = false
+    var presentingLeadgridNotifications = false
+    var presentingLeadgridPrefs = false
+    var presentingLeadgridExport = false
+
+    /// Refresh in-app Leadgrid-varsler. Kalles av poll-task + manuelt
+    /// fra bell-pull-down.
+    func refreshLeadgridNotifications() async {
+        guard let api else { return }
+        do {
+            let resp = try await api.fetchMyLeadgridNotifications()
+            self.leadgridNotifications = resp.items
+            self.leadgridUnreadCount = resp.unreadCount
+        } catch {
+            // Stille — endepunktet kan returnere 401 hvis brukeren ikke har
+            // Leadgrid-konto enda; det er forventet.
+            print("[AppState] leadgrid notifications fetch failed: \(error)")
+        }
+    }
+
+    /// Marker varsler som lest. Tom liste = alle.
+    func markLeadgridNotificationsRead(ids: [String] = []) async {
+        guard let api else { return }
+        do {
+            try await api.markLeadgridNotificationsRead(ids: ids)
+            await refreshLeadgridNotifications()
+        } catch {
+            print("[AppState] mark-read failed: \(error)")
+        }
+    }
+
+    /// Start polling for Leadgrid-varsler hvert 60s. Stoppes ved logout.
+    func startLeadgridPolling() {
+        leadgridPollTask?.cancel()
+        leadgridPollTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                await self?.refreshLeadgridNotifications()
+                try? await Task.sleep(nanoseconds: 60 * 1_000_000_000)
+            }
+        }
+    }
+
+    func stopLeadgridPolling() {
+        leadgridPollTask?.cancel()
+        leadgridPollTask = nil
+    }
+
+    /// Håndter et APNS-varsel som ble tap-pet. Backend sender 'event_type'
+    /// + valgfri 'lead_id' / 'deep_link'. Vi setter relevant presentation-
+    /// flag så LeadgridHubView (eller fallback i RootView) viser sheet.
+    @discardableResult
+    func handleLeadgridNotificationTap(_ payload: [String: String]) async -> Bool {
+        // Trig refresh av notifikasjons-listen så badge-counter er aktuell.
+        Task { await refreshLeadgridNotifications() }
+
+        if let raw = payload["deep_link"],
+           let url = URL(string: raw),
+           await handleLeadgridURL(url) {
+            return true
+        }
+
+        let rawProjectId = payload["project_id"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawOrganizationId = payload["organization_id"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let projectId = rawProjectId,
+           !projectId.isEmpty,
+           let organizationId = rawOrganizationId,
+           let normalizedOrganizationId = UUID(uuidString: organizationId)?
+            .uuidString.lowercased() {
+            guard await activateLeadgridDeepLinkScope(.init(
+                projectId: projectId,
+                organizationId: normalizedOrganizationId
+            )) else { return false }
+        } else if rawProjectId?.isEmpty == false || rawOrganizationId?.isEmpty == false {
+            return false
+        }
+
+        let eventType = payload["event_type"] ?? ""
+        switch eventType {
+        case "lead_assigned_as_team_leader",
+              "lead_assigned_as_rep",
+              "lead_assigned_on_accept":
+            // Vis innboks slik at brukeren ser den nye tildelingen.
+            return false
+        case "lead_won", "lead_lost", "lead_status_change":
+            selectedSidebarItem = .oversikt
+            return true
+        case "doffin_watch_hit":
+            // Nye anbuds-treff (2026-08-03): varselet peker på
+            // leadgrid://anbud — rett til Anbud-fanen, ikke innboksen.
+            selectedSidebarItem = .anbud
+            return true
+        case "brief_klar":
+            // Kveldsbriefen: rett til Møter — briefene ligger klare der.
+            selectedSidebarItem = .moter
+            return true
+        case "etter_mote":
+            // Lokalt «logg møtet»-varsel: rett til Møter, og MeetingsView
+            // åpner etterarbeids-arket for selskapet.
+            pendingEtterMoteSelskap = payload["selskap"]
+            pendingEtterMoteId = payload["mote_id"]
+            selectedSidebarItem = .moter
+            return true
+        case "leadgrid_rute_tildelt":
+            // Rute tildelt av salgssjef (nivå 3): hent ruta rett inn i
+            // Kart-fanens rute-motor.
+            selectedSidebarItem = .kart
+            Task { await hentTildeltRute() }
+            return true
+        default:
+            return false
+        }
+    }
+
+    // ── Kart-annotasjoner (PR #629) ────────────────────────────
+    var annotations: [MapAnnotation] = []
+    var canCreateAnnotations: Bool = false
+
+    func refreshAnnotations() async {
+        guard let api, let orgId = activeOrganizationId else { return }
+        do {
+            let resp = try await api.fetchAnnotations(organizationId: orgId)
+            self.annotations = resp.annotations
+            self.canCreateAnnotations = resp.canCreate
+        } catch {
+            print("[AppState] annotations failed: \(error)")
+        }
+    }
+
+    // ── Territorie-grids (LeadGrid territory enforcement) ──────
+    var myTerritories: [Territory] = []
+
+    func refreshTerritories() async {
+        guard let api, let orgId = activeOrganizationId else { return }
+        do {
+            let t = try await api.fetchMyTerritories(organizationId: orgId)
+            self.myTerritories = t
+            TerritoryMonitor.shared.configure(territories: t)
+        } catch {
+            print("[AppState] territories failed: \(error)")
+        }
+    }
+
+    // ── Smart dagsrute ─────────────────────────────────────────
+    var dayRoute: DayRoute?
+    var dayRouteMessage: String?
+    var planningRoute = false
+
+    /// Planlegg dagens rute fra nåværende GPS-posisjon. Ruten vises både i
+    /// MyDay-sheet og som overlay på kartet (iPad-native fortrinn).
+    func planDayRoute() async {
+        guard let api, let orgId = activeOrganizationId else { return }
+        guard let loc = LocationService.shared.currentLocation else {
+            self.dayRouteMessage = "Trenger GPS-posisjon for å bygge rute."
+            return
+        }
+        planningRoute = true
+        dayRouteMessage = nil
+        defer { planningRoute = false }
+        do {
+            let resp = try await api.planDayRoute(
+                organizationId: orgId,
+                startLat: loc.coordinate.latitude,
+                startLng: loc.coordinate.longitude)
+            self.dayRoute = resp.route
+            if resp.route == nil { self.dayRouteMessage = resp.message ?? "Ingen aktuelle leads i din sone." }
+        } catch {
+            self.dayRouteMessage = "Kunne ikke bygge rute: \(error.localizedDescription)"
+        }
+    }
+
+    /// Innsjekk i felt: oppdater stopp-status (optimistisk lokalt).
+    func updateRouteStop(stopId: String, status: String) async {
+        guard let api, let route = dayRoute, let organizationId = activeOrganizationId else { return }
+        do {
+            try await api.updateRouteStop(
+                routeId: route.id, stopId: stopId, status: status,
+                organizationId: organizationId)
+        } catch {
+            print("[AppState] route stop update failed: \(error)")
+        }
+    }
+
+    // ── Heartbeat-loop ─────────────────────────────────────────
+    private var heartbeatController: HeartbeatController?
+
+    var activeOrganization: OrganizationSummary? {
+        organizations.first { $0.id == activeOrganizationId }
+    }
+
+    /// `projects` is populated exclusively from Leadgrid's
+    /// `/admin-room/lead-map/projects` endpoint. Resolving through this list
+    /// prevents stale ids — or unrelated Role Room/casting projects — from
+    /// being used as Leadgrid customer scope.
+    var activeLeadgridProject: ProjectListItem? {
+        guard let activeProjectId else { return nil }
+        return projects.first { project in
+            project.id == activeProjectId
+                && (project.organizationId == nil || project.organizationId == activeOrganizationId)
+        }
+    }
+
+    var activeLeadgridProjectId: String? { activeLeadgridProject?.id }
+
+    func can(_ permissionKey: String) -> Bool {
+        permissions.contains(permissionKey)
+    }
+
+/// Rebinds Discovery when auth, organization or project changes. Server
+/// state is authoritative; the coordinator restores its local draft first.
+func configureDiscovery() async {
+    let scopedProject = projects.first { project in
+        leadgridDiscoveryEnabled
+            && project.id == activeProjectId
+            && (project.organizationId == nil || project.organizationId == activeOrganizationId)
+    }
+    #if DEBUG
+    let discoveryAPI = ProcessInfo.processInfo.environment["QA_TOUR"] == "domain-onboarding"
+        ? nil
+        : api
+    #else
+    let discoveryAPI = api
+    #endif
+    await discoveryCoordinator.configure(
+        api: discoveryAPI,
+        actorUserId: currentUserId,
+        organizationId: activeOrganizationId,
+        projectId: scopedProject?.id,
+        projectName: scopedProject?.name
+    )
+}
+
+    /// Klient-side filter for leads tilhørende ett spesifikt prosjekt.
+    /// Brukes av multi-prosjekt-pageren på kartet for å vise per-kort-
+    /// counter («X leads igjen»). Server-side filtreringen via
+    /// `activeProjectId` → `fetchLeads(projectId:)` er primær-mekanismen
+    /// for kart-pins; denne hjelperen er nyttig for views som vil vise
+    /// leads for et NON-active prosjekt uten å bytte global state.
+    func filteredLeads(forProject projectId: String) -> [LeadModel] {
+        leads.filter { $0.projectId == projectId }
+    }
+
+    func bootstrap() async {
+        #if DEBUG
+        // QA-hook (landing-videoer): QA_TOUR kjører på ren demo-data og
+        // trenger ingen backend — hopp over pairing hvis sesjonen mangler.
+        // Reverteres m/ task #59-følget.
+        if let qaTour = ProcessInfo.processInfo.environment["QA_TOUR"],
+           qaTour == "domain-onboarding" {
+            self.authToken = "qa-tour-domain-onboarding"
+            self.userEmail = "superadmin@leadgrid.no"
+            self.currentUserId = "qa-super-admin"
+            self.activeOrganizationId = "11111111-1111-4111-8111-111111111111"
+            self.activeProjectId = nil
+            self.permissions = ["projects.create", "lead_research.run"]
+            self.roleInOrg = "admin"
+            self.userRole = "super_admin"
+            self.leadgridDiscoveryEnabled = true
+            self.api = APIClient(token: "qa-tour-domain-onboarding", actorUserId: "qa-super-admin")
+            return
+        }
+        // QA_TOUR is an explicit DEBUG-only request for deterministic local
+        // state. It must win over credentials left in the simulator keychain
+        // by another UI test, otherwise a complete test suite becomes order-
+        // dependent even though every test passes on its own.
+        if let qaTour = ProcessInfo.processInfo.environment["QA_TOUR"] {
+            self.authToken = "qa-tour-demo"
+            self.userEmail = "demo@leadgrid.no"
+            self.currentUserId = "qa-tour-user"
+            self.activeOrganizationId = "qa-tour-organization"
+            if qaTour == "dentum-outreach" {
+                self.userEmail = "daniel@creatorhubn.com"
+                self.profileStore.seedForQA(
+                    email: "daniel@creatorhubn.com",
+                    firstName: "Daniel",
+                    lastName: "Qazi"
+                )
+                self.roleInOrg = "admin"
+                self.permissions = ["leads.view", "leads.update", "visits.create"]
+                self.organizations = [OrganizationSummary(
+                    id: "qa-tour-organization",
+                    name: "Dentum",
+                    slug: "dentum",
+                    plan: "prototype",
+                    orgType: "sales",
+                    logoUrl: nil,
+                    role: "admin",
+                    memberCount: 1,
+                    projectCount: 1
+                )]
+                self.projects = [ProjectListItem(
+                    id: "dentum-oslo",
+                    organizationId: "qa-tour-organization",
+                    name: "Dentum",
+                    description: "Klinikkpilot for tannklinikker i Oslo",
+                    status: "active",
+                    hasBrandKit: true,
+                    leadCount: 1,
+                    competitorCount: 0
+                )]
+                self.projectsLoadState = .loaded
+                self.activeProjectId = "dentum-oslo"
+            }
+            if qaTour == "agent-skills" {
+                self.activeProjectId = "qa-agent-project"
+                self.permissions = ["leads.view", "leads.update", "visits.create"]
+                self.roleInOrg = "admin"
+            }
+            if qaTour == "profile" {
+                self.roleInOrg = "salgskonsulent"
+                self.organizations = [OrganizationSummary(
+                    id: "qa-tour-organization",
+                    name: "Nordlys Salg AS",
+                    slug: "nordlys-salg",
+                    plan: "pro",
+                    orgType: "sales",
+                    logoUrl: nil,
+                    role: "salgskonsulent",
+                    memberCount: 8,
+                    projectCount: 2
+                )]
+                self.profileStore.seedForQA(email: "demo@leadgrid.no")
+            }
+            if qaTour == "pondus-coach" {
+                let orgId = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
+                self.activeOrganizationId = orgId.uuidString.lowercased()
+                self.projects = [ProjectListItem(
+                    id: "pondus-qa-project",
+                    organizationId: orgId.uuidString.lowercased(),
+                    name: "Pondus QA",
+                    description: "Prosjektavgrenset QA",
+                    status: "active",
+                    hasBrandKit: true,
+                    leadCount: 0,
+                    competitorCount: 0
+                )]
+                self.projectsLoadState = .loaded
+                self.activeProjectId = "pondus-qa-project"
+                self.permissions = ["pondus.manage", "analytics.view_overview"]
+                self.roleInOrg = "salgssjef"
+                self.api = APIClient(
+                    token: "qa-tour-demo",
+                    baseURL: URL(string: "http://127.0.0.1:9")!,
+                    actorUserId: "qa-tour-user"
+                )
+                self.pondusStore.seedForQACoach(
+                    organizationId: orgId,
+                    projectId: "pondus-qa-project"
+                )
+                self.setPondusDeepLink(
+                    templateId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                    stepIndex: 0
+                )
+            }
+            return
+        }
+        #endif
+        // 1. Hent persistert prosjekt + org-valg
+        if let stored = UserDefaults.standard.string(forKey: "rr.lead_map.active_project"), !stored.isEmpty {
+            self.activeProjectId = stored
+        }
+        if let storedProduct = UserDefaults.standard.string(forKey: AdminProductDefaultsKey.activeProduct),
+           let product = AdminProductKey(rawValue: storedProduct) {
+            self.activeAdminProduct = product
+        }
+        if let storedOrg = UserDefaults.standard.string(forKey: "rr.lead_map.active_org"), !storedOrg.isEmpty {
+            self.activeOrganizationId = storedOrg
+        }
+
+        // Legacy-snapshots manglet bruker/workspace/prosjekt og kan derfor
+        // aldri gjenbrukes trygt. Flytt dem til karantene før vi leser noe.
+        await OfflineCache.shared.quarantineLegacyUnscopedSnapshots()
+
+        // 2. Hvis vi har token, bind først cachen til sist verifiserte actor.
+        // Deretter prøver vi refresh og overskriver snapshot ved suksess.
+        if let token = AuthClient.loadToken() {
+            self.authToken = token
+            self.userEmail = AuthClient.loadEmail()
+            let cachedActorUserId = AuthClient.loadActorUserId()
+            self.currentUserId = cachedActorUserId
+            self.api = APIClient(token: token, actorUserId: cachedActorUserId)
+            await self.api?.setActiveOrganizationId(activeOrganizationId)
+            await loadFromCache()
+            if let api = self.api {
+                profileStore.attach(api: api)
+                await profileStore.load(force: true)
+            }
+            // Rolle + identitet FØRST — de gater UI (SuperAdmin-inngangen,
+            // avatar-navn) og er ett billig kall. Lå sist i kjeden før →
+            // super_admin så «Gjest/Salgssjef» til hele refreshen var
+            // ferdig (kald backend = titalls sekunder).
+            await loadUserRole()
+            // Resolve tenant before the first project fetch; project lists are org-scoped.
+            await loadOrganizations()
+            await loadOrgContext()
+            // Org/prosjekt kan ha blitt korrigert av serveren. Forsøk det
+            // eksakte, verifiserte scopet før nettverksrefreshen.
+            await loadFromCache()
+            // Entitlements fail-open og gater-viewene re-rendrer på @Published-
+            // endringen → kjør samtidig med refreshAll i stedet for å blokkere
+            // first paint på et kaldt backend (QA 2026-07-06).
+            async let entitlementsLoad: Void = loadMyEntitlements()
+            await refreshAll()
+            await entitlementsLoad
+            if let id = activeProjectId {
+                await loadProjectSummary(id: id)
+            }
+            // (loadUserRole lå her en gang til — fjernet; rollen er alt
+            //  hentet øverst, dobbeltkallet var bortkastet.)
+            await startHeartbeatIfNeeded()
+            startNotificationsPolling()
+            await refreshAnnotations()
+            await refreshTerritories()
+            if let api = self.api {
+                ProximityMonitor.shared.configure(api: api)
+            }
+            await configureDiscovery()
+        }
+    }
+
+    /// Last alle organisasjoner brukeren er medlem av.
+    func loadOrganizations() async {
+        guard let api else { return }
+        do {
+            let orgs = try await api.fetchOrganizations()
+            self.organizations = orgs
+            #if DEBUG
+            if let requested = ProcessInfo.processInfo.environment["QA_ORGANIZATION_ID"],
+               orgs.contains(where: { $0.id == requested }) {
+                self.activeOrganizationId = requested
+                return
+            }
+            #endif
+            // FIX 4: Valider at activeOrganizationId fortsatt eksisterer i
+            // medlemskapslista. Stale ID i UserDefaults (typisk: brukeren
+            // ble fjernet fra orgen, eller orgen ble slettet) → alle
+            // org-scoped fetchers (workload/quota/permissions/territories)
+            // ville feilet med 404 helt til neste app-installasjon.
+            if let activeId = activeOrganizationId,
+               !orgs.contains(where: { $0.id == activeId }) {
+                print("[AppState] activeOrganizationId \(activeId) not in orgs list — auto-clearing")
+                self.activeOrganizationId = orgs.first?.id  // didSet rydder UserDefaults
+            } else if activeOrganizationId == nil, let first = orgs.first {
+                // Auto-velg første hvis ingen aktiv
+                self.activeOrganizationId = first.id
+            }
+        } catch {
+            print("[AppState] loadOrganizations failed: \(error)")
+            handleAPIError(error)
+        }
+    }
+
+    /// Last user-level role fra /api/auth/user (fase 18: super-admin-deteksjon).
+    /// Setter `userRole` slik at `isSuperAdmin` kan styre tilgang til SuperAdminHub.
+    func loadUserRole() async {
+        guard let api else { return }
+        do {
+            let resp = try await api.fetchAuthUser()
+            if let user = resp.user {
+                self.currentUserId = user.id
+                AuthClient.saveActorUserId(user.id)
+                await api.setAuthenticatedActorUserId(user.id)
+                self.userRole = user.role
+                // QA-hook/pairing lagrer ikke e-post i keychain — uten
+                // denne sto avataren som «Gjest» selv med gyldig sesjon.
+                if self.userEmail == nil || self.userEmail?.isEmpty == true {
+                    self.userEmail = user.email
+                }
+            } else {
+                self.currentUserId = nil
+                AuthClient.saveActorUserId("")
+                await api.setAuthenticatedActorUserId(nil)
+            }
+        } catch {
+            print("[AppState] loadUserRole failed: \(error)")
+        }
+    }
+
+    /// Egen orgs feature-entitlements (mig 0370) → EntitlementStore, slik
+    /// at .gated()-flatene speiler hva SuperAdmin har gitt organisasjonen.
+    /// Feiler stille: ingen data = alt åpent (bakoverkompatibelt).
+    func loadMyEntitlements() async {
+        guard let api, let requestedOrganizationId = activeOrganizationId else {
+            leadgridDiscoveryEnabled = false
+            workspacePlanSummary = nil
+            workspacePlanOrganizationId = nil
+            workspacePlanLoadState = .idle
+            return
+        }
+        leadgridDiscoveryEnabled = false
+        async let planLoad: Void = loadWorkspacePlanSummary()
+        do {
+            let envelope = try await api.fetchMyEntitlements(
+                organizationId: requestedOrganizationId)
+            guard requestedOrganizationId == activeOrganizationId else { return }
+            leadgridDiscoveryEnabled = envelope.isLeadgridDiscoveryEnabled
+            EntitlementStore.shared.applyServer(envelope)
+        } catch {
+            guard requestedOrganizationId == activeOrganizationId else { return }
+            leadgridDiscoveryEnabled = false
+            print("[AppState] loadMyEntitlements failed: \(error)")
+        }
+        await planLoad
+        await configureDiscovery()
+    }
+
+    /// Kan også kalles separat av retry-knappene i Profil og Verktøy.
+    /// Resultatet bindes til org-ID-en som ble forespurt; et sent svar fra
+    /// forrige workspace får aldri overskrive den aktive planen.
+    func loadWorkspacePlanSummary() async {
+        guard let api, let requestedOrganizationId = activeOrganizationId else {
+            workspacePlanSummary = nil
+            workspacePlanOrganizationId = nil
+            workspacePlanLoadState = .idle
+            return
+        }
+        workspacePlanOrganizationId = requestedOrganizationId
+        workspacePlanLoadState = .loading
+        do {
+            let summary = try await api.fetchLeadgridPlanSummary(orgId: requestedOrganizationId)
+            guard requestedOrganizationId == activeOrganizationId else { return }
+            workspacePlanSummary = summary
+            workspacePlanOrganizationId = requestedOrganizationId
+            workspacePlanLoadState = .loaded
+        } catch {
+            guard requestedOrganizationId == activeOrganizationId else { return }
+            workspacePlanSummary = nil
+            workspacePlanOrganizationId = requestedOrganizationId
+            workspacePlanLoadState = .failed
+            handleAPIError(error)
+            print("[AppState] loadWorkspacePlanSummary failed: \(error)")
+        }
+    }
+
+    /// Last permissions + location-consent + member-locations for active org.
+    func loadOrgContext() async {
+        guard let api, let orgId = activeOrganizationId else {
+            self.permissions = []
+            self.roleInOrg = nil
+            self.locationConsentGranted = false
+            self.memberLocations = []
+            return
+        }
+        // Optimistisk: vis sist kjente rolle for org-en umiddelbart, så
+        // rolle-gatede menyvalg (Salgsledelse) ikke «popper inn» etter at
+        // permissions-kallet lander. Serveren bekrefter/korrigerer under, og
+        // selve viewet vakter uansett server-side.
+        let roleCacheKey = "leadgrid.roleInOrg.\(orgId)"
+        if self.roleInOrg == nil, let cached = UserDefaults.standard.string(forKey: roleCacheKey) {
+            self.roleInOrg = cached
+        }
+        async let permTask = api.fetchPermissions(organizationId: orgId)
+        async let consentTask = api.fetchLocationConsent(orgId)
+        async let locsTask = api.fetchMemberLocations(orgId)
+        do {
+            let perm = try await permTask
+            self.permissions = Set(perm.permissions)
+            self.roleInOrg = perm.role
+            if let role = perm.role {
+                UserDefaults.standard.set(role, forKey: roleCacheKey)
+            }
+        } catch {
+            print("[AppState] permissions failed: \(error)")
+        }
+        do {
+            self.locationConsentGranted = try await consentTask
+        } catch {
+            print("[AppState] consent failed: \(error)")
+        }
+        do {
+            self.memberLocations = try await locsTask
+        } catch {
+            print("[AppState] memberLocations failed: \(error)")
+        }
+    }
+
+    /// Last Min dag-data (workload + quota).
+    func refreshWorkload() async {
+        guard let api,
+              let orgId = activeOrganizationId,
+              let projectId = activeProjectId else {
+            self.workloadLeads = []
+            return
+        }
+        let loc = LocationService.shared.currentLocation
+        do {
+            let resp = try await api.fetchWorkload(
+                organizationId: orgId,
+                projectId: projectId,
+                location: loc
+            )
+            self.workloadLeads = resp.leads
+            // Re-konfigurer geofence-monitorering for de 20 nærmeste tildelte leads
+            ProximityMonitor.shared.updateAssignedLeads(resp.leads)
+        } catch {
+            print("[AppState] workload failed: \(error)")
+        }
+        do {
+            self.quota = try await api.fetchQuota(organizationId: orgId)
+        } catch {
+            print("[AppState] quota failed: \(error)")
+        }
+    }
+
+    /// Start heartbeat-loopen for online-status + valgfri posisjon.
+    private func startHeartbeatIfNeeded() async {
+        guard let api, let orgId = activeOrganizationId else { return }
+        heartbeatController?.stop()
+        let hb = HeartbeatController(
+            api: api,
+            organizationId: orgId,
+            locationService: .shared,
+        )
+        hb.isSharingLocation = locationConsentGranted
+        hb.start()
+        self.heartbeatController = hb
+    }
+
+    /// Poll unreadNotificationsCount hvert 30s — driver bell-badge på tab.
+    func startNotificationsPolling() {
+        notificationsPollTask?.cancel()
+        notificationsPollTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.refreshNotificationsCount()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                if Task.isCancelled { return }
+                await self.refreshNotificationsCount()
+            }
+        }
+    }
+
+    func refreshNotificationsCount() async {
+        guard let api else { return }
+        do {
+            let resp = try await api.fetchNotifications(unreadOnly: true, limit: 1)
+            self.unreadNotificationsCount = resp.unreadCount
+        } catch {
+            // Stille feil
+        }
+    }
+
+    /// Toggle posisjons-deling. Bruker må eksplisitt slå PÅ.
+    func setLocationConsent(_ on: Bool) async {
+        guard let api, let orgId = activeOrganizationId else { return }
+        do {
+            try await api.setLocationConsent(orgId, consent: on)
+            self.locationConsentGranted = on
+            heartbeatController?.isSharingLocation = on
+            if on {
+                LocationService.shared.requestPermissionIfNeeded()
+                LocationService.shared.startUpdating()
+            }
+        } catch {
+            print("[AppState] setLocationConsent failed: \(error)")
+        }
+    }
+
+    func loadProjectSummary(id: String) async {
+        guard let api else { return }
+        do {
+            self.activeProjectSummary = try await api.fetchProjectSummary(id: id)
+        } catch {
+            // Stale `activeProjectId` (typisk arkivert/slettet prosjekt
+            // som fremdeles ligger i UserDefaults) → 404. Auto-clear så
+            // appen ikke hardlocker på "HTTP 404" ved start, og fallback
+            // til første aktive prosjekt hvis vi har laster en liste.
+            // Andre feil bare logges (matcher tidligere oppførsel).
+            if let apiError = error as? APIError, apiError.isNotFound {
+                print("[AppState] activeProjectId \(id) returned 404 — clearing and falling back")
+                self.activeProjectSummary = nil
+                // Bare auto-velg fra projects-listen hvis ID-en vi nettopp
+                // ble 404 på faktisk fortsatt er den aktive. Hvis brukeren
+                // har byttet til et annet prosjekt mens kallet var i flight,
+                // skal vi ikke trampe over deres valg.
+                if activeProjectId == id {
+                    let fallback = projects.first(where: { $0.id != id })?.id
+                    activeProjectId = fallback  // didSet rydder UserDefaults når nil
+                }
+            } else {
+                print("[AppState] projectSummary failed: \(error)")
+                handleAPIError(error)
+            }
+        }
+    }
+
+    func signIn(token: String, email: String?) async {
+        clearProjectBoundPresentation()
+        clearWidgetSnapshot()
+        projects = []
+        organizations = []
+        AuthClient.saveToken(token, email: email)
+        self.authToken = token
+        self.userEmail = email
+        self.currentUserId = nil
+        self.api = APIClient(token: token)
+        await self.api?.setActiveOrganizationId(activeOrganizationId)
+        if let api = self.api {
+            profileStore.attach(api: api)
+            await profileStore.load(force: true)
+        }
+        self.sessionExpired = false
+        // Last user-role FØR refreshAll så SuperAdminHub-section i
+        // LeadgridHubView låses opp umiddelbart for super_admin. Uten
+        // dette ble userRole nil helt til neste app-start (bootstrap)
+        // kjørte loadUserRole — Super Admin-section var skjult etter
+        // Google login selv om DB-role var 'super_admin'.
+        await loadUserRole()
+        await loadOrganizations()
+        await loadOrgContext()
+        await loadFromCache()
+        await loadMyEntitlements()
+        await refreshAll()
+        await configureDiscovery()
+    }
+
+    /// Brukes etter en vellykket pairing-kode-bytte eller Google Sign-In.
+    /// Setter token + last alt frem (inkl. user-role for super_admin-deteksjon).
+    func completePairing(token: String, userId: String) {
+        clearProjectBoundPresentation()
+        clearWidgetSnapshot()
+        projects = []
+        organizations = []
+        AuthClient.saveToken(token, email: nil)
+        AuthClient.saveActorUserId(userId)
+        self.authToken = token
+        self.userEmail = nil
+        self.currentUserId = userId
+        self.api = APIClient(token: token, actorUserId: userId)
+        self.sessionExpired = false
+        Task {
+            await self.api?.setActiveOrganizationId(activeOrganizationId)
+            if let api = self.api {
+                profileStore.attach(api: api)
+                await profileStore.load(force: true)
+            }
+            await loadOrganizations()
+            await loadOrgContext()
+            await loadUserRole()
+            await loadFromCache()
+            await loadMyEntitlements()
+            await refreshAll()
+            await configureDiscovery()
+        }
+    }
+
+    func signOut() {
+        let signedOutActorUserId = currentUserId
+        if let signedOutActorUserId {
+            Task {
+                await OfflineActionQueue.shared.cancelDrains(
+                    actorUserId: signedOutActorUserId)
+            }
+        }
+        heartbeatController?.stop()
+        heartbeatController = nil
+        notificationsPollTask?.cancel()
+        notificationsPollTask = nil
+        ProximityMonitor.shared.stopAll()
+        self.unreadNotificationsCount = 0
+        AuthClient.clear()
+        self.authToken = nil
+        self.userEmail = nil
+        self.currentUserId = nil
+        self.api = nil
+        self.profileStore.reset()
+        self.leads = []
+        self.competitors = []
+        self.metrics = nil
+        self.calendar = []
+        self.reminders = nil
+        self.projects = []
+        self.projectsLoadState = .idle
+        self.organizations = []
+        self.activeProjectId = nil
+        self.activeOrganizationId = nil
+        self.permissions = []
+        self.roleInOrg = nil
+        self.workspacePlanSummary = nil
+        self.workspacePlanOrganizationId = nil
+        self.workspacePlanLoadState = .idle
+        self.clearPondusDeepLink()
+        self.clearLeadbookExampleDeepLink()
+        LeadbookLiveStore.shared.resetForSignOut()
+        AcademyLiveStore.shared.resetForSignOut()
+        pondusStore.resetForSignOut()
+        self.leadgridDiscoveryEnabled = false
+        self.workloadLeads = []
+        self.quota = nil
+        self.memberLocations = []
+        self.sessionExpired = false
+        discoveryCoordinator.resetForSignOut()
+        clearWidgetSnapshot()
+        Task { await OfflineCache.shared.clear() }
+    }
+
+    func refreshAll() async {
+        guard let api else { return }
+        guard let refreshOrganizationId = activeOrganizationId else {
+            projects = []
+            projectsLoadState = .loaded
+            return
+        }
+        let refreshOrganizationGeneration = organizationSelectionGeneration
+        let refreshActorUserId = currentUserId
+        // Marker prosjekter som «laster» FØR vi fyrer av kall. Hvis kortet
+        // er i .idle vil det ellers ende på empty-state i 1-2 sek mens
+        // fetchProjects pågår — bug fra PR #993 som denne fixen løser.
+        if case .loaded = projectsLoadState {
+            // Behold loaded-state ved bakgrunns-refresh så pageren ikke
+            // blinker til skeleton; bare flip når vi er i idle/failed.
+        } else {
+            projectsLoadState = .loading
+        }
+        if case .loaded = leadsLoadState {} else { leadsLoadState = .loading }
+        if case .loaded = calendarLoadState {} else { calendarLoadState = .loading }
+        let proj = activeProjectId
+        async let leadsTask = api.fetchLeads(projectId: proj, organizationId: refreshOrganizationId)
+        async let competitorsTask = api.fetchCompetitors(projectId: proj, organizationId: refreshOrganizationId)
+        async let metricsTask = api.fetchMetrics(projectId: proj, organizationId: refreshOrganizationId)
+        async let calendarTask = api.fetchCalendar(projectId: proj, organizationId: refreshOrganizationId)
+        async let remindersTask = api.fetchReminders(projectId: proj, organizationId: refreshOrganizationId)
+        async let projectsTask = api.fetchProjects(organizationId: refreshOrganizationId)
+
+        // Vent FØRST på projects-listen så vi kan validere activeProjectId
+        // og auto-clear hvis den peker på et arkivert/slettet prosjekt.
+        // Uten dette: 45 arkiverte testprosjekter i DB → stale UserDefaults
+        // → 404 fra leads/competitors/metrics → top-level catch → ErrorCard.
+        var projectsLoaded = false
+        do {
+            let fetchedProjects = try await projectsTask
+            guard refreshOrganizationGeneration == organizationSelectionGeneration,
+                  refreshOrganizationId == activeOrganizationId,
+                  refreshActorUserId == currentUserId else { return }
+            let newProjects = fetchedProjects.filter {
+                $0.organizationId == nil || $0.organizationId == refreshOrganizationId
+            }
+            self.projects = newProjects
+            self.projectsLoadState = .loaded
+            projectsLoaded = true
+
+            #if DEBUG
+            // Ekte staging-UI-tester kan feste appen til prosjektet som nettopp
+            // ble verifisert via API, uten å være avhengig av UserDefaults eller
+            // sorteringsrekkefølgen til andre staging-prosjekter.
+            if let requestedProjectID = ProcessInfo.processInfo.environment["QA_PROJECT_ID"],
+               requestedProjectID != activeProjectId,
+               newProjects.contains(where: { $0.id == requestedProjectID }) {
+                activeProjectId = requestedProjectID
+                _ = try? await leadsTask
+                _ = try? await competitorsTask
+                _ = try? await metricsTask
+                _ = try? await calendarTask
+                _ = try? await remindersTask
+                return
+            }
+            #endif
+
+            // FIX 2: Hvis activeProjectId peker på et prosjekt som ikke
+            // lenger er i lista (arkivert/slettet/byttet bruker), auto-
+            // clear og fallback til første aktive. Dette tilbakestiller
+            // også UserDefaults via activeProjectId.didSet.
+            if let activeId = activeProjectId,
+               !newProjects.contains(where: { $0.id == activeId }) {
+                print("[AppState] activeProjectId \(activeId) not in projects list — auto-clearing")
+                activeProjectId = newProjects.first?.id
+                // didSet vil trigge ny refreshAll() + loadProjectSummary() —
+                // vi avbryter resten av denne runden ettersom de pågående
+                // tasks holder stale proj-ID-en og vil kunne 404.
+                _ = try? await leadsTask
+                _ = try? await competitorsTask
+                _ = try? await metricsTask
+                _ = try? await calendarTask
+                _ = try? await remindersTask
+                return
+            }
+            // Auto-velg første prosjekt hvis ingen aktiv — matcher
+            // syncIndexFromActiveProject i MapProjectCard og gir
+            // umiddelbart kart-pins ved første start.
+            if activeProjectId == nil, let first = newProjects.first {
+                activeProjectId = first.id
+                _ = try? await leadsTask
+                _ = try? await competitorsTask
+                _ = try? await metricsTask
+                _ = try? await calendarTask
+                _ = try? await remindersTask
+                return
+            }
+        } catch {
+            guard refreshOrganizationGeneration == organizationSelectionGeneration,
+                  refreshOrganizationId == activeOrganizationId,
+                  refreshActorUserId == currentUserId else { return }
+            print("[AppState] fetchProjects failed: \(error)")
+            handleAPIError(error)
+            let retryable = (error as? APIError)?.isRetryable ?? true
+            self.projectsLoadState = .failed(error.localizedDescription, isRetryable: retryable)
+        }
+
+        do {
+            // FIX 3: Pakk per-prosjekt-kall slik at 404 (stale projectId
+            // som ennå ikke er fanget av FIX 2 — race-vindu) ikke kaster
+            // hele refreshAll i bakken. Returnerer tom-fallback ved 404
+            // som er ufarlig — neste tick rydder UserDefaults via FIX 2.
+            let newLeads: [LeadModel]
+            do { newLeads = try await leadsTask }
+            catch let apiError as APIError where apiError.isNotFound {
+                print("[AppState] fetchLeads 404 — using empty fallback (stale projectId)")
+                newLeads = []
+            }
+            let newComps: [CompetitorModel]
+            do { newComps = try await competitorsTask }
+            catch let apiError as APIError where apiError.isNotFound {
+                print("[AppState] fetchCompetitors 404 — using empty fallback")
+                newComps = []
+            }
+            let newMetricsOpt: MetricsModel?
+            do { newMetricsOpt = try await metricsTask }
+            catch let apiError as APIError where apiError.isNotFound {
+                print("[AppState] fetchMetrics 404 — keeping cached state")
+                newMetricsOpt = nil
+            }
+            let newCal: [CalendarEvent]
+            do { newCal = try await calendarTask }
+            catch let apiError as APIError where apiError.isNotFound {
+                print("[AppState] fetchCalendar 404 — using empty fallback")
+                newCal = []
+            }
+            let newRemOpt: RemindersResponse?
+            do { newRemOpt = try await remindersTask }
+            catch let apiError as APIError where apiError.isNotFound {
+                print("[AppState] fetchReminders 404 — keeping cached state")
+                newRemOpt = nil
+            }
+
+            guard refreshOrganizationGeneration == organizationSelectionGeneration,
+                  refreshOrganizationId == activeOrganizationId,
+                  refreshActorUserId == currentUserId,
+                  proj == activeProjectId else { return }
+            self.leads = newLeads
+            self.leadsLoadState = .loaded
+            self.calendarLoadState = .loaded
+            self.competitors = newComps
+            if let m = newMetricsOpt { self.metrics = m }
+            self.calendar = newCal
+            if let r = newRemOpt { self.reminders = r }
+            self.lastSyncAt = Date()
+            self.isUsingStaleCache = false
+
+            if let refreshActorUserId, let proj {
+                WatchSession.shared.pushLeads(
+                    newLeads,
+                    actorUserId: refreshActorUserId,
+                    organizationId: refreshOrganizationId,
+                    projectId: proj
+                )
+            } else {
+                // Never retain or relabel a Watch snapshot when the refresh
+                // does not have a complete user + tenant + project scope.
+                WatchSession.shared.clearLeads()
+            }
+
+            // Lagre snapshot til disk
+            if let cacheScope = OfflineCache.Scope(
+                actorUserId: refreshActorUserId,
+                organizationId: refreshOrganizationId,
+                projectId: proj
+            ) {
+                await OfflineCache.shared.save(newLeads, named: "leads", scope: cacheScope)
+                await OfflineCache.shared.save(newComps, named: "competitors", scope: cacheScope)
+                if let m = newMetricsOpt {
+                    await OfflineCache.shared.save(m, named: "metrics", scope: cacheScope)
+                }
+                await OfflineCache.shared.save(newCal, named: "calendar", scope: cacheScope)
+                if let r = newRemOpt {
+                    await OfflineCache.shared.save(r, named: "reminders", scope: cacheScope)
+                }
+            }
+
+            if let actorUserId = currentUserId, let proj {
+                self.pendingVisitsCount = await OfflineActionQueue.shared.pendingCount(
+                    organizationId: refreshOrganizationId,
+                    actorUserId: actorUserId,
+                    projectId: proj)
+            } else {
+                self.pendingVisitsCount = 0
+            }
+            guard refreshOrganizationGeneration == organizationSelectionGeneration,
+                  refreshOrganizationId == activeOrganizationId,
+                  refreshActorUserId == currentUserId,
+                  proj == activeProjectId else { return }
+
+            // Skriv widget-snapshot til delt App Group container
+            writeWidgetSnapshot()
+        } catch {
+            guard refreshOrganizationGeneration == organizationSelectionGeneration,
+                  refreshOrganizationId == activeOrganizationId,
+                  refreshActorUserId == currentUserId,
+                  proj == activeProjectId else { return }
+            print("[AppState] refresh failed (using cache): \(error)")
+            self.isUsingStaleCache = true
+            handleAPIError(error)
+            // Hvis vi var midt i en initial-fetch og ALT feilet (typisk
+            // network down + ingen cache), surface error i kortet i stedet
+            // for å la det stå evig på «laster prosjekter…». Men hvis
+            // projects ble lastet OK, behold .loaded-state.
+            if !projectsLoaded, case .loading = projectsLoadState {
+                let retryable = (error as? APIError)?.isRetryable ?? true
+                self.projectsLoadState = .failed(error.localizedDescription, isRetryable: retryable)
+            }
+        }
+    }
+
+
+    /// Skriver siste data til App Group container så widget kan lese.
+    /// Trigges automatisk etter hver vellykket refreshAll.
+    private func writeWidgetSnapshot() {
+        guard let scope = offlineCacheScope else {
+            clearWidgetSnapshot()
+            return
+        }
+        let activeName = activeProjectId.flatMap { id in
+            projects.first(where: { $0.id == id })?.name
+        }
+        let dueItems = (reminders?.dueToday ?? []).prefix(5).compactMap { due -> WidgetSnapshot.DueItem? in
+            let date = ISO8601DateFormatter().date(from: due.datetime)
+            return WidgetSnapshot.DueItem(
+                leadName: due.name,
+                datetime: date,
+                nextAction: due.nextAction
+            )
+        }
+        let snapshot = WidgetSnapshot(
+            actorUserId: scope.actorUserId,
+            organizationId: scope.organizationId,
+            projectId: scope.projectId,
+            activeProjectName: activeName,
+            totalLeads: metrics?.totalLeads ?? 0,
+            followUpsDue: metrics?.followUpsDue ?? 0,
+            meetingsBooked: metrics?.meetingsBooked ?? 0,
+            staleOver30: reminders?.buckets.over30days ?? 0,
+            staleOver14: reminders?.buckets.over14days ?? 0,
+            staleOver7: reminders?.buckets.over7days ?? 0,
+            dueToday: Array(dueItems),
+            writtenAt: Date()
+        )
+        WidgetSnapshotStore.write(snapshot)
+        // Be WidgetCenter om å reloade timelines
+        Task { @MainActor in
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+            #endif
+        }
+    }
+
+    /// Actor-/workspace-bound visit logging with one stable idempotency id for
+    /// direct send and every retry.
+    func enqueueOrSendVisit(
+        leadId: String,
+        draft: VisitDraft,
+        actionId: UUID
+    ) async -> OfflineResilientActions.WriteDisposition {
+        guard let api,
+              let organizationId = activeOrganizationId,
+              let projectId = activeProjectId,
+              let actorUserId = currentUserId,
+              await api.offlineActorUserId() == actorUserId
+        else {
+            return .rejected("Innlogging og aktivt workspace må bekreftes før besøket lagres.")
+        }
+        func nonEmpty(_ value: String) -> String? {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        let followUpAt = draft.nextFollowUpAt.map { ISO8601DateFormatter().string(from: $0) }
+        let disposition = await OfflineResilientActions.logVisit(
+            api: api,
+            organizationId: organizationId,
+            projectId: projectId,
+            leadId: leadId,
+            payload: .init(
+                visitType: draft.type.rawValue,
+                conversationSummary: nonEmpty(draft.conversationSummary) ?? "Besøk registrert",
+                contactPerson: nonEmpty(draft.contactPerson),
+                notes: nonEmpty(draft.notes),
+                newStatus: draft.newStatus?.rawValue,
+                nextAction: nonEmpty(draft.nextAction),
+                nextFollowUpAt: followUpAt,
+                activityKind: draft.type.activityKind,
+                objectionReason: nonEmpty(draft.objectionReason),
+                visitLatitude: draft.latitude,
+                visitLongitude: draft.longitude),
+            actionId: actionId)
+        self.pendingVisitsCount = await OfflineActionQueue.shared.pendingCount(
+            organizationId: organizationId,
+            actorUserId: actorUserId,
+            projectId: projectId)
+        return disposition
+    }
+
+    // MARK: - Cache-loading
+
+    private func loadFromCache() async {
+        guard let scope = offlineCacheScope else { return }
+        if let cached: (value: [LeadModel], age: TimeInterval) = await OfflineCache.shared.load(
+            [LeadModel].self,
+            named: "leads",
+            scope: scope
+        ) {
+            guard offlineCacheScope == scope else { return }
+            self.leads = cached.value
+            self.lastSyncAt = Date().addingTimeInterval(-cached.age)
+            self.isUsingStaleCache = true
+            // Cache regnes som «loaded» — Leads-fanen skal vise dataene,
+            // ikke skeleton, mens nett-refresh pågår i bakgrunnen.
+            self.leadsLoadState = .loaded
+        }
+        if let cached: (value: [CompetitorModel], age: TimeInterval) = await OfflineCache.shared.load(
+            [CompetitorModel].self,
+            named: "competitors",
+            scope: scope
+        ) {
+            guard offlineCacheScope == scope else { return }
+            self.competitors = cached.value
+        }
+        if let cached: (value: MetricsModel, age: TimeInterval) = await OfflineCache.shared.load(
+            MetricsModel.self,
+            named: "metrics",
+            scope: scope
+        ) {
+            guard offlineCacheScope == scope else { return }
+            self.metrics = cached.value
+        }
+        if let cached: (value: [CalendarEvent], age: TimeInterval) = await OfflineCache.shared.load(
+            [CalendarEvent].self,
+            named: "calendar",
+            scope: scope
+        ) {
+            guard offlineCacheScope == scope else { return }
+            self.calendar = cached.value
+            self.calendarLoadState = .loaded
+        }
+        if let cached: (value: RemindersResponse, age: TimeInterval) = await OfflineCache.shared.load(
+            RemindersResponse.self,
+            named: "reminders",
+            scope: scope
+        ) {
+            guard offlineCacheScope == scope else { return }
+            self.reminders = cached.value
+        }
+        self.pendingVisitsCount = 0
+    }
+}
+
+/// Load-state for prosjekt-listen som vises i MapProjectCard-pageren.
+///
+/// PR #993 introduserte multi-prosjekt-swipe på MapProjectCard. Den viste
+/// «Ingen prosjekter ennå»-empty-state hvis `appState.projects.isEmpty`,
+/// men ved app-start er listen tom inntil fetchProjects returnerer →
+/// brukeren så empty-state i 1-2 sek selv om de hadde 4 prosjekter.
+///
+/// Tre tilstander:
+///   - `.idle`     — ingen fetch igangsatt enda (rett etter init)
+///   - `.loading`  — fetch pågår, vis skeleton
+///   - `.loaded`   — fetch fullført; bruk `projects.isEmpty` for ekte empty
+///   - `.failed`   — nettverksfeil; vis retry-card
+///
+/// `failed`-casen carries en lokalisert melding + `isRetryable`-flag som
+/// ErrorProjectCard bruker for å velge mellom "Prøv igjen" og
+/// "Logg inn på nytt"-CTA. Default-init (bakvert-kompat) gir
+/// `isRetryable: true`.
+enum ProjectsLoadState: Equatable {
+    case idle
+    case loading
+    case loaded
+    case failed(String, isRetryable: Bool = true)
+
+    static func == (lhs: ProjectsLoadState, rhs: ProjectsLoadState) -> Bool {
+        switch (lhs, rhs) {
+        case (.idle, .idle), (.loading, .loading), (.loaded, .loaded):
+            return true
+        case let (.failed(a, ar), .failed(b, br)):
+            return a == b && ar == br
+        default:
+            return false
+        }
+    }
+}

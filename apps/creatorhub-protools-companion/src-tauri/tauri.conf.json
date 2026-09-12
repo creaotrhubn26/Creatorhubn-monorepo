@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Creatorhub Pro Tools Companion",
+  "version": "0.2.0",
+  "identifier": "com.creatorhub.protools-companion",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1424",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Creatorhub Pro Tools Companion",
+        "width": 760,
+        "height": 880,
+        "minWidth": 560,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Music",
+    "shortDescription": "Kobler Pro Tools direkte til CreatorHub Sound Room og EaseVerse",
+    "longDescription": "Native companion for Pro Tools og Pro Tools Intro. Synker markører, metadata og bounces til Sound Room, mottar tidskodet feedback i sanntid, importerer keeper-/referanselyd og eksporterer mikser via en lokalt lisensiert Avid PTSL-bro med robust filmodus som fallback.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {}
+}

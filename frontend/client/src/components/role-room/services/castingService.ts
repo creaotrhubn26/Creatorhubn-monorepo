@@ -43,7 +43,8 @@ import authSessionService from './authSessionService';
 import settingsService, { getCurrentUserId } from './settingsService';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import { logRoleRoomDiagnostic } from '../utils/roleRoomDiagnostics';
-import { generateAvatarUrl } from '../utils/generateAvatarUrl';
+import { generateAvatarUrl } from "../utils/generateAvatarUrl";
+import { mergeCanonicalProjectShellWithLocal } from "./castingProjectSourceMerge";
 
 // Database availability cache
 let dbAvailable: boolean | null = null;
@@ -62,8 +63,12 @@ let cachedProjects: CastingProject[] = [];
 let cachedSharedTemplateProjects: CastingProject[] = [];
 let projectStorageMutationVersion = 0;
 const PROJECT_FETCH_CACHE_TTL_MS = 2000;
+const PROJECT_LIST_FETCH_CACHE_TTL_MS = 2_000;
 const inFlightProjectRequests = new Map<string, Promise<CastingProject | null>>();
 const projectFetchCache = new Map<string, { project: CastingProject | null; cachedAt: number }>();
+let projectsFetchGeneration = 0;
+let inFlightProjectsRequest: { generation: number; promise: Promise<CastingProject[]> } | null = null;
+let projectsFetchCache: { projects: CastingProject[]; cachedAt: number } | null = null;
 const CROSS_PROJECT_AUDIT_STORAGE_KEY = 'role-room-cross-project-attempts';
 const PROJECT_VALIDATION_ERROR_NAME = 'RoleRoomProjectValidationError';
 
@@ -130,6 +135,11 @@ const invalidateProjectFetchCache = (projectId?: string): void => {
 
   projectFetchCache.clear();
   inFlightProjectRequests.clear();
+};
+
+const invalidateProjectsListFetchCache = (): void => {
+  projectsFetchGeneration += 1;
+  projectsFetchCache = null;
 };
 
 const hydrateProjects = async (): Promise<void> => {
@@ -1651,7 +1661,8 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
     const normalizedDb = normalizeProjects(dbProjectsRaw);
     const dbProjects = normalizedDb.projects.map((project) => {
       const localProject = localProjects.find((entry) => entry.id === project.id);
-      const mergedProject = mergeProjectUserRoles(project, localProject).project;
+      const reconciledProject = mergeCanonicalProjectShellWithLocal(project, localProject);
+      const mergedProject = mergeProjectUserRoles(reconciledProject, localProject).project;
       return mergeProjectTemplateMetadata(mergedProject, localProject);
     });
     
@@ -1707,6 +1718,7 @@ async function saveProjectToDb(project: CastingProject, options?: ProjectMutatio
   assertProjectNestedPayloadScope(project, 'saveProject');
 
   invalidateProjectFetchCache(project.id);
+  invalidateProjectsListFetchCache();
 
   // Always save to storage first
   const projects = getProjectsFromStorage();
@@ -1760,6 +1772,7 @@ async function deleteProjectFromDb(id: string, options?: ProjectMutationOptions)
   assertDemoProjectCanMutate(id, 'delete', options);
 
   invalidateProjectFetchCache(id);
+  invalidateProjectsListFetchCache();
 
   // Remove from storage first
   let projects = getProjectsFromStorage();
@@ -1826,14 +1839,39 @@ export const castingService = {
    * Get all projects from database or storage
    */
   async getProjects(): Promise<CastingProject[]> {
-    try {
-      invalidateProjectFetchCache();
-      return await getProjectsFromDb();
-    } catch (error) {
-      console.error('Database fetch failed, falling back to storage:', error);
-      // Return projects from local storage even if database is unavailable
-      return getProjectsFromStorage();
+    const cached = projectsFetchCache;
+    if (cached && Date.now() - cached.cachedAt < PROJECT_LIST_FETCH_CACHE_TTL_MS) {
+      return cached.projects;
     }
+    if (inFlightProjectsRequest?.generation === projectsFetchGeneration) {
+      return inFlightProjectsRequest.promise;
+    }
+
+    const generation = projectsFetchGeneration;
+    const request = (async (): Promise<CastingProject[]> => {
+      try {
+        const projects = await getProjectsFromDb();
+        if (generation === projectsFetchGeneration) {
+          projectsFetchCache = { projects, cachedAt: Date.now() };
+        }
+        return projects;
+      } catch (error) {
+        console.error('Database fetch failed, falling back to storage:', error);
+        // Return projects from local storage even if database is unavailable
+        const projects = getProjectsFromStorage();
+        if (generation === projectsFetchGeneration) {
+          projectsFetchCache = { projects, cachedAt: Date.now() };
+        }
+        return projects;
+      } finally {
+        if (inFlightProjectsRequest?.generation === generation) {
+          inFlightProjectsRequest = null;
+        }
+      }
+    })();
+
+    inFlightProjectsRequest = { generation, promise: request };
+    return request;
   },
 
   /**
@@ -1893,9 +1931,12 @@ export const castingService = {
           ? normalizeProject(dbProjectRaw as CastingProject)
           : { project: null as CastingProject | null, changed: false };
         const dbProject = normalizedDbProject.project;
-        const mergedDbProject = dbProject && localProject
-          ? mergeProjectUserRoles(dbProject, localProject).project
+        const reconciledDbProject = dbProject
+          ? mergeCanonicalProjectShellWithLocal(dbProject, localProject)
           : dbProject;
+        const mergedDbProject = reconciledDbProject && localProject
+          ? mergeProjectUserRoles(reconciledDbProject, localProject).project
+          : reconciledDbProject;
 
         const dbHasData = (mergedDbProject?.candidates?.length ?? 0) > 0 ||
                           (mergedDbProject?.roles?.length ?? 0) > 0 ||
@@ -1942,6 +1983,14 @@ export const castingService = {
   async saveProject(project: CastingProject, options?: ProjectMutationOptions): Promise<void> {
     const existingProject = getProjectsFromStorage().find((entry) => entry.id === project.id);
     let nextProject = {
+      // Slå sammen med HELE det eksisterende lagrede prosjektet — ikke bare
+      // eier-feltene. Uten dette nullstiller et delvis save (f.eks. når panelet
+      // kun skriver crew, userRoles eller producerWorkflow-status etter at et
+      // prosjekt er åpnet) navn, status, klientdata og lister, fordi de feltene
+      // ikke finnes på det innkommende objektet. Online maskeres dette av at
+      // backend re-henter sannheten; offline (eller ved full-replace-backend)
+      // forsvinner dataene. Innkommende felter vinner fortsatt via spread under.
+      ...(existingProject ?? {}),
       ownerId: existingProject?.ownerId,
       ownerEmail: existingProject?.ownerEmail,
       ownerLabel: existingProject?.ownerLabel,
@@ -2755,7 +2804,45 @@ export const castingService = {
   async getSceneBreakdowns(projectId: string): Promise<SceneBreakdown[]> {
     projectId = normalizeRequiredProjectId(projectId, 'getSceneBreakdowns');
     const project = await this.getProject(projectId);
-    return Array.isArray(project?.sceneBreakdowns) ? project.sceneBreakdowns : [];
+    const embedded = Array.isArray(project?.sceneBreakdowns) ? project.sceneBreakdowns : [];
+    if (embedded.length > 0) return embedded;
+
+    // Canonical projects do not necessarily duplicate screenplay scenes on the
+    // project shell. Production days still reference those scene IDs, so fall
+    // back to the authenticated manuscript APIs and merge the scene lists.
+    // This keeps Director, 1st AD, 2nd AD and call sheets on one source of truth.
+    const manuscriptResponse = await fetch(
+      `/api/casting/manuscripts?projectId=${encodeURIComponent(projectId)}`,
+      { headers: { ...getRoleRoomAuthHeaders() } },
+    );
+    if (!manuscriptResponse.ok) {
+      throw new Error(`Kunne ikke hente manus for sceneoversikt (${manuscriptResponse.status})`);
+    }
+    const manuscripts = await manuscriptResponse.json() as Array<{ id?: unknown }>;
+    const manuscriptIds = Array.isArray(manuscripts)
+      ? manuscripts
+        .map((manuscript) => typeof manuscript?.id === 'string' ? manuscript.id.trim() : '')
+        .filter(Boolean)
+      : [];
+    if (manuscriptIds.length === 0) return [];
+
+    const sceneLists = await Promise.all(manuscriptIds.map(async (manuscriptId) => {
+      const response = await fetch(
+        `/api/casting/manuscripts/${encodeURIComponent(manuscriptId)}/scenes`,
+        { headers: { ...getRoleRoomAuthHeaders() } },
+      );
+      if (!response.ok) {
+        throw new Error(`Kunne ikke hente scener fra manus (${response.status})`);
+      }
+      const scenes = await response.json();
+      return Array.isArray(scenes) ? scenes as SceneBreakdown[] : [];
+    }));
+
+    const byId = new Map<string, SceneBreakdown>();
+    for (const scene of sceneLists.flat()) {
+      if (scene && typeof scene.id === 'string' && scene.id.trim()) byId.set(scene.id, scene);
+    }
+    return [...byId.values()];
   },
 
   /**
@@ -2918,7 +3005,7 @@ export const castingService = {
     assertPayloadProjectScope(projectId, payload, 'batchIngestLiveSetEvents');
     const response = await fetch(`/api/role-room/projects/${projectId}/live-set/events/batch`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getRoleRoomAuthHeaders() },
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -2939,7 +3026,9 @@ export const castingService = {
     const query = new URLSearchParams();
     if (since) query.set('since', since);
     const suffix = query.toString() ? `?${query.toString()}` : '';
-    const response = await fetch(`/api/role-room/projects/${projectId}/live-set/events${suffix}`);
+    const response = await fetch(`/api/role-room/projects/${projectId}/live-set/events${suffix}`, {
+      headers: getRoleRoomAuthHeaders(),
+    });
     if (!response.ok) {
       throw new Error(`Failed to fetch live set events: ${response.status}`);
     }
@@ -2960,7 +3049,7 @@ export const castingService = {
     assertPayloadProjectScope(projectId, payload, 'ackLiveSetEvents');
     const response = await fetch(`/api/role-room/projects/${projectId}/live-set/sync/ack`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getRoleRoomAuthHeaders() },
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -5292,4 +5381,3 @@ export const castingService = {
     return template;
   },
 };
-

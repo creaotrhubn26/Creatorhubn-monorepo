@@ -82,7 +82,7 @@ type PermitWorkflowStatus = 'not_started' | 'draft' | 'submitted' | 'in_review' 
 const ROLE_ROOM_DIALOG_COLORS = {
   accent: '#a855f7',
   accentSoft: 'rgba(168,85,247,0.18)',
-  secondary: '#22d3ee',
+  secondary: 'var(--role-cyan, #22d3ee)',
   secondarySoft: 'rgba(34,211,238,0.18)',
   success: '#34d399',
   successSoft: 'rgba(52,211,153,0.18)',
@@ -1524,7 +1524,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       key: 'cost',
                       label: 'Estimert kost',
                       value: `${new Intl.NumberFormat('nb-NO').format(analysisMetrics.estimatedCost)} kr`,
-                      color: analysisMetrics.overBudget ? '#f87171' : '#22d3ee',
+                      color: analysisMetrics.overBudget ? '#f87171' : 'var(--role-cyan, #22d3ee)',
                     },
                     {
                       key: 'action',
@@ -2489,7 +2489,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}>
-                    <CameraIcon sx={{ color: '#00d4ff', fontSize: { xs: '1.5rem', sm: '1.75rem', md: '1.625rem', lg: '1.875rem', xl: '2rem' } }} />
+                    <CameraIcon sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: { xs: '1.5rem', sm: '1.75rem', md: '1.625rem', lg: '1.875rem', xl: '2rem' } }} />
                   </Box>
                   <Box>
                     <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.375rem' } }}>
@@ -2648,7 +2648,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                       <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.87)', mb: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' }, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                         Maksimal høyde
                       </Typography>
-                      <Typography variant="h6" sx={{ color: '#00d4ff', fontWeight: 700, fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.375rem', lg: '1.625rem', xl: '2rem' } }}>
+                      <Typography variant="h6" sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 700, fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.375rem', lg: '1.625rem', xl: '2rem' } }}>
                         {analysis.droneRestrictions.maxAltitude} meter
                       </Typography>
                     </Box>
@@ -2830,7 +2830,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                         label={analysis?.weatherExposure.sunExposure === 'morning' ? 'Morgen' : analysis?.weatherExposure.sunExposure === 'afternoon' ? 'Ettermiddag' : 'Hele dagen'}
                         sx={{
                           bgcolor: 'rgba(0,212,255,0.2)',
-                          color: '#00d4ff',
+                          color: 'var(--role-cyan, #00d4ff)',
                           fontWeight: 600,
                           fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                           height: { xs: 28, sm: 32, md: 30, lg: 34, xl: 40 },
@@ -3032,7 +3032,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                             justifyContent: 'center',
                             flexShrink: 0,
                           }}>
-                            <BusIcon sx={{ color: '#00d4ff', fontSize: { xs: '1.5rem', sm: '1.75rem', md: '1.625rem', lg: '1.875rem', xl: '2rem' } }} />
+                            <BusIcon sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: { xs: '1.5rem', sm: '1.75rem', md: '1.625rem', lg: '1.875rem', xl: '2rem' } }} />
                           </Box>
                           <Box>
                             <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600, mb: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.375rem' } }}>
@@ -3052,13 +3052,13 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                               icon={<BusIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 20 } }} />}
                               sx={{
                                 bgcolor: 'rgba(0,212,255,0.2)',
-                                color: '#00d4ff',
+                                color: 'var(--role-cyan, #00d4ff)',
                                 fontWeight: 500,
                                 fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' },
                                 height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 },
                                 border: '1px solid rgba(0,212,255,0.3)',
                                 '& .MuiChip-icon': {
-                                  color: '#00d4ff',
+                                  color: 'var(--role-cyan, #00d4ff)',
                                 },
                               }}
                             />
@@ -3211,7 +3211,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
               mx: 'auto',
               mb: { xs: 3, sm: 3.5, md: 3.25, lg: 4, xl: 5 },
             }}>
-              <LocationIcon sx={{ color: '#00d4ff', fontSize: { xs: '2.5rem', sm: '3rem', md: '2.75rem', lg: '3.5rem', xl: '4rem' } }} />
+              <LocationIcon sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: { xs: '2.5rem', sm: '3rem', md: '2.75rem', lg: '3.5rem', xl: '4rem' } }} />
             </Box>
             <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.375rem', lg: '1.625rem', xl: '2rem' } }}>
               Ingen analyse tilgjengelig
@@ -3223,7 +3223,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
               variant="contained"
               onClick={handleRefresh}
               sx={{
-                bgcolor: '#00d4ff',
+                bgcolor: 'var(--role-cyan, #00d4ff)',
                 color: '#000',
                 fontWeight: 600,
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },

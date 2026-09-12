@@ -76,7 +76,7 @@ struct QuickTeaserService: Sendable {
             }
             return try Int.fetchOne(db, sql: sql, arguments: [
                 sessionId.uuidString.uppercased(),
-                ownerUserId,
+                ownerUserId
             ]) ?? 0
         }
     }

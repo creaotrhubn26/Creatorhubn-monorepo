@@ -145,7 +145,7 @@ export function ProductionDayCardInfo({
                 height: 18,
                 fontSize: '9px',
                 bgcolor: alpha('#00d4ff', 0.14),
-                color: '#7dd3fc',
+                color: 'var(--role-cyan, #7dd3fc)',
                 border: `1px solid ${alpha('#00d4ff', 0.28)}`,
               }}
             />

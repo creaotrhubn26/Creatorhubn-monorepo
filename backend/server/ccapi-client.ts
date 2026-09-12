@@ -174,6 +174,31 @@ export class CcapiClient {
     return result.storagelist ?? [];
   }
 
+  /**
+   * Shooting-settings (tv/av/iso/exposure m.m.) — GET /shooting/settings.
+   * Returnerer Canon-rå struktur: { tv: { value, ability }, av: {...}, ... }.
+   * Lagt til for AeroSpot camera-sync; read-only.
+   */
+  async shootingSettings(): Promise<Record<string, { value?: string; ability?: string[] }>> {
+    return this.getVersioned<Record<string, { value?: string; ability?: string[] }>>(
+      "/shooting/settings",
+      "ver100",
+    );
+  }
+
+  /**
+   * Skriv én shooting-setting (tv/av/iso) — PUT /shooting/settings/{kind}.
+   * Canon forventer { value: "..." } med en verdi fra ability-lista.
+   * Lagt til for AeroSpots «Bruk på kamera».
+   */
+  async setShootingSetting(kind: "tv" | "av" | "iso", value: string): Promise<void> {
+    await this.request<void>(
+      "PUT",
+      `/ccapi/ver100/shooting/settings/${kind}`,
+      { value },
+    );
+  }
+
   /** Trigger shutter — full_press + release-sekvens (samme som iPad) */
   async triggerShutter(af = true): Promise<void> {
     const path = "/ccapi/ver100/shooting/control/shutterbutton/manual";
@@ -282,7 +307,7 @@ export class CcapiClient {
   }
 
   private async request<T>(
-    method: "GET" | "POST" | "DELETE",
+    method: "GET" | "POST" | "DELETE" | "PUT",
     path: string,
     body?: Record<string, unknown>,
     timeoutMs?: number,

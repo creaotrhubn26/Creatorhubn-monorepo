@@ -2,11 +2,13 @@ import express from "express";
 import type { Pool } from "pg";
 import type { Multer } from "multer";
 import { readString } from "./_shared";
+import { canonicalizeProfession } from "../../frontend/shared/profession-types.ts";
 
 export interface BrandingRoutesDeps {
   app: express.Application;
   pool: Pool;
   requireUserSession: (req: any, res: any) => any;
+  requireAdminSession: (req: any, res: any) => any;
   brandingLogoUpload: Multer;
   getStoredBusinessBrandingInfo: (userId: string) => Promise<any>;
   persistBusinessBrandingInfo: (
@@ -43,6 +45,7 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
     app,
     pool,
     requireUserSession,
+    requireAdminSession,
     brandingLogoUpload,
     getStoredBusinessBrandingInfo,
     persistBusinessBrandingInfo,
@@ -119,6 +122,19 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
         null;
 
       const stored = await persistBusinessBrandingInfo(userId, normalized);
+      // Speil profesjon til users-recorden slik at workspace-nav-en
+      // (workspaceCategoryFor) får en kanonisk verdi. Onboarding-wizarden sender
+      // profesjon hit, så dette lukker NULL-profesjon-hullet uten frontend-endring.
+      const canonProfession = canonicalizeProfession(normalized.profession);
+      // 'enterprise' settes aldri self-serve (ville gitt gratis team-tilgang).
+      if (canonProfession && canonProfession !== "enterprise") {
+        // Profesjon er GATED: settes kun første gang. COALESCE(NULLIF(...))
+        // beholder eksisterende profesjon, så branding-lagring aldri blir en
+        // bakvei for å bytte profesjon (endring krever betaling/Enterprise).
+        await pool
+          .query(`UPDATE users SET profession = COALESCE(NULLIF(profession, ''), $1), updated_at = now() WHERE id = $2`, [canonProfession, userId])
+          .catch((e: any) => console.warn("users.profession-sync feilet:", e?.message));
+      }
       const branding = await resolveDocumentBranding(pool, userId, {
         businessName: stored.businessName,
         email: stored.email,
@@ -151,7 +167,14 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
   app.put("/api/branding/business-info/:userId", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
-    await handleBusinessInfoUpdate(req, res, readString(req.params.userId));
+    // Ownership: a user may only update their own business branding. The
+    // :userId path param was previously passed through unchecked, so any
+    // authenticated user could overwrite another user's business info by id.
+    const targetUserId = readString(req.params.userId);
+    if (targetUserId && session.userId && targetUserId !== session.userId) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+    await handleBusinessInfoUpdate(req, res, session.userId || targetUserId);
   });
 
   // Uten userId i URL-en: utled fra session/header/query (samme oppslag som
@@ -173,14 +196,12 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
     "/api/branding/upload-logo",
     brandingLogoUpload.single("logo"),
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
-      const userId =
-        readString(req.body?.userId) ||
-        readString(req.body?.user_id) ||
-        readString(req.headers["x-user-id"]);
+      const _brandSession = requireUserSession(req, res);
+      if (!_brandSession) return;
+      const userId = _brandSession.userId;
 
       if (!userId || !req.file) {
-        res.status(400).json({ error: "userId and logo are required" });
+        res.status(400).json({ error: "logo is required" });
         return;
       }
 
@@ -271,16 +292,14 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
   });
 
   app.put("/api/branding/settings", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    // Platform branding is a shared singleton (roleRoomBrandingSettingsUserId)
+    // read by every Role Room surface — only an admin may mutate it. The write
+    // is always keyed to the canonical singleton, never a client-supplied id.
+    if (!requireAdminSession(req, res)) return;
     try {
-      const userId =
-        readString(req.body?.userId) ||
-        readString(req.body?.user_id) ||
-        readString(req.headers["x-user-id"]) ||
-        roleRoomBrandingSettingsUserId;
       const normalized = await persistRoleRoomPlatformBrandingSettings(
         req.body?.settings,
-        userId,
+        roleRoomBrandingSettingsUserId,
       );
       res.json({ ok: true, settings: normalized });
     } catch (error) {

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -32,6 +32,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { useToast } from '@/hooks/use-toast';
+import { AdminCard, AdminButton } from './design-system';
 
 type MediaType = 'all' | 'image' | 'video' | 'audio' | 'document';
 type ViewMode = 'grid' | 'list';
@@ -94,7 +95,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
   const { toast } = useToast();
 
   // Fetch media files
-  const { data: files = [], isLoading: filesLoading } = useQuery({
+  const { data: filesData = [], isLoading: filesLoading } = useQuery({
     queryKey: [...QUERY_KEYS.MEDIA, selectedType, selectedFolderId, sortBy],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -107,9 +108,10 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
       return res.json() as Promise<MediaFile[]>;
     }
   });
+  const files: MediaFile[] = Array.isArray(filesData) ? filesData : [];
 
   // Fetch folders
-  const { data: folders = [] } = useQuery({
+  const { data: foldersData = [] } = useQuery({
     queryKey: QUERY_KEYS.MEDIA_FOLDERS,
     queryFn: async () => {
       const res = await fetch('/api/media/folders');
@@ -117,9 +119,10 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
       return res.json() as Promise<MediaFolder[]>;
     }
   });
+  const folders: MediaFolder[] = Array.isArray(foldersData) ? foldersData : [];
 
   // Fetch available tags
-  const { data: availableTags = [] } = useQuery({
+  const { data: availableTagsData = [] } = useQuery({
     queryKey: [...QUERY_KEYS.MEDIA, 'tags'],
     queryFn: async () => {
       const res = await fetch('/api/media/tags');
@@ -127,6 +130,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
       return res.json() as Promise<string[]>;
     }
   });
+  const availableTags: string[] = Array.isArray(availableTagsData) ? availableTagsData : [];
 
   // Upload mutation
   const uploadMutation = useMutation({
@@ -199,12 +203,12 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
   });
 
   // Filter files
-  const filteredFiles = files.filter(file => {
+  const filteredFiles = useMemo(() => files.filter(file => {
     const matchesSearch = file.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesTags = selectedTags.length === 0 || selectedTags.some(tag => file.tags.includes(tag));
     const matchesFavorites = !showFavoritesOnly || file.isFavorite;
     return matchesSearch && matchesTags && matchesFavorites;
-  });
+  }), [files, searchQuery, selectedTags, showFavoritesOnly]);
 
   const handleToggleFavorite = (fileId: string, currentStatus: boolean) => {
     toggleFavoriteMutation.mutate({ fileId, isFavorite: !currentStatus });
@@ -290,10 +294,9 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
         </div>
         <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
-              <CloudUpload className="h-4 w-4 mr-2" />
+            <AdminButton tone="primary" startIcon={<CloudUpload className="h-4 w-4" />}>
               Upload to Drive
-            </Button>
+            </AdminButton>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -303,7 +306,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <Input type="file" multiple onChange={(e) => {
+              <Input type="file" multiple aria-label="Velg filer for opplasting" onChange={(e) => {
                 const files = e.target.files;
                 if (files) {
                   Array.from(files).forEach(file => {
@@ -333,13 +336,14 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search files..."
+              aria-label="Søk i filer"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
             />
           </div>
           <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-[180px]" aria-label="Sorter etter">
               <SortAsc className="h-4 w-4 mr-2" />
               <SelectValue />
             </SelectTrigger>
@@ -350,18 +354,19 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
               <SelectItem value="usage">Most Used</SelectItem>
             </SelectContent>
           </Select>
-          <Button
-            variant={showFavoritesOnly ? 'default' : 'outline'}
+          <AdminButton
+            tone={showFavoritesOnly ? 'primary' : 'secondary'}
             onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+            startIcon={<Star className={`h-4 w-4 ${showFavoritesOnly ? 'fill-current' : ', '}`} />}
           >
-            <Star className={`h-4 w-4 mr-2 ${showFavoritesOnly ? 'fill-current' : ', '}`} />
             Favorites
-          </Button>
+          </AdminButton>
           <div className="flex gap-1 border rounded-md p-1">
             <Button
               variant={viewMode === 'grid' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setViewMode('grid')}
+              aria-label="Vis som rutenett"
             >
               <Grid3x3 className="h-4 w-4" />
             </Button>
@@ -369,6 +374,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
               variant={viewMode === 'list' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setViewMode('list')}
+              aria-label="Vis som liste"
             >
               <List className="h-4 w-4" />
             </Button>
@@ -404,35 +410,36 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
       <div className="grid grid-cols-12 gap-6">
         {/* Folders Sidebar */}
         <div className="col-span-3">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
+          <AdminCard
+            title={
+              <span className="text-lg flex items-center gap-2">
                 <Folder className="h-5 w-5" />
                 Folders
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Button
-                variant={selectedFolderId === null ? 'default' : 'ghost'}
+              </span>
+            }
+          >
+            <div className="space-y-2">
+              <AdminButton
+                tone={selectedFolderId === null ? 'primary' : 'ghost'}
                 className="w-full justify-start"
                 onClick={() => setSelectedFolderId(null)}
+                startIcon={<FolderOpen className="h-4 w-4" />}
               >
-                <FolderOpen className="h-4 w-4 mr-2" />
                 All Files ({files.length})
-              </Button>
+              </AdminButton>
               {folders.map(folder => (
-                <Button
+                <AdminButton
                   key={folder.id}
-                  variant={selectedFolderId === folder.id ? 'default' : 'ghost'}
+                  tone={selectedFolderId === folder.id ? 'primary' : 'ghost'}
                   className="w-full justify-start"
                   onClick={() => setSelectedFolderId(folder.id)}
+                  startIcon={<Folder className="h-4 w-4" />}
                 >
-                  <Folder className="h-4 w-4 mr-2" />
                   {folder.name} ({folder.fileCount})
-                </Button>
+                </AdminButton>
               ))}
-            </CardContent>
-          </Card>
+            </div>
+          </AdminCard>
         </div>
 
         {/* File Grid/List */}
@@ -496,6 +503,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
                               size="sm"
                               className="opacity-0 group-hover:opacity-100"
                               onClick={() => handleToggleFavorite(file.id, file.isFavorite)}
+                              aria-label={file.isFavorite ? 'Fjern fra favoritter' : 'Legg til i favoritter'}
                             >
                               {file.isFavorite ? (
                                 <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
@@ -528,7 +536,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
                           <div className="flex gap-2 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
                             <Dialog>
                               <DialogTrigger asChild>
-                                <Button variant="outline" size="sm" className="flex-1">
+                                <Button variant="outline" size="sm" className="flex-1" aria-label="Forhåndsvis fil">
                                   <Eye className="h-4 w-4" />
                                 </Button>
                               </DialogTrigger>
@@ -543,22 +551,25 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
                                   {renderFilePreview(file)}
                                 </div>
                                 <div className="flex gap-2">
-                                  <Button onClick={() => handleUseFile(file)} className="flex-1">
+                                  <AdminButton tone="primary" onClick={() => handleUseFile(file)} className="flex-1">
                                     Use File
-                                  </Button>
-                                  <Button variant="outline" asChild>
-                                    <a href={file.url} download>
-                                      <Download className="h-4 w-4 mr-2" />
-                                      Download
-                                    </a>
-                                  </Button>
+                                  </AdminButton>
+                                  <AdminButton
+                                    tone="secondary"
+                                    component="a"
+                                    href={file.url}
+                                    download
+                                    startIcon={<Download className="h-4 w-4" />}
+                                  >
+                                    Download
+                                  </AdminButton>
                                 </div>
                               </DialogContent>
                             </Dialog>
                             <Button size="sm" className="flex-1" onClick={() => handleUseFile(file)}>
                               Use
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleDelete(file.id)}>
+                            <Button variant="ghost" size="sm" onClick={() => handleDelete(file.id)} aria-label="Slett fil">
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
@@ -597,6 +608,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
                               variant="ghost"
                               size="sm"
                               onClick={() => handleToggleFavorite(file.id, file.isFavorite)}
+                              aria-label={file.isFavorite ? 'Fjern fra favoritter' : 'Legg til i favoritter'}
                             >
                               {file.isFavorite ? (
                                 <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
@@ -608,11 +620,11 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
                               Use File
                             </Button>
                             <Button variant="ghost" size="sm" asChild>
-                              <a href={file.url} download>
+                              <a href={file.url} download aria-label="Last ned fil">
                                 <Download className="h-4 w-4" />
                               </a>
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleDelete(file.id)}>
+                            <Button variant="ghost" size="sm" onClick={() => handleDelete(file.id)} aria-label="Slett fil">
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>

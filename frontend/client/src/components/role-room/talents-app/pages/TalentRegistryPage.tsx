@@ -52,7 +52,7 @@ import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 import SearchIcon from '@mui/icons-material/Search';
 import VisibilityIcon from '@mui/icons-material/VisibilityOutlined';
 import ViewListIcon from '@mui/icons-material/ViewList';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import roleRoomTalentsService, {
   type RegistryOverview,
@@ -129,16 +129,22 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
     [agencyContext, demoMode],
   );
 
+  // Monotonic search sequence — a slow response for an old filter set must not
+  // overwrite the results of a newer search that already resolved.
+  const searchSeqRef = useRef(0);
   const runSearch = useCallback(async (f: TalentSearchFilters) => {
+    const seq = ++searchSeqRef.current;
     setLoading(true);
     setError(null);
     try {
       const result = await roleRoomTalentsService.searchTalents(f, serviceOpts);
+      if (seq !== searchSeqRef.current) return; // superseded by a newer search
       setSearchResult({ total: result.total, talents: result.talents });
     } catch (err) {
+      if (seq !== searchSeqRef.current) return;
       setError(`Søk feilet: ${err instanceof Error ? err.message : 'ukjent'}`);
     } finally {
-      setLoading(false);
+      if (seq === searchSeqRef.current) setLoading(false);
     }
   }, [serviceOpts]);
 
@@ -154,9 +160,17 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
   }, []);
 
   useEffect(() => {
-    void roleRoomTalentsService.fetchSavedSearches().then(setSavedSearches);
-    void roleRoomTalentsService.fetchRegistryOverview(serviceOpts).then(setOverview);
+    // .catch + cancelled guard: these had neither, so a failed fetch was an
+    // unhandled rejection and a slow one resolved setState after unmount.
+    let cancelled = false;
+    roleRoomTalentsService.fetchSavedSearches()
+      .then((s) => { if (!cancelled) setSavedSearches(s); })
+      .catch(() => undefined);
+    roleRoomTalentsService.fetchRegistryOverview(serviceOpts)
+      .then((o) => { if (!cancelled) setOverview(o); })
+      .catch(() => undefined);
     void reloadProposals();
+    return () => { cancelled = true; };
   }, [reloadProposals, serviceOpts]);
 
   const pendingProposalsCount = proposals.filter((p) => p.status === 'pending').length;
@@ -253,7 +267,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
             <AutoAwesomeIcon sx={{ color: palette.accentBright, fontSize: 20 }} />
             <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1rem' }}>Avanserte filtre</Typography>
           </Stack>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(5, 1fr)' }, gap: 1.4 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(5, 1fr)' }, gap: 1.4 }}>
             <FilterField label="By" value={filters.location || ''} onChange={(v) => setFilters({ ...filters, location: v || undefined })} options={['', ...NORWEGIAN_CITIES]} placeholder="Alle byer" />
             <PlayingAgeField filters={filters} onChange={(f) => setFilters({ ...filters, ...f })} />
             <MultiField label="Språk" values={filters.languages} options={LANGUAGE_OPTIONS} onChange={(v) => setFilters({ ...filters, languages: v.length ? v : undefined })} />
@@ -285,7 +299,7 @@ export default function TalentRegistryPage({ demoMode = false }: TalentRegistryP
               <AutoAwesomeIcon sx={{ color: palette.accentBright, fontSize: 20 }} />
               <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '1rem' }}>Fremhevede talenter</Typography>
             </Stack>
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 1.4 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(auto-fill, minmax(140px, 1fr))', sm: 'repeat(auto-fill, minmax(190px, 1fr))' }, gap: { xs: 1, md: 1.4 } }}>
               {featured.map((t) => <FeaturedCard key={t.id} talent={t} />)}
             </Box>
           </Box>
@@ -614,6 +628,61 @@ function FeaturedCard({ talent }: { talent: TalentSearchHit }) {
   );
 }
 
+/** Ferskhets-tekst for tilgjengelighets-signalet i søket. */
+function availabilityAge(iso: string | null | undefined): { text: string; stale: boolean } | null {
+  if (!iso) return { text: 'ikke bekreftet', stale: true };
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  const d = Math.floor((Date.now() - then) / 86_400_000);
+  if (d <= 0) return { text: 'bekreftet i dag', stale: false };
+  if (d === 1) return { text: 'bekreftet i går', stale: false };
+  return { text: `bekreftet for ${d} d siden`, stale: d > 30 };
+}
+
+/**
+ * Tilgjengelighets-signal i søkeresultatet. Samtykke-transparent: hvis talenten
+ * IKKE har delt 'availability'-scope (availability_visible === false) vises det
+ * eksplisitt som «skjult» i stedet for å utelates stille.
+ */
+function AvailabilitySignal({ talent }: { talent: TalentSearchHit }) {
+  if (talent.availability_visible === false) {
+    return (
+      <Stack direction="row" alignItems="center" spacing={0.6}>
+        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: palette.textMuted }} />
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.72rem', fontStyle: 'italic' }}>
+          Tilgjengelighet ikke delt
+        </Typography>
+      </Stack>
+    );
+  }
+  const windows = talent.availability_windows ?? [];
+  const fresh = availabilityAge(talent.availability_confirmed_at);
+  const isOpen = talent.availability_status === 'open';
+  return (
+    <Stack spacing={0.3}>
+      <Stack direction="row" alignItems="center" spacing={0.6}>
+        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: isOpen ? palette.success : palette.textMuted }} />
+        <Typography sx={{ color: isOpen ? palette.success : palette.textMuted, fontSize: '0.74rem', fontWeight: 600 }}>
+          {talent.availability_status === 'open' ? 'Tilgjengelig'
+            : talent.availability_status === 'limited' ? 'Begrenset'
+            : talent.availability_status === 'unavailable' ? 'Ikke tilgjengelig'
+            : 'Ukjent'}
+        </Typography>
+        {windows.length > 0 ? (
+          <Typography sx={{ color: palette.accentBright, fontSize: '0.7rem', fontWeight: 600 }}>
+            · {windows.length} vindu{windows.length > 1 ? 'er' : ''}
+          </Typography>
+        ) : null}
+      </Stack>
+      {fresh ? (
+        <Typography sx={{ color: fresh.stale ? palette.warning : palette.textMuted, fontSize: '0.66rem' }}>
+          {fresh.stale ? '⚠ ' : ''}{fresh.text}
+        </Typography>
+      ) : null}
+    </Stack>
+  );
+}
+
 function TalentCard({ talent }: { talent: TalentSearchHit }) {
   const age = talent.playing_age_min && talent.playing_age_max ? `${talent.playing_age_min}–${talent.playing_age_max}` : null;
   const langs = (talent.languages ?? []).map((l) => l.label).slice(0, 2).join(', ');
@@ -650,14 +719,7 @@ function TalentCard({ talent }: { talent: TalentSearchHit }) {
           ))}
         </Stack>
         <Box sx={{ flexGrow: 1 }} />
-        {talent.availability_status === 'open' ? (
-          <Stack direction="row" alignItems="center" spacing={0.6}>
-            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: palette.success }} />
-            <Typography sx={{ color: palette.success, fontSize: '0.74rem', fontWeight: 600 }}>Tilgjengelig</Typography>
-          </Stack>
-        ) : talent.availability_status ? (
-          <Typography sx={{ color: palette.textMuted, fontSize: '0.74rem', fontWeight: 500 }}>{talent.availability_status}</Typography>
-        ) : null}
+        <AvailabilitySignal talent={talent} />
       </Box>
       <Stack direction="row" sx={{ borderTop: `1px solid ${palette.borderSubtle}` }}>
         <IconButton sx={{ flexGrow: 1, color: palette.textMuted, borderRadius: 0 }}><BookmarkAddOutlinedIcon fontSize="small" /></IconButton>

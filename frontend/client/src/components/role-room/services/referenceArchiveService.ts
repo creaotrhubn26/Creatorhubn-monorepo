@@ -6,6 +6,8 @@
  * payload, and (b) storing/searching/mutating already-hosted frames.
  */
 
+import { apiFetch } from '@/lib/queryClient';
+
 export type ReferenceFrameShotType =
   | 'wide'
   | 'medium'
@@ -60,10 +62,8 @@ export async function analyzeFramePreview(input: {
   hintFilmTitle?: string;
   hintCinematographer?: string;
 }): Promise<ReferenceFrameClaudeTags> {
-  const res = await fetch('/api/reference-archive/analyze', {
+  const res = await apiFetch('/api/reference-archive/analyze', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
     body: JSON.stringify(input),
   });
   const body = await json<{ success: boolean; data: { claudeTags: ReferenceFrameClaudeTags } }>(res);
@@ -85,10 +85,8 @@ export async function createReferenceFrame(input: {
   userTags?: string[];
   usedOnProjectIds?: string[];
 }): Promise<ReferenceFrame> {
-  const res = await fetch('/api/reference-archive/frames', {
+  const res = await apiFetch('/api/reference-archive/frames', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
     body: JSON.stringify(input),
   });
   const body = await json<{ success: boolean; data: ReferenceFrame }>(res);
@@ -112,9 +110,7 @@ export async function searchReferenceFrames(args: SearchArgs = {}): Promise<Refe
   if (args.timeOfDay) params.set('timeOfDay', args.timeOfDay);
   if (args.limit) params.set('limit', String(args.limit));
   if (args.offset) params.set('offset', String(args.offset));
-  const res = await fetch(`/api/reference-archive/frames?${params.toString()}`, {
-    credentials: 'include',
-  });
+  const res = await apiFetch(`/api/reference-archive/frames?${params.toString()}`);
   const body = await json<{ success: boolean; data: ReferenceFrame[] }>(res);
   return body.data;
 }
@@ -132,10 +128,8 @@ export async function updateReferenceFrame(
     usedOnProjectIds: string[];
   }>,
 ): Promise<ReferenceFrame> {
-  const res = await fetch(`/api/reference-archive/frames/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`/api/reference-archive/frames/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
     body: JSON.stringify(patch),
   });
   const body = await json<{ success: boolean; data: ReferenceFrame }>(res);
@@ -161,10 +155,8 @@ export async function suggestFramesForScene(input: {
   };
   limit?: number;
 }): Promise<SuggestedFrame[]> {
-  const res = await fetch('/api/reference-archive/suggest', {
+  const res = await apiFetch('/api/reference-archive/suggest', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
     body: JSON.stringify(input),
   });
   const body = await json<{ success: boolean; data: SuggestedFrame[] }>(res);
@@ -172,9 +164,8 @@ export async function suggestFramesForScene(input: {
 }
 
 export async function deleteReferenceFrame(id: string): Promise<void> {
-  const res = await fetch(`/api/reference-archive/frames/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`/api/reference-archive/frames/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    credentials: 'include',
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { message?: string; error?: string };

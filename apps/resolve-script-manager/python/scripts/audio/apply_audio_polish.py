@@ -119,10 +119,14 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         chain_parts.append(f"highpass=f={hp_hz}")
 
     # 2. De-esser
+    # ffmpeg's `deesser` tar `f` som NORMALISERT verdi [0-1] (andel av Nyquist),
+    # ikke Hz. Anta 48kHz utgang (Nyquist 24kHz) og konverter sibilance-frekvensen.
     de_ess = _de_esser_freq(settings.get("deEssLevel", "off"))
     if de_ess:
-        intensity, freq = de_ess
-        chain_parts.append(f"deesser=i={intensity}:f={freq}")
+        intensity, freq_hz = de_ess
+        nyquist = 24_000.0
+        f_norm = max(0.0, min(1.0, freq_hz / nyquist))
+        chain_parts.append(f"deesser=i={intensity}:f={f_norm:.4f}")
 
     # 3. Voice boost (1-3kHz EQ-bump for klarhet)
     voice_boost = float(settings.get("voiceBoostDb", 0))

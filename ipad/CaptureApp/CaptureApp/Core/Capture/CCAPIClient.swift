@@ -191,7 +191,7 @@ actor CCAPIClient {
     func triggerManualShutter(af: Bool = true) async throws {
         let path = "/ccapi/ver100/shooting/control/shutterbutton/manual"
         try await post(path: path, body: ["action": "full_press", "af": af])
-        try await post(path: path, body: ["action": "release",    "af": af])
+        try await post(path: path, body: ["action": "release", "af": af])
     }
 
     private func post(path: String, body: [String: any Sendable]) async throws {
@@ -292,8 +292,11 @@ actor CCAPIClient {
         path: String,
         timeout: TimeInterval? = nil,
     ) async throws -> T {
-        let url = baseURL.appendingPathComponent(path)
-        return try await getAbsolute(url: url, timeout: timeout)
+        // 🔑 Query-BEVARENDE bygging. `appendingPathComponent` prosent-koder «?»
+        // til «%3F» → long-poll-stien «…/event/polling?continue=on» tapte
+        // `continue=on` (kamera blokkerte ikke). `getAbsolute(path:)` bruker
+        // `URL(string:relativeTo:)` som beholder query-strengen intakt.
+        try await getAbsolute(path: path, timeout: timeout)
     }
 
     private func getAbsolute<T: Decodable>(

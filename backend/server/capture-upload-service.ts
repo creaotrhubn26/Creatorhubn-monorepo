@@ -2,6 +2,7 @@ import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -436,4 +437,31 @@ export async function abortMultipartUpload(
     }),
   );
   return { ok: true };
+}
+
+/// Best-effort fysisk sletting av R2-objekter for en asset (inkl. ev. orphende
+/// parts under asset-prefix). Feil er tolerert per nøkkel — DB-raden er
+/// autoritativ; objektopprydding er sekundær. Alltid trygg å kalle med tom liste.
+export async function deleteCaptureObjects(
+  keys: string[],
+): Promise<{ deleted: number; failed: number }> {
+  const cfg = buildCaptureR2Config();
+  const client = getClient(cfg);
+  if (!client || !cfg.bucket) {
+    console.error('[capture] R2 delete: ikke konfigurert — hoppet over', keys.length, 'nøkler');
+    return { deleted: 0, failed: keys.length };
+  }
+  let deleted = 0;
+  let failed = 0;
+  for (const key of keys) {
+    if (!key) continue;
+    try {
+      await client.send(new DeleteObjectCommand({ Bucket: cfg.bucket, Key: key }));
+      deleted += 1;
+    } catch (e: any) {
+      failed += 1;
+      console.error('[capture] R2 delete feilet', key, e?.message || e);
+    }
+  }
+  return { deleted, failed };
 }

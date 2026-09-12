@@ -102,6 +102,11 @@ function isoOrNull(d: Date | null): string | undefined {
   return d ? d.toISOString() : undefined;
 }
 
+function isMissingTableError(error: unknown): boolean {
+  const msg = (error as Error)?.message ?? String(error);
+  return msg.includes('relation') && msg.includes('does not exist');
+}
+
 function serializeChannel(row: CommunityChannelRow): Record<string, unknown> {
   return {
     id: row.id,
@@ -173,6 +178,9 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
       );
       return res.json({ success: true, channels: result.rows.map(serializeChannel) });
     } catch (error) {
+      if (isMissingTableError(error)) {
+        return res.json({ success: true, channels: [], schemaMissing: true });
+      }
       console.error('[community] list channels failed:', error);
       return res.status(500).json({ success: false, error: 'Kunne ikke laste kanaler', channels: [] });
     }
@@ -277,6 +285,9 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
           );
       return res.json({ success: true, posts: result.rows.map(serializePost) });
     } catch (error) {
+      if (isMissingTableError(error)) {
+        return res.json({ success: true, posts: [], schemaMissing: true });
+      }
       console.error('[community] list posts failed:', error);
       return res.status(500).json({ success: false, error: 'Kunne ikke laste posts', posts: [] });
     }
@@ -379,6 +390,9 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
       );
       return res.json({ success: true, contacts: result.rows.map(serializeContact) });
     } catch (error) {
+      if (isMissingTableError(error)) {
+        return res.json({ success: true, contacts: [], schemaMissing: true });
+      }
       console.error('[community] list contacts failed:', error);
       return res.status(500).json({ success: false, error: 'Kunne ikke laste kontakter', contacts: [] });
     }

@@ -45,6 +45,14 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import {
+  AdminCard,
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+  useIsMobile,
+} from './design-system';
+import type { StatusTone } from './design-system';
 
 interface UserRecord {
   id: string;
@@ -294,7 +302,7 @@ function formatProfessionLabel(profession: string): string {
   return profession.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function getStatusColor(status: UserRecord['status'] | UserRecord['subscriptionStatus']) {
+function getStatusTone(status: UserRecord['status'] | UserRecord['subscriptionStatus']): StatusTone {
   if (status === 'active' || status === 'trial') {
     return 'success';
   }
@@ -303,11 +311,12 @@ function getStatusColor(status: UserRecord['status'] | UserRecord['subscriptionS
     return 'warning';
   }
 
-  return 'default';
+  return 'neutral';
 }
 
 const VisualUserManagement: FC = () => {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const [tabValue, setTabValue] = useState(0);
   const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
   const [userDialogOpen, setUserDialogOpen] = useState(false);
@@ -341,9 +350,9 @@ const VisualUserManagement: FC = () => {
     refetchInterval: 30000,
   });
 
-  const users = usersQuery.data ?? fallbackUsers;
-  const packages = packagesQuery.data ?? fallbackPackages;
-  const featureFlags = featureFlagsQuery.data ?? fallbackFeatureFlags;
+  const users = Array.isArray(usersQuery.data) ? usersQuery.data : fallbackUsers;
+  const packages = Array.isArray(packagesQuery.data) ? packagesQuery.data : fallbackPackages;
+  const featureFlags = Array.isArray(featureFlagsQuery.data) ? featureFlagsQuery.data : fallbackFeatureFlags;
   const analytics = analyticsQuery.data ?? fallbackAnalytics;
 
   const updateFeatureFlagMutation = useMutation({
@@ -426,12 +435,12 @@ const VisualUserManagement: FC = () => {
   return (
     <Box sx={{ p: 2 }}>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'start', md: 'center' }} gap={2}>
-        <Typography variant="h5" fontWeight={700}>
+        <Typography variant="h5" component="h2" fontWeight={700}>
           Visual User Management
         </Typography>
-        <Button startIcon={<Refresh />} variant="outlined" onClick={handleRefresh}>
+        <AdminButton tone="secondary" startIcon={<Refresh />} onClick={handleRefresh}>
           Refresh
-        </Button>
+        </AdminButton>
       </Stack>
 
       {operationMessage ? (
@@ -544,8 +553,8 @@ const VisualUserManagement: FC = () => {
             </FormControl>
           </Stack>
 
-          <Card>
-            <CardContent sx={{ p: 0 }}>
+          <AdminCard disablePadding>
+            <AdminTableContainer ariaLabel="Users">
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -581,10 +590,10 @@ const VisualUserManagement: FC = () => {
                       </TableCell>
                       <TableCell>{user.packageTier}</TableCell>
                       <TableCell>
-                        <Chip size="small" label={user.status} color={getStatusColor(user.status)} />
+                        <StatusChip tone={getStatusTone(user.status)} label={user.status} />
                       </TableCell>
                       <TableCell>
-                        <Chip size="small" label={user.subscriptionStatus} color={getStatusColor(user.subscriptionStatus)} />
+                        <StatusChip tone={getStatusTone(user.subscriptionStatus)} label={user.subscriptionStatus} />
                       </TableCell>
                       <TableCell>{user.activeFeatures.length}</TableCell>
                       <TableCell>
@@ -617,8 +626,8 @@ const VisualUserManagement: FC = () => {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+            </AdminTableContainer>
+          </AdminCard>
         </TabPanel>
 
         <TabPanel value={tabValue} index={1}>
@@ -631,6 +640,7 @@ const VisualUserManagement: FC = () => {
                     divider
                     secondaryAction={
                       <Switch
+                        inputProps={{ 'aria-label': `Slå funksjon ${flag.name} av eller på` }}
                         checked={flag.enabled}
                         onChange={(event) =>
                           updateFeatureFlagMutation.mutate({
@@ -667,44 +677,34 @@ const VisualUserManagement: FC = () => {
         <TabPanel value={tabValue} index={2}>
           <Grid container spacing={2}>
             <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Security Posture
-                  </Typography>
-                  <Stack spacing={1}>
-                    <Alert severity={analytics.failedLogins24h > 3 ? 'warning' : 'success'}>
-                      Failed logins (24h): {analytics.failedLogins24h}
-                    </Alert>
-                    <Alert severity={analytics.mfaEnabledUsers > 0 ? 'success' : 'warning'}>
-                      MFA enabled users: {analytics.mfaEnabledUsers}
-                    </Alert>
-                  </Stack>
-                </CardContent>
-              </Card>
+              <AdminCard title="Security Posture">
+                <Stack spacing={1}>
+                  <Alert severity={analytics.failedLogins24h > 3 ? 'warning' : 'success'}>
+                    Failed logins (24h): {analytics.failedLogins24h}
+                  </Alert>
+                  <Alert severity={analytics.mfaEnabledUsers > 0 ? 'success' : 'warning'}>
+                    MFA enabled users: {analytics.mfaEnabledUsers}
+                  </Alert>
+                </Stack>
+              </AdminCard>
             </Grid>
             <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Immediate Actions
-                  </Typography>
-                  <Stack spacing={1}>
-                    <Button variant="outlined" onClick={() => setStatusFilter('suspended')}>
-                      Show Suspended Users
-                    </Button>
-                    <Button variant="outlined" onClick={() => setStatusFilter('all')}>
-                      Reset User Filters
-                    </Button>
-                  </Stack>
-                </CardContent>
-              </Card>
+              <AdminCard title="Immediate Actions">
+                <Stack spacing={1}>
+                  <AdminButton tone="secondary" onClick={() => setStatusFilter('suspended')}>
+                    Show Suspended Users
+                  </AdminButton>
+                  <AdminButton tone="secondary" onClick={() => setStatusFilter('all')}>
+                    Reset User Filters
+                  </AdminButton>
+                </Stack>
+              </AdminCard>
             </Grid>
           </Grid>
         </TabPanel>
       </Box>
 
-      <Dialog open={userDialogOpen} onClose={() => setUserDialogOpen(false)} fullWidth maxWidth="sm">
+      <Dialog open={userDialogOpen} onClose={() => setUserDialogOpen(false)} fullScreen={isMobile} fullWidth maxWidth="sm">
         <DialogTitle>User Details</DialogTitle>
         <DialogContent>
           {selectedUser ? (
@@ -733,11 +733,11 @@ const VisualUserManagement: FC = () => {
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setUserDialogOpen(false)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setUserDialogOpen(false)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={validationDialogOpen} onClose={() => setValidationDialogOpen(false)} fullWidth maxWidth="md">
+      <Dialog open={validationDialogOpen} onClose={() => setValidationDialogOpen(false)} fullScreen={isMobile} fullWidth maxWidth="md">
         <DialogTitle>Service Validation</DialogTitle>
         <DialogContent>
           <List disablePadding>
@@ -761,9 +761,8 @@ const VisualUserManagement: FC = () => {
                     </>
                   }
                 />
-                <Chip
-                  size="small"
-                  color={
+                <StatusChip
+                  tone={
                     result.status === 'configured' ? 'success' : result.status === 'missing' ? 'warning' : 'error'
                   }
                   label={result.status}
@@ -773,7 +772,7 @@ const VisualUserManagement: FC = () => {
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setValidationDialogOpen(false)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setValidationDialogOpen(false)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

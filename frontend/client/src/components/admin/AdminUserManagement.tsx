@@ -25,6 +25,7 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  InputAdornment,
   FormControl,
   InputLabel,
   Select,
@@ -34,13 +35,16 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
+import { AdminCard, AdminButton, StatusChip, AdminTableContainer, AdminEmpty, useIsMobile } from './design-system';
 import {
   Edit as EditIcon,
   Block as BlockIcon,
+  DeleteForever as DeleteIcon,
   CheckCircle as ActivateIcon,
   AdminPanelSettings as AdminIcon,
   Person as UserIcon,
   SupervisorAccount as SuperAdminIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
@@ -66,10 +70,13 @@ interface AdminUserManagementProps {
 const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoading }) => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [actionType, setActionType] = useState<'role' | 'deactivate' | 'activate'>('role');
+  const [actionType, setActionType] = useState<'role' | 'deactivate' | 'activate' | 'delete'>('role');
   const [newRole, setNewRole] = useState<'user' | 'admin' | 'super_admin'>('user');
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+
+  const isMobile = useIsMobile();
 
   const queryClient = useQueryClient();
 
@@ -121,7 +128,21 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
   }
 });
 
-  const handleOpenDialog = (user: User, action: 'role' | 'deactivate' | 'activate') => {
+  const deleteMutation = useMutation({
+    mutationFn: async ({ userId }: { userId: string }) => {
+      const headers = await auth.getAuthHeader();
+      return await apiRequest(`/api/admin/users/${userId}`, { headers, method: 'DELETE' });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
+      handleCloseDialog();
+  },
+    onError: (error: any) => {
+      setError(error.message || 'Kunne ikke slette bruker');
+  }
+});
+
+  const handleOpenDialog = (user: User, action: 'role' | 'deactivate' | 'activate' | 'delete') => {
     setSelectedUser(user);
     setActionType(action);
     setNewRole(user.role);
@@ -160,6 +181,8 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
         userId: selectedUser.id,
         reason: reason || 'Admin activation'
     });
+  } else if (actionType === 'delete') {
+      deleteMutation.mutate({ userId: selectedUser.id });
   }
 };
 
@@ -205,13 +228,30 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
 
   return (
     <Box>
-      <Paper sx={{ backgroundColor: 'rgba(255, 255, 255, 0.02)' }}>
-        <Box sx={{ p: 3 }}>
-          <Typography variant="h6" sx={{ color: theming.colors.primary, mb: 2 }}>
-            Brukeradministrasjon
-          </Typography>
-          
-          <TableContainer>
+      <AdminCard title="Brukeradministrasjon" disablePadding>
+          <Box sx={{ px: 2, pt: 2, pb: 1 }}>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Søk etter navn, e-post eller firma …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ color: 'rgba(255, 255, 255, 0.62)' }} />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  color: 'white', '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.2)' }, '&:hover fieldset': { borderColor: '#ff8c00' },
+                },
+                '& .MuiInputBase-input::placeholder': { color: 'rgba(255, 255, 255, 0.5)' },
+              }}
+            />
+          </Box>
+          <AdminTableContainer ariaLabel="Brukere">
             <Table>
               <TableHead>
                 <TableRow>
@@ -224,7 +264,11 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                 </TableRow>
               </TableHead>
               <TableBody>
-                {users?.map((user) => (
+                {users?.filter((user) =>
+                  `${user.firstName ?? ''} ${user.lastName ?? ''} ${user.email ?? ''} ${user.companyName ?? ''}`
+                    .toLowerCase()
+                    .includes(search.toLowerCase())
+                ).map((user) => (
                   <TableRow key={user.id}>
                     <TableCell sx={{ color: 'rgba(255, 255, 255, 0.82)' }}>
                       <Box sx={{ display: 'flex', flexDirection: 'column'}}>
@@ -242,18 +286,13 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {getRoleIcon(user.role)}
-                        <Chip 
-                          label={getRoleLabel(user.role)}
-                          color={getRoleColor(user.role) as any}
-                          size="small"
-                        />
+                        <StatusChip role={user.role} />
                       </Box>
                     </TableCell>
                     <TableCell>
-                      <Chip 
+                      <StatusChip
+                        tone={user.isActive ? 'success' : 'error'}
                         label={user.isActive ? 'Aktiv' : 'Deaktivert'}
-                        color={user.isActive ? 'success' : 'error'}
-                        size="small"
                       />
                     </TableCell>
                     <TableCell sx={{ color: 'rgba(255, 255, 255, 0.82)' }}>
@@ -267,6 +306,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                         <Tooltip title="Endre rolle">
                           <IconButton
                             size="small"
+                            aria-label="Endre rolle"
                             onClick={() => handleOpenDialog(user, 'role')}
                             sx={{ color: '#ff8c00' }}
                           >
@@ -278,6 +318,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                           <Tooltip title="Deaktiver bruker">
                             <IconButton
                               size="small"
+                              aria-label="Deaktiver bruker"
                               onClick={() => handleOpenDialog(user, 'deactivate')}
                               sx={{ color: '#f44336' }}
                             >
@@ -288,6 +329,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                           <Tooltip title="Aktiver bruker">
                             <IconButton
                               size="small"
+                              aria-label="Aktiver bruker"
                               onClick={() => handleOpenDialog(user, 'activate')}
                               sx={{ color: '#4caf50'}}
                             >
@@ -295,20 +337,34 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                             </IconButton>
                           </Tooltip>
                         )}
+
+                        <Tooltip title="Slett bruker permanent">
+                          <IconButton
+                            size="small"
+                            aria-label="Slett bruker permanent"
+                            onClick={() => handleOpenDialog(user, 'delete')}
+                            sx={{ color: '#d32f2f' }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Tooltip>
                       </Box>
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
-        </Box>
-      </Paper>
+          </AdminTableContainer>
+          {(!users || users.length === 0) && (
+            <AdminEmpty title="Ingen brukere" description="Det finnes ingen brukere å vise ennå." />
+          )}
+      </AdminCard>
 
       {/* Action Dialog */}
       <Dialog
         open={dialogOpen}
         onClose={handleCloseDialog}
+        fullScreen={isMobile}
         maxWidth="md"
         fullWidth
         PaperProps={{
@@ -322,6 +378,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
           {actionType === 'role' && 'Endre brukerrolle'}
           {actionType === 'deactivate' && 'Deaktiver bruker'}
           {actionType === 'activate' && 'Aktiver bruker'}
+          {actionType === 'delete' && 'Slett bruker permanent'}
         </DialogTitle>
         
         <DialogContent>
@@ -335,7 +392,17 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
             <Typography sx={{ color: 'rgba(255, 255, 255, 0.82)' }}>
               Bruker: {selectedUser?.firstName} {selectedUser?.lastName} ({selectedUser?.email})
             </Typography>
-            
+
+            {actionType === 'delete' && (
+              <Alert severity="error" sx={{ '& .MuiAlert-message': { width: '100%' } }}>
+                <strong>Er du sikker på at du vil slette denne brukeren?</strong>
+                <br />
+                Dette fjerner kontoen <strong>permanent</strong> sammen med tilknyttede data, og
+                <strong> kan ikke angres</strong>. (Admin/super_admin-kontoer kan ikke slettes —
+                endre rollen først.)
+              </Alert>
+            )}
+
             {actionType === 'role' && (
               <FormControl fullWidth>
                 <InputLabel sx={{ color: 'rgba(255, 255, 255, 0.72)' }}>Ny rolle</InputLabel>
@@ -356,6 +423,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
               </FormControl>
             )}
             
+            {actionType !== 'delete' && (
             <TextField
               label={actionType === 'deactivate' ? 'Årsak (påkrevd)' : 'Årsak (valgfri)'}
               multiline
@@ -368,31 +436,26 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                   color: 'white', '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.2)' }, '&:hover fieldset': { borderColor: '#ff8c00',},
               }}}
             />
+            )}
           </Box>
         </DialogContent>
         
         <DialogActions>
-          <Button 
-            onClick={handleCloseDialog}
-            sx={{ color: 'rgba(255, 255, 255, 0.72)' }}
-          >
+          <AdminButton tone="ghost" onClick={handleCloseDialog}>
             Avbryt
-          </Button>
-          <Button onClick={handleSubmit}
-            variant="contained"
-            disabled={
-              roleUpdateMutation.isPending || 
-              deactivateMutation.isPending || 
-              activateMutation.isPending
-          }
-            sx={{
-              backgroundColor: '#ff8c00', '&:hover': { backgroundColor: '#e67c00' }
-          }}>
-            {(roleUpdateMutation.isPending || deactivateMutation.isPending || activateMutation.isPending) ? (
-              <CircularProgress size={20} sx={{ color: 'white' }} />
-            ) : (
-             'Bekreft')}
-          </Button>
+          </AdminButton>
+          <AdminButton
+            tone={actionType === 'delete' ? 'danger' : 'primary'}
+            onClick={handleSubmit}
+            loading={
+              roleUpdateMutation.isPending ||
+              deactivateMutation.isPending ||
+              activateMutation.isPending ||
+              deleteMutation.isPending
+            }
+          >
+            {actionType === 'delete' ? 'Slett permanent' : 'Bekreft'}
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

@@ -24,7 +24,11 @@
  */
 
 const MIGRATION_VERSION_MARKER_KEY = "_legacy-storage-migration-version";
-const CURRENT_MIGRATION_VERSION = 1;
+const CURRENT_MIGRATION_VERSION = 2;
+
+// Removed hosting integrations previously persisted API credentials in the
+// browser. Version 2 deletes those credentials once on every existing origin.
+const RETIRED_CREDENTIAL_KEYS = ["vercel_token", "vercel_team_id"] as const;
 
 interface KeyMigration {
   /** Eksakt localStorage-key (eller prefix hvis prefixMatch=true). */
@@ -89,6 +93,14 @@ function safeWrite(key: string, value: string): void {
   }
 }
 
+function safeRemove(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    /* private mode */
+  }
+}
+
 function keyMatchesPattern(key: string, pattern: KeyMigration): boolean {
   if (pattern.prefixMatch) return key.startsWith(pattern.key);
   return key === pattern.key;
@@ -99,6 +111,7 @@ export interface MigrationReport {
   migrated: number;
   skippedAlreadyVersioned: number;
   skippedCorrupted: number;
+  removedRetiredCredentials: number;
 }
 
 /**
@@ -111,6 +124,7 @@ export function runLegacyStorageMigration(): MigrationReport {
     migrated: 0,
     skippedAlreadyVersioned: 0,
     skippedCorrupted: 0,
+    removedRetiredCredentials: 0,
   };
 
   if (typeof window === "undefined") return report;
@@ -119,6 +133,12 @@ export function runLegacyStorageMigration(): MigrationReport {
   const markerVersion = markerRaw ? Number(markerRaw) : 0;
   if (markerVersion >= CURRENT_MIGRATION_VERSION) {
     return report; // Allerede migrert
+  }
+
+  for (const key of RETIRED_CREDENTIAL_KEYS) {
+    if (safeRead(key) === null) continue;
+    safeRemove(key);
+    report.removedRetiredCredentials += 1;
   }
 
   const allKeys = safeGetAllLocalStorageKeys();

@@ -19,7 +19,6 @@ import {
   CardContent,
   Typography,
   Grid,
-  Button,
   TextField,
   Tab,
   Tabs,
@@ -29,10 +28,8 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   IconButton,
   Tooltip,
   CircularProgress,
@@ -40,6 +37,7 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  InputAdornment,
   Snackbar,
 } from '@mui/material';
 import {
@@ -74,6 +72,11 @@ import {
 } from 'recharts';
 import SchemaValidationPanel from './SchemaValidationPanel';
 import { apiRequest } from '../../lib/queryClient';
+import {
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+} from './design-system';
 
 const COLORS = ['#FF6B6B','#4ECDC4','#45B7D1','#FFA07A','#98D8C8','#F7DC6F'];
 
@@ -103,6 +106,7 @@ export default function SEOBotAnalyticsDashboard() {
   const [testUrl, setTestUrl] = useState('');
   const [selectedBot, setSelectedBot] = useState('Googlebot');
   const [days, setDays] = useState(7);
+  const [botSearch, setBotSearch] = useState('');
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -117,6 +121,7 @@ export default function SEOBotAnalyticsDashboard() {
       return apiRequest(`/api/seo-bot/analytics?days=${days}`);
     },
     refetchInterval: 30000, // Refresh every 30 seconds
+    staleTime: 15000, // unngå refetch-storm ved remount/segmentbytte
   });
 
   // Fetch bot visits
@@ -204,20 +209,25 @@ export default function SEOBotAnalyticsDashboard() {
     return 'error';
   };
 
+  const analyticsRows = Array.isArray(analytics?.analytics) ? analytics.analytics : [];
+  const mobileTestRows = Array.isArray(mobileTests?.tests) ? mobileTests.tests : [];
+  const budgetReportRows = Array.isArray(crawlBudget?.budgetReport) ? crawlBudget.budgetReport : [];
+  const recommendationRows = Array.isArray(recommendations?.recommendations) ? recommendations.recommendations : [];
+
   return (
     <Box sx={{ p: 3 }}>
       {/* Header */}
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <BotIcon fontSize="large" />
+          <Typography variant="h4" component="h2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <BotIcon fontSize="large" aria-hidden="true" />
             SEO Bot Analytics Dashboard
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Professional bot detection like Screaming Frog + Real-time analytics
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <InputLabel>Time Period</InputLabel>
             <Select
@@ -231,8 +241,8 @@ export default function SEOBotAnalyticsDashboard() {
               <MenuItem value={90}>Last 90 days</MenuItem>
             </Select>
           </FormControl>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="secondary"
             startIcon={<RefreshIcon />}
             onClick={() => {
               queryClient.invalidateQueries({ queryKey: ['seo-bot-analytics'] });
@@ -241,20 +251,21 @@ export default function SEOBotAnalyticsDashboard() {
             }}
           >
             Refresh
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<SearchIcon />}
             onClick={() => initializeMutation.mutate()}
+            loading={initializeMutation.isPending}
             disabled={initializeMutation.isPending}
           >
             {initializeMutation.isPending ? 'Initializing...' : 'Initialize Bot DB'}
-          </Button>
+          </AdminButton>
         </Box>
       </Box>
 
       {/* Key Metrics */}
-      {!analyticsLoading && analytics?.analytics && (
+      {!analyticsLoading && analyticsRows.length > 0 && (
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid item xs={12} md={3}>
             <Card>
@@ -263,7 +274,7 @@ export default function SEOBotAnalyticsDashboard() {
                   Total Bot Visits
                 </Typography>
                 <Typography variant="h4">
-                  {analytics.analytics.reduce((sum: number, a: any) => sum + Number(a.total_visits || 0), 0)}
+                  {analyticsRows.reduce((sum: number, a: any) => sum + Number(a.total_visits || 0), 0)}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Last {days} days
@@ -278,7 +289,7 @@ export default function SEOBotAnalyticsDashboard() {
                   Unique Bots
                 </Typography>
                 <Typography variant="h4">
-                  {analytics.analytics.length}
+                  {analyticsRows.length}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Different bot types
@@ -293,7 +304,7 @@ export default function SEOBotAnalyticsDashboard() {
                   Pages Crawled
                 </Typography>
                 <Typography variant="h4">
-                  {analytics.analytics.reduce((sum: number, a: any) => sum + Number(a.total_pages || 0), 0)}
+                  {analyticsRows.reduce((sum: number, a: any) => sum + Number(a.total_pages || 0), 0)}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   By all bots
@@ -308,7 +319,7 @@ export default function SEOBotAnalyticsDashboard() {
                   Avg Response Time
                 </Typography>
                 <Typography variant="h4">
-                  {(analytics.analytics.reduce((sum: number, a: any) => sum + Number(a.avg_response_time || 0), 0) / analytics.analytics.length).toFixed(0)}ms
+                  {(analyticsRows.reduce((sum: number, a: any) => sum + Number(a.avg_response_time || 0), 0) / analyticsRows.length).toFixed(0)}ms
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Server response
@@ -338,13 +349,13 @@ export default function SEOBotAnalyticsDashboard() {
         {/* Tab 1: Bot Analytics */}
         <TabPanel value={tabValue} index={0}>
           <Box sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               Bot Visit Analytics
             </Typography>
             
             {analyticsLoading ? (
               <CircularProgress />
-            ) : analytics?.analytics && analytics.analytics.length > 0 ? (
+            ) : analyticsRows.length > 0 ? (
               <>
                 {/* Bot Distribution Chart */}
                 <Box sx={{ mb: 4 }}>
@@ -354,7 +365,7 @@ export default function SEOBotAnalyticsDashboard() {
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie
-                        data={analytics.analytics}
+                        data={analyticsRows}
                         dataKey="total_visits"
                         nameKey="bot_name"
                         cx="50%"
@@ -362,7 +373,7 @@ export default function SEOBotAnalyticsDashboard() {
                         label={({ name, value }) => `${name ?? 'Bot'}: ${value ?? 0}`}
                         outerRadius={100}
                       >
-                        {analytics.analytics.map((_: any, index: number) => (
+                        {analyticsRows.map((_: any, index: number) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
@@ -373,7 +384,23 @@ export default function SEOBotAnalyticsDashboard() {
                 </Box>
 
                 {/* Bot Details Table */}
-                <TableContainer component={Paper}>
+                <Box sx={{ mb: 2 }}>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    placeholder="Søk etter bot eller kategori …"
+                    value={botSearch}
+                    onChange={(e) => setBotSearch(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
+                <AdminTableContainer ariaLabel="Bot detaljer">
                   <Table>
                     <TableHead>
                       <TableRow>
@@ -386,7 +413,9 @@ export default function SEOBotAnalyticsDashboard() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {analytics.analytics.map((bot: any) => (
+                      {analyticsRows.filter((bot: any) =>
+                        `${bot.bot_name ?? ''} ${bot.bot_category ?? ''}`.toLowerCase().includes(botSearch.toLowerCase())
+                      ).map((bot: any) => (
                         <TableRow key={bot.bot_name}>
                           <TableCell>{bot.bot_name}</TableCell>
                           <TableCell>
@@ -408,7 +437,7 @@ export default function SEOBotAnalyticsDashboard() {
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </>
             ) : (
               <Alert severity="info">
@@ -421,7 +450,7 @@ export default function SEOBotAnalyticsDashboard() {
         {/* Tab 2: Render Tests */}
         <TabPanel value={tabValue} index={1}>
           <Box sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               JavaScript Rendering Tests
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -455,16 +484,17 @@ export default function SEOBotAnalyticsDashboard() {
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={3}>
-                <Button
+                <AdminButton
                   fullWidth
-                  variant="contained"
+                  tone="primary"
                   startIcon={<RunTestIcon />}
                   onClick={() => renderTestMutation.mutate()}
+                  loading={renderTestMutation.isPending}
                   disabled={!testUrl || renderTestMutation.isPending}
                   sx={{ height: '56px' }}
                 >
                   {renderTestMutation.isPending ? 'Testing...' : 'Run Test'}
-                </Button>
+                </AdminButton>
               </Grid>
             </Grid>
 
@@ -549,7 +579,7 @@ export default function SEOBotAnalyticsDashboard() {
         {/* Tab 3: Mobile Usability */}
         <TabPanel value={tabValue} index={2}>
           <Box sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               Mobile Usability Testing
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -568,16 +598,17 @@ export default function SEOBotAnalyticsDashboard() {
                 />
               </Grid>
               <Grid item xs={12} md={3}>
-                <Button
+                <AdminButton
                   fullWidth
-                  variant="contained"
+                  tone="primary"
                   startIcon={<MobileIcon />}
                   onClick={() => mobileTestMutation.mutate()}
+                  loading={mobileTestMutation.isPending}
                   disabled={!testUrl || mobileTestMutation.isPending}
                   sx={{ height: '56px' }}
                 >
                   {mobileTestMutation.isPending ? 'Testing...' : 'Run Mobile Test'}
-                </Button>
+                </AdminButton>
               </Grid>
             </Grid>
 
@@ -591,8 +622,8 @@ export default function SEOBotAnalyticsDashboard() {
             )}
 
             {/* Recent Mobile Tests */}
-            {!mobileLoading && mobileTests?.tests && mobileTests.tests.length > 0 && (
-              <TableContainer component={Paper}>
+            {!mobileLoading && mobileTestRows.length > 0 && (
+              <AdminTableContainer ariaLabel="Mobil-tester">
                 <Table>
                   <TableHead>
                     <TableRow>
@@ -606,7 +637,7 @@ export default function SEOBotAnalyticsDashboard() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {mobileTests.tests.map((test: any) => (
+                    {mobileTestRows.map((test: any) => (
                       <TableRow key={test.test_id}>
                         <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {test.url}
@@ -633,17 +664,15 @@ export default function SEOBotAnalyticsDashboard() {
                           )}
                         </TableCell>
                         <TableCell align="right">
-                          <Chip
+                          <StatusChip
                             label={test.mobile_usability_score}
-                            color={getScoreColor(test.mobile_usability_score)}
-                            size="small"
+                            tone={getScoreColor(test.mobile_usability_score)}
                           />
                         </TableCell>
                         <TableCell align="right">
-                          <Chip
+                          <StatusChip
                             label={test.mobile_seo_score}
-                            color={getScoreColor(test.mobile_seo_score)}
-                            size="small"
+                            tone={getScoreColor(test.mobile_seo_score)}
                           />
                         </TableCell>
                         <TableCell>
@@ -653,7 +682,7 @@ export default function SEOBotAnalyticsDashboard() {
                     ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
+              </AdminTableContainer>
             )}
           </Box>
         </TabPanel>
@@ -661,7 +690,7 @@ export default function SEOBotAnalyticsDashboard() {
         {/* Tab 4: Crawl Budget */}
         <TabPanel value={tabValue} index={3}>
           <Box sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               Crawl Budget Optimization
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -670,7 +699,7 @@ export default function SEOBotAnalyticsDashboard() {
 
             {budgetLoading ? (
               <CircularProgress />
-            ) : crawlBudget?.budgetReport && crawlBudget.budgetReport.length > 0 ? (
+            ) : budgetReportRows.length > 0 ? (
               <>
                 <Grid container spacing={2} sx={{ mb: 3 }}>
                   <Grid item xs={12} md={6}>
@@ -705,7 +734,7 @@ export default function SEOBotAnalyticsDashboard() {
                   </Grid>
                 </Grid>
 
-                <TableContainer component={Paper}>
+                <AdminTableContainer ariaLabel="Crawl-budsjett">
                   <Table>
                     <TableHead>
                       <TableRow>
@@ -718,17 +747,16 @@ export default function SEOBotAnalyticsDashboard() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {crawlBudget.budgetReport.map((report: any, idx: number) => (
+                      {budgetReportRows.map((report: any, idx: number) => (
                         <TableRow key={`${report.bot_name}-${report.date}-${idx}`}>
                           <TableCell>{report.bot_name}</TableCell>
                           <TableCell>{new Date(report.date).toLocaleDateString()}</TableCell>
                           <TableCell align="right">{report.actual_pages_crawled}</TableCell>
                           <TableCell align="right">{report.total_budget_wasted}</TableCell>
                           <TableCell align="right">
-                            <Chip
+                            <StatusChip
                               label={`${Number(report.waste_percent).toFixed(1)}%`}
-                              color={Number(report.waste_percent) < 10 ? 'success' : 'warning'}
-                              size="small"
+                              tone={Number(report.waste_percent) < 10 ? 'success' : 'warning'}
                             />
                           </TableCell>
                           <TableCell align="right">
@@ -738,7 +766,7 @@ export default function SEOBotAnalyticsDashboard() {
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </>
             ) : (
               <Alert severity="info">
@@ -758,7 +786,7 @@ export default function SEOBotAnalyticsDashboard() {
         {/* Tab 6: Recommendations */}
         <TabPanel value={tabValue} index={5}>
           <Box sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               AI-Powered SEO Recommendations
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -767,9 +795,9 @@ export default function SEOBotAnalyticsDashboard() {
 
             {recsLoading ? (
               <CircularProgress />
-            ) : recommendations?.recommendations && recommendations.recommendations.length > 0 ? (
+            ) : recommendationRows.length > 0 ? (
               <Grid container spacing={2}>
-                {recommendations.recommendations.map((rec: any) => (
+                {recommendationRows.map((rec: any) => (
                   <Grid item xs={12} key={rec.recommendation_id}>
                     <Card>
                       <CardContent>
@@ -787,10 +815,9 @@ export default function SEOBotAnalyticsDashboard() {
                               {rec.recommendation_text}
                             </Typography>
                             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                              <Chip
+                              <StatusChip
                                 label={rec.priority.toUpperCase()}
-                                color={rec.priority === 'critical' ? 'error' : rec.priority === 'high' ? 'warning' : 'info'}
-                                size="small"
+                                tone={rec.priority === 'critical' ? 'error' : rec.priority === 'high' ? 'warning' : 'info'}
                               />
                               <Chip label={rec.category} size="small" variant="outlined" />
                               {rec.estimated_impact && (

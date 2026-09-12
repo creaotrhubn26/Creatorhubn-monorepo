@@ -5,18 +5,12 @@
  * (kun tilgjengelig for daniel@creatorhubn.com).
  */
 
+import { getStoredAuthToken } from '../lib/queryClient';
+
 const BASE = '/api/admin-room';
 
-function getAuthToken(): string {
-  return (
-    localStorage.getItem('creatorhub_auth_token')
-    || localStorage.getItem('authToken')
-    || ''
-  );
-}
-
 async function jsonFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getAuthToken();
+  const token = getStoredAuthToken();
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -409,9 +403,20 @@ export const PARTNER_STATUS_LABELS: Record<PartnerStatus, string> = {
 // Business plan (Forretningsplan + strategi)
 // ─────────────────────────────────────────────────────────
 
+// Mig 0335 — multi-produkt forretningsplan.
+// Daniel kan vedlikeholde én strategi-plan per produkt parallelt.
+export type AdminProductKey = 'role_room' | 'leadgrid';
+
+export const ADMIN_PRODUCTS: Array<{ key: AdminProductKey; label: string; accent: string }> = [
+  { key: 'role_room', label: 'The Role Room', accent: '#22d3ee' },
+  { key: 'leadgrid', label: 'Leadgrid', accent: '#a78bfa' },
+];
+
 export interface BusinessPlan {
   id: string;
   user_id: string;
+  product_key?: AdminProductKey;
+  updated_by?: string | null;
   // 1.0
   exec_summary: string | null;
   // 2.0
@@ -498,14 +503,16 @@ export type BusinessPlanInput = Partial<{
 }>;
 
 export const businessPlanApi = {
-  get: async (): Promise<BusinessPlan | null> => {
-    const data = await jsonFetch<{ plan: BusinessPlan | null }>('/business-plan');
+  get: async (productKey: AdminProductKey = 'role_room'): Promise<BusinessPlan | null> => {
+    const data = await jsonFetch<{ plan: BusinessPlan | null }>(
+      `/business-plan?product=${productKey}`,
+    );
     return data.plan;
   },
-  patch: async (input: BusinessPlanInput): Promise<BusinessPlan> => {
+  patch: async (input: BusinessPlanInput, productKey: AdminProductKey = 'role_room'): Promise<BusinessPlan> => {
     const data = await jsonFetch<{ plan: BusinessPlan }>('/business-plan', {
       method: 'PATCH',
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, productKey }),
     });
     return data.plan;
   },
@@ -513,10 +520,10 @@ export const businessPlanApi = {
     fieldKey: string;
     fieldLabel: string;
     existingContent?: string;
-  }): Promise<{ text: string; tokens: { input: number; output: number } }> => {
+  }, productKey: AdminProductKey = 'role_room'): Promise<{ text: string; tokens: { input: number; output: number } }> => {
     return jsonFetch('/business-plan/generate', {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, productKey }),
     });
   },
 };
@@ -1279,6 +1286,7 @@ export type PlatformCostCategory =
 
 export type PlatformCostAllocation = 'role_room_only' | 'total_platform' | 'per_active_user';
 
+// `vercel` beholdes for historiske kostnadsrader; nye Netlify-rader er manuelle.
 export type PlatformCostSource = 'manual' | 'render' | 'neon' | 'vercel' | 'stripe' | 'anthropic' | 'google';
 
 export interface PlatformFixedCost {
@@ -1397,9 +1405,6 @@ export const platformFixedCostsApi = {
   refreshNeon: async (): Promise<{ ok: boolean; created: number; updated: number; total: number }> => {
     return jsonFetch('/platform-fixed-costs/refresh/neon', { method: 'POST' });
   },
-  refreshVercel: async (): Promise<{ ok: boolean; created: number; updated: number; total: number }> => {
-    return jsonFetch('/platform-fixed-costs/refresh/vercel', { method: 'POST' });
-  },
 };
 
 // ─────────────────────────────────────────────────────────
@@ -1448,34 +1453,6 @@ export interface PlatformStatusResponse {
 export const platformStatusApi = {
   fetch: async (): Promise<PlatformStatusResponse> => {
     return jsonFetch('/platform-status');
-  },
-};
-
-// ─────────────────────────────────────────────────────────
-// Migrations — admin-trigger av migrate.sh
-// ─────────────────────────────────────────────────────────
-
-export interface MigrationsState {
-  status: 'idle' | 'running' | 'completed' | 'failed';
-  startedAt: string | null;
-  finishedAt: string | null;
-  triggeredBy: string | null;
-  lastLogLines: string[];
-  exitCode: number | null;
-  errorMessage: string | null;
-  appliedThisRun: number;
-  skippedThisRun: number;
-  lockHeld: boolean;
-  pendingFiles?: string[];
-  pendingCount?: number;
-}
-
-export const migrationsApi = {
-  status: async (): Promise<MigrationsState> => {
-    return jsonFetch('/migrations/status');
-  },
-  run: async (): Promise<{ ok: boolean; state: MigrationsState; message: string }> => {
-    return jsonFetch('/migrations/run', { method: 'POST' });
   },
 };
 
@@ -1596,7 +1573,7 @@ export const newsletterAiApi = {
     newsletterIntro: string;
     quoteCards: Array<{ quote: string; attribution: string }>;
   }> => {
-    const token = getAuthToken();
+    const token = getStoredAuthToken();
     const form = new FormData();
     form.append('audio', audio, filename);
     const response = await fetch(`${BASE}/newsletter/role-room/ai/voice-draft`, {
@@ -1850,4 +1827,406 @@ export const whatsNewApi = {
   remove: async (id: string): Promise<void> => {
     await jsonFetch(`/whats-new/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
+};
+
+
+// ─────────────────────────────────────────────────────────
+// Marketing-posters (4:5 Admin Room PNG-assets)
+// ─────────────────────────────────────────────────────────
+
+export interface MarketingPoster {
+  id: string;
+  title: string;
+  templateId: string;
+  theme: string;
+  variant: string;
+  fields: Record<string, unknown>;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketingPosterInput {
+  title?: string;
+  templateId?: string;
+  theme?: string;
+  variant?: string;
+  fields?: Record<string, unknown>;
+}
+
+// ─────────────────────────────────────────────────────────
+// AdminWorkspace «Saker» (cases + comments, multi-produkt)
+// Mig 0336 — admin_workspace_cases + admin_workspace_case_comments.
+// ─────────────────────────────────────────────────────────
+
+export type WorkspaceCaseStatus = 'open' | 'in_progress' | 'blocked' | 'done' | 'archived';
+export type WorkspaceCasePriority = 'low' | 'normal' | 'high' | 'urgent';
+export type WorkspaceCaseLinkedEntityType =
+  | 'customer'
+  | 'partner'
+  | 'investor'
+  | 'outreach_template'
+  | 'funding_app';
+
+// product_key på saker:
+//   null  → intern sak (uten produkt-tilhørighet)
+//   string → 'role_room' | 'leadgrid'
+export type WorkspaceCaseProductKey = AdminProductKey | null;
+
+export interface WorkspaceCase {
+  id: string;
+  user_id: string;
+  product_key: WorkspaceCaseProductKey;
+  title: string;
+  body: string | null;
+  status: WorkspaceCaseStatus;
+  priority: WorkspaceCasePriority;
+  due_date: string | null;
+  linked_entity_type: WorkspaceCaseLinkedEntityType | null;
+  linked_entity_id: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface WorkspaceCaseComment {
+  id: string;
+  case_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+}
+
+export type WorkspaceCaseInput = {
+  title?: string;
+  body?: string | null;
+  status?: WorkspaceCaseStatus;
+  priority?: WorkspaceCasePriority;
+  dueDate?: string | null;
+  productKey?: WorkspaceCaseProductKey | 'internal';
+  linkedEntityType?: WorkspaceCaseLinkedEntityType | null;
+  linkedEntityId?: string | null;
+  tags?: string[];
+};
+
+export type WorkspaceCaseListFilter = {
+  // product:
+  //   'role_room' | 'leadgrid' — filtrer på produkt
+  //   'internal' — kun interne saker (product_key IS NULL)
+  //   undefined — alle
+  product?: 'role_room' | 'leadgrid' | 'internal';
+  status?: WorkspaceCaseStatus;
+  priority?: WorkspaceCasePriority;
+};
+
+export const WORKSPACE_CASE_STATUS_LABELS: Record<WorkspaceCaseStatus, string> = {
+  open: 'Åpen',
+  in_progress: 'Pågår',
+  blocked: 'Blokkert',
+  done: 'Ferdig',
+  archived: 'Arkivert',
+};
+
+export const WORKSPACE_CASE_PRIORITY_LABELS: Record<WorkspaceCasePriority, string> = {
+  low: 'Lav',
+  normal: 'Normal',
+  high: 'Høy',
+  urgent: 'Haster',
+};
+
+export const WORKSPACE_CASE_PRIORITY_COLORS: Record<WorkspaceCasePriority, string> = {
+  low: '#64748b',       // slate-500
+  normal: '#a78bfa',    // violet-400 (samme som BRAND.accent)
+  high: '#f59e0b',      // amber-500
+  urgent: '#ef4444',    // red-500
+};
+
+export const WORKSPACE_CASE_LINKED_ENTITY_LABELS: Record<WorkspaceCaseLinkedEntityType, string> = {
+  customer: 'Lead / kunde',
+  partner: 'Partner',
+  investor: 'Investor',
+  outreach_template: 'Outreach-template',
+  funding_app: 'Funding-søknad',
+};
+
+export const workspaceCasesApi = {
+  list: async (filter?: WorkspaceCaseListFilter): Promise<WorkspaceCase[]> => {
+    const params = new URLSearchParams();
+    if (filter?.product) params.set('product', filter.product);
+    if (filter?.status) params.set('status', filter.status);
+    if (filter?.priority) params.set('priority', filter.priority);
+    const query = params.toString();
+    const data = await jsonFetch<{ items: WorkspaceCase[] }>(
+      `/workspace/cases${query ? `?${query}` : ''}`,
+    );
+    return data.items;
+  },
+  get: async (id: string): Promise<{ item: WorkspaceCase; comments: WorkspaceCaseComment[] }> => {
+    return jsonFetch(`/workspace/cases/${encodeURIComponent(id)}`);
+  },
+  create: async (input: WorkspaceCaseInput): Promise<WorkspaceCase> => {
+    const data = await jsonFetch<{ item: WorkspaceCase }>('/workspace/cases', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  update: async (id: string, input: WorkspaceCaseInput): Promise<WorkspaceCase> => {
+    const data = await jsonFetch<{ item: WorkspaceCase }>(`/workspace/cases/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  delete: async (id: string): Promise<void> => {
+    await jsonFetch(`/workspace/cases/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  addComment: async (caseId: string, body: string): Promise<WorkspaceCaseComment> => {
+    const data = await jsonFetch<{ item: WorkspaceCaseComment }>(
+      `/workspace/cases/${encodeURIComponent(caseId)}/comments`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+      },
+    );
+    return data.item;
+  },
+  deleteComment: async (commentId: string): Promise<void> => {
+    await jsonFetch(`/workspace/case-comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' });
+  },
+};
+
+export const marketingPostersApi = {
+  list: async (templateId?: string): Promise<MarketingPoster[]> => {
+    const q = templateId ? `?templateId=${encodeURIComponent(templateId)}` : '';
+    const data = await jsonFetch<{ items: MarketingPoster[] }>(`/marketing-posters${q}`);
+    // Skjul "_default_*"-rader fra åpne-listen — disse er kun for default-templating
+    return data.items.filter((p) => !p.id.startsWith('_default_'));
+  },
+  getDefault: async (templateId: string): Promise<MarketingPoster | null> => {
+    const data = await jsonFetch<{ item: MarketingPoster | null }>(
+      `/marketing-posters/default/${encodeURIComponent(templateId)}`,
+    );
+    return data.item;
+  },
+  setDefault: async (templateId: string, input: MarketingPosterInput): Promise<MarketingPoster> => {
+    const data = await jsonFetch<{ item: MarketingPoster }>(
+      `/marketing-posters/default/${encodeURIComponent(templateId)}`,
+      { method: 'PUT', body: JSON.stringify(input) },
+    );
+    return data.item;
+  },
+  get: async (id: string): Promise<MarketingPoster> => {
+    const data = await jsonFetch<{ item: MarketingPoster }>(`/marketing-posters/${encodeURIComponent(id)}`);
+    return data.item;
+  },
+  create: async (input: MarketingPosterInput): Promise<MarketingPoster> => {
+    const data = await jsonFetch<{ item: MarketingPoster }>('/marketing-posters', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  patch: async (id: string, input: MarketingPosterInput): Promise<MarketingPoster> => {
+    const data = await jsonFetch<{ item: MarketingPoster }>(`/marketing-posters/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  duplicate: async (id: string): Promise<MarketingPoster> => {
+    const data = await jsonFetch<{ item: MarketingPoster }>(`/marketing-posters/${encodeURIComponent(id)}/duplicate`, {
+      method: 'POST',
+    });
+    return data.item;
+  },
+  remove: async (id: string): Promise<void> => {
+    await jsonFetch(`/marketing-posters/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────
+// Workspace-aggregator (Dagens agenda + Kommende frister)
+// Bytter ut empty-states i AdminWorkspace høyre kolonne med live data.
+// Backend: admin-workspace-aggregator-routes.ts.
+// ─────────────────────────────────────────────────────────────────
+
+export interface AgendaItem {
+  id: string;
+  source: 'meeting';
+  title: string;
+  starts_at: string;
+  ends_at: string | null;
+  time_zone: string;
+  meet_link: string | null;
+  project_id: string | null;
+  status: string;
+}
+
+export type DeadlineSource = 'funding_app' | 'case' | 'meeting';
+
+export interface DeadlineItem {
+  id: string;
+  source: DeadlineSource;
+  title: string;
+  due_date: string;          // ISO date eller datetime
+  product_key: AdminProductKey | null;
+  priority: string | null;
+  status: string | null;
+  link_path: string | null;
+}
+
+export const DEADLINE_SOURCE_LABEL: Record<DeadlineSource, string> = {
+  funding_app: 'Søknad',
+  case: 'Sak',
+  meeting: 'Møte',
+};
+
+export const workspaceAggregatorApi = {
+  todayAgenda: async (): Promise<AgendaItem[]> => {
+    const data = await jsonFetch<{ items: AgendaItem[] }>('/workspace/today-agenda');
+    return data.items;
+  },
+  upcomingDeadlines: async (days: number = 14): Promise<{ items: DeadlineItem[]; windowDays: number }> => {
+    return jsonFetch<{ items: DeadlineItem[]; windowDays: number }>(`/workspace/upcoming-deadlines?days=${days}`);
+  },
+};
+
+// ─────────────────────────────────────────────────────────
+// Målrettet markedsføring — segment → ad-audience-bro
+// ─────────────────────────────────────────────────────────
+
+export type MarketingSegmentSource = 'industry_targets' | 'leadgrid_leads';
+export type MarketingAudiencePlatform =
+  | 'google_customer_match'
+  | 'meta_custom_audience'
+  | 'linkedin_matched_audience';
+
+export interface MarketingSegmentAudience {
+  platform: string;
+  externalAudienceId: string | null;
+  memberCount: number;
+  status: string;
+  lastError: string | null;
+  lastSyncedAt: string | null;
+}
+
+export interface SegmentCampaign {
+  campaignId: string;
+  platform: string;
+  externalCampaignId: string | null;
+  goal: string | null;
+  status: string;
+}
+
+export interface SegmentPerformance {
+  campaignCount: number;
+  spendNok: number;
+  convValueNok: number;
+  conversions: number;
+  roas: number | null;
+}
+
+export interface LinkableCampaign {
+  id: string;
+  platform: string;
+  externalCampaignId: string | null;
+  goal: string | null;
+  status: string;
+  spendNok: number;
+}
+
+export interface MarketingSegment {
+  id: string;
+  userId: string;
+  name: string;
+  source: MarketingSegmentSource;
+  filters: { tiers?: string[]; segments?: string[]; statuses?: string[] };
+  createdAt: string;
+  updatedAt: string;
+  audiences?: MarketingSegmentAudience[];
+  campaigns?: SegmentCampaign[];
+  performance?: SegmentPerformance;
+}
+
+export interface MaterializeResult {
+  ok: boolean;
+  platform: string;
+  memberCount: number;
+  externalAudienceId?: string;
+  error?: string;
+  note?: string;
+}
+
+export const marketingSegmentsApi = {
+  list: async (): Promise<MarketingSegment[]> => {
+    const data = await jsonFetch<{ items: MarketingSegment[] }>('/marketing-segments');
+    return data.items;
+  },
+  create: async (input: {
+    name: string;
+    source: MarketingSegmentSource;
+    filters: { tiers?: string[]; segments?: string[]; statuses?: string[] };
+  }): Promise<MarketingSegment> => {
+    const data = await jsonFetch<{ segment: MarketingSegment }>('/marketing-segments', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.segment;
+  },
+  preview: (id: string): Promise<{ total: number; sample: string[]; note?: string }> =>
+    jsonFetch(`/marketing-segments/${id}/preview`),
+  materialize: (
+    id: string,
+    body: { platform: MarketingAudiencePlatform; customerId?: string; adAccountId?: string; adAccountUrn?: string },
+  ): Promise<MaterializeResult> =>
+    jsonFetch(`/marketing-segments/${id}/materialize`, { method: 'POST', body: JSON.stringify(body) }),
+  remove: (id: string): Promise<{ deleted: boolean }> =>
+    jsonFetch(`/marketing-segments/${id}`, { method: 'DELETE' }),
+  listCampaigns: async (): Promise<LinkableCampaign[]> => {
+    const data = await jsonFetch<{ campaigns: LinkableCampaign[] }>(
+      '/marketing-segments/campaigns/linkable',
+    );
+    return data.campaigns;
+  },
+  linkCampaign: (id: string, campaignId: string): Promise<{ ok: boolean; performance: SegmentPerformance }> =>
+    jsonFetch(`/marketing-segments/${id}/campaigns`, {
+      method: 'POST',
+      body: JSON.stringify({ campaignId }),
+    }),
+  unlinkCampaign: (id: string, campaignId: string): Promise<{ removed: boolean; performance: SegmentPerformance }> =>
+    jsonFetch(`/marketing-segments/${id}/campaigns/${campaignId}`, { method: 'DELETE' }),
+};
+
+// ─────────────────────────────────────────────────────────
+// Business DNA — Catalog (auto-populert fra systemets vertikaler)
+// ─────────────────────────────────────────────────────────
+
+export type CatalogSource = 'system_vertical' | 'custom' | 'url_import';
+
+export interface CatalogItem {
+  id: string;
+  itemKey: string | null;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  source: CatalogSource;
+  active: boolean;
+}
+
+export const marketingCatalogApi = {
+  list: async (): Promise<CatalogItem[]> => {
+    const data = await jsonFetch<{ items: CatalogItem[] }>('/marketing-catalog');
+    return data.items;
+  },
+  create: (input: { name: string; description?: string; imageUrl?: string }): Promise<{ item: CatalogItem }> =>
+    jsonFetch('/marketing-catalog', { method: 'POST', body: JSON.stringify(input) }),
+  update: (
+    id: string,
+    patch: { name?: string; description?: string; imageUrl?: string; active?: boolean },
+  ): Promise<{ item: CatalogItem }> =>
+    jsonFetch(`/marketing-catalog/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  remove: (id: string): Promise<{ deleted: boolean }> =>
+    jsonFetch(`/marketing-catalog/${id}`, { method: 'DELETE' }),
 };

@@ -97,6 +97,8 @@ import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIn
 // Visual CMS Components
 import MaterialIconLibrary from '../cms/MaterialIconLibrary';
 
+import { AdminButton, StatusChip, AdminLoading, useIsMobile } from './design-system';
+
 interface AdminUser {
   id: string;
   email: string;
@@ -134,6 +136,7 @@ export default function UniversalAdminCMS() {
   const { auth } = useEnhancedMasterIntegration();
   const user = auth.state.user ?? auth.getUserProfile();
   const isAuthenticated = !!user;
+  const isMobile = useIsMobile();
 
   // State management
   const [activeTab, setActiveTab] = useState(0);
@@ -250,7 +253,7 @@ export default function UniversalAdminCMS() {
   // Render dashboard overview
   const renderDashboard = () => (
     <Box>
-      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+      <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
         🎛️ Admin Dashboard
       </Typography>
 
@@ -332,7 +335,7 @@ export default function UniversalAdminCMS() {
         <Grid item xs={12} md={8}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                 📊 System Oversikt
               </Typography>
               <List>
@@ -365,28 +368,29 @@ export default function UniversalAdminCMS() {
         <Grid item xs={12} md={4}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                 🚀 Quick Actions
               </Typography>
               <Stack spacing={2}>
-                <Button variant="contained"
+                <AdminButton
+                  tone="primary"
                   startIcon={<AddIcon />}
                   onClick={() => setCreatePageDialog(true)}
                   fullWidth
                 >
                   Opprett ny side
-                </Button>
-                <Button
-                  variant="outlined"
+                </AdminButton>
+                <AdminButton
+                  tone="secondary"
                   startIcon={<PaletteIcon />}
                   onClick={() => setShowIconLibrary(true)}
                   fullWidth
                 >
                   Ikon bibliotek
-                </Button>
-                <Button variant="outlined" startIcon={<BackupIcon />} fullWidth>
+                </AdminButton>
+                <AdminButton tone="secondary" startIcon={<BackupIcon />} fullWidth>
                   System backup
-                </Button>
+                </AdminButton>
               </Stack>
             </CardContent>
           </Card>
@@ -399,17 +403,18 @@ export default function UniversalAdminCMS() {
   const renderCMSPages = () => (
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb:  3 }}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary }}>📄 CMS Sider</Typography>
-        <Button variant="contained"
+        <Typography variant="h5" component="h2" sx={{ color: theming.colors.primary }}>📄 CMS Sider</Typography>
+        <AdminButton
+          tone="primary"
           startIcon={<AddIcon />}
           onClick={() => setCreatePageDialog(true)}
         >
           Ny side
-        </Button>
+        </AdminButton>
       </Stack>
 
       <Grid container spacing={3}>
-        {cmsPages.map((page: CmsPage) => (
+        {(Array.isArray(cmsPages) ? cmsPages : []).map((page: CmsPage) => (
           <Grid item xs={12} md={6} lg={4} key={page.id}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
@@ -418,11 +423,7 @@ export default function UniversalAdminCMS() {
                     <Typography variant="h6" noWrap sx={{ color: theming.colors.primary }}>
                       {page.name}
                     </Typography>
-                    <Chip
-                      label={page.status}
-                      color={page.status === 'published' ? 'success' : 'default'}
-                      size="small"
-                    />
+                    <StatusChip status={page.status} />
                   </Stack>
 
                   <Typography variant="body2" color="textSecondary">
@@ -434,7 +435,7 @@ export default function UniversalAdminCMS() {
                   </Stack>
 
                   <Typography variant="caption" color="textSecondary">
-                    Sist endret: {new Date(page.lastModified).toLocaleDateString(', ')}
+                    Sist endret: {new Date(page.lastModified).toLocaleDateString('nb-NO')}
                   </Typography>
 
                   <Stack direction="row" spacing={1}>
@@ -464,11 +465,7 @@ export default function UniversalAdminCMS() {
   // Render content based on selected section
   const renderContent = () => {
     if (statsLoading || pagesLoading || usersLoading) {
-      return (
-        <Box display="flex" justifyContent="center" alignItems="center" height="400px">
-          <CircularProgress />
-        </Box>
-      );
+      return <AdminLoading />;
   }
 
     switch (selectedSection) {
@@ -479,7 +476,7 @@ export default function UniversalAdminCMS() {
       case 'cms-history':
         return (
           <Box>
-            <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Typography variant="h5" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
               📋 CMS Historikk & Versjonering
             </Typography>
             <Alert severity="info">
@@ -490,10 +487,10 @@ export default function UniversalAdminCMS() {
       case 'users':
         return (
           <Box>
-            <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Typography variant="h5" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
               👥 Brukeradministrasjon
             </Typography>
-            <Typography variant="body1">Totalt {users.length} brukere registrert</Typography>
+            <Typography variant="body1">Totalt {(Array.isArray(users) ? users : []).length} brukere registrert</Typography>
           </Box>
         );
       default: return renderDashboard();
@@ -512,7 +509,7 @@ export default function UniversalAdminCMS() {
         gap={2}
       >
         <ErrorIcon color="error" sx={{ fontSize: 64}} />
-        <Typography variant="h5" sx={{ color: theming.colors.primary }}>Tilgang nektet</Typography>
+        <Typography variant="h5" component="h2" sx={{ color: theming.colors.primary }}>Tilgang nektet</Typography>
         <Typography variant="body1" color="textSecondary">
           Du må være logget inn som administrator for å få tilgang til denne siden.
         </Typography>
@@ -529,6 +526,7 @@ export default function UniversalAdminCMS() {
             color="inherit"
             onClick={() => setDrawerOpen(!drawerOpen)}
             edge="start"
+            aria-label="Veksle sidemeny"
             sx={{ mr:  2 }}
           >
             <MenuIcon />
@@ -634,6 +632,7 @@ export default function UniversalAdminCMS() {
         onClose={() => setCreatePageDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Opprett ny side</DialogTitle>
         <DialogContent>
@@ -643,7 +642,7 @@ export default function UniversalAdminCMS() {
             <FormControl fullWidth>
               <InputLabel>Profesjon</InputLabel>
               <Select defaultValue="photographer">
-                {professions.map((prof: { key: string; name: string }) => (
+                {(Array.isArray(professions) ? professions : []).map((prof: { key: string; name: string }) => (
                   <MenuItem key={prof.key} value={prof.key}>
                     {prof.name}
                   </MenuItem>
@@ -653,10 +652,12 @@ export default function UniversalAdminCMS() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreatePageDialog(false)}>Avbryt</Button>
-          <Button variant="contained" onClick={() => setCreatePageDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setCreatePageDialog(false)}>
+            Avbryt
+          </AdminButton>
+          <AdminButton tone="primary" onClick={() => setCreatePageDialog(false)}>
             Opprett side
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

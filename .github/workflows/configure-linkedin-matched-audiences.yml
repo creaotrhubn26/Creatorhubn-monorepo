@@ -1,0 +1,132 @@
+name: Configure LinkedIn Matched Audiences
+
+on:
+  workflow_dispatch:
+    inputs:
+      enabled:
+        description: Enable or disable LinkedIn Matched Audiences in production
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: configure-linkedin-matched-audiences
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+  RENDER_SERVICE_ID: srv-d76ob60ule4c73dv2p60
+  RENDER_ENV_KEY: LINKEDIN_MATCHED_AUDIENCES_ENABLED
+
+jobs:
+  configure:
+    name: Configure flag and redeploy current production commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Validate current main workflow revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::This production workflow must be dispatched from main"
+            exit 1
+          fi
+          main_json=$(curl -fsS --connect-timeout 3 -m 15 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/ref/heads/main")
+          current_main=$(printf '%s' "$main_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["object"]["sha"])')
+          if [ "$GITHUB_SHA" != "$current_main" ]; then
+            echo "::error::Selected workflow ref is stale: selected=$GITHUB_SHA currentMain=$current_main"
+            exit 1
+          fi
+
+      - name: Resolve current production commit
+        id: production
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version_json=$(curl -fsS --connect-timeout 3 -m 15 \
+            -H "Accept: application/json" \
+            -H "Cache-Control: no-cache" \
+            "$BACKEND_URL/api/version")
+          target_sha=$(printf '%s' "$version_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("commit", ""))')
+          if ! [[ "$target_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Production did not report a full Git commit SHA"
+            exit 1
+          fi
+          curl -fsS --connect-timeout 3 -m 15 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/commits/$target_sha" \
+            >/dev/null
+          echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
+          echo "Will redeploy current production commit: $target_sha"
+
+      - name: Update only the Matched Audiences flag
+        env:
+          MATCHED_AUDIENCES_ENABLED: ${{ inputs.enabled }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "::error::RENDER_API_KEY is not configured"
+            exit 1
+          fi
+          echo "::add-mask::$RENDER_API_KEY"
+          case "$MATCHED_AUDIENCES_ENABLED" in
+            true|false) ;;
+            *)
+              echo "::error::enabled must be true or false"
+              exit 1
+              ;;
+          esac
+
+          request_body=$(printf '{"value":"%s"}' "$MATCHED_AUDIENCES_ENABLED")
+          curl -fsS --retry 3 --retry-all-errors --connect-timeout 5 -m 30 \
+            -X PUT \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            --data "$request_body" \
+            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/env-vars/$RENDER_ENV_KEY" \
+            >/dev/null
+
+          configured_value=$(curl -fsS --retry 3 --retry-all-errors --connect-timeout 5 -m 30 \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Accept: application/json" \
+            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/env-vars/$RENDER_ENV_KEY" \
+            | python3 -c 'import json,sys; data=json.load(sys.stdin); nested=data.get("envVar", {}) if isinstance(data, dict) else {}; print(data.get("value", nested.get("value", "")) if isinstance(data, dict) else "")')
+          if [ "$configured_value" != "$MATCHED_AUDIENCES_ENABLED" ]; then
+            echo "::error::Render did not persist the requested flag value"
+            exit 1
+          fi
+          echo "$RENDER_ENV_KEY=$configured_value is persisted on Render."
+
+      - name: Checkout deployment tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Redeploy current production commit and verify
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          TARGET_SHA: ${{ steps.production.outputs.target_sha }}
+        run: node scripts/deploy/render-backend.mjs deploy-and-verify "$TARGET_SHA"

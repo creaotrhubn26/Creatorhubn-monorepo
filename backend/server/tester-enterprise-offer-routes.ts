@@ -21,6 +21,7 @@
 import type express from "express";
 import type Stripe from "stripe";
 import nodemailer from "nodemailer";
+import { safeAppBaseUrl } from "./web-origin-allowlist.ts";
 
 export interface TesterEnterpriseOfferDeps {
   app: express.Application;
@@ -197,7 +198,7 @@ export function setupTesterEnterpriseOfferRoutes(deps: TesterEnterpriseOfferDeps
       if (!uid) return res.json({ offer: null });
       await ensureSchema(pool);
       const userR = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [uid]);
-      if (userR.rowCount === 0) return res.json({ offer: null });
+      if (!userR.rows.length) return res.json({ offer: null });
       const email = String(userR.rows[0].email).toLowerCase();
 
       const r = await pool.query(
@@ -210,7 +211,7 @@ export function setupTesterEnterpriseOfferRoutes(deps: TesterEnterpriseOfferDeps
           ORDER BY off.sent_at DESC LIMIT 1`,
         [email],
       );
-      if (r.rowCount === 0) return res.json({ offer: null });
+      if (!r.rows.length) return res.json({ offer: null });
       const row = r.rows[0];
       res.json({
         offer: {
@@ -250,19 +251,19 @@ export function setupTesterEnterpriseOfferRoutes(deps: TesterEnterpriseOfferDeps
           LIMIT 1`,
         [req.params.id],
       );
-      if (offerR.rowCount === 0) return res.status(404).json({ error: "Tilbud ikke funnet eller utløpt" });
+      if (!offerR.rows.length) return res.status(404).json({ error: "Tilbud ikke funnet eller utløpt" });
       const offer = offerR.rows[0];
 
       // Sjekk at innlogget bruker faktisk er masteren
       const userR = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [uid]);
-      if (userR.rowCount === 0 || String(userR.rows[0].email).toLowerCase() !== String(offer.master_email).toLowerCase()) {
+      if (!userR.rows.length || String(userR.rows[0].email).toLowerCase() !== String(offer.master_email).toLowerCase()) {
         return res.status(403).json({ error: "Du er ikke master for dette tilbudet" });
       }
 
       // Sørg for at rabatt-coupon-en finnes
       const couponId = await ensureDiscountCoupon(stripeClient);
 
-      const baseUrl = req.headers.origin || `https://${req.headers.host || "creatorhubn.com"}`;
+      const baseUrl = safeAppBaseUrl(req);
       const session = await stripeClient.checkout.sessions.create({
         mode: "subscription",
         success_url: `${baseUrl}/tester-enterprise-offer/${offer.id}/success?session_id={CHECKOUT_SESSION_ID}`,
@@ -301,7 +302,7 @@ export function setupTesterEnterpriseOfferRoutes(deps: TesterEnterpriseOfferDeps
       res.json({ checkoutUrl: session.url, sessionId: session.id });
     } catch (err: any) {
       console.error("POST /tester-enterprise-offer/:id/checkout:", err);
-      res.status(500).json({ error: err?.message || "Kunne ikke opprette Stripe Checkout" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -357,6 +358,44 @@ export async function handleTesterEnterpriseOfferWebhook(
         offerId,
       ],
     );
+    // Gi tester-masteren et aktivt Enterprise-medlemskap slik at team-/Enterprise-
+    // gatene (useTeamAccess, «Inviter team», Easeverse-band) faktisk slår inn —
+    // samme som et standard Enterprise-kjøp. Best-effort; feil skal ikke velte
+    // webhooken (offeren er allerede markert akseptert over).
+    try {
+      const o = await pool.query(
+        `SELECT i.email
+           FROM tester_enterprise_offers o
+           JOIN prototype_tester_invites i ON i.id = o.tester_master_invite_id
+          WHERE o.id = $1 LIMIT 1`,
+        [offerId],
+      );
+      const email = o.rows?.[0]?.email
+        ? String(o.rows[0].email).toLowerCase()
+        : null;
+      if (email) {
+        const u = await pool.query(
+          `SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1`,
+          [email],
+        );
+        const uid = u.rows?.[0]?.id || null;
+        const orgId = uid ? `org_${uid}` : `org_tester_${offerId}`;
+        await pool.query(
+          `INSERT INTO enterprise_team_members
+             (organization_id, user_id, email, role, status, invited_at, joined_at)
+           VALUES ($1, $2, $3, 'admin', 'active', NOW(), NOW())
+           ON CONFLICT (organization_id, email)
+           DO UPDATE SET user_id = COALESCE(EXCLUDED.user_id, enterprise_team_members.user_id),
+                         role = 'admin', status = 'active', updated_at = NOW()`,
+          [orgId, uid, email],
+        );
+      }
+    } catch (e) {
+      console.warn(
+        "[tester-enterprise] membership-grant feilet:",
+        (e as any)?.message,
+      );
+    }
     console.log(`[tester-enterprise] Offer ${offerId} accepted via Stripe webhook`);
     return true;
   } catch (err) {

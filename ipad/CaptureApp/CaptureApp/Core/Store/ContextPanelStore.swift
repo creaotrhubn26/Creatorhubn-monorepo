@@ -107,7 +107,7 @@ struct ContextPanelStore: Sendable {
         // ``crew`` on commercial shoots. Accept both.
         let teammateSources: [[String: Any]?] = [
             dict["collaborators"] as? [[String: Any]],
-            dict["crew"] as? [[String: Any]],
+            dict["crew"] as? [[String: Any]]
         ].compactMap { (arr: [[String: Any]]?) -> [String: Any]? in
             guard let arr, !arr.isEmpty else { return nil }
             return ["_wrap": arr]

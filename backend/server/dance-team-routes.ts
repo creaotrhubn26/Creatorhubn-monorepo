@@ -184,7 +184,7 @@ export function createDanceTeamRouter(
       const summary = await svc.ensureTeamForOwner(pool, userId, userEmail);
       res.status(201).json({ success: true, data: summary });
     } catch (err) {
-      res.status(500).json({ error: 'create_team_failed', detail: String(err) });
+      res.status(500).json({ error: 'create_team_failed', detail: "internal_error" });
     }
   });
 
@@ -213,7 +213,7 @@ export function createDanceTeamRouter(
       const role = await svc.createRole(pool, String(req.params.teamOrgId), parsed.data);
       res.status(201).json({ success: true, data: role });
     } catch (err) {
-      res.status(400).json({ error: 'create_role_failed', detail: String(err) });
+      res.status(400).json({ error: 'create_role_failed', detail: "internal_error" });
     }
   });
 
@@ -352,10 +352,8 @@ export function createDanceInviteAcceptRouter(
 
   router.post('/:token/request-pin', async (req, res) => {
     const token = String(req.params.token);
-    // Bygger inviteUrl fra request — beholder samme origin
-    const proto = (req.headers['x-forwarded-proto'] as string | undefined) || req.protocol || 'https';
-    const host = (req.headers['x-forwarded-host'] as string | undefined) || req.headers.host || 'creatorhubn.com';
-    const inviteUrl = `${proto}://${host}/dance/invite/${encodeURIComponent(token)}`;
+    const _baseUrl = (process.env.PUBLIC_APP_URL || process.env.APP_URL || 'https://creatorhubn.com').replace(/\/$/, '');
+    const inviteUrl = `${_baseUrl}/dance/invite/${encodeURIComponent(token)}`;
     try {
       const r = await svc.requestPinForInvite(pool, token, inviteUrl);
       if (!r.sent) {
@@ -368,7 +366,7 @@ export function createDanceInviteAcceptRouter(
       }
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: 'request_pin_failed', detail: String(err) });
+      res.status(500).json({ error: 'request_pin_failed', detail: "internal_error" });
     }
   });
 
@@ -423,7 +421,7 @@ export function createDanceInviteAcceptRouter(
         },
       });
     } catch (err) {
-      res.status(500).json({ error: 'accept_failed', detail: String(err) });
+      res.status(500).json({ error: 'accept_failed', detail: "internal_error" });
     }
   });
 
@@ -458,7 +456,7 @@ export function createDanceInviteAcceptRouter(
         },
       });
     } catch (err) {
-      res.status(500).json({ error: 'accept_failed', detail: String(err) });
+      res.status(500).json({ error: 'accept_failed', detail: "internal_error" });
     }
   });
 

@@ -154,7 +154,7 @@ function VideoPlaceholder({ label }: { label: string }) {
 // ─── Callout Box ──────────────────────────────────────────────────────────────
 
 function Callout({
-  color = '#00d4ff',
+  color = 'var(--role-cyan, #00d4ff)',
   children,
 }: {
   color?: string;
@@ -879,7 +879,7 @@ export function CrewManagementGuide({ open, onClose, initialStepId }: CrewManage
     contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  const ACCENT = guideConfig.accentColorOverride ?? '#00d4ff';
+  const ACCENT = guideConfig.accentColorOverride ?? 'var(--role-cyan, #00d4ff)';
 
   return (
     <Dialog

@@ -50,159 +50,159 @@ export interface TemplateEditWarning {
 export const CONTEXTUAL_BENEFITS: Record<string, ContextualBenefit> = {
   'high_speed_performance': {
     id: 'high_speed_performance',
-    title: 'High-Speed Performance',
-    description: 'Fast read/write speeds ensure smooth continuous shooting and 4K video recording without dropped frames.',
+    title: 'Høyhastighets-ytelse',
+    description: 'Raske lese-/skrivehastigheter gir jevn seriefotografering og 4K-video uten droppede bilder.',
     category: 'performance',
     impact: 'high',
     icon: 'lightning',
     examples: [
-      'Continuous burst photography at 20+ fps','4K video recording without buffer issues','Faster file transfer to computer','Reduced waiting time between shots'
+      'Seriefoto i 20+ bilder/sek uten stopp','4K-opptak uten buffer-problemer','Raskere filoverføring til maskin','Kortere ventetid mellom bilder'
     ],
-    technicalDetails: 'UHS-II cards can achieve 300MB/s read speeds, 10x faster than standard SD cards'
+    technicalDetails: 'UHS-II-kort leser opptil 300 MB/s — ti ganger raskere enn standard SD-kort'
 },
   'data_reliability': {
     id: 'data_reliability',
-    title: 'Data Reliability & Safety',
-    description: 'Professional-grade cards have built-in error correction and wear leveling to protect your valuable footage.',
+    title: 'Datapålitelighet og sikkerhet',
+    description: 'Profesjonelle kort har innebygd feilkorrigering og slitasjeutjevning som beskytter verdifullt materiale.',
     category: 'reliability',
     impact: 'critical',
     icon: 'shield',
     examples: [
-      'Built-in error correction prevents data corruption','Wear leveling extends card lifespan','Temperature resistance for extreme conditions','Shock and vibration protection'
+      'Feilkorrigering hindrer datakorrupsjon','Slitasjeutjevning forlenger levetiden','Temperaturtoleranse for ekstreme forhold','Støt- og vibrasjonsbeskyttelse'
     ],
-    technicalDetails: 'Professional cards use SLC/MLC NAND flash with 10,000+ write cycles vs 1,000 for consumer cards'
+    technicalDetails: 'Proff-kort bruker SLC/MLC NAND med 10 000+ skrivesykluser mot ~1 000 for forbrukerkort'
 },
   'workflow_efficiency': {
     id: 'workflow_efficiency',
-    title: 'Workflow Efficiency',
-    description: 'Proper card selection streamlines your post-production workflow and reduces time spent on file management.',
+    title: 'Effektiv arbeidsflyt',
+    description: 'Riktig kortvalg strømlinjeformer etterarbeidet og reduserer tid brukt på filhåndtering.',
     category: 'workflow',
     impact: 'high',
     icon: 'settings',
     examples: [
-      'Faster file transfers to editing workstation','Reduced backup time with high-capacity cards','Better organization with multiple cards per day','Less time spent swapping cards during shoots'
+      'Raskere overføring til redigeringsmaskin','Kortere backup-tid med høykapasitetskort','Bedre organisering med flere kort per dag','Mindre kortbytte under opptak'
     ],
-    technicalDetails: 'High-capacity cards reduce card swaps by 50-7%, saving 15-30 minutes per shoot day'
+    technicalDetails: 'Høykapasitetskort reduserer kortbytter kraftig og sparer 15–30 min per opptaksdag'
 },
   'cost_optimization': {
     id: 'cost_optimization',
-    title: 'Cost Optimization',
-    description: 'Right-sized cards prevent over-spending while ensuring you have adequate storage for your project needs.',
+    title: 'Kostnadsoptimalisering',
+    description: 'Riktig dimensjonerte kort hindrer overforbruk og sikrer nok lagring for prosjektet.',
     category: 'cost',
     impact: 'medium',
     icon: 'coin',
     examples: [
-      'Avoid buying oversized cards for simple projects','Prevent data loss costs from insufficient storage','Reduce rental costs with proper planning','Optimize card utilization across projects'
+      'Unngå overdimensjonerte kort på enkle prosjekter','Unngå tapskostnader ved for lite lagring','Reduser leiekostnader med god planlegging','Utnytt kortene på tvers av prosjekter'
     ],
-    technicalDetails: 'Proper planning can reduce memory card costs by 20-40% while improving reliability'
+    technicalDetails: 'God planlegging kan kutte minnekort-kostnader 20–40 % og samtidig øke påliteligheten'
 ,},
   'professional_standards': {
     id: 'professional_standards',
-    title: 'Professional Standards',
-    description: 'Using appropriate cards demonstrates professionalism and ensures compatibility with client expectations.',
+    title: 'Profesjonell standard',
+    description: 'Riktige kort viser profesjonalitet og sikrer kompatibilitet med kundens forventninger.',
     category: 'professional',
     impact: 'high',
     icon: 'star',
     examples: [
-      'Meets industry standards for professional work','Ensures compatibility with professional equipment','Demonstrates attention to detail to clients','Reduces risk of equipment compatibility issues'
+      'Møter bransjestandarder for profesjonelt arbeid','Sikrer kompatibilitet med proff-utstyr','Viser kunden sans for detaljer','Reduserer risiko for utstyrs-inkompatibilitet'
     ],
-    technicalDetails: 'Professional cards meet industry standards like V90 video class and UHS-II specifications'
+    technicalDetails: 'Proff-kort møter bransjestandarder som V90 videoklasse og UHS-II'
 ,},
   'backup_safety': {
     id: 'backup_safety',
-    title: 'Backup & Safety Strategy',
-    description: 'Multiple cards provide redundancy and safety for critical events where data loss is not acceptable.',
+    title: 'Backup- og sikkerhetsstrategi',
+    description: 'Flere kort gir redundans og trygghet på kritiske oppdrag der datatap er uakseptabelt.',
     category: 'safety',
     impact: 'critical',
     icon: 'backup',
     examples: [
-      'Redundant storage prevents total data loss','Immediate backup during long events','Separate cards for different parts of event','Easy recovery if one card fails'
+      'Redundant lagring hindrer totalt datatap','Løpende backup under lange eventer','Egne kort per del av eventet','Enkel gjenoppretting hvis ett kort svikter'
     ],
-    technicalDetails: '3-2-1 backup rule: 3 copies, 2 different media types, 1 offsite storage'
+    technicalDetails: '3-2-1-regelen: 3 kopier, 2 medietyper, 1 lagret eksternt'
 },
   'pricing_optimization': {
     id: 'pricing_optimization',
-    title: 'Pricing Optimization & Cost Control',
-    description: 'Intelligent pricing helps you choose the right memory cards for your budget while avoiding over-spending or under-investing.',
+    title: 'Prisoptimalisering og kostnadskontroll',
+    description: 'Prisinnsikt hjelper deg å velge riktige kort for budsjettet — uten over- eller underinvestering.',
     category: 'cost',
     impact: 'high',
     icon: '�, �, ',
     examples: [
-      'Avoid buying oversized cards for simple projects','Prevent data loss costs from insufficient storage','Reduce rental costs with proper planning','Optimize card utilization across multiple projects','Budget allocation for different project types'
+      'Unngå overdimensjonerte kort på enkle prosjekter','Unngå tapskostnader ved for lite lagring','Reduser leiekostnader med god planlegging','Utnytt kortene på tvers av prosjekter','Budsjettfordeling per prosjekttype'
     ],
-    technicalDetails: 'Proper memory card planning can reduce costs by 20-40% while improving reliability and workflow efficiency'
+    technicalDetails: 'God minnekort-planlegging kan kutte kostnader 20–40 % og samtidig bedre pålitelighet og flyt'
 ,},
   'project_planning': {
     id: 'project_planning',
-    title: 'Project Planning & Resource Management',
-    description: 'Memory card pricing helps you plan project resources, estimate costs, and ensure you have adequate storage for any project.',
+    title: 'Prosjektplanlegging og ressursstyring',
+    description: 'Prisdata hjelper deg å planlegge ressurser, estimere kostnader og sikre nok lagring til ethvert prosjekt.',
     category: 'workflow',
     impact: 'high',
     icon: '�, �, ',
     examples: [
-      'Accurate project cost estimation','Resource allocation for multi-day events','Client proposal preparation with detailed costs','Inventory management and card rotation','Budget planning for equipment purchases'
+      'Presis kostnadsestimering','Ressursfordeling for flerdagers-eventer','Kundetilbud med detaljerte kostnader','Lagerstyring og kort-rotasjon','Budsjettplanlegging for utstyrskjøp'
     ],
-    technicalDetails: 'Professional project planning includes memory card costs in 15-25% of total equipment budget'
+    technicalDetails: 'Profesjonell planlegging legger minnekort inn med 15–25 % av utstyrsbudsjettet'
 ,},
   'client_transparency': {
     id: 'client_transparency',
-    title: 'Client Transparency & Professionalism',
-    description: 'Clear pricing breakdown shows clients exactly what they are paying for and demonstrates your professional approach.',
+    title: 'Kundetransparens og profesjonalitet',
+    description: 'Tydelig prisoppstilling viser kunden nøyaktig hva de betaler for — og viser profesjonalitet.',
     category: 'professional',
     impact: 'medium',
     icon: '�, �, ',
     examples: [
-      'Detailed cost breakdown in client proposals','Transparent pricing for memory card requirements','Professional justification for equipment costs','Client confidence in your planning abilities','Clear communication about project requirements'
+      'Detaljert kostnadsoppstilling i tilbud','Transparent prising av minnekort-behov','Profesjonell begrunnelse for utstyrskostnader','Kundetillit til planleggingen din','Tydelig kommunikasjon om prosjektkrav'
     ],
-    technicalDetails: 'Clients appreciate transparency - 78% prefer detailed cost breakdowns over lump sum pricing'
+    technicalDetails: 'Kunder verdsetter åpenhet — flertallet foretrekker detaljert oppstilling fremfor rundsum'
 ,},
   'equipment_justification': {
     id: 'equipment_justification',
-    title: 'Equipment Cost Justification',
-    description: 'Pricing data helps justify equipment costs to clients and demonstrates the value of professional-grade memory cards.',
+    title: 'Begrunnelse av utstyrskostnader',
+    description: 'Prisdata gjør det enkelt å begrunne utstyrskostnader og vise verdien av proff-kort.',
     category: 'professional',
     impact: 'medium',
     icon: '⚖, ️, ',
     examples: [
-      'Explain why professional cards cost more','Demonstrate reliability benefits to clients','Justify equipment rental vs purchase decisions','Show cost per GB analysis','Compare with consumer alternatives'
+      'Forklar hvorfor proff-kort koster mer','Vis pålitelighetsgevinsten for kunden','Begrunn leie- vs kjøpsbeslutninger','Vis kost-per-GB-analyse','Sammenlign med forbrukeralternativer'
     ],
-    technicalDetails: 'Professional cards cost 2-4x more but offer 10x better reliability and 3-5x better performance'
+    technicalDetails: 'Proff-kort koster 2–4× mer, men gir ~10× bedre pålitelighet og 3–5× bedre ytelse'
 ,},
   'budget_scaling': {
     id: 'budget_scaling',
-    title: 'Budget Scaling & Growth Planning',
-    description: 'Understanding memory card pricing helps you scale your business and plan for growth in different market segments.',
+    title: 'Budsjett-skalering og vekstplanlegging',
+    description: 'Prisforståelse gjør det lettere å skalere virksomheten og planlegge vekst i ulike segmenter.',
     category: 'workflow',
     impact: 'medium',
     icon: '�, �, ',
     examples: [
-      'Plan equipment investment for business growth','Scale pricing for different client segments','Budget for new camera systems and card requirements','Plan inventory for peak season demands','Calculate ROI on equipment investments'
+      'Planlegg utstyrsinvesteringer for vekst','Skaler prising per kundesegment','Budsjetter nye kamerasystemer og kortbehov','Planlegg lager for høysesong','Beregn ROI på utstyrsinvesteringer'
     ],
-    technicalDetails: 'Memory card costs typically represent 5-15% of total equipment investment but are critical for data safety'
+    technicalDetails: 'Minnekort utgjør typisk 5–15 % av utstyrsinvesteringen, men er kritiske for datasikkerheten'
 ,},
   'market_competitiveness': {
     id: 'market_competitiveness',
-    title: 'Market Competitiveness & Pricing Strategy',
-    description: 'Accurate pricing knowledge helps you stay competitive while maintaining profitability in your market.',
+    title: 'Konkurransekraft og prisstrategi',
+    description: 'Presis prisinnsikt holder deg konkurransedyktig uten å ofre lønnsomhet.',
     category: 'professional',
     impact: 'high',
     icon: '�, �',
     examples: [
-      'Competitive pricing for different market segments','Profit margin analysis for different project types','Market positioning based on equipment quality','Pricing strategy for premium vs budget clients','Equipment cost analysis for service pricing'
+      'Konkurransedyktig prising per segment','Marginanalyse per prosjekttype','Markedsposisjonering på utstyrskvalitet','Prisstrategi for premium- vs budsjettkunder','Utstyrskostnadsanalyse for tjenesteprising'
     ],
-    technicalDetails: 'Professional photographers typically factor 20-30% equipment cost markup into service pricing'
+    technicalDetails: 'Profesjonelle legger typisk 20–30 % utstyrspåslag inn i tjenesteprisingen'
 ,},
   'risk_mitigation': {
     id: 'risk_mitigation',
-    title: 'Risk Mitigation & Insurance',
-    description: 'Proper memory card investment reduces business risk and can help with insurance claims and equipment coverage.',
+    title: 'Risikoreduksjon og forsikring',
+    description: 'Riktig minnekort-investering reduserer forretningsrisiko og støtter forsikringskrav og dekning.',
     category: 'safety',
     impact: 'high',
     icon: '🛡, ️',
     examples: [
-      'Reduce data loss risk with quality cards','Insurance claims for equipment damage','Professional equipment documentation','Risk assessment for high-value projects','Equipment replacement cost planning'
+      'Reduser datatap-risiko med kvalitetskort','Forsikringskrav ved utstyrsskade','Profesjonell utstyrsdokumentasjon','Risikovurdering for høyverdi-prosjekter','Planlegging av erstatningskostnader'
     ],
-    technicalDetails: 'Data loss incidents cost photographers an average of , $, 2,500 in lost revenue and client relationships'
+    technicalDetails: 'Datatap koster i snitt titusener i tapt omsetning og kunderelasjoner'
 }
 };
 

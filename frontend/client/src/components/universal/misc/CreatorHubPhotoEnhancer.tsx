@@ -1,11 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  CircularProgress,
+  Popover,
   Dialog,
   DialogActions,
   DialogContent,
@@ -22,13 +27,21 @@ import {
   Slider,
   Stack,
   Switch,
+  TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
 import {
+  AddPhotoAlternate as AddPhotoIcon,
   Assessment as AssessmentIcon,
   AutoFixHigh as AutoFixHighIcon,
+  BookmarkAdd as BookmarkAddIcon,
   CloudDone as CloudDoneIcon,
+  ContentCopy as ContentCopyIcon,
+  Download as DownloadIcon,
+  ExpandMore as ExpandMoreIcon,
+  HelpOutline as HelpIcon,
+  RestartAlt as RestartAltIcon,
   CloudUpload as CloudUploadIcon,
   Compare as CompareIcon,
   Face as FaceIcon,
@@ -41,7 +54,7 @@ import {
   Redo as RedoIcon,
 } from '@mui/icons-material';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { apiRequest } from '../../../lib/queryClient';
+import { apiRequest, apiFetch } from '../../../lib/queryClient';
 import CompositionGuides, { GuideType } from '../../photo-enhancer/CompositionGuides';
 import { RealtimePreviewCanvas } from '../../photo-enhancer/RealtimePreviewCanvas';
 import { Filmstrip } from '../../photo-enhancer/Filmstrip';
@@ -70,13 +83,16 @@ import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
 import { useDemoMode, useDemoModeData } from '../../../contexts/DemoModeContext';
 import { useEnhancerSession } from '../../../lib/enhancer-session/use-enhancer-session';
 import { serializePerFaceOverrides } from '../../../lib/enhancer-session/session-reducer';
+import { loadLooks, saveLook, deleteLook, type SavedLook } from '../../../lib/enhancer-session/enhancer-looks';
 import type {
   EditModuleKey,
   EnhancementSettings as EnhancementSettingsContract,
   IntensityProfile,
+  LensCorrectionSettings,
   SubjectKind,
 } from '../../../lib/enhancer-session/module-contract';
 import {
+  DEFAULT_LENS_CORRECTION,
   DEFAULT_SETTINGS,
   INTENSITY_PROFILES,
   SUBJECT_KINDS,
@@ -271,6 +287,47 @@ const PHOTO_UPLOAD_ACCEPT = [
   ...RAW_UPLOAD_EXTENSIONS,
 ].join(',');
 
+// Formats the browser cannot decode itself (every camera RAW + HEIC/HEIF +
+// TIFF). For these we fetch a server-rasterised JPEG to display and to feed
+// the AI / face endpoints; the original file still goes to /enhance.
+const BROWSER_UNDECODABLE_EXTENSIONS = [...RAW_UPLOAD_EXTENSIONS, '.heic', '.heif', '.tif', '.tiff'];
+
+function needsRasterPreview(file: File): boolean {
+  const name = (file.name || '').toLowerCase();
+  return BROWSER_UNDECODABLE_EXTENSIONS.some((ext) => name.endsWith(ext));
+}
+
+const clampPct = (n: number): number => Math.max(-100, Math.min(100, n));
+
+// One-click A/B/C exploration: render the current recipe three ways so the
+// photographer can pick a direction instead of dialling sliders blind.
+const ENHANCE_VARIANTS: Array<{
+  key: string;
+  label: string;
+  tweak: (settings: EnhancementSettings) => EnhancementSettings;
+}> = [
+  { key: 'natural', label: 'Naturlig', tweak: (settings) => settings },
+  {
+    key: 'vivid',
+    label: 'Livlig',
+    tweak: (settings) => ({
+      ...settings,
+      saturation: clampPct(settings.saturation + 30),
+      contrast: clampPct(settings.contrast + 15),
+      sharpness: clampPct(settings.sharpness + 10),
+    }),
+  },
+  {
+    key: 'bw',
+    label: 'Sort-hvitt',
+    tweak: (settings) => ({
+      ...settings,
+      saturation: -100,
+      contrast: clampPct(settings.contrast + 10),
+    }),
+  },
+];
+
 const DIRECT_UPLOAD_THRESHOLD_BYTES = 20 * 1024 * 1024;
 
 function normalizeProfession(value: SupportedProfession | undefined): 'photographer' | 'videographer' | 'music_producer' | 'vendor' {
@@ -423,6 +480,29 @@ const getFoldersForProfession = (profession: 'photographer' | 'videographer' | '
   ];
 };
 
+// Photographers shouldn't need to know that "GFPGAN" restores faces or that
+// "Real-ESRGAN" upscales. We surface plain-language descriptions of what each
+// model *does* while the underlying value sent to the backend stays the
+// technical id (so the pipeline is unchanged).
+const MODEL_PLAIN_LABELS: Record<string, string> = {
+  auto: 'Automatisk (anbefalt)',
+  sharp: 'Bare skarphet',
+  gfpgan: 'Ansiktsforbedring (naturlig)',
+  codeformer: 'Ansiktsrekonstruksjon (kraftig)',
+  realesrgan: 'Oppskalering – mer oppløsning',
+  swinir: 'Støyfjerning',
+  bsrgan: 'Detalj-gjenoppretting',
+  diffbir: 'AI-rekonstruksjon (sterkest)',
+};
+
+function plainModelLabel(idOrName: string): string {
+  const key = idOrName.toLowerCase().replace(/[^a-z]/g, '');
+  for (const [id, label] of Object.entries(MODEL_PLAIN_LABELS)) {
+    if (key.includes(id)) return label;
+  }
+  return idOrName;
+}
+
 export default function CreatorHubPhotoEnhancer({ profession: professionProp }: CreatorHubPhotoEnhancerProps) {
   const profession = normalizeProfession(professionProp);
   const { getProfessionConfig } = useDynamicProfessions();
@@ -451,6 +531,22 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState('');
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [autoAnalyze, setAutoAnalyze] = useState(true);
+  const [shortcutsAnchor, setShortcutsAnchor] = useState<HTMLElement | null>(null);
+  const [looks, setLooks] = useState<SavedLook[]>(() => loadLooks());
+  const [saveLookDialogOpen, setSaveLookDialogOpen] = useState(false);
+  const [lookName, setLookName] = useState('');
+  // For RAW/HEIC uploads: the server-rasterised JPEG used for display + AI
+  // (the original RAW stays in `uploadedImage` for full-quality enhance).
+  const [visionInputFile, setVisionInputFile] = useState<File | null>(null);
+  const [rasterizing, setRasterizing] = useState(false);
+  const [rasterError, setRasterError] = useState<string | null>(null);
+  const [editInstruction, setEditInstruction] = useState('');
+  const [variantsOpen, setVariantsOpen] = useState(false);
+  const [variantsLoading, setVariantsLoading] = useState(false);
+  const [variants, setVariants] = useState<Array<{ key: string; label: string; url: string; settings: EnhancementSettings }>>([]);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [showRatingDialog, setShowRatingDialog] = useState(false);
   const [directUploadCache, setDirectUploadCache] = useState<DirectUploadCache | null>(null);
   const [directUploadProgress, setDirectUploadProgress] = useState<DirectUploadProgress | null>(null);
@@ -873,7 +969,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     null,
   );
   const suggestRecipeMutation = useMutation({
-    mutationFn: async (file: File): Promise<{
+    mutationFn: async (input: { file: File; instruction?: string }): Promise<{
       recipe: Partial<EnhancementSettings>;
       analysis: {
         subject: string;
@@ -883,11 +979,17 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
       };
     }> => {
       const formData = new FormData();
-      formData.append('image', file);
+      formData.append('image', input.file);
       // Send the active preset so Claude knows whether we're shooting
       // wedding / studio portrait / product / landscape etc. Claude still
       // classifies the image independently but the hint breaks ties.
       formData.append('preset', activePreset);
+      // Optional free-text style brief ("warm pastel film look", "moody
+      // editorial") — Claude translates it into concrete slider/HSL/LUT
+      // values for this image.
+      if (input.instruction && input.instruction.trim()) {
+        formData.append('instruction', input.instruction.trim());
+      }
       return apiRequest('/api/photo-enhancer/suggest-recipe', {
         method: 'POST',
         body: formData,
@@ -942,8 +1044,97 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   });
 
   const runSuggestRecipe = async () => {
-    if (!uploadedImage) return;
-    await suggestRecipeMutation.mutateAsync(uploadedImage);
+    if (!visionFile) return;
+    await suggestRecipeMutation.mutateAsync({ file: visionFile });
+  };
+
+  // Natural-language editing: turn a free-text style brief into settings.
+  const runStyleInstruction = async () => {
+    if (!visionFile || !editInstruction.trim()) return;
+    await suggestRecipeMutation.mutateAsync({ file: visionFile, instruction: editInstruction.trim() });
+  };
+
+  // Render the current recipe three ways (Naturlig / Livlig / Sort-hvitt) so
+  // the photographer can pick a direction in one click.
+  const runVariants = async () => {
+    if (!visionFile) return;
+    setVariants([]);
+    setVariantsOpen(true);
+    setVariantsLoading(true);
+    const perFaceOverrides = session.active
+      ? serializePerFaceOverrides(session.active.perFaceOverrides)
+      : [];
+    const results = await Promise.all(
+      ENHANCE_VARIANTS.map(async (variant) => {
+        const variantSettings = variant.tweak(settings);
+        const formData = new FormData();
+        formData.append('image', visionFile);
+        formData.append('preset', activePreset);
+        formData.append('settings', JSON.stringify({ ...variantSettings, perFaceOverrides }));
+        try {
+          const response = await apiRequest('/api/photo-enhancer/enhance', {
+            method: 'POST',
+            body: formData,
+          });
+          return { key: variant.key, label: variant.label, settings: variantSettings, url: toImageUrl(response) };
+        } catch {
+          return { key: variant.key, label: variant.label, settings: variantSettings, url: '' };
+        }
+      }),
+    );
+    setVariants(results);
+    setVariantsLoading(false);
+  };
+
+  const applyVariant = (variant: { label: string; url: string; settings: EnhancementSettings }) => {
+    setSettings(variant.settings);
+    if (variant.url) {
+      setEnhancedImageUrl(variant.url);
+      setViewMode('side-by-side');
+      const id = session.active?.id;
+      if (id) session.setEnhancedUrl(id, variant.url);
+    }
+    setVariantsOpen(false);
+    commitActiveHistory(`Variant: ${variant.label}`);
+  };
+
+  // Batch — apply the current recipe to every image in the session so a
+  // whole shoot gets the same look in one click.
+  const applyRecipeToAllImages = () => {
+    for (const image of session.state.images) {
+      session.setSettings(image.id, settings);
+      session.commitHistory(image.id, 'Bruk på alle');
+    }
+  };
+
+  // Batch — enhance every image in the session sequentially (each with its
+  // own settings), updating per-image results as they land.
+  const enhanceAllImages = async () => {
+    const images = session.state.images;
+    if (images.length === 0 || batchProgress) return;
+    setBatchProgress({ done: 0, total: images.length });
+    for (let index = 0; index < images.length; index += 1) {
+      const image = images[index];
+      try {
+        const formData = new FormData();
+        formData.append('image', image.file);
+        formData.append('preset', activePreset);
+        formData.append('settings', JSON.stringify({ ...image.settings, perFaceOverrides: [] }));
+        const response = await apiRequest('/api/photo-enhancer/enhance', { method: 'POST', body: formData });
+        const url = toImageUrl(response);
+        if (url) {
+          session.setEnhancedUrl(image.id, url);
+          if (image.id === session.active?.id) {
+            setEnhancedImageUrl(url);
+            setViewMode('side-by-side');
+          }
+        }
+      } catch {
+        // Per-image failure shouldn't abort the whole batch.
+      }
+      setBatchProgress({ done: index + 1, total: images.length });
+    }
+    setBatchProgress(null);
   };
 
   const enhanceMutation = useMutation({
@@ -1027,10 +1218,9 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     },
   });
 
-  const onImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const fileList = event.target.files;
-    const files = fileList ? Array.from(fileList) : [];
-    event.target.value = '';
+  // Shared upload path for both the file picker and drag-and-drop on the
+  // preview pane. Resets all per-image state so a new file starts clean.
+  const ingestFiles = async (files: File[]) => {
     if (files.length === 0) return;
 
     // Legacy single-image blob-URL ownership — the session hook owns the
@@ -1057,8 +1247,131 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
     setSettings(DEFAULT_SETTINGS);
     setAiSuggestion(null);
     setAiSuggestedRecipe(null);
+    setVisionInputFile(null);
+    setRasterError(null);
     session.selectImage(first.id);
+
+    // Browsers can't render camera RAW (Nikon/Sony/Fuji/Canon/…) or HEIC.
+    // Fetch a server-rasterised JPEG to drive the preview AND the AI / face
+    // endpoints; the untouched original still goes to /enhance, where it is
+    // converted at full quality.
+    let visionFile = first.file;
+    if (needsRasterPreview(first.file)) {
+      setRasterizing(true);
+      try {
+        const formData = new FormData();
+        formData.append('image', first.file);
+        const response = await apiFetch('/api/photo-enhancer/preview', { method: 'POST', body: formData });
+        if (response.ok) {
+          const blob = await response.blob();
+          setOriginalImageUrl(URL.createObjectURL(blob));
+          const baseName = first.file.name.replace(/\.[^.]+$/, '') || 'bilde';
+          visionFile = new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+          setVisionInputFile(visionFile);
+        } else {
+          setRasterError(
+            response.status === 422
+              ? 'RAW-konvertering er ikke aktiv på serveren ennå — du kan fortsatt trykke Enhance (serveren konverterer da), eller laste opp en JPEG.'
+              : 'Klarte ikke å lage forhåndsvisning av RAW-filen.',
+          );
+        }
+      } catch {
+        setRasterError('Klarte ikke å lage forhåndsvisning av RAW-filen.');
+      } finally {
+        setRasterizing(false);
+      }
+    }
+
+    // Reduce friction: kick off the lightweight analysis (faces, format,
+    // hash) right away unless the photographer has turned it off. For RAW
+    // this uses the rasterised preview so it never hits the 415 guard.
+    if (autoAnalyze) {
+      void analyzeMutation.mutateAsync(visionFile).catch(() => {
+        // Auto-analysis is best-effort; the manual "Analyze" button stays
+        // available and surfaces its own error.
+      });
+    }
   };
+
+  // Download the enhanced result directly, without going through the
+  // project-save or export-preset flow.
+  const handleDownloadEnhanced = () => {
+    if (!enhancedImageUrl) return;
+    const anchor = document.createElement('a');
+    anchor.href = enhancedImageUrl;
+    const base = uploadedImage?.name?.replace(/\.[^.]+$/, '') || 'bilde';
+    anchor.download = `${base}-forbedret.png`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  };
+
+  // Reset every adjustment back to defaults (e.g. to start over after an
+  // AI suggestion or manual tweaking).
+  const resetSettings = () => {
+    setSettings(DEFAULT_SETTINGS);
+    setAiSuggestion(null);
+    setAiSuggestedRecipe(null);
+    commitActiveHistory('Tilbakestilt');
+  };
+
+  // Apply a saved Look's full recipe to the current image.
+  const applyLook = (look: SavedLook) => {
+    setSettings(look.settings);
+    setAiSuggestion(null);
+    commitActiveHistory(`Look: ${look.name}`);
+  };
+
+  const confirmSaveLook = () => {
+    if (!lookName.trim()) return;
+    setLooks((previous) => saveLook(previous, lookName, settings));
+    setLookName('');
+    setSaveLookDialogOpen(false);
+  };
+
+  const onImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = event.target.files;
+    const files = fileList ? Array.from(fileList) : [];
+    event.target.value = '';
+    void ingestFiles(files);
+  };
+
+  const onPreviewDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragOver(false);
+    const dropped = event.dataTransfer?.files ? Array.from(event.dataTransfer.files) : [];
+    const images = dropped.filter(
+      (file) =>
+        file.type.startsWith('image/') ||
+        /\.(jpe?g|png|webp|hei[cf]|tiff?|dng|cr[23w]|nef|nrw|arw|sr[f2]|raf|orf|rw2|pef|x3f|3fr|mrw|mef|mos|iiq|raw|rwl)$/i.test(file.name),
+    );
+    if (images.length > 0) void ingestFiles(images);
+  };
+
+  // The file the AI / face endpoints should read: a browser-decodable
+  // raster. For RAW/HEIC that's the server-rasterised JPEG (null until it
+  // arrives, which gates the AI buttons); otherwise the original upload.
+  const visionFile: File | null = uploadedImage
+    ? needsRasterPreview(uploadedImage)
+      ? visionInputFile
+      : uploadedImage
+    : null;
+
+  // Lens correction (distortion / vignetting / chromatic aberration). The
+  // amounts ride along in the enhance payload; the runner / RAW converter
+  // applies them, preferring the matched lens profile when `auto` is on.
+  const lensCorrection: LensCorrectionSettings = settings.lensCorrection ?? DEFAULT_LENS_CORRECTION;
+  const updateLensCorrection = (patch: Partial<LensCorrectionSettings>) => {
+    setSettings((previous) => ({
+      ...previous,
+      lensCorrection: { ...(previous.lensCorrection ?? DEFAULT_LENS_CORRECTION), ...patch },
+    }));
+  };
+  const matchedLensName: string | null = (() => {
+    const analysis = toRecord(toRecord(analysisResult).analysis);
+    const lens = toRecord(analysis.lensProfile);
+    return typeof lens.name === 'string' ? lens.name : null;
+  })();
 
   /**
    * Swap the enhance-pipeline input to a freshly retouched File. Invoked
@@ -1195,8 +1508,8 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
   }, [settings, session.active?.id]);
 
   const runAnalysis = async () => {
-    if (!uploadedImage) return;
-    await analyzeMutation.mutateAsync(uploadedImage);
+    if (!visionFile) return;
+    await analyzeMutation.mutateAsync(visionFile);
   };
 
   const runEnhancement = async () => {
@@ -1388,9 +1701,20 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
           <Card>
             <CardContent>
               <Stack spacing={2}>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  CreatorHub Photo Enhancer
-                </Typography>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    CreatorHub Photo Enhancer
+                  </Typography>
+                  <Tooltip title="Hurtigtaster">
+                    <IconButton
+                      size="small"
+                      aria-label="Hurtigtaster"
+                      onClick={(event) => setShortcutsAnchor(event.currentTarget)}
+                    >
+                      <HelpIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
                 <Typography variant="body2" color="text.secondary">
                   AI-enhancement for {profession.replace('_', ' ')} workflows.
                 </Typography>
@@ -1452,6 +1776,25 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
 
                 {uploadedImage ? <Chip label={uploadedImage.name} size="small" /> : null}
 
+                <Box data-testid="auto-analyze-toggle">
+                  <FormControlLabelSwitch
+                    label="Analyser automatisk ved opplasting"
+                    checked={autoAnalyze}
+                    onChange={(checked) => setAutoAnalyze(checked)}
+                  />
+                </Box>
+
+                {rasterizing ? (
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <CircularProgress size={16} />
+                    <Typography variant="caption" color="text.secondary">
+                      Konverterer RAW til forhåndsvisning…
+                    </Typography>
+                  </Stack>
+                ) : null}
+
+                {rasterError ? <Alert severity="warning">{rasterError}</Alert> : null}
+
                 {uploadedImage && selectedIsLargeUpload ? (
                   <Alert severity={selectedUsesDirectUpload ? 'info' : 'warning'}>
                     {selectedUsesDirectUpload
@@ -1510,14 +1853,120 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   />
                 ) : null}
 
-                <Typography variant="subtitle2">Settings</Typography>
+                <Divider />
+
+                <Stack spacing={0.75}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="subtitle2">Mine Looks</Typography>
+                    <Tooltip title="Lagre nåværende innstillinger som en gjenbrukbar Look">
+                      <span>
+                        <Button
+                          size="small"
+                          color="inherit"
+                          startIcon={<BookmarkAddIcon fontSize="small" />}
+                          onClick={() => {
+                            setLookName('');
+                            setSaveLookDialogOpen(true);
+                          }}
+                          disabled={!uploadedImage}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Lagre Look
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  </Stack>
+                  {looks.length === 0 ? (
+                    <Typography variant="caption" color="text.secondary">
+                      Lagre en signatur-look og bruk den på nye bilder med ett klikk.
+                    </Typography>
+                  ) : (
+                    <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                      {looks.map((look) => (
+                        <Chip
+                          key={look.id}
+                          label={look.name}
+                          size="small"
+                          variant="outlined"
+                          clickable
+                          disabled={!uploadedImage}
+                          onClick={() => applyLook(look)}
+                          onDelete={() => setLooks((previous) => deleteLook(previous, look.id))}
+                        />
+                      ))}
+                    </Stack>
+                  )}
+                </Stack>
+
+                {session.state.images.length > 1 ? (
+                  <>
+                    <Divider />
+                    <Stack spacing={0.75}>
+                      <Typography variant="subtitle2">Hele serien ({session.state.images.length})</Typography>
+                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<ContentCopyIcon fontSize="small" />}
+                          onClick={applyRecipeToAllImages}
+                          disabled={!uploadedImage || Boolean(batchProgress)}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Bruk på alle ({session.state.images.length})
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          color="secondary"
+                          startIcon={<AutoFixHighIcon fontSize="small" />}
+                          onClick={() => void enhanceAllImages()}
+                          disabled={Boolean(batchProgress)}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Enhance alle ({session.state.images.length})
+                        </Button>
+                      </Stack>
+                      {batchProgress ? (
+                        <Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={(batchProgress.done / batchProgress.total) * 100}
+                          />
+                          <Typography variant="caption" color="text.secondary">
+                            Forbedrer {batchProgress.done}/{batchProgress.total}…
+                          </Typography>
+                        </Box>
+                      ) : null}
+                    </Stack>
+                  </>
+                ) : null}
+
+                <Divider />
+
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="subtitle2">Justeringer</Typography>
+                  <Tooltip title="Tilbakestill alle justeringer til standard">
+                    <span>
+                      <Button
+                        size="small"
+                        color="inherit"
+                        startIcon={<RestartAltIcon fontSize="small" />}
+                        onClick={resetSettings}
+                        disabled={!uploadedImage}
+                        sx={{ textTransform: 'none' }}
+                      >
+                        Tilbakestill
+                      </Button>
+                    </span>
+                  </Tooltip>
+                </Stack>
                 {[
-                  { key: 'brightness', label: 'Brightness' },
-                  { key: 'contrast', label: 'Contrast' },
-                  { key: 'saturation', label: 'Saturation' },
-                  { key: 'sharpness', label: 'Sharpness' },
-                  { key: 'denoising', label: 'Denoising' },
-                  { key: 'faceEnhancement', label: 'Face Enhancement' },
+                  { key: 'brightness', label: 'Lysstyrke', hint: 'Gjør hele bildet lysere eller mørkere.' },
+                  { key: 'contrast', label: 'Kontrast', hint: 'Øker forskjellen mellom lyse og mørke partier.' },
+                  { key: 'saturation', label: 'Metning', hint: 'Hvor kraftige og mettede fargene er.' },
+                  { key: 'sharpness', label: 'Skarphet', hint: 'Tydeligere kanter og finere detaljer.' },
+                  { key: 'denoising', label: 'Støyreduksjon', hint: 'Fjerner korn og grynethet fra høy ISO eller dårlig lys.' },
+                  { key: 'faceEnhancement', label: 'Ansiktsforbedring', hint: 'Glatter hud og løfter ansikter automatisk.' },
                 ].map((slider) => {
                   const key = slider.key as 'brightness' | 'contrast' | 'saturation' | 'sharpness' | 'denoising' | 'faceEnhancement';
                   // Only faceEnhancement is face-scopable in this block.
@@ -1526,7 +1975,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   return (
                     <Box key={slider.key}>
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography variant="caption">{slider.label}</Typography>
+                        <Tooltip title={slider.hint} placement="top" arrow>
+                          <Typography
+                            variant="caption"
+                            sx={{ borderBottom: '1px dotted', borderColor: 'text.secondary', cursor: 'help' }}
+                          >
+                            {slider.label}
+                          </Typography>
+                        </Tooltip>
                         <Typography variant="caption">{currentValue}</Typography>
                       </Stack>
                       <Slider
@@ -1553,31 +2009,102 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
 
                 <Divider />
 
-                <Typography variant="subtitle2">AI-modell og kø</Typography>
+                <Accordion
+                  disableGutters
+                  square
+                  elevation={0}
+                  sx={{ bgcolor: 'transparent', '&:before': { display: 'none' } }}
+                >
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 0, minHeight: 'auto' }}>
+                    <Stack spacing={0}>
+                      <Typography variant="subtitle2">Avanserte justeringer</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Ansiktsretusj, oppskalering, kategori-look og serverkø
+                      </Typography>
+                    </Stack>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ px: 0, pt: 0 }}>
+                    <Stack spacing={2}>
+                <Paper variant="outlined" sx={{ p: 1.25 }}>
+                  <Stack spacing={1.25}>
+                    <Box data-testid="lens-correction-toggle">
+                      <FormControlLabelSwitch
+                        label="Linsekorreksjon"
+                        checked={lensCorrection.enabled}
+                        onChange={(checked) => updateLensCorrection({ enabled: checked })}
+                      />
+                    </Box>
+                    {lensCorrection.enabled ? (
+                      <>
+                        <Typography variant="caption" color="text.secondary">
+                          {matchedLensName
+                            ? `Profil: ${matchedLensName}`
+                            : 'Ingen linseprofil matchet ennå — kjør Analyze, eller bruk manuell styrke.'}
+                        </Typography>
+                        {rawConverters.rawtherapee === false ? (
+                          <Typography variant="caption" color="warning.main">
+                            RAW-korreksjon bruker RawTherapee + Lensfun på serveren — ikke aktivt her ennå.
+                          </Typography>
+                        ) : null}
+                        <FormControlLabelSwitch
+                          label="Automatisk fra linseprofil"
+                          checked={lensCorrection.auto}
+                          onChange={(checked) => updateLensCorrection({ auto: checked })}
+                        />
+                        {!lensCorrection.auto
+                          ? (
+                              [
+                                { key: 'distortion' as const, label: 'Forvrengning' },
+                                { key: 'vignette' as const, label: 'Vignett' },
+                                { key: 'chromaticAberration' as const, label: 'Kromatisk aberrasjon' },
+                              ].map((control) => (
+                                <Box key={control.key}>
+                                  <Stack direction="row" justifyContent="space-between">
+                                    <Typography variant="caption">{control.label}</Typography>
+                                    <Typography variant="caption">{lensCorrection[control.key]}</Typography>
+                                  </Stack>
+                                  <Slider
+                                    value={lensCorrection[control.key]}
+                                    min={0}
+                                    max={100}
+                                    onChange={(_, value) =>
+                                      updateLensCorrection({ [control.key]: Array.isArray(value) ? value[0] : value })
+                                    }
+                                    onChangeCommitted={() => commitActiveHistory('Linsekorreksjon')}
+                                  />
+                                </Box>
+                              ))
+                            )
+                          : null}
+                      </>
+                    ) : null}
+                  </Stack>
+                </Paper>
+
                 <FormControl fullWidth size="small">
-                  <InputLabel id="enhancer-model-label">Modellstrategi</InputLabel>
+                  <InputLabel id="enhancer-model-label">Forbedrings-metode</InputLabel>
                   <Select
                     labelId="enhancer-model-label"
-                    label="Modellstrategi"
+                    label="Forbedrings-metode"
                     value={settings.modelPreference}
                     onChange={(event) => setSettings((previous) => ({ ...previous, modelPreference: event.target.value }))}
                   >
                     {(processingOptions?.modelPreference || ['auto', 'sharp', 'gfpgan', 'codeformer', 'realesrgan', 'swinir', 'bsrgan', 'diffbir']).map((model) => (
                       <MenuItem key={model} value={model}>
-                        {model === 'auto' ? 'Auto pipeline' : model.toUpperCase()}
+                        {plainModelLabel(model)}
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
 
                 {[
-                  { key: 'gfpganQuality', label: 'GFPGAN quality', profileKey: null },
-                  { key: 'codeformerFidelity', label: 'CodeFormer fidelity', profileKey: null },
-                  { key: 'skinTextureGuard', label: 'Skin texture guard', profileKey: null },
-                  { key: 'blemishRemoval', label: 'Blemish removal', profileKey: 'blemishProfile' as const },
-                  { key: 'teethWhiteness', label: 'Teeth whiten', profileKey: 'teethProfile' as const },
-                  { key: 'eyeBrightness', label: 'Eye brighten', profileKey: 'eyeBrightnessProfile' as const },
-                  { key: 'eyeWhiteness', label: 'Eye whiten', profileKey: 'eyeWhitenessProfile' as const },
+                  { key: 'gfpganQuality', label: 'Ansiktsforbedring', profileKey: null, hint: 'Hvor mye ansikter forbedres og glattes (naturlig).' },
+                  { key: 'codeformerFidelity', label: 'Behold opprinnelig ansikt', profileKey: null, hint: 'Høyt = mer likt originalansiktet; lavt = kraftigere rekonstruksjon.' },
+                  { key: 'skinTextureGuard', label: 'Bevar hudtekstur', profileKey: null, hint: 'Beholder porer og hudtekstur så huden ikke blir plastaktig.' },
+                  { key: 'blemishRemoval', label: 'Fjern urenheter', profileKey: 'blemishProfile' as const, hint: 'Fjerner kviser, flekker og midlertidige urenheter.' },
+                  { key: 'teethWhiteness', label: 'Hvitere tenner', profileKey: 'teethProfile' as const, hint: 'Gjør tenner hvitere uten å bli unaturlig blå.' },
+                  { key: 'eyeBrightness', label: 'Lysere øyne', profileKey: 'eyeBrightnessProfile' as const, hint: 'Lysner og åpner blikket.' },
+                  { key: 'eyeWhiteness', label: 'Hvitere øyne', profileKey: 'eyeWhitenessProfile' as const, hint: 'Fjerner røde og gule toner i det hvite i øyet.' },
                 ].map((slider) => {
                   const key = slider.key as
                     | 'gfpganQuality'
@@ -1603,7 +2130,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   return (
                     <Box key={slider.key}>
                       <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography variant="caption">{slider.label}</Typography>
+                        <Tooltip title={slider.hint} placement="top" arrow>
+                          <Typography
+                            variant="caption"
+                            sx={{ borderBottom: '1px dotted', borderColor: 'text.secondary', cursor: 'help' }}
+                          >
+                            {slider.label}
+                          </Typography>
+                        </Tooltip>
                         <Stack direction="row" spacing={0.5} alignItems="center">
                           {profileKey && (
                             <Stack direction="row" spacing={0.25}>
@@ -1658,16 +2192,16 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                 })}
 
                 <FormControl fullWidth size="small">
-                  <InputLabel id="enhancer-scale-label">Real-ESRGAN scale</InputLabel>
+                  <InputLabel id="enhancer-scale-label">Oppskalering</InputLabel>
                   <Select
                     labelId="enhancer-scale-label"
-                    label="Real-ESRGAN scale"
+                    label="Oppskalering"
                     value={settings.realesrganScale}
                     onChange={(event) => setSettings((previous) => ({ ...previous, realesrganScale: Number(event.target.value) }))}
                   >
                     {[2, 3, 4].map((scale) => (
                       <MenuItem key={scale} value={scale}>
-                        {scale}x
+                        {scale}× større
                       </MenuItem>
                     ))}
                   </Select>
@@ -1712,7 +2246,26 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     />
                   </Box>
                 )}
+                    </Stack>
+                  </AccordionDetails>
+                </Accordion>
 
+                <Accordion
+                  disableGutters
+                  square
+                  elevation={0}
+                  sx={{ bgcolor: 'transparent', '&:before': { display: 'none' } }}
+                >
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 0, minHeight: 'auto' }}>
+                    <Stack spacing={0}>
+                      <Typography variant="subtitle2">Farge &amp; look</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Avansert — fargebånd og fargefilter (LUT)
+                      </Typography>
+                    </Stack>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ px: 0, pt: 0 }}>
+                    <Stack spacing={2}>
                 <HSLColorPanel
                   value={settings.hsl}
                   onChange={(next) => setSettings((previous) => ({ ...previous, hsl: next }))}
@@ -1745,14 +2298,17 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     );
                   }}
                 />
+                    </Stack>
+                  </AccordionDetails>
+                </Accordion>
 
                 <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                   {[
-                    { key: 'swinir', label: 'SwinIR' },
-                    { key: 'bsrgan', label: 'BSRGAN' },
-                    { key: 'diffbir', label: 'DiffBIR' },
-                    { key: 'faceOnlyCrop', label: 'Face-only crop' },
-                    { key: 'preserveBackground', label: 'Preserve background' },
+                    { key: 'swinir', label: 'Støyfjerning' },
+                    { key: 'bsrgan', label: 'Detalj-boost' },
+                    { key: 'diffbir', label: 'AI-rekonstruksjon' },
+                    { key: 'faceOnlyCrop', label: 'Kun ansikt' },
+                    { key: 'preserveBackground', label: 'Behold bakgrunn' },
                   ].map((toggle) => {
                     const key = toggle.key as 'swinir' | 'bsrgan' | 'diffbir' | 'faceOnlyCrop' | 'preserveBackground';
                     return (
@@ -1811,17 +2367,25 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                       </IconButton>
                     </span>
                   </Tooltip>
-                  <Button variant="outlined" onClick={() => void runAnalysis()} disabled={!uploadedImage || analyzeMutation.isPending}>
+                  <Button variant="outlined" onClick={() => void runAnalysis()} disabled={!visionFile || analyzeMutation.isPending}>
                     Analyze
                   </Button>
                   <Button
-                    variant="outlined"
+                    variant={visionFile && !aiSuggestion ? 'contained' : 'outlined'}
                     color="secondary"
                     onClick={() => void runSuggestRecipe()}
-                    disabled={!uploadedImage || suggestRecipeMutation.isPending}
+                    disabled={!visionFile || suggestRecipeMutation.isPending}
                     title="Be Claude Vision foreslå verdier for alle slidere basert på bildet"
                   >
                     {suggestRecipeMutation.isPending ? 'Spør AI…' : 'AI-forslag'}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={() => void runVariants()}
+                    disabled={!visionFile || variantsLoading}
+                    title="Lag 3 varianter (Naturlig / Livlig / Sort-hvitt) og velg den beste"
+                  >
+                    Varianter
                   </Button>
                   <Button
                     variant="outlined"
@@ -1848,18 +2412,72 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   >
                     Auto-finn objekter
                   </Button>
+                </Stack>
+
+                <Stack spacing={0.5}>
+                  <Typography variant="caption" color="text.secondary">
+                    Beskriv ønsket look — AI setter innstillingene
+                  </Typography>
+                  <Stack direction="row" spacing={1}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      placeholder="F.eks. varm, luftig pastell film-look"
+                      value={editInstruction}
+                      onChange={(event) => setEditInstruction(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (
+                          event.key === 'Enter' &&
+                          editInstruction.trim() &&
+                          visionFile &&
+                          !suggestRecipeMutation.isPending
+                        ) {
+                          void runStyleInstruction();
+                        }
+                      }}
+                      disabled={!visionFile || suggestRecipeMutation.isPending}
+                    />
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      onClick={() => void runStyleInstruction()}
+                      disabled={!visionFile || !editInstruction.trim() || suggestRecipeMutation.isPending}
+                      startIcon={<AutoFixHighIcon fontSize="small" />}
+                      sx={{ whiteSpace: 'nowrap' }}
+                    >
+                      Bruk
+                    </Button>
+                  </Stack>
+                </Stack>
+
+                <Box
+                  sx={{
+                    position: 'sticky',
+                    bottom: 0,
+                    zIndex: 3,
+                    pt: 1.5,
+                    pb: 1,
+                    mt: 0.5,
+                    bgcolor: 'background.paper',
+                    borderTop: '1px solid',
+                    borderColor: 'divider',
+                  }}
+                >
                   <Button
                     variant="contained"
+                    size="large"
+                    fullWidth
                     onClick={() => void runEnhancement()}
                     disabled={!uploadedImage || enhanceMutation.isPending}
                     startIcon={<AutoFixHighIcon />}
+                    sx={{ py: 1.25, fontWeight: 700 }}
                   >
-                    Enhance
+                    {enhanceMutation.isPending ? 'Forbedrer…' : 'Enhance'}
                   </Button>
-                </Stack>
+                </Box>
 
                 <Typography variant="caption" color="text.secondary">
-                  Slider-preview er en WebGL-approksimasjon — Enhance kjører full pipeline (GFPGAN/CodeFormer/portrait retouch) for endelig kvalitet.
+                  Forhåndsvisningen er omtrentlig — Enhance kjører full forbedring (ansiktsretusj, detaljer og oppskalering) for endelig kvalitet.
                 </Typography>
 
                 {aiSuggestion && (
@@ -1999,7 +2617,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                 {analysisResult ? (
                   <Alert severity="success" icon={<AssessmentIcon />}>
                     Analyse fullført
-                    {toRecord(analysisResult.analysis).perceptualHash ? ' · hash klar' : ''}
+                    {toRecord(analysisResult.analysis).perceptualHash ? ' · bilde gjenkjent' : ''}
                     {toRecord(analysisResult.analysis).format ? ` · ${String(toRecord(analysisResult.analysis).format).toUpperCase()}` : ''}
                   </Alert>
                 ) : null}
@@ -2065,14 +2683,47 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
               </Box>
 
               {!originalImageUrl ? (
-                <Alert severity="info">Last opp et bilde for forhåndsvisning.</Alert>
+                <Box
+                  onDragOver={(event) => { event.preventDefault(); setIsDragOver(true); }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={onPreviewDrop}
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 1.5,
+                    minHeight: 420,
+                    textAlign: 'center',
+                    color: 'text.secondary',
+                    border: '2px dashed',
+                    borderColor: isDragOver ? 'primary.main' : 'rgba(148,163,184,0.35)',
+                    bgcolor: isDragOver ? 'action.hover' : 'transparent',
+                    borderRadius: 2,
+                    p: 4,
+                    transition: 'border-color 0.15s, background-color 0.15s',
+                  }}
+                >
+                  <AddPhotoIcon sx={{ fontSize: 56, opacity: 0.45 }} />
+                  <Typography variant="h6" sx={{ color: 'text.primary' }}>
+                    {isDragOver ? 'Slipp bildet her' : 'Last opp et bilde for å starte'}
+                  </Typography>
+                  <Typography variant="body2" sx={{ maxWidth: 380 }}>
+                    Dra bildet rett hit, eller bruk «Last opp bilde». Deretter kan du la{' '}
+                    <strong>AI-forslag</strong> sette anbefalte verdier automatisk, eller justere selv
+                    før du trykker <strong>Enhance</strong>.
+                  </Typography>
+                </Box>
               ) : (
                 <Box
+                  onDragOver={(event) => { event.preventDefault(); setIsDragOver(true); }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={onPreviewDrop}
                   sx={{
                     position: 'relative',
                     minHeight: 420,
                     border: '1px solid',
-                    borderColor: eyedropperActive ? 'primary.main' : focusedFace ? 'primary.light' : '#e5e7eb',
+                    borderColor: isDragOver ? 'primary.main' : eyedropperActive ? 'primary.main' : focusedFace ? 'primary.light' : '#e5e7eb',
                     borderRadius: 2,
                     overflow: 'hidden',
                     cursor: eyedropperActive ? 'crosshair' : 'default',
@@ -2098,6 +2749,26 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                     handlePreviewPixelPick(normX, normY);
                   }}
                 >
+                  {enhanceMutation.isPending && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        inset: 0,
+                        zIndex: 5,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 1.5,
+                        color: '#fff',
+                        bgcolor: 'rgba(0,0,0,0.55)',
+                        backdropFilter: 'blur(2px)',
+                      }}
+                    >
+                      <CircularProgress color="inherit" />
+                      <Typography variant="body2">Forbedrer bildet…</Typography>
+                    </Box>
+                  )}
                   <Box className="face-zoom-layer" sx={{ position: 'relative', width: '100%', height: '100%', minHeight: 420 }}>
                   {viewMode === 'single' && (
                     enhancedImageUrl ? (
@@ -2211,14 +2882,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
                   <Paper variant="outlined" sx={{ p: 1.5, height: '100%' }}>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
                       <StorageIcon fontSize="small" sx={{ color: accentColor }} />
-                      <Typography variant="subtitle2">Modellpipeline</Typography>
+                      <Typography variant="subtitle2">Tilgjengelige forbedringer</Typography>
                     </Stack>
                     <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
                       {modelRegistry.slice(0, 8).map((model) => (
                         <Chip
                           key={model.id}
                           size="small"
-                          label={model.displayName || model.id}
+                          label={plainModelLabel(model.displayName || model.id)}
                           color={model.available ? 'success' : 'default'}
                           variant={model.available ? 'filled' : 'outlined'}
                         />
@@ -2245,6 +2916,14 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
               </Grid>
 
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1.5 }}>
+                <Button
+                  variant="outlined"
+                  startIcon={<DownloadIcon />}
+                  onClick={handleDownloadEnhanced}
+                  disabled={!enhancedImageUrl}
+                >
+                  Last ned
+                </Button>
                 <Button
                   variant="outlined"
                   startIcon={<SaveIcon />}
@@ -2275,6 +2954,120 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
           </Card>
         </Grid>
       </Grid>
+
+      <Dialog open={variantsOpen} onClose={() => setVariantsOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Velg en variant</DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={2}>
+            {ENHANCE_VARIANTS.map((variant) => {
+              const result = variants.find((entry) => entry.key === variant.key);
+              return (
+                <Grid item xs={12} sm={4} key={variant.key}>
+                  <Stack spacing={1} alignItems="center">
+                    <Box
+                      sx={{
+                        width: '100%',
+                        aspectRatio: '1 / 1',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        overflow: 'hidden',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        bgcolor: 'action.hover',
+                      }}
+                    >
+                      {variantsLoading || !result ? (
+                        <CircularProgress size={28} />
+                      ) : result.url ? (
+                        <img
+                          src={result.url}
+                          alt={variant.label}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <Typography variant="caption" color="error">
+                          Feilet
+                        </Typography>
+                      )}
+                    </Box>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      disabled={!result?.url}
+                      onClick={() => result && applyVariant(result)}
+                    >
+                      {variant.label}
+                    </Button>
+                  </Stack>
+                </Grid>
+              );
+            })}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setVariantsOpen(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={saveLookDialogOpen} onClose={() => setSaveLookDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Lagre Look</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Navn på Look"
+            placeholder="F.eks. Varm bryllup"
+            value={lookName}
+            onChange={(event) => setLookName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && lookName.trim()) confirmSaveLook();
+            }}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSaveLookDialogOpen(false)}>Avbryt</Button>
+          <Button variant="contained" disabled={!lookName.trim()} onClick={confirmSaveLook}>
+            Lagre
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Popover
+        open={Boolean(shortcutsAnchor)}
+        anchorEl={shortcutsAnchor}
+        onClose={() => setShortcutsAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Box sx={{ p: 2, maxWidth: 300 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Hurtigtaster
+          </Typography>
+          <Stack spacing={0.5}>
+            {[
+              ['1–5', 'Gi stjerner til bildet'],
+              ['0', 'Fjern rating'],
+              ['P / X / U', 'Marker / forkast / fjern markering'],
+              ['← / →', 'Forrige / neste bilde'],
+              ['Hold \\', 'Sammenlign med original'],
+              ['⌘Z / ⌘⇧Z', 'Angre / gjør om'],
+              ['⌘⇧C', 'Kopier justeringer'],
+            ].map(([keys, desc]) => (
+              <Stack key={keys} direction="row" justifyContent="space-between" spacing={2}>
+                <Typography variant="caption" sx={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                  {keys}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'right' }}>
+                  {desc}
+                </Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+      </Popover>
 
       <ExportPresetDialog
         open={exportDialogOpen}

@@ -151,6 +151,7 @@ import {
   shouldUseStampPreview,
   stampSegment,
   resetCtxAfterStamp,
+  renderStrokeStamped,
 } from './stampEngine';
 import {
   WatercolorFluidSim,
@@ -290,6 +291,9 @@ export interface PencilCanvasProProps {
     activeLayerId: string;
   };
   brushSettings?: Partial<ProBrushSettings>;
+  /** Stabilize (mockup «Smoothing %»): overstyrer per-pensel-StreamLine.
+      0 = av, 0.92 = maks. undefined = auto (STREAMLINE_BY_TYPE). */
+  streamlineOverride?: number;
   showToolbar?: boolean;
   showPressureIndicator?: boolean;
   showReferenceImageControls?: boolean;
@@ -382,12 +386,41 @@ function brushConfigDiffers(a: ProBrushSettings, b: BrushConfig): boolean {
 const PRO_BRUSH_TYPES: readonly ProBrushType[] = [
   'watercolor',
   'pencil',
+  'graphite',
+  'charcoal',
+  'conte',
   'pen',
   'marker',
   'ink',
   'brush',
   'highlighter',
+  'smudge',
   'eraser',
+  // Story Brush Engine (iPad-paritet)
+  'layout',
+  'heavy',
+  'detail',
+  'hatch',
+  'crosshatch',
+  'shade',
+  'graintex',
+  'kneaded',
+  'lightlift',
+  'forest',
+  'debris',
+  'organictex',
+  'fur',
+  'toneblock',
+  'speedlines',
+  'airbrush',
+  'wethair',
+  'softfocus',
+  'skintex',
+  'rocktex',
+  'gloss',
+  'wash',
+  'spikes',
+  'fill', 'halftone', 'stamp', 'custom',
 ];
 const SELECTION_SNAP_GRID_SIZE = 50;
 const SELECTION_EDGE_SNAP_THRESHOLD = 18;
@@ -396,6 +429,65 @@ const SELECTION_CORNER_WARP_LIMIT = 0.9;
 
 function isProBrushType(value: string): value is ProBrushType {
   return (PRO_BRUSH_TYPES as readonly string[]).includes(value);
+}
+
+// StreamLine (Procreate) / stabilization (Krita): EMA-glatting av posisjonene
+// fjerner skjelv/wobble. Sterkest på pen/ink (linjearbeid), svak på tørrmedier
+// (skravering skal beholde håndens karakter). Trykk/tilt glattes ikke her.
+const STREAMLINE_BY_TYPE: Partial<Record<ProBrushType, number>> = {
+  pen: 0.45,
+  ink: 0.5,
+  marker: 0.3,
+  highlighter: 0.3,
+  pencil: 0.2,
+  graphite: 0.2,
+  charcoal: 0.2,
+  conte: 0.2,
+  brush: 0.2,
+  watercolor: 0.2,
+  smudge: 0.15,
+  eraser: 0.15,
+  // Story Brush Engine (spec §6)
+  layout: 0.28,
+  heavy: 0.16,
+  detail: 0.35,
+  hatch: 0.3,
+  crosshatch: 0.3,
+  shade: 0.16,
+  graintex: 0.15,
+  kneaded: 0.15,
+  lightlift: 0.15,
+  forest: 0.2,
+  debris: 0.2,
+  organictex: 0.2,
+  fur: 0.2,
+  toneblock: 0.2,
+  speedlines: 0.4,
+  airbrush: 0.15,
+  wethair: 0.3,
+  softfocus: 0.15,
+  skintex: 0.2,
+  rocktex: 0.2,
+  gloss: 0.4,
+  wash: 0.18,
+  spikes: 0.25,
+  fill: 0.3, halftone: 0.2, stamp: 2.5, custom: 0.12,
+};
+
+export function applyStreamline(points: PencilPoint[], amount: number): PencilPoint[] {
+  if (amount <= 0 || points.length < 3) return points;
+  const k = Math.min(0.92, amount);
+  const out: PencilPoint[] = [points[0]];
+  let sx = points[0].x;
+  let sy = points[0].y;
+  for (let i = 1; i < points.length; i++) {
+    sx += (points[i].x - sx) * (1 - k);
+    sy += (points[i].y - sy) * (1 - k);
+    out.push({ ...points[i], x: sx, y: sy });
+  }
+  // Catch-up: strøket skal lande der pennen faktisk sluttet
+  out[out.length - 1] = { ...points[points.length - 1] };
+  return out;
 }
 
 /**
@@ -421,6 +513,10 @@ function drawPolylinePreviewSegment(
   ctx.save();
   if (brush.type === 'eraser') {
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.globalAlpha = 1;
+  } else if (brush.type === 'smudge') {
+    // Ghost-preview — selve smudgen skjer på committed-laget ved stroke-end
+    ctx.strokeStyle = 'rgba(160,160,160,0.4)';
     ctx.globalAlpha = 1;
   } else {
     ctx.strokeStyle = brush.color;
@@ -453,9 +549,9 @@ function drawLivePreviewSegment(
   brush: ProBrushSettings,
   carryDistance: number = 0,
 ): number {
-  // Highlighter + eraser holder seg på polyline — stamp-engine passer ikke
-  // for brede jevne strøk eller destination-out-blending.
-  if (brush.type === 'highlighter' || brush.type === 'eraser') {
+  // Highlighter + eraser + smudge holder seg på polyline — stamp-engine
+  // passer ikke for brede jevne strøk, destination-out eller piksel-drag.
+  if (brush.type === 'highlighter' || brush.type === 'eraser' || brush.type === 'smudge') {
     drawPolylinePreviewSegment(ctx, from, to, brush);
     return 0;
   }
@@ -1433,6 +1529,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   boardPolishPreviewEffectId,
   layerState,
   brushSettings: initialBrushSettings,
+  streamlineOverride,
   showToolbar = true,
   showPressureIndicator = false,
   showReferenceImageControls = true,
@@ -2358,6 +2455,8 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         )
       );
       previewLastPointRef.current = adjustedPoint;
+      // StreamLine: nullstill live-EMA på strøkets startposisjon
+      streamlineLiveRef.current = { x: adjustedPoint.x, y: adjustedPoint.y };
       // Reset stamp-engine carry — alle armer starter fra null på ny stroke
       stampCarryRef.current = [0, 0, 0, 0, 0, 0, 0, 0];
       brushEngineRef.current?.startStroke(adjustedPoint);
@@ -2379,11 +2478,20 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       const ctx = previewCanvasRef.current.getContext('2d');
       if (!ctx) return;
 
-      const adjustedPoint = applyPressureCurve(
+      let adjustedPoint = applyPressureCurve(
         snapPointWithRuler(
           mapCanvasPointToLayerPoint(point)
         )
       );
+      // StreamLine live: samme EMA som commit-pathen, så preview = resultat
+      const streamlineAmount = streamlineOverride ?? STREAMLINE_BY_TYPE[liveStrokeBrushRef.current.type] ?? 0;
+      const sl = streamlineLiveRef.current;
+      if (streamlineAmount > 0 && sl) {
+        const k = Math.min(0.92, streamlineAmount);
+        sl.x += (adjustedPoint.x - sl.x) * (1 - k);
+        sl.y += (adjustedPoint.y - sl.y) * (1 - k);
+        adjustedPoint = { ...adjustedPoint, x: sl.x, y: sl.y };
+      }
       const previousPoint = previewLastPointRef.current;
       if (!previousPoint) {
         previewLastPointRef.current = adjustedPoint;
@@ -2470,13 +2578,16 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       
       // Apply pressure curve to stroke points
       const brushSnapshot = { ...liveStrokeBrushRef.current };
-      const snappedPoints = stroke.points.map((entry) => (
-        applyPressureCurve(
-          snapPointWithRuler(
-            mapCanvasPointToLayerPoint(entry)
+      const snappedPoints = applyStreamline(
+        stroke.points.map((entry) => (
+          applyPressureCurve(
+            snapPointWithRuler(
+              mapCanvasPointToLayerPoint(entry)
+            )
           )
-        )
-      ));
+        )),
+        streamlineOverride ?? STREAMLINE_BY_TYPE[brushSnapshot.type] ?? 0,
+      );
       const isShapeToolActive = activeTool === 'shape' && Boolean(selectedShapeType);
       if (isShapeToolActive && selectedShapeType) {
         const shapePoints = createShapePointsFromGesture(snappedPoints, selectedShapeType, selectedShapeStyle);
@@ -2539,8 +2650,10 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       };
       
       if (brushSettings.type === 'eraser') {
-        const newStrokes = strokes.filter(s => !strokesIntersect(s, adjustedStroke));
+        // Piksel-viskelær: eraser-strøket lagres og rendres destination-out —
+        // løfter tone der pennen går, sletter ikke hele underliggende strøk.
         saveToUndo();
+        const newStrokes = [...strokes, adjustedStroke];
         setStrokes(newStrokes);
         onStrokesChange?.(newStrokes);
       } else {
@@ -2722,14 +2835,30 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     if (!ctx) return;
     const snap = sim.snapshot();
     if (!snap) return;
+    // Bake inn i committed-cachen — overlever redraws, lagbytter og nye
+    // strøk (før gikk dette rett på mainCanvas og ble slettet av neste
+    // clearRect). ponytail: full rebuild fra strokes (undo) mister fortsatt
+    // baken; lagre som raster-stroke hvis det trengs.
+    const committed = committedCanvasRef.current;
+    if (committed) {
+      const cctx = committed.getContext('2d');
+      if (cctx) {
+        cctx.save();
+        cctx.globalAlpha = 1;
+        cctx.globalCompositeOperation = 'source-over';
+        cctx.setTransform(1, 0, 0, 1, 0, 0);
+        cctx.drawImage(snap, 0, 0, committed.width, committed.height);
+        cctx.restore();
+      }
+    }
     ctx.save();
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    ctx.drawImage(snap, 0, 0, mainCanvas.width, mainCanvas.height);
+    ctx.drawImage(snap, 0, 0, width, height);
     ctx.restore();
     // Tøm fluid-felt slik at neste watercolor-økt starter rent.
     sim.clear();
-  }, []);
+  }, [width, height]);
   
   useEffect(() => {
     if (!initialBrushSettings) return;
@@ -2935,6 +3064,78 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     };
   }, []);
 
+  // Piksel-viskelær: destination-out med trykkstyrt bredde — løfter tone
+  // uten å slette hele underliggende strøk.
+  const renderEraserStroke = useCallback((
+    ctx: CanvasRenderingContext2D,
+    points: PencilPoint[],
+    brush: ReturnType<typeof getStrokeBrushSettings>,
+  ) => {
+    if (points.length < 2) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.strokeStyle = 'rgba(0,0,0,1)';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i - 1];
+      const b = points[i];
+      const avgPressure = Math.max(0.05, (a.pressure + b.pressure) / 2);
+      ctx.lineWidth = Math.max(2, brush.size * 2 * (0.35 + 0.65 * avgPressure));
+      ctx.globalAlpha = Math.min(1, brush.opacity * (0.5 + 0.5 * avgPressure));
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }, []);
+
+  // StreamLine live-EMA-state (posisjonsglatting under aktivt strøk)
+  const streamlineLiveRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Smudge: drar eksisterende piksler langs strøket (klassisk finger-smudge).
+  // Deterministisk — ingen random — så redraw/undo gir identisk resultat.
+  const smudgeTempRef = useRef<HTMLCanvasElement | null>(null);
+  const applySmudgeStroke = useCallback((
+    ctx: CanvasRenderingContext2D,
+    points: PencilPoint[],
+    brush: ReturnType<typeof getStrokeBrushSettings>,
+  ) => {
+    if (points.length < 2) return;
+    const canvas = ctx.canvas;
+    const dpr = canvas.width / Math.max(1, width);
+    const r = Math.max(6, brush.size * 1.5);
+    const tempSize = Math.ceil(r * 2 * dpr);
+    let temp = smudgeTempRef.current;
+    if (!temp || temp.width < tempSize) {
+      temp = document.createElement('canvas');
+      temp.width = tempSize;
+      temp.height = tempSize;
+      smudgeTempRef.current = temp;
+    }
+    const tempCtx = temp.getContext('2d');
+    if (!tempCtx) return;
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1];
+      const cur = points[i];
+      const strength = Math.min(0.85, (0.2 + 0.5 * Math.max(0.05, cur.pressure)) * brush.opacity);
+      tempCtx.clearRect(0, 0, tempSize, tempSize);
+      tempCtx.drawImage(
+        canvas,
+        (prev.x - r) * dpr, (prev.y - r) * dpr, r * 2 * dpr, r * 2 * dpr,
+        0, 0, tempSize, tempSize,
+      );
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cur.x, cur.y, r, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.globalAlpha = strength;
+      ctx.drawImage(temp, 0, 0, tempSize, tempSize, cur.x - r, cur.y - r, r * 2, r * 2);
+      ctx.restore();
+    }
+  }, [width]);
+
   const renderLayerStrokeSet = useCallback((
     ctx: CanvasRenderingContext2D,
     layerStrokes: PencilStroke[],
@@ -2949,87 +3150,164 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     ctx.globalCompositeOperation = blendMode;
     layerStrokes.forEach((stroke) => {
       const renderStroke = transforms.length ? applyStrokeTransformsToStroke(stroke, transforms) : stroke;
-      currentEngine.renderStroke(ctx, renderStroke.points, getStrokeBrushSettings(stroke));
+      const brush = getStrokeBrushSettings(stroke);
+      const seedKey = stroke.id || `${renderStroke.points[0]?.x},${renderStroke.points[0]?.y},${renderStroke.points.length}`;
+      if (brush.type === 'kneaded' || brush.type === 'lightlift') {
+        // Teksturert grafitt-løft (spec §40/§67): stamp-dabs som alpha-maske
+        // under destination-out — løfter gradvis, ikke hardt.
+        const liftConfig = getStampConfigForBrush(brush.type);
+        if (liftConfig) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'destination-out';
+          renderStrokeStamped(ctx, renderStroke.points, brush, liftConfig, renderStroke.id);
+          ctx.restore();
+        } else {
+          renderEraserStroke(ctx, renderStroke.points, brush);
+        }
+      } else if (brush.type === 'eraser') {
+        renderEraserStroke(ctx, renderStroke.points, brush);
+        return;
+      }
+      if (brush.type === 'smudge') {
+        applySmudgeStroke(ctx, renderStroke.points, brush);
+        return;
+      }
+      // Commit = samme stamp-motor som preview (dab-tekstur, seedet →
+      // deterministisk). AdvancedBrushEngine kun som fallback uten config.
+      const stampConfig = brush.type === 'highlighter' ? null : getStampConfigForBrush(brush.type);
+      if (stampConfig) {
+        renderStrokeStamped(ctx, renderStroke.points, brush, stampConfig, seedKey);
+      } else {
+        currentEngine.renderStroke(ctx, renderStroke.points, brush, seedKey);
+      }
     });
     ctx.restore();
-  }, [getStrokeBrushSettings]);
+  }, [getStrokeBrushSettings, renderEraserStroke, applySmudgeStroke]);
   
+  // Committed-cache: ferdige strøk (underlay-lag + strokes) rendres til en
+  // offscreen-canvas som gjenbrukes. Nye strøk appendes inkrementelt — full
+  // rebuild kun ved undo/lagendringer/transform. Uten dette re-rendres alt
+  // per strøk, og tett krysskravering (tusenvis av strøk) blir ubrukelig.
+  const committedCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const committedStateRef = useRef<{ strokes: PencilStroke[]; underlay: unknown }>({ strokes: [], underlay: null });
+  const canvasDprRef = useRef(1);
+
   // Redraw main canvas
   const redrawMainCanvas = useCallback(() => {
     const canvas = mainCanvasRef.current;
     const ctx = canvas?.getContext('2d');
     const engine = brushEngineRef.current;
     if (!canvas || !ctx || !engine) return;
-    
+
+    const dpr = canvasDprRef.current;
+    let committed = committedCanvasRef.current;
+    if (!committed) {
+      committed = document.createElement('canvas');
+      committedCanvasRef.current = committed;
+    }
+    const targetW = Math.max(1, Math.round(width * dpr));
+    const targetH = Math.max(1, Math.round(height * dpr));
+    if (committed.width !== targetW || committed.height !== targetH) {
+      committed.width = targetW;
+      committed.height = targetH;
+      committedStateRef.current = { strokes: [], underlay: null };
+    }
+    const cctx = committed.getContext('2d');
+    if (!cctx) return;
+
+    const cacheState = committedStateRef.current;
+    const transformsActive = activeStrokeTransforms.length > 0;
+    const isAppend = !transformsActive
+      && cacheState.underlay === underlayLayers
+      && strokes.length >= cacheState.strokes.length
+      && cacheState.strokes.every((s, i) => strokes[i] === s);
+
+    cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    if (!isAppend) {
+      cctx.clearRect(0, 0, width, height);
+      // Sprint A.7: Clipping mask compositing. Lag i underlayLayers kan
+      // markeres med clippingMask=true; alle påfølgende ikke-mask-lag
+      // klippes til denne maskens piksel-coverage via en offscreen-canvas
+      // og source-atop. Lag før første mask tegnes direkte, samme som før.
+      const { preMaskLayers, groups } = planClippingPasses(
+        underlayLayers.map((layer) => ({
+          id: layer.id,
+          name: layer.id,
+          visible: true,
+          locked: false,
+          opacity: layer.opacity,
+          blendMode: layer.blendMode,
+          strokes: layer.strokes,
+          clippingMask: layer.clippingMask,
+        })),
+      );
+
+      const renderOverlayStrokes = (targetCtx: CanvasRenderingContext2D, overlay: { strokes: PencilStroke[]; blendMode: string }) => {
+        if (!overlay.strokes.length) return;
+        renderLayerStrokeSet(
+          targetCtx,
+          overlay.strokes,
+          1, // opacity allerede satt av wrapping save/alpha
+          (overlay.blendMode === 'normal' ? 'source-over' : overlay.blendMode) as GlobalCompositeOperation,
+        );
+      };
+
+      for (const layer of preMaskLayers) {
+        if (!layer.strokes.length || layer.opacity <= 0) continue;
+        renderLayerStrokeSet(
+          cctx,
+          layer.strokes,
+          layer.opacity,
+          (layer.blendMode === 'normal' ? 'source-over' : layer.blendMode) as GlobalCompositeOperation,
+        );
+      }
+
+      for (const group of groups) {
+        if (!group.maskLayer.strokes.length || group.maskLayer.opacity <= 0) continue;
+        const offscreen = document.createElement('canvas');
+        offscreen.width = targetW;
+        offscreen.height = targetH;
+        const offCtx = offscreen.getContext('2d');
+        if (!offCtx) continue;
+        offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        // Maska selv etablerer klipperegionen.
+        renderOverlayStrokes(offCtx, group.maskLayer);
+
+        // Hvert clipped lag tegnes med source-atop så det bare havner inni maska.
+        for (const clipped of group.clippedLayers) {
+          if (!clipped.strokes.length || clipped.opacity <= 0) continue;
+          offCtx.save();
+          offCtx.globalCompositeOperation = 'source-atop';
+          offCtx.globalAlpha = clipped.opacity;
+          renderOverlayStrokes(offCtx, clipped);
+          offCtx.restore();
+        }
+
+        cctx.save();
+        cctx.globalAlpha = group.maskLayer.opacity;
+        cctx.setTransform(1, 0, 0, 1, 0, 0);
+        cctx.drawImage(offscreen, 0, 0);
+        cctx.restore();
+        cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      renderLayerStrokeSet(cctx, strokes, 1, 'source-over', transformsActive ? activeStrokeTransforms : []);
+    } else if (strokes.length > cacheState.strokes.length) {
+      renderLayerStrokeSet(cctx, strokes.slice(cacheState.strokes.length), 1, 'source-over');
+    }
+
+    // Transform-preview skal ikke fryses inn i cachen
+    committedStateRef.current = transformsActive
+      ? { strokes: [], underlay: null }
+      : { strokes, underlay: underlayLayers };
+
+    // Komposit: bakgrunn + committed-cache → synlig canvas
     ctx.clearRect(0, 0, width, height);
-    
     if (backgroundImageRef.current) {
       ctx.drawImage(backgroundImageRef.current, 0, 0, width, height);
     }
-    // Sprint A.7: Clipping mask compositing. Lag i underlayLayers kan
-    // markeres med clippingMask=true; alle påfølgende ikke-mask-lag
-    // klippes til denne maskens piksel-coverage via en offscreen-canvas
-    // og source-atop. Lag før første mask tegnes direkte, samme som før.
-    const { preMaskLayers, groups } = planClippingPasses(
-      underlayLayers.map((layer) => ({
-        id: layer.id,
-        name: layer.id,
-        visible: true,
-        locked: false,
-        opacity: layer.opacity,
-        blendMode: layer.blendMode,
-        strokes: layer.strokes,
-        clippingMask: layer.clippingMask,
-      })),
-    );
-
-    const renderOverlayStrokes = (targetCtx: CanvasRenderingContext2D, overlay: { strokes: PencilStroke[]; blendMode: string }) => {
-      if (!overlay.strokes.length) return;
-      renderLayerStrokeSet(
-        targetCtx,
-        overlay.strokes,
-        1, // opacity allerede satt av wrapping save/alpha
-        (overlay.blendMode === 'normal' ? 'source-over' : overlay.blendMode) as GlobalCompositeOperation,
-      );
-    };
-
-    for (const layer of preMaskLayers) {
-      if (!layer.strokes.length || layer.opacity <= 0) continue;
-      renderLayerStrokeSet(
-        ctx,
-        layer.strokes,
-        layer.opacity,
-        (layer.blendMode === 'normal' ? 'source-over' : layer.blendMode) as GlobalCompositeOperation,
-      );
-    }
-
-    for (const group of groups) {
-      if (!group.maskLayer.strokes.length || group.maskLayer.opacity <= 0) continue;
-      const offscreen = document.createElement('canvas');
-      offscreen.width = width;
-      offscreen.height = height;
-      const offCtx = offscreen.getContext('2d');
-      if (!offCtx) continue;
-
-      // Maska selv etablerer klipperegionen.
-      renderOverlayStrokes(offCtx, group.maskLayer);
-
-      // Hvert clipped lag tegnes med source-atop så det bare havner inni maska.
-      for (const clipped of group.clippedLayers) {
-        if (!clipped.strokes.length || clipped.opacity <= 0) continue;
-        offCtx.save();
-        offCtx.globalCompositeOperation = 'source-atop';
-        offCtx.globalAlpha = clipped.opacity;
-        renderOverlayStrokes(offCtx, clipped);
-        offCtx.restore();
-      }
-
-      ctx.save();
-      ctx.globalAlpha = group.maskLayer.opacity;
-      ctx.drawImage(offscreen, 0, 0);
-      ctx.restore();
-    }
-    renderLayerStrokeSet(ctx, strokes, 1, 'source-over', activeStrokeTransforms);
+    ctx.drawImage(committed, 0, 0, committed.width, committed.height, 0, 0, width, height);
     const shouldShowTextSelection = drawingState.activeTool === 'text';
     drawingState.textAnnotations.forEach((annotation) => {
       drawTextAnnotation(
@@ -3063,6 +3341,53 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     drawingState.selectedTextAnnotationId,
   ]);
   
+  // HiDPI: backing store × devicePixelRatio med transform-skalering — tegner
+  // på fysiske piksler (iPad DPR 2-3) i stedet for 1/4 av oppløsningen.
+  // Kjøres FØR redraw-effekten (definisjonsrekkefølge = kjøringsrekkefølge).
+  useEffect(() => {
+    const dpr = Math.min(2.5, (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1);
+    canvasDprRef.current = dpr;
+    const canvases = [
+      mainCanvasRef.current,
+      previewCanvasRef.current,
+      onionCanvasRef.current,
+      referenceCanvasRef.current,
+      gridCanvasRef.current,
+      symmetryCanvasRef.current,
+    ];
+    const targetW = Math.max(1, Math.round(width * dpr));
+    const targetH = Math.max(1, Math.round(height * dpr));
+    for (const c of canvases) {
+      if (!c) continue;
+      if (c.width !== targetW || c.height !== targetH) {
+        c.width = targetW;
+        c.height = targetH;
+      }
+      c.style.width = `${width}px`;
+      c.style.height = `${height}px`;
+      const cctx = c.getContext('2d');
+      cctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    committedStateRef.current = { strokes: [], underlay: null };
+  }, [width, height]);
+
+  // Zoom for mus/pekeplate: ctrl/cmd + scroll (pekeplate-pinch sender
+  // ctrl+wheel). Touch-pinch håndteres allerede av useGestureHandler.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      setViewTransform((prev) => ({
+        ...prev,
+        scale: clamp(prev.scale * Math.exp(-e.deltaY * 0.0022), 0.3, 4),
+      }));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
   // Redraw when strokes change
   useEffect(() => {
     redrawMainCanvas();

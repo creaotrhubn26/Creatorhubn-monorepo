@@ -53,6 +53,7 @@ import {
   FormControl,
   InputLabel,
   TextField,
+  InputAdornment,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -108,12 +109,19 @@ import {
   Group as GroupIcon,
   TableChart as TableChartIcon,
   AccountBalance as SplitSheetIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { nb } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
+import {
+  AdminButton,
+  AdminLoading,
+  AdminTableContainer,
+  useIsMobile,
+} from './design-system';
 
 interface ReportTemplate {
   id: string;
@@ -172,8 +180,10 @@ const AutomatedBusinessReports: React.FC = () => {
   const [customRecipients, setCustomRecipients] = useState<string[]>([]);
   const [generatingReport, setGeneratingReport] = useState<boolean>(false);
   const [selectedReport, setSelectedReport] = useState<GeneratedReport | null>(null);
+  const [search, setSearch] = useState<string>('');
 
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -225,9 +235,9 @@ const AutomatedBusinessReports: React.FC = () => {
         schedulesRes.json(),
       ]);
 
-      setReportTemplates(templates);
-      setGeneratedReports(reports);
-      setReportSchedules(schedules);
+      setReportTemplates(Array.isArray(templates) ? templates : []);
+      setGeneratedReports(Array.isArray(reports) ? reports : []);
+      setReportSchedules(Array.isArray(schedules) ? schedules : []);
     } catch (error) {
       console.error('❌ Error fetching report data: ', error);
       toast({
@@ -766,7 +776,7 @@ const AutomatedBusinessReports: React.FC = () => {
         label: 'Compliance',
       },
       analytics: {
-        color: '#9c27b0',
+        color: '#ce93d8',
         icon: <AnalyticsIcon />,
         label: 'Analytics',
       },
@@ -790,20 +800,7 @@ const AutomatedBusinessReports: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          height: 40}}
-      >
-        <CircularProgress size={60} />
-        <Typography variant="h6" sx={{ ml: 2, color: theming.colors.primary }}>
-          Laster rapportsystem...
-        </Typography>
-      </Box>
-    );
+    return <AdminLoading label="Laster rapportsystem..." />;
   }
 
   return (
@@ -815,6 +812,8 @@ const AutomatedBusinessReports: React.FC = () => {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 2,
             mb: 3}}
         >
           <Box>
@@ -827,21 +826,20 @@ const AutomatedBusinessReports: React.FC = () => {
           </Box>
 
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <Button
+            <AdminButton
               onClick={() => setCreateDialogOpen(true)}
               startIcon={<AddIcon />}
-              variant="contained"
-              color="primary"
+              tone="primary"
             >
               Ny Rapport mal
-            </Button>
-            <Button
+            </AdminButton>
+            <AdminButton
               onClick={() => setGenerateDialogOpen(true)}
               startIcon={<PdfIcon />}
-              variant="outlined"
+              tone="secondary"
             >
               Generer Rapport
-            </Button>
+            </AdminButton>
           </Box>
         </Box>
 
@@ -1046,6 +1044,7 @@ const AutomatedBusinessReports: React.FC = () => {
                                 <Tooltip title="Generer rapport (API)">
                                   <IconButton
                                     size="small"
+                                    aria-label="Generer rapport (API)"
                                     onClick={() => {
                                       setSelectedTemplate(template);
                                       setGenerateDialogOpen(true);
@@ -1057,18 +1056,19 @@ const AutomatedBusinessReports: React.FC = () => {
                                 <Tooltip title="Generer PDF (Lokal)">
                                   <IconButton
                                     size="small"
+                                    aria-label="Generer PDF (Lokal)"
                                     onClick={() => generatePDFReport(template)}
                                   >
                                     <DownloadIcon />
                                   </IconButton>
                                 </Tooltip>
                                 <Tooltip title="Rediger mal">
-                                  <IconButton size="small">
+                                  <IconButton size="small" aria-label="Rediger mal">
                                     <EditIcon />
                                   </IconButton>
                                 </Tooltip>
                                 <Tooltip title="Se detaljer">
-                                  <IconButton size="small">
+                                  <IconButton size="small" aria-label="Se detaljer">
                                     <ViewIcon />
                                   </IconButton>
                                 </Tooltip>
@@ -1090,7 +1090,23 @@ const AutomatedBusinessReports: React.FC = () => {
                   Genererte Rapporter
                 </Typography>
 
-                <TableContainer component={Paper}>
+                <TextField
+                  size="small"
+                  placeholder="Søk i rapporter …"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  sx={{ mb: 2, maxWidth: 360 }}
+                  fullWidth
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+
+                <AdminTableContainer ariaLabel="Genererte rapporter">
                   <Table>
                     <TableHead>
                       <TableRow>
@@ -1104,7 +1120,13 @@ const AutomatedBusinessReports: React.FC = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {generatedReports.map((report) => (
+                      {generatedReports
+                        .filter((report) =>
+                          `${report.templateName} ${report.period} ${report.format} ${report.status}`
+                            .toLowerCase()
+                            .includes(search.toLowerCase()),
+                        )
+                        .map((report) => (
                         <TableRow key={report.id}>
                           <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -1141,18 +1163,19 @@ const AutomatedBusinessReports: React.FC = () => {
                               {report.status === 'ready' && (
                                 <>
                                   <Tooltip title="Last ned">
-                                    <IconButton size="small" onClick={() => downloadReport(report)}>
+                                    <IconButton size="small" aria-label="Last ned" onClick={() => downloadReport(report)}>
                                       <DownloadIcon />
                                     </IconButton>
                                   </Tooltip>
                                   <Tooltip title="Send på e-post">
-                                    <IconButton size="small" onClick={() => emailReport(report)}>
+                                    <IconButton size="small" aria-label="Send på e-post" onClick={() => emailReport(report)}>
                                       <EmailIcon />
                                     </IconButton>
                                   </Tooltip>
                                   <Tooltip title="Lagre til Google Drive">
                                     <IconButton
                                       size="small"
+                                      aria-label="Lagre til Google Drive"
                                       onClick={() => saveToGoogleDrive(report)}
                                     >
                                       <CloudIcon />
@@ -1161,6 +1184,7 @@ const AutomatedBusinessReports: React.FC = () => {
                                   <Tooltip title="Eksporter til Google Sheets">
                                     <IconButton
                                       size="small"
+                                      aria-label="Eksporter til Google Sheets"
                                       onClick={() => exportToGoogleSheets(report)}
                                     >
                                       <TableChartIcon />
@@ -1169,6 +1193,7 @@ const AutomatedBusinessReports: React.FC = () => {
                                   <Tooltip title="Kopier link">
                                     <IconButton
                                       size="small"
+                                      aria-label="Kopier link"
                                       onClick={() => {
                                         navigator.clipboard.writeText(report.downloadUrl);
                                         toast({
@@ -1189,7 +1214,7 @@ const AutomatedBusinessReports: React.FC = () => {
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </Box>
             )}
 
@@ -1256,7 +1281,7 @@ const AutomatedBusinessReports: React.FC = () => {
                               label="Aktivert"
                             />
                             <Tooltip title="Rediger planlegging">
-                              <IconButton onClick={() => setSelectedTemplate(template)}>
+                              <IconButton aria-label="Rediger planlegging" onClick={() => setSelectedTemplate(template)}>
                                 <EditIcon />
                               </IconButton>
                             </Tooltip>
@@ -1510,6 +1535,7 @@ const AutomatedBusinessReports: React.FC = () => {
           onClose={() => setGenerateDialogOpen(false)}
           maxWidth="md"
           fullWidth
+          fullScreen={isMobile}
         >
           <DialogTitle>📊 Generer Forretningsrapport</DialogTitle>
           <DialogContent>
@@ -1574,15 +1600,18 @@ const AutomatedBusinessReports: React.FC = () => {
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setGenerateDialogOpen(false)}>Avbryt</Button>
-            <Button
+            <AdminButton tone="ghost" onClick={() => setGenerateDialogOpen(false)}>
+              Avbryt
+            </AdminButton>
+            <AdminButton
               onClick={() => selectedTemplate && generateReport(selectedTemplate)}
-              variant="contained"
-              startIcon={generatingReport ? <CircularProgress size={20} /> : <PdfIcon />}
+              tone="primary"
+              startIcon={<PdfIcon />}
+              loading={generatingReport}
               disabled={generatingReport}
             >
               {generatingReport ? 'Genererer...' : 'Generer Rapport'}
-            </Button>
+            </AdminButton>
           </DialogActions>
         </Dialog>
 
@@ -1592,6 +1621,7 @@ const AutomatedBusinessReports: React.FC = () => {
           onClose={() => setCreateDialogOpen(false)}
           maxWidth="md"
           fullWidth
+          fullScreen={isMobile}
         >
           <DialogTitle>➕ Opprett Ny Rapportmal</DialogTitle>
           <DialogContent>
@@ -1651,10 +1681,12 @@ const AutomatedBusinessReports: React.FC = () => {
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setCreateDialogOpen(false)}>Avbryt</Button>
-            <Button variant="contained" startIcon={<AddIcon />}>
+            <AdminButton tone="ghost" onClick={() => setCreateDialogOpen(false)}>
+              Avbryt
+            </AdminButton>
+            <AdminButton tone="primary" startIcon={<AddIcon />}>
               Opprett Mal
-            </Button>
+            </AdminButton>
           </DialogActions>
         </Dialog>
       </Box>

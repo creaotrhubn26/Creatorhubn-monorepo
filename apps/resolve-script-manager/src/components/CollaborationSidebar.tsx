@@ -20,7 +20,6 @@ import SendIcon from "@mui/icons-material/Send";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import PlayCircleOutlineIcon from "@mui/icons-material/PlayCircleOutlineOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import ReplyIcon from "@mui/icons-material/Reply";
 import AlternateEmailIcon from "@mui/icons-material/AlternateEmail";
@@ -49,7 +48,7 @@ type Filter = "all" | "open" | "mine" | "resolved";
 
 export function CollaborationSidebar({
   open, onClose, projectId, agentKind,
-  currentTimeSec, onJumpToTime,
+  currentTimeSec,
 }: Props) {
   const [comments, setComments] = useState<EditorComment[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -279,7 +278,10 @@ export function CollaborationSidebar({
           borderBottom: "1px solid rgba(160,48,192,0.10)",
           display: "flex", gap: 4,
         }}>
-          {(["open", "all", "mine", "resolved"] as Filter[]).map(f => (
+          {/* «@meg» (mine) er skjult: filteret krever @mention-deteksjon mot egen
+              bruker-id, som ikke er wiret (ingen currentUserId i klienten), så
+              fanen ga alltid 0 treff. Legges tilbake når mention-mot-egen-id finnes. */}
+          {(["open", "all", "resolved"] as Filter[]).map(f => (
             <button key={f}
                     onClick={() => setFilter(f)}
                     style={{
@@ -319,7 +321,6 @@ export function CollaborationSidebar({
             <CommentThread key={c.id}
                             comment={c}
                             replies={getReplies(c.id)}
-                            onJumpToTime={onJumpToTime}
                             onStatusChange={(s) => void handleStatusChange(c, s)}
                             onReply={() => setReplyToCommentId(c.id)}
                             onDelete={() => void handleDelete(c)} />
@@ -409,17 +410,15 @@ export function CollaborationSidebar({
   );
 }
 
-function CommentThread({ comment, replies, onJumpToTime, onStatusChange, onReply, onDelete }: {
+function CommentThread({ comment, replies, onStatusChange, onReply, onDelete }: {
   comment: EditorComment;
   replies: EditorComment[];
-  onJumpToTime?: (sec: number) => void;
   onStatusChange: (s: CommentStatus) => void;
   onReply: () => void;
   onDelete: () => void;
 }) {
   const pColor = priorityColor(comment.priority);
   const sColor = statusColor(comment.status);
-  const hasTimestamp = comment.timestampSec !== null;
   return (
     <div style={{
       padding: 12, marginBottom: 10, borderRadius: 6,
@@ -442,21 +441,9 @@ function CommentThread({ comment, replies, onJumpToTime, onStatusChange, onReply
             hour: "2-digit", minute: "2-digit",
           })}
         </span>
-        {hasTimestamp && comment.timestampSec !== null && (
-          <button onClick={() => onJumpToTime?.(comment.timestampSec!)}
-                  title="Hopp til denne tiden i editoren"
-                  style={{
-                    background: "rgba(160,48,192,0.18)",
-                    border: "1px solid rgba(160,48,192,0.30)",
-                    color: ROLE_ROOM_BRAND.textPrimary,
-                    padding: "2px 8px", borderRadius: 3,
-                    fontSize: 9.5, fontWeight: 600, cursor: "pointer",
-                    display: "inline-flex", alignItems: "center", gap: 3,
-                  }}>
-            <PlayCircleOutlineIcon sx={{ fontSize: 10 }} />
-            {formatTimestamp(comment.timestampSec)}
-          </button>
-        )}
+        {/* «Hopp til tid»-knappen er skjult: editor-playback er ikke wiret til
+            en video-player enda, så knappen gjorde ingenting. Vises igjen når
+            tids-forankring faktisk kan hoppe i tidslinjen. */}
         <span style={{ marginLeft: "auto", display: "inline-flex",
                          alignItems: "center", gap: 4 }}>
           {comment.priority !== "normal" && (

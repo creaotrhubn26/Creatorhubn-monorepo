@@ -136,7 +136,7 @@ export function setupEvendiWeatherLocationRoutes(
          FROM couple_profiles cp WHERE cp.id = $1`,
         [coupleId],
       );
-      if (cpResult.rowCount === 0)
+      if (!cpResult.rows.length)
         return res.status(404).json({ error: "Brudepar ikke funnet" });
       const couple = cpResult.rows[0];
 
@@ -683,14 +683,14 @@ export function setupEvendiWeatherLocationRoutes(
           "SELECT client_email FROM legacy.projects WHERE id = $1",
           [projectId],
         );
-        if (proj.rowCount === 0)
+        if (!proj.rows.length)
           return res.status(404).json({ error: "Prosjekt ikke funnet" });
 
         const cp = await pool.query(
           "SELECT id FROM couple_profiles WHERE email = $1",
           [proj.rows[0].client_email],
         );
-        if (cp.rowCount === 0)
+        if (!cp.rows.length)
           return res
             .status(404)
             .json({ error: "Ingen brudepar koblet til prosjektet" });

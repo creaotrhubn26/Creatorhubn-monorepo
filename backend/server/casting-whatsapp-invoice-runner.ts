@@ -184,19 +184,25 @@ export async function runWhatsAppInvoiceSweep(
           }
 
           const description = `Audition-WhatsApp ${group.billingPeriod} (${group.whatsappCount} stk)`;
-          const invoiceItem = await deps.stripe.invoiceItems.create({
-            customer: stripeCustomerId,
-            amount: amountOre,
-            currency: "nok",
-            description,
-            metadata: {
-              runner: RUNNER_KEY,
-              billing_period: group.billingPeriod,
-              project_id: group.projectId,
-              whatsapp_count: String(group.whatsappCount),
-              vat_rate: String(group.vatRate),
+          // Deterministic idempotency key — see casting-sms-invoice-runner: a
+          // crash between create and markGroupBilled must not double-bill on
+          // the next sweep. Stripe collapses a re-used key to the same item.
+          const invoiceItem = await deps.stripe.invoiceItems.create(
+            {
+              customer: stripeCustomerId,
+              amount: amountOre,
+              currency: "nok",
+              description,
+              metadata: {
+                runner: RUNNER_KEY,
+                billing_period: group.billingPeriod,
+                project_id: group.projectId,
+                whatsapp_count: String(group.whatsappCount),
+                vat_rate: String(group.vatRate),
+              },
             },
-          });
+            { idempotencyKey: `casting-whatsapp-invoice:${group.projectId}:${group.billingPeriod}` },
+          );
 
           await markGroupBilled(deps.pool, group.rowIds, invoiceItem.id);
           summary.invoiceItemsCreated += 1;

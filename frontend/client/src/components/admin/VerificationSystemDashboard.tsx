@@ -28,6 +28,7 @@ import VerificationSystemDemo from './VerificationSystemDemo';
 import LiveVerificationDemo from './LiveVerificationDemo';
 import PrototypeFeedbackPanel from './PrototypeFeedbackPanel';
 import CompleteDeploymentManager from './CompleteDeploymentManager';
+import { adminTokens } from './design-system';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -80,52 +81,97 @@ export default function VerificationSystemDashboard() {
 
   const getTabColor = (index: number) => {
     switch (index) {
-      case 0: return '#ff8c00';
+      case 0: return adminTokens.color.brand;
       case 1: return '#2196f3';
-      case 2: return '#f44336';
-      case 3: return '#4caf50';
+      case 2: return adminTokens.color.error;
+      case 3: return adminTokens.color.success;
       default: return '#757575';
   }
 };
 
   return (
-    <Box sx={{ width: '100%', bgcolor: '#f5f5f5', minHeight: '100vh' }}>
+    <Box sx={{ width: '100%', bgcolor: '#0a0f1a', minHeight: '100vh', color: '#fff' }}>
       {/* Header */}
-      <Box sx={{ bgcolor: 'white', boxShadow: 1, mb: 3 }}>
+      <Box
+        sx={{
+          bgcolor: 'rgba(255,255,255,0.06)',
+          border: '1px solid rgba(255,255,255,0.12)',
+          backdropFilter: 'blur(8px)',
+          boxShadow: '0 14px 40px rgba(0,0,0,0.35)',
+          mb: 3,
+          color: '#fff',
+        }}
+      >
         <Box sx={{ p: 3 }}>
-          <Typography variant="h4" gutterBottom sx={{ color: '#ff8c00', fontWeight: 'bold' }}>
-            🔍 Verification System Testing Dashboard
+          <Typography variant="h4" component="h2" gutterBottom sx={{ color: adminTokens.color.brand, fontWeight: 'bold' }}>
+            Verification System Testing Dashboard
           </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-            Test the complete "Fixing Things" verification system in real-time. 
-            Watch how problems reported through the chat widget flow through 
+          <Typography variant="body1" sx={{ mb: 2, color: 'rgba(255,255,255,0.7)' }}>
+            Test the complete "Fixing Things" verification system in real-time.
+            Watch how problems reported through the chat widget flow through
             the entire verification workflow to ensure fixes actually work.
           </Typography>
-          
+
           {/* Quick Stats */}
           <Grid container spacing={1.5} sx={{ mt: 2 }}>
             <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#e3f2fd' }}>
-                <Typography variant="h5" color="primary">{demoStats.totalDemos}</Typography>
-                <Typography variant="caption">Total Demos Run</Typography>
+              <Paper
+                sx={{
+                  p: 2,
+                  textAlign: 'center',
+                  bgcolor: 'rgba(33,150,243,0.16)',
+                  border: '1px solid rgba(33,150,243,0.32)',
+                  color: '#fff',
+                  backdropFilter: 'blur(8px)',
+                }}
+              >
+                <Typography variant="h5" sx={{ color: '#64b5f6' }}>{demoStats.totalDemos}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>Total Demos Run</Typography>
               </Paper>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#e8f5e8' }}>
-                <Typography variant="h5" color="success.main">{demoStats.successfulDemos}</Typography>
-                <Typography variant="caption">Successful</Typography>
+              <Paper
+                sx={{
+                  p: 2,
+                  textAlign: 'center',
+                  bgcolor: 'rgba(76,175,80,0.16)',
+                  border: '1px solid rgba(76,175,80,0.32)',
+                  color: '#fff',
+                  backdropFilter: 'blur(8px)',
+                }}
+              >
+                <Typography variant="h5" sx={{ color: '#81c784' }}>{demoStats.successfulDemos}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>Successful</Typography>
               </Paper>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#ffebee' }}>
-                <Typography variant="h5" color="error.main">{demoStats.failedDemos}</Typography>
-                <Typography variant="caption">Failed</Typography>
+              <Paper
+                sx={{
+                  p: 2,
+                  textAlign: 'center',
+                  bgcolor: 'rgba(244,67,54,0.16)',
+                  border: '1px solid rgba(244,67,54,0.32)',
+                  color: '#fff',
+                  backdropFilter: 'blur(8px)',
+                }}
+              >
+                <Typography variant="h5" sx={{ color: '#e57373' }}>{demoStats.failedDemos}</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>Failed</Typography>
               </Paper>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#fff3e0' }}>
-                <Typography variant="h5" color="warning.main">{demoStats.averageTime}s</Typography>
-                <Typography variant="caption">Avg. Time</Typography>
+              <Paper
+                sx={{
+                  p: 2,
+                  textAlign: 'center',
+                  bgcolor: 'rgba(255,152,0,0.16)',
+                  border: '1px solid rgba(255,152,0,0.32)',
+                  color: '#fff',
+                  backdropFilter: 'blur(8px)',
+                }}
+              >
+                <Typography variant="h5" sx={{ color: '#ffb74d' }}>{demoStats.averageTime}s</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>Avg. Time</Typography>
               </Paper>
             </Grid>
           </Grid>
@@ -134,7 +180,7 @@ export default function VerificationSystemDashboard() {
 
       {/* Main Content */}
       <Box sx={{ flexGrow: 1 }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'white' }}>
+        <Box sx={{ borderBottom: `1px solid ${adminTokens.color.border}`, bgcolor: adminTokens.color.surface }}>
           <Tabs 
             value={activeTab} 
             onChange={handleTabChange} 
@@ -207,55 +253,99 @@ export default function VerificationSystemDashboard() {
       </Box>
 
       {/* Footer Info */}
-      <Box sx={{ bgcolor: 'white', p: 3, mt: 3, borderTop: 1, borderColor: 'divider' }}>
-        <Alert severity="info" sx={{ mb: 2 }}>
+      <Box
+        sx={{
+          bgcolor: adminTokens.color.surface,
+          p: 3,
+          mt: 3,
+          borderTop: `1px solid ${adminTokens.color.border}`,
+          color: '#fff',
+        }}
+      >
+        <Alert
+          severity="info"
+          sx={{
+            mb: 2,
+            bgcolor: 'rgba(33,150,243,0.12)',
+            border: '1px solid rgba(33,150,243,0.32)',
+            color: '#fff',
+            '& .MuiAlert-icon': { color: '#64b5f6' },
+          }}
+        >
           <Typography variant="body2">
-            <strong>🔍 Verification System Overview:</strong> This dashboard demonstrates the complete "Fixing Things" 
-            verification system. Start with the Live Demo to see the full workflow in action, then explore 
+            <strong>Verification System Overview:</strong> This dashboard demonstrates the complete "Fixing Things"
+            verification system. Start with the Live Demo to see the full workflow in action, then explore
             individual components to understand how each part works.
           </Typography>
         </Alert>
-        
+
         <Grid container spacing={2}>
           <Grid item xs={12} md={4}>
-            <Card sx={{ height: '100%' }}>
+            <Card
+              sx={{
+                height: '100%',
+                bgcolor: 'rgba(255,255,255,0.06)',
+                border: `1px solid ${adminTokens.color.border}`,
+                backdropFilter: 'blur(8px)',
+                color: '#fff',
+                boxShadow: 'none',
+              }}
+            >
               <CardContent>
-                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <PlayArrow color="primary" />
+                <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
+                  <PlayArrow aria-hidden sx={{ color: '#64b5f6' }} />
                   Live Demo
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Watch the complete verification workflow in real-time. Simulates a real problem report 
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Watch the complete verification workflow in real-time. Simulates a real problem report
                   through the chat widget and shows the entire process.
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
-          
+
           <Grid item xs={12} md={4}>
-            <Card sx={{ height: '100%' }}>
+            <Card
+              sx={{
+                height: '100%',
+                bgcolor: 'rgba(255,255,255,0.06)',
+                border: `1px solid ${adminTokens.color.border}`,
+                backdropFilter: 'blur(8px)',
+                color: '#fff',
+                boxShadow: 'none',
+              }}
+            >
               <CardContent>
-                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Science color="primary" />
+                <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
+                  <Science aria-hidden sx={{ color: '#64b5f6' }} />
                   Step-by-Step Demo
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Interactive step-by-step demonstration of each verification phase. 
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Interactive step-by-step demonstration of each verification phase.
                   Perfect for understanding the detailed workflow.
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
-          
+
           <Grid item xs={12} md={4}>
-            <Card sx={{ height: '100%' }}>
+            <Card
+              sx={{
+                height: '100%',
+                bgcolor: 'rgba(255,255,255,0.06)',
+                border: `1px solid ${adminTokens.color.border}`,
+                backdropFilter: 'blur(8px)',
+                color: '#fff',
+                boxShadow: 'none',
+              }}
+            >
               <CardContent>
-                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <BugReport color="primary" />
+                <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
+                  <BugReport aria-hidden sx={{ color: '#64b5f6' }} />
                   Real Components
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Access the actual PrototypeFeedbackPanel and CompleteDeploymentManager 
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Access the actual PrototypeFeedbackPanel and CompleteDeploymentManager
                   components with real data and functionality.
                 </Typography>
               </CardContent>

@@ -15,6 +15,7 @@
  * (matcher mønsteret i flere andre role-room-tjenester).
  */
 
+import crypto from "crypto";
 import nodemailer from "nodemailer";
 import type { Pool } from "pg";
 import {
@@ -213,13 +214,7 @@ function markdownToPlainText(markdown: string): string {
 // ── Token gen ───────────────────────────────────────────────────────
 
 function generateToken(): string {
-  // 32 chars, URL-safe — same approach used elsewhere in the codebase.
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  let out = "";
-  for (let i = 0; i < 32; i += 1) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return out;
+  return crypto.randomBytes(24).toString("base64url");
 }
 
 // ── Row mapping ────────────────────────────────────────────────────

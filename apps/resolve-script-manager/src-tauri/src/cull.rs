@@ -63,7 +63,11 @@ pub struct CullSession {
     pub updated_at: String,
     pub preflight: CullPreflight,
     pub decisions: Vec<CullDecision>,
-    #[serde(rename = "similarGroups", skip_serializing_if = "Option::is_none", default)]
+    #[serde(
+        rename = "similarGroups",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub similar_groups: Option<serde_json::Value>,
 }
 
@@ -127,8 +131,12 @@ pub fn list_sessions(app: &AppHandle) -> Result<Vec<CullSessionSummary>, String>
         if path.extension().and_then(|s| s.to_str()) != Some("json") {
             continue;
         }
-        let Ok(bytes) = std::fs::read(&path) else { continue };
-        let Ok(session) = serde_json::from_slice::<CullSession>(&bytes) else { continue };
+        let Ok(bytes) = std::fs::read(&path) else {
+            continue;
+        };
+        let Ok(session) = serde_json::from_slice::<CullSession>(&bytes) else {
+            continue;
+        };
         let mut kept = 0usize;
         let mut rejected = 0usize;
         let mut pending = 0usize;

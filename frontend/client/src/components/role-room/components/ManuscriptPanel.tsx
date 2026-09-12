@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 
 // DEV-only debug-logging — autosave-meldinger og data-snapshot går
 // IKKE til prod-konsol (støy + privacy: klient-script lekker ikke).
@@ -7,6 +8,7 @@ import {
   Box,
   Typography,
   Button,
+  ButtonGroup,
   IconButton,
   TextField,
   Select,
@@ -20,6 +22,7 @@ import {
   DialogActions,
   Tabs,
   Tab,
+  Avatar,
   Card,
   CardContent,
   Chip,
@@ -131,19 +134,56 @@ const DEFAULT_MANUSCRIPT_COVER_FOCAL_POINT: ManuscriptCoverFocalPoint = { x: 50,
 const clampCoverFocalPointValue = (value: number): number => Math.max(0, Math.min(100, value));
 const normalizeProjectKey = (value: string | null | undefined): string => String(value || '').trim().toLowerCase();
 
-// Trekker ut normaliserte scene-headinger fra Fountain-tekst. Brukes til å
-// oppdage at DB-scenene er ute av synk med manuset (ulik sekvens av headinger).
-const SCENE_HEADING_DETECT_RE = /^(\.)?((?:INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s])/i;
-const extractFountainSceneHeadings = (content: string | undefined): string[] => {
-  if (!content) return [];
-  const out: string[] = [];
-  for (const raw of content.split('\n')) {
-    const line = raw.trim();
-    if (SCENE_HEADING_DETECT_RE.test(line)) {
-      out.push(line.replace(/^\./, '').trim().toUpperCase().replace(/\s+/g, ' '));
-    }
-  }
-  return out;
+type SceneTimeOfDay = NonNullable<SceneBreakdown['timeOfDay']>;
+type SceneIntExt = NonNullable<SceneBreakdown['intExt']>;
+
+const SCENE_TIME_OF_DAY_MAP: Record<string, SceneTimeOfDay> = {
+  DAY: 'DAY',
+  NIGHT: 'NIGHT',
+  DAWN: 'DAWN',
+  DUSK: 'DUSK',
+  CONTINUOUS: 'CONTINUOUS',
+  LATER: 'LATER',
+  MORNING: 'MORNING',
+  EVENING: 'EVENING',
+  SAME: 'CONTINUOUS',
+  DAG: 'DAY',
+  NATT: 'NIGHT',
+  DEMRING: 'DAWN',
+  GRYNING: 'DAWN',
+  SKUMRING: 'DUSK',
+  KONTINUERLIG: 'CONTINUOUS',
+  SENERE: 'LATER',
+  MORGEN: 'MORNING',
+  KVELD: 'EVENING',
+};
+
+const normalizeSceneTimeOfDay = (value?: string): SceneTimeOfDay => {
+  const token = (value || '').trim().replace(/\.$/, '').toUpperCase();
+  return SCENE_TIME_OF_DAY_MAP[token] ?? 'DAY';
+};
+
+const parseSceneHeadingLine = (
+  line: string,
+): { intExt: SceneIntExt; location: string; timeOfDay: SceneTimeOfDay } | null => {
+  const match = line.trim().match(
+    /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+(.+?)(?:\s*[-–—]\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME|DAG|NATT|DEMRING|GRYNING|SKUMRING|KONTINUERLIG|SENERE|MORGEN|KVELD)\.?)?$/i,
+  );
+  if (!match) return null;
+
+  const prefix = match[1].toUpperCase().replace('.', '');
+  const intExt: SceneIntExt =
+    prefix === 'I/E' || prefix.includes('INT/EXT')
+      ? 'INT/EXT'
+      : prefix.startsWith('EXT') || prefix === 'EST'
+        ? 'EXT'
+        : 'INT';
+
+  return {
+    intExt,
+    location: (match[2] || '').trim(),
+    timeOfDay: normalizeSceneTimeOfDay(match[3]),
+  };
 };
 
 const getManuscriptCoverFocalPoint = (manuscript: Manuscript | null | undefined): ManuscriptCoverFocalPoint => {
@@ -435,17 +475,26 @@ import {
   FileDownload as FileDownloadIcon,
   FileUpload as FileUploadIcon,
   ChevronRight as ChevronRightIcon,
+  ArrowBack as ArrowBackIcon,
+  MoreHoriz as MoreHorizIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import { useToast } from './ToastStack';
 import type { Manuscript, SceneBreakdown, DialogueLine, ScriptRevision, Act, ManuscriptExport, Role, Location, Candidate, AISuggestion } from '../models/casting';
 import type { StoryLogicState } from '../services/storyLogicService';
-import { manuscriptService } from '../services/manuscriptService';
+import {
+  manuscriptService,
+  type ManuscriptConflictError,
+  type ManuscriptSaveResult,
+} from '../services/manuscriptService';
 import authSessionService from '../services/authSessionService';
+import { getCurrentUserId } from '../services/settingsService';
 import { roleRoomProjectMembersService } from '../services/roleRoomProjectMembersService';
 import { RichTextEditor } from './RichTextEditor';
 import { ScriptDiffViewer } from './ScriptDiffViewer';
+import { ManuscriptConflictDialog } from './screenplay/ManuscriptConflictDialog';
+import { addScreenplayRecoveryPoint } from './screenplay/screenplayRecovery';
 import { TimelineView } from './TimelineView';
 import { ProductionControlPanel } from './ProductionControlPanel';
 import { DraggableSceneList } from './DraggableSceneList';
@@ -497,12 +546,75 @@ interface ManuscriptPanelProps {
   targetDurationMinutes?: number;
   /** Lagre ny mål-lengde på prosjektet (null = fjern). */
   onTargetDurationChange?: (minutes: number | null) => void;
+  productionWorkflowIntent?: {
+    view: 'stripboard' | 'schedule';
+    signal: number;
+  } | null;
 }
 
 type ManuscriptTabValue = 'editor' | 'acts' | 'scenes' | 'characters' | 'dialogue' | 'breakdown' | 'revisions' | 'timeline' | 'production' | 'productionview';
+type ManuscriptSaveState = 'saved' | 'unsaved' | 'saving' | 'local-only' | 'conflict' | 'error';
+
+interface ManuscriptVersionConflictState {
+  manuscriptId: string;
+  localManuscript: Manuscript;
+  cloudManuscript: Manuscript | null;
+  currentVersion: number | null;
+}
+
+const numericManuscriptVersion = (manuscript: Manuscript | null | undefined): number | null => (
+  typeof manuscript?.version === 'number' && Number.isFinite(manuscript.version)
+    ? manuscript.version
+    : null
+);
+
+const manuscriptCloudSaveLabel = (
+  state: ManuscriptSaveState,
+  savedAt: Date | null,
+  cloudVersion: number | null,
+): string => {
+  const versionSuffix = cloudVersion !== null ? ` · v${cloudVersion}` : '';
+  if (state === 'saved') {
+    return savedAt
+      ? `Synkronisert ${savedAt.toLocaleTimeString('nb-NO')}${versionSuffix}`
+      : `Synkronisert${versionSuffix}`;
+  }
+  if (state === 'saving') return 'Synkroniserer…';
+  if (state === 'local-only') return `Venter på sky${versionSuffix}`;
+  if (state === 'conflict') return `Konflikt med skyversjon${versionSuffix}`;
+  if (state === 'error') return 'Skylagringsfeil';
+  return 'Ikke synkronisert';
+};
+
+const manuscriptStatusLabel = (status: string | null | undefined): string => {
+  if (status === 'shooting') return 'Produksjon';
+  if (status === 'approved') return 'Godkjent';
+  if (status === 'review') return 'Gjennomgang';
+  if (status === 'completed') return 'Fullført';
+  return 'Utkast';
+};
+
+const manuscriptToolbarSaveLabel = (state: ManuscriptSaveState): string => {
+  if (state === 'saving') return 'Lagrer…';
+  if (state === 'saved') return 'Lagret';
+  if (state === 'local-only') return 'Lagret lokalt';
+  if (state === 'conflict') return 'Versjonskonflikt';
+  if (state === 'error') return 'Prøv lagring';
+  return 'Lagre';
+};
 
 const isUnknownRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
+
+const revisionContent = (revision: ScriptRevision): string => {
+  if (typeof revision.content === 'string') return revision.content;
+  if (typeof revision.snapshot?.content === 'string') return revision.snapshot.content;
+  const legacyManuscript = revision.manuscript;
+  if (isUnknownRecord(legacyManuscript) && typeof legacyManuscript.content === 'string') {
+    return legacyManuscript.content;
+  }
+  return '';
+};
 
 const buildSceneAutosaveSnapshot = (scene: SceneBreakdown) => {
   const storyboardFrames = Array.isArray(scene.storyboardFrames)
@@ -545,6 +657,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   onSendToApproval,
   targetDurationMinutes,
   onTargetDurationChange,
+  productionWorkflowIntent,
 }) => {
   const { showToast, showSuccess, showError, showWarning, showInfo } = useToast();
   const branding = useBrandingSettings();
@@ -566,6 +679,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   const pendingContentRef = useRef<string>(''); // Track content changes without re-render
   const selectedManuscriptRef = useRef<Manuscript | null>(null);
   const autoSaveAbortControllerRef = useRef<AbortController | null>(null); // Prevent memory leaks
+  const pendingCloudManuscriptRef = useRef<Manuscript | null>(null);
   const isMountedRef = useRef(true);
   const castingDataLoadTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingCastingDataLoadRef = useRef(false);
@@ -587,6 +701,18 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   }, []);
   
   const [activeTab, setActiveTab] = useState<ManuscriptTabValue>('editor');
+  const lastProductionWorkflowSignalRef = useRef(0);
+
+  useEffect(() => {
+    if (
+      !productionWorkflowIntent
+      || productionWorkflowIntent.signal <= lastProductionWorkflowSignalRef.current
+    ) {
+      return;
+    }
+    lastProductionWorkflowSignalRef.current = productionWorkflowIntent.signal;
+    setActiveTab('productionview');
+  }, [productionWorkflowIntent]);
   const [manuscripts, setManuscripts] = useState<Manuscript[]>([]);
   const [selectedManuscript, setSelectedManuscript] = useState<Manuscript | null>(null);
   const [acts, setActs] = useState<Act[]>([]);
@@ -617,7 +743,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     });
   }, [scenes]);
   const [isLoading, setIsLoading] = useState(false);
-  const [manuscriptSaveStatus, setManuscriptSaveStatus] = useState<'saved' | 'unsaved' | 'saving' | 'error'>('saved');
+  const [manuscriptSaveStatus, setManuscriptSaveStatus] = useState<ManuscriptSaveState>('saved');
   // Når en ANNEN i produksjonsteamet holder manus-låsen avvises lagring (409).
   // Vi viser hvem som låste i stedet for en generisk "Lagringsfeil".
   const [manuscriptLockConflict, setManuscriptLockConflict] = useState<{ lockedBy: string | null; lockedAt: string | null } | null>(null);
@@ -633,9 +759,15 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     return (key && memberNameMapRef.current[key]) || key || 'En annen i teamet';
   };
   const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
+  const [breakdownMenuAnchor, setBreakdownMenuAnchor] = useState<null | HTMLElement>(null);
   const [showTargetDialog, setShowTargetDialog] = useState(false);
   const [targetDraft, setTargetDraft] = useState('');
   const [lastManuscriptSaved, setLastManuscriptSaved] = useState<Date | null>(null);
+  const [lastCloudVersion, setLastCloudVersion] = useState<number | null>(null);
+  const [manuscriptVersionConflict, setManuscriptVersionConflict] = useState<ManuscriptVersionConflictState | null>(null);
+  const manuscriptVersionConflictRef = useRef<ManuscriptVersionConflictState | null>(null);
+  const [showManuscriptConflictDialog, setShowManuscriptConflictDialog] = useState(false);
+  const [isResolvingManuscriptConflict, setIsResolvingManuscriptConflict] = useState(false);
   const [_isOnline, setIsOnline] = useState(navigator.onLine);
   const [showNewManuscriptDialog, setShowNewManuscriptDialog] = useState(false);
   const [showSceneDialog, setShowSceneDialog] = useState(false);
@@ -745,6 +877,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       }
       if (thread.type === 'unscheduled') {
         setActiveTab('production');
+      } else if (thread.type === 'last-edited' || thread.type === 'empty-scaffold') {
+        setActiveTab('editor');
       } else {
         setActiveTab('scenes');
       }
@@ -853,6 +987,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       setDialogueLines([]);
       setRevisions([]);
       selectedManuscriptRef.current = null;
+      pendingCloudManuscriptRef.current = null;
       lastSavedContentRef.current = '';
       pendingContentRef.current = '';
       isDirtyRef.current = false;
@@ -976,7 +1111,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     }
   };
 
-  const loadRevisions = async (manuscriptId: string) => {
+  const loadRevisions = useCallback(async (manuscriptId: string) => {
     try {
       const response = await manuscriptService.getRevisions(manuscriptId);
       setRevisions(response);
@@ -984,7 +1119,15 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       showError('Feil ved lasting av revisjoner');
       console.error(error);
     }
-  };
+  }, [showError]);
+
+  // Automatic cloud snapshots can be created while the editor tab is open.
+  // Refresh when the user enters history so the list never shows stale data.
+  useEffect(() => {
+    if (activeTab === 'revisions' && selectedManuscript?.id) {
+      void loadRevisions(selectedManuscript.id);
+    }
+  }, [activeTab, loadRevisions, selectedManuscript?.id]);
 
   // Når et AI-forslag godtas utløser serveren automatisk apply (AD-003 i
   // ai-suggestion-service.ts), så vi refetcher de berørte dataene slik at den
@@ -1068,16 +1211,24 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       setDialogueLines([]);
       setRevisions([]);
       selectedManuscriptRef.current = null;
+      manuscriptVersionConflictRef.current = null;
+      setManuscriptVersionConflict(null);
+      setLastCloudVersion(null);
       return;
     }
     
     // Always initialize refs when manuscript changes
     selectedManuscriptRef.current = selectedManuscript;
+    pendingCloudManuscriptRef.current = null;
     lastSavedContentRef.current = selectedManuscript.content || '';
     pendingContentRef.current = selectedManuscript.content || '';
     isDirtyRef.current = false;
     isInitialLoadRef.current = false;
     setManuscriptSaveStatus('saved');
+    setLastCloudVersion(numericManuscriptVersion(selectedManuscript));
+    manuscriptVersionConflictRef.current = null;
+    setManuscriptVersionConflict(null);
+    setShowManuscriptConflictDialog(false);
     setLastManuscriptSaved(
       selectedManuscript.updatedAt ? new Date(selectedManuscript.updatedAt) : new Date()
     );
@@ -1343,6 +1494,85 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     }
   };
 
+  const registerManuscriptVersionConflict = useCallback((
+    error: unknown,
+    localManuscript: Manuscript,
+  ): boolean => {
+    if (!error || typeof error !== 'object' || (error as { code?: unknown }).code !== 'manuscript_conflict') {
+      return false;
+    }
+
+    const conflictError = error as ManuscriptConflictError;
+    const conflict: ManuscriptVersionConflictState = {
+      manuscriptId: localManuscript.id,
+      localManuscript,
+      cloudManuscript: conflictError.cloudManuscript,
+      currentVersion: conflictError.currentVersion,
+    };
+    manuscriptVersionConflictRef.current = conflict;
+    setManuscriptVersionConflict(conflict);
+    setLastCloudVersion(conflict.currentVersion);
+    setManuscriptSaveStatus('conflict');
+    setShowManuscriptConflictDialog(true);
+    showWarning('Skyversjonen er nyere. Endringene dine er sikret lokalt og ingenting er overskrevet.');
+    return true;
+  }, [showWarning]);
+
+  const applyCloudSaveResult = useCallback((
+    result: ManuscriptSaveResult,
+    content: string,
+  ): Manuscript => {
+    const persisted = { ...result.manuscript, content };
+    if (selectedManuscriptRef.current?.id === persisted.id) {
+      selectedManuscriptRef.current = persisted;
+    }
+    setSelectedManuscript((current) => current?.id === persisted.id ? persisted : current);
+    setManuscripts((current) =>
+      current.map((entry) => (entry.id === persisted.id ? persisted : entry))
+    );
+    if (result.cloud) {
+      pendingCloudManuscriptRef.current = null;
+      setLastCloudVersion(result.cloudVersion);
+      setLastManuscriptSaved(new Date(result.savedAt));
+      setManuscriptSaveStatus('saved');
+      setManuscriptLockConflict(null);
+    } else {
+      pendingCloudManuscriptRef.current = persisted;
+      setManuscriptSaveStatus('local-only');
+    }
+    return persisted;
+  }, []);
+
+  const applyObservedCloudVersion = useCallback((manuscriptId: string, version: number) => {
+    setLastCloudVersion(version);
+    setSelectedManuscript((current) => (
+      current?.id === manuscriptId ? { ...current, version } : current
+    ));
+    setManuscripts((current) => current.map((entry) => (
+      entry.id === manuscriptId ? { ...entry, version } : entry
+    )));
+    if (selectedManuscriptRef.current?.id === manuscriptId) {
+      selectedManuscriptRef.current = { ...selectedManuscriptRef.current, version };
+    }
+  }, []);
+
+  const reportUserInitiatedSave = (
+    result: ManuscriptSaveResult,
+    successMessage: string,
+  ): boolean => {
+    applyCloudSaveResult(result, result.manuscript.content || '');
+    if (!result.cloud) {
+      if (selectedManuscriptRef.current?.id === result.manuscript.id) {
+        pendingContentRef.current = result.manuscript.content || '';
+        isDirtyRef.current = true;
+      }
+      showWarning('Endringen er sikret lokalt og venter på synkronisering til skyen.');
+      return false;
+    }
+    showSuccess(successMessage);
+    return true;
+  };
+
   const handleSaveManuscript = async () => {
     if (!selectedManuscript) return;
 
@@ -1357,39 +1587,36 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         content: contentToPersist,
         updatedAt: persistedTimestamp,
       };
-      await manuscriptService.updateManuscript(manuscriptToPersist);
-      setSelectedManuscript(manuscriptToPersist);
-      setManuscripts((current) =>
-        current.map((entry) => (entry.id === manuscriptToPersist.id ? manuscriptToPersist : entry))
-      );
-      lastSavedContentRef.current = contentToPersist;
+      const result = await manuscriptService.updateManuscript(manuscriptToPersist);
+      const persisted = applyCloudSaveResult(result, contentToPersist);
       pendingContentRef.current = contentToPersist;
+
+      if (!result.cloud) {
+        isDirtyRef.current = true;
+        showWarning('Manuskriptet er sikret lokalt og venter på synkronisering til skyen.');
+        return;
+      }
+
+      lastSavedContentRef.current = contentToPersist;
       isDirtyRef.current = false;
-      setLastManuscriptSaved(new Date(persistedTimestamp));
-      setManuscriptSaveStatus('saved');
-      
-      showSuccess('Manuskript lagret');
-      
+      manuscriptVersionConflictRef.current = null;
+      setManuscriptVersionConflict(null);
+      showSuccess('Manuskript synkronisert');
+
       if (onManuscriptChange) {
-        onManuscriptChange(manuscriptToPersist);
+        onManuscriptChange(persisted);
       }
     } catch (error) {
+      const localManuscript = {
+        ...selectedManuscript,
+        content: isDirtyRef.current ? pendingContentRef.current : selectedManuscript.content,
+      };
+      if (registerManuscriptVersionConflict(error, localManuscript)) return;
       setManuscriptSaveStatus('error');
       showError('Feil ved lagring av manuskript');
       console.error(error);
     }
   };
-
-  // Er DB-scenene ute av synk med manuset? (Ulik sekvens av scene-headinger.)
-  // Stateless: sammenligner Fountain-headinger mot scene-listas headinger.
-  const scenesOutOfSync = useMemo(() => {
-    if (!selectedManuscript || scenes.length === 0) return false;
-    const contentHeadings = extractFountainSceneHeadings(selectedManuscript.content);
-    if (contentHeadings.length === 0) return false;
-    const sceneHeadings = scenes.map((s) => (s.sceneHeading || s.heading || '').trim().toUpperCase().replace(/\s+/g, ' '));
-    if (contentHeadings.length !== sceneHeadings.length) return true;
-    return contentHeadings.some((h, i) => h !== sceneHeadings[i]);
-  }, [selectedManuscript, scenes]);
 
   const handleAutoBreakdown = async () => {
     if (!selectedManuscript) return;
@@ -1409,14 +1636,13 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       let sceneNumber = 1;
       let currentScene: Partial<SceneBreakdown> | null = null;
       let currentCharacters: string[] = [];
-      const validSceneTimesOfDay = ['DAY', 'NIGHT', 'DAWN', 'DUSK', 'CONTINUOUS', 'LATER', 'MORNING', 'EVENING'] as const;
-      type SceneTimeOfDay = NonNullable<SceneBreakdown['timeOfDay']>;
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         
-        // Scene heading detection (INT. / EXT.)
-        if (line.match(/^(INT\.|EXT\.)/i)) {
+        // Scene heading detection supports Fountain INT/EXT variants and NO/EN time-of-day.
+        const parsedHeading = parseSceneHeadingLine(line);
+        if (parsedHeading) {
           // Save previous scene if exists
           if (currentScene) {
             autoScenes.push({
@@ -1430,21 +1656,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             currentCharacters = [];
           }
 
-          // Parse new scene heading
-          const parts = line.split('-').map(p => p.trim());
-          const intExt = parts[0].startsWith('INT') ? 'INT' : 'EXT';
-          const location = parts[0].replace(/^(INT\.|EXT\.)\s*/i, '');
-          const timeRaw = parts[1] || 'DAY';
-          const timeOfDay: SceneTimeOfDay =
-            validSceneTimesOfDay.includes(timeRaw.toUpperCase() as SceneTimeOfDay)
-              ? timeRaw.toUpperCase() as SceneTimeOfDay
-              : 'DAY';
-
           currentScene = {
             sceneHeading: line,
-            intExt,
-            locationName: location,
-            timeOfDay,
+            intExt: parsedHeading.intExt,
+            locationName: parsedHeading.location,
+            timeOfDay: parsedHeading.timeOfDay,
             estimatedDuration: 3,
           };
           sceneNumber++;
@@ -1699,7 +1915,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         messageParts.push(`Lokasjoner: ${locationNames.join(', ')}`);
       }
 
-      showSuccess(`Auto-opprettet fra manus. ${messageParts.join(' | ')}`);
+      showSuccess(`Opprettet fra manus. ${messageParts.join(' | ')}`);
       autoCreatedRoleNamesRef.current.clear();
       autoCreatedLocationNamesRef.current.clear();
       autoCreatedToastTimerRef.current = null;
@@ -1727,16 +1943,16 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     };
   }, []);
 
-  // Memoized callbacks for character/location auto-creation
+  // Memoized callbacks for writer-confirmed character/location creation.
   const handleCharacterAdd = useCallback(async (name: string) => {
-    // Auto-create a role in casting when new character is detected
-    if (!projectId) return;
-    if (!shouldAutoCreateRoleFromScript(name)) return;
+    // Create only after explicit confirmation in the screenplay editor.
+    if (!projectId) return false;
+    if (!shouldAutoCreateRoleFromScript(name)) return false;
     const normalizedName = normalizeRoleNameFromScript(name);
-    if (!normalizedName) return;
+    if (!normalizedName) return false;
 
     const existingRole = castingRoles.find(r => r.name.toUpperCase() === normalizedName.toUpperCase());
-    if (existingRole) return; // Already exists
+    if (existingRole) return true; // Already exists
     
     try {
       const newRole: Role = {
@@ -1751,21 +1967,23 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       scheduleLoadCastingData();
       autoCreatedRoleNamesRef.current.add(normalizedName);
       scheduleAutoCreatedEntitiesToast();
-      if (DEV_LOG) console.log(`✓ Auto-created role "${normalizedName}" from screenplay`);
+      if (DEV_LOG) console.log(`✓ Confirmed role "${normalizedName}" from screenplay`);
+      return true;
     } catch (error) {
-      console.warn('Failed to auto-create role from screenplay:', error);
+      console.warn('Failed to create confirmed role from screenplay:', error);
+      return false;
     }
   }, [projectId, castingRoles, scheduleAutoCreatedEntitiesToast]);
 
   const handleLocationAdd = useCallback(async (name: string) => {
-    // Auto-create a location in casting when new location is detected
-    if (!projectId) return;
-    if (!shouldAutoCreateLocationFromScript(name)) return;
+    // Create only after explicit confirmation in the screenplay editor.
+    if (!projectId) return false;
+    if (!shouldAutoCreateLocationFromScript(name)) return false;
     const normalizedName = normalizeLocationNameFromScript(name);
-    if (!normalizedName) return;
+    if (!normalizedName) return false;
 
     const existingLoc = castingLocations.find(l => l.name.toUpperCase() === normalizedName.toUpperCase());
-    if (existingLoc) return; // Already exists
+    if (existingLoc) return true; // Already exists
     
     try {
       const newLocation: Location = {
@@ -1784,9 +2002,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       scheduleLoadCastingData();
       autoCreatedLocationNamesRef.current.add(normalizedName);
       scheduleAutoCreatedEntitiesToast();
-      if (DEV_LOG) console.log(`✓ Auto-created location "${normalizedName}" from screenplay`);
+      if (DEV_LOG) console.log(`✓ Confirmed location "${normalizedName}" from screenplay`);
+      return true;
     } catch (error) {
-      console.warn('Failed to auto-create location from screenplay:', error);
+      console.warn('Failed to create confirmed location from screenplay:', error);
+      return false;
     }
   }, [projectId, castingLocations, scheduleAutoCreatedEntitiesToast]);
 
@@ -1802,6 +2022,21 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     // Store in ref immediately (no re-render)
     pendingContentRef.current = content;
     isDirtyRef.current = true;
+    const unresolvedConflict = manuscriptVersionConflictRef.current;
+    if (unresolvedConflict) {
+      const nextConflict = {
+        ...unresolvedConflict,
+        localManuscript: {
+          ...unresolvedConflict.localManuscript,
+          content,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+      manuscriptVersionConflictRef.current = nextConflict;
+      setManuscriptVersionConflict(nextConflict);
+      setManuscriptSaveStatus('conflict');
+      return;
+    }
     setManuscriptSaveStatus((previous) => (previous === 'unsaved' ? previous : 'unsaved'));
     
     // Debounce the save to avoid constant saves while typing
@@ -1815,6 +2050,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       
       const manuscript = selectedManuscriptRef.current;
       if (!manuscript || !isDirtyRef.current) return;
+      if (manuscriptVersionConflictRef.current?.manuscriptId === manuscript.id) {
+        setManuscriptSaveStatus('conflict');
+        return;
+      }
       
       const contentToSave = pendingContentRef.current;
       if (contentToSave === lastSavedContentRef.current) return;
@@ -1827,7 +2066,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         autoSaveAbortControllerRef.current = new AbortController();
         
         // Save to database - DO NOT update selectedManuscript state to avoid re-render
-        await manuscriptService.updateManuscript(
+        const result = await manuscriptService.updateManuscript(
           {
             ...manuscript,
             content: contentToSave,
@@ -1838,13 +2077,17 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         
         // Only update refs if not aborted AND component still mounted
         if (!autoSaveAbortControllerRef.current?.signal.aborted && isMountedRef.current) {
+          applyCloudSaveResult(result, contentToSave);
+          if (!result.cloud) {
+            // Keep dirty=true. A timed retry (and the browser's online event)
+            // will attempt the same cloud write without losing local text.
+            isDirtyRef.current = true;
+            return;
+          }
           lastSavedContentRef.current = contentToSave;
           isDirtyRef.current = false;
-          setLastManuscriptSaved(new Date());
-          setManuscriptSaveStatus('saved');
-          setManuscriptLockConflict(null);
-          // IMPORTANT: Do NOT call onManuscriptChange or setSelectedManuscript here
-          // Auto-save should be completely transparent to parent
+          manuscriptVersionConflictRef.current = null;
+          setManuscriptVersionConflict(null);
         }
       } catch (error) {
         // Ignore abort errors (component unmounted)
@@ -1852,6 +2095,12 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
           return;
         }
         if (!isMountedRef.current) return;
+        const localManuscript = {
+          ...manuscript,
+          content: contentToSave,
+          updatedAt: new Date().toISOString(),
+        };
+        if (registerManuscriptVersionConflict(error, localManuscript)) return;
         // Lås holdt av en annen bruker (409) → vis HVEM, ikke generisk feil.
         // isDirtyRef forblir true så innholdet beholdes og kan re-lagres når
         // låsen frigis. Innholdet er ikke tapt — det ligger fortsatt i editoren.
@@ -1873,7 +2122,149 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
         setManuscriptSaveStatus('error');
       }
     }, 2000);
-  }, [selectedManuscript?.id]);
+  }, [applyCloudSaveResult, registerManuscriptVersionConflict, showWarning]);
+
+  // A local-only save is retried even if the writer stops typing. Keep the
+  // complete manuscript payload (not just content), so metadata/revisions are
+  // retried too.
+  useEffect(() => {
+    if (manuscriptSaveStatus !== 'local-only' || !pendingCloudManuscriptRef.current) return undefined;
+    const retryTimer = window.setTimeout(async () => {
+      const pending = pendingCloudManuscriptRef.current;
+      if (!pending || !isMountedRef.current || manuscriptVersionConflictRef.current) return;
+      try {
+        setManuscriptSaveStatus('saving');
+        const result = await manuscriptService.updateManuscript(pending);
+        if (!isMountedRef.current) return;
+
+        const isCurrentManuscript = selectedManuscriptRef.current?.id === pending.id;
+        const currentContent = isCurrentManuscript ? pendingContentRef.current : pending.content;
+        const contentChangedDuringRetry = currentContent !== pending.content;
+        applyCloudSaveResult(result, contentChangedDuringRetry ? currentContent : pending.content);
+        if (!result.cloud) return;
+
+        lastSavedContentRef.current = pending.content;
+        isDirtyRef.current = contentChangedDuringRetry;
+        if (contentChangedDuringRetry) setManuscriptSaveStatus('unsaved');
+      } catch (error) {
+        const localManuscript = {
+          ...pending,
+          content: selectedManuscriptRef.current?.id === pending.id
+            ? pendingContentRef.current
+            : pending.content,
+          updatedAt: new Date().toISOString(),
+        };
+        if (registerManuscriptVersionConflict(error, localManuscript)) return;
+        if (isMountedRef.current) setManuscriptSaveStatus('error');
+      }
+    }, 10_000);
+    return () => window.clearTimeout(retryTimer);
+  }, [applyCloudSaveResult, manuscriptSaveStatus, registerManuscriptVersionConflict, _isOnline]);
+
+  const refreshConflictCloudManuscript = async (): Promise<void> => {
+    const conflict = manuscriptVersionConflictRef.current;
+    if (!conflict) return;
+    setIsResolvingManuscriptConflict(true);
+    try {
+      const cloudManuscript = await manuscriptService.getCloudManuscript(conflict.manuscriptId);
+      if (!cloudManuscript) {
+        showWarning('Skyversjonen finnes ikke lenger. Den lokale versjonen er fortsatt urørt.');
+        return;
+      }
+      const refreshed: ManuscriptVersionConflictState = {
+        ...conflict,
+        cloudManuscript,
+        currentVersion: numericManuscriptVersion(cloudManuscript) ?? conflict.currentVersion,
+      };
+      manuscriptVersionConflictRef.current = refreshed;
+      setManuscriptVersionConflict(refreshed);
+      setLastCloudVersion(refreshed.currentVersion);
+    } catch (error) {
+      console.error('Could not refresh cloud manuscript for conflict:', error);
+      showWarning('Kunne ikke hente skyversjonen ennå. Den lokale versjonen er fortsatt trygg.');
+    } finally {
+      setIsResolvingManuscriptConflict(false);
+    }
+  };
+
+  const useCloudManuscriptFromConflict = (): void => {
+    const conflict = manuscriptVersionConflictRef.current;
+    if (!conflict?.cloudManuscript) return;
+
+    // Preserve the complete local text as a recovery point before the user
+    // explicitly replaces the editor with the cloud copy.
+    try {
+      addScreenplayRecoveryPoint(
+        conflict.manuscriptId,
+        getCurrentUserId(),
+        conflict.localManuscript.content,
+        'before_restore',
+      );
+    } catch (error) {
+      console.warn('Could not create pre-conflict recovery point:', error);
+    }
+
+    const cloudManuscript = conflict.cloudManuscript;
+    selectedManuscriptRef.current = cloudManuscript;
+    pendingContentRef.current = cloudManuscript.content || '';
+    lastSavedContentRef.current = cloudManuscript.content || '';
+    isDirtyRef.current = false;
+    setSelectedManuscript(cloudManuscript);
+    setManuscripts((current) =>
+      current.map((entry) => entry.id === cloudManuscript.id ? cloudManuscript : entry)
+    );
+    setLastCloudVersion(numericManuscriptVersion(cloudManuscript) ?? conflict.currentVersion);
+    setLastManuscriptSaved(cloudManuscript.updatedAt ? new Date(cloudManuscript.updatedAt) : new Date());
+    setManuscriptSaveStatus('saved');
+    pendingCloudManuscriptRef.current = null;
+    manuscriptVersionConflictRef.current = null;
+    setManuscriptVersionConflict(null);
+    setShowManuscriptConflictDialog(false);
+    onManuscriptChange?.(cloudManuscript);
+    showInfo('Skyversjonen er åpnet. Din lokale versjon ligger i gjenopprettingshistorikken.');
+  };
+
+  const keepLocalManuscriptFromConflict = async (): Promise<void> => {
+    const conflict = manuscriptVersionConflictRef.current;
+    if (!conflict || conflict.currentVersion === null || !conflict.cloudManuscript) return;
+
+    const localManuscript: Manuscript = {
+      ...conflict.localManuscript,
+      content: conflict.localManuscript.content,
+      updatedAt: new Date().toISOString(),
+    };
+    setIsResolvingManuscriptConflict(true);
+    try {
+      const result = await manuscriptService.updateManuscript(
+        localManuscript,
+        undefined,
+        { expectedCloudVersion: conflict.currentVersion },
+      );
+      const persisted = applyCloudSaveResult(result, localManuscript.content);
+      if (!result.cloud) {
+        isDirtyRef.current = true;
+        showWarning('Den lokale versjonen er trygg, men konflikten kunne ikke synkroniseres ennå.');
+        return;
+      }
+
+      pendingContentRef.current = localManuscript.content;
+      lastSavedContentRef.current = localManuscript.content;
+      isDirtyRef.current = false;
+      manuscriptVersionConflictRef.current = null;
+      setManuscriptVersionConflict(null);
+      setShowManuscriptConflictDialog(false);
+      onManuscriptChange?.(persisted);
+      showSuccess('Din versjon ble synkronisert etter eksplisitt bekreftelse.');
+    } catch (error) {
+      if (!registerManuscriptVersionConflict(error, localManuscript)) {
+        console.error('Could not resolve manuscript conflict:', error);
+        setManuscriptSaveStatus('error');
+        showError('Kunne ikke løse lagringskonflikten. Den lokale versjonen er fortsatt trygg.');
+      }
+    } finally {
+      setIsResolvingManuscriptConflict(false);
+    }
+  };
 
   const handleScriptChangeFromSplitView = useCallback((content: string) => {
     setSelectedManuscript((previous) => {
@@ -1900,6 +2291,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     // Parse Fountain content to create scenes
     const lines = content.split('\n');
     const newScenes: SceneBreakdown[] = [];
+    const newDialogue: DialogueLine[] = [];
+    let currentSpeaker: string | null = null;
     let currentSceneData: {
       heading: string;
       intExt: string;
@@ -1934,18 +2327,19 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     
     lines.forEach((line, lineIndex) => {
       const trimmed = line.trim();
-      const sceneMatch = trimmed.match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]+(.+?)(?:\s*-\s*(DAY|NIGHT|DAWN|DUSK|CONTINUOUS|LATER|MORNING|EVENING|SAME))?$/i);
+      const sceneHeading = parseSceneHeadingLine(trimmed);
       
-      if (sceneMatch) {
+      if (sceneHeading) {
         // Save previous scene
         saveCurrentScene();
+        currentSpeaker = null;
         
         // Start new scene
         currentSceneData = {
           heading: trimmed,
-          intExt: sceneMatch[1].toUpperCase().replace('.', '').replace('/', '/'),
-          location: sceneMatch[2]?.trim() || '',
-          timeOfDay: sceneMatch[3]?.toUpperCase() || 'DAY',
+          intExt: sceneHeading.intExt,
+          location: sceneHeading.location,
+          timeOfDay: sceneHeading.timeOfDay,
           description: '',
           characters: [],
           lineCount: 0,
@@ -1953,13 +2347,39 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       } else if (currentSceneData) {
         currentSceneData.lineCount++;
         
-        // Check for character names (all caps followed by dialogue)
+        // Blank line ends the current dialogue block.
+        if (trimmed.length === 0) {
+          currentSpeaker = null;
+          return;
+        }
+
+        // Character cue: ALL CAPS followed by content, excluding transitions/headings.
         const characterMatch = trimmed.match(/^([A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]+)(\s*\(.*\))?$/);
-        if (characterMatch && lines[lineIndex + 1]?.trim() && !lines[lineIndex + 1].trim().match(/^(INT|EXT)/i)) {
-          const charName = characterMatch[1].replace(/\s*\(.*\)$/, '').trim();
+        const isCue = !!characterMatch
+          && !!lines[lineIndex + 1]?.trim()
+          && !lines[lineIndex + 1].trim().match(/^(INT|EXT)/i)
+          && !trimmed.match(/^(INT|EXT|FADE|CUT|KLIPP)/i);
+        const isParenthetical = /^\(.*\)$/.test(trimmed);
+
+        if (isCue) {
+          const charName = characterMatch![1].replace(/\s*\(.*\)$/, '').trim();
           if (charName.length > 1 && charName.length < 40) {
             currentSceneData.characters.push(charName);
+            currentSpeaker = charName;
           }
+        } else if (isParenthetical) {
+          // Keep the active speaker across parenthetical direction.
+        } else if (currentSpeaker) {
+          newDialogue.push({
+            id: `dialogue-${newDialogue.length + 1}`,
+            sceneId: `scene-${newScenes.length + 1}`,
+            manuscriptId: selectedManuscript.id,
+            characterName: currentSpeaker,
+            dialogueText: trimmed,
+            dialogueType: 'dialogue' as const,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
         }
       }
     });
@@ -1967,8 +2387,9 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     // Save final scene
     saveCurrentScene();
     
-    // Update scenes
+    // Update scenes and dialogue together so the Dialogue tab matches the parsed screenplay.
     setScenes(newScenes);
+    setDialogueLines(newDialogue);
     showSuccess(`Parsed ${newScenes.length} scenes from screenplay`);
   }, [activeProjectId, autoBreakdownEnabled, selectedManuscript, showSuccess, showWarning]);
 
@@ -1996,11 +2417,14 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   }, [selectedManuscript?.pageCount]);
 
   const characterList = useMemo(() => {
-    // Extract unique characters from dialogue
+    // Karakterer «hentes fra dialog OG scenedata» (jf. UI-teksten). Tidligere
+    // leste denne KUN dialogueLines — så fanen var tom når parsingen hadde lagret
+    // scener (med scene.characters) men ikke dialoglinjer. Slå sammen begge kilder.
     const characters = new Set<string>();
-    dialogueLines.forEach(line => characters.add(line.characterName));
-    return Array.from(characters).sort();
-  }, [dialogueLines]);
+    dialogueLines.forEach(line => { if (line.characterName?.trim()) characters.add(line.characterName.trim()); });
+    scenes.forEach(scene => (scene.characters || []).forEach(c => { if (c && String(c).trim()) characters.add(String(c).trim()); }));
+    return Array.from(characters).filter(Boolean).sort();
+  }, [dialogueLines, scenes]);
 
   const sceneStats = useMemo(() => {
     const intScenes = scenes.filter(s => s.intExt === 'INT').length;
@@ -2220,10 +2644,29 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
   const selectedManuscriptIsExample = selectedManuscript
     ? isExampleManuscriptProject(selectedManuscript)
     : false;
+  const estimatedRuntimeMinutes = Math.round(selectedManuscript?.pageCount || 0);
+  const normalizedTargetDuration =
+    typeof targetDurationMinutes === 'number' && targetDurationMinutes > 0
+      ? targetDurationMinutes
+      : null;
+  const targetDurationDeviates =
+    normalizedTargetDuration !== null
+    && estimatedRuntimeMinutes > 0
+    && Math.abs(estimatedRuntimeMinutes - normalizedTargetDuration) / normalizedTargetDuration > 0.15;
+  const saveToolbarLabel = manuscriptToolbarSaveLabel(manuscriptSaveStatus);
+  const saveToolbarColor =
+    manuscriptSaveStatus === 'error' || manuscriptSaveStatus === 'conflict'
+      ? '#f87171'
+      : manuscriptSaveStatus === 'local-only' || manuscriptSaveStatus === 'unsaved'
+        ? '#fbbf24'
+        : manuscriptSaveStatus === 'saving'
+          ? '#60a5fa'
+          : branding.colors.textSecondary;
+  const showSingleHeaderRow = tier === 'xl' || tier === 'xxl' || tier === '4k';
 
   if (!hasProjectContext) {
     return (
-      <Box sx={{
+      <Box data-testid="manuscript-panel-root" sx={{
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -2245,6 +2688,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
   return (
     <Box
+      data-testid="manuscript-panel-root"
       sx={{
         height: '100%',
         minHeight: 0,
@@ -2258,228 +2702,388 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
       {/* Header */}
       <Box
         sx={{
-          p: responsive.headerPadding,
+          px: isMobile ? 1.25 : 2,
+          py: isMobile ? 1 : 1.25,
           borderBottom: `1px solid ${branding.colors.border}`,
           background: `linear-gradient(180deg, ${branding.colors.surface} 0%, ${branding.colors.background} 100%)`,
         }}
       >
-        <Stack 
-          direction={responsive.headerStackDirection} 
-          spacing={responsive.spacing} 
-          alignItems={isMobile ? 'stretch' : 'center'} 
-          justifyContent="space-between"
+        <Box
+          data-testid="manuscript-toolbar"
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: showSingleHeaderRow ? 'minmax(0, 1fr) auto' : 'minmax(0, 1fr)',
+            alignItems: 'center',
+            gap: isMobile ? 1 : 1.5,
+            '& .MuiButton-root': {
+              minHeight: 40,
+              borderRadius: 1.5,
+              fontSize: isMobile ? '0.75rem' : '0.82rem',
+              textTransform: 'none',
+              whiteSpace: 'nowrap',
+            },
+            '& .MuiButton-outlined': {
+              borderColor: `${branding.colors.primary}66`,
+              color: branding.colors.textPrimary,
+              '&:hover': {
+                borderColor: branding.colors.primary,
+                bgcolor: `${branding.colors.primary}1a`,
+              },
+            },
+            '& .MuiButton-contained': {
+              bgcolor: branding.colors.primary,
+              color: branding.colors.textPrimary,
+              '&:hover': { bgcolor: branding.colors.secondary },
+            },
+          }}
         >
           <Box
             sx={{
               display: 'flex',
               alignItems: 'center',
-              minHeight: isMobile ? 34 : 40,
+              flexWrap: showSingleHeaderRow ? 'nowrap' : 'wrap',
+              gap: isMobile ? 0.75 : 1,
+              minHeight: 40,
               minWidth: 0,
             }}
           >
             {headerLeftContent}
-          </Box>
-          
-          <Stack 
-            direction="row" 
-            spacing={isMobile ? 0.5 : 1} 
-            flexWrap="wrap"
-            justifyContent={isMobile ? 'flex-start' : 'flex-end'}
-            sx={{
-              gap: isMobile ? 0.5 : 1,
-              '& .MuiButton-outlined': {
-                borderColor: `${branding.colors.primary}66`,
-                color: branding.colors.textPrimary,
-                '&:hover': {
-                  borderColor: branding.colors.primary,
-                  bgcolor: `${branding.colors.primary}1a`,
-                },
-              },
-              '& .MuiButton-contained': {
-                bgcolor: branding.colors.primary,
-                color: branding.colors.textPrimary,
-                '&:hover': {
-                  bgcolor: branding.colors.secondary,
-                },
-              },
-            }}
-          >
             {selectedManuscript && (
               <>
-                {manuscriptViewers.length > 0 && (
-                  <Tooltip title={`Også her nå: ${manuscriptViewers.map((v) => v.displayName).join(', ')}`}>
+                {headerLeftContent && !isMobile && (
+                  <Divider orientation="vertical" flexItem sx={{ borderColor: branding.colors.border }} />
+                )}
+                <Button
+                  data-testid="manuscript-back-to-list"
+                  variant="text"
+                  startIcon={<ArrowBackIcon sx={{ fontSize: 18 }} />}
+                  size={isMobile ? 'small' : 'medium'}
+                  onClick={handleBackToManuscriptList}
+                  title="Tilbake til manuskriptoversikten"
+                  sx={{ color: branding.colors.textSecondary, flexShrink: 0 }}
+                >
+                  {isMobile ? 'Manus' : 'Manuskripter'}
+                </Button>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography
+                    variant="subtitle2"
+                    title={selectedManuscript.title}
+                    sx={{
+                      color: branding.colors.textPrimary,
+                      fontWeight: 700,
+                      lineHeight: 1.2,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {selectedManuscript.title}
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.4, flexWrap: 'wrap' }}>
                     <Chip
                       size="small"
-                      icon={<GroupIcon sx={{ fontSize: 14 }} />}
-                      color="info"
-                      label={manuscriptViewers.length === 1
-                        ? `${manuscriptViewers[0].displayName} er her`
-                        : `${manuscriptViewers.length} andre her`}
-                      sx={{ fontSize: responsive.captionFontSize }}
+                      variant="outlined"
+                      label={manuscriptStatusLabel(selectedManuscript.status)}
+                      sx={{ height: 22, fontSize: responsive.captionFontSize }}
                     />
-                  </Tooltip>
-                )}
-                <Button
-                  variant="outlined"
-                  startIcon={!isMobile ? <MenuBookIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleBackToManuscriptList}
-                  title="Tilbake til utkast-oversikten — bytt mellom utkast, gi nytt navn eller opprett nytt"
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  {isMobile ? 'Utkast' : 'Dine manuskripter'}
-                </Button>
-                <ToggleButton
-                  value="auto-breakdown"
-                  selected={autoBreakdownEnabled}
-                  size={isMobile ? 'small' : 'medium'}
-                  onChange={(_, isEnabled) => {
-                    setAutoBreakdownEnabled(isEnabled);
-                    showInfo(isEnabled ? 'Auto Breakdown aktivert' : 'Auto Breakdown deaktivert');
-                  }}
-                  sx={{
-                    fontSize: responsive.captionFontSize,
-                    color: autoBreakdownEnabled ? branding.colors.accent : branding.colors.textSecondary,
-                    borderColor: autoBreakdownEnabled ? `${branding.colors.accent}88` : branding.colors.border,
-                    '&.Mui-selected': {
-                      color: branding.colors.accent,
-                      bgcolor: `${branding.colors.accent}22`,
-                      borderColor: `${branding.colors.accent}88`,
-                    },
-                  }}
-                >
-                  {autoBreakdownEnabled ? 'Auto Breakdown På' : 'Auto Breakdown Av'}
-                </ToggleButton>
-                <Button
-                  variant="outlined"
-                  startIcon={!isMobile ? <AutoFixHighIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleAutoBreakdown}
-                  disabled={isLoading || !autoBreakdownEnabled}
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  {isMobile ? 'Auto' : 'Auto Breakdown'}
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={!isMobile ? <FileDownloadIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleExport}
-                  disabled={isLoading}
-                  title="Eksporter hele manuskriptet med produksjondata som JSON"
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  {isMobile ? 'JSON' : 'Eksporter JSON'}
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={!isMobile ? <DescriptionIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  endIcon={!isMobile ? <ArrowDropDownIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={(e) => setExportMenuAnchor(e.currentTarget)}
-                  disabled={isLoading}
-                  title="Eksporter manuset som Fountain eller Final Draft (FDX) for bruk i manus-verktøy"
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  {isMobile ? 'Manus' : 'Eksporter manus'}
-                </Button>
-                <Menu
-                  anchorEl={exportMenuAnchor}
-                  open={Boolean(exportMenuAnchor)}
-                  onClose={() => setExportMenuAnchor(null)}
-                >
-                  <MenuItem onClick={() => handleExportScreenplay('fountain')}>
-                    <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
-                    <ListItemText primary="Fountain (.fountain)" secondary="Åpen tekst-standard for manus" />
-                  </MenuItem>
-                  <MenuItem onClick={() => handleExportScreenplay('fdx')}>
-                    <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
-                    <ListItemText primary="Final Draft (.fdx)" secondary="For Final Draft og de fleste manus-verktøy" />
-                  </MenuItem>
-                </Menu>
-                <Button
-                  variant="contained"
-                  startIcon={!isMobile ? <SaveIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                  size={responsive.buttonSize}
-                  onClick={handleSaveManuscript}
-                  disabled={isLoading}
-                  sx={{ fontSize: responsive.bodyFontSize }}
-                >
-                  Lagre
-                </Button>
-                {onSendToApproval && (
-                  <Button
-                    variant="outlined"
-                    startIcon={!isMobile ? <SendIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-                    size={responsive.buttonSize}
-                    onClick={onSendToApproval}
-                    title="Send manuset videre til klient-/godkjenningsflaten"
-                    sx={{ fontSize: responsive.bodyFontSize }}
-                  >
-                    {isMobile ? 'Godkjenning' : 'Send til godkjenning'}
-                  </Button>
-                )}
-                {onTargetDurationChange && (() => {
-                  const estRuntime = Math.round(selectedManuscript?.pageCount || 0);
-                  const target = typeof targetDurationMinutes === 'number' && targetDurationMinutes > 0 ? targetDurationMinutes : null;
-                  const deviates = target != null && estRuntime > 0 && Math.abs(estRuntime - target) / target > 0.15;
-                  return (
-                    <Tooltip title={
-                      target == null
-                        ? 'Sett en mål-lengde for å få varsel når manuset blir for langt/kort'
-                        : deviates
-                          ? `Manuset er ~${estRuntime} min, men målet er ${target} min`
-                          : `Mål-lengde ${target} min (manus ~${estRuntime} min)`
-                    }>
-                      <Chip
-                        size="small"
-                        icon={deviates ? <WarningAmberIcon sx={{ fontSize: 16 }} /> : <TimerIcon sx={{ fontSize: 16 }} />}
-                        color={deviates ? 'warning' : 'default'}
-                        variant={target == null ? 'outlined' : 'filled'}
-                        onClick={() => { setTargetDraft(target != null ? String(target) : ''); setShowTargetDialog(true); }}
-                        label={target == null ? 'Sett mål-lengde' : `Mål ${target} min`}
-                        sx={{ cursor: 'pointer', fontSize: responsive.captionFontSize }}
-                      />
-                    </Tooltip>
-                  );
-                })()}
+                    {!isMobile && onTargetDurationChange && (
+                      <Tooltip title={
+                        normalizedTargetDuration === null
+                          ? 'Sett en mål-lengde for å få varsel når manuset blir for langt eller kort'
+                          : targetDurationDeviates
+                            ? `Manuset er omtrent ${estimatedRuntimeMinutes} min, mens målet er ${normalizedTargetDuration} min`
+                            : `Mål ${normalizedTargetDuration} min · manus omtrent ${estimatedRuntimeMinutes} min`
+                      }>
+                        <Chip
+                          size="small"
+                          icon={targetDurationDeviates
+                            ? <WarningAmberIcon sx={{ fontSize: 14 }} />
+                            : <TimerIcon sx={{ fontSize: 14 }} />}
+                          color={targetDurationDeviates ? 'warning' : 'default'}
+                          variant="outlined"
+                          onClick={() => {
+                            setTargetDraft(normalizedTargetDuration !== null ? String(normalizedTargetDuration) : '');
+                            setShowTargetDialog(true);
+                          }}
+                          label={normalizedTargetDuration === null ? 'Mål-lengde' : `Mål ${normalizedTargetDuration} min`}
+                          sx={{ height: 22, cursor: 'pointer', fontSize: responsive.captionFontSize }}
+                        />
+                      </Tooltip>
+                    )}
+                    {manuscriptViewers.length > 0 && (
+                      <Tooltip title={`Også her nå: ${manuscriptViewers.map((viewer) => viewer.displayName).join(', ')}`}>
+                        <Chip
+                          size="small"
+                          icon={<GroupIcon sx={{ fontSize: 13 }} />}
+                          color="info"
+                          variant="outlined"
+                          label={manuscriptViewers.length === 1
+                            ? `${manuscriptViewers[0].displayName} er her`
+                            : `${manuscriptViewers.length} andre her`}
+                          sx={{ height: 22, fontSize: responsive.captionFontSize }}
+                        />
+                      </Tooltip>
+                    )}
+                  </Box>
+                </Box>
               </>
             )}
-            <Button
-              variant="outlined"
-              startIcon={!isMobile ? <FileUploadIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-              size={responsive.buttonSize}
-              onClick={() => setShowImportDialog(true)}
-              title="Importer manuskript fra tidligere eksport"
-              sx={{ fontSize: responsive.bodyFontSize }}
-            >
-              Importer
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={!isMobile ? <MenuBookIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-              size={responsive.buttonSize}
-              onClick={() => setShowTemplatePanel(true)}
-              sx={{ 
-                borderColor: `${branding.colors.accent}aa`,
-                color: branding.colors.accent,
-                fontSize: responsive.bodyFontSize,
-                '&:hover': { borderColor: branding.colors.accent, bgcolor: `${branding.colors.accent}1a` } 
+          </Box>
+
+          {selectedManuscript ? (
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent={showSingleHeaderRow ? 'flex-end' : 'flex-start'}
+              spacing={0.75}
+              sx={{
+                width: showSingleHeaderRow ? 'auto' : '100%',
+                minWidth: 0,
+                overflowX: isMobile ? 'auto' : 'visible',
+                scrollbarWidth: 'none',
+                '&::-webkit-scrollbar': { display: 'none' },
               }}
             >
-              Maler
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={!isMobile ? <AddIcon sx={{ fontSize: responsive.iconSize - 4 }} /> : undefined}
-              size={responsive.buttonSize}
-              onClick={() => setShowNewManuscriptDialog(true)}
-              sx={{ fontSize: responsive.bodyFontSize }}
+              <ButtonGroup
+                variant="outlined"
+                size={isMobile ? 'small' : 'medium'}
+                aria-label="Breakdown-handlinger"
+                sx={{
+                  flexShrink: 0,
+                  '& .MuiButton-root': { borderRadius: 0 },
+                  '& .MuiButtonGroup-firstButton': { borderRadius: '6px 0 0 6px' },
+                  '& .MuiButtonGroup-lastButton': { borderRadius: '0 6px 6px 0' },
+                }}
+              >
+                <Button
+                  startIcon={!isMobile ? <AutoFixHighIcon sx={{ fontSize: 18 }} /> : undefined}
+                  onClick={handleAutoBreakdown}
+                  disabled={isLoading || !autoBreakdownEnabled}
+                  sx={{
+                    color: autoBreakdownEnabled ? branding.colors.accent : branding.colors.textSecondary,
+                    borderColor: autoBreakdownEnabled ? `${branding.colors.accent}88` : branding.colors.border,
+                  }}
+                >
+                  Breakdown
+                </Button>
+                <Button
+                  aria-label="Innstillinger for breakdown"
+                  aria-controls={breakdownMenuAnchor ? 'manuscript-breakdown-menu' : undefined}
+                  aria-haspopup="menu"
+                  aria-expanded={breakdownMenuAnchor ? 'true' : undefined}
+                  onClick={(event) => setBreakdownMenuAnchor(event.currentTarget)}
+                  disabled={isLoading}
+                  sx={{ minWidth: 40, px: 0.5 }}
+                >
+                  <ArrowDropDownIcon />
+                </Button>
+              </ButtonGroup>
+              <Menu
+                id="manuscript-breakdown-menu"
+                anchorEl={breakdownMenuAnchor}
+                open={Boolean(breakdownMenuAnchor)}
+                onClose={() => setBreakdownMenuAnchor(null)}
+                MenuListProps={{ 'aria-label': 'Innstillinger for breakdown' }}
+              >
+                <MenuItem
+                  disabled={!autoBreakdownEnabled}
+                  onClick={() => {
+                    setBreakdownMenuAnchor(null);
+                    void handleAutoBreakdown();
+                  }}
+                >
+                  <ListItemIcon><AutoFixHighIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText primary="Kjør breakdown nå" />
+                </MenuItem>
+                <Divider />
+                <MenuItem
+                  selected={autoBreakdownEnabled}
+                  onClick={() => {
+                    const nextValue = !autoBreakdownEnabled;
+                    setBreakdownMenuAnchor(null);
+                    setAutoBreakdownEnabled(nextValue);
+                    showInfo(nextValue ? 'Breakdown aktivert' : 'Breakdown deaktivert');
+                  }}
+                >
+                  <ListItemIcon>
+                    <Box
+                      aria-hidden="true"
+                      sx={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        bgcolor: autoBreakdownEnabled ? branding.colors.accent : 'transparent',
+                        border: `1px solid ${autoBreakdownEnabled ? branding.colors.accent : branding.colors.textSecondary}`,
+                      }}
+                    />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={autoBreakdownEnabled ? 'Breakdown er aktivert' : 'Breakdown er deaktivert'}
+                    secondary="Styrer produksjonsuttrekk fra manuset"
+                  />
+                </MenuItem>
+              </Menu>
+
+              <Tooltip title={`${manuscriptCloudSaveLabel(manuscriptSaveStatus, lastManuscriptSaved, lastCloudVersion)} · klikk for å lagre nå`}>
+                {isMobile ? (
+                  <span>
+                    <IconButton
+                      data-testid="manuscript-save-status"
+                      aria-label={`${saveToolbarLabel}. Lagre manuskriptet nå`}
+                      onClick={handleSaveManuscript}
+                      disabled={isLoading || manuscriptSaveStatus === 'saving'}
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        flexShrink: 0,
+                        color: saveToolbarColor,
+                        border: `1px solid ${branding.colors.border}`,
+                        borderRadius: 1.5,
+                      }}
+                    >
+                      <SaveIcon sx={{ fontSize: 19 }} />
+                    </IconButton>
+                  </span>
+                ) : (
+                  <Button
+                    data-testid="manuscript-save-status"
+                    variant="text"
+                    startIcon={<SaveIcon sx={{ fontSize: 18 }} />}
+                    onClick={handleSaveManuscript}
+                    disabled={isLoading || manuscriptSaveStatus === 'saving'}
+                    sx={{ color: saveToolbarColor, flexShrink: 0 }}
+                  >
+                    {saveToolbarLabel}
+                  </Button>
+                )}
+              </Tooltip>
+
+              {onSendToApproval && (
+                <Button
+                  data-testid="send-manuscript-to-approval"
+                  variant="contained"
+                  startIcon={!isMobile ? <SendIcon sx={{ fontSize: 18 }} /> : undefined}
+                  size={isMobile ? 'small' : 'medium'}
+                  onClick={onSendToApproval}
+                  title="Send manuset videre til godkjenning"
+                  sx={{ flexShrink: 0 }}
+                >
+                  {isMobile ? 'Godkjenning' : 'Send til godkjenning'}
+                </Button>
+              )}
+
+              <Tooltip title="Flere manusverktøy">
+                <IconButton
+                  aria-label="Flere manusverktøy"
+                  aria-controls={exportMenuAnchor ? 'manuscript-more-menu' : undefined}
+                  aria-haspopup="menu"
+                  aria-expanded={exportMenuAnchor ? 'true' : undefined}
+                  onClick={(event) => setExportMenuAnchor(event.currentTarget)}
+                  disabled={isLoading}
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    flexShrink: 0,
+                    color: branding.colors.textPrimary,
+                    border: `1px solid ${branding.colors.border}`,
+                    borderRadius: 1.5,
+                  }}
+                >
+                  <MoreHorizIcon />
+                </IconButton>
+              </Tooltip>
+              <Menu
+                id="manuscript-more-menu"
+                anchorEl={exportMenuAnchor}
+                open={Boolean(exportMenuAnchor)}
+                onClose={() => setExportMenuAnchor(null)}
+                MenuListProps={{ 'aria-label': 'Flere manusverktøy' }}
+              >
+                <MenuItem onClick={() => {
+                  setExportMenuAnchor(null);
+                  void handleExportScreenplay('fountain');
+                }}>
+                  <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText primary="Eksporter Fountain" secondary="Manusfil i åpent tekstformat" />
+                </MenuItem>
+                <MenuItem onClick={() => {
+                  setExportMenuAnchor(null);
+                  void handleExportScreenplay('fdx');
+                }}>
+                  <ListItemIcon><DescriptionIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText primary="Eksporter FDX" secondary="Kompatibelt manusformat" />
+                </MenuItem>
+                <MenuItem onClick={() => {
+                  setExportMenuAnchor(null);
+                  void handleExport();
+                }}>
+                  <ListItemIcon><FileDownloadIcon fontSize="small" /></ListItemIcon>
+                  <ListItemText primary="Eksporter prosjektdata" secondary="JSON med manus- og produksjonsdata" />
+                </MenuItem>
+                {onTargetDurationChange && (
+                  <>
+                    <Divider />
+                    <MenuItem onClick={() => {
+                      setExportMenuAnchor(null);
+                      setTargetDraft(normalizedTargetDuration !== null ? String(normalizedTargetDuration) : '');
+                      setShowTargetDialog(true);
+                    }}>
+                      <ListItemIcon><TimerIcon fontSize="small" /></ListItemIcon>
+                      <ListItemText
+                        primary={normalizedTargetDuration === null ? 'Sett mål-lengde' : `Mål-lengde: ${normalizedTargetDuration} min`}
+                        secondary="Varsle når estimert spilletid avviker"
+                      />
+                    </MenuItem>
+                  </>
+                )}
+              </Menu>
+            </Stack>
+          ) : (
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? 'repeat(3, minmax(0, 1fr))' : 'repeat(3, auto)',
+                justifyContent: showSingleHeaderRow ? 'end' : 'start',
+                gap: isMobile ? 0.5 : 0.75,
+                width: showSingleHeaderRow ? 'auto' : '100%',
+              }}
             >
-              {isMobile ? 'Nytt' : 'Nytt Manuskript'}
-            </Button>
-          </Stack>
-        </Stack>
+              <Button
+                variant="outlined"
+                startIcon={!isMobile ? <FileUploadIcon sx={{ fontSize: 18 }} /> : undefined}
+                size={isMobile ? 'small' : 'medium'}
+                onClick={() => setShowImportDialog(true)}
+                title="Importer manuskript fra tidligere eksport"
+                sx={{ minWidth: 0 }}
+              >
+                Importer
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={!isMobile ? <MenuBookIcon sx={{ fontSize: 18 }} /> : undefined}
+                size={isMobile ? 'small' : 'medium'}
+                onClick={() => setShowTemplatePanel(true)}
+                sx={{
+                  minWidth: 0,
+                  borderColor: `${branding.colors.accent}aa`,
+                  color: branding.colors.accent,
+                  '&:hover': { borderColor: branding.colors.accent, bgcolor: `${branding.colors.accent}1a` },
+                }}
+              >
+                Maler
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={!isMobile ? <AddIcon sx={{ fontSize: 18 }} /> : undefined}
+                size={isMobile ? 'small' : 'medium'}
+                onClick={() => setShowNewManuscriptDialog(true)}
+                sx={{ minWidth: 0 }}
+              >
+                {isMobile ? 'Nytt' : 'Nytt manuskript'}
+              </Button>
+            </Box>
+          )}
+        </Box>
         {isLoading && selectedManuscript && (
           <LinearProgress
             sx={{
@@ -2503,26 +3107,6 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
               ? ` (siden ${new Date(manuscriptLockConflict.lockedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })})`
               : ''}
             . Endringene dine lagres ikke før låsen frigis — men de beholdes i editoren.
-          </Alert>
-        )}
-
-        {selectedManuscript && scenesOutOfSync && (
-          <Alert
-            severity="info"
-            icon={<WarningAmberIcon fontSize="inherit" />}
-            sx={{ mt: responsive.spacing }}
-            action={
-              <Button
-                color="inherit"
-                size="small"
-                disabled={isLoading || !autoBreakdownEnabled}
-                onClick={handleAutoBreakdown}
-              >
-                Kjør Auto Breakdown
-              </Button>
-            }
-          >
-            Scene-listen er ute av synk med manuset (ulike scene-overskrifter). Kjør Auto Breakdown for å oppdatere — produksjonsdata (storyboard, props) på scener som fortsatt finnes beholdes.
           </Alert>
         )}
 
@@ -2650,9 +3234,17 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                                   coverImage,
                                   coverFocalPoint: { ...DEFAULT_MANUSCRIPT_COVER_FOCAL_POINT },
                                 };
-                                await manuscriptService.updateManuscript(updatedManuscript);
-                                loadManuscripts();
-                                showSuccess('Cover oppdatert');
+                                try {
+                                  const result = await manuscriptService.updateManuscript(updatedManuscript);
+                                  if (reportUserInitiatedSave(result, 'Cover oppdatert')) {
+                                    void loadManuscripts();
+                                  }
+                                } catch (error) {
+                                  if (!registerManuscriptVersionConflict(error, updatedManuscript)) {
+                                    console.error('Could not update manuscript cover:', error);
+                                    showError('Kunne ikke oppdatere cover');
+                                  }
+                                }
                               };
                               reader.readAsDataURL(file);
                             }
@@ -3065,6 +3657,23 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                       onDismiss={handleResumeDismiss}
                     />
                   )}
+                {manuscriptVersionConflict?.manuscriptId === selectedManuscript.id && (
+                  <Alert
+                    severity="warning"
+                    sx={{ mb: 1.5 }}
+                    action={(
+                      <Button
+                        color="inherit"
+                        size="small"
+                        onClick={() => setShowManuscriptConflictDialog(true)}
+                      >
+                        Sammenlign
+                      </Button>
+                    )}
+                  >
+                    Nyere skyversjon funnet. Du arbeider fortsatt trygt lokalt; automatisk overskriving er satt på pause.
+                  </Alert>
+                )}
                 <EditorTab
                   manuscript={selectedManuscript}
                   scenes={scenes}
@@ -3072,6 +3681,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   onParseToScenes={handleParseToScenes}
                   manuscriptSaveStatus={manuscriptSaveStatus}
                   lastManuscriptSaved={lastManuscriptSaved}
+                  lastCloudVersion={lastCloudVersion}
                   characters={sceneCharactersMemo}
                   locations={sceneLocationsMemo}
                   castingRoles={castingRoles}
@@ -3258,44 +3868,55 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                 revisions={revisions} 
                 manuscript={selectedManuscript}
                 onRevisionsChange={setRevisions}
-                onCreateRevision={async (revision) => {
-                  const nextVersion = revision.version || selectedManuscript.version;
-                  const nowIso = new Date().toISOString();
-                  const updatedManuscript: Manuscript = {
-                    ...selectedManuscript,
-                    version: nextVersion ?? selectedManuscript.version ?? '1.0',
-                    updatedAt: nowIso,
-                  };
-                  setSelectedManuscript(updatedManuscript);
-                  setManuscripts((current) =>
-                    current.map((entry) => (entry.id === updatedManuscript.id ? updatedManuscript : entry))
-                  );
-                  await manuscriptService.updateManuscript(updatedManuscript);
-                  setManuscriptSaveStatus('saved');
-                  setLastManuscriptSaved(new Date(nowIso));
-                  onManuscriptChange?.(updatedManuscript);
+                onCloudVersionChange={(version) => {
+                  applyObservedCloudVersion(selectedManuscript.id, version);
                 }}
                 onRestoreRevision={async (revision) => {
-                  const nowIso = new Date().toISOString();
+                  const targetContent = revisionContent(revision);
                   const restoredManuscript: Manuscript = {
                     ...selectedManuscript,
-                    content: revision.content ?? '',
-                    version: revision.version || selectedManuscript.version || '1.0',
-                    updatedAt: nowIso,
+                    content: targetContent,
+                    updatedAt: new Date().toISOString(),
                   };
-
-                  setSelectedManuscript(restoredManuscript);
-                  setManuscripts((current) =>
-                    current.map((entry) => (entry.id === restoredManuscript.id ? restoredManuscript : entry))
+                  addScreenplayRecoveryPoint(
+                    selectedManuscript.id,
+                    getCurrentUserId(),
+                    isDirtyRef.current ? pendingContentRef.current : selectedManuscript.content,
+                    'before_restore',
                   );
-                  selectedManuscriptRef.current = restoredManuscript;
-                  pendingContentRef.current = revision.content ?? '';
-                  lastSavedContentRef.current = revision.content ?? '';
-                  isDirtyRef.current = false;
-                  setManuscriptSaveStatus('saved');
-                  setLastManuscriptSaved(new Date(nowIso));
-                  await manuscriptService.updateManuscript(restoredManuscript);
-                  onManuscriptChange?.(restoredManuscript);
+                  try {
+                    const result = await manuscriptService.restoreRevision(selectedManuscript, revision);
+                    const restoredContent = result.manuscript.content ?? targetContent;
+                    const persisted = applyCloudSaveResult(result, restoredContent);
+                    selectedManuscriptRef.current = persisted;
+                    pendingContentRef.current = restoredContent;
+                    if (!result.cloud) {
+                      isDirtyRef.current = true;
+                      showWarning('Versjonen er gjenopprettet lokalt og venter på skysynkronisering.');
+                      return true;
+                    }
+                    lastSavedContentRef.current = restoredContent;
+                    isDirtyRef.current = false;
+                    setRevisions(await manuscriptService.getRevisions(selectedManuscript.id));
+                    onManuscriptChange?.(persisted);
+                    return true;
+                  } catch (error) {
+                    if (registerManuscriptVersionConflict(error, restoredManuscript)) return false;
+                    if (error && typeof error === 'object' && (error as { code?: unknown }).code === 'manuscript_locked') {
+                      const lockError = error as { lockedBy?: string | null; lockedAt?: string | null };
+                      setManuscriptLockConflict({
+                        lockedBy: lockError.lockedBy ?? null,
+                        lockedAt: lockError.lockedAt ?? null,
+                      });
+                      showWarning(
+                        lockError.lockedBy
+                          ? `${resolveMemberName(lockError.lockedBy)} redigerer dette manuset nå. Gjenopprettingen ble ikke utført.`
+                          : 'Manuset redigeres av en annen. Gjenopprettingen ble ikke utført.',
+                      );
+                      return false;
+                    }
+                    throw error;
+                  }
                 }}
               />
             )}
@@ -3398,6 +4019,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                           scene={selectedScene}
                           onSceneUpdate={handleSceneUpdateFromStoryboard}
                           renderScriptEditor={({ content, onChange }) => (
+                            <ErrorBoundary componentName="manuscript-script-editor-split">
                             <React.Suspense fallback={<Box sx={{ p: 2 }}><CircularProgress size={20} /></Box>}>
                               <LazyScreenplayEditorWithNavigator
                                 editorKey={`${selectedManuscript.id}-production-split`}
@@ -3412,16 +4034,11 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                                   sceneCount: scenes.length,
                                   characterCount: sceneCharactersMemo.length,
                                   statusLabel: (selectedManuscript.status ?? 'draft').toUpperCase(),
-                                  saveLabel:
-                                    manuscriptSaveStatus === 'saved'
-                                      ? (lastManuscriptSaved
-                                          ? `Lagret ${lastManuscriptSaved.toLocaleTimeString('nb-NO')}`
-                                          : 'Lagret')
-                                      : manuscriptSaveStatus === 'saving'
-                                        ? 'Lagrer...'
-                                        : manuscriptSaveStatus === 'error'
-                                          ? 'Lagringsfeil'
-                                          : 'Ulagret',
+                                  saveLabel: manuscriptCloudSaveLabel(
+                                    manuscriptSaveStatus,
+                                    lastManuscriptSaved,
+                                    lastCloudVersion,
+                                  ),
                                   saveState: manuscriptSaveStatus,
                                 }}
                                 characters={sceneCharactersMemo}
@@ -3434,6 +4051,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                                 showLineNumbers={false}
                               />
                             </React.Suspense>
+                            </ErrorBoundary>
                           )}
                           renderStoryboard={({ scene, onUpdate, activeFrameIndex, onFrameSelect }) => (
                             <StoryboardIntegrationView
@@ -3499,6 +4117,8 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   acts={acts}
                   projectId={activeProjectId}
                   storyLogicData={storyLogicData}
+                  externalWorkflowView={productionWorkflowIntent?.view}
+                  externalWorkflowOpenSignal={productionWorkflowIntent?.signal}
                   onSceneUpdate={async (updatedScene) => {
                     // Update local state
                     setScenes(scenes.map(s => s.id === updatedScene.id ? updatedScene : s));
@@ -3560,14 +4180,15 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   }}
                   onManuscriptUpdate={async (updatedManuscript) => {
                     setSelectedManuscript(updatedManuscript);
-                    if (onManuscriptChange) {
-                      onManuscriptChange(updatedManuscript);
-                    }
                     // Persist to service
                     try {
-                      await manuscriptService.updateManuscript(updatedManuscript);
+                      const result = await manuscriptService.updateManuscript(updatedManuscript);
+                      if (reportUserInitiatedSave(result, 'Manuskript-endringen er synkronisert')) {
+                        onManuscriptChange?.(result.manuscript);
+                      }
                       if (DEV_LOG) console.log('Manuscript saved:', updatedManuscript.id);
                     } catch (error) {
+                      if (registerManuscriptVersionConflict(error, updatedManuscript)) return;
                       console.error('Failed to save manuscript:', error);
                       showError('Kunne ikke lagre manuskript-endringer');
                     }
@@ -3597,6 +4218,20 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
             />
           </Drawer>
         </>
+      )}
+
+      {manuscriptVersionConflict && (
+        <ManuscriptConflictDialog
+          open={showManuscriptConflictDialog}
+          localManuscript={manuscriptVersionConflict.localManuscript}
+          cloudManuscript={manuscriptVersionConflict.cloudManuscript}
+          currentVersion={manuscriptVersionConflict.currentVersion}
+          resolving={isResolvingManuscriptConflict}
+          onContinueLocally={() => setShowManuscriptConflictDialog(false)}
+          onKeepLocal={() => { void keepLocalManuscriptFromConflict(); }}
+          onUseCloud={useCloudManuscriptFromConflict}
+          onRefreshCloud={() => { void refreshConflictCloudManuscript(); }}
+        />
       )}
 
       {/* Scene Dialog */}
@@ -4481,10 +5116,18 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                   coverImage: editingManuscript.coverImage,
                   coverFocalPoint: editingManuscript.coverFocalPoint,
                 };
-                await manuscriptService.updateManuscript(updated);
-                loadManuscripts();
-                setShowEditManuscriptDialog(false);
-                showSuccess('Manuskript oppdatert');
+                try {
+                  const result = await manuscriptService.updateManuscript(updated);
+                  if (reportUserInitiatedSave(result, 'Manuskript oppdatert')) {
+                    void loadManuscripts();
+                    setShowEditManuscriptDialog(false);
+                  }
+                } catch (error) {
+                  if (!registerManuscriptVersionConflict(error, updated)) {
+                    console.error('Could not update manuscript metadata:', error);
+                    showError('Kunne ikke oppdatere manuskriptet');
+                  }
+                }
               }
             }} 
             variant="contained"
@@ -4509,16 +5152,17 @@ interface EditorTabProps {
   manuscript: Manuscript;
   onContentChange: (content: string) => void;
   onParseToScenes?: (content: string) => void;
-  manuscriptSaveStatus?: 'saved' | 'unsaved' | 'saving' | 'error';
+  manuscriptSaveStatus?: ManuscriptSaveState;
   lastManuscriptSaved?: Date | null;
+  lastCloudVersion?: number | null;
   characters?: string[];
   locations?: string[];
   castingRoles?: Role[];
   castingLocations?: Location[];
   castingCandidates?: Candidate[];
   scenes?: SceneBreakdown[];
-  onCharacterAdd?: (name: string) => void;
-  onLocationAdd?: (name: string) => void;
+  onCharacterAdd?: (name: string) => void | boolean | Promise<void | boolean>;
+  onLocationAdd?: (name: string) => void | boolean | Promise<void | boolean>;
   storyLogicData?: StoryLogicState | null;
 }
 
@@ -4534,6 +5178,7 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
   onParseToScenes,
   manuscriptSaveStatus = 'saved',
   lastManuscriptSaved = null,
+  lastCloudVersion = null,
   characters = [],
   locations = [],
   castingRoles = [],
@@ -4568,18 +5213,23 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
     onContentChange(val);
   }, [onContentChange]);
   
-  // CRITICAL: Only sync when document ID changes (switching documents)
-  // DO NOT sync when manuscript.content changes - that would create feedback loops with parent
-  // EditorTab content is the source of truth, not the parent's manuscript object
+  // Sync editor-innhold ved (a) dokument-bytte ELLER (b) EKSTERN innholdsendring
+  // (mal-innsetting, import) — dvs. når prop-en avviker fra det editoren SIST
+  // emitterte. lastChangeValueRef-sjekken hindrer feedback-loop: når editoren
+  // selv skriver, matcher incoming lastChangeValueRef → vi hopper over.
+  // (Tidligere synket denne KUN på id → «Bruk mal» satte content men editoren
+  //  re-rendret aldri → så tom ut.)
   useEffect(() => {
-    if (manuscript.id !== lastSyncedIdRef.current) {
-      const newContent = manuscript.content || '';
-      setEditorContent(newContent);
-      lastChangeValueRef.current = newContent;
+    const incoming = manuscript.content || '';
+    const idChanged = manuscript.id !== lastSyncedIdRef.current;
+    const externalContentChange = incoming !== lastChangeValueRef.current;
+    if (idChanged || externalContentChange) {
+      setEditorContent(incoming);
+      lastChangeValueRef.current = incoming;
       lastSyncedIdRef.current = manuscript.id;
-      setSelectedRoleMention(null);
+      if (idChanged) setSelectedRoleMention(null);
     }
-  }, [manuscript.id]); // ONLY depend on ID, NOT content
+  }, [manuscript.id, manuscript.content]);
   
   // 7-tier responsive system
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
@@ -4598,9 +5248,22 @@ const EditorTab: React.FC<EditorTabProps> = React.memo(({
     // Count scene headings
     const sceneHeadings = content.match(/^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/gim)?.length || 0;
     
-    // Count characters (uppercase lines followed by dialogue)
-    const characterMatches = content.match(/^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*(\s*\(.*\))?$/gm) || [];
-    const uniqueCharacters = [...new Set(characterMatches.map(c => c.replace(/\s*\(.*\)$/, '').trim()))];
+    // Karakter = ALL-CAPS-linje som FAKTISK er fulgt av dialog (Fountain-regelen).
+    // Ekskluder sceneoverskrifter (INT./EXT.) og overganger (KLIPP TIL SVART.,
+    // CUT TO:, FADE OUT, …) — ellers ble f.eks. «KLIPP TIL SVART.» talt som karakter.
+    const CHAR_LINE = /^[A-ZÆØÅ][A-ZÆØÅ0-9\s\-'.]*(\s*\(.*\))?$/;
+    const isHeadingLine = (l: string) => /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/i.test(l);
+    const isTransitionLine = (l: string) =>
+      /:\s*$/.test(l) || /\b(CUT TO|FADE|DISSOLVE|SMASH CUT|MATCH CUT|JUMP CUT|KLIPP|TONER UT|OVERTONING|SVART)\b/i.test(l);
+    const scriptLines = content.split('\n');
+    const foundCharacters: string[] = [];
+    for (let li = 0; li < scriptLines.length; li++) {
+      const line = scriptLines[li].trim();
+      if (!line || !CHAR_LINE.test(line) || isHeadingLine(line) || isTransitionLine(line)) continue;
+      if (!(scriptLines[li + 1] || '').trim()) continue; // må følges av en dialog-linje
+      foundCharacters.push(line.replace(/\s*\(.*\)$/, '').trim());
+    }
+    const uniqueCharacters = [...new Set(foundCharacters)];
     
     return { words, characters, lines, pages, estimatedMinutes, sceneHeadings, uniqueCharacters };
   }, [editorContent]);
@@ -4760,6 +5423,7 @@ Anna går raskt gjennom regnet.
               {isMobile ? `Parser (${contentStats.sceneHeadings})` : `Parser til Scener (${contentStats.sceneHeadings})`}
             </Button>
           )}
+          <ErrorBoundary componentName="manuscript-pdf-export">
           <React.Suspense fallback={<CircularProgress size={isMobile ? 16 : 20} />}>
             <LazyScreenplayPDFExport
               content={manuscript.content}
@@ -4767,6 +5431,7 @@ Anna går raskt gjennom regnet.
               author={manuscript.author}
             />
           </React.Suspense>
+          </ErrorBoundary>
           <Button
             variant="text"
             size={responsive.buttonSize}
@@ -4778,6 +5443,7 @@ Anna går raskt gjennom regnet.
         </Stack>
       </Stack>
       
+      <ErrorBoundary componentName="manuscript-screenplay-editor" key={manuscript.id}>
       <React.Suspense fallback={
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
           <CircularProgress size={is4K ? 48 : isDesktop ? 40 : 32} />
@@ -4796,19 +5462,14 @@ Anna går raskt gjennom regnet.
               sceneCount: scenes.length,
               characterCount: allCharacters.length,
               statusLabel: (manuscript.status ?? 'draft').toUpperCase(),
-              saveLabel:
-                manuscriptSaveStatus === 'saved'
-                  ? (lastManuscriptSaved
-                      ? `Lagret ${lastManuscriptSaved.toLocaleTimeString('nb-NO')}`
-                      : 'Lagret')
-                  : manuscriptSaveStatus === 'saving'
-                    ? 'Lagrer...'
-                    : manuscriptSaveStatus === 'error'
-                      ? 'Lagringsfeil'
-                      : 'Ulagret',
+              saveLabel: manuscriptCloudSaveLabel(
+                manuscriptSaveStatus,
+                lastManuscriptSaved,
+                lastCloudVersion,
+              ),
               saveState: manuscriptSaveStatus,
             }}
-            characters={allCharacters}
+            characters={characters}
             locations={allLocations}
             roles={castingRoles}
             candidates={castingCandidates}
@@ -4819,6 +5480,7 @@ Anna går raskt gjennom regnet.
             onSceneSelect={handleSceneSelect}
           />
       </React.Suspense>
+      </ErrorBoundary>
 
       <Dialog
         open={Boolean(selectedRoleMention?.role)}
@@ -5752,6 +6414,24 @@ const CharactersTab: React.FC<{
     }
   };
 
+  // Avatar for parsede karakterer (ingen foto): formidler IDENTITET (deterministisk
+  // farge + initialer per navn) og ROLLE-viktighet (ring-farge etter rolle).
+  const characterInitials = (name: string) =>
+    name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toUpperCase() || '?';
+  const characterColor = (name: string) => {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+    return `hsl(${h}, 52%, 45%)`;
+  };
+  const roleRingColor = (role: string) =>
+    role === 'lead' ? 'error.main' : role === 'supporting' ? 'primary.main' : 'grey.500';
+  // Ekte portrett-avatar (DiceBear «lorelei» — håndtegnet svart-blekk), deterministisk
+  // per navn med pastell-bakgrunn så hver karakter blir distinkt. Faller tilbake til
+  // initialer hvis bildet ikke lastes.
+  const characterAvatarUrl = (name: string) =>
+    `https://api.dicebear.com/9.x/lorelei/svg?seed=${encodeURIComponent(name)}` +
+    `&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf,c4f5d0&radius=50`;
+
   return (
     <Box>
       <Stack 
@@ -5836,14 +6516,32 @@ const CharactersTab: React.FC<{
               >
                 <CardContent sx={{ p: isMobile ? 1.5 : 2 }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                    <Box>
-                      <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize }}>{character.name}</Typography>
-                      {character.alias && (
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
-                          aka {character.alias}
-                        </Typography>
-                      )}
-                    </Box>
+                    <Stack direction="row" spacing={1.25} alignItems="center">
+                      <Avatar
+                        src={characterAvatarUrl(character.name)}
+                        alt={character.name}
+                        sx={{
+                          bgcolor: characterColor(character.name),
+                          color: '#fff',
+                          width: isMobile ? 34 : 40,
+                          height: isMobile ? 34 : 40,
+                          fontSize: isMobile ? 13 : 15,
+                          fontWeight: 700,
+                          border: 2,
+                          borderColor: roleRingColor(character.role || 'minor'),
+                        }}
+                      >
+                        {characterInitials(character.name)}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontSize: responsive.titleFontSize }}>{character.name}</Typography>
+                        {character.alias && (
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: responsive.captionFontSize }}>
+                            aka {character.alias}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Stack>
                     <Chip 
                       label={getRoleLabel(character.role || 'minor')} 
                       color={getRoleColor(character.role || 'minor')}
@@ -6498,16 +7196,16 @@ const RevisionsTab: React.FC<{
   revisions: ScriptRevision[]; 
   manuscript: Manuscript;
   onRevisionsChange?: (revisions: ScriptRevision[]) => void;
-  onCreateRevision?: (revision: ScriptRevision) => Promise<void> | void;
-  onRestoreRevision?: (revision: ScriptRevision) => Promise<void> | void;
+  onCloudVersionChange?: (version: number) => void;
+  onRestoreRevision?: (revision: ScriptRevision) => Promise<boolean> | boolean;
 }> = ({
   revisions,
   manuscript,
   onRevisionsChange,
-  onCreateRevision,
+  onCloudVersionChange,
   onRestoreRevision,
 }) => {
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showWarning } = useToast();
   const branding = useBrandingSettings();
   const { tier, isMobile, isTablet, isDesktop, is4K } = useScreenTier();
   const responsive = getResponsiveValues(tier);
@@ -6561,14 +7259,14 @@ const RevisionsTab: React.FC<{
         content: manuscript.content,
       };
 
-      const updatedRevisions = [...revisions, newRevision];
-      onRevisionsChange?.(updatedRevisions);
-      
-      // Also save to service
-      await manuscriptService.createRevision(newRevision);
-      await onCreateRevision?.(newRevision);
-      
-      showSuccess(`Revisjon "${revisionName}" opprettet`);
+      const result = await manuscriptService.createRevision(newRevision);
+      onRevisionsChange?.([...revisions, result.revision]);
+      if (result.cloudVersion !== null) onCloudVersionChange?.(result.cloudVersion);
+      if (result.cloud) {
+        showSuccess(`Revisjon "${revisionName}" er lagret i skyen`);
+      } else {
+        showWarning(`Revisjon "${revisionName}" er bare lagret lokalt`);
+      }
       setShowCreateDialog(false);
       setRevisionName('');
       setRevisionNotes('');
@@ -6583,9 +7281,12 @@ const RevisionsTab: React.FC<{
     if (!confirm('Er du sikker på at du vil slette denne revisjonen?')) return;
 
     try {
+      const result = await manuscriptService.deleteRevision(manuscript.id, revisionId);
       const updatedRevisions = revisions.filter(r => r.id !== revisionId);
       onRevisionsChange?.(updatedRevisions);
-      showSuccess('Revisjon slettet');
+      if (result.cloudVersion !== null) onCloudVersionChange?.(result.cloudVersion);
+      if (result.cloud) showSuccess('Revisjon slettet');
+      else showWarning('Revisjonen er bare fjernet fra lokal historikk');
     } catch (error) {
       showError('Feil ved sletting av revisjon');
       console.error('Kunne ikke slette revisjon:', error);
@@ -6596,7 +7297,8 @@ const RevisionsTab: React.FC<{
     if (!confirm('Vil du gjenopprette denne versjonen? Gjeldende endringer vil bli overskrevet.')) return;
     
     try {
-      await onRestoreRevision?.(revision);
+      const restored = await onRestoreRevision?.(revision);
+      if (restored === false) return;
       setSelectedRevision(revision);
       setCompareMode(true);
       showSuccess(`Revisjon ${revision.version} gjenopprettet`);
@@ -6695,7 +7397,11 @@ const RevisionsTab: React.FC<{
                   <Stack direction={isMobile ? 'column' : 'row'} justifyContent="space-between" alignItems={isMobile ? 'flex-start' : 'center'} spacing={isMobile ? 1 : 0}>
                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                       <Chip 
-                        label={revision.version} 
+                        label={revision.kind === 'automatic_snapshot'
+                          ? `Automatisk · ${revision.version}`
+                          : revision.kind === 'before_restore'
+                            ? 'Før gjenoppretting'
+                            : revision.version}
                         size={responsive.chipSize}
                         color={index === 0 ? 'success' : 'default'}
                         sx={{ fontSize: responsive.captionFontSize }}
@@ -6875,6 +7581,8 @@ export const ManuscriptPanel = React.memo(ManuscriptPanelComponent, (prevProps, 
   // Check critical props
   if (prevProps.projectId !== nextProps.projectId) return false;
   if (prevProps.onManuscriptChange !== nextProps.onManuscriptChange) return false;
+  if (prevProps.targetDurationMinutes !== nextProps.targetDurationMinutes) return false;
+  if (prevProps.productionWorkflowIntent?.signal !== nextProps.productionWorkflowIntent?.signal) return false;
   
   // All checks passed - props are effectively equal, skip re-render
   return true;

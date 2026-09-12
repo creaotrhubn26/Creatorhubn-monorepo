@@ -15,14 +15,17 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Button,
   IconButton,
   Tooltip,
   CircularProgress,
   Divider,
   Stack,
+  ThemeProvider,
+  TextField,
+  InputAdornment,
   type ChipProps,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   CheckCircle,
   Error,
@@ -34,9 +37,11 @@ import {
   Storage,
   CloudUpload,
   Psychology,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton } from './design-system';
 
 interface TestStatus {
   name: string;
@@ -108,6 +113,7 @@ export default function FineTuningMonitoringPanel() {
   const queryClient = useQueryClient();
   const [isRunningTest, setIsRunningTest] = useState(false);
   const [testResults, setTestResults] = useState<TestStatus[]>([]);
+  const [search, setSearch] = useState("");
 
   // Fetch training data statistics
   const { data: trainingStats, isLoading: statsLoading } = useQuery<TrainingDataStats>({
@@ -123,7 +129,7 @@ export default function FineTuningMonitoringPanel() {
     queryKey: ['/api/video-sync/model-versions'],
     queryFn: async () => {
       const response = await apiRequest('/api/video-sync/model-versions');
-      return response.versions || [];
+      return Array.isArray(response?.versions) ? response.versions : [];
     },
     refetchInterval: 60000, // Refresh every minute
   });
@@ -133,7 +139,7 @@ export default function FineTuningMonitoringPanel() {
     queryKey: ['/api/training-monitoring/all-models'],
     queryFn: async () => {
       const response = await apiRequest('/api/training-monitoring/all-models');
-      return response.models || [];
+      return Array.isArray(response?.models) ? response.models : [];
     },
     refetchInterval: 60000, // Refresh every minute
   });
@@ -155,7 +161,7 @@ export default function FineTuningMonitoringPanel() {
       const response = await apiRequest('/api/training-monitoring/system-status');
       return response.status || {};
     },
-    refetchInterval: 10000, // Refresh every 10 seconds
+    refetchInterval: 30000, // Refresh every 10 seconds
   });
 
   // Run system test
@@ -167,10 +173,10 @@ export default function FineTuningMonitoringPanel() {
         headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify({ modelType: modelType || 'sam2' }),
       });
-      return response.results || [];
+      return Array.isArray(response?.results) ? response.results : [];
     },
     onSuccess: (results) => {
-      setTestResults(results);
+      setTestResults(Array.isArray(results) ? results : []);
       setIsRunningTest(false);
     },
     onError: (error: any) => {
@@ -232,11 +238,12 @@ export default function FineTuningMonitoringPanel() {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <Psychology color="primary" />
+          <Typography variant="h5" component="h2" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <Psychology color="primary" aria-hidden="true" />
             Training Systems Monitor
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -244,22 +251,24 @@ export default function FineTuningMonitoringPanel() {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            variant="contained"
-            startIcon={isRunningTest ? <CircularProgress size={16} /> : <Refresh />}
+          <AdminButton
+            tone="primary"
+            loading={isRunningTest}
+            startIcon={<Refresh />}
             onClick={() => handleRunTest('sam2')}
             disabled={isRunningTest}
           >
             Test SAM 2
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={isRunningTest ? <CircularProgress size={16} /> : <Refresh />}
+          </AdminButton>
+          <AdminButton
+            tone="secondary"
+            loading={isRunningTest}
+            startIcon={<Refresh />}
             onClick={() => handleRunTest('synchformer')}
             disabled={isRunningTest}
           >
             Test Sync Models
-          </Button>
+          </AdminButton>
         </Box>
       </Box>
 
@@ -268,8 +277,8 @@ export default function FineTuningMonitoringPanel() {
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Storage color="primary" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Storage color="primary" aria-hidden="true" />
                 System Status
               </Typography>
               <Divider sx={{ my: 2 }} />
@@ -388,8 +397,8 @@ export default function FineTuningMonitoringPanel() {
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Storage color="primary" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Storage color="primary" aria-hidden="true" />
                 Training Data
               </Typography>
               <Divider sx={{ my: 2 }} />
@@ -477,8 +486,8 @@ export default function FineTuningMonitoringPanel() {
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TrendingUp color="primary" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TrendingUp color="primary" aria-hidden="true" />
                 Fine-Tuning Pipeline
               </Typography>
               <Divider sx={{ my: 2 }} />
@@ -564,8 +573,8 @@ export default function FineTuningMonitoringPanel() {
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CloudUpload color="primary" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CloudUpload color="primary" aria-hidden="true" />
                 All Models in R2 Storage
               </Typography>
               <Divider sx={{ my: 2 }} />
@@ -573,6 +582,21 @@ export default function FineTuningMonitoringPanel() {
               {allModelsLoading ? (
                 <LinearProgress />
               ) : allModels && allModels.length > 0 ? (
+                <>
+                <TextField
+                  size="small"
+                  placeholder="Søk modeller …"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  sx={{ mb: 2, width: { xs: '100%', sm: 320 } }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
                 <TableContainer>
                   <Table>
                     <TableHead>
@@ -585,7 +609,13 @@ export default function FineTuningMonitoringPanel() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {allModels.map((model, idx) => (
+                      {allModels.filter((model) =>
+                        [model.model_type, model.storage_type, model.r2_key, model.base_path]
+                          .filter(Boolean)
+                          .join(' ')
+                          .toLowerCase()
+                          .includes(search.toLowerCase())
+                      ).map((model, idx) => (
                         <TableRow key={idx}>
                           <TableCell>
                             <Chip label={model.model_type} size="small" color="primary" />
@@ -619,6 +649,7 @@ export default function FineTuningMonitoringPanel() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                </>
               ) : (
                 <Alert severity="info">No models found in database</Alert>
               )}
@@ -630,8 +661,8 @@ export default function FineTuningMonitoringPanel() {
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TrendingUp color="primary" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TrendingUp color="primary" aria-hidden="true" />
                 All Training Systems
               </Typography>
               <Divider sx={{ my: 2 }} />
@@ -768,8 +799,8 @@ export default function FineTuningMonitoringPanel() {
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CloudUpload color="primary" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CloudUpload color="primary" aria-hidden="true" />
                 Fine-Tuned Model Versions
               </Typography>
               <Divider sx={{ my: 2 }} />
@@ -848,5 +879,6 @@ export default function FineTuningMonitoringPanel() {
         </Grid>
       </Grid>
     </Box>
+    </ThemeProvider>
   );
 }

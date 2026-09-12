@@ -13,6 +13,8 @@ import { PutObjectCommand, S3Client, DeleteObjectCommand } from '@aws-sdk/client
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import crypto from 'crypto';
+import type { Pool } from 'pg';
+import { mirrorUploadToUserB2 } from './user-b2-mirror-worker.js';
 
 interface R2Config {
   endpoint: string;
@@ -122,6 +124,9 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour
 export async function uploadImageForInstagram(input: {
   userId: string;
   dataUrl: string;
+  // Optional pool — hvis satt, mirror'es bilde også til brukerens egen B2.
+  // Fra-call-side: existing callers som ikke sender pool får uendret oppførsel.
+  pool?: Pool;
 }): Promise<InstagramHostedImage | null> {
   const cfg = readR2Config();
   if (!cfg) {
@@ -153,6 +158,23 @@ export async function uploadImageForInstagram(input: {
   const publicUrl = await getSignedUrl(client, new GetObjectCommand({ Bucket: cfg.bucket, Key: key }), {
     expiresIn: SIGNED_URL_TTL_SECONDS,
   });
+
+  // Fire-and-forget: mirror til brukerens egen B2 hvis pool er gitt og
+  // bruker har konfigurert creds. Vi har bytes i minnet allerede.
+  if (input.pool) {
+    const fileName = `${Date.now()}-${random}.${ext}`;
+    mirrorUploadToUserB2(
+      { pool: input.pool },
+      {
+        userId: input.userId,
+        source: 'role-room',
+        sourceId: `instagram-publish/${random}`,
+        fileName,
+        contentType: decoded.contentType,
+        buffer: decoded.bytes,
+      },
+    );
+  }
 
   return {
     bucket: cfg.bucket,

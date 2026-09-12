@@ -54,6 +54,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { StatusChip, useIsMobile } from './design-system';
 
 interface ViralContentCreatorProps {
   showcase: any;
@@ -178,7 +179,7 @@ export default function ViralContentCreator({
 
   const renderAnalysisStep = () => (
     <Box>
-      <Typography variant="h6" gutterBottom sx={{  color: theming.colors.primary }}>
+      <Typography variant="h6" component="h2" gutterBottom sx={{  color: theming.colors.primary }}>
         🔍 Viral Innholds-Analyse
       </Typography>
 
@@ -191,13 +192,13 @@ export default function ViralContentCreator({
       >
         <CardContent sx={theming.getThemedCardSx()}>
           <Grid container spacing={2} alignItems="center">
-            <Grid item xs={8} >
+            <Grid item xs={12} sm={8} >
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>{showcase.title}</Typography>
               <Typography color="textSecondary">
                 {showcase.profession} • {showcase.category}
               </Typography>
             </Grid>
-            <Grid item xs={4} sx={{ textAlign: 'right'}}>
+            <Grid item xs={12} sm={4} sx={{ textAlign: 'right'}}>
               <Button variant="contained"
                 onClick={handleAnalyzeContent}
                 disabled={isAnalyzing}
@@ -235,7 +236,7 @@ export default function ViralContentCreator({
 
   const renderOptimizationStep = () => (
     <Box>
-      <Typography variant="h6" gutterBottom sx={{  color: theming.colors.primary }}>
+      <Typography variant="h6" component="h2" gutterBottom sx={{  color: theming.colors.primary }}>
         🚀 Viral Optimalisering
       </Typography>
 
@@ -264,14 +265,14 @@ export default function ViralContentCreator({
                   </Grid>
                   <Grid item xs={4} >
                     <Box sx={{ textAlign: 'center'}}>
-                      <Chip
+                      <StatusChip
                         icon={<Star fontSize="small" />}
                         label={
                           viralStrategy.analysis?.qualityScore > 85
                             ? 'HØYT POTENSIAL'
                             : 'MIDDELS POTENSIAL'
                       }
-                        color={viralStrategy.analysis?.qualityScore > 85 ? 'success' : 'warning'}
+                        tone={viralStrategy.analysis?.qualityScore > 85 ? 'success' : 'warning'}
                         sx={{ fontWeight: 'bold'}}
                       />
                     </Box>
@@ -285,13 +286,13 @@ export default function ViralContentCreator({
           <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                   📝 Viral Tittel-forslag
                 </Typography>
                 <FormControl fullWidth sx={{ mb:  2 }}>
                   <InputLabel>Velg Viral Tittel</InputLabel>
                   <Select value={selectedTitle} onChange={(e) => setSelectedTitle(e.target.value)}>
-                    {viralStrategy.strategy?.titleOptions?.map((title: string, index: number) => (
+                    {(Array.isArray(viralStrategy.strategy?.titleOptions) ? viralStrategy.strategy.titleOptions : undefined)?.map((title: string, index: number) => (
                       <MenuItem key={index} value={title}>
                         {title}
                       </MenuItem>
@@ -322,7 +323,7 @@ export default function ViralContentCreator({
           <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                   📄 Viral Beskrivelse
                 </Typography>
                 <TextField
@@ -335,7 +336,7 @@ export default function ViralContentCreator({
                   sx={{ mb:  2 }}
                 />
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
-                  {viralStrategy.strategy?.tags?.map((tag: string, index: number) => (
+                  {(Array.isArray(viralStrategy.strategy?.tags) ? viralStrategy.strategy.tags : []).map((tag: string, index: number) => (
                     <Chip
                       key={index}
                       label={`#${tag}`}
@@ -358,13 +359,14 @@ export default function ViralContentCreator({
               }}
             >
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{  color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" gutterBottom sx={{  color: theming.colors.primary }}>
                   🎨 Kreative Verktøy - Rask Tilgang
                 </Typography>
 
                 <Tabs
                   value={creativeToolsTab}
                   onChange={(e, newValue) => setCreativeToolsTab(newValue)}
+                  aria-label="Kreative verktøy"
                   sx={{ mb:  2 }}
                 >
                   <Tab icon={<VideocamLibrary />} label="Video Suite" />
@@ -414,7 +416,7 @@ export default function ViralContentCreator({
           <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                   🖼️ Thumbnail Optimalisering
                 </Typography>
                 <Grid container spacing={2}>
@@ -459,7 +461,7 @@ export default function ViralContentCreator({
           <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                   ⏰ Optimal Publiseringstid
                 </Typography>
                 <TextField
@@ -470,10 +472,10 @@ export default function ViralContentCreator({
                   InputLabelProps={{ shrink: true }}
                   sx={{ mr:  2 }}
                 />
-                <Chip
+                <StatusChip
                   icon={<Schedule fontSize="small" />}
                   label="Optimal for norske seere: 19:00-21:00"
-                  color="info"
+                  tone="info"
                 />
               </CardContent>
             </Card>
@@ -485,7 +487,7 @@ export default function ViralContentCreator({
 
   const renderPublishStep = () => (
     <Box>
-      <Typography variant="h6" gutterBottom sx={{  color: theming.colors.primary }}>
+      <Typography variant="h6" component="h2" gutterBottom sx={{  color: theming.colors.primary }}>
         🎯 Publiser Viral Innhold
       </Typography>
 
@@ -498,11 +500,11 @@ export default function ViralContentCreator({
 
       <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
             📊 Forventet Ytelse
           </Typography>
           <Grid container spacing={2}>
-            <Grid item xs={3} >
+            <Grid item xs={6} sm={3} >
               <Box sx={{ textAlign: 'center'}}>
                 <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
                   2.5K
@@ -510,7 +512,7 @@ export default function ViralContentCreator({
                 <Typography color="textSecondary">Forventede visninger</Typography>
               </Box>
             </Grid>
-            <Grid item xs={3} >
+            <Grid item xs={6} sm={3} >
               <Box sx={{ textAlign: 'center'}}>
                 <Typography variant="h4" color="success.main" sx={{ color: theming.colors.primary }}>
                   15%
@@ -518,7 +520,7 @@ export default function ViralContentCreator({
                 <Typography color="textSecondary">Engagement rate</Typography>
               </Box>
             </Grid>
-            <Grid item xs={3} >
+            <Grid item xs={6} sm={3} >
               <Box sx={{ textAlign: 'center'}}>
                 <Typography variant="h4" color="warning.main" sx={{ color: theming.colors.primary }}>
                   85%
@@ -526,7 +528,7 @@ export default function ViralContentCreator({
                 <Typography color="textSecondary">Viral score</Typography>
               </Box>
             </Grid>
-            <Grid item xs={3} >
+            <Grid item xs={6} sm={3} >
               <Box sx={{ textAlign: 'center'}}>
                 <Typography variant="h4" color="info.main" sx={{ color: theming.colors.primary }}>
                   12
@@ -561,6 +563,7 @@ export default function ViralContentCreator({
       onClose={onClose}
       maxWidth="md"
       fullWidth
+      fullScreen={useIsMobile()}
       PaperProps={{
         sx: {
           borderRadius: 3,

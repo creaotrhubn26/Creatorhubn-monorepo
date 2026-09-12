@@ -196,7 +196,9 @@ export function setupRoleRoomAgenciesRoutes(deps: RoleRoomAgenciesRoutesDeps): v
             t.age_range, t.playing_age_min, t.playing_age_max,
             t.gender, t.ethnicity, t.height_cm, t.hair_color, t.eye_color,
             t.skills, t.languages, t.dialects,
-            t.availability_status, t.willing_to_travel,
+            t.availability_status, t.availability_notes,
+            t.availability_windows, t.availability_confirmed_at,
+            t.willing_to_travel,
             t.email, t.phone,
             t.agency_name, t.represented,
             t.external_links, t.profile_status,
@@ -334,8 +336,12 @@ function maskTalentByScopes(row: Record<string, unknown>): Record<string, unknow
     masked.hair_color = row.hair_color;
     masked.eye_color = row.eye_color;
   }
+  masked.availability_visible = has("availability");
   if (has("availability")) {
     masked.availability_status = row.availability_status;
+    masked.availability_notes = row.availability_notes;
+    masked.availability_windows = row.availability_windows;
+    masked.availability_confirmed_at = row.availability_confirmed_at;
     masked.willing_to_travel = row.willing_to_travel;
   }
   if (has("basic_profile") || scopes.size === 0) {

@@ -17,12 +17,19 @@ export interface PoolCandidate {
   updatedAt?: string;
 }
 
+import authSessionService from './authSessionService';
+
 const API_BASE = '/api/casting';
+
+// Pool-endepunktene er session-gated (requireUserSession) og theroleroom.com
+// autentiserer via Bearer-header — uten dette får kallene 401.
+const getAuthHeaders = (): Record<string, string> =>
+  authSessionService.getAuthHeadersSync() as Record<string, string>;
 
 export const candidatePoolService = {
   async getPoolCandidates(): Promise<PoolCandidate[]> {
     try {
-      const response = await fetch(`${API_BASE}/candidate-pool`);
+      const response = await fetch(`${API_BASE}/candidate-pool`, { headers: getAuthHeaders() });
       const data = await response.json();
       return data.success ? data.candidates : [];
     } catch (error) {
@@ -35,7 +42,7 @@ export const candidatePoolService = {
     try {
       const response = await fetch(`${API_BASE}/candidate-pool`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(candidate),
       });
       const data = await response.json();
@@ -50,6 +57,7 @@ export const candidatePoolService = {
     try {
       const response = await fetch(`${API_BASE}/candidate-pool/${candidateId}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       const data = await response.json();
       return data.success;
@@ -63,7 +71,7 @@ export const candidatePoolService = {
     try {
       const response = await fetch(`${API_BASE}/candidate-pool/import-to-project`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ poolCandidateId, targetProjectId }),
       });
       const data = await response.json();
@@ -78,7 +86,7 @@ export const candidatePoolService = {
     try {
       const response = await fetch(`${API_BASE}/candidates/copy-to-project`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ candidateId, targetProjectId }),
       });
       const data = await response.json();
@@ -93,7 +101,7 @@ export const candidatePoolService = {
     try {
       const response = await fetch(`${API_BASE}/candidates/save-to-pool`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ candidateId }),
       });
       const data = await response.json();

@@ -189,7 +189,7 @@ const ResearchFieldProvenancePanel: React.FC<ResearchFieldProvenancePanelProps> 
                 Hvorfor denne {openField?.label?.toLowerCase()}?
               </Typography>
               <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.78rem' }}>
-                Klikk-for-å-forstå: ingen Claude-rationale ennå, men kjeden er sporbar.
+                Klikk-for-å-forstå: ingen CI-rasjonale ennå, men kjeden er sporbar.
               </Typography>
             </Stack>
             <IconButton onClick={() => setOpenField(null)} sx={{ color: '#cbd5e1' }} size="small">

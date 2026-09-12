@@ -5,10 +5,8 @@ import {
   Avatar,
   Badge,
   Box,
-  Button,
   Card,
   CardContent,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -34,7 +32,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Typography,
@@ -76,6 +73,13 @@ import {
 } from 'recharts';
 import { useAuth } from '../../hooks/useAuth';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import {
+  AdminButton,
+  AdminLoading,
+  AdminTableContainer,
+  StatusChip,
+  useIsMobile,
+} from './design-system';
 
 type IntegrationStatus = 'active' | 'inactive' | 'error';
 type DateRange = '24h' | '7d' | '30d' | '90d';
@@ -499,6 +503,7 @@ const getServiceIcon = (service: string) => {
 
 const IntegrationAnalyticsDashboard: React.FC = () => {
   const theme = useTheme();
+  const isMobile = useIsMobile();
   const { user } = useAuth();
   const { auth } = useEnhancedMasterIntegration();
 
@@ -620,7 +625,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
     <Box sx={{ p: 3 }}>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2} sx={{ mb: 3 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+          <Typography variant="h4" component="h2" sx={{ fontWeight: 700 }}>
             Integration Analytics Dashboard
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -670,14 +675,15 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
             </IconButton>
           </Badge>
 
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="secondary"
             onClick={() => void refetch()}
-            startIcon={isFetching ? <CircularProgress size={14} /> : <RefreshIcon />}
+            startIcon={<RefreshIcon />}
+            loading={isFetching}
             disabled={isFetching}
           >
             Oppdater
-          </Button>
+          </AdminButton>
         </Stack>
       </Stack>
 
@@ -688,14 +694,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
       ) : null}
 
       {isLoading && !data ? (
-        <Card>
-          <CardContent>
-            <Stack direction="row" alignItems="center" spacing={2}>
-              <CircularProgress size={22} />
-              <Typography>Laster analytics...</Typography>
-            </Stack>
-          </CardContent>
-        </Card>
+        <AdminLoading label="Laster analytics..." />
       ) : null}
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -778,7 +777,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
             </Box>
 
             <Box sx={{ flex: 1 }}>
-              <Typography variant="h6" sx={{ mb: 1 }}>
+              <Typography variant="h6" component="h2" sx={{ mb: 1 }}>
                 Systemhelse
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -838,7 +837,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
                 </ResponsiveContainer>
               </Box>
 
-              <TableContainer>
+              <AdminTableContainer ariaLabel="Integrasjoner – forespørsler og status">
                 <Table size="small">
                   <TableHead>
                     <TableRow>
@@ -866,17 +865,16 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
                         <TableCell align="right">{formatNok(row.cost)}</TableCell>
                         <TableCell align="right">{row.errors}</TableCell>
                         <TableCell align="right">
-                          <Chip
+                          <StatusChip
                             label={row.status}
-                            size="small"
-                            color={row.status === 'active' ? 'success' : row.status === 'error' ? 'error' : 'default'}
+                            tone={row.status === 'active' ? 'success' : row.status === 'error' ? 'error' : 'neutral'}
                           />
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
+              </AdminTableContainer>
             </Stack>
           ) : null}
 
@@ -1063,7 +1061,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
                 </ResponsiveContainer>
               </Box>
 
-              <TableContainer>
+              <AdminTableContainer ariaLabel="Kostnad per tjeneste">
                 <Table size="small">
                   <TableHead>
                     <TableRow>
@@ -1080,7 +1078,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
                     ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
+              </AdminTableContainer>
             </Stack>
           ) : null}
 
@@ -1104,7 +1102,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
         </CardContent>
       </Card>
 
-      <Dialog open={alertsDialogOpen} onClose={() => setAlertsDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={alertsDialogOpen} onClose={() => setAlertsDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Driftsvarsler</DialogTitle>
         <DialogContent dividers>
           <List disablePadding>
@@ -1119,9 +1117,8 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
                   primary={`${alertItem.service.toUpperCase()} · ${new Date(alertItem.timestamp).toLocaleString('nb-NO')}`}
                   secondary={alertItem.message}
                 />
-                <Chip
-                  size="small"
-                  color={alertItem.resolved ? 'success' : getAlertColor(alertItem.type)}
+                <StatusChip
+                  tone={alertItem.resolved ? 'success' : getAlertColor(alertItem.type)}
                   label={alertItem.resolved ? 'Løst' : 'Aktiv'}
                 />
               </ListItem>
@@ -1129,7 +1126,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAlertsDialogOpen(false)}>Lukk</Button>
+          <AdminButton tone="ghost" onClick={() => setAlertsDialogOpen(false)}>Lukk</AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

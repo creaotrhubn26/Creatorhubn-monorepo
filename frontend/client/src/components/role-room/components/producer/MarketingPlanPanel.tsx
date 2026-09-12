@@ -84,6 +84,10 @@ import Snackbar from '@mui/material/Snackbar';
 import type { RoleRoomAgentProducerBootstrapResult } from '../../services/roleRoomAgentService';
 import RoleRoomAgentInsightsBanner from './RoleRoomAgentInsightsBanner';
 import RoleRoomAgentApprovalsWidget from './RoleRoomAgentApprovalsWidget';
+import ChannelScorecardCard from './ChannelScorecardCard';
+import ClientUpdateComposer from './ClientUpdateComposer';
+import { MarketingGenerationProgress } from './MarketingGenerationProgress';
+import { LoadingSkeleton, ErrorAlert } from './ui';
 
 interface MarketingPlanPanelProps {
   projectId: string;
@@ -335,11 +339,7 @@ export default function MarketingPlanPanel({
   }, [readiness]);
 
   if (loading) {
-    return (
-      <Stack alignItems="center" sx={{ py: 6 }}>
-        <CircularProgress sx={{ color: '#22d3ee' }} />
-      </Stack>
-    );
+    return <LoadingSkeleton variant="lines" />;
   }
 
   return (
@@ -395,15 +395,13 @@ export default function MarketingPlanPanel({
         </Tooltip>
       </Stack>
 
-      {generating ? <LinearProgress sx={{ height: 2 }} /> : null}
+      {generating ? <MarketingGenerationProgress active mode="plan" /> : null}
 
-      {error ? (
-        <Alert severity="error" sx={{ bgcolor: 'rgba(239,68,68,0.08)', color: '#fecaca', border: '1px solid rgba(239,68,68,0.24)' }}>
-          {error}
-        </Alert>
-      ) : null}
+      {error ? <ErrorAlert message={error} /> : null}
 
       {gateMessage}
+
+      {projectId ? <ChannelScorecardCard projectId={projectId} /> : null}
 
       {shareUrl ? (
         <Alert
@@ -500,6 +498,7 @@ export default function MarketingPlanPanel({
                   Del
                 </Button>
               </Tooltip>
+              {plan?.id ? <ClientUpdateComposer planId={plan.id} /> : null}
               <Tooltip title="Eksporter post-roadmap som .ics for Google Calendar / Outlook">
                 <Button
                   size="small"
@@ -557,9 +556,9 @@ export default function MarketingPlanPanel({
                 fontSize: '0.86rem',
                 minHeight: 36,
                 color: 'rgba(226,232,240,0.6)',
-                '&.Mui-selected': { color: '#22d3ee' },
+                '&.Mui-selected': { color: 'var(--role-cyan, #22d3ee)' },
               },
-              '& .MuiTabs-indicator': { backgroundColor: '#22d3ee' },
+              '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #22d3ee)' },
             }}
           >
             <Tab value="strategy" label="Strategi" />
@@ -657,7 +656,7 @@ export default function MarketingPlanPanel({
           severity="info"
           sx={{ bgcolor: 'rgba(34,211,238,0.06)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.2)' }}
         >
-          Ingen markedsplan ennå. Klikk "Generer plan" — Claude bruker research-outputen og
+          Ingen markedsplan ennå. Klikk "Generer plan" — CI bruker research-outputen og
           bygger 3–5 content pillars + kanalstrategi + KPI-mål.
         </Alert>
       )}
@@ -1265,11 +1264,24 @@ function PostsSection({
   const handleBulkPlatform = useCallback(async (newPlatform: NonNullable<MarketingPlanPost['primaryPlatform']>) => {
     if (selectedIds.size === 0) return;
     setBulkPlatformMenuOpen(false);
-    // Backend trenger eget PATCH-endepoint for post-edit; for nå bruker vi
-    // den eksisterende accept-API'en hvis tilgjengelig, ellers viser vi
-    // en notice om at backend-støtte er nødvendig.
-    onError(`Bulk-platform-endring til ${newPlatform} for ${selectedIds.size} posts krever en PATCH /posts/:id-endepoint (ikke implementert backend-side i denne batchen).`);
-  }, [selectedIds, onError]);
+    const ids = Array.from(selectedIds);
+    try {
+      await roleRoomAgentService.bulkUpdateMarketingPlanPostPlatform({
+        projectId,
+        postIds: ids,
+        primaryPlatform: newPlatform,
+      });
+      // Reflekter endringen lokalt — onPostAccepted upserter per id.
+      for (const post of posts) {
+        if (selectedIds.has(post.id)) {
+          onPostAccepted({ ...post, primaryPlatform: newPlatform });
+        }
+      }
+      setSelectedIds(new Set());
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Kunne ikke endre plattform for valgte poster.');
+    }
+  }, [selectedIds, projectId, posts, onPostAccepted, onError]);
 
   return (
     <Box>
@@ -1291,21 +1303,27 @@ function PostsSection({
           sx={{
             textTransform: 'none',
             fontWeight: 700,
-            color: '#22d3ee',
+            color: 'var(--role-cyan, #22d3ee)',
             borderColor: 'rgba(34,211,238,0.5)',
-            '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+            '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
           }}
         >
           {generating ? 'Genererer posts…' : posts.length > 0 ? 'Regenerer posts' : 'Generer 30-dagers plan'}
         </Button>
       </Stack>
 
+      {generating && !(autoGenProgress && autoGenProgress.expected > 0) ? (
+        <Box sx={{ mt: 1.5 }}>
+          <MarketingGenerationProgress active mode="posts" />
+        </Box>
+      ) : null}
+
       {posts.length === 0 ? (
         autoGenProgress && autoGenProgress.expected > 0 ? (
           // #152 — live progress for auto-generation
           <Alert
             severity="info"
-            icon={<CircularProgress size={18} sx={{ color: '#22d3ee' }} />}
+            icon={<CircularProgress size={18} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />}
             sx={{
               bgcolor: 'rgba(34,211,238,0.08)',
               color: '#a5f3fc',
@@ -1329,7 +1347,7 @@ function PostsSection({
             severity="info"
             sx={{ bgcolor: 'rgba(34,211,238,0.06)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.2)' }}
           >
-            Ingen post-forslag ennå. Klikk «Generer 30-dagers plan» — Claude bygger én post
+            Ingen post-forslag ennå. Klikk «Generer 30-dagers plan» — CI bygger én post
             per dag balansert på tvers av pillars, med hook, format, script og CTA ferdig
             skrevet.
           </Alert>
@@ -1755,7 +1773,7 @@ function PostCard({
   // #157 — regenerér én post med valgfri hint
   const handleRegenerate = useCallback(async () => {
     const hint = window.prompt(
-      `Hint til Claude (valgfri, f.eks. "gjør den mer ironisk" eller "kort til 50 ord"):`,
+      `Hint til CI (valgfri, f.eks. "gjør den mer ironisk" eller "kort til 50 ord"):`,
       '',
     );
     if (hint === null) return; // bruker avbrøt
@@ -2076,7 +2094,7 @@ function PostCard({
                       textTransform: 'none',
                       fontSize: '0.76rem',
                       py: 0.3,
-                      color: previewOpen ? '#22d3ee' : 'rgba(226,232,240,0.7)',
+                      color: previewOpen ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)',
                       minWidth: 0,
                     }}
                   >
@@ -2085,7 +2103,7 @@ function PostCard({
                 </Tooltip>
                 {/* #158 — A/B-variant (skjuler seg på variant selv for å unngå loop) */}
                 {!variantOf ? (
-                  <Tooltip title="Lag en B-variant for A/B-test (Claude Haiku, høy temperature)">
+                  <Tooltip title="Lag en B-variant for A/B-test (CI)">
                     <Button
                       size="small"
                       onClick={() => void handleVariant()}
@@ -2103,7 +2121,7 @@ function PostCard({
                   </Tooltip>
                 ) : null}
                 {/* #157 — regenerér med hint */}
-                <Tooltip title="Regenerér posten med valgfri tone-hint (Claude Haiku)">
+                <Tooltip title="Regenerér posten med valgfri tone-hint (CI)">
                   <Button
                     size="small"
                     onClick={() => void handleRegenerate()}
@@ -2133,7 +2151,7 @@ function PostCard({
                     py: 0.3,
                     color: '#a5f3fc',
                     borderColor: 'rgba(34,211,238,0.4)',
-                    '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+                    '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
                   }}
                 >
                   {accepting ? 'Aksepterer…' : 'Send → Feed-planner'}
@@ -2163,7 +2181,7 @@ function PostCard({
           sx={{
             textTransform: 'none',
             fontSize: '0.74rem',
-            color: toolsOpen ? '#22d3ee' : 'rgba(226,232,240,0.6)',
+            color: toolsOpen ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.6)',
             py: 0,
             px: 0.6,
             minWidth: 0,

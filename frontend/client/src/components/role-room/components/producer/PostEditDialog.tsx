@@ -14,6 +14,7 @@ import {
 import roleRoomAgentService, {
   type MarketingPlanPost,
 } from '../../services/roleRoomAgentService';
+import { describeProducerError } from '../../utils/producerErrorMessage';
 
 interface Props {
   post: MarketingPlanPost | null;
@@ -91,7 +92,7 @@ export function PostEditDialog({ post, onClose, onSaved }: Props) {
       onSaved(updated);
       onClose();
     } catch (e) {
-      setError((e as Error).message);
+      setError(describeProducerError(e, 'lagre endringen i innlegget'));
     } finally {
       setSaving(false);
     }

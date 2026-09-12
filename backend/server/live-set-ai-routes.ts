@@ -520,7 +520,7 @@ export function createLiveSetAiRouter(
     req: Request,
     res: Response,
     action: string,
-    parse: z.ZodSafeParseResult<Input>,
+    parse: { success: true; data: Input } | { success: false; error: z.ZodError },
     systemPrompt: string,
     buildMessage: (input: Input) => string,
     sanitise: (raw: unknown, input: Input) => Output,
@@ -551,7 +551,7 @@ export function createLiveSetAiRouter(
           errorCode: err.code,
           errorMessage: err.message,
         });
-        res.status(403).json({ error: err.code, message: err.message });
+        res.status(403).json({ error: err.code, message: "internal_error" });
         return;
       }
       throw err;
@@ -592,7 +592,7 @@ export function createLiveSetAiRouter(
         errorCode: code,
         errorMessage: (error as Error).message,
       });
-      res.status(500).json({ error: code, message: (error as Error).message });
+      res.status(500).json({ error: code, message: "internal_error" });
     }
   };
 

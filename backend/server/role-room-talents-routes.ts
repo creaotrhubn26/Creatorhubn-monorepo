@@ -60,9 +60,16 @@ const EDITABLE_FIELDS = [
   "dialects",
   "availability_status",
   "availability_notes",
+  "availability_windows",
   "willing_to_travel",
   "external_links",
 ] as const;
+
+// JSONB-felter må stringifyes før de skrives til talents.
+const JSONB_FIELDS = ["headshot_alt_urls", "skills", "languages", "dialects", "external_links", "availability_windows"];
+// Felter som utgjør «tilgjengelighet» — når noen av disse skrives regner vi
+// tilgjengeligheten som (re-)bekreftet og bumper availability_confirmed_at.
+const AVAILABILITY_FIELDS = new Set(["availability_status", "availability_notes", "availability_windows"]);
 type EditableField = (typeof EDITABLE_FIELDS)[number];
 
 const VALID_SCOPES = new Set([
@@ -133,6 +140,8 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
         return res.status(409).json({ error: "Profil finnes allerede", talent: existing });
       }
       const editable = pickEditable(body);
+      // Ved opprettelse med tilgjengelighets-felt: stemple bekreftet nå.
+      const stampsAvailability = Object.keys(editable).some((k) => AVAILABILITY_FIELDS.has(k));
       const cols = ["owner_user_id", "display_name", "email", ...Object.keys(editable).filter(k => k !== "display_name" && k !== "email")];
       const vals: unknown[] = [
         session.userId,
@@ -141,12 +150,13 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
         ...cols.slice(3).map((c) => {
           const v = (editable as Record<string, unknown>)[c];
           // JSONB-felter må stringifyes
-          if (["headshot_alt_urls", "skills", "languages", "dialects", "external_links"].includes(c)) {
+          if (JSONB_FIELDS.includes(c)) {
             return v == null ? "[]" : JSON.stringify(v);
           }
           return v ?? null;
         }),
       ];
+      if (stampsAvailability) { cols.push("availability_confirmed_at"); vals.push(new Date().toISOString()); }
       const placeholders = vals.map((_, i) => `$${i + 1}`).join(", ");
       const r = await pool.query(
         `INSERT INTO talents (${cols.join(", ")}) VALUES (${placeholders}) RETURNING *`,
@@ -155,7 +165,7 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
       return res.status(201).json({ talent: r.rows[0] });
     } catch (err) {
       console.error("[talents/me POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å opprette profil", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å opprette profil", detail: "internal_error" });
     }
   });
 
@@ -177,7 +187,7 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
       const vals: unknown[] = [];
       let i = 1;
       for (const [k, v] of Object.entries(editable)) {
-        if (["headshot_alt_urls", "skills", "languages", "dialects", "external_links"].includes(k)) {
+        if (JSONB_FIELDS.includes(k)) {
           setClauses.push(`${k} = $${i}::jsonb`);
           vals.push(v == null ? "[]" : JSON.stringify(v));
         } else {
@@ -185,6 +195,10 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
           vals.push(v ?? null);
         }
         i += 1;
+      }
+      // Bump ferskhets-stempel når tilgjengelighet endres i denne oppdateringen.
+      if (Object.keys(editable).some((k) => AVAILABILITY_FIELDS.has(k))) {
+        setClauses.push(`availability_confirmed_at = now()`);
       }
       vals.push(existing.id);
       const r = await pool.query(
@@ -194,7 +208,27 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
       return res.json({ talent: r.rows[0] });
     } catch (err) {
       console.error("[talents/me PUT] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å oppdatere profil", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å oppdatere profil" });
+    }
+  });
+
+  // ── POST /me/availability/confirm — re-bekreft tilgjengelighet ──────
+  // Bumper kun ferskhets-stempelet uten å endre selve tilgjengeligheten.
+  // Brukes av «bekreft igjen»-nudgen når profilen er blitt utdatert.
+  app.post("/api/role-room/talents/me/availability/confirm", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    try {
+      const existing = await fetchTalentForUser(pool, session.userId);
+      if (!existing) return res.status(404).json({ error: "Ingen profil ennå" });
+      const r = await pool.query(
+        `UPDATE talents SET availability_confirmed_at = now() WHERE id = $1 RETURNING *`,
+        [existing.id],
+      );
+      return res.json({ talent: r.rows[0] });
+    } catch (err) {
+      console.error("[talents/me/availability/confirm] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å bekrefte tilgjengelighet" });
     }
   });
 
@@ -269,7 +303,7 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
       return res.status(201).json({ consent: r.rows[0] });
     } catch (err) {
       console.error("[talents/me/consents POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å lagre samtykke", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å lagre samtykke", detail: "internal_error" });
     }
   });
 

@@ -1,0 +1,42 @@
+name: Innsiktsmotor — daglige detektorer
+
+# Kjører detektorene over normalized_signals daglig, ETTER daglig-synken
+# (04:45) — og fanger mandags-GEO-målingen dagen etter (kjøringene tar
+# timer). Token-gated via CRON_TRIGGER_TOKEN.
+
+on:
+  schedule:
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: insights-daily
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
+jobs:
+  run-detectors:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /api/integrations/insights/run
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN GitHub-secret er ikke satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "x-cron-token: $CRON_TRIGGER_TOKEN" \
+            "$BACKEND_URL/api/integrations/insights/run")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          [ "$CODE" != "200" ] && { echo "::error::Detektor-kjøring feilet"; exit 1; }
+          exit 0

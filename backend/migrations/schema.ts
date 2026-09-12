@@ -313,6 +313,10 @@ export const inviteRequests = pgTable("invite_requests", {
 	phoneNumber: varchar("phone_number"),
 	website: varchar(),
 	message: text(),
+	source: varchar({ length: 100 }).default('landing'),
+	testerProfession: varchar("tester_profession", { length: 40 }),
+	enterpriseTeamSize: integer("enterprise_team_size"),
+	enterprisePricing: jsonb("enterprise_pricing"),
 	status: varchar().default('pending'),
 	adminNotes: text("admin_notes"),
 	processedBy: varchar("processed_by"),
@@ -4712,8 +4716,13 @@ export const shotLists = pgTable("shot_lists", {
 	categories: text().array(),
 	totalShots: integer("total_shots").default(0),
 	completedShots: integer("completed_shots").default(0),
-	mustHaveShots: integer("must_have_shots").default(0),
-	completedMustHave: integer("completed_must_have").default(0),
+	// The actual shot_lists table uses critical_shots / completed_critical_shots
+	// (a must-have shot IS a critical shot). The previous mapping pointed at
+	// must_have_shots / completed_must_have, which don't exist — so every query
+	// selecting these (e.g. GET /api/capture/projects) threw at the DB and the
+	// async route handler's unhandled rejection left the request hanging.
+	mustHaveShots: integer("critical_shots").default(0),
+	completedMustHave: integer("completed_critical_shots").default(0),
 	clientApprovalRequired: boolean("client_approval_required").default(false),
 	clientApproved: boolean("client_approved").default(false),
 	clientFeedback: text("client_feedback"),
@@ -6137,6 +6146,7 @@ export const weddingTimelines = pgTable("wedding_timelines", {
 
 export const users = pgTable("users", {
 	id: varchar().default(sql`gen_random_uuid()`).primaryKey().notNull(),
+	authSessionVersion: bigint("auth_session_version", { mode: "number" }).default(0).notNull(),
 	adminLevel: text("admin_level"),
 	profession: varchar(),
 	companyName: varchar("company_name"),
@@ -6159,7 +6169,7 @@ export const users = pgTable("users", {
 	gmailConnected: boolean("gmail_connected").default(false),
 	googleWorkspaceToken: text("google_workspace_token"),
 	googleRefreshToken: text("google_refresh_token"),
-	isActive: boolean("is_active").default(true),
+	isActive: boolean("is_active").default(true).notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [

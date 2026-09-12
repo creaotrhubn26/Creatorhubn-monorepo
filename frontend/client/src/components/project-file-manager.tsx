@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useTheming } from '../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery , useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import {
   Box,
@@ -95,7 +95,7 @@ export default function ProjectFileManager({ projectId, profession, userId }: Pr
 });
 
   // Fetch project files
-  const { data: projectFiles = [, ],} = useQuery({
+  const { data: projectFiles = [],} = useQuery({
     queryKey: [`/api/projects/${projectId}/files`],
     retry: false,
     queryFn: () => apiRequest(`/api/projects/${projectId}/files`),

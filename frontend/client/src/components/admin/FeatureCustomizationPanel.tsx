@@ -7,15 +7,12 @@ import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
-  Paper,
   Typography,
   TextField,
-  Button,
   IconButton,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Dialog,
@@ -29,7 +26,6 @@ import {
   InputAdornment,
   Tabs,
   Tab,
-  CircularProgress,
   Alert,
   Tooltip,
   alpha,
@@ -37,7 +33,9 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Edit as EditIcon,
   Delete as DeleteIcon,
@@ -51,6 +49,14 @@ import {
   History as HistoryIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '../../lib/queryClient';
+import {
+  AdminCard,
+  AdminButton,
+  StatusChip,
+  AdminLoading,
+  AdminTableContainer,
+  useIsMobile,
+} from './design-system';
 import {
   CREATORHUB_FEATURES,
   type CreatorHubFeature,
@@ -120,6 +126,7 @@ type FeatureWithCustomization = CreatorHubFeature & {
 
 export function FeatureCustomizationPanel({ userId }: Props) {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTab, setSelectedTab] = useState(0);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -130,6 +137,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
   const { data: customizationsData, isLoading } = useQuery<FeatureCustomizationsResponse>({
     queryKey: ['/api/admin/feature-customizations'],
     queryFn: () => apiRequest('/api/admin/feature-customizations'),
+    staleTime: 15000,
   });
 
   // Save mutation
@@ -159,7 +167,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
 
   // Combine all features with customizations
   const allFeatures = useMemo<FeatureWithCustomization[]>(() => {
-    const customizations = customizationsData?.customizations || [];
+    const customizations = Array.isArray(customizationsData?.customizations) ? customizationsData.customizations : [];
     const customizationMap = new Map(
       customizations.map((customization) => [customization.featureId, customization]),
     );
@@ -212,27 +220,25 @@ export function FeatureCustomizationPanel({ userId }: Props) {
 
   if (isLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress />
-      </Box>
+      <ThemeProvider theme={adminDarkTheme}>
+        <AdminLoading />
+      </ThemeProvider>
     );
   }
 
   return (
-    <Paper sx={{ p: 3 }}>
-      <Typography variant="h5" sx={{ mb: 3, fontWeight: 600}}>
-        Funksjonstilpasning
-      </Typography>
-
+    <ThemeProvider theme={adminDarkTheme}>
+    <AdminCard title="Funksjonstilpasning">
       <Alert severity="info" sx={{ mb: 3 }}>
         Her kan du tilpasse navn, beskrivelser og logoer for alle funksjoner i plattformen.
         Disse endringene vises til brukere i planoversikter og onboarding.
       </Alert>
 
       {/* Search and Tabs */}
-      <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
         <TextField
           placeholder="Søk etter funksjoner..."
+          aria-label="Søk etter funksjoner"
           size="small"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -242,7 +248,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
                 <SearchIcon />
               </InputAdornment>
             )}}
-          sx={{ width: 300 }}
+          sx={{ width: 300, maxWidth: '100%' }}
         />
         <Tabs value={selectedTab} onChange={(_event, value) => setSelectedTab(value)}>
           <Tab label={`Alle (${allFeatures.length})`} />
@@ -252,7 +258,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
       </Box>
 
       {/* Features Table */}
-      <TableContainer>
+      <AdminTableContainer ariaLabel="Funksjonstilpasninger">
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -281,8 +287,8 @@ export function FeatureCustomizationPanel({ userId }: Props) {
                       <ImageIcon sx={{ fontSize: 16 }} />
                     </Avatar>
                   ) : (
-                    <Avatar sx={{ width: 32, height: 32, bgcolor: '#e0e0e0' }}>
-                      <ImageIcon sx={{ fontSize: 16, color: '#999' }} />
+                    <Avatar sx={{ width: 32, height: 32, bgcolor: 'rgba(255,255,255,0.1)' }}>
+                      <ImageIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.5)' }} />
                     </Avatar>
                   )}
                 </TableCell>
@@ -294,11 +300,9 @@ export function FeatureCustomizationPanel({ userId }: Props) {
                 <TableCell>{feature.name}</TableCell>
                 <TableCell>
                   {feature.customization?.customName ? (
-                    <Chip
+                    <StatusChip
+                      tone="brand"
                       label={feature.customization.customName}
-                      size="small"
-                      color="primary"
-                      variant="outlined"
                     />
                   ) : (
                     <Typography variant="body2" color="text.secondary">
@@ -336,7 +340,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
                 </TableCell>
                 <TableCell align="right">
                   <Tooltip title="Rediger">
-                    <IconButton size="small" onClick={() => handleEditClick(feature)}>
+                    <IconButton size="small" aria-label="Rediger" onClick={() => handleEditClick(feature)}>
                       <EditIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
@@ -344,6 +348,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
                     <Tooltip title="Slett tilpasning">
                       <IconButton
                         size="small"
+                        aria-label="Slett tilpasning"
                         onClick={() => deleteMutation.mutate(feature.id)}
                         color="error"
                       >
@@ -356,7 +361,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
             ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
 
       {filteredFeatures.length > 50 && (
         <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
@@ -365,10 +370,11 @@ export function FeatureCustomizationPanel({ userId }: Props) {
       )}
 
       {/* Edit Dialog */}
-      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           Tilpass funksjon: {selectedFeature?.name}
           <IconButton
+            aria-label="Lukk"
             onClick={() => setEditDialogOpen(false)}
             sx={{ position: 'absolute', right: 8, top: 8 }}
           >
@@ -481,18 +487,19 @@ export function FeatureCustomizationPanel({ userId }: Props) {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setEditDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleSave}
-            disabled={saveMutation.isPending}
+            loading={saveMutation.isPending}
             startIcon={<SaveIcon />}
           >
             {saveMutation.isPending ? 'Lagrer...' : 'Lagre'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
-    </Paper>
+    </AdminCard>
+    </ThemeProvider>
   );
 }
 

@@ -406,8 +406,10 @@ export function setupNextRoleRoutes(deps: NextRoleRoutesDeps): void {
   app.post("/api/internal/next-role/check-trial-expiry", async (req, res) => {
     // Enkel intern-auth: krev en delt secret via header. Settes som
     // env-var NEXTROLE_CRON_SECRET. Cron-job må passere headeren.
-    const provided = req.headers["x-cron-secret"];
-    if (provided !== process.env.NEXTROLE_CRON_SECRET) {
+    const provided = typeof req.headers["x-cron-secret"] === "string" ? req.headers["x-cron-secret"] : "";
+    const cronSecret = process.env.NEXTROLE_CRON_SECRET || "";
+    const { timingSafeEqual } = await import("node:crypto");
+    if (!cronSecret || !provided || provided.length !== cronSecret.length || !timingSafeEqual(Buffer.from(provided), Buffer.from(cronSecret))) {
       res.status(401).json({ error: "invalid_cron_secret" });
       return;
     }
@@ -421,7 +423,7 @@ export function setupNextRoleRoutes(deps: NextRoleRoutesDeps): void {
     // (settings.trialExpiringEmailSent IS NULL or false)
     const r = await pool.query(
       `SELECT mi.user_id, mi.trial_ends_at,
-              u.email, u.first_name, u.name
+              u.email, u.first_name, NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '')
          FROM marketplace_installations mi
          LEFT JOIN users u ON u.id = mi.user_id
         WHERE mi.app_id = 'next-role'

@@ -73,6 +73,57 @@ export interface EvendiBridgesRoutesDeps {
 export function setupEvendiBridgesRoutes(deps: EvendiBridgesRoutesDeps): void {
   const { app, pool, getVendorFromSession, getSessionByToken, normalizeEventType } = deps;
 
+  // ── Cross-tenant access helpers ────────────────────────────────────
+  // A vendor may only touch a timeline/project it is actually involved
+  // with. The link is: conversations(vendor_id, couple_id) →
+  // couple_profiles.email = legacy.projects.client_email →
+  // wedding_timelines.project_id. Without this, any authenticated vendor
+  // could read/write ANY couple's timeline by guessing a UUID (IDOR).
+  async function vendorCanAccessTimeline(
+    timelineId: string,
+    vendorId: string,
+  ): Promise<boolean> {
+    const r = await pool.query(
+      `SELECT 1
+         FROM wedding_timelines wt
+         JOIN legacy.projects p ON p.id = wt.project_id
+         JOIN couple_profiles cp ON LOWER(cp.email) = LOWER(p.client_email)
+         JOIN conversations c ON c.couple_id = cp.id AND c.vendor_id = $2
+        WHERE wt.id = $1
+        LIMIT 1`,
+      [timelineId, vendorId],
+    );
+    if (r.rows.length) return true;
+    // Fallback: a vendor with a delivery already linked to this timeline
+    // is legitimately involved even if the conversation-chain is missing.
+    const d = await pool.query(
+      `SELECT 1 FROM deliveries WHERE timeline_id = $1 AND vendor_id = $2 LIMIT 1`,
+      [timelineId, vendorId],
+    );
+    return d.rows.length > 0;
+  }
+
+  async function vendorCanAccessProject(
+    projectId: string,
+    vendorId: string,
+  ): Promise<boolean> {
+    const r = await pool.query(
+      `SELECT 1
+         FROM legacy.projects p
+         JOIN couple_profiles cp ON LOWER(cp.email) = LOWER(p.client_email)
+         JOIN conversations c ON c.couple_id = cp.id AND c.vendor_id = $2
+        WHERE p.id = $1
+        LIMIT 1`,
+      [projectId, vendorId],
+    );
+    if (r.rows.length) return true;
+    const d = await pool.query(
+      `SELECT 1 FROM deliveries WHERE project_id = $1 AND vendor_id = $2 LIMIT 1`,
+      [projectId, vendorId],
+    );
+    return d.rows.length > 0;
+  }
+
   const EVENDI_TO_CREATORHUB_CULTURE: Record<string, string> = {
     // New synced keys (1:1 mapping)
     norsk: "norsk",
@@ -485,6 +536,12 @@ export function setupEvendiBridgesRoutes(deps: EvendiBridgesRoutesDeps): void {
 
         const { timelineId } = req.params;
 
+        // IDOR guard: only a vendor involved with this timeline's couple
+        // may read its comments (some are is_private).
+        if (!(await vendorCanAccessTimeline(timelineId, vendor.id))) {
+          return res.status(404).json({ error: "Tidslinje ikke funnet" });
+        }
+
         const result = await pool.query(
           `SELECT id, author_type, author_name, message, is_private, created_at
          FROM wedding_timeline_comments
@@ -516,13 +573,12 @@ export function setupEvendiBridgesRoutes(deps: EvendiBridgesRoutesDeps): void {
           return res.status(400).json({ error: "Melding er påkrevd" });
         }
 
-        // Verify timeline exists
-        const tlCheck = await pool.query(
-          "SELECT id FROM wedding_timelines WHERE id = $1",
-          [timelineId],
-        );
-        if (!tlCheck.rows.length)
+        // IDOR guard: verify the vendor is involved with this timeline's
+        // couple before letting them write a comment into it. Doubles as
+        // the existence check (JOIN yields nothing for a missing timeline).
+        if (!(await vendorCanAccessTimeline(timelineId, vendor.id))) {
           return res.status(404).json({ error: "Tidslinje ikke funnet" });
+        }
 
         const id = crypto.randomUUID();
         const now = new Date().toISOString();
@@ -574,13 +630,11 @@ export function setupEvendiBridgesRoutes(deps: EvendiBridgesRoutesDeps): void {
 
         if (!title) return res.status(400).json({ error: "Tittel er påkrevd" });
 
-        // Verify timeline exists
-        const tlCheck = await pool.query(
-          "SELECT id FROM wedding_timelines WHERE id = $1",
-          [timelineId],
-        );
-        if (!tlCheck.rows.length)
+        // IDOR guard: only a vendor tied to this timeline's couple may
+        // inject events. Also serves as the existence check.
+        if (!(await vendorCanAccessTimeline(timelineId, vendor.id))) {
           return res.status(404).json({ error: "Tidslinje ikke funnet" });
+        }
 
         const id = crypto.randomUUID();
 
@@ -918,7 +972,14 @@ export function setupEvendiBridgesRoutes(deps: EvendiBridgesRoutesDeps): void {
 
         const { projectId } = req.params;
 
-        // Get project (user_id is the couple, not the vendor — verify vendor access via deliveries)
+        // IDOR guard: the project belongs to the couple, not the vendor.
+        // Verify the vendor is actually involved (conversation-chain or an
+        // existing delivery) before returning project metadata + timeline.
+        if (!(await vendorCanAccessProject(projectId, vendor.id))) {
+          return res.status(404).json({ error: "Prosjekt ikke funnet" });
+        }
+
+        // Get project (user_id is the couple, not the vendor — access verified above)
         const projRes = await pool.query(
           "SELECT id, title, category, metadata, settings FROM legacy.projects WHERE id = $1",
           [projectId],
@@ -1275,7 +1336,14 @@ export function setupEvendiBridgesRoutes(deps: EvendiBridgesRoutesDeps): void {
           .status(400)
           .json({ error: "Mangler target-konfigurasjon: targetUrl, apiKey" });
       }
-
+      // SSRF guard: only allow HTTPS to public internet hosts
+      let _parsedTarget: URL;
+      try { _parsedTarget = new URL(targetUrl); } catch { return res.status(400).json({ error: "Ugyldig targetUrl" }); }
+      if (_parsedTarget.protocol !== "https:") return res.status(400).json({ error: "targetUrl må bruke HTTPS" });
+      const _h = _parsedTarget.hostname;
+      if (_h === "localhost" || _h === "127.0.0.1" || _h === "0.0.0.0" || _h.startsWith("169.254.") || _h.startsWith("10.") || _h.startsWith("192.168.") || /^172\.(1[6-9]|2\d|3[01])\./.test(_h) || _h.endsWith(".internal") || _h.endsWith(".local")) {
+        return res.status(400).json({ error: "targetUrl peker til ikke-tillatt adresse" });
+      }
       // Build the publish payload matching the Norwedfilm /api/publish schema
       const publishPayload = {
         project: {

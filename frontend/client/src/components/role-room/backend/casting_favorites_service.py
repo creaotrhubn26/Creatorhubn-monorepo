@@ -11,10 +11,7 @@ from typing import Optional, List, Dict, Any
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-DATABASE_URL_RAW = os.getenv(
-    'DATABASE_URL',
-    'postgresql://neondb_owner:npg_vgy4STuQ8Mja@ep-soft-pond-ag9vm5a4-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
-)
+DATABASE_URL_RAW = os.getenv('DATABASE_URL', '')
 DATABASE_URL = DATABASE_URL_RAW.strip()
 if DATABASE_URL.startswith('psql '):
     DATABASE_URL = DATABASE_URL[5:].strip()
@@ -25,7 +22,7 @@ elif DATABASE_URL.startswith('"') and DATABASE_URL.endswith('"'):
 
 def get_db_connection():
     if not DATABASE_URL:
-        raise Exception("DATABASE_URL not set")
+        raise RuntimeError("DATABASE_URL must be set in the environment")
     return psycopg2.connect(DATABASE_URL)
 
 def init_casting_favorites_tables():

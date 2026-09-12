@@ -19,24 +19,33 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog, DialogContent, DialogActions, Box, Stack, Typography, Button,
   IconButton, TextField, Stepper, Step, StepLabel, Avatar, Chip, Alert,
-  Card, alpha,
+  Card, Link, alpha,
 } from '@mui/material';
 import {
   Close as CloseIcon, ArrowBack as BackIcon, ArrowForward as NextIcon,
   CheckCircle as DoneIcon, PhotoCamera as CameraIcon, EmojiPeople as WelcomeIcon,
   Palette as PaletteIcon, Store as StoreIcon, Person as PersonIcon,
   Videocam as VideoIcon, LibraryMusic as MusicIcon, Storefront as VendorIcon,
+  Backup as BackupIcon,
+  Cloud as CloudIcon, Storage as StorageIcon, OpenInNew as OpenInNewIcon,
+  Verified as VerifiedIcon, ErrorOutline as ErrorIcon,
+  Layers as LayersIcon, FolderOpen as FolderOpenIcon,
+  ChevronRight as ChevronRightIcon, AccountCircle as AccountCircleIcon,
 } from '@mui/icons-material';
+import { CircularProgress } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
+import { getProfessionIconColor } from '@shared/profession-types';
 import { useQueryClient } from '@tanstack/react-query';
 import StorageProviderStep from '@/components/onboarding/StorageProviderStep';
 import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
 
+// Farger hentes fra den KANONISKE getProfessionIconColor slik at samme profesjon
+// har samme farge i wizarden som i Min profil / workspace (unngår drift).
 const PROFESSIONS = [
-  { id: 'photographer', label: 'Fotograf', icon: <CameraIcon />, color: '#ffba6c', tagline: 'Bryllup, portrett, kommersielt' },
-  { id: 'videographer', label: 'Videograf', icon: <VideoIcon />, color: '#e74c3c', tagline: 'Reklame, musikkvideo, dokumentar' },
-  { id: 'music_producer', label: 'Musikkprodusent', icon: <MusicIcon />, color: '#1976d2', tagline: 'Studio, beats, miksing' },
-  { id: 'vendor', label: 'Leverandør', icon: <VendorIcon />, color: '#27ae60', tagline: 'Utleie, salg, service' },
+  { id: 'photographer', label: 'Fotograf', icon: <CameraIcon />, color: getProfessionIconColor('photographer') || '#ff8c00', tagline: 'Bryllup, portrett, kommersielt' },
+  { id: 'videographer', label: 'Videograf', icon: <VideoIcon />, color: getProfessionIconColor('videographer') || '#e74c3c', tagline: 'Reklame, musikkvideo, dokumentar' },
+  { id: 'music_producer', label: 'Musikkprodusent', icon: <MusicIcon />, color: getProfessionIconColor('music_producer') || '#9b59b6', tagline: 'Studio, beats, miksing' },
+  { id: 'vendor', label: 'Leverandør', icon: <VendorIcon />, color: getProfessionIconColor('vendor') || '#3498db', tagline: 'Utleie, salg, service' },
 ];
 
 const TIER_RECOMMENDATIONS: Record<string, { name: string; price: string; reason: string }> = {
@@ -62,7 +71,29 @@ const TIER_RECOMMENDATIONS: Record<string, { name: string; price: string; reason
   },
 };
 
-const STEPS = ['Velkomst', 'Profesjon', 'Brand', 'Marketplace', 'Backup', 'Ferdig'] as const;
+const STEPS = ['Velkomst', 'Profesjon', 'Brand', 'Marketplace', 'Backup', 'Skylagring', 'Profil', 'Ferdig'] as const;
+
+// Drive-aksent (Google blå), Layers-aksent (grønn)
+const DRIVE_ACCENT = '#4285F4';
+const BOTH_ACCENT = '#10b981';
+
+type CloudProvider = 'b2' | 'drive' | 'both';
+type CloudUiPhase = 'pick' | 'configure-b2' | 'configure-drive' | 'configure-both';
+
+interface DriveFolderEntry {
+  name: string;
+  id?: string;
+  url?: string;
+  status: 'pending' | 'creating' | 'done' | 'error';
+}
+
+const B2_REGION_OPTIONS = [
+  { value: 'us-west-001', label: 'US West (us-west-001)' },
+  { value: 'us-east-005', label: 'US East (us-east-005)' },
+  { value: 'eu-central-003', label: 'EU Central (eu-central-003)' },
+];
+
+const BACKBLAZE_SIGNUP_URL = 'https://www.backblaze.com/cloud-storage';
 
 const DRAFT_KEY = 'individual-onboarding-draft';
 const PENDING_SAVE_KEY = 'individual-onboarding-pending-save';
@@ -133,10 +164,58 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
     const found = PROFESSIONS.find((p) => p.id === (initialProfession || 'photographer'));
     return found?.color || '#ffba6c';
   });
+  // Profil-steg: avatar som data-URL (sendes til /api/user/profile ved finish).
+  const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const handleAvatarPick = (file?: File) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setAvatarDataUrl(typeof reader.result === 'string' ? reader.result : null);
+    reader.readAsDataURL(file);
+  };
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [resumingFromPending, setResumingFromPending] = useState(false);
   const flushedPendingRef = useRef(false);
+
+  // ─── B2 Cloud Storage (steg 5) ────────────────────────────────────
+  // Brukerne KJØPER egen Backblaze-avtale; vi lagrer kun deres
+  // credentials kryptert i `user_b2_credentials`-tabellen. Admin's
+  // bucket eksponeres ALDRI til vanlige brukere.
+  const [b2KeyId, setB2KeyId] = useState('');
+  const [b2AppKey, setB2AppKey] = useState('');
+  const [b2BucketName, setB2BucketName] = useState('');
+  const [b2Region, setB2Region] = useState('us-west-001');
+  const [b2Saving, setB2Saving] = useState(false);
+  const [b2Testing, setB2Testing] = useState(false);
+  const [b2Status, setB2Status] = useState<
+    | { kind: 'idle' }
+    | { kind: 'saved'; isVerified: boolean; verifyError: string | null }
+    | { kind: 'error'; message: string }
+  >({ kind: 'idle' });
+
+  // ─── Skylagring multi-choice (steg 5) ─────────────────────────────
+  // Bestemor-enkel flyt: ett spørsmål om gangen.
+  //   'pick'            — to store kort: Google Drive (anbefalt) / Backblaze
+  //   'connecting'      — popup åpnet, viser spinner
+  //   'drive-success'   — viser opprettede mapper + "Åpne i Drive"
+  //   'configure-b2'    — viser eksisterende B2-form
+  //   'has-existing'    — bruker har allerede en provider, spør om de vil legge til en til
+  const [cloudPhase, setCloudPhase] = useState<
+    'pick' | 'connecting' | 'drive-success' | 'configure-b2' | 'has-existing'
+  >('pick');
+
+  // ─── Google Drive flow ────────────────────────────────────────────
+  const [driveOauthError, setDriveOauthError] = useState<string | null>(null);
+  const [driveErrorDetail, setDriveErrorDetail] = useState<string | null>(null);
+  const [driveErrorShowDetail, setDriveErrorShowDetail] = useState(false);
+  const [driveAccountEmail, setDriveAccountEmail] = useState<string | null>(null);
+  const [driveRootFolderId, setDriveRootFolderId] = useState<string | null>(null);
+  const [driveFoldersCreated, setDriveFoldersCreated] = useState<string[]>([]);
+  const [existingProvider, setExistingProvider] = useState<'drive' | 'b2' | null>(null);
+  const drivePopupRef = useRef<Window | null>(null);
+  const drivePollIntervalRef = useRef<number | null>(null);
+  const drivePopupClosedTimerRef = useRef<number | null>(null);
 
   const activeProfession = PROFESSIONS.find((p) => p.id === profession) || PROFESSIONS[0];
   const recommendedTier = TIER_RECOMMENDATIONS[profession] || TIER_RECOMMENDATIONS.photographer;
@@ -189,7 +268,10 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
     return true;
   })();
 
-  const handleFinish = async () => {
+  // Returnerer true kun ved vellykket lagring — kalleren skal IKKE rute til
+  // workspace hvis dette er false (ellers havner brukeren i workspace før
+  // profesjon/bedriftsinfo faktisk er lagret).
+  const handleFinish = async (): Promise<boolean> => {
     setSaveError(null);
     setSaving(true);
     const payload: DraftData = { firstName, businessName, profession, brandColor };
@@ -207,8 +289,20 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
         `Kunne ikke lagre bedriftsinfo (${message}). Vi har lagret det lokalt og forsøker igjen automatisk neste gang. Prøv på nytt nå hvis du vil.`,
       );
       setSaving(false);
-      return;
+      return false;
     }
+    // Speil identitet + avatar til users-recorden (samlet profil). Best-effort:
+    // profesjon speiles uansett av branding-lagringen; avatar/navn er ekstra.
+    try {
+      await apiRequest('/api/user/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName, profession, companyName: businessName,
+          ...(avatarDataUrl ? { avatarUrl: avatarDataUrl } : {}),
+        }),
+      });
+    } catch { /* branding-sync dekker profesjon; resten er best-effort */ }
     try {
       window.localStorage.setItem('individual-onboarding-completed', '1');
       window.localStorage.removeItem(DRAFT_KEY);
@@ -218,6 +312,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
     setSaving(false);
     onComplete?.({ profession, businessName });
     onClose();
+    return true;
   };
 
   // Når profesjon endres, oppdater brand-farge automatisk
@@ -225,6 +320,234 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
     setProfession(id);
     const p = PROFESSIONS.find((x) => x.id === id);
     if (p) setBrandColor(p.color);
+  };
+
+  // ─── B2 Cloud Storage handlers ────────────────────────────────────
+  const b2CanSave =
+    b2KeyId.trim().length >= 8 &&
+    b2AppKey.trim().length >= 16 &&
+    b2BucketName.trim().length > 0;
+
+  const handleB2Save = async () => {
+    if (!b2CanSave) return;
+    setB2Saving(true);
+    setB2Status({ kind: 'idle' });
+    try {
+      const response = await apiRequest('/api/user/b2-credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keyId: b2KeyId.trim(),
+          appKey: b2AppKey.trim(),
+          bucketName: b2BucketName.trim(),
+          region: b2Region,
+        }),
+      });
+      const payload = await (response.json?.() ?? Promise.resolve({}));
+      if (!payload?.success) {
+        setB2Status({ kind: 'error', message: payload?.message || payload?.error || 'Lagring feilet' });
+      } else {
+        setB2Status({
+          kind: 'saved',
+          isVerified: !!payload.isVerified,
+          verifyError: payload.verifyError ?? null,
+        });
+        // Tøm key-felter umiddelbart fra UI-state — vi har dem ikke i klartekst lenger
+        setB2KeyId('');
+        setB2AppKey('');
+      }
+    } catch (err) {
+      setB2Status({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Ukjent feil ved lagring',
+      });
+    } finally {
+      setB2Saving(false);
+    }
+  };
+
+  // ─── Google Drive OAuth flow ───────────────────────────────────────
+  // Strategi: popup-vindu → backend redirector tilbake til /onboarding med
+  //   ?drive=success&email=…&foldersCreated=N. Vi poller ALSO backend hver
+  //   2 sek (i tilfelle popup ble blokkert / lukket via OS-shortcut) og
+  //   lytter på popup `closed`-status.
+  const stopDrivePolling = () => {
+    if (drivePollIntervalRef.current !== null) {
+      window.clearInterval(drivePollIntervalRef.current);
+      drivePollIntervalRef.current = null;
+    }
+    if (drivePopupClosedTimerRef.current !== null) {
+      window.clearInterval(drivePopupClosedTimerRef.current);
+      drivePopupClosedTimerRef.current = null;
+    }
+  };
+
+  const checkDriveCredentials = async (): Promise<boolean> => {
+    try {
+      const response = await apiRequest('/api/user/drive-credentials');
+      if (!response.ok) return false;
+      const payload = await (response.json?.() ?? Promise.resolve({}));
+      const data = payload?.credentials ?? payload?.data ?? payload;
+      if (data?.email || data?.connected || data?.rootFolderId) {
+        setDriveAccountEmail(data.email ?? null);
+        setDriveRootFolderId(data.rootFolderId ?? data.root_folder_id ?? null);
+        if (Array.isArray(data.folders)) {
+          setDriveFoldersCreated(
+            data.folders
+              .map((f: any) => (typeof f === 'string' ? f : f?.name))
+              .filter(Boolean),
+          );
+        } else if (data.foldersCreated && Array.isArray(data.foldersCreated)) {
+          setDriveFoldersCreated(data.foldersCreated);
+        }
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleConnectDrive = async () => {
+    setDriveOauthError(null);
+    setDriveErrorDetail(null);
+    setCloudPhase('connecting');
+    try {
+      const response = await apiRequest('/api/user/drive-credentials/oauth/start', {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        const errPayload = await (response.json?.() ?? Promise.resolve({})).catch(() => ({}));
+        setDriveOauthError('Tjenesten er midlertidig utilgjengelig. Prøv igjen om litt.');
+        setDriveErrorDetail(errPayload?.error || errPayload?.message || `HTTP ${response.status}`);
+        setCloudPhase('pick');
+        return;
+      }
+      const payload = await (response.json?.() ?? Promise.resolve({}));
+      const oauthUrl: string | undefined = payload?.oauthUrl ?? payload?.url;
+      if (!oauthUrl) {
+        setDriveOauthError('Tjenesten er midlertidig utilgjengelig. Prøv igjen om litt.');
+        setDriveErrorDetail('Mangler oauthUrl i svar');
+        setCloudPhase('pick');
+        return;
+      }
+
+      const popup = window.open(oauthUrl, 'google-drive-oauth', 'width=500,height=600');
+      if (!popup) {
+        setDriveOauthError('Tillat popups for å logge inn med Google. Skru på popups for denne siden og prøv igjen.');
+        setCloudPhase('pick');
+        return;
+      }
+      drivePopupRef.current = popup;
+
+      // Poll backend hvert 2. sek for å se om credentials er på plass
+      drivePollIntervalRef.current = window.setInterval(async () => {
+        const ok = await checkDriveCredentials();
+        if (ok) {
+          stopDrivePolling();
+          try { drivePopupRef.current?.close(); } catch { /* noop */ }
+          setCloudPhase('drive-success');
+        }
+      }, 2000);
+
+      // Sjekk om popup ble lukket uten autorisasjon
+      drivePopupClosedTimerRef.current = window.setInterval(() => {
+        if (drivePopupRef.current?.closed) {
+          // Gi siste sjekk-puls litt tid, ellers fall tilbake til pick med melding
+          window.setTimeout(async () => {
+            const ok = await checkDriveCredentials();
+            if (!ok) {
+              stopDrivePolling();
+              setDriveOauthError('Du avbrøt. Trykk knappen igjen om du vil prøve.');
+              setCloudPhase('pick');
+            }
+          }, 1500);
+        }
+      }, 1000);
+    } catch (err) {
+      setDriveOauthError('Noe gikk galt. Prøv igjen?');
+      setDriveErrorDetail(err instanceof Error ? err.message : String(err));
+      setCloudPhase('pick');
+    }
+  };
+
+  // På mount av steg 5: sjekk om bruker allerede har Drive eller B2.
+  // Også: hvis URL inneholder ?drive=success, vis success-skjerm.
+  useEffect(() => {
+    if (!open || step !== 5) return;
+    const params = new URLSearchParams(window.location.search);
+    const driveParam = params.get('drive');
+    if (driveParam === 'success') {
+      const email = params.get('email');
+      const foldersCreated = Number(params.get('foldersCreated') || '0');
+      if (email) setDriveAccountEmail(email);
+      // Best-effort: hent komplett liste via API
+      (async () => {
+        await checkDriveCredentials();
+        if (foldersCreated > 0 && driveFoldersCreated.length === 0) {
+          // Bygg en placeholder-liste hvis APIet ikke returnerte navn
+          setDriveFoldersCreated((curr) =>
+            curr.length > 0 ? curr : Array.from({ length: foldersCreated }, (_, i) => `Mappe ${i + 1}`),
+          );
+        }
+        setCloudPhase('drive-success');
+        // Rens URL-params
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('drive');
+          url.searchParams.delete('email');
+          url.searchParams.delete('foldersCreated');
+          window.history.replaceState({}, '', url.toString());
+        } catch { /* noop */ }
+      })();
+      return;
+    }
+    // Revisit: bruker har allerede Drive eller B2
+    (async () => {
+      const hasDrive = await checkDriveCredentials();
+      if (hasDrive) {
+        setExistingProvider('drive');
+        setCloudPhase('has-existing');
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, step]);
+
+  // Rydd opp pollers ved unmount eller dialog-luking
+  useEffect(() => {
+    if (!open) {
+      stopDrivePolling();
+      try { drivePopupRef.current?.close(); } catch { /* noop */ }
+    }
+    return () => {
+      stopDrivePolling();
+    };
+  }, [open]);
+
+  const handleB2Verify = async () => {
+    setB2Testing(true);
+    try {
+      const response = await apiRequest('/api/user/b2-credentials/verify', {
+        method: 'POST',
+      });
+      const payload = await (response.json?.() ?? Promise.resolve({}));
+      if (payload?.success) {
+        setB2Status({ kind: 'saved', isVerified: true, verifyError: null });
+      } else {
+        setB2Status({
+          kind: 'saved',
+          isVerified: false,
+          verifyError: payload?.error || 'Verifisering feilet',
+        });
+      }
+    } catch (err) {
+      setB2Status({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Ukjent feil ved verifisering',
+      });
+    } finally {
+      setB2Testing(false);
+    }
   };
 
   return (
@@ -284,7 +607,11 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
           {STEPS.map((label, i) => (
             <Step key={label}>
               <StepLabel StepIconComponent={({ active, completed }) => {
-                const Icon = [WelcomeIcon, PersonIcon, PaletteIcon, StoreIcon, DoneIcon][i];
+                // One icon per STEPS entry: Velkomst, Profesjon, Brand,
+                // Marketplace, Backup, Cloud Storage, Profil, Ferdig (8 steg).
+                // Defensiv || DoneIcon-fallback hindrer "Element type is
+                // invalid"-krasj hvis STEPS skulle vokse uten matching ikon.
+                const Icon = [WelcomeIcon, PersonIcon, PaletteIcon, StoreIcon, BackupIcon, CloudIcon, AccountCircleIcon, DoneIcon][i] || DoneIcon;
                 return (
                   <Box sx={{
                     width: 36, height: 36, borderRadius: '50%',
@@ -324,7 +651,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
                 placeholder="Fornavn"
               />
               <TextField
-                label="Firmanavn (valgfri)" fullWidth
+                label="Firmanavn (valgfritt)" fullWidth
                 value={businessName}
                 onChange={(e) => setBusinessName(e.target.value)}
                 placeholder="F.eks. Lysverkene Foto"
@@ -529,8 +856,496 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
           </Stack>
         )}
 
-        {/* STEG 6: Ferdig */}
+        {/* STEG 6: Skylagring — bestemor-enkel UX */}
         {step === 5 && (
+          <Stack spacing={3}>
+            {/* ───── Revisit: bruker har allerede koblet en provider ───── */}
+            {cloudPhase === 'has-existing' && (
+              <Alert
+                severity="success"
+                sx={{
+                  bgcolor: 'rgba(16,185,129,0.10)',
+                  border: '1px solid rgba(16,185,129,0.32)',
+                  color: '#fff5e8',
+                  '& .MuiAlert-icon': { color: '#10b981' },
+                }}
+                action={
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      onClick={() => setCloudPhase('pick')}
+                      sx={{ color: '#10b981', textTransform: 'none', fontWeight: 700 }}
+                    >
+                      Ja, legg til
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => setStep((s) => s + 1)}
+                      sx={{ color: 'rgba(246,242,234,0.72)', textTransform: 'none' }}
+                    >
+                      Nei takk, fortsett
+                    </Button>
+                  </Stack>
+                }
+              >
+                Du har allerede koblet{' '}
+                <strong>{existingProvider === 'drive' ? 'Google Drive' : 'Backblaze'}</strong>.
+                Vil du legge til den andre løsningen også?
+              </Alert>
+            )}
+
+            {/* ───── Skjermbilde 1: Hovedspørsmål ───── */}
+            {cloudPhase === 'pick' && (
+              <>
+                <Box sx={{ textAlign: 'center', pt: 1 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 800, fontFamily: '"Space Grotesk", sans-serif', mb: 1 }}>
+                    Vil du ha sikkerhetskopi av bildene dine?
+                  </Typography>
+                  <Typography variant="body1" sx={{ color: 'rgba(246,242,234,0.78)', maxWidth: 540, mx: 'auto' }}>
+                    Vi anbefaler det. Da har du alltid en ekstra kopi som er din egen.
+                  </Typography>
+                </Box>
+
+                {driveOauthError && (
+                  <Alert
+                    severity="error"
+                    onClose={() => { setDriveOauthError(null); setDriveErrorDetail(null); setDriveErrorShowDetail(false); }}
+                  >
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {driveOauthError}
+                    </Typography>
+                    {driveErrorDetail && (
+                      <>
+                        <Link
+                          component="button"
+                          onClick={() => setDriveErrorShowDetail((v) => !v)}
+                          sx={{ display: 'block', mt: 0.5, fontSize: '0.75rem', color: 'inherit' }}
+                        >
+                          {driveErrorShowDetail ? 'Skjul tekniske detaljer' : 'Tekniske detaljer'}
+                        </Link>
+                        {driveErrorShowDetail && (
+                          <Typography
+                            variant="caption"
+                            component="pre"
+                            sx={{
+                              display: 'block', mt: 0.5, p: 1, borderRadius: 1,
+                              bgcolor: 'rgba(0,0,0,0.25)', whiteSpace: 'pre-wrap',
+                              fontFamily: 'ui-monospace, monospace',
+                            }}
+                          >
+                            {driveErrorDetail}
+                          </Typography>
+                        )}
+                      </>
+                    )}
+                  </Alert>
+                )}
+
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 2 }}>
+                  {/* Anbefalt: Google Drive */}
+                  <Card
+                    onClick={handleConnectDrive}
+                    sx={{
+                      position: 'relative',
+                      p: 3, cursor: 'pointer',
+                      bgcolor: alpha(DRIVE_ACCENT, 0.10),
+                      border: `2px solid ${DRIVE_ACCENT}`,
+                      borderRadius: 3, boxShadow: `0 12px 32px ${alpha(DRIVE_ACCENT, 0.18)}`,
+                      transition: 'all 0.2s',
+                      minHeight: 220,
+                      display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                      '&:hover': { transform: 'translateY(-3px)', boxShadow: `0 16px 40px ${alpha(DRIVE_ACCENT, 0.28)}` },
+                    }}
+                  >
+                    <Chip
+                      label="Anbefalt"
+                      size="small"
+                      sx={{
+                        position: 'absolute', top: 12, right: 12,
+                        bgcolor: 'var(--chl-accent, #ffba6c)', color: '#150d05',
+                        fontWeight: 800, fontSize: '0.66rem',
+                      }}
+                    />
+                    <Stack spacing={1.5} alignItems="center" textAlign="center">
+                      <Avatar sx={{ bgcolor: alpha(DRIVE_ACCENT, 0.18), color: DRIVE_ACCENT, width: 72, height: 72 }}>
+                        <CloudIcon sx={{ fontSize: 40 }} />
+                      </Avatar>
+                      <Typography variant="h6" sx={{ fontWeight: 800, color: '#fff5e8' }}>
+                        Ja, bruk Google Drive
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: 'rgba(246,242,234,0.78)' }}>
+                        Enkel oppstart med Google-kontoen din
+                      </Typography>
+                    </Stack>
+                  </Card>
+
+                  {/* Backblaze B2 */}
+                  <Card
+                    onClick={() => setCloudPhase('configure-b2')}
+                    sx={{
+                      p: 3, cursor: 'pointer',
+                      bgcolor: 'rgba(255,255,255,0.04)',
+                      border: '2px solid rgba(255,255,255,0.12)',
+                      borderRadius: 3, boxShadow: 'none',
+                      transition: 'all 0.2s',
+                      minHeight: 220,
+                      display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                      '&:hover': { transform: 'translateY(-3px)', borderColor: 'var(--chl-accent, #ffba6c)' },
+                    }}
+                  >
+                    <Stack spacing={1.5} alignItems="center" textAlign="center">
+                      <Avatar sx={{ bgcolor: 'rgba(255,186,108,0.18)', color: 'var(--chl-accent, #ffba6c)', width: 72, height: 72 }}>
+                        <StorageIcon sx={{ fontSize: 40 }} />
+                      </Avatar>
+                      <Typography variant="h6" sx={{ fontWeight: 800, color: '#fff5e8' }}>
+                        Ja, bruk Backblaze B2
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: 'rgba(246,242,234,0.78)' }}>
+                        For deg som allerede har konto
+                      </Typography>
+                    </Stack>
+                  </Card>
+                </Box>
+
+                <Box sx={{ textAlign: 'center' }}>
+                  <Button
+                    onClick={() => setStep((s) => s + 1)}
+                    sx={{
+                      color: 'rgba(246,242,234,0.6)', textTransform: 'none',
+                      fontSize: '0.875rem', '&:hover': { color: '#fff5e8', bgcolor: 'transparent' },
+                    }}
+                  >
+                    Nei takk, jeg gjør dette senere
+                  </Button>
+                </Box>
+              </>
+            )}
+
+            {/* ───── Skjermbilde 2A: Drive — loading med popup ───── */}
+            {cloudPhase === 'connecting' && (
+              <Box sx={{ textAlign: 'center', py: 6 }}>
+                <CircularProgress sx={{ color: DRIVE_ACCENT, mb: 3 }} size={56} />
+                <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
+                  Logger deg inn med Google…
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(246,242,234,0.72)', maxWidth: 420, mx: 'auto' }}>
+                  Fullfør innloggingen i popup-vinduet. Vi venter her.
+                </Typography>
+                <Button
+                  onClick={() => {
+                    stopDrivePolling();
+                    try { drivePopupRef.current?.close(); } catch { /* noop */ }
+                    setCloudPhase('pick');
+                  }}
+                  sx={{ mt: 3, color: 'rgba(246,242,234,0.62)', textTransform: 'none' }}
+                >
+                  Avbryt
+                </Button>
+              </Box>
+            )}
+
+            {/* ───── Skjermbilde 3A: Drive success ───── */}
+            {cloudPhase === 'drive-success' && (
+              <Stack spacing={3}>
+                <Box sx={{ textAlign: 'center', pt: 1 }}>
+                  <DoneIcon sx={{ fontSize: 72, color: '#10b981', mb: 1 }} />
+                  <Typography variant="h4" sx={{ fontWeight: 800, fontFamily: '"Space Grotesk", sans-serif', mb: 1 }}>
+                    Klart!
+                  </Typography>
+                  <Typography variant="body1" sx={{ color: 'rgba(246,242,234,0.85)', maxWidth: 520, mx: 'auto' }}>
+                    Vi har koblet til{' '}
+                    <strong style={{ color: DRIVE_ACCENT }}>
+                      {driveAccountEmail || 'Google-kontoen din'}
+                    </strong>{' '}
+                    og laget{' '}
+                    <strong>{driveFoldersCreated.length || 'flere'}</strong>{' '}
+                    {driveFoldersCreated.length === 1 ? 'mappe' : 'mapper'} for deg i Google Drive.
+                  </Typography>
+                </Box>
+
+                {driveFoldersCreated.length > 0 && (
+                  <Box
+                    sx={{
+                      p: 2.5, borderRadius: 2,
+                      bgcolor: 'rgba(16,185,129,0.08)',
+                      border: '1px solid rgba(16,185,129,0.28)',
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ color: '#10b981', fontWeight: 700, letterSpacing: '0.08em', mb: 1, display: 'block' }}>
+                      OPPRETTEDE MAPPER
+                    </Typography>
+                    <Stack spacing={0.5}>
+                      {driveFoldersCreated.map((folder) => (
+                        <Stack key={folder} direction="row" spacing={1} alignItems="center">
+                          <DoneIcon sx={{ fontSize: 16, color: '#10b981' }} />
+                          <Typography variant="body2" sx={{ color: '#fff5e8' }}>{folder}</Typography>
+                        </Stack>
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="center">
+                  {driveRootFolderId && (
+                    <Button
+                      variant="outlined"
+                      component="a"
+                      href={`https://drive.google.com/drive/folders/${driveRootFolderId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      startIcon={<OpenInNewIcon />}
+                      sx={{
+                        borderRadius: '999px', px: 3, py: 1.1, textTransform: 'none', fontWeight: 700,
+                        borderColor: DRIVE_ACCENT, color: '#fff5e8',
+                        '&:hover': { borderColor: DRIVE_ACCENT, bgcolor: alpha(DRIVE_ACCENT, 0.10) },
+                      }}
+                    >
+                      Åpne i Google Drive
+                    </Button>
+                  )}
+                  <Button
+                    variant="contained"
+                    endIcon={<NextIcon />}
+                    onClick={() => setStep((s) => s + 1)}
+                    sx={{
+                      borderRadius: '999px', px: 3, py: 1.1, textTransform: 'none', fontWeight: 700,
+                      bgcolor: '#10b981', color: '#fff',
+                      '&:hover': { bgcolor: '#059669' },
+                    }}
+                  >
+                    Fortsett til neste steg
+                  </Button>
+                </Stack>
+              </Stack>
+            )}
+
+            {/* ───── Skjermbilde 2B: Backblaze-form ───── */}
+            {cloudPhase === 'configure-b2' && (
+              <>
+                <Stack direction="row" alignItems="center" spacing={1.5}>
+                  <Avatar sx={{ bgcolor: alpha(brandColor, 0.18), color: brandColor, width: 40, height: 40 }}>
+                    <StorageIcon />
+                  </Avatar>
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                      Sett opp Backblaze B2
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.72)' }}>
+                      Fyll inn nøklene fra Backblaze-kontoen din
+                    </Typography>
+                  </Box>
+                </Stack>
+
+                <Link
+                  component="button"
+                  onClick={() => {
+                    window.open(
+                      'https://www.backblaze.com/docs/cloud-storage-create-and-manage-application-keys',
+                      '_blank',
+                      'noopener,noreferrer',
+                    );
+                  }}
+                  sx={{
+                    display: 'inline-flex', alignItems: 'center', gap: 0.5,
+                    color: brandColor, textDecorationColor: alpha(brandColor, 0.5),
+                    fontWeight: 600, fontSize: '0.875rem', alignSelf: 'flex-start',
+                  }}
+                >
+                  Hvordan finner jeg disse?
+                  <OpenInNewIcon sx={{ fontSize: 14 }} />
+                </Link>
+
+                <Stack spacing={2}>
+                  <TextField
+                    label="Key ID"
+                    fullWidth
+                    value={b2KeyId}
+                    onChange={(e) => setB2KeyId(e.target.value)}
+                    placeholder="K001abc…"
+                    disabled={b2Saving}
+                    InputProps={{ startAdornment: <StorageIcon sx={{ mr: 1, color: 'rgba(246,242,234,0.5)' }} /> }}
+                  />
+                  <TextField
+                    label="Application Key"
+                    type="password"
+                    fullWidth
+                    value={b2AppKey}
+                    onChange={(e) => setB2AppKey(e.target.value)}
+                    placeholder="K001…"
+                    disabled={b2Saving}
+                    autoComplete="new-password"
+                  />
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                    <TextField
+                      label="Bucket-navn"
+                      fullWidth
+                      value={b2BucketName}
+                      onChange={(e) => setB2BucketName(e.target.value)}
+                      placeholder="creatorhub-mine-originaler"
+                      disabled={b2Saving}
+                    />
+                    <TextField
+                      label="Region"
+                      select
+                      fullWidth
+                      SelectProps={{ native: true }}
+                      value={b2Region}
+                      onChange={(e) => setB2Region(e.target.value)}
+                      disabled={b2Saving}
+                      sx={{ maxWidth: { sm: 240 } }}
+                    >
+                      {B2_REGION_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value} style={{ background: '#0a0807', color: '#fff5e8' }}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </TextField>
+                  </Stack>
+                </Stack>
+
+                {/* Status-feedback */}
+                {b2Status.kind === 'saved' && (
+                  <Box sx={{
+                    p: 2, borderRadius: 2,
+                    bgcolor: b2Status.isVerified ? 'rgba(16,185,129,0.10)' : 'rgba(255,186,108,0.10)',
+                    border: `1px solid ${b2Status.isVerified ? 'rgba(16,185,129,0.32)' : 'rgba(255,186,108,0.32)'}`,
+                  }}>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      {b2Status.isVerified
+                        ? <VerifiedIcon sx={{ color: '#10b981' }} />
+                        : <ErrorIcon sx={{ color: 'var(--chl-accent, #ffba6c)' }} />}
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {b2Status.isVerified
+                          ? 'Lagret og verifisert mot bucket'
+                          : 'Lagret, men test mot bucket feilet'}
+                      </Typography>
+                    </Stack>
+                    {!b2Status.isVerified && b2Status.verifyError && (
+                      <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'rgba(246,242,234,0.72)' }}>
+                        {b2Status.verifyError}
+                      </Typography>
+                    )}
+                  </Box>
+                )}
+                {b2Status.kind === 'error' && (
+                  <Alert severity="error" onClose={() => setB2Status({ kind: 'idle' })}>
+                    {b2Status.message}
+                  </Alert>
+                )}
+
+                <Stack direction="row" spacing={1.5} justifyContent="space-between" alignItems="center">
+                  <Button
+                    onClick={() => setCloudPhase('pick')}
+                    startIcon={<BackIcon />}
+                    sx={{ color: 'rgba(246,242,234,0.72)', textTransform: 'none' }}
+                  >
+                    Tilbake
+                  </Button>
+                  <Stack direction="row" spacing={1.5}>
+                    <Button
+                      variant="outlined"
+                      onClick={handleB2Verify}
+                      disabled={b2Testing || b2Status.kind !== 'saved'}
+                      startIcon={<VerifiedIcon />}
+                      sx={{
+                        borderRadius: '999px', px: 2.5, textTransform: 'none',
+                        borderColor: alpha(brandColor, 0.4), color: '#fff5e8',
+                        '&:hover': { borderColor: brandColor, bgcolor: alpha(brandColor, 0.08) },
+                      }}
+                    >
+                      {b2Testing ? 'Tester…' : 'Test forbindelse'}
+                    </Button>
+                    <Button
+                      variant="contained"
+                      onClick={handleB2Save}
+                      disabled={!b2CanSave || b2Saving}
+                      sx={{
+                        borderRadius: '999px', px: 2.5, textTransform: 'none', fontWeight: 700,
+                        bgcolor: brandColor, color: '#150d05',
+                        '&:hover': { bgcolor: alpha(brandColor, 0.88) },
+                      }}
+                    >
+                      {b2Saving ? 'Lagrer…' : 'Lagre'}
+                    </Button>
+                  </Stack>
+                </Stack>
+              </>
+            )}
+          </Stack>
+        )}
+
+        {/* STEG 7: Profil — oversiktlig profil (avatar + identitet) */}
+        {step === 6 && (
+          <Stack spacing={3}>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>Profilen din</Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.72)' }}>
+                Legg til et bilde så team og kunder kjenner deg igjen. Alt kan endres senere under «Min profil».
+              </Typography>
+            </Box>
+
+            {/* Profilkort */}
+            <Card sx={{
+              p: 3,
+              background: `linear-gradient(135deg, ${alpha(brandColor, 0.12)}, rgba(15,10,7,0.86))`,
+              border: `1px solid ${alpha(brandColor, 0.32)}`,
+              borderRadius: 3, boxShadow: 'none',
+            }}>
+              <Stack direction="row" spacing={2.5} alignItems="center">
+                <Box sx={{ position: 'relative' }}>
+                  <Avatar src={avatarDataUrl || undefined} sx={{ width: 84, height: 84, bgcolor: alpha(brandColor, 0.18), color: brandColor, fontSize: 32, fontWeight: 800 }}>
+                    {(firstName || '?').charAt(0).toUpperCase()}
+                  </Avatar>
+                  <IconButton onClick={() => avatarInputRef.current?.click()} size="small"
+                    sx={{ position: 'absolute', bottom: -4, right: -4, bgcolor: brandColor, color: '#150d05', '&:hover': { bgcolor: alpha(brandColor, 0.85) } }}>
+                    <CameraIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                  <input ref={avatarInputRef} type="file" accept="image/*" hidden
+                    onChange={(e) => { handleAvatarPick(e.target.files?.[0]); e.target.value = ''; }} />
+                </Box>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: '#fff5e8' }}>{firstName || 'Ditt navn'}</Typography>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                    <Chip icon={activeProfession.icon} label={activeProfession.label} size="small"
+                      sx={{ bgcolor: alpha(activeProfession.color, 0.18), color: activeProfession.color, fontWeight: 700, '& .MuiChip-icon': { color: activeProfession.color } }} />
+                    <Box sx={{ width: 16, height: 16, borderRadius: '50%', bgcolor: brandColor, border: '1px solid rgba(255,255,255,0.2)' }} />
+                  </Stack>
+                  {businessName && <Typography variant="body2" sx={{ color: 'rgba(246,242,234,0.72)', mt: 0.75 }}>{businessName}</Typography>}
+                </Box>
+              </Stack>
+            </Card>
+
+            {/* Fullføringsgrad */}
+            {(() => {
+              const items: Array<[string, boolean]> = [
+                ['Profilbilde', !!avatarDataUrl], ['Navn', !!firstName.trim()],
+                ['Profesjon', !!profession], ['Firmanavn', !!businessName.trim()],
+              ];
+              const done = items.filter(([, ok]) => ok).length;
+              return (
+                <Box sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: brandColor, letterSpacing: '0.08em' }}>
+                    PROFIL {done}/4 KOMPLETT
+                  </Typography>
+                  <Stack direction="row" spacing={0.75} sx={{ my: 1 }}>
+                    {items.map(([label, ok]) => <Box key={label} sx={{ flex: 1, height: 5, borderRadius: 3, bgcolor: ok ? '#10b981' : 'rgba(255,255,255,0.12)' }} />)}
+                  </Stack>
+                  <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+                    {items.map(([label, ok]) => (
+                      <Stack key={label} direction="row" spacing={0.5} alignItems="center">
+                        {ok ? <DoneIcon sx={{ fontSize: 14, color: '#10b981' }} /> : <ErrorIcon sx={{ fontSize: 14, color: 'rgba(246,242,234,0.4)' }} />}
+                        <Typography variant="caption" sx={{ color: ok ? '#fff5e8' : 'rgba(246,242,234,0.5)' }}>{label}</Typography>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Box>
+              );
+            })()}
+          </Stack>
+        )}
+
+        {/* STEG 8: Ferdig */}
+        {step === 7 && (
           <Stack spacing={3}>
             <Box sx={{ textAlign: 'center', py: 2 }}>
               <DoneIcon sx={{ fontSize: 72, color: '#10b981', mb: 1 }} />
@@ -540,9 +1355,32 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
               <Typography variant="body1" sx={{ color: 'rgba(246,242,234,0.72)', mt: 1, maxWidth: 500, mx: 'auto' }}>
                 CreatorHub er nå satt opp som <strong>{activeProfession.label.toLowerCase()}</strong>
                 {businessName && <> for <strong>{businessName}</strong></>}.
-                Du blir tatt til dashboardet ditt.
+                Velg hvordan du vil starte.
               </Typography>
             </Box>
+
+            {/* Bro inn i workspace — prøv demoen uten å opprette noe */}
+            <Card
+              onClick={async () => { const ok = await handleFinish(); if (ok) { try { window.location.assign('/workspace/sample'); } catch { /* noop */ } } }}
+              sx={{
+                p: 2.5, cursor: 'pointer',
+                background: `linear-gradient(135deg, ${alpha(brandColor, 0.14)}, rgba(15,10,7,0.86))`,
+                border: `2px solid ${brandColor}`, borderRadius: 3, boxShadow: 'none',
+                transition: 'all 0.2s', '&:hover': { transform: 'translateY(-2px)' },
+              }}>
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <Avatar sx={{ bgcolor: alpha(brandColor, 0.18), color: brandColor, width: 48, height: 48 }}>
+                  <LayersIcon />
+                </Avatar>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="body1" sx={{ fontWeight: 800, color: '#fff5e8' }}>Utforsk workspace (demo)</Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.72)' }}>
+                    Se hvordan prosjekt-workspacet fungerer — trygt, ingenting lagres.
+                  </Typography>
+                </Box>
+                <ChevronRightIcon sx={{ color: brandColor }} />
+              </Stack>
+            </Card>
 
             <Box sx={{
               p: 2.5, borderRadius: 2,
@@ -550,14 +1388,14 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
               border: '1px solid rgba(16,185,129,0.32)',
             }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#10b981', mb: 1 }}>
-                Hva du kan gjøre nå:
+                Eller gå til dashboardet og:
               </Typography>
               <Stack spacing={0.75}>
                 {[
-                  'Opprette ditt første prosjekt',
-                  'Legge til klient og sende første tilbud',
-                  'Utforske marketplace for verktøy som passer deg',
-                  'Invitere team-medlemmer hvis du vokser',
+                  'Opprett ditt første prosjekt',
+                  'Legg til klient og send første tilbud',
+                  'Utforsk marketplace for verktøy som passer deg',
+                  'Inviter team-medlemmer hvis du vokser',
                 ].map((text) => (
                   <Stack key={text} direction="row" spacing={1} alignItems="center">
                     <DoneIcon sx={{ fontSize: 16, color: '#10b981' }} />
@@ -621,7 +1459,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
             endIcon={<DoneIcon />}
             variant="contained"
             disabled={saving}
-            onClick={handleFinish}
+            onClick={async () => { const ok = await handleFinish(); if (ok) { try { window.location.assign('/workspace'); } catch { /* noop */ } } }}
             sx={{
               borderRadius: '999px', px: 3, py: 1.1,
               fontWeight: 700, textTransform: 'none',
@@ -629,7 +1467,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
               '&:hover': { bgcolor: '#059669' },
             }}
           >
-            {saving ? 'Lagrer…' : 'Ta meg til dashboardet'}
+            {saving ? 'Lagrer…' : 'Ta meg til workspace'}
           </Button>
         )}
       </DialogActions>

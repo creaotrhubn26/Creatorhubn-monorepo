@@ -1,0 +1,144 @@
+name: Leadgrid post-deploy smoke-test
+
+# The canonical production workflow calls this only after the exact backend
+# commit is healthy, and gates live/creatorhub promotion on its result. Manual
+# runs are read-only; the mutating daily rescore requires an explicit opt-in.
+
+on:
+  workflow_call:
+    inputs:
+      expected_commit:
+        description: "Full production commit SHA to verify"
+        required: true
+        type: string
+      run_daily_rescore:
+        description: "Invoke the production daily-rescore canary"
+        required: false
+        default: false
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: "Full production commit SHA to verify"
+        required: true
+        type: string
+      run_daily_rescore:
+        description: "Also invoke the mutating production daily-rescore canary"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  smoketest:
+    name: Verify Leadgrid on the exact backend release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+    steps:
+      - name: Validate diagnostic target
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::expected_commit must be a full lowercase 40-character Git SHA"
+            exit 1
+          fi
+
+      - name: Verify exact backend release
+        shell: bash
+        run: |
+          set -euo pipefail
+          backend_base="${BACKEND_URL%/}"
+          deployed=""
+          for attempt in $(seq 1 12); do
+            if ! version_json=$(curl -fsS --connect-timeout 3 --max-time 10 \
+              "$backend_base/api/version"); then
+              version_json='{}'
+            fi
+            deployed=$(jq -r '.commit // ""' <<<"$version_json")
+            echo "attempt=${attempt} backend=${deployed:0:8} expected=${EXPECTED_COMMIT:0:8}"
+            if [ "$deployed" = "$EXPECTED_COMMIT" ]; then
+              echo "Backend runs the exact deployed release."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Backend release mismatch: backend=${deployed:0:8} expected=${EXPECTED_COMMIT:0:8}"
+          exit 1
+
+      - name: Verify protected Leadgrid endpoints reject anonymous access
+        shell: bash
+        run: |
+          set -euo pipefail
+          backend_base="${BACKEND_URL%/}"
+          failed=0
+          for path in \
+            "/api/leadgrid/intelligence/follow-up-queue" \
+            "/api/leadgrid/intelligence/recommendations" \
+            "/api/leadgrid/intelligence/weights" \
+            "/api/leadgrid/analytics/overview" \
+            "/api/leadgrid/analytics/channels" \
+            "/api/leadgrid/analytics/sources" \
+            "/api/leadgrid/analytics/segments?by=category" \
+            "/api/leadgrid/analytics/territories" \
+            "/api/leadgrid/analytics/velocity-history" \
+            "/api/leadgrid/analytics/conversion-funnel" \
+            "/api/leadgrid/territories" \
+            "/api/leadgrid/leads/00000000-0000-0000-0000-000000000000/full-intelligence" \
+            "/api/leadgrid/leads/00000000-0000-0000-0000-000000000000/meeting-notes"; do
+            if ! code=$(curl -sS -o /dev/null -w "%{http_code}" \
+              --connect-timeout 3 --max-time 15 "$backend_base$path"); then
+              code="000"
+            fi
+            if [ "$code" != "401" ]; then
+              echo "::error::$path returned $code (expected exact anonymous rejection 401)"
+              failed=$((failed + 1))
+            else
+              echo "OK $code  $path"
+            fi
+          done
+          if [ "$failed" -gt 0 ]; then
+            exit 1
+          fi
+
+  daily_rescore:
+    name: Run the explicitly requested daily-rescore canary
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_daily_rescore }}
+    needs: smoketest
+    environment: Production
+    concurrency:
+      group: leadgrid-production-daily-rescore
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+    steps:
+      - name: Trigger daily rescore and verify candidate accounting
+        env:
+          CRON_TOKEN: ${{ secrets.LEADGRID_INTELLIGENCE_CRON_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$CRON_TOKEN" ]; then
+            echo "::error::LEADGRID_INTELLIGENCE_CRON_TOKEN is not configured"
+            exit 1
+          fi
+          response=$(curl -fsS --connect-timeout 3 --max-time 120 -X POST \
+            "$BACKEND_URL/api/leadgrid/intelligence/cron/daily-rescore" \
+            -H "x-cron-trigger-token: $CRON_TOKEN")
+          IFS=$'\t' read -r ok processed failed skipped total < <(
+            jq -er '[.ok, (.processed // -1), (.failed // -1), (.skipped_no_organization // -1), (.total_candidates // -1)] | @tsv' \
+              <<<"$response"
+          )
+          echo "daily-rescore: processed=$processed failed=$failed skipped=$skipped total=$total"
+          if [ "$ok" != "true" ] || [ "$failed" != "0" ] || \
+             [ "$skipped" != "0" ] || [ "$processed" != "$total" ]; then
+            echo "::error::Daily rescore did not account for every candidate"
+            exit 1
+          fi

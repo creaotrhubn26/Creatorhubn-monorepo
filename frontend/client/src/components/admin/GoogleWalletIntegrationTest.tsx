@@ -9,14 +9,15 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   Divider,
   List,
   ListItem,
   ListItemText,
   Paper,
   Typography,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import Grid from '@mui/material/Grid2';
 import {
   Business,
@@ -31,6 +32,7 @@ import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions'
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
+import { StatusChip } from './design-system';
 
 type TestStatus = 'PASS' | 'FAIL';
 
@@ -260,6 +262,7 @@ const GoogleWalletIntegrationTest: React.FC = () => {
   }, [componentRegistry, dataFlow]);
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       <Typography
         variant="h5"
@@ -315,10 +318,9 @@ const GoogleWalletIntegrationTest: React.FC = () => {
                 primary={result.key}
                 secondary={result.detail}
               />
-              <Chip
+              <StatusChip
                 label={result.status}
-                size="small"
-                color={result.status === 'PASS' ? 'success' : 'error'}
+                tone={result.status === 'PASS' ? 'success' : 'error'}
               />
             </ListItem>
           ))}
@@ -365,7 +367,7 @@ const GoogleWalletIntegrationTest: React.FC = () => {
               <Typography variant="body2" color="text.secondary">
                 Membership cards, loyalty programs and digital passes.
               </Typography>
-              <Chip label="Active" color="success" size="small" sx={{ mt: 1 }} />
+              <StatusChip label="Active" tone="success" sx={{ mt: 1 }} />
             </CardContent>
           </Card>
         </Grid>
@@ -379,7 +381,7 @@ const GoogleWalletIntegrationTest: React.FC = () => {
               <Typography variant="body2" color="text.secondary">
                 Professional organizations and business memberships.
               </Typography>
-              <Chip label="Active" color="success" size="small" sx={{ mt: 1 }} />
+              <StatusChip label="Active" tone="success" sx={{ mt: 1 }} />
             </CardContent>
           </Card>
         </Grid>
@@ -393,7 +395,7 @@ const GoogleWalletIntegrationTest: React.FC = () => {
               <Typography variant="body2" color="text.secondary">
                 Professional photographer and videographer memberships.
               </Typography>
-              <Chip label="Active" color="success" size="small" sx={{ mt: 1 }} />
+              <StatusChip label="Active" tone="success" sx={{ mt: 1 }} />
             </CardContent>
           </Card>
         </Grid>
@@ -407,7 +409,7 @@ const GoogleWalletIntegrationTest: React.FC = () => {
               <Typography variant="body2" color="text.secondary">
                 Student memberships and educational programs.
               </Typography>
-              <Chip label="Active" color="success" size="small" sx={{ mt: 1 }} />
+              <StatusChip label="Active" tone="success" sx={{ mt: 1 }} />
             </CardContent>
           </Card>
         </Grid>
@@ -422,6 +424,7 @@ const GoogleWalletIntegrationTest: React.FC = () => {
         </pre>
       </Paper>
     </Box>
+    </ThemeProvider>
   );
 };
 

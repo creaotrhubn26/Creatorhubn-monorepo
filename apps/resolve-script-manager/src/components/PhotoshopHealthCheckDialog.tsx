@@ -26,7 +26,7 @@ import { loadSettings } from "./SettingsModal";
 import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
 import CheckCircleOutlinedIcon from "@mui/icons-material/CheckCircleOutlined";
-import ErrorOutlineIcon from "@mui/icons-material/ErrorOutlineOutlined";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutlineRounded";
 import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
 import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -154,11 +154,19 @@ const CHECKS: CheckDef[] = [
     description: "Backend kan parse .psd-filer uten Photoshop",
     run: async () => {
       const home = (await invoke<string>("get_app_data_dir").catch(() => "/tmp")) || "/tmp";
-      const r = await indexDirectory(home, 1).catch(() => []);
-      return {
-        state: "ok",
-        message: `Indekserte ${r.length} PSD i app data dir (test-skanning)`,
-      };
+      try {
+        const r = await indexDirectory(home, 1);
+        return {
+          state: "ok",
+          message: `Indekserte ${r.length} PSD i app data dir (test-skanning)`,
+        };
+      } catch (err) {
+        return {
+          state: "fail",
+          message: `PSD-indekserer feilet: ${(err as Error).message ?? String(err)}`,
+          fix: "Sjekk at Rust-backend er bygget og at .psd-parseren er tilgjengelig",
+        };
+      }
     },
   },
   {
@@ -174,7 +182,7 @@ const CHECKS: CheckDef[] = [
           message: "Ikke innlogget i Role Room",
           fix: "Logg inn via tannhjul → Settings → Sign in",
         };
-      const base = (s.RR_POST_AGENT_BASE_URL || "https://creatorhubn.com/api/post-agent").replace(/\/$/, "");
+      const base = (s.RR_POST_AGENT_BASE_URL || "https://www.creatorhubn.com/api/post-agent").replace(/\/$/, "");
       const res = await fetch(`${base}/me`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) {
         return {

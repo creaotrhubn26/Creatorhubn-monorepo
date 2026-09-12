@@ -1,0 +1,15 @@
+-- 0325_full_partner_verification_system.sql
+--
+-- Full partner verification system:
+-- - 14 statuses (draft → submitted → ... → expired)
+-- - 8 partner-types (listed/certified/integration/verified_integration/
+--                    strategic/agency/data/implementation) + back-compat
+-- - 5 tier-system (listed→certified→integration→verified_integration→strategic)
+-- - Risk scores (business_fit/technical/security/gdpr/customer + risk_level)
+-- - 30+ nye felt på partner_applications (GDPR, sikkerhet, multi-step)
+-- - 5 nye tabeller: partner_application_documents, partner_environments,
+--   partner_application_history, partner_re_verifications, partner_admin_alerts
+-- - partner_api_keys.environment (sandbox/limited_production/...)
+-- - partner_webhook_endpoints.auto_test_passed_at + auto_test_last_status
+--
+-- Body kjørt via direkte psql; denne filen er for sporbarhet.

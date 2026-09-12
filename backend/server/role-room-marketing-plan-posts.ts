@@ -502,6 +502,38 @@ export async function acceptPlanPostIntoFeedPlanner(
   };
 }
 
+/** Gyldige primær-plattformer for en marketing-plan-post. */
+export const VALID_PLAN_POST_PLATFORMS = new Set([
+  'instagram', 'tiktok', 'linkedin', 'youtube', 'facebook',
+]);
+
+/**
+ * Bulk-oppdater primary_platform for et utvalg poster. Scopes til prosjektet
+ * (via plan-join) så en post i et annet prosjekt aldri kan endres. Returnerer
+ * antall rader som faktisk ble oppdatert. (Creative Sync-audit #5 — UI-knappen
+ * fantes men backend-endepunktet manglet.)
+ */
+export async function bulkUpdatePlanPostsPlatform(
+  pool: Pool,
+  input: { projectId: string; postIds: string[]; primaryPlatform: string },
+): Promise<number> {
+  const { projectId, postIds, primaryPlatform } = input;
+  if (!projectId || postIds.length === 0) return 0;
+  if (!VALID_PLAN_POST_PLATFORMS.has(primaryPlatform)) {
+    throw new Error(`Ugyldig plattform: ${primaryPlatform}`);
+  }
+  const result = await pool.query(
+    `UPDATE role_room_marketing_plan_posts p
+        SET primary_platform = $1, updated_at = now()
+       FROM role_room_marketing_plans mp
+      WHERE p.plan_id = mp.id
+        AND mp.project_id = $2
+        AND p.id = ANY($3::uuid[])`,
+    [primaryPlatform, projectId, postIds],
+  );
+  return result.rowCount ?? 0;
+}
+
 export async function listPlanPosts(
   pool: Pool,
   planId: string,

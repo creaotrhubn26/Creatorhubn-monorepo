@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "The Role Room Post Agent",
-  "version": "0.2.5",
+  "version": "0.3.97",
   "identifier": "no.creatorhubn.roleroom-post-agent",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:5001",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
@@ -15,14 +15,16 @@
         "title": "The Role Room Post Agent",
         "width": 1560,
         "height": 980,
-        "minWidth": 1200,
-        "minHeight": 800,
+        "minWidth": 1040,
+        "minHeight": 680,
         "resizable": true,
+        "center": true,
         "fullscreen": false
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self' asset: http://asset.localhost; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' asset: http://asset.localhost blob: data: https:; media-src 'self' asset: http://asset.localhost blob: data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ipc: http://ipc.localhost https:; frame-src 'self' https: data: blob:; child-src 'self' https: data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'",
+      "dangerousDisableAssetCspModification": ["script-src", "style-src"],
       "assetProtocol": {
         "enable": true,
         "scope": ["**"]
@@ -33,13 +35,15 @@
     "active": true,
     "targets": "all",
     "category": "Productivity",
-    "macOS": {
-      "signingIdentity": "Developer ID Application: Creatorhub AS (9TAUZCPK95)"
-    },
     "shortDescription": "DaVinci Resolve pipeline automation for videographers",
     "longDescription": "Run the full post-production pipeline — import, organize, timeline-build, sync, rough cut, render queue, backup — as scripted DaVinci Resolve actions with dry-run safety and live logs.",
-    "resources": ["../python/**/*"],
+    "resources": ["../python/**/*", "../scripts/blender/**/*"],
     "createUpdaterArtifacts": "v1Compatible",
+    "macOS": {
+      "signingIdentity": "Developer ID Application: Creatorhub AS (9TAUZCPK95)",
+      "entitlements": "entitlements.plist",
+      "minimumSystemVersion": "13.0"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -51,6 +55,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
+        "https://creatorhubn.com/api/post-agent/update/{{target}}-{{arch}}",
         "https://github.com/creaotrhubn26/Creatorhubn-monorepo/releases/latest/download/post-agent-{{target}}-{{arch}}.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZEMDIyRDJEQzA1MDU0QUQKUldTdFZGREFMUzBDL2FmM0tQTGtOUFJ5bW05amJIUEtFajJJQVN2RWdDTVpBbGxNdXpHVUZmcnQK",

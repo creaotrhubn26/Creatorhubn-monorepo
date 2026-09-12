@@ -1,0 +1,6 @@
+# Lead Map iPad — App Store Connect-konfig.
+# Bundle-id må matche project.yml: com.creatorhubn.LeadMapApp.
+app_identifier("com.creatorhubn.LeadMapApp")
+apple_id(ENV["FASTLANE_USER"] || "")
+team_id(ENV["APP_STORE_TEAM_ID"] || "")
+itc_team_id(ENV["APP_STORE_CONNECT_TEAM_ID"] || "")

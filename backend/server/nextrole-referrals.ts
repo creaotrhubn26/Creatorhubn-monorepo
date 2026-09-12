@@ -102,29 +102,25 @@ export async function applyReferralRewardsOnCheckout(
   pool: Pool,
   redeemerUserId: string,
 ): Promise<{ applied: boolean; referrerUserId?: string }> {
-  const pending = await pool.query<{
+  // Atomisk «claim» av den ventende innløsningen: bare ÉN samtidig
+  // webhook-levering kan matche `reward_applied_redeemer_at IS NULL` og få
+  // RETURNING-raden — resten får rowCount 0 og hopper av. Stripe leverer
+  // checkout-eventer at-least-once, så uten dette ga to samtidige leveringer
+  // av samme event dobbel 30-dagers bonus til både inviter og redeemer.
+  const claimed = await pool.query<{
     id: string;
     referrer_user_id: string;
-    reward_applied_redeemer_at: Date | null;
   }>(
-    `SELECT id, referrer_user_id, reward_applied_redeemer_at
-       FROM nextrole_referrals
-      WHERE redeemed_by_user_id = $1
-        AND reward_applied_redeemer_at IS NULL
-      LIMIT 1`,
-    [redeemerUserId],
-  );
-  if (!pending.rowCount) return { applied: false };
-  const ref = pending.rows[0];
-
-  // Marker referral som eligible + applied for redeemer
-  await pool.query(
     `UPDATE nextrole_referrals
         SET reward_eligible_at = COALESCE(reward_eligible_at, NOW()),
             reward_applied_redeemer_at = NOW()
-      WHERE id = $1`,
-    [ref.id],
+      WHERE redeemed_by_user_id = $1
+        AND reward_applied_redeemer_at IS NULL
+      RETURNING id, referrer_user_id`,
+    [redeemerUserId],
   );
+  if (!claimed.rowCount) return { applied: false };
+  const ref = claimed.rows[0];
 
   // Skyv trial_ends_at og current_period_end 30 dager fram for redeemer.
   await pool.query(

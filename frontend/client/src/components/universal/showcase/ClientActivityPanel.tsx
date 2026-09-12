@@ -71,6 +71,8 @@ import {
   Star,
   PhotoCamera,
   Videocam,
+  MailOutline as MailOutlineIcon,
+  LocationOn as LocationOnIcon,
 } from '@mui/icons-material';
 
 interface ClientActivity {
@@ -603,7 +605,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
             (change.message ? `   Reason: "${change.message},"\n` : ', ') +
             `   Client: ${change.clientName}\n`
           ).join('\n') +
-          `\n💡 Next Steps: Discuss these changes in next client meeting and update all vendors accordingly.`,
+          `\n\nNeste steg: Discuss these changes in next client meeting and update all vendors accordingly.`,
         category: 'client_meeting',
         timeSpent: timelineChanges.length * 5, // 5 minutes per change reviewed
         nextSteps: `• Confirm all changes with client in next meeting\n` +
@@ -1086,14 +1088,17 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                               borderRadius: 2,
                               borderLeft: '3px solid #FF4081'
                             }}>
-                              <Typography variant="caption" sx={{ 
+                              <Typography variant="caption" sx={{
                                 color: 'rgba(255, 255, 255, 0.6)',
-                                display: 'block',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 0.5,
                                 mb: 0.5,
                                 fontSize: '0.7rem',
                                 fontWeight: 600
                               }}>
-                                💬 KLIENTMELDING
+                                <Comment sx={{ fontSize: 12 }} />
+                                KLIENTMELDING
                               </Typography>
                               <Typography variant="body2" sx={{ 
                                 color: 'rgba(255, 255, 255, 0.9)', 
@@ -1112,11 +1117,15 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                             pt: 1.5,
                             borderTop: '1px solid rgba(255, 255, 255, 0.1)'
                           }}>
-                            <Typography variant="caption" sx={{ 
+                            <Typography variant="caption" sx={{
                               color: 'rgba(255, 255, 255, 0.5)',
-                              fontSize: '0.7rem'
+                              fontSize: '0.7rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 0.5
                             }}>
-                              🕐 {formatTimestamp(activity.timestamp)}
+                              <AccessTime sx={{ fontSize: 12 }} />
+                              {formatTimestamp(activity.timestamp)}
                             </Typography>
                             <Button
                               size="small"
@@ -1355,7 +1364,8 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                             color: 'rgba(255, 255, 255, 0.6)',
                             mb: 1
                           }}>
-                            ✉️ {activity.clientEmail}
+                            <MailOutlineIcon sx={{ fontSize: 12, verticalAlign: 'middle', mr: 0.5 }} />
+                            {activity.clientEmail}
                           </Typography>
                         )}
                         {activity.message && (
@@ -1366,14 +1376,17 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                             borderRadius: 2,
                             borderLeft: '3px solid #FF9800'
                           }}>
-                            <Typography variant="caption" sx={{ 
+                            <Typography variant="caption" sx={{
                               color: 'rgba(255, 255, 255, 0.6)',
-                              display: 'block',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 0.5,
                               mb: 0.5,
                               fontSize: '0.7rem',
                               fontWeight: 600
                             }}>
-                              💬 MELDING
+                              <Comment sx={{ fontSize: 12 }} />
+                              MELDING
                             </Typography>
                             <Typography variant="body2" sx={{ 
                               color: 'rgba(255, 255, 255, 0.9)', 
@@ -1392,11 +1405,15 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                           pt: 1.5,
                           borderTop: '1px solid rgba(255, 255, 255, 0.1)'
                         }}>
-                          <Typography variant="caption" sx={{ 
+                          <Typography variant="caption" sx={{
                             color: 'rgba(255, 255, 255, 0.5)',
-                            fontSize: '0.7rem'
+                            fontSize: '0.7rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 0.5
                           }}>
-                            🕐 {formatTimestamp(activity.timestamp)}
+                            <AccessTime sx={{ fontSize: 12 }} />
+                            {formatTimestamp(activity.timestamp)}
                           </Typography>
                           {activity.submissionStatus === 'pending' && onCreateProjectFromSubmission && (
                             <Button
@@ -1550,7 +1567,8 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                             </Typography>
                             {activity.eventLocation && (
                               <Typography variant="caption" display="block" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                                📍 {activity.eventLocation}
+                                <LocationOnIcon sx={{ fontSize: 12, verticalAlign: 'middle', mr: 0.5 }} />
+                                {activity.eventLocation}
                               </Typography>
                             )}
                             {activity.message && (

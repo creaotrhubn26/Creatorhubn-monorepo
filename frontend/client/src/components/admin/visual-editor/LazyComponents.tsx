@@ -5,6 +5,9 @@
 
 import React, { Suspense, lazy } from 'react';
 import { Box, CircularProgress, Skeleton, Typography } from '@mui/material';
+// Alias: navnet `ErrorBoundary` er allerede opptatt lenger ned av en LAZY-lastet
+// ErrorBoundary-komponent, så den ekte klasse-boundaryen importeres aliaset.
+import RealErrorBoundary from '@/components/common/ErrorBoundary';
 
 type LazyProps = Record<string, unknown>;
 type LazyComponent = React.ComponentType<LazyProps>;
@@ -202,119 +205,132 @@ const PerformanceMonitor = safeLazy(
   'Performance Monitor',
 );
 
+// Suspense + error-boundary i ett: en krasj (React #426 / feilet chunk) i én
+// lazy-panel isoleres til feilkortet i stedet for å blanke hele visual-editoren.
+// CH-ARCH-003: den eneste rå <Suspense> i fila lever her, under boundaryen.
+const BoundedSuspense: React.FC<{
+  fallback: React.ReactNode;
+  name?: string;
+  children: React.ReactNode;
+}> = ({ fallback, name, children }) => (
+  <RealErrorBoundary componentName={`visual-editor-lazy${name ? `:${name}` : ''}`}>
+    <Suspense fallback={fallback}>{children}</Suspense>
+  </RealErrorBoundary>
+);
+
 // Lazy component wrappers
 export const LazyScrollStoriesDialog: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<LoadingFallback message="Loading Scroll Stories..." />}>
+  <BoundedSuspense fallback={<LoadingFallback message="Loading Scroll Stories..." />}>
     <ScrollStoriesDialog {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyAssetLibraryDialog: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<LoadingFallback message="Loading Asset Library..." />}>
+  <BoundedSuspense fallback={<LoadingFallback message="Loading Asset Library..." />}>
     <AssetLibraryDialog {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyQualityAnalysisDialog: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<LoadingFallback message="Loading Quality Analysis..." />}>
+  <BoundedSuspense fallback={<LoadingFallback message="Loading Quality Analysis..." />}>
     <QualityAnalysisDialog {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyGoogleServicesDialog: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<LoadingFallback message="Loading Google Services..." />}>
+  <BoundedSuspense fallback={<LoadingFallback message="Loading Google Services..." />}>
     <GoogleServicesDialog {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyNoteEditorDialog: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<LoadingFallback message="Loading Note Editor..." />}>
+  <BoundedSuspense fallback={<LoadingFallback message="Loading Note Editor..." />}>
     <NoteEditorDialog {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyPlanModeView: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<SkeletonFallback height={400} />}>
+  <BoundedSuspense fallback={<SkeletonFallback height={400} />}>
     <PlanModeView {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyDesignerView: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<SkeletonFallback height={600} />}>
+  <BoundedSuspense fallback={<SkeletonFallback height={600} />}>
     <DesignerView {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyComponentsView: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<SkeletonFallback height={500} />}>
+  <BoundedSuspense fallback={<SkeletonFallback height={500} />}>
     <ComponentsView {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyCodeView: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<SkeletonFallback height={400} />}>
+  <BoundedSuspense fallback={<SkeletonFallback height={400} />}>
     <CodeView {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyPreviewView: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<SkeletonFallback height={600} />}>
+  <BoundedSuspense fallback={<SkeletonFallback height={600} />}>
     <PreviewView {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazySEOView: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<SkeletonFallback height={400} />}>
+  <BoundedSuspense fallback={<SkeletonFallback height={400} />}>
     <SEOView {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyAdvancedCanvasFeatures: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<LoadingFallback message="Loading Advanced Canvas Features..." />}>
+  <BoundedSuspense fallback={<LoadingFallback message="Loading Advanced Canvas Features..." />}>
     <AdvancedCanvasFeatures {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyAnimationTimeline: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<LoadingFallback message="Loading Animation Timeline..." />}>
+  <BoundedSuspense fallback={<LoadingFallback message="Loading Animation Timeline..." />}>
     <AnimationTimeline {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyCodeGenerationStudio: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<LoadingFallback message="Loading Code Generation Studio..." />}>
+  <BoundedSuspense fallback={<LoadingFallback message="Loading Code Generation Studio..." />}>
     <CodeGenerationStudio {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyAssetManagementPanel: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<LoadingFallback message="Loading Asset Management..." />}>
+  <BoundedSuspense fallback={<LoadingFallback message="Loading Asset Management..." />}>
     <AssetManagementPanel {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyCollaborationPanel: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<LoadingFallback message="Loading Collaboration Features..." />}>
+  <BoundedSuspense fallback={<LoadingFallback message="Loading Collaboration Features..." />}>
     <CollaborationPanel {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyErrorBoundary: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<LoadingFallback message="Loading Error Boundary..." />}>
+  <BoundedSuspense fallback={<LoadingFallback message="Loading Error Boundary..." />}>
     <ErrorBoundary {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyLoadingSpinner: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<CircularProgress />}>
+  <BoundedSuspense fallback={<CircularProgress />}>
     <LoadingSpinner {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 export const LazyPerformanceMonitor: React.FC<LazyProps> = (props) => (
-  <Suspense fallback={<LoadingFallback message="Loading Performance Monitor..." />}>
+  <BoundedSuspense fallback={<LoadingFallback message="Loading Performance Monitor..." />}>
     <PerformanceMonitor {...props} />
-  </Suspense>
+  </BoundedSuspense>
 );
 
 // Preload functions for critical components

@@ -29,6 +29,9 @@ struct LiveCaptureView: View {
     /// the asset has pending detections — once confirmed, doubleTap
     /// behaves normally (asset no longer has pending).
     @State private var pendingReviewAsset: Asset?
+    /// Kort grønn «Tilkoblet ✓»-bekreftelse når økta nettopp koblet til, før
+    /// shoot-UI-et avsløres.
+    @State private var showConnectedConfirmation = false
 
     var body: some View {
         ZStack {
@@ -59,6 +62,22 @@ struct LiveCaptureView: View {
                 )
             case .connected:
                 connectedLayout
+            }
+
+            // Grønn «Tilkoblet ✓»-bekreftelse ved faktisk tilkobling (i tillegg til
+            // «kamera funnet»-grønnen på connect-skjermen).
+            if showConnectedConfirmation {
+                ConnectedConfirmationView()
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
+        }
+        .onChange(of: model.phase) { old, new in
+            guard new == .connected, old != .connected else { return }
+            withAnimation(.easeOut(duration: 0.25)) { showConnectedConfirmation = true }
+            Task {
+                try? await Task.sleep(for: .milliseconds(1300))
+                withAnimation(.easeInOut(duration: 0.35)) { showConnectedConfirmation = false }
             }
         }
         .preferredColorScheme(.dark)
@@ -241,6 +260,19 @@ struct LiveCaptureView: View {
             // shutter triggers spaced 1.5 s apart so the connected UI
             // has assets to render. Used to capture screenshots without
             // driving the simulator through manual taps.
+            #if DEBUG
+            // `--demo-persons` — koble til demo-modus (så capture-UI-en m/ filmstrip
+            // vises) og seed EKTE bryllups-JPG-er → E8 person-gruppering kjører mot
+            // virkelige ansikter og «Personer»-raden fylles (for skjermbilder).
+            if ProcessInfo.processInfo.arguments.contains("--demo-persons"),
+               model.phase == .disconnected, !model.isConnecting {
+                await model.connect(to: LiveCaptureModel.demoBaseURL)
+                // Vent til «Tilkoblet»-bekreftelsen (1,3 s) har lagt seg FØR vi seeder,
+                // ellers kolliderer seed-kaskaden (analyse + re-render) med timeren.
+                try? await Task.sleep(for: .milliseconds(2200))
+                await model.seedPersonDemo()
+            }
+            #endif
             if ProcessInfo.processInfo.arguments.contains("--auto-demo"),
                model.phase == .disconnected,
                !model.isConnecting {
@@ -338,6 +370,21 @@ struct LiveCaptureView: View {
 
     private var connectedLayout: some View {
         VStack(spacing: 0) {
+            if case let .reconnecting(attempt) = model.connectionState {
+                ReconnectingBanner(attempt: attempt, onCancel: { Task { await model.disconnect() } })
+            }
+            if let scene = model.lastAutoCheckedShot {
+                ShotAutoCheckToast(scene: scene, uncertain: model.lastAutoCheckedUncertain, onUndo: {
+                    if let id = model.lastAutoCheckedShotId {
+                        Task { await model.undoAutoCheck(shotId: id) }
+                    }
+                })
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if model.clientHeartedCount > 0 {
+                ClientHeartBanner(count: model.clientHeartedCount)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
             StatusBar(
                 state: model.connectionState,
                 device: model.deviceSummary,
@@ -421,6 +468,7 @@ struct LiveCaptureView: View {
                         recipe: model.focusedAsset.map { model.recipe(for: $0.id) } ?? .neutral,
                         recipeSource: model.focusedAsset.map { model.recipeSource[$0.id] ?? .baseline } ?? .baseline,
                         analysis: model.showHUD ? model.focusedAnalysis : nil,
+                        faceAnalysis: model.showHUD ? model.focusedAssetAnalysis : nil,
                         aiAnalysis: model.focusedAsset.flatMap { model.aiAnalyses[$0.id] },
                         aiNotesDismissed: model.focusedAsset.map { model.dismissedNoteAssets.contains($0.id) } ?? false,
                         showMagic: model.showMagic,
@@ -464,6 +512,11 @@ struct LiveCaptureView: View {
                             guard let id = model.focusedAsset?.id else { return }
                             model.deleteVoiceMemo(assetId: id)
                         },
+                        onTranscribeVoiceMemo: {
+                            guard let id = model.focusedAsset?.id else { return }
+                            Task { await model.transcribeVoiceMemo(assetId: id) }
+                        },
+                        voiceMemoTranscript: model.focusedAsset.flatMap { model.voiceMemoTranscripts[$0.id] },
                         onDismissNotes: {
                             guard let id = model.focusedAsset?.id else { return }
                             model.dismissNotes(assetId: id)
@@ -481,7 +534,9 @@ struct LiveCaptureView: View {
             }
             .frame(maxHeight: .infinity)
 
-            TelemetryFooter(telemetry: model.telemetry)
+            TelemetryFooter(telemetry: model.telemetry, shotsRemaining: model.estimatedShotsRemaining)
+
+            CapturePolicyBar(model: model)
 
             VStack(spacing: 0) {
                 FilmstripFilterBar(
@@ -499,6 +554,9 @@ struct LiveCaptureView: View {
                     onSelect: { model.filmstripFilter = $0 },
                     onSelectColor: { model.filmstripColorFilter = $0 }
                 )
+                if !model.personGroups.isEmpty {
+                    PersonFilterRow(model: model)
+                }
                 FilmstripRail(
                     assets: model.filteredAssets,
                     focusedAssetId: model.focusedAssetId,
@@ -506,6 +564,7 @@ struct LiveCaptureView: View {
                     assetIdsWithReviews: model.clientReviewsEnabled
                         ? model.assetIdsWithReviews
                         : [],
+                    autoEditedIds: model.autoEditedAssetIds,
                     onSelect: { model.focusedAssetId = $0.id },
                     onDoubleTap: { asset in
                         // Slice 7 — route to DetectionReviewSheet when
@@ -568,101 +627,255 @@ private struct DisconnectedOverlay: View {
     let onDemo: () -> Void
     let onPickDiscovered: (CameraDiscovery.Found) -> Void
 
+    enum ConnectTab { case autoDetect, manual }
+
     @State private var url: String = ""
+    @State private var tab: ConnectTab = .autoDetect
     @StateObject private var discovery = CameraDiscovery()
     @FocusState private var urlFocused: Bool
 
+    private var canConnect: Bool { URL(string: url)?.host != nil }
+
+    /// Hero går grønt når et kamera er funnet. `--hero-linked` tvinger grønt for
+    /// QA/skjermbilde (DEBUG).
+    private var heroLinked: Bool {
+        if !discovery.cameras.isEmpty { return true }
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("--hero-linked")
+        #else
+        return false
+        #endif
+    }
+
     var body: some View {
-        VStack(spacing: 24) {
-            VStack(spacing: 12) {
-                Image("CreatorHubOneLogo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 96, height: 96)
-                    .accessibilityLabel("CreatorHub One")
-                Text("CreatorHub One")
-                    .font(.largeTitle.weight(.semibold))
-                Text("Tethered shoot over Canon CCAPI")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(spacing: 28) {
+                header
+                ConnectHeroGraphic(linked: heroLinked)
+                    .frame(height: 216)
+                connectCard
+                if !discovery.cameras.isEmpty {
+                    discoveredList
+                } else {
+                    statusPill
+                }
+                OnboardingStepsCard()
+                connectButton
+                #if DEBUG
+                demoButton
+                #endif
+                setupGuideLink
             }
+            .frame(maxWidth: 700)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 32)
+            .padding(.vertical, 32)
+        }
+        .background(
+            RadialGradient(colors: [Color.captureAccent.opacity(0.10), .clear],
+                           center: .init(x: 0.5, y: 0.26), startRadius: 8, endRadius: 360)
+                .background(Color.captureDeepBG)
+                .ignoresSafeArea()
+        )
+        .onAppear {
+            url = defaultURL
+            discovery.start()
+        }
+        .onDisappear { discovery.stop() }
+    }
 
-            DiscoveredCamerasSection(
-                cameras: discovery.cameras,
-                isSearching: discovery.isSearching,
-                permissionDenied: discovery.permissionDenied,
-                onPick: onPickDiscovered
-            )
-            .frame(maxWidth: 440)
+    // MARK: - Header
 
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Or enter manually", systemImage: "network")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
+    private var header: some View {
+        VStack(spacing: 12) {
+            Image("CreatorHubOneLogo")
+                .resizable().scaledToFit()
+                .frame(width: 100, height: 100)
+                .shadow(color: Color.captureAccent.opacity(0.55), radius: 34, y: 8)
+                .accessibilityLabel("CreatorHub One")
+            Text("CreatorHub One")
+                .font(.system(size: 44, weight: .bold))
+                .foregroundStyle(.white)
+            Text("Tethered shoot over Canon CCAPI")
+                .font(.callout)
+                .foregroundStyle(Color.captureTextSecondary)
+        }
+    }
+
+    // MARK: - Connect card (tabs + søk + IP)
+
+    private var connectCard: some View {
+        VStack(spacing: 20) {
+            tabBar
+            if tab == .autoDetect { autoDetectContent; orDivider }
+            manualField
+        }
+        .padding(24)
+        .background(Color.captureSurface, in: RoundedRectangle(cornerRadius: 26))
+        .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Color.captureBorder.opacity(0.6), lineWidth: 1))
+        .shadow(color: .black.opacity(0.35), radius: 20, y: 10)
+    }
+
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            tabButton("Auto-detect", icon: "magnifyingglass", value: .autoDetect)
+            tabButton("Manuelt", icon: "keyboard", value: .manual)
+        }
+    }
+
+    private func tabButton(_ title: String, icon: String, value: ConnectTab) -> some View {
+        let active = tab == value
+        return Button { withAnimation(.easeInOut(duration: 0.15)) { tab = value } } label: {
+            VStack(spacing: 8) {
+                Label(title, systemImage: icon)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(active ? Color.captureAccent : Color.captureTextMuted)
+                Rectangle()
+                    .fill(active ? Color.captureAccent : .clear)
+                    .frame(height: 2)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var autoDetectContent: some View {
+        let found = !discovery.cameras.isEmpty
+        return HStack(alignment: .top, spacing: 14) {
+            Group {
+                if found {
+                    Image(systemName: "checkmark.circle.fill").font(.title3).foregroundStyle(Color.captureSuccess)
+                } else if discovery.isSearching {
+                    ProgressView().controlSize(.regular).tint(Color.captureAccent)
+                } else {
+                    Image(systemName: "wifi").font(.title3).foregroundStyle(Color.captureAccent)
+                }
+            }
+            .frame(width: 28)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(found ? (discovery.cameras.count == 1 ? "Kamera funnet" : "\(discovery.cameras.count) kameraer funnet")
+                     : (discovery.isSearching ? "Søker etter kameraer…" : "Klar til å søke"))
+                    .font(.headline).foregroundStyle(.white)
+                Text(found ? "Velg kameraet under, eller trykk Koble til."
+                     : "Kontroller at kameraet er på, koblet til samme nettverk og at CCAPI er aktivert.")
+                    .font(.caption).foregroundStyle(Color.captureTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: 5) {
+                Circle().fill(discovery.permissionDenied ? Color.orange : Color.captureSuccess).frame(width: 7, height: 7)
+                Text(discovery.permissionDenied ? "Ingen tilgang" : "Nettverk OK")
+                    .font(.caption2).foregroundStyle(Color.captureTextSecondary)
+            }
+        }
+        .padding(14)
+        .background(Color.captureDeepBG.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14)
+            .strokeBorder((found ? Color.captureSuccess : Color.captureBorder).opacity(found ? 0.5 : 0.5), lineWidth: 1))
+    }
+
+    private var orDivider: some View {
+        HStack(spacing: 12) {
+            Rectangle().fill(Color.captureBorder.opacity(0.6)).frame(height: 1)
+            Text("ELLER").font(.caption2.weight(.semibold)).foregroundStyle(Color.captureTextMuted)
+            Rectangle().fill(Color.captureBorder.opacity(0.6)).frame(height: 1)
+        }
+    }
+
+    private var manualField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Koble til kamera via IP-adresse eller URL")
+                .font(.subheadline.weight(.medium)).foregroundStyle(.white)
+            HStack(spacing: 10) {
+                Image(systemName: "globe").foregroundStyle(Color.captureTextMuted)
                 TextField("https://192.168.1.2", text: $url)
                     .textFieldStyle(.plain)
-                    .padding(12)
-                    .background(Color.captureFieldBG, in: RoundedRectangle(cornerRadius: 10))
+                    .foregroundStyle(.white)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
                     .focused($urlFocused)
                     .submitLabel(.go)
                     .onSubmit(connect)
-                Text("Join the camera's Access Point first, then paste the URL from MENU → Wi-Fi settings → Camera Control API.")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: 440)
-
-            if let lastError {
-                VStack(alignment: .leading, spacing: 10) {
-                    Label(lastError, systemImage: "exclamationmark.triangle")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.red)
-                    Text("Usual causes:")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                    FailureGuideItem(icon: "wifi",             text: "Your Mac or iPad must be on the camera's Access Point.")
-                    FailureGuideItem(icon: "camera",           text: "CCAPI must be enabled: MENU → Wi-Fi → Camera Control API.")
-                    FailureGuideItem(icon: "network",          text: "The URL must match what the camera's screen shows exactly.")
-                }
-                .padding(14)
-                .background(Color.captureFieldBG, in: RoundedRectangle(cornerRadius: 10))
-                .frame(maxWidth: 440)
-            }
-
-            Button(action: connect) {
-                HStack(spacing: 8) {
-                    if isConnecting { ProgressView().controlSize(.small) }
-                    Text(isConnecting ? "Connecting…" : "Connect")
-                        .font(.body.weight(.semibold))
-                }
-                .frame(maxWidth: 440, minHeight: 52)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(isConnecting || URL(string: url)?.host == nil)
-
-            #if DEBUG
-            Button(action: onDemo) {
-                Label("Try demo camera", systemImage: "wand.and.stars")
-                    .font(.footnote.weight(.medium))
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
-            .disabled(isConnecting)
-            #endif
+            .padding(14)
+            .background(Color.captureDeepBG.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.captureBorder.opacity(0.6), lineWidth: 1))
+            Text("F.eks. https://192.168.1.2")
+                .font(.caption2).foregroundStyle(Color.captureTextMuted)
         }
-        .padding(.horizontal, 40)
-        .padding(.vertical, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            url = defaultURL
-            discovery.start()
+    }
+
+    // MARK: - Status / funnet kameraer
+
+    private var statusPill: some View {
+        HStack(spacing: 8) {
+            Image(systemName: lastError == nil ? "info.circle" : "exclamationmark.triangle.fill")
+                .foregroundStyle(lastError == nil ? Color.captureTextMuted : .orange)
+            Text(lastError ?? "Ingen kamera funnet ennå")
+                .font(.caption).foregroundStyle(Color.captureTextSecondary)
+                .lineLimit(2)
         }
-        .onDisappear { discovery.stop() }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(Color.captureChipBG, in: Capsule())
+    }
+
+    private var discoveredList: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill").font(.caption).foregroundStyle(Color.captureSuccess)
+                Text(discovery.cameras.count == 1 ? "1 kamera funnet — trykk for å koble til"
+                     : "\(discovery.cameras.count) kameraer funnet — velg ett")
+                    .font(.subheadline.weight(.medium)).foregroundStyle(Color.captureTextSecondary)
+            }
+            ForEach(discovery.cameras) { camera in
+                DiscoveredCameraCard(camera: camera, onTap: { onPickDiscovered(camera) })
+            }
+        }
+    }
+
+    // MARK: - Knapper
+
+    private var connectButton: some View {
+        Button(action: connect) {
+            HStack(spacing: 10) {
+                if isConnecting { ProgressView().controlSize(.small).tint(.white) } else {
+                    Image(systemName: "link")
+                }
+                Text(isConnecting ? "Kobler til…" : "Koble til").font(.title3.weight(.semibold))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 66)
+            .background(
+                LinearGradient(colors: [Color.captureAccent, Color.captureAccentDeep],
+                               startPoint: .leading, endPoint: .trailing),
+                in: RoundedRectangle(cornerRadius: 18))
+            .shadow(color: Color.captureAccent.opacity(0.35), radius: 16, y: 6)
+            .opacity(canConnect && !isConnecting ? 1 : 0.5)
+        }
+        .buttonStyle(.plain)
+        .disabled(isConnecting || !canConnect)
+    }
+
+    private var demoButton: some View {
+        Button(action: onDemo) {
+            Label("Prøv demo-kamera", systemImage: "camera")
+                .font(.headline.weight(.semibold)).foregroundStyle(Color.captureAccent)
+                .frame(maxWidth: .infinity, minHeight: 62)
+                .background(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.captureAccent.opacity(0.7), lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+        .disabled(isConnecting)
+    }
+
+    private var setupGuideLink: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "questionmark.circle")
+            Text("Se oppsettguide").font(.subheadline.weight(.medium))
+            Image(systemName: "chevron.right").font(.caption2)
+        }
+        .foregroundStyle(Color.captureTextSecondary)
+        .padding(.top, 2)
     }
 
     private func connect() {
@@ -672,58 +885,90 @@ private struct DisconnectedOverlay: View {
     }
 }
 
-private struct DiscoveredCamerasSection: View {
-    let cameras: [CameraDiscovery.Found]
-    let isSearching: Bool
-    let permissionDenied: Bool
-    let onPick: (CameraDiscovery.Found) -> Void
+/// Hero-grafikk: kameraet (transparent PNG) koblet via glødende lenke til nettbrettet
+/// — samme motiv som Shoot-mockupen.
+private struct ConnectHeroGraphic: View {
+    /// Sann når et kamera er funnet på nettverket → hele koblings-motivet går fra
+    /// oransje «søker» til grønt «kamera funnet, klar».
+    var linked: Bool = false
+    @State private var pulse = false
+
+    /// Aksentfargen for koblingen — grønn ved funnet kamera, ellers merkevare-oransje.
+    private var tint: Color { linked ? .captureSuccess : .captureAccent }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                if isSearching && cameras.isEmpty {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Image(systemName: "wifi")
-                        .foregroundStyle(.tint)
-                }
-                Text(header)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
+        HStack(spacing: 14) {
+            // scaledToFill + clip fjerner kameraets transparente vertikal-utfylling
+            // → kameraet fyller rammen (større, ingen tomme sidegap).
+            Image("ConnectHero")
+                .resizable().scaledToFill()
+                .frame(width: 210, height: 150)
+                .clipped()
+            dots
+            ZStack {
+                Circle().fill(tint.opacity(0.22)).frame(width: 68, height: 68)
+                    .scaleEffect(pulse ? 1.2 : 0.82).blur(radius: 2)
+                Circle().strokeBorder(tint, lineWidth: 1.5).frame(width: 52, height: 52)
+                Image(systemName: linked ? "checkmark" : "link")
+                    .font(.title2.weight(.semibold)).foregroundStyle(tint)
             }
-
-            if permissionDenied {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "lock.shield")
-                        .foregroundStyle(.yellow)
-                    Text("Local-network permission was denied. Enable it in Settings → CreatorHub One → Local Network to find cameras automatically.")
-                        .font(.caption)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(10)
-                .background(Color.captureChipBG, in: RoundedRectangle(cornerRadius: 8))
-            } else if cameras.isEmpty && isSearching {
-                Text("Checking the network for cameras… make sure the camera is on and CCAPI is enabled.")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(cameras) { camera in
-                        DiscoveredCameraCard(camera: camera, onTap: { onPick(camera) })
-                    }
-                }
-            }
+            .shadow(color: tint.opacity(0.75), radius: 20)
+            dots
+            Image("ConnectTablet")
+                .resizable().scaledToFit()
+                .frame(height: 178)
+        }
+        .background(alignment: .bottom) {
+            // Ren, samlet «flate»-glød under scenen (mockupens refleksjon) — tettere
+            // enn skjerm-gløden så det ikke blir en bred brun vask.
+            Ellipse().fill(tint.opacity(0.22))
+                .frame(width: 300, height: 70).blur(radius: 45).offset(y: 34)
+        }
+        .animation(.easeInOut(duration: 0.3), value: linked)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { pulse = true }
         }
     }
 
-    private var header: String {
-        if permissionDenied                { return "Local-network permission needed" }
-        if cameras.isEmpty && isSearching  { return "Searching for cameras…" }
-        if cameras.isEmpty                 { return "No cameras on the network yet" }
-        if cameras.count == 1              { return "1 camera found" }
-        return "\(cameras.count) cameras found"
+    private var dots: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<3, id: \.self) { _ in
+                Circle().fill(tint.opacity(0.6)).frame(width: 5, height: 5)
+            }
+        }
+    }
+}
+
+/// «Kom i gang på 3 enkle steg»-kort fra mockupen.
+private struct OnboardingStepsCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Kom i gang på 3 enkle steg")
+                .font(.headline.weight(.semibold)).foregroundStyle(.white)
+            HStack(alignment: .top, spacing: 14) {
+                step(1, "wifi", "Koble til kameraets Wi-Fi", "Koble iPad til kameraets Wi-Fi-nettverk.")
+                step(2, "camera", "Aktiver CCAPI i kameraet", "Gå til nettverksinnstillinger og aktiver CCAPI.")
+                step(3, "link", "Trykk Koble til", "Velg auto-detect eller angi IP/URL og trykk Koble til.")
+            }
+        }
+        .padding(18)
+        .background(Color.captureSurface, in: RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.captureBorder.opacity(0.5), lineWidth: 1))
+    }
+
+    private func step(_ n: Int, _ icon: String, _ title: String, _ body: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("\(n)").font(.caption.weight(.bold)).foregroundStyle(.white)
+                    .frame(width: 22, height: 22).background(Circle().fill(Color.captureAccent))
+                Image(systemName: icon).foregroundStyle(Color.captureAccent)
+            }
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(body).font(.caption2).foregroundStyle(Color.captureTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -736,32 +981,34 @@ private struct DiscoveredCameraCard: View {
             HStack(spacing: 14) {
                 Image(systemName: "camera.fill")
                     .font(.title2)
-                    .foregroundStyle(.tint)
-                    .frame(width: 40, height: 40)
-                    .background(Color.tint.opacity(0.15), in: Circle())
+                    .foregroundStyle(Color.captureSuccess)
+                    .frame(width: 44, height: 44)
+                    .background(Color.captureSuccess.opacity(0.15), in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text(camera.displayName)
-                        .font(.body.weight(.semibold))
+                        .font(.body.weight(.semibold)).foregroundStyle(.white)
                     HStack(spacing: 6) {
                         if let firmware = camera.firmware {
                             Text("fw \(firmware)").font(.caption2.monospaced())
                         }
                         if let host = camera.baseURL.host {
-                            if camera.firmware != nil { Text("·").foregroundStyle(.tertiary) }
+                            if camera.firmware != nil { Text("·").foregroundStyle(Color.captureTextMuted) }
                             Text(host).font(.caption2.monospaced())
                         }
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.captureTextSecondary)
                     .lineLimit(1)
                 }
                 Spacer()
+                Text("Koble til")
+                    .font(.caption.weight(.semibold)).foregroundStyle(Color.captureSuccess)
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Color.captureSuccess)
             }
-            .padding(12)
-            .background(Color.captureFieldBG, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(.tint.opacity(0.25), lineWidth: 1))
+            .padding(14)
+            .background(Color.captureSurface, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.captureSuccess.opacity(0.4), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -776,7 +1023,7 @@ private extension Color {
     /// across reconnects + multi-iPad).
     static func peerAvatar(for userId: String) -> Color {
         let palette: [Color] = [
-            .blue, .purple, .indigo, .teal, .green, .orange, .pink, .brown,
+            .blue, .purple, .indigo, .teal, .green, .orange, .pink, .brown
         ]
         var hash: UInt64 = 5381
         for byte in userId.utf8 {
@@ -829,17 +1076,16 @@ private struct ConnectingOverlay: View {
 
     var body: some View {
         VStack(spacing: 28) {
-            VStack(spacing: 10) {
-                ProgressView()
-                    .controlSize(.large)
-                Text("Connecting to camera")
-                    .font(.title3.weight(.semibold))
-            }
+            // Samme hero-motiv som connect-skjermen — oransje mens den kobler.
+            ConnectHeroGraphic()
+                .frame(height: 170)
+            Text("Kobler til kamera…")
+                .font(.title3.weight(.semibold)).foregroundStyle(.white)
 
             VStack(alignment: .leading, spacing: 14) {
-                ConnectStep(title: "Discovered capabilities",  level: stepLevel(.discovered))
-                ConnectStep(title: "Paired securely",           level: stepLevel(.paired))
-                ConnectStep(title: "Ready to shoot",            level: stepLevel(.ready))
+                ConnectStep(title: "Fant kamera-egenskaper", level: stepLevel(.discovered))
+                ConnectStep(title: "Sikker paring", level: stepLevel(.paired))
+                ConnectStep(title: "Klar til å skyte", level: stepLevel(.ready))
             }
             .padding(18)
             .frame(maxWidth: 380, alignment: .leading)
@@ -853,13 +1099,18 @@ private struct ConnectingOverlay: View {
             }
 
             Button(role: .destructive, action: onCancel) {
-                Label("Cancel", systemImage: "xmark")
+                Label("Avbryt", systemImage: "xmark")
                     .padding(.horizontal, 16).padding(.vertical, 8)
             }
             .buttonStyle(.bordered)
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RadialGradient(colors: [Color.captureAccent.opacity(0.10), .clear],
+                           center: .init(x: 0.5, y: 0.32), startRadius: 8, endRadius: 360)
+                .background(Color.captureDeepBG).ignoresSafeArea()
+        )
     }
 
     private enum Step { case discovered, paired, ready }
@@ -876,6 +1127,32 @@ private struct ConnectingOverlay: View {
         case (.ready, .reconnecting), (.ready, .error):           return .idle
         default:                                                  return .idle
         }
+    }
+}
+
+/// Kort grønn bekreftelse i det kameraet FAKTISK er tilkoblet — hero-en går grønn
+/// med hake + «Tilkoblet!», så fotografen får et tydelig «det er koblet»-øyeblikk
+/// før shoot-UI-et avsløres.
+private struct ConnectedConfirmationView: View {
+    @State private var appeared = false
+    var body: some View {
+        VStack(spacing: 20) {
+            ConnectHeroGraphic(linked: true)
+                .frame(height: 176)
+                .scaleEffect(appeared ? 1 : 0.94)
+            Text("Tilkoblet!")
+                .font(.title.weight(.bold)).foregroundStyle(.white)
+            Text("Kameraet er klart — begynn å skyte.")
+                .font(.callout).foregroundStyle(Color.captureTextSecondary)
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RadialGradient(colors: [Color.captureSuccess.opacity(0.12), .clear],
+                           center: .init(x: 0.5, y: 0.4), startRadius: 8, endRadius: 380)
+                .background(Color.captureDeepBG).ignoresSafeArea()
+        )
+        .onAppear { withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { appeared = true } }
     }
 }
 
@@ -1196,6 +1473,90 @@ private struct ConnectionBadge: View {
     }
 }
 
+/// Vedvarende banner når Canon-tilkoblingen droppet og appen prøver å koble
+/// til igjen (auto-reconnect-logikken bor i CCAPIAdapter). Gjør at et USB/WiFi-
+/// drop midt i en shoot er tydelig — økten går aldri tapt i det stille.
+private struct ReconnectingBanner: View {
+    let attempt: Int
+    let onCancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small).tint(.white)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Mistet kamera-tilkobling")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.white)
+                Text("Kobler til igjen… (forsøk \(attempt)) — økten er trygg")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            Spacer(minLength: 8)
+            Button("Avbryt", action: onCancel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(.white.opacity(0.2), in: Capsule())
+        }
+        .padding(.horizontal, 20).padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(Color.orange.opacity(0.92))
+    }
+}
+
+/// Kort bekreftelse når et bilde auto-huket et shot i prosjektets shot-list.
+private struct ShotAutoCheckToast: View {
+    let scene: String
+    var uncertain: Bool = false
+    var onUndo: (() -> Void)?
+    private var accent: Color { uncertain ? Color(red: 0.88, green: 0.66, blue: 0.33) : .green }
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: uncertain ? "questionmark.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(accent)
+            Text(uncertain ? "Auto-huket (usikker): \(scene)" : "Auto-huket: \(scene)")
+                .font(.caption.weight(.medium)).foregroundStyle(.white)
+            if uncertain {
+                Text("sjekk gjerne")
+                    .font(.caption2).foregroundStyle(.white.opacity(0.7))
+            }
+            Spacer(minLength: 8)
+            if let onUndo {
+                Button(action: onUndo) {
+                    Label("Angre", systemImage: "arrow.uturn.backward")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Color.white.opacity(0.18), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 20).padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(accent.opacity(0.25))
+    }
+}
+
+/// Live-banner: klienten hjerter favoritter fra mobilen → auto-flagget som
+/// keepers. Oppdateres i sanntid via `asset.hearted`-eventen.
+private struct ClientHeartBanner: View {
+    let count: Int
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "heart.fill").foregroundStyle(.pink)
+            Text("Kunden har hjertet \(count) \(count == 1 ? "bilde" : "bilder")")
+                .font(.caption.weight(.semibold)).foregroundStyle(.white)
+            Spacer(minLength: 8)
+            Text("auto-flagget som keepers")
+                .font(.caption2).foregroundStyle(.white.opacity(0.6))
+        }
+        .padding(.horizontal, 20).padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(Color.pink.opacity(0.22))
+    }
+}
+
 // MARK: - Hero stage
 
 private struct HeroStage: View {
@@ -1203,6 +1564,7 @@ private struct HeroStage: View {
     let recipe: MagicRecipe
     let recipeSource: LiveCaptureModel.RecipeSource
     let analysis: ImageAnalysis?
+    let faceAnalysis: AssetAnalysis?
     let aiAnalysis: BackendPhotoAnalysis?
     let aiNotesDismissed: Bool
     let showMagic: Bool
@@ -1219,6 +1581,8 @@ private struct HeroStage: View {
     let onStopVoiceMemo: () -> Void
     let onPlayVoiceMemo: () -> Void
     let onDeleteVoiceMemo: () -> Void
+    let onTranscribeVoiceMemo: () -> Void
+    let voiceMemoTranscript: String?
     let onDismissNotes: () -> Void
 
     var body: some View {
@@ -1238,7 +1602,7 @@ private struct HeroStage: View {
                         }
                         .overlay(alignment: .topLeading) {
                             if let analysis {
-                                HUDOverlay(analysis: analysis)
+                                HUDOverlay(analysis: analysis, faceAnalysis: faceAnalysis)
                                     .padding(.top, 28)
                                     .padding(.leading, 36)
                                     .allowsHitTesting(false)
@@ -1304,8 +1668,19 @@ private struct HeroStage: View {
                             onStart: onStartVoiceMemo,
                             onStop: onStopVoiceMemo,
                             onPlay: onPlayVoiceMemo,
-                            onDelete: onDeleteVoiceMemo
+                            onDelete: onDeleteVoiceMemo,
+                            onTranscribe: onTranscribeVoiceMemo
                         )
+                    }
+
+                    if let voiceMemoTranscript {
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "waveform.and.mic").foregroundStyle(.purple)
+                            Text(voiceMemoTranscript)
+                                .font(.caption).foregroundStyle(.white.opacity(0.85))
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 24)
                     }
 
                     HStack(spacing: 12) {
@@ -1423,7 +1798,7 @@ private struct HeroImage: View {
                 GeometryReader { geo in
                     Image(uiImage: image)
                         .resizable()
-                        .aspectRatio(contentMode: .fit)
+                        .scaledToFit()
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                         .shadow(radius: 20, y: 8)
                         .transition(.opacity)
@@ -1534,7 +1909,7 @@ private struct FocusLoupe: View {
             Image(uiImage: image)
                 .resizable()
                 .interpolation(.high)
-                .aspectRatio(contentMode: .fit)
+                .scaledToFit()
                 .frame(width: displaySize.width * Self.zoom, height: displaySize.height * Self.zoom)
                 .offset(
                     x: -localX * Self.zoom + Self.loupeDiameter / 2,
@@ -1693,7 +2068,7 @@ private struct CompareHeroStage: View {
             if let key = asset.displayPreviewKey, let image = UIImage(contentsOfFile: key) {
                 Image(uiImage: image)
                     .resizable()
-                    .aspectRatio(contentMode: .fit)
+                    .scaledToFit()
                     .scaleEffect(scale)
                     .offset(offset)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -1931,7 +2306,7 @@ private struct ReviewSideRail: View {
                 if let key = asset.displayPreviewKey, let img = UIImage(contentsOfFile: key) {
                     Image(uiImage: img)
                         .resizable()
-                        .aspectRatio(contentMode: .fill)
+                        .scaledToFill()
                         .frame(width: 44, height: 44)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 } else {
@@ -2351,7 +2726,17 @@ private struct AudioRecorderButton: View {
             LongPressGesture(minimumDuration: 0.2)
                 .onEnded { _ in startRecording() }
                 .sequenced(before: DragGesture(minimumDistance: 0))
-                .onEnded { _ in finishRecording() }
+                .onEnded { value in
+                    // Dra fingeren tydelig VEKK fra knappen (36 pt) → forkast opptaket
+                    // (som kommentaren over lover); ellers commit. Slipp PÅ knappen =
+                    // behold.
+                    if case .second(_, let drag?) = value,
+                       hypot(drag.translation.width, drag.translation.height) > 44 {
+                        cancelRecording()
+                    } else {
+                        finishRecording()
+                    }
+                }
         )
         .alert("Mikrofon-tilgang", isPresented: $permissionDenied) {
             Button("OK", role: .cancel) {}
@@ -2380,7 +2765,7 @@ private struct AudioRecorderButton: View {
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
             AVSampleRateKey: 44_100,
             AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue,
+            AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue
         ]
         do {
             try AVAudioSession.sharedInstance().setCategory(
@@ -2433,6 +2818,20 @@ private struct AudioRecorderButton: View {
             return
         }
         onCommit(url, duration)
+    }
+
+    /// Avbryt uten å committe — stopp opptakeren og slett fila. Brukes når fingeren
+    /// dras vekk fra knappen (angre-gest).
+    private func cancelRecording() {
+        guard isRecording, let recorder else { cleanupTimer(); return }
+        let url = recorder.url
+        recorder.stop()
+        self.recorder = nil
+        isRecording = false
+        pulseOn = false
+        startedAt = nil
+        cleanupTimer()
+        try? FileManager.default.removeItem(at: url)   // forkast — aldri onCommit
     }
 
     private func cleanupTimer() {
@@ -2624,15 +3023,26 @@ private struct ImageFile: View {
     let path: String
     /// Bump to force a re-read of the file (same path, new bytes).
     var reload: Int = 0
+    /// Dekod JPEG-en ÉN gang i `.task` — IKKE i body. `ComparisonSlider` muterer
+    /// `divider` per drag-frame → body re-evalueres per frame; med decode-i-body
+    /// ble hele 2400px-JPEG-en dekodet på nytt hver frame (×2 for de to lagene).
+    /// Samme fiks som `BeforeAfterCompare`. Off-main dekode holder draggen jevn.
+    @State private var image: UIImage?
     var body: some View {
         Group {
-            if let img = UIImage(contentsOfFile: path) {
-                Image(uiImage: img).resizable().aspectRatio(contentMode: .fit)
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit()
             } else {
                 Color.captureChipBG
             }
         }
-        .id("\(path)#\(reload)")
+        .task(id: "\(path)#\(reload)") {
+            let p = path
+            let loaded = await Task.detached(priority: .userInitiated) {
+                UIImage(contentsOfFile: p)
+            }.value
+            if !Task.isCancelled { image = loaded }
+        }
     }
 }
 
@@ -2717,6 +3127,7 @@ private struct VoiceMemoControls: View {
     let onStop: () -> Void
     let onPlay: () -> Void
     let onDelete: () -> Void
+    var onTranscribe: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 6) {
@@ -2751,6 +3162,11 @@ private struct VoiceMemoControls: View {
                 button(icon: "stop.fill", tint: .white, background: Color.blue.opacity(0.55), action: onPlay)
                     .accessibilityLabel("Stop voice memo playback")
                     .onLongPressGesture(minimumDuration: 0.6) { onDelete() }
+            }
+            if memoExists {
+                button(icon: "text.bubble", tint: .white.opacity(0.8),
+                       background: Color.purple.opacity(0.5), action: onTranscribe)
+                    .accessibilityLabel("Transcribe voice memo")
             }
         }
     }
@@ -2821,6 +3237,9 @@ private struct ColorLabelControls: View {
 /// or underexposed shadows without leaving the shooting screen.
 private struct HUDOverlay: View {
     let analysis: ImageAnalysis
+    /// Samlet per-bilde-analyse — driver ansikts-varsler (soft/lukkede øyne) og
+    /// motiv-klipping. nil = ikke ferdig analysert enda.
+    var faceAnalysis: AssetAnalysis?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -2830,6 +3249,12 @@ private struct HUDOverlay: View {
                 .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.1), lineWidth: 0.5))
 
+            // De varslene fotografen faktisk kan handle på MENS bildet kan tas om
+            // igjen: ansiktet ute av fokus, lukkede øyne, utbrent MOTIV.
+            ForEach(faceWarnings, id: \.self) { warning in
+                CaptureWarningChip(warning: warning)
+            }
+
             if analysis.highlightClipping > 0.005 || analysis.shadowClipping > 0.005 {
                 ClippingBadges(highlight: analysis.highlightClipping, shadow: analysis.shadowClipping)
             }
@@ -2837,6 +3262,118 @@ private struct HUDOverlay: View {
             if let skin = analysis.skin {
                 SkinToneChip(reading: skin)
             }
+
+            if let sharpness = analysis.sharpness {
+                SharpnessIndicator(reading: sharpness)
+            }
+        }
+    }
+
+    /// Leveranse-kritiske ansikts-/motiv-advarsler, avledet av `faceAnalysis`.
+    private var faceWarnings: [CaptureWarning] {
+        guard let a = faceAnalysis else { return [] }
+        var out: [CaptureWarning] = []
+        if let face = a.primaryFace {
+            if face.isSoft(globalSharpness: a.globalSharpness) { out.append(.faceSoft) }
+            if face.eyesOpen == false { out.append(.eyesClosed) }
+        }
+        if let sub = a.subjectHighlightClip, sub > 0.02 { out.append(.subjectClipped) }
+        return out
+    }
+}
+
+/// De handlingsbare on-set-advarslene — separate fra histogram/klipp fordi de
+/// gjelder MOTIVET spesifikt (det eneste fotografen virkelig trenger å reagere på
+/// mens hen fortsatt står på location).
+enum CaptureWarning: Hashable {
+    case faceSoft, eyesClosed, subjectClipped
+
+    var label: String {
+        switch self {
+        case .faceSoft:       return "Ansikt uskarpt"
+        case .eyesClosed:     return "Lukkede øyne"
+        case .subjectClipped: return "Motiv utbrent"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .faceSoft:       return "camera.metering.spot"
+        case .eyesClosed:     return "eye.slash"
+        case .subjectClipped: return "exclamationmark.triangle.fill"
+        }
+    }
+}
+
+private struct CaptureWarningChip: View {
+    let warning: CaptureWarning
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: warning.icon)
+                .font(.caption2.weight(.bold))
+            Text(warning.label)
+                .font(.caption2.weight(.semibold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(Color.orange.opacity(0.9), in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.25), lineWidth: 0.5))
+    }
+}
+
+private struct SharpnessIndicator: View {
+    let reading: ImageAnalysis.SharpnessReading
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundStyle(color)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Fokus")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.white)
+                // Liten skarphets-søyle.
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(.white.opacity(0.15))
+                        Capsule().fill(color)
+                            .frame(width: max(3, geo.size.width * reading.value))
+                    }
+                }
+                .frame(width: 64, height: 4)
+            }
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(color.opacity(0.95))
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(color.opacity(0.5), lineWidth: 1))
+    }
+
+    private var label: String {
+        switch reading.status {
+        case .soft: return "Uskarp?"
+        case .ok: return "OK"
+        case .sharp: return "Skarp"
+        }
+    }
+    private var color: Color {
+        switch reading.status {
+        case .soft: return .orange
+        case .ok: return .yellow
+        case .sharp: return .green
+        }
+    }
+    private var icon: String {
+        switch reading.status {
+        case .soft: return "camera.metering.none"
+        case .ok: return "camera.metering.center.weighted"
+        case .sharp: return "checkmark.circle.fill"
         }
     }
 }
@@ -3294,8 +3831,8 @@ struct TunePanel: View {
             subtitle: "Lightroom-style batch — denne recipen kopieres til hver target",
         ) {
             VStack(spacing: 8) {
-                applyButton(.allFlagged,    count: assetCounts.flagged)
-                applyButton(.allFourPlus,   count: assetCounts.fourPlus)
+                applyButton(.allFlagged, count: assetCounts.flagged)
+                applyButton(.allFourPlus, count: assetCounts.fourPlus)
                 applyButton(.entireSession, count: assetCounts.entireSession)
             }
         }
@@ -3438,13 +3975,13 @@ private struct PresetChipRow: View {
     }
 
     private let presets: [Preset] = [
-        Preset(id: "portrait",  label: "Portrett",  symbol: "person.crop.circle",     recipe: .portrait),
-        Preset(id: "food",      label: "Mat",       symbol: "fork.knife",             recipe: .food),
-        Preset(id: "landscape", label: "Landskap",  symbol: "mountain.2",             recipe: .landscape),
-        Preset(id: "vehicle",   label: "Kjøretøy",  symbol: "car",                    recipe: .vehicle),
-        Preset(id: "product",   label: "Produkt",   symbol: "cube.box",               recipe: .product),
-        Preset(id: "aviation",  label: "Fly",       symbol: "airplane",               recipe: .aviation),
-        Preset(id: "neutral",   label: "Nøytral",   symbol: "circle.dashed",          recipe: .neutral),
+        Preset(id: "portrait", label: "Portrett", symbol: "person.crop.circle", recipe: .portrait),
+        Preset(id: "food", label: "Mat", symbol: "fork.knife", recipe: .food),
+        Preset(id: "landscape", label: "Landskap", symbol: "mountain.2", recipe: .landscape),
+        Preset(id: "vehicle", label: "Kjøretøy", symbol: "car", recipe: .vehicle),
+        Preset(id: "product", label: "Produkt", symbol: "cube.box", recipe: .product),
+        Preset(id: "aviation", label: "Fly", symbol: "airplane", recipe: .aviation),
+        Preset(id: "neutral", label: "Nøytral", symbol: "circle.dashed", recipe: .neutral)
     ]
 
     var body: some View {
@@ -3756,11 +4293,115 @@ private struct FilmstripFilterBar: View {
     }
 }
 
+/// E8: «Personer»-rad — én chip per klynget person (representant-ansikt + navn +
+/// antall bilder). Trykk filtrerer fotograferingen til den personen; trykk igjen
+/// nullstiller. Blyant-ikonet gir omdøping («Bruden», «Brudgom» …).
+private struct PersonFilterRow: View {
+    @Bindable var model: LiveCaptureModel
+    @State private var renaming: LiveCaptureModel.PersonGroup?
+    @State private var draftName = ""
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Label("Personer", systemImage: "person.2.crop.square.stack")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.trailing, 2)
+                ForEach(model.personGroups) { person in
+                    let active = model.personFilter == person.id
+                    Button {
+                        model.personFilter = active ? nil : person.id
+                    } label: {
+                        HStack(spacing: 6) {
+                            PersonFaceThumb(model: model, person: person)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(person.label)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .lineLimit(1)
+                                Text("\(person.photoCount) bilder")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Button {
+                                draftName = person.label
+                                renaming = person
+                            } label: {
+                                Image(systemName: "pencil").font(.system(size: 10, weight: .bold))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .background(active ? Color.captureAccent.opacity(0.28) : Color.white.opacity(0.06),
+                                    in: Capsule())
+                        .overlay(Capsule().stroke(active ? Color.captureAccent : .clear, lineWidth: 1.5))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 24).padding(.vertical, 8)
+        }
+        .alert("Gi personen et navn", isPresented: Binding(
+            get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Navn", text: $draftName)
+            Button("Avbryt", role: .cancel) { renaming = nil }
+            Button("Lagre") {
+                if let p = renaming { model.renamePerson(p.id, to: draftName) }
+                renaming = nil
+            }
+        }
+    }
+}
+
+/// Beskåret representant-ansikt for en person-chip. Laster preview-en, klipper til
+/// ansikts-rekten (normalisert, origo NEDE-VENSTRE → flippes til bilde-origo oppe-
+/// venstre) og utvider litt for å få med hodet. Faller tilbake til et symbol.
+private struct PersonFaceThumb: View {
+    let model: LiveCaptureModel
+    let person: LiveCaptureModel.PersonGroup
+    private let side: CGFloat = 28
+
+    var body: some View {
+        Group {
+            if let img = croppedFace() {
+                Image(uiImage: img).resizable().scaledToFill()
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable().foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: side, height: side)
+        .clipShape(Circle())
+    }
+
+    private func croppedFace() -> UIImage? {
+        guard let asset = model.assets.first(where: { $0.id == person.representativeAssetId }),
+              let key = asset.displayPreviewKey,
+              let ui = UIImage(contentsOfFile: key), let cg = ui.cgImage else { return nil }
+        let w = CGFloat(cg.width), h = CGFloat(cg.height)
+        let r = person.representativeFaceRect
+        // Utvid 40 % rundt ansiktet for litt hode/skuldre.
+        let pad: CGFloat = 0.4
+        var nx = r.minX - r.width * pad
+        var ny = (1 - r.maxY) - r.height * pad          // flipp y til origo oppe-venstre
+        var nw = r.width * (1 + 2 * pad)
+        var nh = r.height * (1 + 2 * pad)
+        nx = max(0, nx); ny = max(0, ny)
+        nw = min(nw, 1 - nx); nh = min(nh, 1 - ny)
+        let px = CGRect(x: nx * w, y: ny * h, width: nw * w, height: nh * h)
+        guard px.width > 1, px.height > 1, let cropped = cg.cropping(to: px) else { return nil }
+        return UIImage(cgImage: cropped, scale: ui.scale, orientation: ui.imageOrientation)
+    }
+}
+
 private struct FilmstripRail: View {
     let assets: [Asset]
     let focusedAssetId: UUID?
     let compareAnchorId: UUID?
     let assetIdsWithReviews: Set<UUID>
+    /// Bilder capture-edit-policyen auto-redigerte → «Auto»-badge (E4).
+    var autoEditedIds: Set<UUID> = []
     let onSelect: (Asset) -> Void
     let onDoubleTap: (Asset) -> Void
     let onLongPress: (Asset) -> Void
@@ -3769,12 +4410,18 @@ private struct FilmstripRail: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    ForEach(assets) { asset in
+                    ForEach(Array(assets.enumerated()), id: \.element.id) { idx, asset in
                         FilmstripTile(
                             asset: asset,
                             isFocused: asset.id == focusedAssetId,
                             isCompareAnchor: asset.id == compareAnchorId,
-                            hasReviews: assetIdsWithReviews.contains(asset.id)
+                            hasReviews: assetIdsWithReviews.contains(asset.id),
+                            lightChanged: idx > 0 && ExifInfo.lightChanged(
+                                previousFired: assets[idx - 1].signals.flashFired,
+                                previousComp: assets[idx - 1].signals.flashCompensation,
+                                currentFired: asset.signals.flashFired,
+                                currentComp: asset.signals.flashCompensation),
+                            autoEdited: autoEditedIds.contains(asset.id)
                         )
                         // Order matters — register double-tap before
                         // single-tap so the dispatcher waits for a
@@ -3811,6 +4458,11 @@ private struct FilmstripTile: View {
     let isFocused: Bool
     var isCompareAnchor: Bool = false
     var hasReviews: Bool = false
+    /// «Lys endret» vs forrige bilde (blits fyrte/kompensasjon endret) — varsler
+    /// fotografen når assistenten bumpet blitsen mellom to formals.
+    var lightChanged: Bool = false
+    /// Capture-edit-policyen (E4) auto-påførte en edit på dette bildet → «Auto»-badge.
+    var autoEdited: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -3819,7 +4471,7 @@ private struct FilmstripTile: View {
                     if let key = asset.displayPreviewKey, let image = UIImage(contentsOfFile: key) {
                         Image(uiImage: image)
                             .resizable()
-                            .aspectRatio(contentMode: .fill)
+                            .scaledToFill()
                     } else if asset.state == .previewPending {
                         ZStack {
                             Color.captureChipBG
@@ -3852,6 +4504,49 @@ private struct FilmstripTile: View {
                             .background(.orange, in: Circle())
                             .padding(6)
                     }
+                }
+                .overlay(alignment: .bottomLeading) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        if lightChanged {
+                            Label("Lys endret", systemImage: "bolt.badge.a.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(Color.orange.opacity(0.92), in: Capsule())
+                        }
+                        // E4: policyen har alt auto-redigert denne rammen.
+                        if autoEdited {
+                            Label("Auto", systemImage: "wand.and.stars")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(Color.captureAccent.opacity(0.92), in: Capsule())
+                        }
+                    }
+                    .padding(6)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    // Cull-signaler fra den samlede analysen — det fotografen kan
+                    // reagere på mens hen står der. Stablet: duplikat over on-set-flagg.
+                    VStack(alignment: .trailing, spacing: 3) {
+                        // E7 v2: nesten-duplikat av forrige ramme (dHash) → redundant.
+                        if asset.signals.duplicateGroupId != nil {
+                            Label("Duplikat", systemImage: "square.on.square.dashed")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(Color.purple.opacity(0.85), in: Capsule())
+                        }
+                        // P5 (E7 v1): uskarp / lukkede øyne / svakt ansikt.
+                        if let flag = asset.signals.analysis?.onSetFlag {
+                            Label(flag.label, systemImage: flag.icon)
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(Color.red.opacity(0.85), in: Capsule())
+                        }
+                    }
+                    .padding(6)
                 }
 
                 // Top-right: error, enhanced, or reject marker
@@ -3966,10 +4661,10 @@ private struct FilmstripTile: View {
     }
 
     private var overlayColor: Color {
-        if isCompareAnchor           { return .orange }
-        if isFocused                 { return .accentColor }
-        if asset.rejected            { return .red.opacity(0.6) }
-        if asset.flaggedForClient    { return .green.opacity(0.7) }
+        if isCompareAnchor { return .orange }
+        if isFocused { return .accentColor }
+        if asset.rejected { return .red.opacity(0.6) }
+        if asset.flaggedForClient { return .green.opacity(0.7) }
         return .white.opacity(0.08)
     }
 }
@@ -3996,12 +4691,84 @@ private struct ShutterFlashOverlay: View {
 
 // MARK: - Telemetry footer
 
-private struct TelemetryFooter: View {
-    let telemetry: CameraTelemetry
+/// P3 (E4): capture-edit-policy-chip m/ bytte-ark. Viser gjeldende policy
+/// (Ingen / Sync: forrige / Preset: navn) og lar fotografen bytte FØR/under økten.
+/// Kaller `model.setCapturePolicy` (persistert per sesjon).
+private struct CapturePolicyBar: View {
+    @Bindable var model: LiveCaptureModel
+    @State private var showSheet = false
 
     var body: some View {
-        if telemetry.isEmpty { EmptyView() }
-        else {
+        HStack {
+            Button { showSheet = true } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: model.capturePolicy.isActive ? "wand.and.stars" : "wand.and.stars.inverse")
+                    Text("Auto-edit: \(model.capturePolicy.label)").font(.caption.weight(.medium))
+                    Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                }
+                .foregroundStyle(model.capturePolicy.isActive ? Color.captureAccent : .secondary)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Color.captureChipBG.opacity(0.6), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            Spacer()
+        }
+        .padding(.horizontal, 24).padding(.vertical, 6)
+        .sheet(isPresented: $showSheet) {
+            CapturePolicySheet(current: model.capturePolicy) { policy in
+                model.setCapturePolicy(policy)
+                showSheet = false
+            }
+            .presentationDetents([.medium])
+        }
+    }
+}
+
+/// Bytte-ark for capture-edit-policyen: Ingen / Sync forrige / hvert preset.
+private struct CapturePolicySheet: View {
+    let current: CaptureEditPolicy
+    let onSelect: (CaptureEditPolicy) -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    row(.none, "Ingen", "Ingen automatisk redigering", "circle.slash")
+                    row(.syncPrevious, "Sync: forrige", "Nytt bilde arver forrige bildes look", "arrow.triangle.2.circlepath")
+                } header: { Text("Policy") }
+                Section {
+                    ForEach(RedigeringModel.presets, id: \.0) { name, _ in
+                        row(.preset(name), name, "Fast preset på hvert nytt bilde", "camera.filters")
+                    }
+                } header: { Text("Preset") }
+            }
+            .navigationTitle("Auto-edit ved capture")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private func row(_ policy: CaptureEditPolicy, _ title: String, _ subtitle: String, _ icon: String) -> some View {
+        Button { onSelect(policy) } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon).frame(width: 22).foregroundStyle(Color.captureAccent)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).foregroundStyle(.primary)
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if policy == current { Image(systemName: "checkmark").foregroundStyle(Color.captureAccent) }
+            }
+        }
+    }
+}
+
+private struct TelemetryFooter: View {
+    let telemetry: CameraTelemetry
+    /// P3 (E3): estimert antall gjenstående bilder (nil = ikke kalibrert enda).
+    var shotsRemaining: Int?
+
+    var body: some View {
+        if telemetry.isEmpty { EmptyView() } else {
             HStack(spacing: 20) {
                 if let battery = telemetry.batteryLevel {
                     TelemetryChip(icon: batteryIcon(for: battery), text: batteryLabel(for: battery), color: batteryColor(for: battery))
@@ -4018,9 +4785,20 @@ private struct TelemetryFooter: View {
                 if let iso = telemetry.isoValue {
                     TelemetryChip(icon: "s.square", text: "ISO \(iso)", color: .primary)
                 }
+                // Eksponeringskompensasjon (E2).
+                if let ec = telemetry.exposureCompensation, ec != "0" {
+                    TelemetryChip(icon: "plusminus", text: "\(ec) EV", color: .primary)
+                }
                 Spacer(minLength: 0)
+                if let count = telemetry.totalContentsCount {
+                    TelemetryChip(icon: "photo.stack", text: "\(count)", color: .secondary)
+                }
                 if let free = telemetry.freeSpaceBytes {
-                    TelemetryChip(icon: "externaldrive", text: formatBytes(free) + " free", color: .secondary)
+                    TelemetryChip(icon: "externaldrive", text: formatBytes(free) + " ledig", color: .secondary)
+                }
+                // «Bilder igjen» (E3) — kun når estimatet er kalibrert.
+                if let remaining = shotsRemaining {
+                    TelemetryChip(icon: "camera.badge.clock", text: "~\(remaining) igjen", color: .secondary)
                 }
             }
             .padding(.horizontal, 24)
@@ -4186,13 +4964,13 @@ private struct DetectionReviewSheet: View {
     }
 
     private static let typeLabels: [String: String] = [
-        "flash_strobe":      "Blits / modifier",
-        "light_stand":       "Lys-stativ",
-        "cable":             "Kabel",
-        "boom_arm":          "Boom-arm",
-        "tape_clip":         "Tape / klips",
-        "sensor_dust":       "Sensor-støv",
-        "other_distraction": "Annet",
+        "flash_strobe": "Blits / modifier",
+        "light_stand": "Lys-stativ",
+        "cable": "Kabel",
+        "boom_arm": "Boom-arm",
+        "tape_clip": "Tape / klips",
+        "sensor_dust": "Sensor-støv",
+        "other_distraction": "Annet"
     ]
 
     var body: some View {
@@ -4210,8 +4988,7 @@ private struct DetectionReviewSheet: View {
                         Section {
                             ForEach(detections) { det in
                                 Button {
-                                    if selected.contains(det.id) { selected.remove(det.id) }
-                                    else { selected.insert(det.id) }
+                                    if selected.contains(det.id) { selected.remove(det.id) } else { selected.insert(det.id) }
                                 } label: {
                                     HStack(alignment: .top, spacing: 12) {
                                         Image(systemName: selected.contains(det.id)
@@ -4585,7 +5362,7 @@ private struct AssetViewerPage: View {
                 if let key = effectivePreviewKey, let image = UIImage(contentsOfFile: key) {
                     Image(uiImage: image)
                         .resizable()
-                        .aspectRatio(contentMode: .fit)
+                        .scaledToFit()
                         .scaleEffect(scale)
                         .offset(offset)
                         .gesture(
@@ -4641,6 +5418,24 @@ private struct AssetViewerPage: View {
                             lastCommittedScale = computed
                             offset = .zero
                             lastCommittedOffset = .zero
+                        }
+                        // Rotasjon/split-view endrer `geo.size` → fyll/tilpass-skalaen
+                        // ble ellers hengende på den GAMLE container-størrelsen (regnet
+                        // kun i onAppear). Regn på nytt; følg ny fyll-skala hvis brukeren
+                        // ikke har zoomet manuelt (ellers behold zoomen).
+                        .onChange(of: geo.size) { _, newSize in
+                            let old = fillScale ?? 1
+                            let computed = Self.computeFillScale(
+                                imageSize: image.size,
+                                containerSize: newSize,
+                            )
+                            fillScale = computed
+                            if abs(scale - old) < 0.01 {
+                                scale = computed
+                                lastCommittedScale = computed
+                                offset = .zero
+                                lastCommittedOffset = .zero
+                            }
                         }
                 } else {
                     Text("Preview unavailable")
@@ -4769,6 +5564,9 @@ final class LiveCaptureModel {
     }
     var assets: [Asset] = [] {
         didSet {
+            // Ved teardown settes `assets = []` ETTER at store/backend/kamera er
+            // nilet — ikke re-fyr planleggings-/fokus-hooks mot nilede avhengigheter.
+            guard !isTearingDown else { return }
             // Follow latest unless the user has pinned focus to a specific
             // asset. Pinning is a UX affordance for reviewing while shooting
             // continues — without it every new capture would steal focus.
@@ -4781,25 +5579,43 @@ final class LiveCaptureModel {
                 }
             }
             if newCaptureArrived { shutterFlashToken = UUID() }
-            // Fire Claude Vision analysis the moment a preview lands. Once
-            // per asset; failures are silent so the on-device pipeline result
-            // remains the visible state if the backend is unreachable.
-            scheduleAIAnalyses(after: oldValue)
-            // Phase 2C activation gate. The CCAPI adapter only auto-enqueues
-            // `.preview` for new shots — `.raw` is opt-in. Without this hook
-            // every CR3 pick would land at deliver time with `rawKey == nil`
-            // and the RAWExportService would silently fall back to the
-            // display JPEG, defeating the whole pipeline. Diffing here (vs.
-            // hooking individual UI sites) covers both `togglePick` and the
-            // batch `CullStore.commit` path uniformly.
-            scheduleRAWFetchesForNewlyFlaggedPicks(previous: oldValue)
-            // WYSIWYG hook (Block C). When `rawKey` flips nil → set on
-            // any asset, render a preview-quality JPEG via the same
-            // CIRAWFilter pipeline that produces the gallery deliverable
-            // and attach it as `enhancedKey`. Hero comparison-slider
-            // then shows the photographer the actual demosaic, not
-            // Canon's camera-baked JPEG with display-pipeline magic.
-            scheduleRAWPreviewRenders(previous: oldValue)
+            // #4-perf: ÉN O(N)-diff avgjør HVA som endret seg, i stedet for at hver
+            // av de fem planleggings-hookene under bygger sitt EGET id→felt-dict og
+            // skanner alle assets. På store økter re-emitter hver stjerne-/farge-/
+            // pick-interaksjon HELE arrayet; rating/farge rører ingen trigger-felt →
+            // da hoppes alle de tunge hookene (5× O(N) → 1× O(N)). Portene speiler
+            // hver hooks NØYAKTIGE trigger (verifisert mot hook-koden), så oppførsel
+            // er uendret — dette dropper kun arbeid som uansett ville funnet ingenting.
+            var previewGained = false, rawGained = false, flagGained = false
+            let prev = Dictionary(uniqueKeysWithValues: oldValue.map {
+                ($0.id, (hasPreview: $0.previewKey != nil, hasRaw: $0.rawKey != nil,
+                         flagged: $0.flaggedForClient))
+            })
+            for a in assets {
+                guard let p = prev[a.id] else { previewGained = true; continue }  // ny id
+                if a.previewKey != nil, !p.hasPreview { previewGained = true }
+                if a.rawKey != nil, !p.hasRaw { rawGained = true }
+                if a.flaggedForClient, !p.flagged { flagGained = true }
+            }
+            if previewGained {
+                // Alle tre drevet av previewKey nil→set (eller ny asset):
+                // Claude Vision (backend, idempotent per asset); P2/E4 capture-edit-
+                // policy (sync-forrige/preset, rører aldri manuelle edits); P5/E7
+                // on-device-analyse (filmstrip-flagg + delt HUD/QC/cull-analyse).
+                scheduleAIAnalyses(after: oldValue)
+                applyCaptureEditPolicyForNewPreviews(previous: oldValue)
+                scheduleOnDeviceAnalysisForNewPreviews(previous: oldValue)
+            }
+            if flagGained {
+                // Phase 2C: hent RAW for NY-flaggede picks (togglePick + batch
+                // CullStore.commit). Uten dette lander CR3-picks med rawKey==nil.
+                scheduleRAWFetchesForNewlyFlaggedPicks(previous: oldValue)
+            }
+            if rawGained {
+                // WYSIWYG (Block C): rawKey nil→set → render demosaic-preview via
+                // CIRAWFilter så heroen viser ekte demosaic, ikke Canons JPEG.
+                scheduleRAWPreviewRenders(previous: oldValue)
+            }
         }
     }
     var errorMessage: String?
@@ -4850,6 +5666,71 @@ final class LiveCaptureModel {
         compareAnchorAssetId = nil
     }
 
+    /// P2 (E4): capture-edit-policy — auto-påføres nye bilder når de lander.
+    /// Persisteres per sesjon; endring lagres umiddelbart.
+    private(set) var capturePolicy: CaptureEditPolicy = .none
+    func setCapturePolicy(_ policy: CaptureEditPolicy) {
+        capturePolicy = policy
+        if let sid = currentSessionId { CaptureEditPolicyStore.save(sid, policy) }
+    }
+
+    /// Bilder som capture-edit-policyen auto-redigerte (E4) — driver «Auto»-badgen
+    /// i filmstripen slik at fotografen ser HVILKE rammer assistenten alt har rørt
+    /// (vs. de hen selv må ta). Kun policy-påførte edits; manuelle telles ikke.
+    private(set) var autoEditedAssetIds: Set<UUID> = []
+
+    // MARK: - E8: levering per-ansikt (on-device person-gruppering)
+
+    /// En person klynget fra ansikts-feature-prints over fotograferingen. Rekkefølge/
+    /// indeks er sammenfallende med `personClusterer`s klynger. `label` er redigerbar
+    /// («Bruden», «Brudgom» …); representant-ansiktet driver miniatyren i filteret.
+    struct PersonGroup: Identifiable, Hashable {
+        let id: UUID
+        var label: String
+        var representativeAssetId: UUID
+        var representativeFaceRect: CGRect   // normalisert, origo nede-venstre
+        var photoCount: Int
+    }
+
+    /// Grupperte personer i økta (én per klynge). Bygges inkrementelt når analysen
+    /// lander; nullstilles i teardown. Driver «Personer»-filterraden + levering.
+    private(set) var personGroups: [PersonGroup] = []
+    /// Aktivt person-filter — kun bilder der personen opptrer vises. nil = alle.
+    var personFilter: UUID?
+    /// Tilstandsfull klynger (sentroider) — MainActor-eid, mates fra bakgrunns-print.
+    private var personClusterer = PersonClusterer()
+
+    /// Auto-påfør capture-edit-policyen på nye PREVIEW-klare bilder (E4). Kalles
+    /// fra `assets.didSet`. Idempotent — skriver aldri over en manuell edit, så
+    /// en reconnect/re-emit ikke tramper på fotografens arbeid. «Forrige bilde»
+    /// er elementet før i den captureTime-sorterte lista (ekte rekkefølge fra P1).
+    private func applyCaptureEditPolicyForNewPreviews(previous: [Asset]) {
+        guard capturePolicy.isActive else { return }
+        let hadPreview: [UUID: Bool] = Dictionary(
+            uniqueKeysWithValues: previous.map { ($0.id, $0.previewKey != nil) })
+        for (idx, asset) in assets.enumerated() {
+            // Kun bilder som NETTOPP ble preview-klare (var det ikke før).
+            guard asset.previewKey != nil, hadPreview[asset.id] != true else { continue }
+            let previousAsset = idx > 0 ? assets[idx - 1] : nil
+            // «Lys endret» vs forrige bilde → «Sync forrige» arver IKKE blindt.
+            let lightChanged = previousAsset.map { prev in
+                ExifInfo.lightChanged(
+                    previousFired: prev.signals.flashFired, previousComp: prev.signals.flashCompensation,
+                    currentFired: asset.signals.flashFired, currentComp: asset.signals.flashCompensation)
+            } ?? false
+            let edit = CaptureEditPolicyEngine.editToApply(
+                policy: capturePolicy,
+                existingEdit: RedigeringEditStore.load(asset.id),
+                previousEdit: previousAsset.flatMap { RedigeringEditStore.load($0.id) },
+                lightChanged: lightChanged,
+                presetLookup: { name in RedigeringModel.presets.first { $0.0 == name }?.1 })
+            if let edit {
+                RedigeringEditStore.save(asset.id, edit)
+                autoEditedAssetIds.insert(asset.id)   // driver «Auto»-badgen
+            }
+        }
+    }
+
     /// Kick off a background analysis pass whenever the focused asset
     /// changes. Uses the UNenhanced preview so HUD reports the actual
     /// camera capture, not the post-Magic result.
@@ -4860,16 +5741,210 @@ final class LiveCaptureModel {
               FileManager.default.fileExists(atPath: key)
         else {
             focusedAnalysis = nil
+            focusedAssetAnalysis = nil
             return
         }
         let url = URL(fileURLWithPath: key)
         let analyser = self.analyser
+        let assetAnalyzer = self.assetAnalyzer
         analysisTask = Task { [weak self] in
-            let result = await analyser.analyze(imageURL: url)
+            // Histogram-/klipp-HUD (rask) og den samlede per-bilde-analysen
+            // (ansikter/motiv-klipp/skarphet) kjøres i parallell.
+            async let hud = analyser.analyze(imageURL: url)
+            async let full = assetAnalyzer.analyze(imageURL: url)
+            let (result, assetResult) = await (hud, full)
             guard !Task.isCancelled, self?.focusedAssetId == asset.id else { return }
-            await MainActor.run { self?.focusedAnalysis = result }
+            await MainActor.run {
+                self?.focusedAnalysis = result
+                self?.focusedAssetAnalysis = assetResult
+            }
+            if let assetResult { await self?.persistAnalysis(assetResult, for: asset.id) }
         }
     }
+
+    /// Persister den samlede analysen inline på asset-radens signals (JSONB) —
+    /// måles én gang, tilgjengelig for cull/Kvalitetssjekk/synk lenge etter at
+    /// HUD-et er lukket. Oppdaterer også in-memory-asseten så en re-render er
+    /// konsistent. Feiler stille (analyse er en berikelse, ikke en blokker).
+    /// P5 (E7 v1): kjør den samlede AssetAnalysis for HVERT nytt preview-klart
+    /// bilde (av MainActor, cache-drevet) og persister — så filmstripen kan flagge
+    /// uskarpt/svakt-ansikt, og HUD/QC/cull/forslag gjenbruker samme måling. Én
+    /// gang per asset (`onDeviceAnalysisDispatched`).
+    private var onDeviceAnalysisDispatched: Set<UUID> = []
+    private func scheduleOnDeviceAnalysisForNewPreviews(previous: [Asset]) {
+        let hadPreview: [UUID: Bool] = Dictionary(
+            uniqueKeysWithValues: previous.map { ($0.id, $0.previewKey != nil) })
+        let analyzer = assetAnalyzer
+        for asset in assets {
+            guard asset.previewKey != nil, hadPreview[asset.id] != true,
+                  asset.signals.analysis == nil,
+                  !onDeviceAnalysisDispatched.contains(asset.id),
+                  let key = asset.previewKey, FileManager.default.fileExists(atPath: key)
+            else { continue }
+            onDeviceAnalysisDispatched.insert(asset.id)
+            let id = asset.id
+            Task { [weak self] in
+                let url = URL(fileURLWithPath: key)
+                guard let measured = await analyzer.analyze(imageURL: url) else { return }
+                await self?.persistAnalysis(measured, for: id)
+                // E8: ansikts-gruppering — feature-print for de STØRSTE ansiktene
+                // (hopp over bittesmå bakgrunnsansikter; tak 5 for å holde kostnad
+                // nede), klynges deretter på MainActor.
+                let faces = measured.faces
+                    .filter { $0.sizeFraction >= 0.012 }
+                    .sorted { $0.sizeFraction > $1.sizeFraction }
+                    .prefix(5)
+                guard !faces.isEmpty else { return }
+                let pairs = await FacePrintExtractor.prints(imageURL: url, faceRects: faces.map(\.rect))
+                await self?.assignPersons(pairs, for: id)
+            }
+        }
+    }
+
+    func persistAnalysis(_ analysis: AssetAnalysis, for id: UUID) async {
+        guard let idx = assets.firstIndex(where: { $0.id == id }) else { return }
+        var signals = assets[idx].signals
+        guard signals.analysis != analysis else { return }
+        signals.analysis = analysis
+        // Fyll også de eksisterende cull-signalene fra samme måling (én kilde).
+        if let face = analysis.primaryFace {
+            signals.eyesOpen = face.eyesOpen ?? signals.eyesOpen
+        }
+        signals.faceCount = analysis.faces.count
+        assets[idx].signals = signals
+        try? await store?.updateAssetSignals(id: id, signals: signals)
+
+        // Nesten-duplikat-deteksjon (E7 v2): sammenlign dHash med opptaket rett før
+        // OG rett etter i tid (etterfølgeren backfilles hvis dens analyse landet
+        // først — resultatene kommer ofte ute av rekkefølge). @MainActor → trygt.
+        let ordered = assets.sorted { $0.captureTime < $1.captureTime }
+        if let p = ordered.firstIndex(where: { $0.id == id }) {
+            if p > 0 { await markDuplicateIfNeeded(curId: id, prevId: ordered[p - 1].id) }
+            if p + 1 < ordered.count { await markDuplicateIfNeeded(curId: ordered[p + 1].id, prevId: id) }
+        }
+    }
+
+    /// Merk `curId` som nesten-duplikat av forrige opptak `prevId` når dHash-ene er
+    /// innenfor terskel. Keeperen (først i en burst) forblir umerket — kun de
+    /// redundante rammene får «Duplikat»-badge, kjedet via delt `duplicateGroupId`.
+    /// Leser ferske signals fra `assets` (ikke et snapshot) så kjeding er korrekt.
+    private func markDuplicateIfNeeded(curId: UUID, prevId: UUID) async {
+        guard let ci = assets.firstIndex(where: { $0.id == curId }),
+              let pi = assets.firstIndex(where: { $0.id == prevId }),
+              assets[ci].signals.duplicateGroupId == nil,
+              let curHash = assets[ci].signals.analysis?.perceptualHash, curHash != 0,
+              let prevHash = assets[pi].signals.analysis?.perceptualHash, prevHash != 0,
+              PerceptualHash.isDuplicate(prevHash, curHash) else { return }
+        let groupId = assets[pi].signals.duplicateGroupId ?? UUID()
+        var signals = assets[ci].signals
+        signals.duplicateGroupId = groupId
+        assets[ci].signals = signals
+        try? await store?.updateAssetSignals(id: curId, signals: signals)
+    }
+
+    /// E8: klyng bildets ansikts-prints til personer og lagre hvilke som opptrer.
+    /// @MainActor → `personClusterer`/`personGroups` er trygge. Dedupliserer per
+    /// bilde (to ansikter av SAMME person teller én gang i photoCount).
+    private func assignPersons(_ pairs: [FaceRectPrint], for id: UUID) async {
+        guard !pairs.isEmpty, let idx = assets.firstIndex(where: { $0.id == id }) else { return }
+        var indices: [Int] = []
+        for pair in pairs {
+            let pi = personClusterer.assign(pair.print)
+            guard pi >= 0 else { continue }
+            ensurePersonGroup(pi, representativeAssetId: id, faceRect: pair.rect)
+            indices.append(pi)
+        }
+        var personIds: [UUID] = []
+        for pi in Set(indices).sorted() {
+            personGroups[pi].photoCount += 1
+            personIds.append(personGroups[pi].id)
+        }
+        guard !personIds.isEmpty else { return }
+        var signals = assets[idx].signals
+        signals.personIds = personIds
+        assets[idx].signals = signals
+        try? await store?.updateAssetSignals(id: id, signals: signals)
+    }
+
+    /// Sørg for at det finnes en `PersonGroup` for klynge-indeks `idx` (klyngeren
+    /// tildeler sammenhengende indekser). photoCount starter på 0 — telles i
+    /// `assignPersons` etter deduplisering.
+    private func ensurePersonGroup(_ idx: Int, representativeAssetId: UUID, faceRect: CGRect) {
+        while personGroups.count <= idx {
+            let n = personGroups.count
+            personGroups.append(PersonGroup(
+                id: UUID(), label: "Person \(n + 1)",
+                representativeAssetId: representativeAssetId, representativeFaceRect: faceRect,
+                photoCount: 0))
+        }
+    }
+
+    /// Gi en person et meningsfullt navn («Bruden», «Brudgom» …).
+    func renamePerson(_ personId: UUID, to label: String) {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let i = personGroups.firstIndex(where: { $0.id == personId }) else { return }
+        personGroups[i].label = trimmed
+    }
+
+    #if DEBUG
+    /// DEBUG-only (`--demo-persons`): seed filmstripen med EKTE leverte bryllups-
+    /// JPG-er fra appens `Documents/persondemo/` (kopiert inn av screenshot-
+    /// harnessen), så on-device person-grupperingen (E8) kjøres mot VIRKELIGE
+    /// ansikter og «Personer»-raden fylles. Ikke i Release-binæret.
+    func seedPersonDemo() async {
+        let dir = URL.documentsDirectory.appendingPathComponent("persondemo", isDirectory: true)
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil) else { return }
+        let jpgs = files.filter { $0.pathExtension.lowercased() == "jpg" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        guard !jpgs.isEmpty else { return }
+        let base = Date()
+        let seeded = jpgs.enumerated().map { i, url in
+            Asset(id: UUID(), sessionId: currentSessionId ?? UUID(),
+                  originalFilename: url.lastPathComponent,
+                  captureTime: base.addingTimeInterval(Double(i)),
+                  previewKey: url.path, fullKey: nil, rawKey: nil, enhancedKey: nil,
+                  voiceMemoKey: nil, serverEnhancedKey: nil, autoCleanedKey: nil,
+                  autoCleanedDetectionCount: nil, pendingDetections: nil,
+                  checksumSha256: nil, mime: "image/jpeg", sizeBytes: nil,
+                  state: .previewReady, signals: .empty, rating: 0, colorLabel: nil,
+                  flaggedForClient: false, rejected: false, createdAt: base, updatedAt: base)
+        }
+        assets.append(contentsOf: seeded)   // didSet → analyse (Vision) hvis tilgjengelig
+        applyPrecomputedPersonGroups(from: dir, seeded: seeded)
+    }
+
+    /// Vision-ansiktsdeteksjon er IKKE funksjonell i simulator-runtimen (returnerer
+    /// 0 ansikter selv om dekodingen er korrekt). For skjermbilder leser vi derfor
+    /// en `groups.json` som screenshot-harnessen har produsert HEADLESS med SAMME
+    /// `FacePrint` + `PersonClusterer` (terskel 0.35) på de samme bildene — altså
+    /// den EKTE algoritmens utdata, bare regnet utenfor simulatoren og vist via den
+    /// ekte «Personer»-flaten. No-op på enhet der live-grupperingen kjører selv.
+    private func applyPrecomputedPersonGroups(from dir: URL, seeded: [Asset]) {
+        let url = dir.appendingPathComponent("groups.json")
+        guard let data = try? Data(contentsOf: url),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let personsArr = obj["persons"] as? [[String: Any]],
+              let assignments = obj["assignments"] as? [String: [Int]] else { return }
+        let byName = Dictionary(uniqueKeysWithValues: seeded.map { ($0.originalFilename, $0.id) })
+        var idForIndex: [Int: UUID] = [:]
+        var groups: [PersonGroup] = []
+        for (i, p) in personsArr.enumerated() {
+            let rr = p["repRect"] as? [Double] ?? [0, 0, 0.2, 0.2]
+            let id = UUID(); idForIndex[i] = id
+            groups.append(PersonGroup(
+                id: id, label: p["label"] as? String ?? "Person \(i + 1)",
+                representativeAssetId: byName[p["repFile"] as? String ?? ""] ?? seeded.first!.id,
+                representativeFaceRect: CGRect(x: rr[0], y: rr[1], width: rr[2], height: rr[3]),
+                photoCount: assignments.values.filter { $0.contains(i) }.count))
+        }
+        personGroups = groups
+        for (name, idxs) in assignments {
+            guard let aid = byName[name], let ai = assets.firstIndex(where: { $0.id == aid }) else { continue }
+            assets[ai].signals.personIds = idxs.compactMap { idForIndex[$0] }
+        }
+    }
+    #endif
 
     var canShoot: Bool {
         switch connectionState {
@@ -4883,7 +5958,13 @@ final class LiveCaptureModel {
     private var store: SessionStore?
     private var currentSessionId: UUID?
     private let analyser = ImageAnalyser()
+    /// Samlet per-bilde-analyse (ansikter/motiv-klipp/skarphet/scene) — kjøres
+    /// sammen med histogram-HUD-en, persisteres på signals, deles av cull/QC.
+    private let assetAnalyzer = AssetAnalyzer()
     private var analysisTask: Task<Void, Never>?
+    /// Sann mens ``teardown`` rydder — `assets.didSet`-kjeden (AI-/RAW-planlegging,
+    /// fokus) skal ikke re-fyre mot alt-nilede avhengigheter ved `assets = []`.
+    private var isTearingDown = false
     /// Configured at connect time from UserDefaults. Nil = no backend, in
     /// which case the on-device pipeline is the only source of truth and
     /// no Claude Vision call is ever attempted.
@@ -4898,6 +5979,9 @@ final class LiveCaptureModel {
     /// On-set coaching signals for the currently focused asset. Cleared
     /// when focus changes; refreshed in background. Nil = no reading yet.
     var focusedAnalysis: ImageAnalysis?
+    /// Samlet per-bilde-analyse for fokusert asset (ansikts-varsler, motiv-klipp).
+    /// Cleared ved fokusbytte; oppdateres i bakgrunn parallelt med `focusedAnalysis`.
+    var focusedAssetAnalysis: AssetAnalysis?
     var showHUD: Bool = true
     /// Slice 4 + 7 — auto-clean mode picker. `.off` does nothing.
     /// `.autoClean` (Slice 4) auto-removes every detected distraction
@@ -4918,6 +6002,44 @@ final class LiveCaptureModel {
     /// Asset ids we've already kicked auto-clean for, so re-emissions
     /// of the assets stream don't fire duplicate detect calls.
     private var autoCleanDispatched: Set<UUID> = []
+    // Shot-list auto-checkoff (Vision-match). Oppdaterer prosjektets shot-list
+    // → outbox-sync til /api/projects/:id/shot-list → synlig i workspace.
+    private var autoCheckedShotAssetIds: Set<UUID> = []
+    private var shotAutoCheckStore: ShotListStore?
+    /// Team-flagg (projects.settings.shotListAutoCheck) — eier/lead styrer det
+    /// fra web-workspacen. Default PÅ; hentes når prosjekt kobles til.
+    var shotListAutoCheckEnabled = true
+    /// Demo-rute (--demo-shotlist): toggelen virker lokalt uten backend.
+    var isDemoMode = false
+    /// Sist auto-hukede shot (scene-navn) — driver en kort bekreftelses-toast.
+    var lastAutoCheckedShot: String?
+    /// Sist auto-hukede shot-id — for «Angre» på toasten.
+    var lastAutoCheckedShotId: String?
+    /// Logg over auto-hukede shots denne økta → «Auto-huket»-oversikt m/ angre.
+    struct AutoCheckEntry: Identifiable, Equatable {
+        let id = UUID()
+        let shotId: String
+        let scene: String
+        let assetId: UUID
+        let at: Date
+        /// Lav-konfidens-match — flagges så fotografen dobbeltsjekker/angrer.
+        var uncertain: Bool = false
+    }
+    var autoCheckLog: [AutoCheckEntry] = []
+    /// Om siste auto-huking var usikker — driver toast-varianten.
+    var lastAutoCheckedUncertain = false
+    // Batchet team-melding: samler auto-hukede scener + poster én oppsummering.
+    private var pendingTeamShotScenes: [String] = []
+    private var teamShotPostTask: Task<Void, Never>?
+    // Ekte in-place-oppdatering: ETT kort pr opptaksøkt. Vi re-poster samme
+    // clientMessageId med voksende innhold + metadata → backend upserter →
+    // kortet vokser der det er, i stedet for én ny melding pr batch.
+    private var activeShotCardId: String?
+    private var activeShotCardScenes: [String] = []
+    private var activeShotCardAssetIds: [UUID] = []
+    private var lastShotCardActivity: Date?
+    /// Ny økt (nytt kort) etter så lang ro siden forrige auto-huk.
+    private let shotCardIdleReset: TimeInterval = 180
     private var downloadDirectory: URL?
     private var forwardingTasks: [Task<Void, Never>] = []
     /// Phase 2C — per-session RAW renderer. Built at connect time so it
@@ -5095,7 +6217,7 @@ final class LiveCaptureModel {
                 if Task.isCancelled { return }
                 try await store.attachEnhancedKey(id: primaryAssetId, key: url.path)
             } catch {
-                print("[LiveCaptureModel] RAW preview retune failed for \(primaryAssetId): \(error)")
+                AppLog.liveCapture.error("[LiveCaptureModel] RAW preview retune failed for \(String(describing: primaryAssetId), privacy: .public): \(error.localizedDescription, privacy: .public)")
                 _ = self
             }
         }
@@ -5144,7 +6266,7 @@ final class LiveCaptureModel {
     /// Optional color-label narrowing applied on top of `filmstripFilter`.
     /// nil = "any color (incl. unlabeled)". Set this from the color filter
     /// chips so a photographer can isolate e.g. all picks tagged green.
-    var filmstripColorFilter: ColorLabel? = nil
+    var filmstripColorFilter: ColorLabel?
 
     enum FilmstripFilter: String, CaseIterable, Equatable {
         case all     = "All"
@@ -5159,8 +6281,10 @@ final class LiveCaptureModel {
         case .picks:   base = assets.filter { $0.flaggedForClient && !$0.rejected }
         case .fourPlus: base = assets.filter { $0.rating >= 4 && !$0.rejected }
         }
-        guard let color = filmstripColorFilter else { return base }
-        return base.filter { $0.colorLabel == color }
+        let colored = filmstripColorFilter.map { color in base.filter { $0.colorLabel == color } } ?? base
+        // E8: person-filter — kun bilder der den valgte personen opptrer.
+        guard let person = personFilter else { return colored }
+        return colored.filter { $0.signals.personIds?.contains(person) ?? false }
     }
 
     /// Identity for local SQLite rows. When the user has signed into
@@ -5177,35 +6301,108 @@ final class LiveCaptureModel {
     /// insecure-trust session path.
     static let demoBaseURL = URL(string: "https://camera.demo")!
 
+    /// Persistent per-økt-katalog under `Documents/CaptureApp/sessions/<id>/`.
+    /// Overlever frakobling/omstart (≠ `temporaryDirectory`), samlokalisert med
+    /// disk-DB-en. Katalognavnet = `sessionId.uuidString` (samsvarer med DB-nøkkelen).
+    nonisolated static func persistentSessionDirectory(for sessionId: UUID) throws -> URL {
+        let dir = try FileManager.default
+            .url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent("CaptureApp/sessions", isDirectory: true)
+            .appendingPathComponent(sessionId.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    /// Retensjon: rydd gamle økt-kataloger + DB-rader så persistent lagring ikke
+    /// vokser ubegrenset. Sletter alt eldre enn `maxAgeDays`, og — hvis totalen
+    /// fortsatt overstiger `capBytes` — de ELDSTE til under taket. Rører ALDRI den
+    /// aktive økten (`keeping`). Kjøres fire-and-forget off-main ved connect.
+    nonisolated static func purgeStaleSessions(
+        keeping activeId: UUID, ownerUserId: String,
+        maxAgeDays: Double = 30, capBytes: Int64 = 25 * 1024 * 1024 * 1024
+    ) async {
+        let fm = FileManager.default
+        guard let root = try? fm.url(for: .documentDirectory, in: .userDomainMask,
+                                     appropriateFor: nil, create: false)
+            .appendingPathComponent("CaptureApp/sessions", isDirectory: true),
+              let entries = try? fm.contentsOfDirectory(
+                at: root, includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]) else { return }
+        struct Entry { let url: URL; let id: UUID; let mtime: Date; let size: Int64 }
+        var dirs: [Entry] = []
+        for url in entries {
+            guard url.hasDirectoryPath, let id = UUID(uuidString: url.lastPathComponent),
+                  id != activeId else { continue }
+            let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey])
+                .contentModificationDate) ?? .distantPast
+            dirs.append(Entry(url: url, id: id, mtime: mtime, size: directorySize(url)))
+        }
+        let store = try? SessionStore(database: AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL()))
+        let now = Date()
+        var survivors: [Entry] = []
+        for e in dirs {                                   // 1) aldersbasert
+            if now.timeIntervalSince(e.mtime) > maxAgeDays * 86_400 {
+                try? fm.removeItem(at: e.url)
+                try? await store?.deleteSession(id: e.id)
+            } else { survivors.append(e) }
+        }
+        var total = survivors.reduce(Int64(0)) { $0 + $1.size }
+        for e in survivors.sorted(by: { $0.mtime < $1.mtime }) where total > capBytes {  // 2) størrelsestak
+            try? fm.removeItem(at: e.url)
+            try? await store?.deleteSession(id: e.id)
+            total -= e.size
+        }
+    }
+
+    nonisolated private static func directorySize(_ url: URL) -> Int64 {
+        guard let en = FileManager.default.enumerator(
+            at: url, includingPropertiesForKeys: [.totalFileAllocatedSizeKey]) else { return 0 }
+        var total: Int64 = 0
+        for case let f as URL in en {
+            total += Int64((try? f.resourceValues(forKeys: [.totalFileAllocatedSizeKey])
+                .totalFileAllocatedSize) ?? 0)
+        }
+        return total
+    }
+
     func connect(to baseURL: URL) async {
         guard cameraSession == nil else { return }
         isConnecting = true
         errorMessage = nil
         refreshPhase()
 
+        // makeSession sin retain-closure har ulik signatur i DEBUG ((FakeCanonCamera)
+        // -> Void) vs Release (() -> Void), så kall-stedet må også være betinget —
+        // ellers feiler Release-archive (latent bug før første device-build).
+        #if DEBUG
         let urlSession = Self.makeSession(for: baseURL, retain: { [weak self] fake in
-            #if DEBUG
             self?.demoFake = fake
-            #endif
         })
+        #else
+        let urlSession = Self.makeSession(for: baseURL, retain: {})
+        #endif
         let client = CCAPIClient(baseURL: baseURL, session: urlSession)
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("capture-live", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-
         do {
-            let adapter = try CCAPIAdapter(
-                baseURL: baseURL,
-                adapterId: "live-\(baseURL.host ?? "")",
-                client: client,
-                downloadDirectory: tempDir,
-                enumerateOnStart: false
-            )
-            let store = try SessionStore(database: AppDatabase.inMemory())
+            // PERSISTENS: tethered økter skrives til den delte disk-DB-en (samme
+            // som Redigering/Arkiv/kortimport leser) + en persistent per-økt-
+            // katalog — IKKE lenger en in-memory-DB + temporaryDirectory som
+            // forsvant ved hver frakobling. Dermed overlever previews/RAW/ratings/
+            // picks/voice-memos/tuned recipes en disconnect/omstart og dukker opp
+            // i Redigering + Arkiv. `store` + `sessionDir` MÅ opprettes FØR adapteren
+            // (den trenger katalogen), så rekkefølgen er snudd vs. den gamle koden.
+            let store = try SessionStore(database: AppDatabase.openOnDisk(at: AppDatabase.defaultDiskURL()))
             let dbSession = try await store.createSession(
                 name: "Live shoot",
                 clientId: nil,
                 ownerUserId: actorUserId
+            )
+            let sessionDir = try Self.persistentSessionDirectory(for: dbSession.id)
+            let adapter = try CCAPIAdapter(
+                baseURL: baseURL,
+                adapterId: "live-\(baseURL.host ?? "")",
+                client: client,
+                downloadDirectory: sessionDir,
+                enumerateOnStart: false
             )
             let camera = CameraSession(
                 sessionId: dbSession.id,
@@ -5217,23 +6414,34 @@ final class LiveCaptureModel {
             self.client = client
             self.store = store
             self.cameraSession = camera
-            self.downloadDirectory = tempDir
+            self.downloadDirectory = sessionDir
+            // Rydd gamle økter (alder + størrelse) så persistent lagring ikke vokser
+            // ubegrenset. Aldri den aktive økten. Fire-and-forget.
+            Task.detached { [ownerUserId = actorUserId] in
+                await Self.purgeStaleSessions(keeping: dbSession.id, ownerUserId: ownerUserId)
+            }
             self.currentSessionId = dbSession.id
+            // P2 (E4): last capture-edit-policyen for økten (persistert per sesjon)
+            // — valget overlever restart/reconnect.
+            self.capturePolicy = CaptureEditPolicyStore.load(dbSession.id)
             self.sessionName = dbSession.name
+            if #available(iOS 16.1, *) {
+                ShootActivityManager.shared.start(sessionName: dbSession.name)
+            }
             self.backendClient = makeBackendClientFromDefaults()
             if let backend = self.backendClient {
                 self.autoCleanService = AutoCleanService(store: store, backend: backend)
             }
             self.rawExportService = RAWExportService(
                 store: store,
-                outputDirectory: tempDir.appendingPathComponent("raw-export"),
+                outputDirectory: sessionDir.appendingPathComponent("raw-export"),
             )
             self.voiceMemoService = VoiceMemoService(
-                outputDirectory: tempDir.appendingPathComponent("voice-memos"),
+                outputDirectory: sessionDir.appendingPathComponent("voice-memos"),
             )
-            self.replyMemosDirectory = tempDir.appendingPathComponent("reply-memos")
+            self.replyMemosDirectory = sessionDir.appendingPathComponent("reply-memos")
             try? FileManager.default.createDirectory(
-                at: tempDir.appendingPathComponent("reply-memos"),
+                at: sessionDir.appendingPathComponent("reply-memos"),
                 withIntermediateDirectories: true,
             )
 
@@ -5243,11 +6451,14 @@ final class LiveCaptureModel {
             // still on-set. Skipped when not signed in (offline mode
             // keeps the rest of the app functional; reviews simply
             // never arrive until next sign-in).
-            if let session = SignInService.shared.session {
+            if let session = SignInService.shared.session,
+               let realtimeBackend = self.backendClient {
                 let realtime = RealtimeEventService()
                 self.realtimeService = realtime
                 let wsURL = session.backendBaseURL.appendingPathComponent("/api/ipad/ws/events")
-                await realtime.start(url: wsURL, bearerToken: session.bearer)
+                await realtime.start(url: wsURL) {
+                    try await realtimeBackend.createRealtimeTicket()
+                }
                 let observerId = await realtime.addObserver { [weak self] event in
                     Task { @MainActor in
                         self?.recordClientReview(event)
@@ -5274,7 +6485,7 @@ final class LiveCaptureModel {
             // validate the Enhanced UX flow with real cameras too, before
             // the backend-driven enhancer loop is wired up. Won't ship to
             // release builds.
-            let enhancer = MagicPipeline(store: store, outputDirectory: tempDir.appendingPathComponent("enhanced"))
+            let enhancer = MagicPipeline(store: store, outputDirectory: sessionDir.appendingPathComponent("enhanced"))
             enhancer.start(sessionId: dbSession.id)
             self.magicPipeline = enhancer
             #endif
@@ -5306,6 +6517,7 @@ final class LiveCaptureModel {
                     await MainActor.run {
                         self?.assets = assets
                         self?.dispatchAutoCleanForNewlyReadyAssets()
+                        self?.dispatchShotAutoCheckForNewAssets()
                     }
                 }
             }
@@ -5327,6 +6539,10 @@ final class LiveCaptureModel {
     }
 
     func disconnect() async {
+        if #available(iOS 16.1, *) {
+            await ShootActivityManager.shared.end()
+        }
+        resetActiveShotCard()   // ny opptaksøkt neste gang ⇒ ferskt kort
         await teardown()
     }
 
@@ -5422,6 +6638,18 @@ final class LiveCaptureModel {
         recentClientReviews.filter { $0.unread }.count
     }
 
+    /// Klient-samarbeidende culling: sett av galleri-bilde- id-er klienten har
+    /// hjertet (backend auto-flagger dem som keepers). Driver «Kunden har
+    /// hjertet X bilder»-live-banneret. Uavhengig av lokal asset-matching (id-
+    /// ene er galleri-bilde-id-er, ikke lokale asset-UUID-er). Nullstilles ved
+    /// ny opptaksøkt.
+    var clientHeartedAssetIds: Set<String> = []
+    var clientHeartedCount: Int { clientHeartedAssetIds.count }
+
+    private func updateClientHeartCount(assetId: String, hearted: Bool) {
+        if hearted { clientHeartedAssetIds.insert(assetId) } else { clientHeartedAssetIds.remove(assetId) }
+    }
+
     /// Set of asset IDs that have received at least one review in this
     /// session — used by FilmstripTile to draw a persistent comment-
     /// bubble badge so the photographer can see "this shot got
@@ -5462,6 +6690,12 @@ final class LiveCaptureModel {
     /// disabled via Settings — events still arrive but stay invisible
     /// (the photographer asked for quiet).
     func recordClientReview(_ event: UserEvent) {
+        // Klient-hjerte → oppdater live-telleren FØR alt annet (uavhengig av
+        // review-gate + lokal asset-matching, som ofte feiler siden id-en er
+        // en galleri-bilde-id).
+        if case .assetHearted(let p) = event {
+            updateClientHeartCount(assetId: p.assetId, hearted: p.hearted)
+        }
         // Phase 5.3 — presence + label-change events route here too.
         // We dispatch BEFORE the clientReviewsEnabled gate because
         // presence tracking is independent of review surface (turning
@@ -5668,6 +6902,220 @@ final class LiveCaptureModel {
     /// All checks are cheap so calling this on every assets emission
     /// is fine — it only enqueues work when something has actually
     /// transitioned to "preview ready and unseen".
+    /// Auto-huk shot-list-elementer for nye bilder via Vision-match. Kjøres
+    /// idempotent per asset (samme mønster som auto-clean). Oppdaterer
+    /// PROSJEKTETS shot-list (offline-first) → outbox køer POST /api/projects/
+    /// :id/shot-list → sync-arbeideren pusher → synlig i fotografens workspace
+    /// (web + andre enheter). `capturedAssetId` kobler shotet til bildet.
+    private func dispatchShotAutoCheckForNewAssets() {
+        guard shotListAutoCheckEnabled else { return }
+        guard let projectId = selectedProject?.id else { return }
+        let owner = actorUserId
+        for asset in assets {
+            guard let previewKey = asset.previewKey,
+                  FileManager.default.fileExists(atPath: previewKey),
+                  !autoCheckedShotAssetIds.contains(asset.id)
+            else { continue }
+            autoCheckedShotAssetIds.insert(asset.id)
+            let assetId = asset.id
+            Task { [weak self] in
+                await self?.autoCheckShot(assetId: assetId, previewKey: previewKey,
+                                          projectId: projectId, owner: owner)
+            }
+        }
+    }
+
+    private func shotStore() -> ShotListStore? {
+        if let s = shotAutoCheckStore { return s }
+        guard let url = try? AppDatabase.defaultDiskURL(),
+              let db = try? AppDatabase.openOnDisk(at: url) else { return nil }
+        let s = ShotListStore(database: db, outbox: Outbox(database: db))
+        shotAutoCheckStore = s
+        return s
+    }
+
+    private func autoCheckShot(assetId: UUID, previewKey: String, projectId: String, owner: String) async {
+        guard let store = shotStore(),
+              let list = try? await store.load(projectId: projectId, ownerUserId: owner),
+              list.shots.contains(where: { !($0.isCompleted ?? false) })
+        else { return }
+        let signals: CaptureSignals? = await Task.detached(priority: .utility) {
+            guard let ui = UIImage(contentsOfFile: previewKey), let cg = ui.cgImage else { return nil }
+            return CaptureSignalExtractor.signals(from: cg)
+        }.value
+        guard let signals,
+              let match = ShotMatcher.bestMatchScored(signals: signals, shots: list.shots)
+        else { return }
+        let shot = match.shot
+        let uncertain = match.confidence == .uncertain
+        let who = SignInService.shared.session?.displayName
+            ?? SignInService.shared.session?.email ?? "Fotograf"
+        try? await store.toggleCompletion(
+            shotId: shot.id, in: list,
+            capturedAssetId: assetId.uuidString.lowercased(), completedBy: who)
+        lastAutoCheckedShot = shot.scene
+        lastAutoCheckedShotId = shot.id
+        lastAutoCheckedUncertain = uncertain
+        autoCheckLog.insert(
+            AutoCheckEntry(shotId: shot.id, scene: shot.scene, assetId: assetId, at: Date(),
+                           uncertain: uncertain), at: 0)
+        queueTeamShotUpdate(scene: shot.scene, assetId: assetId, projectId: projectId)
+        // Auto-fjern bekreftelsen etter noen sekunder (usikre holdes lenger).
+        try? await Task.sleep(for: .seconds(uncertain ? 7 : 4))
+        if lastAutoCheckedShot == shot.scene { lastAutoCheckedShot = nil }
+    }
+
+    /// Angre en auto-huking: sett shotet tilbake til uhuket (fjerner completedBy
+    /// + koblet asset via ShotListStore) og ta det ut av loggen. Bildet forblir
+    /// «behandlet» så vi ikke auto-huker det på nytt — fotografen huker manuelt.
+    func undoAutoCheck(shotId: String) async {
+        if isDemoMode {
+            if let detail = selectedProjectDetail {
+                let shots = detail.shotList.map { s -> BackendShotListItem in
+                    guard s.id == shotId else { return s }
+                    return BackendShotListItem(
+                        id: s.id, scene: s.scene, description: s.description,
+                        estimatedDuration: s.estimatedDuration, priority: s.priority,
+                        shotType: s.shotType, locationName: s.locationName, notes: s.notes,
+                        scouted: s.scouted, isCompleted: false, capturedAssetId: nil, completedBy: nil)
+                }
+                selectedProjectDetail = BackendProjectDetail(
+                    id: detail.id, title: detail.title, description: detail.description,
+                    clientName: detail.clientName, eventDate: detail.eventDate, location: detail.location,
+                    projectType: detail.projectType, status: detail.status,
+                    shotListSummary: detail.shotListSummary, updatedAt: detail.updatedAt, shotList: shots)
+            }
+            autoCheckLog.removeAll { $0.shotId == shotId }
+            return
+        }
+        guard let projectId = selectedProject?.id else { return }
+        if let store = shotStore(),
+           let list = try? await store.load(projectId: projectId, ownerUserId: actorUserId),
+           let shot = list.shots.first(where: { $0.id == shotId }), shot.isCompleted ?? false {
+            try? await store.toggleCompletion(shotId: shotId, in: list)   // true → false
+            await loadProjectDetail(projectId: projectId)                 // oppdater panelet
+        }
+        autoCheckLog.removeAll { $0.shotId == shotId }
+        if lastAutoCheckedShotId == shotId { lastAutoCheckedShot = nil; lastAutoCheckedShotId = nil }
+    }
+
+    /// Live team-oppdatering: legg scenen på det AKTIVE kortet og re-post etter
+    /// kort ro (6s). Kortet vokser in-place (samme clientMessageId) helt til
+    /// opptaksøkta er stille lenge nok (`shotCardIdleReset`) → da starter et
+    /// nytt kort. Synkes til både iPad-Meldinger og web-workspacens chat.
+    private func queueTeamShotUpdate(scene: String, assetId: UUID, projectId: String) {
+        // Start nytt kort hvis ingen aktivt, eller det har vært stille lenge.
+        let now = Date()
+        if activeShotCardId == nil
+            || (lastShotCardActivity.map { now.timeIntervalSince($0) > shotCardIdleReset } ?? true) {
+            activeShotCardId = UUID().uuidString.lowercased()
+            activeShotCardScenes = []
+            activeShotCardAssetIds = []
+        }
+        activeShotCardScenes.append(scene)
+        activeShotCardAssetIds.append(assetId)
+        lastShotCardActivity = now
+
+        teamShotPostTask?.cancel()
+        teamShotPostTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled else { return }
+            await self?.flushTeamShotUpdate(projectId: projectId)
+        }
+    }
+
+    private func flushTeamShotUpdate(projectId: String) async {
+        let scenes = activeShotCardScenes
+        // Snapshot BEGGE nå, før den første `await` — ellers kunne et nytt bilde
+        // lande under `store.load` og gjøre id-settet uenig med `scenes`-snapshotet.
+        let idsSnapshot = Set(activeShotCardAssetIds)
+        guard let cardId = activeShotCardId, !scenes.isEmpty,
+              let backend = backendClient else { return }
+        let who = SignInService.shared.session?.displayName
+            ?? SignInService.shared.session?.email ?? "Fotograf"
+
+        // «Neste» = høyest prioriterte uhukede shots akkurat nå.
+        var nextArr: [String] = []
+        if let store = shotStore(),
+           let list = try? await store.load(projectId: projectId, ownerUserId: actorUserId) {
+            nextArr = list.shots.filter { !($0.isCompleted ?? false) }
+                .sorted { prioRank($0.priority) < prioRank($1.priority) }
+                .prefix(2).map(\.scene)
+        }
+
+        // Ekte backup-signal: andel av kortets bilder som er lastet opp til
+        // skyen (B2/sync) — driver «Sikret»-statusen. Bruk pre-await-snapshotet.
+        let ids = idsSnapshot
+        let relevant = assets.filter { ids.contains($0.id) }
+        let backedUp = relevant.filter { $0.state.isBackedUp }.count
+        let backup = relevant.isEmpty ? 0.0 : Double(backedUp) / Double(relevant.count)
+
+        // Ekte thumbnails: stabile preview-redirecter for de opplastede bildene
+        // i økta (tilgjengelig etter levering/opplasting → dukker opp når kortet
+        // re-postes). Tom før bildene er i skyen — kortet virker uansett.
+        var thumbs: [[String: String]] = []
+        if let sid = await deliveryService?.backendSessionId {
+            let urls = await backend.shotThumbURLs(sessionId: sid, limit: max(scenes.count, 4))
+            thumbs = urls.map { ["url": $0] }
+        }
+
+        let nextText = nextArr.isEmpty ? "" : " · Neste: \(nextArr.joined(separator: ", "))"
+        let msg = "📸 \(who) tok: \(scenes.joined(separator: ", "))\(nextText)"
+        let shotUpdate: [String: Any] = [
+            "who": who,
+            "scenes": scenes,
+            "next": nextArr,
+            "count": scenes.count,
+            "backup": backup,
+            "thumbs": thumbs
+        ]
+        try? await backend.postProjectShotCard(
+            projectId: projectId, clientMessageId: cardId, text: msg, shotUpdate: shotUpdate)
+
+        // Fortsatt bilder på vei opp? Re-post når backup er ferdig, så «Sikret»
+        // dukker opp uten at fotografen tar et nytt bilde.
+        if backup < 1.0 { scheduleBackupFollowup(projectId: projectId, cardId: cardId) }
+    }
+
+    /// Poll asset-statusene og re-post kortet når alle bildene er sikret (så
+    /// «Sikret»-merket lander selv om ingen nye bilder tas). Selv-kansellerende
+    /// via `activeShotCardId`-sjekk (nytt kort ⇒ gammel followup dør).
+    private func scheduleBackupFollowup(projectId: String, cardId: String) {
+        Task { [weak self] in
+            for _ in 0..<12 {   // opp til ~60s
+                try? await Task.sleep(for: .seconds(5))
+                guard let self, self.activeShotCardId == cardId else { return }
+                let ids = Set(self.activeShotCardAssetIds)
+                let relevant = self.assets.filter { ids.contains($0.id) }
+                let done = !relevant.isEmpty && relevant.allSatisfy { $0.state.isBackedUp }
+                if done { await self.flushTeamShotUpdate(projectId: projectId); return }
+            }
+        }
+    }
+
+    /// Nullstill det aktive kortet (ny opptaksøkt). Kalles ved frakobling/
+    /// prosjektbytte så neste bilde starter et ferskt kort.
+    private func resetActiveShotCard() {
+        activeShotCardId = nil
+        activeShotCardScenes = []
+        activeShotCardAssetIds = []
+        lastShotCardActivity = nil
+        clientHeartedAssetIds = []
+    }
+
+    private func prioRank(_ priority: String?) -> Int {
+        // Speiler det kanoniske settet (ShotListView/ShotListPanel): «critical» og
+        // «must-have» er TOPP-prioritet, ikke bare «must» — uten disse falt de til
+        // default(3) og sorterte NEDERST i «Neste handlinger». (Bør på sikt bli én
+        // delt helper — dette er 4. kopien av samme parsing.)
+        switch (priority ?? "").lowercased() {
+        case "critical", "must", "must-have": return 0
+        case "high": return 1
+        case "medium": return 2
+        default: return 3
+        }
+    }
+
     private func dispatchAutoCleanForNewlyReadyAssets() {
         guard autoCleanMode != .off,
               let service = autoCleanService,
@@ -5739,7 +7187,28 @@ final class LiveCaptureModel {
             // hint so the photographer knows AI-enhanced versions
             // won't appear, but no toast (deliver-success was the
             // load-bearing UX).
-            print("[LiveCaptureModel] Enhancement kickoff failed: \(error)")
+            AppLog.liveCapture.error("[LiveCaptureModel] Enhancement kickoff failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        // Bildene er nå lastet opp til skyen → re-post det aktive shot-kortet
+        // så ekte thumbnails + «Sikret» lander, selv om ingen nye bilder tas.
+        if activeShotCardId != nil, let pid = selectedProject?.id {
+            await flushTeamShotUpdate(projectId: pid)
+        }
+
+        // #«thumbnails overalt»: koble shots' lokale capturedAssetId → backend-
+        // asset-id (fra delivery.idMap) og lagre på shot-listen, så web/call-
+        // sheet/andre enheter kan hente thumbnailen via preview-redirecten.
+        var shotAssetMap: [String: String] = [:]
+        for asset in assets {
+            if let backendId = await delivery.backendAssetId(forLocal: asset.id) {
+                shotAssetMap[asset.id.uuidString.lowercased()] = backendId.uuidString.lowercased()
+            }
+        }
+        if !shotAssetMap.isEmpty, let pid = selectedProject?.id, let store = shotStore(),
+           let list = try? await store.load(projectId: pid, ownerUserId: actorUserId) {
+            try? await store.linkBackendAssetIds(shotAssetMap, in: list)
+            await loadProjectDetail(projectId: pid)
         }
     }
 
@@ -6053,6 +7522,25 @@ final class LiveCaptureModel {
         Task { try? await store.attachVoiceMemoKey(id: assetId, key: nil) }
     }
 
+    /// Transiente transkript per asset (vises under voice-kontrollene).
+    var voiceMemoTranscripts: [UUID: String] = [:]
+
+    /// Transkriber `assetId`'s voice-memo on-device (SFSpeechRecognizer, nb-NO).
+    /// Til nå var memoen bare lyd; nå blir dikterte retusj-/leverings-notater
+    /// søkbar tekst.
+    func transcribeVoiceMemo(assetId: UUID) async {
+        guard let voiceMemoService else { return }
+        let url = voiceMemoService.memoURL(for: assetId)
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        voiceMemoTranscripts[assetId] = "Transkriberer…"
+        do {
+            let text = try await VoiceMemoTranscriber().transcribe(fileURL: url)
+            voiceMemoTranscripts[assetId] = text.isEmpty ? "Ingen tale funnet." : text
+        } catch {
+            voiceMemoTranscripts[assetId] = "Transkribering feilet."
+        }
+    }
+
     func renameSession(_ newName: String) async {
         guard let store, let sessionId = currentSessionId else { return }
         do {
@@ -6202,9 +7690,96 @@ final class LiveCaptureModel {
     /// (with shot list) in the background so the shot list panel can
     /// render shots[] right away.
     func selectProject(_ summary: BackendProjectSummary) {
+        if selectedProject?.id != summary.id { resetActiveShotCard() }
         selectedProject = summary
         sessionName = summary.title
         Task { await loadProjectDetail(projectId: summary.id) }
+        refreshShotListAutoCheckFlag(projectId: summary.id)
+    }
+
+    /// Hent team-flagget for auto-huk fra backend (eier/lead styrer det i web).
+    /// Feiler stille til PÅ — så en nettverksglipp aldri blokkerer huking.
+    private func refreshShotListAutoCheckFlag(projectId: String) {
+        let backend = backendClient ?? makeBackendClientFromDefaults()
+        guard let backend else { return }
+        Task { [weak self] in
+            let enabled = await backend.fetchShotListAutoCheck(projectId: projectId)
+            await MainActor.run { self?.shotListAutoCheckEnabled = enabled }
+        }
+    }
+
+    /// Skru auto-huk av/på for teamet (fra iPad). Skriver til samme flagg som
+    /// web-toggelen (projects.settings.shotListAutoCheck). Kaster ved feil så
+    /// ShotListPanel kan rulle tilbake + vise «kun eier kan endre» ved 403.
+    /// #9 Lagre en FM-generert shot-list (fra klient-brief) til prosjektet, og
+    /// last inn detaljene på nytt så panelet + auto-huk får den umiddelbart.
+    /// Lagre FM-genererte scener. `append`=true bevarer eksisterende shots
+    /// (fullført-status + koblet asset) og legger de nye bakerst; false
+    /// erstatter listen (opprett fra tom).
+    func saveShotListFromBrief(_ scenes: [String], append: Bool) async throws {
+        guard let projectId = selectedProject?.id,
+              let backend = backendClient ?? makeBackendClientFromDefaults() else {
+            throw ShotAutoCheckError.noBackend
+        }
+        var items: [BackendClient.ShotListPostItem] = []
+        if append, let existing = selectedProjectDetail?.shotList {
+            items = existing.map { e in
+                BackendClient.ShotListPostItem(
+                    id: e.id, scene: e.scene, description: e.description,
+                    priority: e.priority, shotType: e.shotType, locationName: e.locationName,
+                    notes: e.notes, scouted: e.scouted, isCompleted: e.isCompleted,
+                    capturedAssetId: e.capturedAssetId,
+                    capturedAssetBackendId: e.capturedAssetBackendId, completedBy: e.completedBy)
+            }
+        }
+        items += scenes.map { BackendClient.ShotListPostItem(id: UUID().uuidString.lowercased(), scene: $0) }
+        let listName = (append && !(selectedProjectDetail?.shotList.isEmpty ?? true)) ? "Shot-list" : "Fra brief"
+        try await backend.postProjectShotList(projectId: projectId, items: items, listName: listName)
+        await loadProjectDetail(projectId: projectId)
+    }
+
+    /// #9 Rendre shot-listen som en DESIGNET call-sheet via Post Agents
+    /// infographic-motor (tpl=timeline). Offentlig render-URL → vises i
+    /// AsyncImage + kan deles. Mapper «Scene — beskrivelse» til tittel + desc.
+    func callSheetURL(scenes: [String]) -> URL? {
+        guard let backend = backendClient ?? makeBackendClientFromDefaults() else { return nil }
+        let title = selectedProject.map { "\($0.title) — Call-sheet" } ?? "Call-sheet"
+        let steps: [[String: String]] = scenes.map { s in
+            if let r = s.range(of: " — ") {
+                return ["label": String(s[..<r.lowerBound]).trimmingCharacters(in: .whitespaces),
+                        "desc": String(s[r.upperBound...]).trimmingCharacters(in: .whitespaces)]
+            }
+            return ["label": s]
+        }
+        let data: [String: Any] = ["title": title, "accent": "#FF6B35", "steps": steps]
+        return backend.infographicRenderURL(
+            tpl: "/embed/templates/call-sheet.html", width: 1200, height: 1500,
+            data: data, accentHex: "FF6B35")
+    }
+
+    /// Stabil preview-URL for et backend-asset (thumbnail i shot-radene på
+    /// tvers av enheter / etter restart). nil hvis ingen backend konfigurert.
+    func assetPreviewURL(backendAssetId: String) -> URL? {
+        (backendClient ?? makeBackendClientFromDefaults())?.assetPreviewURL(backendAssetId: backendAssetId)
+    }
+
+    /// #9 Hent en brief fra prosjektets bryllups-timeline (dagsplan) → mater
+    /// shot-list-generatoren. nil hvis prosjektet ikke har en timeline.
+    func fetchWeddingTimelineBrief() async -> String? {
+        guard let projectId = selectedProject?.id,
+              let backend = backendClient ?? makeBackendClientFromDefaults() else { return nil }
+        return await backend.fetchWeddingTimelineBrief(projectId: projectId)
+    }
+
+    func setShotListAutoCheck(_ enabled: Bool) async throws {
+        if isDemoMode { shotListAutoCheckEnabled = enabled; return }
+        guard let projectId = selectedProject?.id else { throw ShotAutoCheckError.noBackend }
+        guard let backend = backendClient ?? makeBackendClientFromDefaults() else {
+            throw ShotAutoCheckError.noBackend
+        }
+        let who = SignInService.shared.session?.displayName ?? SignInService.shared.session?.email
+        try await backend.setShotListAutoCheck(projectId: projectId, enabled: enabled, updatedBy: who)
+        shotListAutoCheckEnabled = enabled
     }
 
     func clearSelectedProject() {
@@ -6290,6 +7865,7 @@ final class LiveCaptureModel {
         clientName: String,
         clientEmail: String,
         projectTitle: String?,
+        sendEmail: Bool = false,
     ) async throws -> DeliveryService.ShowcaseDeliveryResult {
         guard let backend = backendClient else {
             throw DeliveryService.DeliveryError.bridgeFailed("backend not configured — sign in to CreatorHub first")
@@ -6333,6 +7909,18 @@ final class LiveCaptureModel {
             throw DeliveryService.DeliveryError.noUploadablePicks
         }
 
+        // Samme-dags levering: la Foundation Models skrive e-post-kroppen
+        // on-device (norsk, varm tone). Best-effort — nil hvis utilgjengelig
+        // (< iOS 26 / Apple Intelligence av), da bruker backend standard-malen.
+        let photographerName = SignInService.shared.session?.displayName
+        var emailBody: String?
+        if sendEmail {
+            let notes = "Bildene fra \(projectTitle ?? sessionName) er klare i det private galleriet. "
+                + "Be dem se gjennom, hjerte favorittene sine og laste ned. Kort, vennlig, profesjonell."
+            emailBody = try? await TextGenerationIntelligenceFactory.make().generate(
+                .emailDraft(recipient: clientName, subject: "Bildene dine er klare", notes: notes))
+        }
+
         let result = try await service.deliverToShowcase(
             sessionName: sessionName,
             sessionStartedAt: assets.first?.captureTime ?? Date(),
@@ -6341,6 +7929,9 @@ final class LiveCaptureModel {
             clientEmail: clientEmail,
             projectTitle: projectTitle,
             filter: filter,
+            sendEmail: sendEmail,
+            emailBody: emailBody,
+            photographerName: photographerName,
         )
         await MainActor.run { self.lastShowcaseDelivery = result }
         return result
@@ -6509,7 +8100,7 @@ final class LiveCaptureModel {
             // either already on disk or is from a previous session;
             // skip to avoid re-rendering on every stream tick.
             let oldRawKey = previousRawKeys[asset.id] ?? nil
-            guard let _ = asset.rawKey,
+            guard asset.rawKey != nil,
                   oldRawKey == nil
             else { continue }
 
@@ -6545,7 +8136,7 @@ final class LiveCaptureModel {
                     // remains as a perfectly usable fallback. Logged
                     // below so devs can see render failures during
                     // bring-up without disturbing the photographer.
-                    print("[LiveCaptureModel] RAW preview render failed for \(primaryAssetId): \(error)")
+                    AppLog.liveCapture.error("[LiveCaptureModel] RAW preview render failed for \(String(describing: primaryAssetId), privacy: .public): \(error.localizedDescription, privacy: .public)")
                     _ = self
                 }
             }
@@ -6673,6 +8264,12 @@ final class LiveCaptureModel {
     }
 
     private func teardown() async {
+        isTearingDown = true
+        defer { isTearingDown = false }
+        // Fang presence-avhengighetene FØR de nulles — broadcasten under leste dem
+        // ETTER nulling (statisk død kode), så peers slapp oss først ved 5-min-timeout.
+        let leavingBackend = backendClient
+        let leavingSessionId = currentSessionId
         if let cameraSession {
             await cameraSession.stop()
         }
@@ -6681,6 +8278,10 @@ final class LiveCaptureModel {
         for task in aiAnalyseTasks.values { task.cancel() }
         aiAnalyseTasks.removeAll()
         aiAnalyseDispatched.removeAll()
+        // Bakgrunns-analyse (histogram + samlet AssetAnalysis) — ellers lever
+        // compute-tasken videre etter frakobling (lekkasje per økt).
+        analysisTask?.cancel()
+        analysisTask = nil
         backendClient = nil
         deliveryService = nil
         lastDelivery = nil
@@ -6692,9 +8293,23 @@ final class LiveCaptureModel {
         aiAnalyses.removeAll()
         recipeSource.removeAll()
         dismissedNoteAssets.removeAll()
-        if let downloadDirectory {
-            try? FileManager.default.removeItem(at: downloadDirectory)
-        }
+        // Per-asset-tilstand som ellers vokser monotont over en heldags-økt
+        // (modellen er langlivet på tvers av connect/disconnect-sykluser).
+        autoCleanDispatched.removeAll()
+        onDeviceAnalysisDispatched.removeAll()
+        autoEditedAssetIds.removeAll()
+        personGroups.removeAll()
+        personFilter = nil
+        personClusterer = PersonClusterer()
+        autoCheckedShotAssetIds.removeAll()
+        tunedRecipes.removeAll()
+        autoCheckLog.removeAll()
+        voiceMemoTranscripts.removeAll()
+        // PERSISTENS: IKKE slett `downloadDirectory` lenger — den ligger nå i
+        // Documents/CaptureApp/sessions/<id>/ og skal OVERLEVE frakobling/omstart
+        // (previews/RAW/voice-memos), tilgjengelig i Redigering + Arkiv. Disk-DB-en
+        // er allerede flushet (WAL); vi slipper bare referansene. Gamle økter ryddes
+        // aldersbasert av `purgeStaleSessions` ved neste connect.
         cameraSession = nil
         client = nil
         store = nil
@@ -6719,9 +8334,10 @@ final class LiveCaptureModel {
         }
         realtimeService = nil
         realtimeObserverId = nil
-        // Phase 5.3 — fire presence-leave so peer iPads drop us
-        // immediately rather than waiting for the 5-min stale-cleanup.
-        if let backend = backendClient, let sessionId = currentSessionId {
+        // Phase 5.3 — fire presence-leave so peer iPads drop us immediately
+        // rather than waiting for the 5-min stale-cleanup. Bruker de FANGEDE
+        // verdiene (backendClient/currentSessionId er alt nilet på dette punktet).
+        if let backend = leavingBackend, let sessionId = leavingSessionId {
             Task { [backend, sessionId] in
                 try? await backend.broadcastPresence(
                     sessionId: sessionId, joining: false, displayName: nil,
@@ -6770,7 +8386,7 @@ final class LiveCaptureModel {
         return CCAPIClient.makeInsecureSession(trustingHostOf: baseURL)
     }
     #else
-    private static func makeSession(for baseURL: URL, retain: (Void) -> Void) -> URLSession {
+    private static func makeSession(for baseURL: URL, retain: () -> Void) -> URLSession {
         CCAPIClient.makeInsecureSession(trustingHostOf: baseURL)
     }
     #endif
@@ -6779,13 +8395,25 @@ final class LiveCaptureModel {
     /// non-nil fields overwrite existing values so last-known state persists
     /// across polls where Canon reports nothing new.
     private func mergeTelemetry(_ diff: CameraTelemetry) {
-        if let v = diff.batteryLevel       { telemetry.batteryLevel = v }
-        if let v = diff.apertureValue      { telemetry.apertureValue = v }
-        if let v = diff.shutterSpeed       { telemetry.shutterSpeed = v }
-        if let v = diff.isoValue           { telemetry.isoValue = v }
-        if let v = diff.lensName           { telemetry.lensName = v }
-        if let v = diff.freeSpaceBytes     { telemetry.freeSpaceBytes = v }
+        if let v = diff.batteryLevel { telemetry.batteryLevel = v }
+        if let v = diff.apertureValue { telemetry.apertureValue = v }
+        if let v = diff.shutterSpeed { telemetry.shutterSpeed = v }
+        if let v = diff.isoValue { telemetry.isoValue = v }
+        if let v = diff.exposureCompensation { telemetry.exposureCompensation = v }
+        if let v = diff.lensName { telemetry.lensName = v }
+        if let v = diff.freeSpaceBytes { telemetry.freeSpaceBytes = v }
         if let v = diff.totalContentsCount { telemetry.totalContentsCount = v }
+        // P3 (E3): oppdater «bilder igjen»-estimatet fra ledig-plass-/count-deltaer.
+        shotsRemaining.update(freeSpaceBytes: telemetry.freeSpaceBytes,
+                              totalContentsCount: telemetry.totalContentsCount)
+    }
+
+    /// P3 (E3): selv-kalibrerende «bilder igjen»-estimat — måler bytes-per-skudd
+    /// fra fallet i ledig kort-plass per nytt bilde (ekte RAW+JPEG-størrelse på
+    /// kortet), ikke fra små preview-nedlastinger. nil til kalibrert.
+    private var shotsRemaining = ShotsRemainingEstimator()
+    var estimatedShotsRemaining: Int? {
+        shotsRemaining.estimate(freeSpaceBytes: telemetry.freeSpaceBytes)
     }
 }
 
@@ -6809,6 +8437,7 @@ private struct DeliverSheet: View {
     @State private var clientName: String = ""
     @State private var clientEmail: String = ""
     @State private var projectTitle: String = ""
+    @State private var sendEmail: Bool = true
     @State private var didPrefill: Bool = false
     @State private var phase: Phase = .configure
     @State private var errorMessage: String?
@@ -6887,6 +8516,13 @@ private struct DeliverSheet: View {
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                Toggle(isOn: $sendEmail) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Send «bildene dine er klare»-e-post")
+                        Text("Skrevet på enheten (Apple Intelligence), med galleri-lenke")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
             }
             Section("Project (optional)") {
                 TextField("Project title — defaults to session name", text: $projectTitle)
@@ -7022,6 +8658,7 @@ private struct DeliverSheet: View {
                 projectTitle: projectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? nil
                     : projectTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+                sendEmail: sendEmail,
             )
             result = r
             phase = .done
@@ -7153,4 +8790,13 @@ private extension Color {
     static let captureChipBG          = Color.white.opacity(0.07)
     static let captureFieldBG         = Color.white.opacity(0.10)
     static let captureSeparator       = Color.white.opacity(0.12)
+    // Design-tokens fra CreatorHub One-pakken (Shoot-mockup).
+    static let captureAccent          = Color(red: 1.0, green: 0.42, blue: 0.17)   // #FF6B2C
+    static let captureAccentDeep      = Color(red: 0.91, green: 0.29, blue: 0.05)  // #E94B0C
+    static let captureDeepBG          = Color(red: 0.016, green: 0.035, blue: 0.07) // #040912
+    static let captureSurface         = Color(red: 0.067, green: 0.098, blue: 0.153) // #111927
+    static let captureBorder          = Color(red: 0.188, green: 0.235, blue: 0.314) // #303C50
+    static let captureSuccess         = Color(red: 0.133, green: 0.773, blue: 0.369) // #22C55E
+    static let captureTextSecondary   = Color(red: 0.655, green: 0.686, blue: 0.753) // #A7AFC0
+    static let captureTextMuted       = Color(red: 0.435, green: 0.471, blue: 0.533) // #6F7888
 }

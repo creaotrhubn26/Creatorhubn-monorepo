@@ -40,6 +40,7 @@ import {
 import { useIntegrationFeatures } from '@/hooks/useIntegrationFeatures';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
+import { StatusChip, adminTokens } from './design-system';
 
 interface ConsoleLog {
   id: string;
@@ -176,8 +177,9 @@ export const AdminConsole: React.FC = () => {
     });
 
       if (data.logs) {
-        setSystemLogs(data.logs);
-        addLog('response', `✅ EKTE DATA: ${data.logs.length} logger fra live server (${endTime - startTime}ms)`);
+        const logsArray = Array.isArray(data.logs) ? data.logs : [];
+        setSystemLogs(logsArray);
+        addLog('response', `✅ EKTE DATA: ${logsArray.length} logger fra live server (${endTime - startTime}ms)`);
         addLog(
           'info',
           `📊 Server uptime: ${Math.floor(data.serverUptime)} sek, Memory: ${Math.round(
@@ -228,7 +230,8 @@ export const AdminConsole: React.FC = () => {
 
     try {
       const protocol = window.location.protocol === 'https: ' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      const wsToken = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token') || '';
+      const wsUrl = `${protocol}//${window.location.host}/ws${wsToken ? `?token=${encodeURIComponent(wsToken)}` : ''}`;
       const socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
@@ -594,7 +597,7 @@ const apiTests: Record<string, ApiTest[]> = {
       {/* Status card */}
       <Card sx={theming.getThemedCardSx()}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Box display="flex" alignItems="center" justifyContent="space-between">
+          <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ flexWrap: 'wrap', gap: 2 }}>
             <Box display="flex" alignItems="center" gap={3}>
               <Box
                 sx={{
@@ -635,7 +638,7 @@ const apiTests: Record<string, ApiTest[]> = {
       </Card>
 
       {/* Actions */}
-      <Typography variant="h5" sx={{ mb: 3, fontWeight: 'bold', color: theming.colors.primary }}>
+      <Typography variant="h5" component="h2" sx={{ mb: 3, fontWeight: 'bold', color: theming.colors.primary }}>
         Hva vil du gjøre?
       </Typography>
 
@@ -852,7 +855,7 @@ const apiTests: Record<string, ApiTest[]> = {
       </Grid>
 
       {/* Messages area */}
-      <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: theming.colors.primary }}>
+      <Typography variant="h5" component="h2" sx={{ mb: 2, fontWeight: 'bold', color: theming.colors.primary }}>
         Meldinger fra datamaskinen:
       </Typography>
 
@@ -978,6 +981,7 @@ const apiTests: Record<string, ApiTest[]> = {
                     variant="contained"
                     onClick={() => executeQuickTest(test)}
                     disabled={isLoading}
+                    aria-label={`Kjør test: ${test.name}`}
                     sx={{ minWidth: 80 }}
                   >
                     <PlayIcon />
@@ -1000,7 +1004,7 @@ const apiTests: Record<string, ApiTest[]> = {
             sx={{ fontFamily: 'monospace' }}
           />
 
-          <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+          <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button
               variant="contained"
               onClick={() => {
@@ -1062,11 +1066,11 @@ const apiTests: Record<string, ApiTest[]> = {
     <Card sx={{ mt: 2, ...theming.getThemedCardSx() }}>
       <CardContent sx={theming.getThemedCardSx()}>
         <Box display="flex" alignItems="center" gap={1} mb={2}>
-          <TerminalIcon sx={{ color: '#ff8c00' }} />
+          <TerminalIcon aria-hidden sx={{ color: adminTokens.color.brand }} />
           <Typography variant="h6" sx={{ color: theming.colors.primary }}>
             Admin Developer Console
           </Typography>
-          <Chip label={`${totalActiveIntegrations} aktive integrasjoner`} color="success" size="small" />
+          <StatusChip tone="success" label={`${totalActiveIntegrations} aktive integrasjoner`} />
         </Box>
 
         <Tabs value={activeTab} onChange={(_, value) => setActiveTab(value)} sx={{ borderBottom: 1, borderColor:'divider' }}>

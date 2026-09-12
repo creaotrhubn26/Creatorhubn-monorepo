@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomAgentChatPanel — the conversational surface for "The Role Room
  * Agent". Shares the branding with the existing bootstrap dialog but is
@@ -132,11 +131,32 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
     ? entitlementBundle.entitlement.daysRemaining
     : null;
 
+  // Auto-scroll: keep the newest message in view as the conversation grows
+  // and while streaming deltas arrive — but only when the user is already
+  // near the bottom, so scrolling up to re-read history isn't yanked back
+  // down on every delta.
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
+  const endRef = React.useRef<HTMLDivElement | null>(null);
+  const stickToBottomRef = React.useRef(true);
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 80;
+  }, []);
+  React.useEffect(() => {
+    if (stickToBottomRef.current) {
+      endRef.current?.scrollIntoView({ block: 'end' });
+    }
+  }, [messages, pending]);
+
   const handleSend = useCallback(
     async (question?: string) => {
       const text = (question ?? input).trim();
       if (!text) return;
       if (!question) setInput('');
+      // A fresh send always means the user wants to see the answer.
+      stickToBottomRef.current = true;
       await send(text, { context });
     },
     [input, send, context],
@@ -148,8 +168,16 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
     reset();
   }, [projectId, reset]);
 
+  // "Agent tenker …" should only show while we're waiting for the first
+  // token. Once deltas start streaming into the assistant bubble, the
+  // growing text is the progress indicator — a second spinner below it just
+  // looked like the agent was thinking *and* answering at the same time.
+  const lastMessage = messages[messages.length - 1];
+  const awaitingFirstToken =
+    pending && (!lastMessage || lastMessage.role === 'user' || !lastMessage.text);
+
   const body = useMemo(() => (
-    <Stack spacing={1.6} sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: { xs: 1.4, md: 2 }, pt: 1.4, pb: 1 }}>
+    <Stack ref={scrollRef} onScroll={handleScroll} spacing={1.6} sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: { xs: 1.4, md: 2 }, pt: 1.4, pb: 1 }}>
       {trialBannerDays !== null ? (
         <Alert
           severity="warning"
@@ -249,7 +277,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
             '& .MuiAlert-icon': { color: '#a5f3fc' },
           }}
         >
-          Spør The Role Room Agent om prosjektet. Alle svar kommer fra Claude via
+          Spør The Role Room Agent om prosjektet. Alle svar kommer fra CI via
           en server-side rutine som sjekker samtykke og pseudonymiserer kandidater/crew
           før kallet.
         </Alert>
@@ -391,9 +419,9 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
           </Box>
           );
         })}
-        {pending ? (
+        {awaitingFirstToken ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CircularProgress size={18} sx={{ color: '#22d3ee' }} />
+            <CircularProgress size={18} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
             <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.8rem' }}>
               The Role Room Agent tenker …
             </Typography>
@@ -415,8 +443,10 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
           <code> ROLE_ROOM_AGENT_CLAUDE_ENABLED=true</code> i backend-env.
         </Alert>
       ) : null}
+      {/* Scroll anchor — keeps the latest message/streaming delta in view. */}
+      <Box ref={endRef} sx={{ height: 0 }} />
     </Stack>
-  ), [messages, pending, handleSend, handleRevokeConsent, projectId, lastError, threadId, startNewThread, trialBannerDays, toolFeedback]);
+  ), [messages, pending, awaitingFirstToken, handleSend, handleScroll, handleRevokeConsent, projectId, lastError, threadId, startNewThread, trialBannerDays, toolFeedback]);
 
   const composer = (
     <Box
@@ -456,7 +486,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
             fontSize: { xs: '0.95rem', md: '0.95rem' },
             '& fieldset': { borderColor: 'rgba(148,163,184,0.3)' },
             '&:hover fieldset': { borderColor: 'rgba(34,211,238,0.5)' },
-            '&.Mui-focused fieldset': { borderColor: '#22d3ee' },
+            '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #22d3ee)' },
           },
           '& .MuiOutlinedInput-input::placeholder': {
             color: 'rgba(226,232,240,0.5)',
@@ -472,7 +502,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
           width: { xs: 44, md: 48 },
           height: { xs: 44, md: 48 },
           flexShrink: 0,
-          bgcolor: '#22d3ee',
+          bgcolor: 'var(--role-cyan, #22d3ee)',
           color: '#082f49',
           '&:hover': { bgcolor: '#06b6d4' },
           '&.Mui-disabled': { bgcolor: 'rgba(34,211,238,0.25)', color: 'rgba(8,47,73,0.6)' },

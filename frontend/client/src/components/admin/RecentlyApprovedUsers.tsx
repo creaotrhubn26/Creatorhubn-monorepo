@@ -16,12 +16,13 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Chip,
   LinearProgress,
   Tooltip,
   Alert,
   Skeleton,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -29,7 +30,9 @@ import {
   Schedule as ScheduleIcon,
   Cloud as CloudIcon,
   Dashboard as DashboardIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
+import { AdminTableContainer, adminTokens } from './design-system';
 
 interface User {
   id: string;
@@ -52,6 +55,7 @@ interface RecentlyApprovedUsersProps {
 }
 
 export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUsersProps) {
+  const [search, setSearch] = React.useState('');
   const { data: recentUsers, isLoading } = useQuery({
     queryKey: ['/api/admin/users/recently-approved', days],
     queryFn: async () => {
@@ -59,6 +63,7 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
       if (!response.ok) throw new Error('Failed to fetch recently approved users');
       return response.json() as Promise<User[]>;
     },
+    select: (d) => (Array.isArray(d) ? d : []),
     staleTime: 60000, // 1 minute
     refetchInterval: 120000, // Refresh every 2 minutes
   });
@@ -111,7 +116,7 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
         <Typography
           variant="h6"
           sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <CheckCircleIcon sx={{ color: '#ff8c00' }} />
+          <CheckCircleIcon sx={{ color: adminTokens.color.brand }} />
           Nylig Godkjente Brukere
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -127,7 +132,7 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
               <Typography variant="caption" color="text.secondary">
                 Totalt godkjent
               </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 600, color: '#ff8c00' }}>
+              <Typography variant="h4" sx={{ fontWeight: 600, color: adminTokens.color.brand }}>
                 {recentUsers.length}
               </Typography>
             </CardContent>
@@ -138,7 +143,7 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
               <Typography variant="caption" color="text.secondary">
                 Fullført onboarding
               </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 600, color: '#4caf50' }}>
+              <Typography variant="h4" sx={{ fontWeight: 600, color: adminTokens.color.success }}>
                 {recentUsers.filter((u) => u.hasCompletedUniversalOnboarding).length}
               </Typography>
             </CardContent>
@@ -160,7 +165,7 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
               <Typography variant="caption" color="text.secondary">
                 Google Workspace
               </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 600, color: '#9c27b0' }}>
+              <Typography variant="h4" sx={{ fontWeight: 600, color: '#ce93d8' }}>
                 {recentUsers.filter((u) => u.googleWorkspaceConnected).length}
               </Typography>
             </CardContent>
@@ -168,10 +173,28 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
         </Box>
       )}
 
+      {/* Search */}
+      <Box sx={{ mb: 2 }}>
+        <TextField
+          size="small"
+          fullWidth
+          placeholder="Søk etter navn, e-post eller bedrift …"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Box>
+
       {/* Users Table */}
       <Card>
         <CardContent sx={{ p: 0 }}>
-          <TableContainer component={Paper}>
+          <AdminTableContainer ariaLabel="Nylig godkjente brukere">
             <Table>
               <TableHead>
                 <TableRow>
@@ -203,7 +226,15 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
                     </TableCell>
                   </TableRow>
                 ) : (
-                  recentUsers.map((user: User) => {
+                  recentUsers
+                    .filter((user: User) =>
+                      [user.firstName, user.lastName, user.email, user.businessName]
+                        .filter(Boolean)
+                        .join(' ')
+                        .toLowerCase()
+                        .includes(search.toLowerCase())
+                    )
+                    .map((user: User) => {
                     const progress = calculateOnboardingProgress(user);
                     const daysSinceApproval = getDaysSince(user.approvedAt);
 
@@ -356,7 +387,7 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
                 )}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
         </CardContent>
       </Card>
     </Box>

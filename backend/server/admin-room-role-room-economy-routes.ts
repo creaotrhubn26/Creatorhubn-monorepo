@@ -298,8 +298,18 @@ export function setupAdminRoleRoomEconomyRoutes(deps: RoleRoomEconomyDeps): void
         },
       });
     } catch (err) {
-      console.error("[admin-room role-room economy] subscribers error", err);
-      res.status(500).json({ error: "Kunne ikke hente subscribers fra Stripe" });
+      // Graceful: Stripe-feil, manglende ai_usage_log-tabell eller andre SQL-
+      // feil → tom liste (iPad viser "Kunne ikke laste subs" som tom seksjon).
+      console.warn("[admin-room role-room economy] subscribers failed:", (err as Error).message);
+      res.json({
+        items: [],
+        meta: {
+          nokPerUsd: NOK_USD,
+          hostingAllocationUsdMonthly: HOSTING_ALLOCATION_USD_PER_USER_MONTHLY,
+          totalCount: 0,
+          activeCount: 0,
+        },
+      });
     }
   });
 
@@ -659,7 +669,7 @@ export function setupAdminRoleRoomEconomyRoutes(deps: RoleRoomEconomyDeps): void
       res.json({ ok: true, subscription: { id: sub.id, status: sub.status, pauseCollection: sub.pause_collection } });
     } catch (err) {
       console.error("[admin-room role-room] pause error", err);
-      res.status(500).json({ error: (err as Error).message || "Kunne ikke pause subscription" });
+      res.status(500).json({ error: "Kunne ikke pause subscription" });
     }
   });
 
@@ -685,7 +695,7 @@ export function setupAdminRoleRoomEconomyRoutes(deps: RoleRoomEconomyDeps): void
       res.json({ ok: true, subscription: { id: sub.id, status: sub.status, pauseCollection: sub.pause_collection } });
     } catch (err) {
       console.error("[admin-room role-room] resume error", err);
-      res.status(500).json({ error: (err as Error).message || "Kunne ikke gjenoppta subscription" });
+      res.status(500).json({ error: "Kunne ikke gjenoppta subscription" });
     }
   });
 
@@ -728,7 +738,7 @@ export function setupAdminRoleRoomEconomyRoutes(deps: RoleRoomEconomyDeps): void
       });
     } catch (err) {
       console.error("[admin-room role-room] cancel error", err);
-      res.status(500).json({ error: (err as Error).message || "Kunne ikke kansellere subscription" });
+      res.status(500).json({ error: "Kunne ikke kansellere subscription" });
     }
   });
 
@@ -754,7 +764,7 @@ export function setupAdminRoleRoomEconomyRoutes(deps: RoleRoomEconomyDeps): void
       res.json({ ok: true, subscription: { id: sub.id, status: sub.status, cancelAtPeriodEnd: sub.cancel_at_period_end } });
     } catch (err) {
       console.error("[admin-room role-room] reactivate error", err);
-      res.status(500).json({ error: (err as Error).message || "Kunne ikke reaktivere subscription" });
+      res.status(500).json({ error: "Kunne ikke reaktivere subscription" });
     }
   });
 

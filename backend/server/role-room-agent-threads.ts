@@ -112,7 +112,8 @@ export async function getThread(
     const messagesResult = await pool.query(
       `SELECT * FROM role_room_agent_messages
        WHERE thread_id = $1
-       ORDER BY created_at ASC`,
+       ORDER BY created_at ASC
+       LIMIT 500`,
       [threadId],
     );
     return {

@@ -1841,19 +1841,22 @@ export default function ShowcaseAdmin({
                             handlePreviewShowcase(showcase);
                           }
                         }}
-                        sx={{ 
-                          height: '100%', 
+                        sx={{
+                          height: '100%',
                           position: 'relative',
                           borderRadius: 3,
                           overflow: 'hidden',
                           transition: 'all 0.3s ease',
                           cursor: 'pointer',
+                          bgcolor: 'rgba(255,255,255,0.04)',
+                          color: '#fff',
                           border: selectedShowcase?.id === showcase.id
                             ? `2px solid ${theming.colors.primary}`
-                            : `1px solid ${alpha(theming.colors.primary, 0.1)}`,
+                            : `1px solid ${alpha(theming.colors.primary, 0.25)}`,
                           '&:hover': {
                             transform: 'translateY(-4px)',
-                            boxShadow: `0 12px 28px ${alpha(theming.colors.primary, 0.15)}`,
+                            bgcolor: 'rgba(255,255,255,0.06)',
+                            boxShadow: `0 12px 28px ${alpha(theming.colors.primary, 0.3)}`,
                           },
                         }}>
 	                        <CardMedia
@@ -1867,7 +1870,7 @@ export default function ShowcaseAdmin({
                           <Typography variant="h6" noWrap sx={{ color: theming.colors.primary, fontWeight: 600 }}>
                             {showcase.title}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary" noWrap sx={{ mb: 1.5 }}>
+                          <Typography variant="body2" noWrap sx={{ color: 'rgba(255,255,255,0.7)', mb: 1.5 }}>
                             {showcase.description}
                           </Typography>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -1949,12 +1952,14 @@ export default function ShowcaseAdmin({
                   ))
                 ) : (
 	                  <Grid item xs={12}>
-	                    <Paper 
-	                      sx={{ 
-	                        p: 6, 
+	                    <Paper
+	                      sx={{
+	                        p: 6,
 	                        textAlign: 'center',
-	                        background: `linear-gradient(135deg, ${alpha(theming.colors.primary, 0.03)} 0%, ${alpha(theming.colors.secondary, 0.03)} 100%)`,
-	                        border: `2px dashed ${alpha(theming.colors.primary, 0.2)}`,
+	                        bgcolor: 'rgba(255,255,255,0.04)',
+	                        color: '#fff',
+	                        backgroundImage: `linear-gradient(135deg, ${alpha(theming.colors.primary, 0.12)} 0%, ${alpha(theming.colors.secondary, 0.12)} 100%)`,
+	                        border: `2px dashed ${alpha(theming.colors.primary, 0.4)}`,
                           borderRadius: 3,
                         }}
 	                    >
@@ -1973,7 +1978,7 @@ export default function ShowcaseAdmin({
                       <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary, fontWeight: 600 }}>
                         Ingen {terms.showcase.toLowerCase()}s ennå
                       </Typography>
-                      <Typography variant="body1" color="text.secondary" sx={{ mb: 3, maxWidth: 400, mx: 'auto' }}>
+                      <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.7)', mb: 3, maxWidth: 400, mx: 'auto' }}>
                         Lag din første {terms.showcase.toLowerCase()} for å vise frem ditt arbeid til kunder og samarbeidspartnere
                       </Typography>
                       <Button 
@@ -2014,7 +2019,7 @@ export default function ShowcaseAdmin({
               </Avatar>
               Design-maler for {profession}
             </Typography>
-            <Typography variant="body1" color="text.secondary">
+            <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.7)' }}>
               Tilpass utseendet på dine showcases med maler, farger og typografi
             </Typography>
           </Box>
@@ -2279,13 +2284,16 @@ export default function ShowcaseAdmin({
                   <Grid container spacing={2}>
                     {templates.map((template: any) => (
                       <Grid item xs={12} sm={6} md={4} key={template.id}>
-                        <Card sx={{ 
+                        <Card sx={{
                           borderRadius: 2,
-                          border: `1px solid ${alpha(theming.colors.primary, 0.1)}`,
+                          bgcolor: 'rgba(255,255,255,0.04)',
+                          color: '#fff',
+                          border: `1px solid ${alpha(theming.colors.primary, 0.25)}`,
                           transition: 'all 0.2s ease',
                           '&:hover': {
                             borderColor: theming.colors.primary,
-                            boxShadow: `0 4px 12px ${alpha(theming.colors.primary, 0.15)}`,
+                            bgcolor: 'rgba(255,255,255,0.06)',
+                            boxShadow: `0 4px 12px ${alpha(theming.colors.primary, 0.3)}`,
                           },
                         }}>
                           <CardContent>
@@ -2310,7 +2318,7 @@ export default function ShowcaseAdmin({
                                 </IconButton>
                               </Box>
                             </Box>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 1.5 }}>
                               {template.description || 'Ingen beskrivelse'}
                             </Typography>
                             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -2357,10 +2365,10 @@ export default function ShowcaseAdmin({
                     <Avatar sx={{ width: 64, height: 64, bgcolor: alpha(theming.colors.primary, 0.1), color: theming.colors.primary, mx: 'auto', mb: 2 }}>
                       <PaletteIcon sx={{ fontSize: 32 }} />
                     </Avatar>
-                    <Typography variant="h6" color="text.secondary" gutterBottom>
+                    <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.7)' }} gutterBottom>
                       Ingen maler ennå
                     </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 2 }}>
                       Opprett din første mal for å gjenbruke design på tvers av showcases
                     </Typography>
                     <Button
@@ -2390,7 +2398,7 @@ export default function ShowcaseAdmin({
               </Avatar>
               Batch Operasjoner
             </Typography>
-            <Typography variant="body1" color="text.secondary">
+            <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.7)' }}>
               Utfør operasjoner på flere {terms.media.toLowerCase()} samtidig for økt produktivitet
             </Typography>
           </Box>
@@ -2611,7 +2619,7 @@ export default function ShowcaseAdmin({
                     {selectedItems.length > 6 && (
                       <Grid item xs={12}>
                         <Card sx={{ height: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',  ...theming.getThemedCardSx() }}>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                             +{selectedItems.length - 6} flere
                           </Typography>
                         </Card>
@@ -2633,7 +2641,7 @@ export default function ShowcaseAdmin({
               </Avatar>
               Smart Albums
             </Typography>
-            <Typography variant="body1" color="text.secondary">
+            <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.7)' }}>
               Opprett intelligente album som automatisk oppdateres basert på kriterier du setter
             </Typography>
           </Box>
@@ -2713,7 +2721,7 @@ export default function ShowcaseAdmin({
                             <Typography variant="subtitle1" fontWeight="bold" sx={{ color: template.color }}>
                               {template.name}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                            <Typography variant="caption" sx={{ color: 'rgba(0,0,0,0.7)', display: 'block', mt: 0.5 }}>
                               {template.criteria}
                             </Typography>
                           </Box>
@@ -2754,7 +2762,7 @@ export default function ShowcaseAdmin({
                   <AddIcon sx={{ fontSize: 22 }} />
                   Opprett egendefinert album
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 3 }}>
                   Sett opp dine egne kriterier for automatisk sortering
                 </Typography>
                 
@@ -2792,7 +2800,7 @@ export default function ShowcaseAdmin({
                           '& .MuiRating-iconFilled': { color: theming.colors.primary }
                         }}
                       />
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                         {smartAlbumCriteria.rating > 0 ? `${smartAlbumCriteria.rating}+ stjerner` : 'Alle vurderinger'}
                       </Typography>
                     </Box>
@@ -2806,7 +2814,7 @@ export default function ShowcaseAdmin({
                       onChange={(e) => setSmartAlbumCriteria(prev => ({ ...prev, location: e.target.value }))}
                       placeholder="Oslo, Bergen..."
                       InputProps={{
-                        startAdornment: <LocationOnIcon sx={{ color: 'text.secondary', mr: 1, fontSize: 20 }} />
+                        startAdornment: <LocationOnIcon sx={{ color: 'rgba(255,255,255,0.7)', mr: 1, fontSize: 20 }} />
                       }}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                     />
@@ -2817,7 +2825,7 @@ export default function ShowcaseAdmin({
                       onChange={(e) => setSmartAlbumCriteria(prev => ({ ...prev, camera: e.target.value }))}
                       placeholder="Canon, Sony..."
                       InputProps={{
-                        startAdornment: <CameraAltIcon sx={{ color: 'text.secondary', mr: 1, fontSize: 20 }} />
+                        startAdornment: <CameraAltIcon sx={{ color: 'rgba(255,255,255,0.7)', mr: 1, fontSize: 20 }} />
                       }}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                     />
@@ -2867,7 +2875,7 @@ export default function ShowcaseAdmin({
                       <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                         Automatisk oppdatering
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                         Album oppdateres når nye elementer matcher
                       </Typography>
                     </Box>
@@ -2966,24 +2974,27 @@ export default function ShowcaseAdmin({
                     <Typography variant="h6" sx={{ color: theming.colors.primary, fontWeight: 600, mb: 1 }}>
                       Ingen smart albums ennå
                     </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 280, mx: 'auto' }}>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', maxWidth: 280, mx: 'auto' }}>
                       Velg en mal ovenfor eller opprett et egendefinert album for å komme i gang
                     </Typography>
                   </Box>
                 ) : (
                   <Stack spacing={2}>
                     {smartAlbums.map((album, index) => (
-                      <Card 
+                      <Card
                         key={index}
-                        sx={{ 
+                        sx={{
                           p: 0,
                           borderRadius: 2,
                           overflow: 'hidden',
-                          border: `1px solid ${alpha(theming.colors.primary, 0.1)}`,
+                          bgcolor: 'rgba(255,255,255,0.04)',
+                          color: '#fff',
+                          border: `1px solid ${alpha(theming.colors.primary, 0.25)}`,
                           transition: 'all 0.2s ease',
                           '&:hover': {
                             borderColor: theming.colors.primary,
-                            boxShadow: `0 4px 12px ${alpha(theming.colors.primary, 0.15)}`,
+                            bgcolor: 'rgba(255,255,255,0.06)',
+                            boxShadow: `0 4px 12px ${alpha(theming.colors.primary, 0.3)}`,
                           }
                         }}
                       >
@@ -3005,7 +3016,7 @@ export default function ShowcaseAdmin({
                               {album.name}
                             </Typography>
                             <Stack direction="row" spacing={1} alignItems="center">
-                              <Typography variant="body2" color="text.secondary">
+                              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                                 {album.itemCount || 0} elementer
                               </Typography>
                               <Chip
@@ -3035,8 +3046,8 @@ export default function ShowcaseAdmin({
                             <IconButton
                               size="small"
                               title="Rediger"
-                              sx={{ 
-                                color: 'text.secondary',
+                              sx={{
+                                color: 'rgba(255,255,255,0.7)',
                                 '&:hover': { bgcolor: alpha(theming.colors.primary, 0.1) }
                               }}
                             >
@@ -3056,13 +3067,15 @@ export default function ShowcaseAdmin({
         {/* Collections Tab */}
         <TabPanel value={currentTab} index={2}>
           {/* Header with gradient background */}
-          <Paper 
-            sx={{ 
-              p: 3, 
-              mb: 3, 
+          <Paper
+            sx={{
+              p: 3,
+              mb: 3,
               borderRadius: 3,
-              background: `linear-gradient(135deg, ${alpha(theming.colors.primary, 0.08)} 0%, ${alpha(theming.colors.secondary, 0.08)} 100%)`,
-              border: `1px solid ${alpha(theming.colors.primary, 0.1)}`,
+              bgcolor: 'rgba(255,255,255,0.04)',
+              color: '#fff',
+              backgroundImage: `linear-gradient(135deg, ${alpha(theming.colors.primary, 0.18)} 0%, ${alpha(theming.colors.secondary, 0.18)} 100%)`,
+              border: `1px solid ${alpha(theming.colors.primary, 0.3)}`,
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
@@ -3080,7 +3093,7 @@ export default function ShowcaseAdmin({
                   <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                     {terms.collection}er
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                     Organiser og grupper dine showcases i tematiske samlinger
                   </Typography>
                 </Box>
@@ -3112,55 +3125,63 @@ export default function ShowcaseAdmin({
           {/* Quick Stats Row */}
           <Grid container spacing={2} sx={{ mb: 3 }}>
             <Grid item xs={6} sm={3}>
-              <Paper sx={{ 
-                p: 2, 
-                textAlign: 'center', 
+              <Paper sx={{
+                p: 2,
+                textAlign: 'center',
                 borderRadius: 2,
-                border: `1px solid ${alpha(theming.colors.primary, 0.1)}`,
+                bgcolor: 'rgba(255,255,255,0.04)',
+                color: '#fff',
+                border: `1px solid ${alpha(theming.colors.primary, 0.3)}`,
               }}>
                 <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                   {collections?.length || 0}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">Samlinger</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>Samlinger</Typography>
               </Paper>
             </Grid>
             <Grid item xs={6} sm={3}>
-              <Paper sx={{ 
-                p: 2, 
-                textAlign: 'center', 
+              <Paper sx={{
+                p: 2,
+                textAlign: 'center',
                 borderRadius: 2,
-                border: `1px solid ${alpha('#4caf50', 0.1)}`,
+                bgcolor: 'rgba(255,255,255,0.04)',
+                color: '#fff',
+                border: `1px solid ${alpha('#4caf50', 0.3)}`,
               }}>
                 <Typography variant="h4" sx={{ fontWeight: 700, color: '#4caf50' }}>
                   {collections?.reduce((acc: number, c: any) => acc + (c.showcaseCount || 0), 0) || 0}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">Totalt showcases</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>Totalt showcases</Typography>
               </Paper>
             </Grid>
             <Grid item xs={6} sm={3}>
-              <Paper sx={{ 
-                p: 2, 
-                textAlign: 'center', 
+              <Paper sx={{
+                p: 2,
+                textAlign: 'center',
                 borderRadius: 2,
-                border: `1px solid ${alpha('#2196f3', 0.1)}`,
+                bgcolor: 'rgba(255,255,255,0.04)',
+                color: '#fff',
+                border: `1px solid ${alpha('#2196f3', 0.3)}`,
               }}>
                 <Typography variant="h4" sx={{ fontWeight: 700, color: '#2196f3' }}>
                   {collections?.filter((c: any) => c.isPublic).length || 0}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">Offentlige</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>Offentlige</Typography>
               </Paper>
             </Grid>
             <Grid item xs={6} sm={3}>
-              <Paper sx={{ 
-                p: 2, 
-                textAlign: 'center', 
+              <Paper sx={{
+                p: 2,
+                textAlign: 'center',
                 borderRadius: 2,
-                border: `1px solid ${alpha('#ff9800', 0.1)}`,
+                bgcolor: 'rgba(255,255,255,0.04)',
+                color: '#fff',
+                border: `1px solid ${alpha('#ff9800', 0.3)}`,
               }}>
                 <Typography variant="h4" sx={{ fontWeight: 700, color: '#ff9800' }}>
                   {collections?.filter((c: any) => c.isFeatured).length || 0}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">Fremhevet</Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>Fremhevet</Typography>
               </Paper>
             </Grid>
           </Grid>
@@ -3272,7 +3293,7 @@ export default function ShowcaseAdmin({
                       <Typography variant="h6" noWrap sx={{ color: theming.colors.primary, fontWeight: 700, mb: 0.5 }}>
                         {collection.name}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 1.5 }}>
                         {collection.description || 'Ingen beskrivelse'}
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -3329,7 +3350,7 @@ export default function ShowcaseAdmin({
                   <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary, fontWeight: 700 }}>
                     Ingen {terms.collection.toLowerCase()}er ennå
                   </Typography>
-                  <Typography variant="body1" color="text.secondary" sx={{ mb: 4, maxWidth: 400, mx: 'auto' }}>
+                  <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.7)', mb: 4, maxWidth: 400, mx: 'auto' }}>
                     Samlinger hjelper deg å organisere og presentere showcases på en profesjonell måte
                   </Typography>
                   <Stack direction="row" spacing={2} justifyContent="center">
@@ -3393,7 +3414,7 @@ export default function ShowcaseAdmin({
               </Avatar>
               Statistikk og analyse
             </Typography>
-            <Typography variant="body1" color="text.secondary">
+            <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.7)' }}>
               Få innsikt i hvordan dine showcases presterer
             </Typography>
           </Box>
@@ -3414,7 +3435,7 @@ export default function ShowcaseAdmin({
                 <Typography variant="h4" fontWeight="bold" sx={{ color: theming.colors.primary }}>
                   {analyticsData?.totalViews?.toLocaleString() || '0'}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">Totale visninger</Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>Totale visninger</Typography>
               </Paper>
             </Grid>
             <Grid item xs={6} sm={3}>
@@ -3432,7 +3453,7 @@ export default function ShowcaseAdmin({
                 <Typography variant="h4" fontWeight="bold" sx={{ color: '#4caf50' }}>
                   {analyticsData?.totalLikes?.toLocaleString() || '0'}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">Likes</Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>Likes</Typography>
               </Paper>
             </Grid>
             <Grid item xs={6} sm={3}>
@@ -3450,7 +3471,7 @@ export default function ShowcaseAdmin({
                 <Typography variant="h4" fontWeight="bold" sx={{ color: '#2196f3' }}>
                   {analyticsData?.totalShares?.toLocaleString() || '0'}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">Delinger</Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>Delinger</Typography>
               </Paper>
             </Grid>
             <Grid item xs={6} sm={3}>
@@ -3468,7 +3489,7 @@ export default function ShowcaseAdmin({
                 <Typography variant="h4" fontWeight="bold" sx={{ color: '#ff9800' }}>
                   {analyticsData?.totalComments?.toLocaleString() || '0'}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">Kommentarer</Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>Kommentarer</Typography>
               </Paper>
             </Grid>
           </Grid>
@@ -3483,7 +3504,7 @@ export default function ShowcaseAdmin({
               </Avatar>
               Globale innstillinger
             </Typography>
-            <Typography variant="body1" color="text.secondary">
+            <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.7)' }}>
               Konfigurer standardinnstillinger for alle dine showcases
             </Typography>
           </Box>
@@ -3671,13 +3692,28 @@ export default function ShowcaseAdmin({
       </SpeedDial>
 
       {/* New Showcase Dialog */}
-      <Dialog 
+      <Dialog
         open={openDialog === 'new-showcase'}
         onClose={() => setOpenDialog(null)}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiOutlinedInput-root': { color: '#fff' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+            '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' },
+            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiFormControlLabel-label': { color: 'rgba(255,255,255,0.85)' },
+            '& .MuiTypography-root': { color: 'inherit' },
+          },
+        }}
       >
-        <DialogTitle>
+        <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           Lag ny {terms.showcase.toLowerCase()}
         </DialogTitle>
         <DialogContent>
@@ -3750,7 +3786,7 @@ export default function ShowcaseAdmin({
                   <LinearProgress variant="determinate" value={uploadProgress} />
                 )}
                 {mediaFiles.length > 0 && (
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                     {mediaFiles.length} fil(er) valgt
                   </Typography>
                 )}
@@ -3865,13 +3901,27 @@ export default function ShowcaseAdmin({
       </Dialog>
 
       {/* Bulk Photo Enhancement Dialog */}
-      <Dialog 
+      <Dialog
         open={enhancementDialogOpen}
         onClose={() => setEnhancementDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiOutlinedInput-root': { color: '#fff' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+            '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' },
+            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiFormControlLabel-label': { color: 'rgba(255,255,255,0.85)' },
+          },
+        }}
       >
-        <DialogTitle sx={{ 
+        <DialogTitle sx={{
           background: `linear-gradient(135deg, #FF6B35, #F7931E)`,
           color: 'white',
           display: 'flex',
@@ -3880,7 +3930,7 @@ export default function ShowcaseAdmin({
           <PaletteIcon /> Bulk bildeforbedring med CreatorHub Photo Enhancer
         </DialogTitle>
         <DialogContent sx={{ mt:  2 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 2 }}>
             Forbedre {selectedItems.length} bilder samtidig med profesjonelle innstillinger
           </Typography>
 
@@ -3997,7 +4047,7 @@ export default function ShowcaseAdmin({
       </Dialog>
 
       {/* Learn about Collections Dialog */}
-      <Dialog 
+      <Dialog
         open={openDialog === 'learn-collections'}
         onClose={() => setOpenDialog(null)}
         maxWidth="md"
@@ -4006,7 +4056,17 @@ export default function ShowcaseAdmin({
           sx: {
             borderRadius: 3,
             overflow: 'hidden',
-          }
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiOutlinedInput-root': { color: '#fff' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+            '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' },
+            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiFormControlLabel-label': { color: 'rgba(255,255,255,0.85)' },
+          },
         }}
       >
         <Box sx={{ 
@@ -4037,15 +4097,18 @@ export default function ShowcaseAdmin({
           <Grid container spacing={3}>
             {/* Feature 1 */}
             <Grid item xs={12} md={6}>
-              <Paper sx={{ 
-                p: 3, 
+              <Paper sx={{
+                p: 3,
                 height: '100%',
                 borderRadius: 2,
-                border: `1px solid ${alpha(theming.colors.primary, 0.1)}`,
+                bgcolor: 'rgba(255,255,255,0.04)',
+                color: '#fff',
+                border: `1px solid ${alpha(theming.colors.primary, 0.25)}`,
                 transition: 'all 0.2s ease',
                 '&:hover': {
                   transform: 'translateY(-4px)',
-                  boxShadow: `0 8px 25px ${alpha(theming.colors.primary, 0.15)}`,
+                  bgcolor: 'rgba(255,255,255,0.06)',
+                  boxShadow: `0 8px 25px ${alpha(theming.colors.primary, 0.3)}`,
                 }
               }}>
                 <Avatar sx={{ bgcolor: alpha('#4caf50', 0.1), color: '#4caf50', mb: 2 }}>
@@ -4054,7 +4117,7 @@ export default function ShowcaseAdmin({
                 <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
                   Organiser showcases
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                   Grupper relaterte showcases sammen i tematiske samlinger. Perfekt for å vise frem bryllupsbilder, portretter, produktfotografering og mer.
                 </Typography>
               </Paper>
@@ -4062,15 +4125,18 @@ export default function ShowcaseAdmin({
 
             {/* Feature 2 */}
             <Grid item xs={12} md={6}>
-              <Paper sx={{ 
-                p: 3, 
+              <Paper sx={{
+                p: 3,
                 height: '100%',
                 borderRadius: 2,
-                border: `1px solid ${alpha(theming.colors.primary, 0.1)}`,
+                bgcolor: 'rgba(255,255,255,0.04)',
+                color: '#fff',
+                border: `1px solid ${alpha(theming.colors.primary, 0.25)}`,
                 transition: 'all 0.2s ease',
                 '&:hover': {
                   transform: 'translateY(-4px)',
-                  boxShadow: `0 8px 25px ${alpha(theming.colors.primary, 0.15)}`,
+                  bgcolor: 'rgba(255,255,255,0.06)',
+                  boxShadow: `0 8px 25px ${alpha(theming.colors.primary, 0.3)}`,
                 }
               }}>
                 <Avatar sx={{ bgcolor: alpha('#2196f3', 0.1), color: '#2196f3', mb: 2 }}>
@@ -4079,7 +4145,7 @@ export default function ShowcaseAdmin({
                 <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
                   Del enkelt
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                   Del hele samlinger med kunder via en unik lenke. Kunder kan bla gjennom og velge favorittbilder direkte.
                 </Typography>
               </Paper>
@@ -4087,15 +4153,18 @@ export default function ShowcaseAdmin({
 
             {/* Feature 3 */}
             <Grid item xs={12} md={6}>
-              <Paper sx={{ 
-                p: 3, 
+              <Paper sx={{
+                p: 3,
                 height: '100%',
                 borderRadius: 2,
-                border: `1px solid ${alpha(theming.colors.primary, 0.1)}`,
+                bgcolor: 'rgba(255,255,255,0.04)',
+                color: '#fff',
+                border: `1px solid ${alpha(theming.colors.primary, 0.25)}`,
                 transition: 'all 0.2s ease',
                 '&:hover': {
                   transform: 'translateY(-4px)',
-                  boxShadow: `0 8px 25px ${alpha(theming.colors.primary, 0.15)}`,
+                  bgcolor: 'rgba(255,255,255,0.06)',
+                  boxShadow: `0 8px 25px ${alpha(theming.colors.primary, 0.3)}`,
                 }
               }}>
                 <Avatar sx={{ bgcolor: alpha('#ff9800', 0.1), color: '#ff9800', mb: 2 }}>
@@ -4104,7 +4173,7 @@ export default function ShowcaseAdmin({
                 <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
                   Fremhev ditt beste
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                   Marker samlinger som "Fremhevet" for å vise dem øverst på profilen din. Perfekt for å fremheve nytt eller viktig arbeid.
                 </Typography>
               </Paper>
@@ -4112,15 +4181,18 @@ export default function ShowcaseAdmin({
 
             {/* Feature 4 */}
             <Grid item xs={12} md={6}>
-              <Paper sx={{ 
-                p: 3, 
+              <Paper sx={{
+                p: 3,
                 height: '100%',
                 borderRadius: 2,
-                border: `1px solid ${alpha(theming.colors.primary, 0.1)}`,
+                bgcolor: 'rgba(255,255,255,0.04)',
+                color: '#fff',
+                border: `1px solid ${alpha(theming.colors.primary, 0.25)}`,
                 transition: 'all 0.2s ease',
                 '&:hover': {
                   transform: 'translateY(-4px)',
-                  boxShadow: `0 8px 25px ${alpha(theming.colors.primary, 0.15)}`,
+                  bgcolor: 'rgba(255,255,255,0.06)',
+                  boxShadow: `0 8px 25px ${alpha(theming.colors.primary, 0.3)}`,
                 }
               }}>
                 <Avatar sx={{ bgcolor: alpha('#9c27b0', 0.1), color: '#9c27b0', mb: 2 }}>
@@ -4129,7 +4201,7 @@ export default function ShowcaseAdmin({
                 <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
                   Kontroller synlighet
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                   Velg om samlinger skal være offentlige eller private. Private samlinger er kun synlige for deg og de du deler lenken med.
                 </Typography>
               </Paper>
@@ -4137,33 +4209,34 @@ export default function ShowcaseAdmin({
           </Grid>
 
           {/* Tips Section */}
-          <Box sx={{ 
-            mt: 4, 
-            p: 3, 
-            borderRadius: 2, 
-            bgcolor: alpha(theming.colors.primary, 0.05),
-            border: `1px solid ${alpha(theming.colors.primary, 0.1)}`,
+          <Box sx={{
+            mt: 4,
+            p: 3,
+            borderRadius: 2,
+            bgcolor: alpha(theming.colors.primary, 0.12),
+            border: `1px solid ${alpha(theming.colors.primary, 0.3)}`,
+            color: '#fff',
           }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
               <Lightbulb sx={{ color: '#ff9800' }} />
               Tips for bedre samlinger
             </Typography>
             <Stack spacing={1.5}>
               <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
                 <CheckCircle sx={{ color: '#4caf50', fontSize: 20, mt: 0.3 }} />
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                   <strong>Bruk beskrivende navn</strong> - "Bryllup: Anna & Erik 2025" er bedre enn "Bryllup 1"
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
                 <CheckCircle sx={{ color: '#4caf50', fontSize: 20, mt: 0.3 }} />
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                   <strong>Velg et godt coverbilde</strong> - Dette er det første kunder ser
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
                 <CheckCircle sx={{ color: '#4caf50', fontSize: 20, mt: 0.3 }} />
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                   <strong>Hold samlinger oppdatert</strong> - Fjern gamle showcases og legg til nye regelmessig
                 </Typography>
               </Box>
@@ -4172,7 +4245,7 @@ export default function ShowcaseAdmin({
         </DialogContent>
         
         <DialogActions sx={{ p: 3, pt: 0 }}>
-          <Button onClick={() => setOpenDialog(null)} sx={{ color: 'text.secondary' }}>
+          <Button onClick={() => setOpenDialog(null)} sx={{ color: 'rgba(255,255,255,0.7)' }}>
             Lukk
           </Button>
           <Button 
@@ -4195,13 +4268,25 @@ export default function ShowcaseAdmin({
       </Dialog>
 
       {/* New Collection Dialog */}
-      <Dialog 
+      <Dialog
         open={openDialog === 'new-collection'}
         onClose={() => setOpenDialog(null)}
         maxWidth="sm"
         fullWidth
         PaperProps={{
-          sx: { borderRadius: 3 }
+          sx: {
+            borderRadius: 3,
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiOutlinedInput-root': { color: '#fff' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+            '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' },
+            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiFormControlLabel-label': { color: 'rgba(255,255,255,0.85)' },
+          },
         }}
       >
         <DialogTitle sx={{ 
@@ -4270,13 +4355,26 @@ export default function ShowcaseAdmin({
       </Dialog>
 
       {/* New Template Dialog */}
-      <Dialog 
+      <Dialog
         open={openDialog === 'new-template'}
         onClose={() => setOpenDialog(null)}
         maxWidth="sm"
         fullWidth
         PaperProps={{
-          sx: { borderRadius: 3 }
+          sx: {
+            borderRadius: 3,
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiOutlinedInput-root': { color: '#fff' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+            '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' },
+            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiFormControlLabel-label': { color: 'rgba(255,255,255,0.85)' },
+            '& .MuiCard-root': { bgcolor: 'rgba(255,255,255,0.04)', color: '#fff' },
+          },
         }}
       >
         <DialogTitle sx={{ 
@@ -4358,13 +4456,26 @@ export default function ShowcaseAdmin({
       </Dialog>
 
       {/* Settings Dialog */}
-      <Dialog 
+      <Dialog
         open={openDialog === 'settings'}
         onClose={() => setOpenDialog(null)}
         maxWidth="md"
         fullWidth
         PaperProps={{
-          sx: { borderRadius: 3 }
+          sx: {
+            borderRadius: 3,
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiOutlinedInput-root': { color: '#fff' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+            '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' },
+            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiFormControlLabel-label': { color: 'rgba(255,255,255,0.85)' },
+            '& .MuiPaper-root': { bgcolor: 'rgba(255,255,255,0.04)', color: '#fff' },
+          },
         }}
       >
         <DialogTitle sx={{ 
@@ -4481,11 +4592,25 @@ export default function ShowcaseAdmin({
       </Dialog>
 
       {/* Edit Showcase Dialog */}
-      <Dialog 
+      <Dialog
         open={openDialog === 'edit-showcase'}
         onClose={() => { setOpenDialog(null); setEditingShowcase(null); }}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiOutlinedInput-root': { color: '#fff' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+            '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' },
+            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiFormControlLabel-label': { color: 'rgba(255,255,255,0.85)' },
+          },
+        }}
       >
         <DialogTitle sx={{ 
           background: `linear-gradient(135deg, ${theming.colors.primary} 0%, ${theming.colors.secondary} 100%)`,
@@ -4580,6 +4705,14 @@ export default function ShowcaseAdmin({
         onClose={() => { setDeleteConfirmOpen(false); setShowcaseToDelete(null); }}
         maxWidth="sm"
         fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+          },
+        }}
       >
         <DialogTitle sx={{ 
           background: `linear-gradient(135deg, #f44336 0%, #e91e63 100%)`,
@@ -4595,7 +4728,7 @@ export default function ShowcaseAdmin({
           <Typography variant="body1" gutterBottom>
             Er du sikker på at du vil slette "{showcaseToDelete?.title}"?
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
             Denne handlingen kan ikke angres. Alle bilder og metadata knyttet til denne showcasen vil bli permanent slettet.
           </Typography>
         </DialogContent>
@@ -4619,6 +4752,14 @@ export default function ShowcaseAdmin({
         onClose={() => setBatchConfirmOpen(false)}
         maxWidth="sm"
         fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+          },
+        }}
       >
         <DialogTitle sx={{ 
           background: `linear-gradient(135deg, #ff9800 0%, #f57c00 100%)`,
@@ -4634,7 +4775,7 @@ export default function ShowcaseAdmin({
           <Typography variant="body1" gutterBottom>
             Du er i ferd med å utføre "{batchOperation}" på {selectedItems.length} elementer.
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
             {batchOperation === 'delete' 
               ? 'Denne handlingen kan ikke angres. Alle valgte elementer vil bli permanent slettet.'
               : 'Er du sikker på at du vil fortsette med denne operasjonen?'}
@@ -4663,6 +4804,20 @@ export default function ShowcaseAdmin({
         onClose={() => { setOpenDialog(null); setEditingCollection(null); }}
         maxWidth="sm"
         fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiOutlinedInput-root': { color: '#fff' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+            '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' },
+            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiFormControlLabel-label': { color: 'rgba(255,255,255,0.85)' },
+          },
+        }}
       >
         <DialogTitle sx={{ 
           background: `linear-gradient(135deg, ${theming.colors.primary} 0%, ${theming.colors.secondary} 100%)`,
@@ -4733,6 +4888,14 @@ export default function ShowcaseAdmin({
         onClose={() => { setCollectionDeleteConfirmOpen(false); setCollectionToDelete(null); }}
         maxWidth="sm"
         fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+          },
+        }}
       >
         <DialogTitle sx={{ 
           background: `linear-gradient(135deg, #f44336 0%, #e91e63 100%)`,
@@ -4748,7 +4911,7 @@ export default function ShowcaseAdmin({
           <Typography variant="body1" gutterBottom>
             Er du sikker på at du vil slette "{collectionToDelete?.name}"?
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
             Denne handlingen kan ikke angres. Showcases i samlingen vil ikke bli slettet, men vil bli fjernet fra samlingen.
           </Typography>
         </DialogContent>
@@ -4777,6 +4940,21 @@ export default function ShowcaseAdmin({
         onClose={() => { setOpenDialog(null); setEditingTemplate(null); }}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiOutlinedInput-root': { color: '#fff' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+            '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' },
+            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiFormControlLabel-label': { color: 'rgba(255,255,255,0.85)' },
+            '& .MuiCard-root': { bgcolor: 'rgba(255,255,255,0.04)', color: '#fff' },
+          },
+        }}
       >
         <DialogTitle sx={{ 
           background: `linear-gradient(135deg, ${theming.colors.primary} 0%, ${theming.colors.secondary} 100%)`,
@@ -4856,6 +5034,14 @@ export default function ShowcaseAdmin({
         onClose={() => { setTemplateDeleteConfirmOpen(false); setTemplateToDelete(null); }}
         maxWidth="sm"
         fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+          },
+        }}
       >
         <DialogTitle sx={{ 
           background: `linear-gradient(135deg, #f44336 0%, #e91e63 100%)`,
@@ -4871,7 +5057,7 @@ export default function ShowcaseAdmin({
           <Typography variant="body1" gutterBottom>
             Er du sikker på at du vil slette malen "{templateToDelete?.name}"?
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
             Denne handlingen kan ikke angres. Showcases som bruker denne malen vil beholde sine nåværende innstillinger.
           </Typography>
         </DialogContent>
@@ -4897,7 +5083,15 @@ export default function ShowcaseAdmin({
         maxWidth="lg"
         fullWidth
         PaperProps={{
-          sx: { minHeight: '80vh' }
+          sx: {
+            minHeight: '80vh',
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiPaper-root': { bgcolor: 'rgba(255,255,255,0.04)', color: '#fff' },
+            '& .MuiCard-root': { bgcolor: 'rgba(255,255,255,0.04)', color: '#fff' },
+          },
         }}
       >
         <DialogTitle sx={{ 
@@ -4933,7 +5127,7 @@ export default function ShowcaseAdmin({
                 <Typography variant="h3" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                   {previewShowcase.title}
                 </Typography>
-                <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
+                <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.7)', mb: 2 }}>
                   {previewShowcase.subtitle || previewShowcase.description}
                 </Typography>
                 <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -4965,7 +5159,7 @@ export default function ShowcaseAdmin({
                         </Typography>
                         <Stack spacing={1.5}>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <Typography variant="body2" color="text.secondary">Status:</Typography>
+                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>Status:</Typography>
                             <Chip 
                               size="small" 
                               label={previewShowcase.status || 'Utkast'} 
@@ -4973,23 +5167,23 @@ export default function ShowcaseAdmin({
                             />
                           </Box>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <Typography variant="body2" color="text.secondary">Kategori:</Typography>
+                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>Kategori:</Typography>
                             <Typography variant="body2">{previewShowcase.category || '-'}</Typography>
                           </Box>
                           {(previewShowcase?.price ?? previewShowcase?.startingPrice) != null && (
                             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <Typography variant="body2" color="text.secondary">Pris:</Typography>
+                              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>Pris:</Typography>
                               <Typography variant="body2">
                                 {formatCurrency(previewShowcase.price ?? previewShowcase.startingPrice, previewShowcase.currency || 'NOK')}
                               </Typography>
                             </Box>
                           )}
                           <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <Typography variant="body2" color="text.secondary">Visninger:</Typography>
+                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>Visninger:</Typography>
                             <Typography variant="body2">{previewShowcase.views || 0}</Typography>
                           </Box>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <Typography variant="body2" color="text.secondary">Likes:</Typography>
+                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>Likes:</Typography>
                             <Typography variant="body2">{previewShowcase.likes || 0}</Typography>
                           </Box>
                         </Stack>
@@ -5020,6 +5214,15 @@ export default function ShowcaseAdmin({
         onClose={() => { setAssignShowcaseDialogOpen(false); setSelectedCollectionForAssignment(null); setShowcasesToAssign([]); }}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiPaper-root': { bgcolor: 'rgba(255,255,255,0.04)', color: '#fff' },
+          },
+        }}
       >
         <DialogTitle sx={{ 
           background: `linear-gradient(135deg, ${theming.colors.primary} 0%, ${theming.colors.secondary} 100%)`,
@@ -5032,7 +5235,7 @@ export default function ShowcaseAdmin({
           Legg til showcases i "{selectedCollectionForAssignment?.name}"
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 2 }}>
             Velg showcases som skal legges til i denne samlingen.
           </Typography>
           <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
@@ -5067,7 +5270,7 @@ export default function ShowcaseAdmin({
                   />
                   <Box sx={{ flex: 1 }}>
                     <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{showcase.title}</Typography>
-                    <Typography variant="body2" color="text.secondary">{showcase.category}</Typography>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>{showcase.category}</Typography>
                   </Box>
                   {showcasesToAssign.includes(showcase.id) && (
                     <CheckCircle sx={{ color: theming.colors.primary }} />

@@ -43,7 +43,7 @@ function formatTime(ts?: number): string {
   if (!ts) return "";
   const ms = ts < 1e12 ? ts * 1000 : ts;
   const d = new Date(ms);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return d.toLocaleTimeString('nb-NO', { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 function eventToText(event: ScriptEvent): string {

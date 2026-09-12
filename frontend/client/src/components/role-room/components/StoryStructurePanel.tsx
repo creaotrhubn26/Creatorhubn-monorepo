@@ -115,7 +115,7 @@ const PURPOSE_CONFIG: Record<ScenePurpose, { color: string; label: string; Icon:
   conflict: { color: '#ef4444', label: 'Konflikt', Icon: ConflictIcon },
   rising_action: { color: '#f59e0b', label: 'Stigende handling', Icon: RisingActionIcon },
   climax: { color: '#dc2626', label: 'Klimaks', Icon: ClimaxIcon },
-  falling_action: { color: '#8b5cf6', label: 'Fallende handling', Icon: FallingActionIcon },
+  falling_action: { color: 'var(--role-violet, #8b5cf6)', label: 'Fallende handling', Icon: FallingActionIcon },
   resolution: { color: '#22c55e', label: 'Løsning', Icon: ResolutionIcon },
   transition: { color: '#6b7280', label: 'Overgang', Icon: TransitionIcon },
   character_development: { color: '#06b6d4', label: 'Karakterutvikling', Icon: CharacterDevIcon },
@@ -227,13 +227,13 @@ export const StoryStructurePanel: FC<StoryStructurePanelProps> = ({
           />
           <Chip
             icon={<RuntimeIcon />}
-            label={`~${analysis.pacingAnalysis.estimatedRuntime} min`}
+            label={`~${analysis.pacingAnalysis.estimatedRuntime} min estimat`}
             size="small"
             variant="outlined"
           />
           <Chip
             icon={<CharacterIcon />}
-            label={`${analysis.characterArcs.length} karakterer`}
+            label={`${analysis.characterArcs.length} karaktermarkører`}
             size="small"
             variant="outlined"
           />
@@ -422,11 +422,13 @@ const SceneListPanel: FC<SceneListPanelProps> = ({
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
                       {scene.intExt}. {scene.location}
                     </Typography>
-                    <Chip
-                      label={scene.timeOfDay}
-                      size="small"
-                      sx={{ fontSize: '0.6rem', height: 16 }}
-                    />
+                    {scene.timeOfDay && (
+                      <Chip
+                        label={scene.timeOfDay}
+                        size="small"
+                        sx={{ fontSize: '0.6rem', height: 16 }}
+                      />
+                    )}
                   </Stack>
                 }
                 secondary={
@@ -491,9 +493,16 @@ const StructurePanel: FC<StructurePanelProps> = ({
         <TimelineIcon sx={{ mr: 0.5, fontSize: 16, verticalAlign: 'middle' }} />
         Akt-struktur
       </Typography>
+      <Alert severity="info" sx={{ mb: 1.5 }}>
+        Viser bare akt- og sekvensmarkører som er eksplisitt skrevet med # AKT / ## SEKVENS. Ingen standardmodell antas.
+      </Alert>
       
       <Stack spacing={1} sx={{ mb: 3 }}>
-        {analysis.actStructure.map((act) => (
+        {analysis.actStructure.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            Ingen eksplisitte aktmarkører funnet.
+          </Typography>
+        ) : analysis.actStructure.map((act) => (
           <Paper
             key={act.actNumber}
             sx={{
@@ -536,8 +545,12 @@ const StructurePanel: FC<StructurePanelProps> = ({
       </Typography>
       
       <Stack spacing={0.5}>
-        {analysis.sequences.map((seq) => {
-          const purposeConfig = PURPOSE_CONFIG[seq.purpose];
+        {analysis.sequences.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            Ingen eksplisitte sekvensmarkører funnet.
+          </Typography>
+        ) : analysis.sequences.map((seq) => {
+          const purposeConfig = seq.purpose ? PURPOSE_CONFIG[seq.purpose] : null;
           
           return (
             <Paper
@@ -545,7 +558,7 @@ const StructurePanel: FC<StructurePanelProps> = ({
               sx={{
                 p: 1,
                 bgcolor: 'rgba(30,30,50,0.3)',
-                borderLeft: `3px solid ${purposeConfig.color}`,
+                borderLeft: `3px solid ${purposeConfig?.color || '#6b7280'}`,
                 cursor: 'pointer',
                 '&:hover': {
                   bgcolor: 'rgba(59,130,246,0.1)',
@@ -560,16 +573,18 @@ const StructurePanel: FC<StructurePanelProps> = ({
                 <Typography variant="caption" sx={{ fontWeight: 500 }}>
                   {seq.name}
                 </Typography>
-                <Chip
-                  label={purposeConfig.label}
-                  size="small"
-                  sx={{
-                    bgcolor: `${purposeConfig.color}20`,
-                    color: purposeConfig.color,
-                    fontSize: '0.6rem',
-                    height: 18,
-                  }}
-                />
+                {purposeConfig && (
+                  <Chip
+                    label={purposeConfig.label}
+                    size="small"
+                    sx={{
+                      bgcolor: `${purposeConfig.color}20`,
+                      color: purposeConfig.color,
+                      fontSize: '0.6rem',
+                      height: 18,
+                    }}
+                  />
+                )}
                 <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
                   Scene {seq.scenes[0]}-{seq.scenes[seq.scenes.length - 1]}
                 </Typography>
@@ -579,14 +594,15 @@ const StructurePanel: FC<StructurePanelProps> = ({
         })}
       </Stack>
 
-      {/* Purpose Legend */}
-      <Typography variant="subtitle2" sx={{ mt: 3, mb: 1, fontWeight: 600 }}>
-        <TagIcon sx={{ mr: 0.5, fontSize: 16, verticalAlign: 'middle' }} />
-        Scenetype-forklaring
-      </Typography>
-      
-      <Stack direction="row" flexWrap="wrap" gap={0.5}>
-        {Object.entries(PURPOSE_CONFIG).map(([key, config]) => {
+      {/* Purpose Legend — only relevant when the writer added explicit tags. */}
+      {analysis.numberedScenes.some((scene) => scene.purpose) && (
+        <>
+          <Typography variant="subtitle2" sx={{ mt: 3, mb: 1, fontWeight: 600 }}>
+            <TagIcon sx={{ mr: 0.5, fontSize: 16, verticalAlign: 'middle' }} />
+            Eksplisitte sceneformål
+          </Typography>
+          <Stack direction="row" flexWrap="wrap" gap={0.5}>
+            {Object.entries(PURPOSE_CONFIG).map(([key, config]) => {
           const PurposeIcon = config.Icon;
           return (
             <Chip
@@ -601,8 +617,10 @@ const StructurePanel: FC<StructurePanelProps> = ({
               }}
             />
           );
-        })}
-      </Stack>
+            })}
+          </Stack>
+        </>
+      )}
     </Box>
   );
 };
@@ -670,10 +688,10 @@ const CharacterPanel: FC<CharacterPanelProps> = ({
 
       <Divider sx={{ my: 2 }} />
 
-      {/* Character Arcs */}
+      {/* Character presence — no inferred dramatic arc. */}
       <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
         <ArcIcon sx={{ mr: 0.5, fontSize: 16, verticalAlign: 'middle' }} />
-        Karakter-buer
+        Karaktertilstedeværelse
       </Typography>
 
       {arcs.slice(0, 8).map((arc) => (
@@ -821,7 +839,7 @@ const PacingPanel: FC<PacingPanelProps> = ({
               height: 16,
               borderRadius: 2,
               bgcolor: 'rgba(139,92,246,0.2)',
-              '& .MuiLinearProgress-bar': { bgcolor: '#8b5cf6' },
+              '& .MuiLinearProgress-bar': { bgcolor: 'var(--role-violet, #8b5cf6)' },
             }}
           />
         </Box>
@@ -849,13 +867,14 @@ const PacingPanel: FC<PacingPanelProps> = ({
         </Typography>
       </Stack>
 
-      {/* Act Pacing */}
-      <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-        Akt-pacing
-      </Typography>
-      
-      <Stack spacing={1} sx={{ mb: 3 }}>
-        {pacing.actPacing.map((act) => (
+      {/* Act pacing appears only when an explicit model exists. */}
+      {pacing.actPacing.length > 0 && (
+        <>
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+            Aktfordeling
+          </Typography>
+          <Stack spacing={1} sx={{ mb: 3 }}>
+            {pacing.actPacing.map((act) => (
           <Stack key={act.act} direction="row" alignItems="center" spacing={1}>
             <Chip
               label={`Akt ${act.act}`}
@@ -880,18 +899,11 @@ const PacingPanel: FC<PacingPanelProps> = ({
             <Typography variant="caption" sx={{ minWidth: 35 }}>
               {act.percentage}%
             </Typography>
-            <Chip
-              label={act.status === 'ideal' ? 'OK' : act.status === 'short' ? 'Kort' : 'Lang'}
-              size="small"
-              color={act.status === 'ideal' ? 'success' : 'warning'}
-              sx={{ fontSize: '0.6rem', height: 18 }}
-            />
-            <Typography variant="caption" color="text.secondary">
-              (ideelt: {act.idealPercentage}%)
-            </Typography>
           </Stack>
-        ))}
-      </Stack>
+            ))}
+          </Stack>
+        </>
+      )}
 
       {/* Pacing Issues */}
       {pacing.pacingIssues.length > 0 && (

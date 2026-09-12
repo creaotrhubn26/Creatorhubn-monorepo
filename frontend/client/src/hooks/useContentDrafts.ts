@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '@/lib/queryKeys';
+import { apiRequest } from '@/lib/queryClient';
 
 export type DraftType = 'social' | 'email' | 'announcement' | 'calendar_event';
 
@@ -83,9 +84,7 @@ export function useContentDrafts(options: UseContentDraftsOptions): UseContentDr
   const { data: allDrafts = [], isLoading: isLoadingDrafts } = useQuery({
     queryKey: draftsQueryKey,
     queryFn: async () => {
-      const res = await fetch(`/api/drafts?type=${type}`);
-      if (!res.ok) throw new Error('Failed to fetch drafts');
-      return res.json() as Promise<Draft[]>;
+      return await apiRequest(`/api/drafts?type=${type}`) as Draft[];
     }
   });
 
@@ -94,9 +93,7 @@ export function useContentDrafts(options: UseContentDraftsOptions): UseContentDr
     queryKey: [...QUERY_KEYS.DRAFT_VERSIONS, currentDraft?.id],
     queryFn: async () => {
       if (!currentDraft?.id) return [];
-      const res = await fetch(`/api/drafts/${currentDraft.id}/versions`);
-      if (!res.ok) throw new Error('Failed to fetch versions');
-      return res.json() as Promise<DraftVersion[]>;
+      return await apiRequest(`/api/drafts/${currentDraft.id}/versions`) as DraftVersion[];
     },
     enabled: !!currentDraft?.id
   });
@@ -106,15 +103,11 @@ export function useContentDrafts(options: UseContentDraftsOptions): UseContentDr
     mutationFn: async (draft: Partial<Draft>) => {
       const url = draft.id ? `/api/drafts/${draft.id}` : '/api/drafts';
       const method = draft.id ? 'PUT' : 'POST';
-      
-      const res = await fetch(url, {
+
+      return await apiRequest(url, {
         method,
-        headers: { 'Content-Type' : 'application/json' },
-        body: JSON.stringify(draft)
-      });
-      
-      if (!res.ok) throw new Error('Failed to save draft');
-      return res.json() as Promise<Draft>;
+        body: JSON.stringify(draft),
+      }) as Draft;
     },
     onSuccess: (savedDraft) => {
       setCurrentDraft(savedDraft);
@@ -130,8 +123,7 @@ export function useContentDrafts(options: UseContentDraftsOptions): UseContentDr
   // Delete draft mutation
   const deleteMutation = useMutation({
     mutationFn: async (draftId: string) => {
-      const res = await fetch(`/api/drafts/${draftId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete draft');
+      await apiRequest(`/api/drafts/${draftId}`, { method: 'DELETE' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: draftsQueryKey });
@@ -145,17 +137,13 @@ export function useContentDrafts(options: UseContentDraftsOptions): UseContentDr
   // Save version mutation
   const saveVersionMutation = useMutation({
     mutationFn: async ({ draftId, description }: { draftId: string; description?: string }) => {
-      const res = await fetch(`/api/drafts/${draftId}/versions`, {
+      return await apiRequest(`/api/drafts/${draftId}/versions`, {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify({
           content: currentDraft?.content,
           description
-        })
-      });
-      
-      if (!res.ok) throw new Error('Failed to save version');
-      return res.json() as Promise<DraftVersion>;
+        }),
+      }) as DraftVersion;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.DRAFT_VERSIONS, currentDraft?.id] });
@@ -165,9 +153,7 @@ export function useContentDrafts(options: UseContentDraftsOptions): UseContentDr
   // Load version mutation
   const loadVersionMutation = useMutation({
     mutationFn: async (versionId: string) => {
-      const res = await fetch(`/api/drafts/versions/${versionId}`);
-      if (!res.ok) throw new Error('Failed to load version');
-      return res.json() as Promise<DraftVersion>;
+      return await apiRequest(`/api/drafts/versions/${versionId}`) as DraftVersion;
     },
     onSuccess: (version) => {
       if (currentDraft) {
@@ -240,10 +226,8 @@ export function useContentDrafts(options: UseContentDraftsOptions): UseContentDr
 
   // Load existing draft
   const loadDraft = useCallback(async (draftId: string) => {
-    const res = await fetch(`/api/drafts/${draftId}`);
-    if (!res.ok) throw new Error('Failed to load draft');
-    const draft = await res.json() as Draft;
-    
+    const draft = await apiRequest(`/api/drafts/${draftId}`) as Draft;
+
     setCurrentDraft(draft);
     contentRef.current = draft.content;
     setIsDirty(false);

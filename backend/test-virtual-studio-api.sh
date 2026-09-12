@@ -67,8 +67,14 @@ echo "📦 Step 3: Database Schema Verification"
 echo "----------------------------------------"
 echo "Checking Virtual Studio tables in database..."
 
-PGPASSWORD='npg_RIFOSAo81mLc' psql -h ep-divine-rice-a6k2cock.us-west-2.aws.neon.tech \
-    -U neondb_owner -d neondb \
+for required_var in PGHOST PGUSER PGDATABASE PGPASSWORD; do
+    if [ -z "${!required_var:-}" ]; then
+        echo -e "${RED}❌${NC} $required_var must be set for database verification"
+        exit 1
+    fi
+done
+
+PGSSLMODE="${PGSSLMODE:-require}" psql \
     -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'virtual_studio%' ORDER BY table_name" \
     -t | while read -r table; do
     if [ ! -z "$table" ]; then
@@ -159,4 +165,3 @@ else
     echo -e "${YELLOW}⚠️  Some tests failed. Check the output above.${NC}"
     exit 1
 fi
-

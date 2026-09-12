@@ -62,7 +62,7 @@ export default function RoleRoomAgentInsightsBanner(): React.ReactElement | null
         ) : reachDelta != null && reachDelta < 0 ? (
           <TrendingDownIcon sx={{ color: '#fca5a5', fontSize: '1.2rem' }} />
         ) : (
-          <TrendingUpIcon sx={{ color: '#22d3ee', fontSize: '1.2rem' }} />
+          <TrendingUpIcon sx={{ color: 'var(--role-cyan, #22d3ee)', fontSize: '1.2rem' }} />
         )}
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.84rem' }}>

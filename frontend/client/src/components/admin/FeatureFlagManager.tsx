@@ -2,7 +2,6 @@ import { useTheming } from '../../utils/theming-helper';
 import React, { useState } from 'react';
 import {
   Box,
-  Paper,
   Typography,
   Button,
   Switch,
@@ -12,8 +11,6 @@ import {
   CardActions,
   Grid,
   Chip,
-  Alert,
-  CircularProgress,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -23,8 +20,6 @@ import {
 } from '@mui/material';
 import {
   Settings,
-  ToggleOn,
-  ToggleOff,
   Edit,
   Save,
   Cancel,
@@ -34,6 +29,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { AdminButton, StatusChip, AdminLoading, AdminError, useIsMobile } from './design-system';
 
 interface FeatureFlag {
   id: string;
@@ -56,6 +52,7 @@ const FeatureFlagManager: React.FC = () => {
 
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -67,6 +64,7 @@ const FeatureFlagManager: React.FC = () => {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/features', { headers });
     },
+    select: (d) => (Array.isArray(d) ? d : []),
     refetchInterval: 30000, // Refresh every 30 seconds
 });
 
@@ -151,11 +149,8 @@ const FeatureFlagManager: React.FC = () => {
 
   if (isLoading) {
     return (
-      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <CircularProgress />
-        <Typography variant="body1" sx={{ ml: 2 }}>
-          Loading feature flags...
-        </Typography>
+      <Box sx={{ p: 3 }}>
+        <AdminLoading label="Loading feature flags..." />
       </Box>
     );
 }
@@ -163,16 +158,14 @@ const FeatureFlagManager: React.FC = () => {
   if (error) {
     return (
       <Box sx={{ p: 3 }}>
-        <Alert severity="error">
-          Failed to load feature flags. Please try again.
-        </Alert>
+        <AdminError message="Failed to load feature flags. Please try again." />
       </Box>
     );
 }
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+      <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
         Feature Flag Manager
       </Typography>
       <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
@@ -193,14 +186,12 @@ const FeatureFlagManager: React.FC = () => {
             >
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                  <Typography variant="h6" component="div" sx={{ color: theming.colors.primary }}>
+                  <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary }}>
                     {flag.name}
                   </Typography>
-                  <Chip
+                  <StatusChip
+                    tone={flag.isEnabled ? 'success' : 'neutral'}
                     label={flag.isEnabled ? 'Enabled' : 'Disabled'}
-                    color={flag.isEnabled ? 'success' : 'default'}
-                    size="small"
-                    icon={flag.isEnabled ? <ToggleOn /> : <ToggleOff />}
                   />
                 </Box>
 
@@ -251,7 +242,7 @@ const FeatureFlagManager: React.FC = () => {
       </Grid>
 
       {/* Edit Dialog */}
-      <Dialog open={showEditDialog} onClose={handleCancelEdit} maxWidth="sm" fullWidth>
+      <Dialog open={showEditDialog} onClose={handleCancelEdit} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Edit Feature Flag</DialogTitle>
         <DialogContent>
           <TextField
@@ -286,18 +277,17 @@ const FeatureFlagManager: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCancelEdit} startIcon={<Cancel />}>
+          <AdminButton tone="ghost" onClick={handleCancelEdit} startIcon={<Cancel />}>
             Cancel
-          </Button>
-          <Button
-            onClick={handleSaveEdit} 
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            onClick={handleSaveEdit}
             startIcon={<Save />}
-            variant="contained"
-            disabled={updateFlagMutation.isPending}
-            sx={theming.getThemedButtonSx()}
+            loading={updateFlagMutation.isPending}
           >
             Save Changes
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

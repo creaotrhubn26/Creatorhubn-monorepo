@@ -1,0 +1,17 @@
+/* Tailwind v4 — utilities + theme only.
+ *
+ * Vi importerer IKKE preflight fordi MUI håndterer reset/normalisering.
+ * Tailwind preflight ville overskrevet MUI's `body`-styling, button-defaults
+ * og lenke-styling — som ville knust hele app-en (MUI er hovedstil-system).
+ *
+ * Resultat: Tailwind utility-classes (px-4, flex, grid, text-lg etc.) virker
+ * på de få sidene som bruker dem (f.eks. /leadgrid/connectors), uten å
+ * lekke base-stil-endringer til MUI-flatene.
+ *
+ * Hvis vi senere migrerer en seksjon helt til Tailwind, kan vi importere
+ * preflight scoped med `@import "tailwindcss/preflight" layer(base);` og
+ * `:where(.tailwind-section) { … }` for å hente reset bare der.
+ */
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);

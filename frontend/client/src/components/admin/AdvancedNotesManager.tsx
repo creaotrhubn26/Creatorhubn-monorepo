@@ -6,7 +6,6 @@ import {
   Card,
   CardContent,
   Grid,
-  Button,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -22,7 +21,10 @@ import {
   IconButton,
   Stack,
   Snackbar,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
+import { AdminButton, AdminEmpty, useIsMobile } from './design-system';
 import {
   NoteAdd,
   Notes,
@@ -73,12 +75,14 @@ interface AdvancedNotesManagerProps {
 export default function AdvancedNotesManager({ 
   className,
 }: AdvancedNotesManagerProps) {
+  const isMobile = useIsMobile();
   const [notes, setNotes] = useState<NotesData[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   
   // Theming system
   const theming = useTheming('prototype_tester');
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedNote, setSelectedNote] = useState<NotesData | null>(null);
@@ -345,11 +349,12 @@ export default function AdvancedNotesManager({
 } as const;
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box className={className} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-          <Notes color="primary" />
+        <Typography variant="h4" component="h2" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
+          <Notes color="primary" aria-hidden />
           Stor Notatsløsning - CreatorHub Norge
         </Typography>
         
@@ -386,13 +391,12 @@ export default function AdvancedNotesManager({
           </Grid>
           <Grid item xs={12} md={5}>
             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-              <Button variant="contained"
+              <AdminButton tone="primary"
                 startIcon={<NoteAdd />}
                 onClick={() => setIsCreateDialogOpen(true)}
-                sx={theming.getThemedButtonSx()}
               >
                 Nytt Notat
-              </Button>
+              </AdminButton>
             </Box>
           </Grid>
         </Grid>
@@ -416,11 +420,11 @@ export default function AdvancedNotesManager({
                 {/* Note Header */}
                 <CardContent sx={{ pb: 1, ...theming.getThemedCardSx() }}>
                   <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
-                    <Typography variant="h6" sx={{ flex: 1, fontWeight: 600, color: theming.colors.primary }}>
+                    <Typography variant="h6" component="h3" sx={{ flex: 1, fontWeight: 600, color: themeColors.primary }}>
                       {note.title}
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      <IconButton size="small" onClick={() => handleToggleStar(note.id)}>
+                      <IconButton size="small" onClick={() => handleToggleStar(note.id)} aria-label={note.isStarred ? 'Fjern stjernemarkering' : 'Stjernemarker notat'}>
                         {note.isStarred ? <Star color="warning" /> : <StarBorder />}
                       </IconButton>
                       {note.isPrivate && <Lock fontSize="small" color="action" />}
@@ -486,16 +490,17 @@ export default function AdvancedNotesManager({
                       {new Date(note.updatedAt).toLocaleDateString('no')}
                     </Typography>
                     <Box>
-                      <IconButton size="small" onClick={() => handleSyncToGoogleDrive(note.id)}>
+                      <IconButton size="small" onClick={() => handleSyncToGoogleDrive(note.id)} aria-label="Synkroniser til Google Drive">
                         <CloudSync />
                       </IconButton>
-                      <IconButton size="small" onClick={() => openEditDialog(note)}>
+                      <IconButton size="small" onClick={() => openEditDialog(note)} aria-label="Rediger notat">
                         <Edit />
                       </IconButton>
-                      <IconButton 
-                        size="small" 
+                      <IconButton
+                        size="small"
                         onClick={() => handleDeleteNote(note.id)}
                         color="error"
+                        aria-label="Slett notat"
                       >
                         <Delete />
                       </IconButton>
@@ -508,24 +513,21 @@ export default function AdvancedNotesManager({
         </Grid>
 
         {filteredNotes.length === 0 && (
-          <Box sx={{ textAlign: 'center', py: 8 }}>
-            <Notes sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
-            <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
-              Ingen notater funnet
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {searchQuery ? 'Prøv å endre søkekriteriene' : 'Opprett ditt første notat'}
-            </Typography>
-          </Box>
+          <AdminEmpty
+            icon={<Notes sx={{ fontSize: 64 }} />}
+            title="Ingen notater funnet"
+            description={searchQuery ? 'Prøv å endre søkekriteriene' : 'Opprett ditt første notat'}
+          />
         )}
       </Box>
 
       {/* Create Note Dialog */}
-      <Dialog 
+      <Dialog
         open={isCreateDialogOpen}
         onClose={() => setIsCreateDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Opprett Nytt Notat</DialogTitle>
         <DialogContent>
@@ -614,24 +616,24 @@ export default function AdvancedNotesManager({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setIsCreateDialogOpen(false)}>Avbryt</Button>
-          <Button 
+          <AdminButton tone="ghost" onClick={() => setIsCreateDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleCreateNote}
-            variant="contained"
             disabled={!noteForm.title.trim() || !noteForm.content.trim()}
-            sx={theming.getThemedButtonSx()}
           >
             Opprett Notat
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Edit Note Dialog */}
-      <Dialog 
+      <Dialog
         open={isEditDialogOpen}
         onClose={() => setIsEditDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Rediger Notat</DialogTitle>
         <DialogContent>
@@ -719,15 +721,14 @@ export default function AdvancedNotesManager({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setIsEditDialogOpen(false)}>Avbryt</Button>
-          <Button 
+          <AdminButton tone="ghost" onClick={() => setIsEditDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleEditNote}
-            variant="contained"
             disabled={!noteForm.title.trim() || !noteForm.content.trim()}
-            sx={theming.getThemedButtonSx()}
           >
             Oppdater Notat
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -738,5 +739,6 @@ export default function AdvancedNotesManager({
         message={snackbarMessage}
       />
     </Box>
+    </ThemeProvider>
   );
 }

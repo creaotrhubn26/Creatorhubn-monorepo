@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import StripeConnectCard from './universal/StripeConnectCard';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
@@ -807,17 +808,14 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
           const shouldAutoRedirect = prefData.autoRedirectToDashboard ?? false;
 
           if (shouldAutoRedirect) {
-            // Auto-redirect to dashboard
-            const dashboardMap: { [key: string]: string } = {
-              photographer: '/photographer-dashboard-material',
-              videographer: '/videographer-dashboard',
-              music_producer: '/music-producer-dashboard',
-              vendor: '/vendor-dashboard',
+            // Workspace er hovedflaten for skaper-profesjoner. Klient-/admin-typer
+            // (couple/partner/admin) beholder sine egne dashbord.
+            const nonWorkspaceDash: { [key: string]: string } = {
               couple: '/couple-dashboard',
               partner: '/partner-dashboard',
-              admin: '/admin-dashboard'
+              admin: '/admin-dashboard',
             };
-            const dashboardUrl = dashboardMap[onboardingData.profession] || '/photographer-dashboard-material';
+            const dashboardUrl = nonWorkspaceDash[onboardingData.profession] || '/workspace';
             window.location.href = dashboardUrl;
           }
           // Otherwise stay on landing page
@@ -1063,6 +1061,13 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
         return (
           <Fade in>
             <Box>
+              {/* Stripe-kobling — det første man kan gjøre i onboardingen, så
+                  utbetalinger er klare før man begynner. Konto-nivå, uavhengig
+                  av profesjonsvalget under. */}
+              <Box sx={{ mb: 4 }}>
+                <StripeConnectCard compact />
+              </Box>
+
               <Typography variant="h5" gutterBottom sx={{ textAlign: 'center', mb: 4, color: theming.colors.primary }}>
                 Hvilken type kreativ profesjonell er du?
               </Typography>

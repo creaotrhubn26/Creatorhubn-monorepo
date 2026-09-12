@@ -1,0 +1,92 @@
+name: Leadgrid Doffin cron-tasks
+
+# Anbud (Doffin): overvåknings-sjekk + ukentlig digest. Begge endepunkter
+# er token-gated via LEADGRID_CRON_TRIGGER_TOKEN (GitHub secret + Render
+# env). Første kjøring per watch seeder seen_ids uten å varsle.
+#
+# Endepunkter:
+#   POST /api/leadgrid/doffin/cron/check-watches   (hver time)
+#   POST /api/leadgrid/doffin/cron/ukesdigest      (mandag 07:00 Oslo ≈ 05:00 UTC)
+
+on:
+  schedule:
+    - cron: '15 * * * *'
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leadgrid-doffin-cron
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
+jobs:
+  check-watches:
+    name: Sjekk Doffin-overvåkninger for nye treff
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event.schedule == '15 * * * *' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: POST /doffin/cron/check-watches
+        env:
+          TOKEN: ${{ secrets.LEADGRID_CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::LEADGRID_CRON_TRIGGER_TOKEN GitHub-secret er ikke satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-trigger-token: $TOKEN" \
+            --max-time 180 \
+            "$BACKEND_URL/api/leadgrid/doffin/cron/check-watches")
+          CODE=$(echo "$RES" | tail -1)
+          echo "HTTP $CODE"
+          echo "Body: $(echo "$RES" | sed '$d')"
+          if [ "$CODE" = "401" ]; then
+            echo "::error::Token matcher ikke Render-env."
+            exit 1
+          fi
+          if [ "$CODE" -ge 500 ]; then
+            echo "::error::Backend-feil ($CODE)"
+            exit 1
+          fi
+          echo "::notice::check-watches ferdig"
+
+  ukesdigest:
+    name: Ukentlig anbuds-digest til org-ledere
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event.schedule == '0 5 * * 1' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: POST /doffin/cron/ukesdigest
+        env:
+          TOKEN: ${{ secrets.LEADGRID_CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::LEADGRID_CRON_TRIGGER_TOKEN GitHub-secret er ikke satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-trigger-token: $TOKEN" \
+            --max-time 180 \
+            "$BACKEND_URL/api/leadgrid/doffin/cron/ukesdigest")
+          CODE=$(echo "$RES" | tail -1)
+          echo "HTTP $CODE"
+          echo "Body: $(echo "$RES" | sed '$d')"
+          if [ "$CODE" = "401" ]; then
+            echo "::error::Token matcher ikke Render-env."
+            exit 1
+          fi
+          if [ "$CODE" -ge 500 ]; then
+            echo "::error::Backend-feil ($CODE)"
+            exit 1
+          fi
+          echo "::notice::ukesdigest ferdig"

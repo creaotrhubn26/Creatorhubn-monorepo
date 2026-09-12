@@ -58,14 +58,14 @@ export const PreprodSubTabStrip = ({
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-        <ConstructionIcon sx={{ fontSize: 14, color: '#7dd3fc' }} />
+        <ConstructionIcon sx={{ fontSize: 14, color: 'var(--role-cyan, #7dd3fc)' }} />
         <Typography
           sx={{
             fontSize: '0.68rem',
             fontWeight: 800,
             letterSpacing: 0.8,
             textTransform: 'uppercase',
-            color: '#7dd3fc',
+            color: 'var(--role-cyan, #7dd3fc)',
           }}
         >
           Pre-prod

@@ -14,6 +14,7 @@ import {
   Send, Close, Chat as ChatIcon, Email, Refresh,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import ClientActions from './ClientActions';
 
 interface ChatMessage {
   id: string;
@@ -259,6 +260,7 @@ export function ProjectChatPanel({ open, onClose, projectId, clientName, clientE
             {sendError}
           </Alert>
         )}
+        {clientEmail && <ClientActions clientName={clientName} onPrefill={setDraft} />}
         <Stack direction="row" spacing={1} alignItems="flex-end">
           <TextField
             fullWidth

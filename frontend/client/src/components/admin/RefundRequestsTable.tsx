@@ -24,13 +24,13 @@ import {
   DialogActions,
   TextField,
   Alert,
-  CircularProgress,
   Typography,
   Checkbox,
   Toolbar,
   Tooltip,
   Stack,
   Snackbar,
+  InputAdornment,
 } from '@mui/material';
 import type { TableHeadProps } from '@mui/material/TableHead';
 import {
@@ -39,7 +39,9 @@ import {
   Visibility,
   Email,
   SelectAll,
+  Search as SearchIcon,
 } from '@mui/icons-material';
+import { AdminButton, StatusChip, AdminLoading, AdminEmpty, useIsMobile } from './design-system';
 
 interface RefundRequest {
   id: number;
@@ -57,6 +59,7 @@ interface RefundRequest {
 
 export default function RefundRequestsTable() {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const { analytics } = useEnhancedMasterIntegration();
   const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
   const professionAdapter = useProfessionAdapter();
@@ -73,6 +76,7 @@ export default function RefundRequestsTable() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkAction, setBulkAction] = useState<'approve' | 'reject' | null>(null);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
+  const [search, setSearch] = useState('');
 
   // Fetch refund requests
   const { data: refundRequests, isLoading } = useQuery({
@@ -215,41 +219,43 @@ export default function RefundRequestsTable() {
   };
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <AdminLoading />;
   }
 
-  const requests = refundRequests?.refundRequests || [];
+  const requests = Array.isArray(refundRequests?.refundRequests) ? refundRequests.refundRequests : [];
 
   if (requests.length === 0) {
     return (
-      <Alert severity="info">
-        Ingen refunderingsforespørsler for øyeblikket.
-        <br />
-        <Typography variant="caption">
-          Refunderingsforespørsler fra brukere vil vises her.
-        </Typography>
-      </Alert>
+      <AdminEmpty
+        title="Ingen refunderingsforespørsler for øyeblikket."
+        description="Refunderingsforespørsler fra brukere vil vises her."
+      />
     );
   }
 
   const getStatusChip = (status: string) => {
     switch (status) {
       case 'approved':
-        return <Chip label="Godkjent" size="small" color="success" icon={<CheckCircle />} />;
+        return <StatusChip tone="success" label="Godkjent" />;
       case 'rejected':
-        return <Chip label="Avvist" size="small" color="error" icon={<Cancel />} />;
+        return <StatusChip tone="error" label="Avvist" />;
       case 'pending':
-        return <Chip label="Ventende" size="small" color="warning" />;
+        return <StatusChip tone="warning" label="Ventende" />;
       default:
-        return <Chip label={status} size="small" />;
+        return <StatusChip tone="neutral" label={status} />;
     }
   };
 
   const pendingCount = requests.filter((r: RefundRequest) => r.status === 'pending').length;
+  const filteredRequests = requests.filter((r: RefundRequest) => {
+    const q = search.toLowerCase();
+    return (
+      `${r.first_name ?? ''} ${r.last_name ?? ''}`.toLowerCase().includes(q) ||
+      (r.user_email ?? '').toLowerCase().includes(q) ||
+      (r.transaction_id ?? '').toLowerCase().includes(q) ||
+      (r.reason ?? '').toLowerCase().includes(q)
+    );
+  });
   const renderedProfessionIcon = React.isValidElement(professionIcon)
     ? React.cloneElement(
         professionIcon as React.ReactElement<{ sx?: Record<string, unknown> }>,
@@ -329,6 +335,7 @@ export default function RefundRequestsTable() {
             <Tooltip title="Send e-post til valgte brukere">
               <IconButton
                 color="inherit"
+                aria-label="Send e-post til valgte brukere"
                 onClick={() => {
                   analytics.trackEvent('bulk_email_refund_users', { count: selectedIds.length });
                   setSnackbar({ open: true, message: `Sender e-post til ${selectedIds.length} brukere...` });
@@ -341,13 +348,29 @@ export default function RefundRequestsTable() {
         </Toolbar>
       )}
 
+      <TextField
+        size="small"
+        fullWidth
+        placeholder="Søk i navn, e-post, transaksjons-ID eller årsak …"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ mb: 2 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
+
       <Paper style={{ height: 600, width: '100%' }}>
         {/*
           react-virtuoso expects function components with plain table props for table sections.
           MUI's overridable component types need a tiny wrapper to satisfy that contract.
         */}
         <TableVirtuoso
-          data={requests}
+          data={filteredRequests}
           components={{
             Scroller: React.forwardRef<HTMLDivElement>((props, ref) => (
               <TableContainer component={Paper} {...props} ref={ref} />
@@ -371,6 +394,7 @@ export default function RefundRequestsTable() {
                     checked={pendingCount > 0 && selectedIds.length === pendingCount}
                     onChange={handleSelectAll}
                     icon={<SelectAll />}
+                    aria-label="Velg alle ventende"
                   />
                 </Tooltip>
               </TableCell>
@@ -390,6 +414,7 @@ export default function RefundRequestsTable() {
                   checked={selectedIds.includes(request.id)}
                   onChange={() => handleSelectOne(request.id)}
                   disabled={request.status !== 'pending'}
+                  aria-label="Velg refunderingsforespørsel"
                 />
               </TableCell>
               <TableCell>
@@ -443,6 +468,7 @@ export default function RefundRequestsTable() {
                         setActionDialog('approve');
                       }}
                       title="Godkjenn"
+                      aria-label="Godkjenn"
                     >
                       <CheckCircle />
                     </IconButton>
@@ -454,6 +480,7 @@ export default function RefundRequestsTable() {
                         setActionDialog('reject');
                       }}
                       title="Avvis"
+                      aria-label="Avvis"
                     >
                       <Cancel />
                     </IconButton>
@@ -465,6 +492,7 @@ export default function RefundRequestsTable() {
                       setSelectedRefund(request);
                     }}
                     title="Vis detaljer"
+                    aria-label="Vis detaljer"
                   >
                     <Visibility />
                   </IconButton>
@@ -476,7 +504,7 @@ export default function RefundRequestsTable() {
       </Paper>
 
       {/* Approve Dialog */}
-      <Dialog open={actionDialog === 'approve'} onClose={() => setActionDialog(null)}>
+      <Dialog open={actionDialog === 'approve'} onClose={() => setActionDialog(null)} fullScreen={isMobile}>
         <DialogTitle>Godkjenn Refundering</DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mb: 2 }}>
@@ -500,20 +528,19 @@ export default function RefundRequestsTable() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setActionDialog(null)}>Avbryt</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setActionDialog(null)}>Avbryt</AdminButton>
+          <AdminButton
             onClick={handleApprove}
-            variant="contained"
-            color="success"
-            disabled={approveMutation.isPending}
+            tone="primary"
+            loading={approveMutation.isPending}
           >
             {approveMutation.isPending ? 'Behandler...' : 'Godkjenn'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Reject Dialog */}
-      <Dialog open={actionDialog === 'reject'} onClose={() => setActionDialog(null)}>
+      <Dialog open={actionDialog === 'reject'} onClose={() => setActionDialog(null)} fullScreen={isMobile}>
         <DialogTitle>Avvis Refundering</DialogTitle>
         <DialogContent>
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -540,15 +567,15 @@ export default function RefundRequestsTable() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setActionDialog(null)}>Avbryt</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setActionDialog(null)}>Avbryt</AdminButton>
+          <AdminButton
             onClick={handleReject}
-            variant="contained"
-            color="error"
+            tone="danger"
+            loading={rejectMutation.isPending}
             disabled={rejectMutation.isPending || !rejectionReason.trim()}
           >
             {rejectMutation.isPending ? 'Behandler...' : 'Avvis'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -558,10 +585,11 @@ export default function RefundRequestsTable() {
         onClose={() => {
           setActionDialog(null);
           setBulkAction(null);
-          setRejectionReason(', ');
+          setRejectionReason('');
         }}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           {bulkAction === 'approve' ? 'Godkjenn flere refunderinger' : 'Avvis flere refunderinger'}
@@ -590,17 +618,17 @@ export default function RefundRequestsTable() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
+          <AdminButton tone="ghost" onClick={() => {
             setActionDialog(null);
             setBulkAction(null);
             setRejectionReason('');
           }}>
             Avbryt
-          </Button>
-          <Button
+          </AdminButton>
+          <AdminButton
             onClick={bulkAction === 'approve' ? handleBulkApprove : handleBulkReject}
-            variant="contained"
-            color={bulkAction === 'approve' ? 'success' : 'error'}
+            tone={bulkAction === 'approve' ? 'primary' : 'danger'}
+            loading={bulkApproveMutation.isPending || bulkRejectMutation.isPending}
             disabled={
               (bulkAction === 'approve' && bulkApproveMutation.isPending) ||
               (bulkAction === 'reject' && (bulkRejectMutation.isPending || !rejectionReason.trim()))
@@ -612,7 +640,7 @@ export default function RefundRequestsTable() {
               ? `Godkjenn ${selectedIds.length}`
               : `Avvis ${selectedIds.length}`
             }
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

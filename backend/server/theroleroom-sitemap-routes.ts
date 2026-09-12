@@ -6,8 +6,8 @@
  *   - Alle competitor-sammenligning-sider (/vs-*)
  *   - Alle publiserte brief-utgaver (/brief/<slug>)
  *
- * Erstatter den statiske theroleroom-sitemap.xml ved at vercel.json
- * rewriter /sitemap.xml på theroleroom.com til /api/theroleroom-sitemap.xml.
+ * Erstatter den statiske theroleroom-sitemap.xml ved at Netlify-rutingen
+ * sender /sitemap.xml på theroleroom.com til /api/theroleroom-sitemap.xml.
  *
  * Public — ingen auth.
  */
@@ -20,7 +20,7 @@ interface SitemapDeps {
   pool: Pool;
 }
 
-const STATIC_URLS: Array<{ loc: string; priority: number; changefreq: string }> = [
+export const STATIC_URLS: Array<{ loc: string; priority: number; changefreq: string }> = [
   { loc: "/", priority: 1.0, changefreq: "weekly" },
   { loc: "/talentportal", priority: 0.9, changefreq: "weekly" },
   { loc: "/utdanningsinstitusjon", priority: 0.8, changefreq: "monthly" },
@@ -39,10 +39,11 @@ const STATIC_URLS: Array<{ loc: string; priority: number; changefreq: string }> 
   { loc: "/innholdsproduksjon-studie", priority: 0.8, changefreq: "monthly" },
   { loc: "/dansestudio", priority: 0.8, changefreq: "monthly" },
   { loc: "/presse", priority: 0.5, changefreq: "monthly" },
-  // GEO/AI-pillar-sider
+  // GEO/AI-pillar-sider — MÅ speile publiserte sider i
+  // frontend/client/src/components/admin/content-marketing/marketingPagesConfig.ts
+  // (kun published: true). Synk håndheves av theroleroom-sitemap-routes.test.ts.
   { loc: "/casting-svindel-tegn", priority: 0.9, changefreq: "monthly" },
   { loc: "/barn-samtykke-film", priority: 0.9, changefreq: "monthly" },
-  { loc: "/casting-rapport-2026", priority: 0.95, changefreq: "monthly" },
   { loc: "/vart-syn", priority: 0.85, changefreq: "monthly" },
   { loc: "/selvtape-tips", priority: 0.85, changefreq: "monthly" },
   { loc: "/bak-castingen", priority: 0.85, changefreq: "monthly" },
@@ -58,12 +59,20 @@ const STATIC_URLS: Array<{ loc: string; priority: number; changefreq: string }> 
   { loc: "/produksjons-os", priority: 0.95, changefreq: "monthly" },
   { loc: "/innholdsprodusent-norge", priority: 0.9, changefreq: "monthly" },
   { loc: "/dansestudio-norge", priority: 0.9, changefreq: "monthly" },
+  { loc: "/verktoy-for-filmutdanninger", priority: 0.9, changefreq: "monthly" },
+  { loc: "/norsk-casting-prosess", priority: 0.95, changefreq: "monthly" },
   // Brief-arkiv-indeks
   { loc: "/brief", priority: 0.9, changefreq: "weekly" },
   // Juridisk
   { loc: "/privacy", priority: 0.3, changefreq: "yearly" },
   { loc: "/terms-and-conditions", priority: 0.3, changefreq: "yearly" },
   { loc: "/data-deletion", priority: 0.3, changefreq: "yearly" },
+  // Leadgrid (kartbasert CRM)
+  { loc: "/leadgrid", priority: 0.95, changefreq: "weekly" },
+  { loc: "/leadgrid/personvern", priority: 0.3, changefreq: "yearly" },
+  { loc: "/leadgrid/utviklere", priority: 0.85, changefreq: "monthly" },
+  { loc: "/leadgrid/utviklere/soknad", priority: 0.7, changefreq: "monthly" },
+  { loc: "/leadgrid/marketplace", priority: 0.85, changefreq: "weekly" },
 ];
 
 function xmlEscape(text: string): string {

@@ -28,6 +28,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Alert,
 } from '@mui/material';
 import {
   AutoFixHigh,
@@ -104,31 +105,42 @@ export const SmartCollections: React.FC<SmartCollectionsProps> = ({
   const [expandedCollections, setExpandedCollections] = useState<Set<string>>(new Set());
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState<SmartCollection | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   // Generate smart collections based on profession
   const generateSmartCollections = () => {
     setIsGenerating(true);
+    setGenerationError(null);
 
     setTimeout(() => {
-      let newCollections: SmartCollection[] = [];
+      try {
+        let newCollections: SmartCollection[] = [];
 
-      switch (profession) {
-        case 'photographer':
-          newCollections = generatePhotographerCollections();
-          break;
-        case 'videographer':
-          newCollections = generateVideographerCollections();
-          break;
-        case 'music_producer':
-          newCollections = generateMusicProducerCollections();
-          break;
-        case 'vendor':
-          newCollections = generateVendorCollections();
-          break;
+        switch (profession) {
+          case 'photographer':
+            newCollections = generatePhotographerCollections();
+            break;
+          case 'videographer':
+            newCollections = generateVideographerCollections();
+            break;
+          case 'music_producer':
+            newCollections = generateMusicProducerCollections();
+            break;
+          case 'vendor':
+            newCollections = generateVendorCollections();
+            break;
+        }
+
+        setCollections(newCollections);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setGenerationError(
+          `AI-analyse mislyktes (${msg}). Du kan prøve igjen, eller fortsette uten smarte samlinger.`
+        );
+        setCollections([]);
+      } finally {
+        setIsGenerating(false);
       }
-
-      setCollections(newCollections);
-      setIsGenerating(false);
     }, 2000); // Simulate AI processing
   };
 
@@ -427,17 +439,33 @@ export const SmartCollections: React.FC<SmartCollectionsProps> = ({
       {/* Loading State */}
       {isGenerating && (
         <Box sx={{ mb: 3 }}>
-          <LinearProgress 
+          <LinearProgress
             sx={{
               bgcolor: 'rgba(255,255,255,0.1)','& .MuiLinearProgress-bar': {
                 bgcolor: accentColor
               }
             }}
           />
-          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', mt: 1, display: 'block' }}>
-            Analyzing content with AI...
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', mt: 1, display: 'block' }}>
+            Analyserer {items.length} element{items.length === 1 ? '' : 'er'} med AI… Dette tar vanligvis 2–5 sekunder.
           </Typography>
         </Box>
+      )}
+
+      {/* Error State */}
+      {generationError && !isGenerating && (
+        <Alert
+          severity="error"
+          sx={{ mb: 3 }}
+          action={
+            <Button color="inherit" size="small" onClick={generateSmartCollections}>
+              Prøv på nytt
+            </Button>
+          }
+          onClose={() => setGenerationError(null)}
+        >
+          {generationError}
+        </Alert>
       )}
 
       {/* Collections Grid */}

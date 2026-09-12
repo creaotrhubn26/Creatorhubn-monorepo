@@ -82,9 +82,14 @@ export function setupPaymentsRoutes(deps: PaymentsRoutesDeps): void {
 
   app.get("/api/payments/history", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || compatResolveUserId(req);
-      const email =
-        readString(req.query.userEmail) || compatResolveUserEmail(req);
+      // Session-only: compatResolveUserId/query.userEmail fall back to the
+      // spoofable x-user-id/x-user-email/query values, which let a caller read
+      // another tenant's FULL payment history (amounts, plans, receipt links) by
+      // passing x-user-id=<victim>. Scope strictly to the authenticated session.
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = session.userId;
+      const email = session.email || null;
       const history = await buildCompatPaymentHistory(
         userId || "guest",
         email,
@@ -509,8 +514,7 @@ export function setupPaymentsRoutes(deps: PaymentsRoutesDeps): void {
 
   app.get("/api/payments/fiken-mva-status", async (req, res) => {
     try {
-      const userId =
-        readString(req.query.userId) || compatResolveUserId(req);
+      const userId = compatResolveUserId(req);
       const status = await readCompatFikenMvaStatus(userId || "guest");
       res.json(status);
     } catch (error) {

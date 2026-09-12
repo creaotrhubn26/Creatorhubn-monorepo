@@ -254,7 +254,12 @@ export function useAutoPilot(): UseAutoPilotResult {
   const awaitDecision = useCallback(
     (decision: AutoPilotDecision): Promise<string> => {
       return new Promise((resolve) => {
+        // Auto-accept-timeout ryddes når beslutningen løses (manuelt ELLER av timeout
+        // selv). Uten dette overlevde et stale timeout fra beslutning A og fyrte mens
+        // beslutning B ventet → B ble auto-besvart for tidlig med A's anbefaling.
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
         decisionResolverRef.current = (id: string) => {
+          if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
           decisionResolverRef.current = null;
           setState((prev) => ({
             ...prev,
@@ -277,7 +282,8 @@ export function useAutoPilot(): UseAutoPilotResult {
         // Auto-accept etter timeout hvis bruker ikke svarer
         if (decision.autoAcceptAfterSec && decision.recommendedOptionId) {
           const timeoutMs = decision.autoAcceptAfterSec * 1000;
-          setTimeout(() => {
+          timeoutId = setTimeout(() => {
+            timeoutId = null;
             if (decisionResolverRef.current) {
               log({
                 step: decision.step,

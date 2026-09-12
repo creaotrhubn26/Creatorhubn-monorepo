@@ -151,7 +151,7 @@ export async function analyzeWebsite(
 export async function generateDraft(
   url: string,
   weekStarting: string,
-  options: { skipClaude?: boolean } = {},
+  options: { skipClaude?: boolean; focus?: string } = {},
 ): Promise<{ draft: { id: string; posts: CarouselPostRow[] } }> {
   return carouselFetch('/carousel/generate-draft', {
     method: 'POST',

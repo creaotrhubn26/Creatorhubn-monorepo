@@ -1,0 +1,201 @@
+{
+  "product": "The Role Room — Produksjonsteam / Call Sheet",
+  "workdir": "/tmp/roleroom-evening",
+  "setting": "Produksjonskontor kl. 22:47 kvelden før innspillingsdag → byen → settet neste morgen. ÅRSTID: HØST (vått, løv, gyllen morgendis — ALDRI snø/vinter, aldri sommer)",
+  "mode": "90s «Kvelden før» — kaoset i planleggingen, ikke på settet. Lyd-dramaturgi: varslings-kakofoni bygges 0-42s, hardt kutt til stillhet på PUBLISER-klikket, ro og liv tilbake. INGEN VO. Heltefunksjon: Call Sheet-pipeline (generator → publiser → distribusjon m/ kvittering → crew-varsel).",
+  "brand": {
+    "wordmark_asset": "logo_correct",
+    "accent": "#aa36c5",
+    "endline_no": "Gode dager lages kvelden før.",
+    "endline_en": "Good days are made the night before."
+  },
+  "character": {
+    "ref_still": "stills/ref.jpg",
+    "lock": "kvinnelig produsent / produksjonsleder, 30-år, praktisk genser/skjorte (kontor, ikke feltjakke), hår som ref"
+  },
+  "fps": 25,
+  "vo": {
+    "provider": null,
+    "note": "Ingen VO. Eneste replikker: gafferens sukk (beat 4, off-screen-følelse) og «roll sound/action» (beat 14-15)."
+  },
+  "fictional_production": "The Silent Echo (samme som klappa i 90s-filmen) — dag 14 av 32, oppmøte 06:40, Ryen",
+  "out": "~/Desktop/ROLEROOM-EVENING.mp4",
+  "shots": [
+    {
+      "id": "e01_office",
+      "act": 1,
+      "beat": "22:47 — alene igjen",
+      "t": "0-6",
+      "ui_key": "laptop_chaos",
+      "sound": "tastatur + telefon-vibrering mot bordplate + lysrør-summing; fjern TV-serie fra en annen leilighet",
+      "motion": "slow push-in from behind toward her at the desk, screen glow, she types, phone buzzes and slides slightly on the desk",
+      "prompt": "a film production office late at night, a female production manager alone at a desk lit by a laptop screen with a plain green screen, office lamps off except one, coffee cups, cold screen glow mixed with one warm desk lamp, papers pinned on the wall behind, cinematic, quiet exhaustion"
+    },
+    {
+      "id": "e02_versions",
+      "act": 1,
+      "beat": "v7 FINAL FINAL",
+      "t": "6-12",
+      "sound": "penn som stryker ut + nytt pling; vibrering",
+      "motion": "close on her hands crossing out a printed call sheet with a pen, several printed versions spread on the desk, a new phone notification makes her pause and sigh",
+      "prompt": "close-up of hands crossing out lines on printed film call sheets spread across a desk at night, seven printed versions with handwritten corrections, coffee stains, a phone lighting up beside them, warm desk lamp against cold night, documentary detail shot, shallow depth of field"
+    },
+    {
+      "id": "e03_messages",
+      "act": 1,
+      "beat": "endringene renner inn",
+      "t": "12-18",
+      "ui_key": "laptop_chaos",
+      "sound": "pling-lag tetner: tre ulike varsellyder om hverandre + vibrering",
+      "motion": "she leans back rubbing her eyes as the phone lights up again and again on the desk, the laptop glow flickers on her face, tension building",
+      "prompt": "the production manager leaning back in her chair rubbing her eyes, her phone lighting up repeatedly on the desk beside a glowing laptop, night office, stress and fatigue, cold blue screen light with a faint purple cast, cinematic realism"
+    },
+    {
+      "id": "e04_gaffer",
+      "act": 1,
+      "beat": "gafferen hjemme — vet ingenting",
+      "t": "18-24",
+      "sound": "TV lavt + hans trøtte latter: «jeg aner faktisk ikke når jeg skal møte i morgen»",
+      "motion": "a middle-aged gaffer at his kitchen table at night glances at his dark phone, shrugs toward his partner off-frame, tired half-smile, TV light flickering",
+      "prompt": "a middle-aged film gaffer in a worn t-shirt sitting at a kitchen table at night, glancing at his phone with a tired resigned half-smile, a partner's silhouette by the tv in the background, warm domestic lamp light, lived-in norwegian home, documentary intimacy"
+    },
+    {
+      "id": "e05_channels",
+      "act": 1,
+      "beat": "fire sannheter i omløp",
+      "t": "24-30",
+      "ui_key": "laptop_chaos",
+      "sound": "send-svisj + send-svisj + send-svisj — hver kanal sin lyd; kakofonien nesten full",
+      "motion": "over her shoulder, her hands move between trackpad and keyboard in quick tired motions, she sighs quietly; the plain green laptop screen stays perfectly flat, solid green and unchanged the entire time — no interface, no windows, no content ever appears on the screen",
+      "prompt": "over-the-shoulder shot of the production manager at her desk sending the same document through multiple channels on a laptop with a plain green screen, printed call sheets beside her, night office, repetitive tired work, cold glow, cinematic"
+    },
+    {
+      "id": "e06_empty_home",
+      "act": 1,
+      "beat": "den tomme plassen hjemme",
+      "t": "30-36",
+      "sound": "hjemme-lyder uten henne: oppvaskmaskin, et barn som roper «natta» til faren; hennes kontor-pling fortsetter svakt under",
+      "motion": "a father gently closes a child's bedroom door, walks past an empty seat on the sofa, sits down alone, tv light on his face",
+      "prompt": "a quiet norwegian living room at night, a father closing a child's bedroom door softly, an empty spot on the sofa with a folded blanket, tv glow, warm but lonely domestic light, emotional stillness, cinematic"
+    },
+    {
+      "id": "e07_lowest",
+      "act": 1,
+      "beat": "23:58 — bunnpunkt",
+      "t": "36-42",
+      "ui_key": "laptop_chaos",
+      "sound": "alle varsellydene stables tett — nesten smertefullt; klokke-tikk under",
+      "motion": "she looks at the clock, hand to her forehead, the phone buzzes again, she closes her eyes one second, screen glow harsh on her face",
+      "prompt": "the production manager at her desk at 23:58, hand pressed to her forehead, eyes closed for a moment, phone lighting up yet again beside the laptop, harsh screen glow, exhaustion and overwhelm, night office, emotional close framing, subtle purple cast in the shadows"
+    },
+    {
+      "id": "e08_publish",
+      "act": 2,
+      "beat": "VENDEPUNKT — publiser",
+      "t": "42-48",
+      "ui_key": "laptop_publish",
+      "sound": "ALL LYD KUTTES på klikket. Total stillhet. Ett hjerteslag.",
+      "motion": "over her shoulder: she gathers everything into one view on the laptop and clicks once, decisively; the screen stays flat and still, minimal motion, her shoulders drop in relief",
+      "prompt": "over-the-shoulder shot of the production manager at her night desk making one decisive click on a laptop with a plain green screen clearly visible and flat to the camera at a natural working angle, her posture easing, the office around her softening out of focus, a first hint of warmth in the light, quiet turning point, cinematic"
+    },
+    {
+      "id": "e09_citylight",
+      "act": 2,
+      "beat": "byen lyser — én sannhet til alle",
+      "t": "48-54",
+      "sound": "stillhet → ett rolig pianoanslag → en myk bølge av ett enkelt, felles varsel",
+      "motion": "wide over a dark norwegian residential neighborhood at night, phone screens lighting up one after another in windows, on a bus stop bench, in a kitchen, a gentle wave of small lights",
+      "prompt": "wide realistic autumn night shot over a dark norwegian residential neighborhood, wet asphalt reflecting streetlights, fallen leaves along the road, several windows where small phone screens have just lit up with a soft cool glow, one person at a bus stop lit by their phone, absolutely no glowing waves or light trails, grounded documentary night photography, subtle purple cast in the shadows"
+    },
+    {
+      "id": "e10_gaffer2",
+      "act": 2,
+      "beat": "gafferen får svar",
+      "t": "54-60",
+      "sound": "hans ene varsel + rolig: «06:40, Ryen. Der ja.» — lettelsen i stemmen",
+      "motion": "the gaffer at the kitchen table keeps reading his phone privately at a low natural angle, the phone screen is a normal dim phone screen and stays angled DOWN toward him and AWAY from camera the entire time, NEVER lifted, NEVER turned toward camera, NO green color anywhere, he nods calmly with quiet relief, puts the phone flat face-down on the table and turns back toward his partner",
+      "prompt": "the middle-aged gaffer at his kitchen table reading his phone privately at a low natural angle, screen facing him and away from camera, warm domestic lamp light, quiet relief, documentary intimacy"
+    },
+    {
+      "id": "e11_home",
+      "act": 2,
+      "beat": "hun rekker hjem",
+      "t": "60-66",
+      "sound": "nøkler, dør, stille stue; musikken varm og lav; telefonen hennes: stille",
+      "motion": "she comes through the front door while the evening lights are still on, hangs her jacket, lays a hand gently on the child's door, joins the sofa, the phone stays dark in her jacket",
+      "prompt": "the production manager coming home through her front door at night while living room lights are still warm, laying a hand gently on a child's bedroom door in passing, an inviting sofa with someone waiting, her phone dark in her jacket pocket, warm golden domestic light, emotional homecoming, cinematic"
+    },
+    {
+      "id": "e12_morning_calm",
+      "act": 2,
+      "beat": "05:30 — rolig oppvåkning",
+      "t": "66-72",
+      "ui_key": "phone_callsheet",
+      "sound": "én rolig vekkerklokke, skrudd av med ett trykk; ingen panikk-scrolling",
+      "motion": "a crew member wakes at 05:30, silences the alarm, glances once at the phone with a plain green screen, everything still stands, gets up calmly, morning blue light",
+      "prompt": "a crew member in bed at 05:30 calmly silencing an alarm and glancing once at a phone with a plain green screen at a natural angle, soft blue pre-dawn light through the window, calm unhurried morning, no panic, cinematic intimacy"
+    },
+    {
+      "id": "e13_arrival",
+      "act": 2,
+      "beat": "alle ankommer — riktig sted, riktig tid",
+      "t": "72-78",
+      "sound": "biler på grus, dører, rolige «morn»-nikk, kaffe som helles; musikken bygger",
+      "motion": "steady flow of crew arriving at a location base at dawn, coffee in hands, nods between them, vans parked in order, everything simply working",
+      "prompt": "film crew arriving in a steady calm flow at a location basecamp at autumn dawn, golden and orange trees around the site, wet gravel, coffee cups in hand, friendly nods, crew vans parked in an orderly line, golden morning light breaking through autumn mist, effortless organization, documentary warmth, cinematic"
+    },
+    {
+      "id": "e14_ad_set",
+      "act": 2,
+      "beat": "hun ankommer uthvilt — settet går av seg selv",
+      "t": "78-84",
+      "ui_key": "tablet_plan",
+      "sound": "«roll sound» … «rolling» … «speed» — lavt og rituelt i bakgrunnen",
+      "motion": "she arrives rested, walks through the working set, glances once at a tablet with a plain green screen in passing, everything already in motion around her, sun breaking through; tablet flat and still",
+      "prompt": "the production manager arriving rested at a working film set in golden autumn morning light, orange leaves drifting at the edge of frame, glancing once in passing at a tablet with a plain green screen at a natural downward angle, the crew already in organized motion around her, boom rising, sun breaking through autumn mist, earned calm, cinematic wide"
+    },
+    {
+      "id": "e15_action",
+      "act": 3,
+      "beat": "«action» → svart + logo",
+      "t": "84-90",
+      "sound": "«action.» → kutt til stillhet → logo → ett siste rolig hjerteslag",
+      "motion": "the film set holds in golden light, gentle atmospheric haze drifting, crew still in position, a quiet breath of anticipation, subtle slow push-in — the shot simply holds; NO cut, NO black frame, NO logo, NO text or graphics appear at any point",
+      "prompt": "final frame: a film set in golden morning light one heartbeat before action, the production manager calm at the monitor, everything aligned and ready, warm cinematic wide, earned"
+    }
+  ],
+  "screen_plates": {
+    "laptop_chaos": "EKTE skjermopptak (ikke produktet): filutforsker m/ callsheet_v3..v7_FINAL_FINAL.pdf + e-post + tre chat-vinduer — den gamle måten",
+    "laptop_publish": "EKTE CallSheetGenerator: ferdig call sheet-preview (The Silent Echo, dag 14/32, oppmøte 06:40, Ryen) + klikk på Publiser/Send — lydkuttet treffer klikk-framen; deretter kvitteringsliste per mottaker som tikker grønn",
+    "phone_notify": "EKTE varsel i mobilbredde: «Call sheet publisert: Dag 14 — oppmøte 06:40»",
+    "phone_callsheet": "EKTE call sheet i mobilbredde: dagens scener, oppmøte, lokasjon — rolig scroll",
+    "tablet_plan": "EKTE Produksjonsplan/Shot Progress i tablet-format",
+    "capture": "frontend lokalt m/ seedet demo-prosjekt «The Silent Echo», Chrome-opptak i enhets-oppløsning (laptop 16:10, telefon 390x844, tablet 4:3), samme keying-pipeline som Leadgrid-filmene"
+  },
+  "sound_design": {
+    "chaos_layers": [
+      "tastatur",
+      "telefon-vibrering mot bord",
+      "tre ulike varsellyder i økende tetthet",
+      "lysrør-summing",
+      "send-svisj per kanal",
+      "klokke-tikk mot 23:58"
+    ],
+    "cut_to_silence_at": "e08_publish på klikk-framen (hard mute)",
+    "order_layers": [
+      "ett hjerteslag",
+      "rolig piano",
+      "én felles varsel-bølge",
+      "nøkler/dør/hjemme-lyder",
+      "rolig vekkerklokke",
+      "grus/kaffe/morn-nikk",
+      "roll sound/rolling/speed/action"
+    ],
+    "end": "«action.» → svart → stillhet → ett siste hjerteslag under logo"
+  },
+  "endcard": {
+    "logo": "logo_correct",
+    "line_no": "Gode dager lages kvelden før.",
+    "line_en": "Good days are made the night before."
+  }
+}

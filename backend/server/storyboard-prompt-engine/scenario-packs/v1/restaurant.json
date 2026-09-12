@@ -1,0 +1,115 @@
+{
+  "schemaVersion": "trr-scenario-pack-v1",
+  "id": "restaurant.food-service",
+  "version": "1.0.0",
+  "label": "Restaurant & Food Service",
+  "domain": "restaurant",
+  "description": "Production-aware visual vocabulary for dining spaces, kitchens, service choreography, food preparation and continuity.",
+  "catalog": {
+    "zones": [
+      { "id": "cafe-counter", "label": "Café Counter", "prompt": "café counter with register, pickup point, menu plane and readable guest queue direction" },
+      { "id": "dining-room", "label": "Dining Room", "prompt": "restaurant dining room with readable table groups, service aisles and guest sightlines" },
+      { "id": "fine-dining-room", "label": "Fine Dining Room", "prompt": "refined dining room with controlled table spacing, formal place settings and discreet service paths" },
+      { "id": "bar-counter", "label": "Bar Counter", "prompt": "bar counter with guest side, bartender station, bottle backdrop and clear handoff zone" },
+      { "id": "commercial-kitchen", "label": "Commercial Kitchen", "prompt": "commercial kitchen with separated preparation, cooking and plating stations plus clear circulation" },
+      { "id": "bakery-counter", "label": "Bakery Counter", "prompt": "bakery service counter with display case, wrapping area and production-room connection" },
+      { "id": "quick-service-line", "label": "Quick-Service Line", "prompt": "quick-service ordering line with register, assembly sequence and pickup endpoint" },
+      { "id": "food-truck-interior", "label": "Food Truck", "prompt": "compact food-truck kitchen with service window, secured equipment and two-person working aisle" }
+    ],
+    "roles": [
+      { "id": "guest", "label": "Guest", "prompt": "restaurant guest with a clear relationship to table, server and companions", "wardrobe": "civilian wardrobe appropriate to venue and locked across the sequence" },
+      { "id": "server", "label": "Server", "prompt": "server using readable service posture, tray handling and guest eyelines", "wardrobe": "venue-specific service uniform or apron with stable silhouette" },
+      { "id": "chef", "label": "Chef", "prompt": "chef positioned at a plausible work station with clear tool and ingredient access", "wardrobe": "kitchen jacket or workwear, apron and hair restraint with continuity" },
+      { "id": "cook", "label": "Line Cook", "prompt": "line cook working within a defined station and coordinated kitchen flow", "wardrobe": "kitchen workwear, apron and protective items appropriate to the station" },
+      { "id": "bartender", "label": "Bartender", "prompt": "bartender working between preparation well, bottle storage and guest handoff", "wardrobe": "bar-service attire with consistent apron and sleeve state" },
+      { "id": "barista", "label": "Barista", "prompt": "barista operating between espresso station, register and pickup counter", "wardrobe": "café workwear with apron and consistent identifier" },
+      { "id": "host", "label": "Host", "prompt": "host controlling arrival, seating direction and room overview", "wardrobe": "front-of-house attire distinct from service staff" },
+      { "id": "courier", "label": "Courier", "prompt": "courier positioned at a designated pickup point without blocking service flow", "wardrobe": "delivery clothing and bag with stable visual identity" }
+    ],
+    "propTypes": [
+      { "id": "dining-table", "label": "Dining Table", "prompt": "restaurant table with readable place settings, chair clearance and orientation" },
+      { "id": "service-tray", "label": "Service Tray", "prompt": "service tray with stable hand placement and clearly arranged items" },
+      { "id": "espresso-machine", "label": "Espresso Machine", "prompt": "commercial espresso machine with group heads, steam wand and cup work area" },
+      { "id": "cookline", "label": "Cookline", "prompt": "commercial cooking line with hood, ranges and organized station boundaries" },
+      { "id": "prep-counter", "label": "Prep Counter", "prompt": "food-preparation counter with work surface, ingredient containers and under-counter storage" },
+      { "id": "display-case", "label": "Display Case", "prompt": "glass food display case with shelves, product silhouettes and service-side access" },
+      { "id": "register", "label": "Register", "prompt": "point-of-sale register with screen, guest-facing position and counter handoff space" },
+      { "id": "delivery-bag", "label": "Delivery Bag", "prompt": "insulated delivery bag with handles, closure and stable placed or carried state" }
+    ],
+    "actions": [
+      { "id": "greeting", "label": "Greeting", "prompt": "front-of-house greeting with clear arrival direction and welcoming eyeline" },
+      { "id": "taking-order", "label": "Taking an Order", "prompt": "server and guest exchange with readable menu, attention and table geography" },
+      { "id": "food-preparation", "label": "Food Preparation", "prompt": "controlled preparation action with clear ingredients, tools and workstation ownership" },
+      { "id": "plating", "label": "Plating", "prompt": "precise plating action at a clean pass with readable plate orientation" },
+      { "id": "table-service", "label": "Table Service", "prompt": "server approaches and places an item with clear path, handoff side and guest response" },
+      { "id": "bar-service", "label": "Bar Service", "prompt": "drink preparation and counter handoff with readable bartender workflow" },
+      { "id": "pickup-handoff", "label": "Pickup Handoff", "prompt": "clearly staged handoff at a named pickup point between staff, guest or courier" },
+      { "id": "kitchen-rush", "label": "Kitchen Rush", "prompt": "busy coordinated kitchen action with distinct stations and purposeful crossing paths" }
+    ],
+    "states": [
+      { "id": "quiet", "label": "Quiet", "prompt": "quiet venue rhythm with open negative space and restrained movement" },
+      { "id": "welcoming", "label": "Welcoming", "prompt": "warm social tone expressed through open posture, lighting and approachable spacing" },
+      { "id": "busy", "label": "Busy", "prompt": "active service period with layered action that remains compositionally readable" },
+      { "id": "tense", "label": "Tense", "prompt": "service tension shown through compressed spacing, interrupted eyelines and controlled gestures" },
+      { "id": "celebratory", "label": "Celebratory", "prompt": "celebration expressed through group orientation, shared focus and lifted energy" },
+      { "id": "closing", "label": "Closing", "prompt": "end-of-service state with cleaning, stacked objects and reduced guest activity" }
+    ],
+    "safetyContexts": [
+      { "id": "fictional-non-instructional", "label": "Fictional, Non-instructional", "prompt": "depict a fictional production scene, not food-safety or equipment-operation instruction" },
+      { "id": "safe-circulation", "label": "Safe Circulation", "prompt": "keep exits, guest aisles and hot-kitchen circulation spatially plausible" },
+      { "id": "heat-tool-awareness", "label": "Heat and Tool Awareness", "prompt": "stage hot surfaces and sharp tools with believable separation and deliberate handling" },
+      { "id": "hygienic-zoning", "label": "Hygienic Zoning", "prompt": "visually separate guest, preparation, cooking, plating and cleaning zones" },
+      { "id": "no-readable-payment-data", "label": "No Readable Payment Data", "prompt": "do not render readable payment, receipt or personal guest information" }
+    ],
+    "continuityLocks": [
+      { "id": "table-geography", "label": "Table Geography", "prompt": "lock guest positions, table orientation, place settings and screen direction across connected shots" },
+      { "id": "food-state", "label": "Food State", "prompt": "lock the preparation, plating, served and consumed state of each featured food item" },
+      { "id": "service-side", "label": "Service Side", "prompt": "lock the side and direction from which staff approach and hand off items" },
+      { "id": "prop-count", "label": "Prop Count", "prompt": "lock the number and placement of glasses, plates, menus and chairs unless the action changes them" },
+      { "id": "wardrobe-apron", "label": "Wardrobe and Apron", "prompt": "lock uniform, apron, sleeve and towel state across the scene" },
+      { "id": "station-layout", "label": "Station Layout", "prompt": "lock major equipment, prep surface and ingredient placement at each work station" }
+    ]
+  },
+  "subdomains": [
+    { "id": "cafe", "label": "Café", "zoneIds": ["cafe-counter", "dining-room"], "roleIds": ["guest", "barista", "server", "courier"], "propTypeIds": ["dining-table", "service-tray", "espresso-machine", "display-case", "register", "delivery-bag"], "actionIds": ["greeting", "taking-order", "food-preparation", "table-service", "pickup-handoff"], "stateIds": ["quiet", "welcoming", "busy", "closing"], "safetyContextIds": ["fictional-non-instructional", "safe-circulation", "heat-tool-awareness", "no-readable-payment-data"], "continuityLockIds": ["table-geography", "food-state", "service-side", "prop-count", "wardrobe-apron"] },
+    { "id": "casual", "label": "Casual Restaurant", "zoneIds": ["dining-room", "commercial-kitchen"], "roleIds": ["guest", "host", "server", "chef", "cook", "courier"], "propTypeIds": ["dining-table", "service-tray", "cookline", "prep-counter", "register", "delivery-bag"], "actionIds": ["greeting", "taking-order", "food-preparation", "plating", "table-service", "pickup-handoff", "kitchen-rush"], "stateIds": ["welcoming", "busy", "tense", "celebratory", "closing"], "safetyContextIds": ["fictional-non-instructional", "safe-circulation", "heat-tool-awareness", "hygienic-zoning", "no-readable-payment-data"], "continuityLockIds": ["table-geography", "food-state", "service-side", "prop-count", "wardrobe-apron", "station-layout"] },
+    { "id": "fine-dining", "label": "Fine Dining", "zoneIds": ["fine-dining-room", "commercial-kitchen", "bar-counter"], "roleIds": ["guest", "host", "server", "chef", "cook", "bartender"], "propTypeIds": ["dining-table", "service-tray", "cookline", "prep-counter"], "actionIds": ["greeting", "taking-order", "food-preparation", "plating", "table-service", "bar-service"], "stateIds": ["quiet", "welcoming", "busy", "tense", "celebratory", "closing"], "safetyContextIds": ["fictional-non-instructional", "safe-circulation", "heat-tool-awareness", "hygienic-zoning", "no-readable-payment-data"], "continuityLockIds": ["table-geography", "food-state", "service-side", "prop-count", "wardrobe-apron", "station-layout"] },
+    { "id": "bar", "label": "Bar", "zoneIds": ["bar-counter", "dining-room"], "roleIds": ["guest", "bartender", "server", "host"], "propTypeIds": ["dining-table", "service-tray", "register"], "actionIds": ["greeting", "taking-order", "bar-service", "table-service"], "stateIds": ["quiet", "welcoming", "busy", "tense", "celebratory", "closing"], "safetyContextIds": ["fictional-non-instructional", "safe-circulation", "heat-tool-awareness", "no-readable-payment-data"], "continuityLockIds": ["table-geography", "service-side", "prop-count", "wardrobe-apron"] },
+    { "id": "commercial-kitchen", "label": "Commercial Kitchen", "zoneIds": ["commercial-kitchen"], "roleIds": ["chef", "cook", "server"], "propTypeIds": ["service-tray", "cookline", "prep-counter"], "actionIds": ["food-preparation", "plating", "kitchen-rush"], "stateIds": ["quiet", "busy", "tense", "closing"], "safetyContextIds": ["fictional-non-instructional", "safe-circulation", "heat-tool-awareness", "hygienic-zoning"], "continuityLockIds": ["food-state", "service-side", "prop-count", "wardrobe-apron", "station-layout"] },
+    { "id": "bakery", "label": "Bakery", "zoneIds": ["bakery-counter", "commercial-kitchen"], "roleIds": ["guest", "server", "chef", "cook", "courier"], "propTypeIds": ["display-case", "prep-counter", "register", "delivery-bag"], "actionIds": ["greeting", "taking-order", "food-preparation", "plating", "pickup-handoff"], "stateIds": ["quiet", "welcoming", "busy", "closing"], "safetyContextIds": ["fictional-non-instructional", "safe-circulation", "heat-tool-awareness", "hygienic-zoning", "no-readable-payment-data"], "continuityLockIds": ["food-state", "service-side", "prop-count", "wardrobe-apron", "station-layout"] },
+    { "id": "fast-service", "label": "Fast Service", "zoneIds": ["quick-service-line", "commercial-kitchen"], "roleIds": ["guest", "server", "cook", "courier"], "propTypeIds": ["cookline", "prep-counter", "display-case", "register", "delivery-bag"], "actionIds": ["taking-order", "food-preparation", "plating", "pickup-handoff", "kitchen-rush"], "stateIds": ["quiet", "busy", "tense", "closing"], "safetyContextIds": ["fictional-non-instructional", "safe-circulation", "heat-tool-awareness", "hygienic-zoning", "no-readable-payment-data"], "continuityLockIds": ["food-state", "service-side", "prop-count", "wardrobe-apron", "station-layout"] },
+    { "id": "food-truck", "label": "Food Truck", "zoneIds": ["food-truck-interior"], "roleIds": ["guest", "chef", "cook", "server", "courier"], "propTypeIds": ["cookline", "prep-counter", "register", "delivery-bag"], "actionIds": ["taking-order", "food-preparation", "plating", "pickup-handoff", "kitchen-rush"], "stateIds": ["quiet", "welcoming", "busy", "tense", "closing"], "safetyContextIds": ["fictional-non-instructional", "safe-circulation", "heat-tool-awareness", "hygienic-zoning", "no-readable-payment-data"], "continuityLockIds": ["food-state", "service-side", "prop-count", "wardrobe-apron", "station-layout"] }
+  ],
+  "families": [
+    { "id": "dining-configuration", "label": "Dining Configurations", "primaryStyleAnchor": "object-architecture", "variants": [
+      { "id": "cafe-table", "label": "Café Table", "prompt": "small café table with two chairs and compact place setting" },
+      { "id": "booth", "label": "Booth", "prompt": "restaurant booth with opposing benches, table and aisle edge" },
+      { "id": "fine-dining-table", "label": "Fine Dining Table", "prompt": "formal dining table with layered place settings and balanced chair spacing" },
+      { "id": "communal-table", "label": "Communal Table", "prompt": "long communal table with repeated chairs and clear end perspective" }
+    ] },
+    { "id": "kitchen-station", "label": "Kitchen Stations", "primaryStyleAnchor": "object-architecture", "variants": [
+      { "id": "cookline", "label": "Cookline", "prompt": "commercial cookline with hood, range, oven doors and station shelf" },
+      { "id": "prep-station", "label": "Prep Station", "prompt": "stainless preparation station with worktop, containers and under-counter storage" },
+      { "id": "plating-pass", "label": "Plating Pass", "prompt": "restaurant pass with heat lamps, plate shelf and chef side clearly divided" },
+      { "id": "dish-station", "label": "Dish Station", "prompt": "commercial washing station with racks, sink and clean-dirty flow" }
+    ] },
+    { "id": "service-action", "label": "Service Actions", "primaryStyleAnchor": "organic-nature", "secondaryStyleAnchor": "object-architecture", "variants": [
+      { "id": "taking-order", "label": "Taking Order", "prompt": "server leaning attentively toward seated guests with menu and clear eyeline" },
+      { "id": "tray-carry", "label": "Carrying Tray", "prompt": "server walking with a level tray, readable balance and direction" },
+      { "id": "plate-handoff", "label": "Plate Handoff", "prompt": "cook and server exchanging a plated dish across the pass" },
+      { "id": "table-clear", "label": "Clearing Table", "prompt": "server collecting used dishes with table state and hand placement legible" }
+    ] },
+    { "id": "food-service-prop", "label": "Food Service Props", "primaryStyleAnchor": "object-architecture", "variants": [
+      { "id": "espresso-machine", "label": "Espresso Machine", "prompt": "commercial espresso machine in three-quarter view with controls and steam wand" },
+      { "id": "display-case", "label": "Display Case", "prompt": "glass bakery display case with shelves and food silhouettes" },
+      { "id": "service-tray", "label": "Service Tray", "prompt": "round service tray with glasses and plates arranged for a readable silhouette" },
+      { "id": "delivery-bag", "label": "Delivery Bag", "prompt": "insulated delivery bag with handles, flap and reinforced box form" }
+    ] },
+    { "id": "restaurant-zone", "label": "Restaurant Zones", "primaryStyleAnchor": "object-architecture", "variants": [
+      { "id": "cafe-counter", "label": "Café Counter", "prompt": "café counter corner with espresso machine, register and pickup point" },
+      { "id": "bar-counter", "label": "Bar Counter", "prompt": "bar corner with stools, preparation well and bottle backdrop" },
+      { "id": "dining-room", "label": "Dining Room", "prompt": "dining room corner with layered table groups and service aisle" },
+      { "id": "food-truck", "label": "Food Truck", "prompt": "food-truck interior with service window, cookline and compact working aisle" }
+    ] }
+  ]
+}

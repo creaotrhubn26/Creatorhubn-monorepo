@@ -1,0 +1,44 @@
+name: Prototype-tester fremdriftsrapport
+
+# Ukentlig e-postrapport om prototype-testernes fremdrift (innlogging, hendelser,
+# feedback, oppdrag) til konfigurert mottaker (admin-dashbordet). Token-gated via
+# CRON_TRIGGER_TOKEN. Mottaker + på/av styres i admin-dashbordet, ikke her.
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'   # mandager 08:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prototype-tester-report
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+  CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+
+jobs:
+  report:
+    name: Send fremdriftsrapport
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Trigger prototype-tester report
+        run: |
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN secret er ikke satt"
+            exit 1
+          fi
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-trigger-token: $CRON_TRIGGER_TOKEN" \
+            -d '{}' \
+            "$BACKEND_URL/api/cron/prototype-tester-report")
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          CODE=$(echo "$RESPONSE" | tail -n1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || exit 1

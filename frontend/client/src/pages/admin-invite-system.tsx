@@ -196,12 +196,32 @@ export default function AdminInviteSystem() {
   const { data: inviteRequests = [], isLoading } = useQuery({
     queryKey: ['/api/invite-requests'],
     queryFn: () => apiRequest('/api/invite-requests'),
+    // Defensiv: garanter array selv om endepunktet 404-er / returnerer ikke-array.
+    select: (rows: any) => (Array.isArray(rows) ? rows : []),
   });
 
   // Fetch prototype tester requests
   const { data: prototypeTesterRequests = [], isLoading: isLoadingPrototype } = useQuery({
     queryKey: ['/api/prototype-tester-requests'],
     queryFn: () => apiRequest('/api/prototype-tester-requests'),
+    // Defensiv: garanter at testingAreas alltid er string[] (skadet/ikke-array
+    // data fra API-et skal aldri krasje .slice/.map i render).
+    select: (rows: any) =>
+      (Array.isArray(rows) ? rows : []).map((r: any) => ({
+        ...r,
+        testingAreas: Array.isArray(r?.testingAreas)
+          ? r.testingAreas.filter((s: unknown): s is string => typeof s === 'string')
+          : typeof r?.testingAreas === 'string' && r.testingAreas.trim()
+            ? (() => {
+                try {
+                  const p = JSON.parse(r.testingAreas);
+                  return Array.isArray(p) ? p.filter((s: unknown): s is string => typeof s === 'string') : [];
+                } catch {
+                  return String(r.testingAreas).split(',').map((s: string) => s.trim()).filter(Boolean);
+                }
+              })()
+            : [],
+      })),
   });
 
   // Process invite request mutation
@@ -387,7 +407,7 @@ export default function AdminInviteSystem() {
 
     if (request.selectedPlan || request.planName) {
       const normalizedJourneyStatus = String(request.userJourneyStatus || '').trim().toLowerCase();
-      const paymentCaption = request.paymentCompleted ? '✓ Betalt' : 'Venter betaling';
+      const paymentCaption = request.paymentCompleted ? 'Betalt' : 'Venter betaling';
       const activationCaption =
         normalizedJourneyStatus === 'role_room_activation_required'
           ? 'Venter kontogodkjenning'
@@ -1031,7 +1051,7 @@ export default function AdminInviteSystem() {
                     <Grid item xs={6}>
                       <Typography variant="subtitle2">Betalingsstatus</Typography>
                       <Chip
-                        label={selectedRequest.paymentCompleted ? "✓ Betalt" : "Venter betaling"}
+                        label={selectedRequest.paymentCompleted ? "Betalt" : "Venter betaling"}
                         size="small"
                         color={selectedRequest.paymentCompleted ? "success" : "warning"}
                         icon={<PaymentIcon />}

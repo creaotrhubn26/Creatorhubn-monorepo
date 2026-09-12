@@ -5,6 +5,7 @@
  */
 
 import React, { useState } from 'react';
+import ConnectedAppsPanel from '../role-room/components/ConnectedAppsPanel';
 import { apiRequest } from '@/lib/queryClient';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
@@ -69,6 +70,7 @@ import {
 // Import existing components
 import BusinessBrandingSettings from '../BusinessBrandingSettings';
 import PriceAdministration from '../PriceAdministration';
+import StripeConnectCard from './StripeConnectCard';
 import AccountingBillingOverview from '../accounting/AccountingBillingOverview';
 import { TutorialFAQIntegration } from '../tutorial/TutorialFAQIntegration';
 import { LightroomInteractiveDemo } from './misc/LightroomInteractiveDemo';
@@ -696,6 +698,13 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
               Bedriftsprofil & Logo
             </Typography>
             <BusinessBrandingSettings userId={userId} />
+
+            {/* Stripe Connect — bildekjøp betales rett til fotografens egen konto.
+                Plassert i Bedriftsprofil så koblingen alltid er synlig. */}
+            <Box sx={{ mt: 3 }}>
+              <StripeConnectCard />
+            </Box>
+
             {isAdmin ? (
               <AccountingBillingOverview
                 userId={userId}
@@ -2382,6 +2391,11 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                 </Box>
               )}
             </Box>
+
+            <Divider sx={{ my: 3 }} />
+
+            {/* Tilkoblede AI-apper (MCP / «Sign in with The Role Room») */}
+            <ConnectedAppsPanel />
 
             <Divider sx={{ my: 3 }} />
 

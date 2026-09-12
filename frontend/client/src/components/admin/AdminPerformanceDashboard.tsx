@@ -19,7 +19,6 @@ import {
   Tab,
   Tabs,
   Alert,
-  Chip,
   List,
   ListItem,
   ListItemIcon,
@@ -32,7 +31,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button,
+  Chip,
 } from '@mui/material';
 import {
   Speed as SpeedIcon,
@@ -68,6 +67,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import { AdminButton, useIsMobile } from './design-system';
 // import { performanceMonitor } from '@/lib/performance-monitor';
 
 // Chart.js components replaced with Material-UI placeholders
@@ -103,7 +103,8 @@ export default function AdminPerformanceDashboard({ className }: AdminPerformanc
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
 
   const { user } = useAuth();
-  
+  const isMobile = useIsMobile();
+
   // Push notifications
   const userId = user?.id || (user as { sub?: string })?.sub;
   const { pushEnabled, isSupported } = usePushNotifications(userId);
@@ -354,6 +355,7 @@ export default function AdminPerformanceDashboard({ className }: AdminPerformanc
                     <Typography variant="body2">{stats.hits} treff, {stats.size} elementer</Typography>
                     <IconButton
                       size="small"
+                      aria-label="Tøm cache"
                       onClick={() => clearCacheMutation.mutate(type)}
                       disabled={clearCacheMutation.isPending}
                     >
@@ -440,6 +442,7 @@ export default function AdminPerformanceDashboard({ className }: AdminPerformanc
                   <Tooltip title="Merk som løst">
                     <IconButton
                       edge="end"
+                      aria-label="Merk som løst"
                       onClick={() => resolveAlertMutation.mutate(alert.id)}
                       disabled={resolveAlertMutation.isPending}
                     >
@@ -520,14 +523,14 @@ export default function AdminPerformanceDashboard({ className }: AdminPerformanc
               label="Auto-oppdatering"
             />
             <Tooltip title="Oppdater data">
-              <IconButton onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/admin/system-metrics'] })}>
+              <IconButton aria-label="Oppdater data" onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/admin/system-metrics'] })}>
                 <RefreshIcon />
               </IconButton>
             </Tooltip>
             
             {isSupported && (
               <Tooltip title="Push-varsler innstillinger">
-                <IconButton onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
+                <IconButton aria-label="Push-varsler innstillinger" onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
                   {pushEnabled ? <NotificationsActive /> : <Notifications />}
                 </IconButton>
               </Tooltip>
@@ -553,7 +556,7 @@ export default function AdminPerformanceDashboard({ className }: AdminPerformanc
 
         {/* Push Notification Settings Dialog */}
         {isSupported && (
-          <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
+          <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
             <DialogTitle>Push-varsler innstillinger</DialogTitle>
             <DialogContent>
               <Box sx={{ mt: 2 }}>
@@ -561,7 +564,7 @@ export default function AdminPerformanceDashboard({ className }: AdminPerformanc
               </Box>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+              <AdminButton tone="ghost" onClick={() => setPushSettingsOpen(false)}>Lukk</AdminButton>
             </DialogActions>
           </Dialog>
         )}

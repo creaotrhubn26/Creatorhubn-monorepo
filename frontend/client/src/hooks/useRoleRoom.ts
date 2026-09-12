@@ -21,6 +21,10 @@ import type {
   UserRole,
   ProjectSyncResult,
   MarketplaceInstallation,
+  RoleRoomAppsResponse,
+  RoleRoomInstalledResponse,
+  RoleRoomInstallResponse,
+  RoleRoomUninstallResponse,
 } from '../../../shared/role-room-types';
 
 const STALE = 5 * 60_000;   // 5 minutes
@@ -429,6 +433,58 @@ export function useUninstallApp() {
     onSuccess: () => {
       qc.invalidateQueries({
         queryKey: ['/api/role-room/marketplace/installed'],
+      });
+    },
+  });
+}
+
+// ── Marketplace (org-scoped) — Fase 2: Leadgrid som tjeneste ──
+
+export function useRoleRoomApps() {
+  return useQuery<RoleRoomAppsResponse>({
+    queryKey: ['/api/role-room/marketplace/apps'],
+    queryFn: () => rr.getRoleRoomApps(),
+    staleTime: STALE,
+    gcTime: GC,
+    retry: 2,
+  });
+}
+
+export function useOrgInstalledApps() {
+  return useQuery<RoleRoomInstalledResponse>({
+    queryKey: ['/api/role-room/marketplace/organizations/installed'],
+    queryFn: () => rr.getOrgInstalledApps(),
+    staleTime: STALE,
+    gcTime: GC,
+    retry: 2,
+  });
+}
+
+export function useInstallOrgApp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (appId: string) => rr.installOrgApp(appId),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ['/api/role-room/marketplace/apps'],
+      });
+      qc.invalidateQueries({
+        queryKey: ['/api/role-room/marketplace/organizations/installed'],
+      });
+    },
+  });
+}
+
+export function useUninstallOrgApp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (appId: string) => rr.uninstallOrgApp(appId),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ['/api/role-room/marketplace/apps'],
+      });
+      qc.invalidateQueries({
+        queryKey: ['/api/role-room/marketplace/organizations/installed'],
       });
     },
   });

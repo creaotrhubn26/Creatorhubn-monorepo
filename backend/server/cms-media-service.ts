@@ -94,6 +94,66 @@ const EXT_BY_MIME: Record<string, string> = {
 
 const SIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
 
+/**
+ * Sniffer faktisk filtype fra magic bytes/innhold, uavhengig av det
+ * klient-oppgitte mimetype-headeren (som er trivielt å forfalske via
+ * multipart Content-Type). Brukes til å avvise f.eks. en .exe
+ * omdøpt til "bilde.png" med spoofed mimetype.
+ */
+function detectImageMime(buffer: Buffer): string | null {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  if (
+    buffer.length >= 8
+    && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47
+    && buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+  if (
+    buffer.length >= 6
+    && (buffer.slice(0, 6).toString('ascii') === 'GIF87a' || buffer.slice(0, 6).toString('ascii') === 'GIF89a')
+  ) {
+    return 'image/gif';
+  }
+  if (
+    buffer.length >= 12
+    && buffer.slice(0, 4).toString('ascii') === 'RIFF'
+    && buffer.slice(8, 12).toString('ascii') === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+  if (buffer.length >= 12 && buffer.slice(4, 8).toString('ascii') === 'ftyp') {
+    const brand = buffer.slice(8, 12).toString('ascii');
+    if (brand.startsWith('avif') || brand.startsWith('avis')) return 'image/avif';
+  }
+  // SVG er tekst/XML — sjekk for en <svg>-tag i starten av filen.
+  const head = buffer.slice(0, Math.min(buffer.length, 2048)).toString('utf8').trimStart();
+  if (/^(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!doctype[^>]*>\s*)?<svg[\s>]/i.test(head)) {
+    return 'image/svg+xml';
+  }
+  return null;
+}
+
+/**
+ * Strips <script>, on*-event-handlere og javascript:/data:-URLer fra
+ * en opplastet SVG før den skrives til R2. SVG er XML som kan
+ * inneholde aktivt innhold (script, foreignObject) som browsere
+ * kjører hvis filen åpnes direkte — dette er den eneste XSS-
+ * sanitering som finnes for SVG-opplasting i denne pipelinen.
+ */
+function sanitizeSvgBuffer(buffer: Buffer): Buffer {
+  let svg = buffer.toString('utf8');
+  svg = svg.replace(/<script[\s\S]*?<\/script\s*>/gi, '');
+  svg = svg.replace(/<foreignObject[\s\S]*?<\/foreignObject\s*>/gi, '');
+  svg = svg.replace(/\son\w+\s*=\s*"(?:[^"\\]|\\.)*"/gi, '');
+  svg = svg.replace(/\son\w+\s*=\s*'(?:[^'\\]|\\.)*'/gi, '');
+  svg = svg.replace(/(xlink:href|href)(\s*=\s*)"(?:\s*javascript:|\s*data:text\/html)[^"]*"/gi, '$1$2"#"');
+  svg = svg.replace(/(xlink:href|href)(\s*=\s*)'(?:\s*javascript:|\s*data:text\/html)[^']*'/gi, "$1$2'#'");
+  return Buffer.from(svg, 'utf8');
+}
+
 export type UploadCmsMediaResult =
   | { ok: true; url: string; key: string; mode: 'public' | 'signed' }
   | { ok: false; error: 'storage_not_configured' | 'unsupported_mime' | 'upload_failed'; detail?: string };
@@ -114,6 +174,17 @@ export async function uploadCmsMedia(input: {
     return { ok: false, error: 'unsupported_mime', detail: input.mime };
   }
 
+  const sniffed = detectImageMime(input.buffer);
+  if (sniffed !== input.mime) {
+    return {
+      ok: false,
+      error: 'unsupported_mime',
+      detail: `filinnhold matcher ikke oppgitt mimetype (${input.mime})`,
+    };
+  }
+
+  const body = input.mime === 'image/svg+xml' ? sanitizeSvgBuffer(input.buffer) : input.buffer;
+
   const safeName = (input.originalName ?? 'image')
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')
@@ -125,7 +196,7 @@ export async function uploadCmsMedia(input: {
       new PutObjectCommand({
         Bucket: cfg.bucket,
         Key: key,
-        Body: input.buffer,
+        Body: body,
         ContentType: input.mime,
         CacheControl: 'public, max-age=31536000, immutable',
       }),

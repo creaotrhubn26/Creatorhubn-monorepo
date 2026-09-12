@@ -1,0 +1,492 @@
+import { expect, test, type ConsoleMessage } from '@playwright/test';
+
+/**
+ * /workspace runtime smoke — fanger de to feilene som tsc IKKE fanger:
+ *   1. «useRealTime must be used within a RealTimeProvider» (manglende provider
+ *      på /workspace-rutene).
+ *   2. React #426 «suspended while responding to synchronous input» —
+ *      picker → prosjekt auto-navigasjon som monterer lazy TeamWorkspacePage
+ *      uten startTransition.
+ *
+ * Begge er runtime-kast → 'pageerror'. Testen asserter null uncaught errors +
+ * fravær av de spesifikke signaturene, på begge kodeveiene (flere prosjekter =
+ * picker; ett prosjekt = auto-redirect inn i TeamWorkspacePage).
+ */
+
+const ORIGIN = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5001';
+test.use({ serviceWorkers: 'block' });
+const AUTH_TOKEN = 'e2e-token';
+const AUTH_USER = {
+  id: 'e2e-user',
+  email: 'smoke@creatorhubn.com',
+  firstName: 'Smoke',
+  lastName: 'Test',
+  name: 'Smoke Test',
+  role: 'photographer',
+  profession: 'photographer',
+  isAdmin: false,
+  verified_email: true,
+};
+
+const RUNTIME_ERROR_SIGNATURES = [
+  'useRealTime must be used within a RealTimeProvider',
+  'Minified React error #426',
+  'suspended while responding to synchronous input',
+  'must be used within',
+];
+
+function sampleProject(id: string) {
+  return {
+    id,
+    title: `Smoke Project ${id}`,
+    name: `Smoke Project ${id}`,
+    projectType: 'wedding',
+    status: 'active',
+    eventDate: '2026-09-14',
+    location: 'Oslo',
+    coverUrl: null,
+  };
+}
+
+function oneSecondWav(): Buffer {
+  const sampleRate = 44_100;
+  const samples = sampleRate;
+  const dataSize = samples * 2;
+  const wav = Buffer.alloc(44 + dataSize);
+  wav.write('RIFF', 0); wav.writeUInt32LE(36 + dataSize, 4); wav.write('WAVE', 8);
+  wav.write('fmt ', 12); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22); wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+  wav.write('data', 36); wav.writeUInt32LE(dataSize, 40);
+  for (let i = 0; i < samples; i += 1) {
+    wav.writeInt16LE(Math.round(Math.sin((i / sampleRate) * Math.PI * 2 * 440) * 4_000), 44 + i * 2);
+  }
+  return wav;
+}
+
+/** Fanger uncaught exceptions + console.error som matcher kjente signaturer. */
+async function collectRuntimeErrors(page: import('@playwright/test').Page) {
+  const errors: string[] = [];
+  page.on('pageerror', (err) => errors.push(`[pageerror] ${err.stack || err.message}`));
+  page.on('console', (msg: ConsoleMessage) => {
+    if (msg.type() !== 'error') return;
+    const text = msg.text();
+    if (RUNTIME_ERROR_SIGNATURES.some((sig) => text.includes(sig))) {
+      errors.push(`[console.error] ${text}`);
+    }
+  });
+  return errors;
+}
+
+/** Seed auth + generøse API-mocks slik at /workspace-treet rendrer fullt ut. */
+async function primeAuthAndApi(
+  page: import('@playwright/test').Page,
+  projects: ReturnType<typeof sampleProject>[],
+  ticketRequestHeaders: Array<Record<string, string>> = [],
+) {
+  // Registrer en ufarlig catch-all først. De spesifikke API-rutene nedenfor
+  // registreres senere og har høyere prioritet i Playwright. Dette hindrer at
+  // globale providers proxyer dusinvis av irrelevante kall til en backend som
+  // med hensikt ikke kjører i denne isolerte UI-smoken.
+  await page.route(
+    (url) => url.pathname.startsWith('/api/') && url.pathname !== '/api/ipad/ws/events',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '{}',
+      }),
+  );
+
+  await page.addInitScript(
+    ([token, user]) => {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+      window.localStorage.setItem('creatorhub_auth_token', token as string);
+      window.localStorage.setItem('creatorhub_auth_user', JSON.stringify(user));
+    },
+    [AUTH_TOKEN, AUTH_USER] as const,
+  );
+  await page.addInitScript(() => {
+    const NativeWebSocket = window.WebSocket;
+    const attemptedUrls: string[] = [];
+    Object.defineProperty(window, '__workspaceUserEventSocketUrls', {
+      configurable: true,
+      value: attemptedUrls,
+    });
+    Object.defineProperty(window, 'WebSocket', {
+      configurable: true,
+      value: new Proxy(NativeWebSocket, {
+        construct(target, args) {
+          attemptedUrls.push(String(args[0]));
+          return Reflect.construct(target, args);
+        },
+      }),
+    });
+  });
+
+  await page.route('**/api/auth/user', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ authenticated: true, user: AUTH_USER }),
+    }),
+  );
+  await page.route('**/api/realtime/user-events-ticket', (route) => {
+    ticketRequestHeaders.push(route.request().headers());
+    return route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ticket: 'e2e-user-events-ticket',
+        expiresAt: new Date(Date.now() + 30_000).toISOString(),
+        websocketPath: '/api/ipad/ws/events',
+        protocolVersion: 1,
+      }),
+    });
+  });
+  // Oversikt-fanens egne endepunkter (default-fane etter auto-redirect).
+  await page.route('**/api/projects/*/board-tasks', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ tasks: [] }),
+    }),
+  );
+  await page.route('**/api/projects/*/checklist', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [] }),
+    }),
+  );
+
+  // Prosjektlisten styrer picker-vs-auto-redirect.
+  await page.route(
+    (url) => url.pathname === '/api/projects',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ projects }),
+      }),
+  );
+
+  // Én autoritativ workspace-bootstrap (prosjekt + kategori + tilgang + team).
+  await page.route('**/api/projects/*/workspace-bootstrap', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        project: sampleProject('p1'),
+        workspaceCategory: 'visual',
+        access: { canRead: true, canEdit: true, isOwner: true },
+        owner: {
+          userId: AUTH_USER.id,
+          name: AUTH_USER.name,
+          email: AUTH_USER.email,
+        },
+        members: [],
+      }),
+    }),
+  );
+  // Kompatibilitets-oppslag som enkelte eldre faner fortsatt kan gjøre.
+  await page.route(/\/api\/projects\/[^/?]+$/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ project: sampleProject('p1') }),
+    }),
+  );
+  await page.route('**/api/projects/*/team/members', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ owner: null, members: [] }),
+    }),
+  );
+
+  // Badge-/aktivitet-endepunkter TeamWorkspacePage poller — tomt svar er nok.
+  const emptyJson = (route: import('@playwright/test').Route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+  await page.route('**/api/foresporsler/inbound', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [] }),
+    }),
+  );
+  await page.route('**/api/projects/*/client-activity', emptyJson);
+  await page.route('**/api/projects/*/audio-room/unseen-comments', emptyJson);
+  await page.route('**/api/community/user/*/roles', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ roles: [] }),
+    }),
+  );
+  await page.route('**/api/design/tokens*', emptyJson);
+  await page.route('**/api/editing/vendor/me', emptyJson);
+}
+
+test('multi-project /workspace renders the picker without runtime errors', async ({ page }) => {
+  const errors = await collectRuntimeErrors(page);
+  await primeAuthAndApi(page, [sampleProject('p1'), sampleProject('p2')]);
+
+  await page.goto(`${ORIGIN}/workspace`, { waitUntil: 'domcontentloaded' });
+  // Gi appen tid til å boote, kjøre auth-sjekk og rendre picker-treet.
+  await page.waitForFunction(() => document.body.innerText.trim().length > 0, undefined, { timeout: 30000 });
+
+  expect(errors, `Runtime errors on /workspace (picker):\n${errors.join('\n')}`).toEqual([]);
+  // Ikke stått igjen på /login (auth holdt) og ikke en blank/krasjet side.
+  expect(page.url()).toContain('/workspace');
+  const bodyText = await page.locator('body').innerText();
+  expect(bodyText.trim().length).toBeGreaterThan(0);
+});
+
+test('legacy /dashboard redirect tolerates a cold WorkspaceHome chunk without React #426', async ({ page }) => {
+  const errors = await collectRuntimeErrors(page);
+  await primeAuthAndApi(page, [sampleProject('p1'), sampleProject('p2')]);
+
+  let delayedWorkspaceChunk = false;
+  await page.route(/\/src\/components\/workspace\/WorkspaceHome\.tsx(?:\?.*)?$/, async (route) => {
+    delayedWorkspaceChunk = true;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.continue();
+  });
+
+  await page.goto(
+    `${ORIGIN}/dashboard?chGoogleStatus=success`,
+    { waitUntil: 'domcontentloaded' },
+  );
+  await page.waitForURL('**/workspace', { timeout: 30000 });
+  await expect(page.getByText('Smoke Project p1', { exact: true })).toBeVisible({ timeout: 30000 });
+
+  expect(delayedWorkspaceChunk, 'Testen må faktisk forsinke lazy-chunken').toBe(true);
+  expect(errors, `Runtime errors on /dashboard → /workspace:\n${errors.join('\n')}`).toEqual([]);
+});
+
+test('single-project /workspace auto-redirects into the workspace without React #426', async ({ page }) => {
+  const errors = await collectRuntimeErrors(page);
+  const moduleFailures: string[] = [];
+  const realtimeRequests: string[] = [];
+  const realtimeStatuses: number[] = [];
+  const ticketRequestHeaders: Array<Record<string, string>> = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/api/realtime/')) realtimeRequests.push(request.url());
+  });
+  page.on('response', (response) => {
+    if (response.url().includes('/api/realtime/')) realtimeStatuses.push(response.status());
+    if (response.status() >= 400 && response.url().includes('/src/')) {
+      moduleFailures.push(`HTTP ${response.status()} ${response.url()}`);
+    }
+  });
+  page.on('requestfailed', (request) => {
+    if (request.url().includes('/src/')) {
+      moduleFailures.push(`${request.failure()?.errorText || 'request failed'} ${request.url()}`);
+    }
+  });
+  page.on('console', (message) => {
+    if (message.type() === 'error') moduleFailures.push(`console: ${message.text()}`);
+  });
+  await primeAuthAndApi(page, [sampleProject('p1')], ticketRequestHeaders);
+
+  await page.goto(`${ORIGIN}/workspace`, { waitUntil: 'domcontentloaded' });
+  // Auto-redirect: WorkspaceHome → /workspace/p1 (monterer lazy TeamWorkspacePage).
+  try {
+    await page.waitForURL('**/workspace/p1', { timeout: 30000 });
+  } catch (error) {
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}\nModule failures:\n${moduleFailures.join('\n')}\nPage errors:\n${errors.join('\n')}`,
+    );
+  }
+  await page.waitForFunction(() => document.body.innerText.trim().length > 0, undefined, { timeout: 30000 });
+
+  expect(errors, `Runtime errors on picker→project transition:\n${errors.join('\n')}`).toEqual([]);
+  expect(page.url()).toContain('/workspace/p1');
+  const bodyText = await page.locator('body').innerText();
+  expect(bodyText.trim().length).toBeGreaterThan(0);
+  expect(bodyText).toContain('Smoke Project p1');
+  expect(bodyText).toContain('Shotlist');
+  expect(realtimeRequests, 'Workspace må hente en kortlivet realtime-billett').toContainEqual(
+    expect.stringContaining('/api/realtime/user-events-ticket'),
+  );
+  await expect.poll(() => realtimeStatuses.includes(201)).toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            (window as Window & { __workspaceUserEventSocketUrls?: string[] }).__workspaceUserEventSocketUrls ?? []
+          ).filter((value) => {
+            try {
+              return new URL(value).pathname === '/api/ipad/ws/events';
+            } catch {
+              return false;
+            }
+          }).length,
+      ),
+    )
+    .toBeGreaterThan(0);
+  expect(ticketRequestHeaders[0]?.['x-creatorhub-client']).toBe('web');
+  expect(ticketRequestHeaders[0]?.['x-creatorhub-client-version']).toBeTruthy();
+  const browserSocketUrls = await page.evaluate(
+    () => (window as Window & { __workspaceUserEventSocketUrls?: string[] }).__workspaceUserEventSocketUrls ?? [],
+  );
+  const userEventsSocketUrl = browserSocketUrls.find((value) => {
+    try {
+      return new URL(value).pathname === '/api/ipad/ws/events';
+    } catch {
+      return false;
+    }
+  });
+  expect(userEventsSocketUrl).toBeTruthy();
+  const userEventsUrl = new URL(userEventsSocketUrl!);
+  expect(userEventsUrl.searchParams.get('ticket')).toBe('e2e-user-events-ticket');
+  expect(userEventsUrl.searchParams.has('token')).toBe(false);
+  expect(userEventsUrl.toString()).not.toContain(AUTH_TOKEN);
+});
+
+test('music producer sees EaseVerse marketing and can start the Pro Tools Companion flow', async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = await collectRuntimeErrors(page);
+  let pairingPayload: Record<string, unknown> | null = null;
+  let delayedAudioShowcaseChunk = false;
+  let bounceMediaRequested = false;
+  await primeAuthAndApi(page, [sampleProject('p1')]);
+  const musicUser = { ...AUTH_USER, role: 'musicproducer', profession: 'musicproducer' };
+  await page.addInitScript((user) => {
+    window.localStorage.setItem('creatorhub_auth_user', JSON.stringify(user));
+  }, musicUser);
+  await page.route('**/api/auth/user', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ authenticated: true, user: musicUser }),
+    }),
+  );
+
+  await page.route('**/api/projects/p1/workspace-bootstrap', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        project: { ...sampleProject('p1'), projectType: 'music', profession: 'musicproducer' },
+        workspaceCategory: 'music',
+        access: { canRead: true, canEdit: true, isOwner: true },
+        owner: { userId: AUTH_USER.id, name: AUTH_USER.name, email: AUTH_USER.email },
+        members: [],
+      }),
+    }),
+  );
+  await page.route('**/api/projects/p1/recording-sessions*', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ audioRoomId: 'room-1', sessions: [] }) }),
+  );
+  await page.route('**/api/projects/p1/audio-room', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ audioRoomId: 'room-1' }) }),
+  );
+  await page.route('**/api/audio-showcases/room-1', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      project: { id: 'room-1', title: 'Smoke Project p1', status: 'under_review' },
+      versions: Array.from({ length: 8 }, (_, index) => {
+        const versionNumber = index + 1;
+        return {
+          id: `version-${versionNumber}`, project_id: 'room-1', version_label: `Mix V${versionNumber}`,
+          version_number: versionNumber,
+          file_name: `CreatorHub-adapter-e2e-${versionNumber}-med-et-svært-langt-filnavn.wav`,
+          file_url: '/api/protools/bounces/bounce-1/file',
+          status: versionNumber === 8 ? 'under_review' : 'superseded',
+        };
+      }),
+      members: [], tasks: [],
+    }) }),
+  );
+  await page.route('**/api/audio-versions/version-8', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: {}, comments: [], sections: [], approvals: [] }) }),
+  );
+  await page.route('**/api/protools/bounces/bounce-1/file', (route) => {
+    bounceMediaRequested = true;
+    return route.fulfill({ status: 200, contentType: 'audio/wav', headers: { 'Accept-Ranges': 'bytes' }, body: oneSecondWav() });
+  });
+  await page.route('**/api/projects/p1/easeverse-tracks', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      connected: true, linkedTrackId: 'track-1',
+      tracks: [{ id: 'track-1', title: 'Workspace Song', linked: true, status: 'mixing' }],
+    }) }),
+  );
+  await page.route('**/api/protools/web/status*', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
+  );
+  await page.route('**/api/protools/companion/release', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '0.1.1', downloads: [], icon: '/protools-companion-icon.png' }) }),
+  );
+  await page.route('**/api/protools/pair/start', (route) => {
+    pairingPayload = route.request().postDataJSON();
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: '246810', expiresInSeconds: 600 }) });
+  });
+  await page.route(/\/src\/pages\/audio-showcase\.tsx(?:\?.*)?$/, async (route) => {
+    delayedAudioShowcaseChunk = true;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.continue();
+  });
+
+  // Auto-redirecten har en egen test over. Start her på prosjektet slik at
+  // denne testen isolerer musikkflyten og Sound Room → lazy Audio Showcase.
+  await page.goto(`${ORIGIN}/workspace/p1`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByText('EaseVerse + Pro Tools Companion', { exact: true })).toBeVisible({ timeout: 90_000 });
+  const overviewHref = await page.getByRole('link', { name: 'Åpne EaseVerse' }).getAttribute('href');
+  const overviewUrl = new URL(overviewHref!);
+  expect(overviewUrl.origin).toBe('https://easeverse.netlify.app');
+  expect(overviewUrl.pathname).toBe('/integrations/creatorhub');
+  expect(overviewUrl.searchParams.get('creatorhubProjectId')).toBe('p1');
+
+  await page.getByRole('button', { name: 'Koble Pro Tools Companion' }).click();
+  await page.waitForURL('**/workspace/p1/sound-room?setup=protools');
+  await expect(page.getByText('Sound Room', { exact: true }).first()).toBeVisible({ timeout: 30_000 });
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('Pro Tools Companion', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('246810', { exact: true })).toBeVisible();
+  await expect.poll(() => pairingPayload).toEqual({ workspaceProjectId: 'p1', audioRoomId: 'room-1', easeverseTrackId: 'track-1', projectName: 'Smoke Project p1' });
+  const soundRoomHref = await page.locator('a[href*="/integrations/creatorhub"]').last().getAttribute('href');
+  const soundRoomUrl = new URL(soundRoomHref!);
+  expect(soundRoomUrl.searchParams.get('creatorhubProjectId')).toBe('p1');
+  expect(soundRoomUrl.searchParams.get('audioReviewProjectId')).toBe('room-1');
+  expect(soundRoomUrl.searchParams.get('externalTrackId')).toBe('track-1');
+  await expect(page.getByText('Shotlist', { exact: true })).toHaveCount(0);
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
+
+  const versionPreview = page.getByTestId('sound-room-version-preview');
+  await expect(versionPreview.getByRole('button', { name: /Åpne Mix V\d+ i lydrommet/ })).toHaveCount(4);
+  await expect(versionPreview.getByText('Mix V4', { exact: true })).toHaveCount(0);
+  await expect(versionPreview.getByText('Mix V5', { exact: true })).toBeVisible();
+  await expect(versionPreview.getByText('Mix V8', { exact: true })).toBeVisible();
+  await expect(page.getByText('8 totalt', { exact: true })).toBeVisible();
+  await expect(page.getByText('Viser de 4 nyeste versjonene', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Se alle i lydrommet' })).toBeVisible();
+  expect(await versionPreview.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const filenameMetrics = await versionPreview.locator('button').last().locator('p').last().evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    textOverflow: getComputedStyle(element).textOverflow,
+  }));
+  expect(filenameMetrics.textOverflow).toBe('ellipsis');
+  expect(filenameMetrics.scrollWidth).toBeGreaterThan(filenameMetrics.clientWidth);
+
+  const desktopViewport = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(versionPreview).toBeVisible();
+  expect(await versionPreview.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  if (desktopViewport) await page.setViewportSize(desktopViewport);
+
+  await page.getByRole('button', { name: 'Åpne lydrommet' }).first().click();
+  await page.waitForURL('**/audio-review/room-1?ws=p1', { timeout: 60_000 });
+  await expect(page.getByText('Universal Showcase', { exact: true })).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText('Laster waveform…', { exact: true })).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.getByText(/\/ 0:01/).first()).toBeVisible();
+  expect(bounceMediaRequested, 'WaveSurfer må hente Companion-bouncen gjennom same-origin-streamen').toBe(true);
+  expect(delayedAudioShowcaseChunk, 'Testen må faktisk forsinke den lazy-lastede lydrom-chunken').toBe(true);
+  expect(errors, `Runtime errors in music Workspace flow:\n${errors.join('\n')}`).toEqual([]);
+});

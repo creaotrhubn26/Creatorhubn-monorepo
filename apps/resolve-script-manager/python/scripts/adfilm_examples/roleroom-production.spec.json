@@ -1,0 +1,116 @@
+{
+  "product": "The Role Room — Produksjonsteam",
+  "workdir": "/tmp/roleroom-prod-film",
+  "setting": "Norsk filminnspilling på location — fra kald gryning, gjennom dagen, til wrap i gyllen time",
+  "mode": "narrativ merkevarefilm (emosjonell historie — teamet er helten, produktet er den stille alliansen)",
+  "brand": {
+    "wordmark_asset": "TheRoleRoom_Logo_Tagline",
+    "accent": "#aa36c5",
+    "tagline": "Casting. Roles. Together."
+  },
+  "character": {
+    "ref_still": "stills/ref.jpg",
+    "lock": "kvinnelig produsent / 1. regiassistent, 30-år, praktisk feltjakke, headset rundt halsen, bærer dagens vekt med rolig varme"
+  },
+  "fps": 25,
+  "vo": {
+    "provider": "elevenlabs",
+    "voice": "Brian",
+    "lang_spoken": "en",
+    "lang_sub": "no",
+    "tone": "varm, intim, cinematisk fortellerstemme — ikke selgende"
+  },
+  "music": "music_seamless.m4a",
+  "out": "~/Desktop/ROLEROOM-PRODUCTION-final.mp4",
+  "shots": [
+    {
+      "id": "s01",
+      "prompt": "a lone producer stands on an empty film location before dawn, breath visible in the cold blue air, looking out over the mountains, unlit gear silhouettes around her — the quiet weight of the day ahead, her face calm but carrying responsibility",
+      "dur": 5.0,
+      "ui_key": false,
+      "beat": "hook",
+      "emotion": "ansvar · stillheten før alle kommer",
+      "shot_type": "wide, lonely",
+      "camera": "slow push-in",
+      "feature": "—"
+    },
+    {
+      "id": "s02",
+      "prompt": "close over-the-shoulder, she glances down at the tablet for a moment, then lifts her eyes as the first crew van headlights sweep across the dark location — she is ready, so she can be present; plain green tablet screen",
+      "dur": 4.0,
+      "ui_key": true,
+      "beat": "setup",
+      "emotion": "beredskap · lettelse — hun kan slippe å bekymre seg",
+      "shot_type": "intimate OTS",
+      "camera": "static, headlights rake",
+      "feature": "Call sheet — sendt kvelden før",
+      "ui_recording": "recordings/callsheet.mov"
+    },
+    {
+      "id": "s03",
+      "prompt": "the crew arriving at first light — hugs and handshakes, steam rising from coffee cups, a grip laughing, headlamps and warm breath, the family assembling around the trucks",
+      "dur": 4.5,
+      "ui_key": false,
+      "beat": "build",
+      "emotion": "tilhørighet · et sett blir en familie",
+      "shot_type": "warm medium, many faces",
+      "camera": "handheld weave",
+      "feature": "Team / crew samlet"
+    },
+    {
+      "id": "s04",
+      "prompt": "intimate macro close-ups of the craft: a focus puller's fingers on the lens barrel, warm key light finding an actor's face, a boom held overhead, hands loading a film mag — devotion to the work, shallow depth of field",
+      "dur": 5.0,
+      "ui_key": false,
+      "beat": "build",
+      "emotion": "håndverk · hengivenhet til arbeidet",
+      "shot_type": "macro details, faces & hands",
+      "camera": "slow drift",
+      "feature": "—"
+    },
+    {
+      "id": "s05",
+      "prompt": "at the monitor cart as the sun drops fast, the director leans in, the producer beside holds the tablet showing the live take being logged — a held breath, the whole crew focused on one last shot; plain green tablet screen",
+      "dur": 5.0,
+      "ui_key": true,
+      "beat": "tension",
+      "emotion": "press · vi mister lyset — men ingen mister oversikten",
+      "shot_type": "OTS at the monitor",
+      "camera": "tense slow push-in",
+      "feature": "Live Set — hvert take logget",
+      "ui_recording": "recordings/liveset.mov"
+    },
+    {
+      "id": "s06",
+      "prompt": "CUT — the exhale: the director and producer share a tired, relieved smile, a crew member claps, warm golden light on their faces, the release of pressure after making the shot",
+      "dur": 4.5,
+      "ui_key": false,
+      "beat": "peak",
+      "emotion": "delt triumf · lettelsen når taket sitter",
+      "shot_type": "two-shot, emotional faces",
+      "camera": "handheld, breathe out",
+      "feature": "—"
+    },
+    {
+      "id": "s07",
+      "prompt": "golden-hour wrap: the crew as silhouettes packing the camera together, tired and proud, the producer quietly lowers the tablet after sending the delivery, warm backlight — wordmark reveal moment; plain green tablet screen",
+      "dur": 5.0,
+      "ui_key": true,
+      "beat": "resolution",
+      "emotion": "stolthet · samhørighet — that's a wrap",
+      "shot_type": "OTS silhouette outro",
+      "camera": "static hold",
+      "feature": "Levering — dagen lukkes",
+      "ui_recording": "recordings/levering.mov"
+    }
+  ],
+  "vo_lines": [
+    { "en": "Long before the first shot, someone is already here — carrying the whole day.", "no": "Lenge før første opptak er noen allerede her — og bærer hele dagen." },
+    { "en": "Everyone already knows where to be. So she can just be present.", "no": "Alle vet allerede hvor de skal. Så hun bare kan være til stede." },
+    { "en": "One by one they arrive, and a set becomes a family.", "no": "Én etter én kommer de, og et sett blir en familie." },
+    { "en": "This is where it lives — in the hands, in the light, in the trust between people.", "no": "Her lever det — i hendene, i lyset, i tilliten mellom mennesker." },
+    { "en": "The light won't wait. But when everyone sees the whole picture, no one is left behind.", "no": "Lyset venter ikke. Men når alle ser hele bildet, blir ingen etterlatt." },
+    { "en": "And you make the shot — together.", "no": "Og dere får taket — sammen." },
+    { "en": "The Role Room. So the team can focus on what matters: the story, and each other.", "no": "The Role Room. Så teamet kan fokusere på det som betyr mest: historien, og hverandre." }
+  ]
+}

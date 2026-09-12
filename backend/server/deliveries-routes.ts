@@ -96,7 +96,7 @@ export function setupDeliveriesRoutes(deps: DeliveriesRoutesDeps): void {
         return res.status(400).json({ error: "Ugyldig event_type" });
       }
       const id = crypto.randomUUID();
-      const accessCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const accessCode = crypto.randomBytes(3).toString("hex").toUpperCase();
       const now = new Date().toISOString();
       await pool.query(
         `INSERT INTO deliveries (id, vendor_id, couple_name, couple_email, access_code, title, description, wedding_date, status, event_type, created_at, updated_at)

@@ -8,70 +8,135 @@
  * proportional time once a stage finishes.
  */
 
-import React from 'react';
-import { Box, Chip, LinearProgress, Stack, Typography } from '@mui/material';
+import React from "react";
+import {
+  Box,
+  Button,
+  Chip,
+  LinearProgress,
+  Stack,
+  Typography,
+} from "@mui/material";
 import {
   CheckCircle as CheckCircleIcon,
   ErrorOutline as ErrorOutlineIcon,
   HourglassEmpty as HourglassIcon,
   WarningAmber as WarningAmberIcon,
-} from '@mui/icons-material';
-import type { ResearchStage, ResearchStageKey, ResearchProgressStatus } from '../../hooks/useResearchProgress';
+} from "@mui/icons-material";
+import type {
+  ResearchMockupDraft,
+  ResearchStage,
+  ResearchStageKey,
+  ResearchProgressStatus,
+} from "../../hooks/useResearchProgress";
 
 const STAGE_LABELS: Record<ResearchStageKey, string> = {
-  brreg: 'Brønnøysundregistrene',
-  website: 'Nettsidescraping',
-  googlePlacesBusiness: 'Google Places (bedrift)',
-  googlePlacesCompetitors: 'Google Places (konkurrenter)',
-  googlePlacesLocal: 'Google Places (nærområde)',
-  competitorAnalysis: 'Konkurrentanalyse',
-  localPresence: 'Lokal tilstedeværelse',
-  merchSuppliers: 'Merch-leverandører',
-  metaPagesEnrichment: 'Meta Pages-berikelse',
-  colorExtraction: 'Logo-paletten',
-  claudeSynthesis: 'Claude-syntese',
-  openaiSynthesis: 'OpenAI-syntese',
+  brreg: "Brønnøysundregistrene",
+  website: "Nettsidescraping",
+  googlePlacesBusiness: "Google Places (bedrift)",
+  googlePlacesCompetitors: "Google Places (konkurrenter)",
+  webCompetitors: "Websøk (produktkonkurrenter)",
+  googlePlacesLocal: "Google Places (nærområde)",
+  competitorAnalysis: "Konkurrentanalyse",
+  localPresence: "Lokal tilstedeværelse",
+  merchSuppliers: "Merch-leverandører",
+  metaPagesEnrichment: "Meta Pages-berikelse",
+  colorExtraction: "Logo-paletten",
+  claudeSynthesis: "CI-syntese",
+  openaiSynthesis: "OpenAI-syntese",
 };
+
+const CREATIVE_SKILL_LABELS: Record<string, string> = {
+  develop_campaign_system: "Kampanjesystem",
+  guard_claim_evidence: "Kildekontroll",
+  compose_single_image_post: "Bildekomposisjon",
+  compose_carousel_narrative: "Karusellfortelling",
+  compose_reel_storyboard: "Reel-storyboard",
+  compose_brand_motion: "Brand motion",
+  direct_subject_figure: "Kinematisk 3D-figurretning",
+  customize_subject_identity: "Figuridentitet og utseende",
+  build_character_master: "3-visnings karakter-master",
+  render_high_fidelity_subject: "High-end figur-render",
+  direct_pose_expression: "Positur og uttrykk",
+  generate_layered_sprite_package: "Lagdelte spriteframes",
+  rig_subject_motion: "Figurrigg og bevegelse",
+  composite_subject_scene: "Figur-compositing",
+  author_subject_animation: "Manuell figur-animasjon",
+  curate_subject_variants: "Deduplisert variantbank",
+  audit_subject_visual_quality: "Visuell figur-QA",
+  compose_cinematic_scene: "Kinematisk scenekomposisjon",
+  verify_subject_production: "Produksjonsverifisering",
+};
+
+function creativeSkillSummary(draft: ResearchMockupDraft): string {
+  return (draft.skillRuns ?? [])
+    .flatMap((skill) => {
+      const label = CREATIVE_SKILL_LABELS[skill.id];
+      return label && skill.status !== "failed" ? [label] : [];
+    })
+    .join(" · ");
+}
 
 interface ResearchProgressLiveProps {
   status: ResearchProgressStatus;
   stages: ResearchStage[];
   error: string | null;
+  mockups?: ResearchMockupDraft[];
 }
 
 function formatMs(ms: number | undefined): string {
-  if (typeof ms !== 'number' || !Number.isFinite(ms)) return '—';
+  if (typeof ms !== "number" || !Number.isFinite(ms)) return "—";
   if (ms < 1000) return `${Math.round(ms)} ms`;
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
-const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({ status, stages, error }) => {
-  if (status === 'idle') return null;
-  const totalDone = stages.filter((s) => s.status === 'done').length;
-  const totalRunning = stages.filter((s) => s.status === 'running').length;
-  const totalError = stages.filter((s) => s.status === 'error').length;
-  const maxMs = Math.max(1, ...stages.filter((s) => s.ms).map((s) => s.ms ?? 0));
+const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({
+  status,
+  stages,
+  error,
+  mockups = [],
+}) => {
+  if (status === "idle") return null;
+  const totalDone = stages.filter((s) => s.status === "done").length;
+  const totalRunning = stages.filter((s) => s.status === "running").length;
+  const totalError = stages.filter((s) => s.status === "error").length;
+  const maxMs = Math.max(
+    1,
+    ...stages.filter((s) => s.ms).map((s) => s.ms ?? 0),
+  );
 
   return (
     <Box
       sx={{
         p: 1.6,
         borderRadius: 3,
-        border: '1px solid rgba(99,102,241,0.32)',
-        bgcolor: 'rgba(30,27,75,0.45)',
+        border: "1px solid rgba(99,102,241,0.32)",
+        bgcolor: "rgba(30,27,75,0.45)",
       }}
     >
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.2 }}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent="space-between"
+        sx={{ mb: 1.2 }}
+      >
         <Stack spacing={0.2}>
-          <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>
-            {status === 'streaming' ? 'Research kjører…' : status === 'done' ? 'Research fullført' : 'Research feilet'}
+          <Typography sx={{ color: "#f8fafc", fontWeight: 800 }}>
+            {status === "streaming"
+              ? "Research kjører…"
+              : status === "done"
+                ? "Research fullført"
+                : "Research feilet"}
           </Typography>
-          <Typography sx={{ color: 'rgba(226,232,240,0.65)', fontSize: '0.78rem' }}>
-            {totalDone} fullført{totalRunning > 0 ? ` · ${totalRunning} pågår` : ''}
-            {totalError > 0 ? ` · ${totalError} feil` : ''}
+          <Typography
+            sx={{ color: "rgba(226,232,240,0.65)", fontSize: "0.78rem" }}
+          >
+            {totalDone} fullført
+            {totalRunning > 0 ? ` · ${totalRunning} pågår` : ""}
+            {totalError > 0 ? ` · ${totalError} feil` : ""}
           </Typography>
         </Stack>
-        {status === 'streaming' ? (
+        {status === "streaming" ? (
           <Box sx={{ minWidth: 120 }}>
             <LinearProgress sx={{ height: 6, borderRadius: 3 }} />
           </Box>
@@ -80,54 +145,86 @@ const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({ status, sta
 
       <Stack spacing={0.5}>
         {stages.length === 0 ? (
-          <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.82rem' }}>
+          <Typography
+            sx={{ color: "rgba(226,232,240,0.5)", fontSize: "0.82rem" }}
+          >
             Venter på første stage…
           </Typography>
         ) : (
           stages.map((stage) => {
             const label = STAGE_LABELS[stage.key] ?? stage.key;
-            const isDone = stage.status === 'done';
-            const isRunning = stage.status === 'running';
-            const isError = stage.status === 'error';
+            const isDone = stage.status === "done";
+            const isRunning = stage.status === "running";
+            const isError = stage.status === "error";
             const hasFallback = Boolean(stage.fallback);
             const barColor = isError
-              ? 'rgba(239,68,68,0.32)'
+              ? "rgba(239,68,68,0.32)"
               : hasFallback
-                ? 'rgba(251,191,36,0.28)'
-                : 'rgba(52,211,153,0.28)';
-            const width = stage.ms ? Math.min(100, (stage.ms / maxMs) * 100) : isRunning ? 100 : 0;
-            const Icon = isError ? ErrorOutlineIcon : hasFallback ? WarningAmberIcon : isDone ? CheckCircleIcon : HourglassIcon;
-            const iconColor = isError ? '#f87171' : hasFallback ? '#fbbf24' : isDone ? '#34d399' : '#a5b4fc';
+                ? "rgba(251,191,36,0.28)"
+                : "rgba(52,211,153,0.28)";
+            const width = stage.ms
+              ? Math.min(100, (stage.ms / maxMs) * 100)
+              : isRunning
+                ? 100
+                : 0;
+            const Icon = isError
+              ? ErrorOutlineIcon
+              : hasFallback
+                ? WarningAmberIcon
+                : isDone
+                  ? CheckCircleIcon
+                  : HourglassIcon;
+            const iconColor = isError
+              ? "#f87171"
+              : hasFallback
+                ? "#fbbf24"
+                : isDone
+                  ? "#34d399"
+                  : "#a5b4fc";
             return (
               <Box
                 key={stage.key}
                 sx={{
-                  position: 'relative',
+                  position: "relative",
                   p: 0.7,
                   borderRadius: 1.4,
-                  border: `1px solid ${isRunning ? 'rgba(99,102,241,0.48)' : 'rgba(148,163,184,0.14)'}`,
-                  bgcolor: 'rgba(15,23,42,0.5)',
-                  overflow: 'hidden',
-                  animation: isRunning ? 'researchPulse 1.4s ease-in-out infinite' : 'none',
-                  '@keyframes researchPulse': {
-                    '0%, 100%': { borderColor: 'rgba(99,102,241,0.32)' },
-                    '50%': { borderColor: 'rgba(99,102,241,0.78)' },
+                  border: `1px solid ${isRunning ? "rgba(99,102,241,0.48)" : "rgba(148,163,184,0.14)"}`,
+                  bgcolor: "rgba(15,23,42,0.5)",
+                  overflow: "hidden",
+                  animation: isRunning
+                    ? "researchPulse 1.4s ease-in-out infinite"
+                    : "none",
+                  "@keyframes researchPulse": {
+                    "0%, 100%": { borderColor: "rgba(99,102,241,0.32)" },
+                    "50%": { borderColor: "rgba(99,102,241,0.78)" },
                   },
                 }}
               >
                 <Box
                   sx={{
-                    position: 'absolute',
+                    position: "absolute",
                     inset: 0,
                     width: `${width}%`,
-                    bgcolor: isRunning ? 'rgba(99,102,241,0.18)' : barColor,
-                    transition: 'width 0.4s ease-out',
+                    bgcolor: isRunning ? "rgba(99,102,241,0.18)" : barColor,
+                    transition: "width 0.4s ease-out",
                     zIndex: 0,
                   }}
                 />
-                <Stack direction="row" alignItems="center" spacing={1} sx={{ position: 'relative', zIndex: 1 }}>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  spacing={1}
+                  sx={{ position: "relative", zIndex: 1 }}
+                >
                   <Icon sx={{ color: iconColor, fontSize: 16 }} />
-                  <Typography sx={{ color: '#f8fafc', fontSize: '0.84rem', fontWeight: 600, flex: 1 }}>
+                  <Typography
+                    sx={{
+                      color: "#f8fafc",
+                      fontSize: "0.84rem",
+                      fontWeight: 600,
+                      flex: 1,
+                    }}
+                  >
                     {label}
                   </Typography>
                   {hasFallback ? (
@@ -135,25 +232,25 @@ const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({ status, sta
                       size="small"
                       label={stage.fallback}
                       sx={{
-                        bgcolor: 'rgba(251,191,36,0.18)',
-                        color: '#fde68a',
-                        fontFamily: 'monospace',
-                        fontSize: '0.66rem',
+                        bgcolor: "rgba(251,191,36,0.18)",
+                        color: "#fde68a",
+                        fontFamily: "monospace",
+                        fontSize: "0.66rem",
                         height: 18,
                       }}
                     />
                   ) : null}
                   <Typography
                     sx={{
-                      color: 'rgba(226,232,240,0.72)',
-                      fontSize: '0.74rem',
-                      fontFamily: 'monospace',
+                      color: "rgba(226,232,240,0.72)",
+                      fontSize: "0.74rem",
+                      fontFamily: "monospace",
                       fontWeight: 700,
                       minWidth: 56,
-                      textAlign: 'right',
+                      textAlign: "right",
                     }}
                   >
-                    {isRunning ? '…' : formatMs(stage.ms)}
+                    {isRunning ? "…" : formatMs(stage.ms)}
                   </Typography>
                 </Stack>
               </Box>
@@ -162,8 +259,166 @@ const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({ status, sta
         )}
       </Stack>
 
+      {mockups.length > 0 ? (
+        <Box sx={{ mt: 1.4 }}>
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{ mb: 0.8 }}
+          >
+            <Typography
+              sx={{ color: "#f8fafc", fontSize: "0.82rem", fontWeight: 800 }}
+            >
+              Post-mockups bygges mens research pågår
+            </Typography>
+            <Chip
+              size="small"
+              label={`${mockups.filter((item) => item.status === "ready").length}/${mockups.length} klare`}
+              color={
+                mockups.every((item) => item.status === "ready")
+                  ? "success"
+                  : "info"
+              }
+              sx={{ height: 20, fontSize: "0.65rem" }}
+            />
+          </Stack>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "1fr",
+                sm: "repeat(3, minmax(0, 1fr))",
+              },
+              gap: 1,
+            }}
+          >
+            {mockups.map((draft) => (
+              <Box
+                key={draft.id}
+                sx={{
+                  border: "1px solid rgba(148,163,184,0.2)",
+                  borderRadius: 2,
+                  overflow: "hidden",
+                  bgcolor: "rgba(15,23,42,0.76)",
+                }}
+              >
+                {draft.previewDataUrl ? (
+                  <Box
+                    component="img"
+                    src={draft.previewDataUrl}
+                    alt={`Arbeidsutkast: ${draft.title}`}
+                    sx={{
+                      display: "block",
+                      width: "100%",
+                      aspectRatio: "4 / 5",
+                      objectFit: "cover",
+                      opacity: draft.status === "ready" ? 1 : 0.72,
+                    }}
+                  />
+                ) : null}
+                <Stack spacing={0.55} sx={{ p: 0.9 }}>
+                  <Stack direction="row" gap={0.5} alignItems="center">
+                    <Chip
+                      size="small"
+                      label={
+                        draft.mediaType === "carousel"
+                          ? "Karusell"
+                          : draft.mediaType === "reel"
+                            ? "Reel"
+                            : "Bilde"
+                      }
+                      sx={{ height: 18, fontSize: "0.6rem" }}
+                    />
+                    <Typography
+                      sx={{
+                        color: draft.status === "ready" ? "#86efac" : "#a5b4fc",
+                        fontSize: "0.65rem",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {draft.status === "ready"
+                        ? "Redigerbar mockup klar"
+                        : `${draft.progress}% · ${draft.stage || "starter"}`}
+                    </Typography>
+                  </Stack>
+                  {(draft.skillRuns?.length ?? 0) > 0 ? (
+                    <>
+                      <Typography
+                        sx={{
+                          color:
+                            draft.qualityStatus === "ready"
+                              ? "#86efac"
+                              : draft.qualityStatus === "failed"
+                                ? "#fca5a5"
+                                : "#fde68a",
+                          fontSize: "0.62rem",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Skill-sjekk:{" "}
+                        {
+                          (draft.skillRuns ?? []).filter(
+                            (skill) => skill.status === "ready",
+                          ).length
+                        }
+                        /{draft.skillRuns?.length ?? 0}
+                      </Typography>
+                      {creativeSkillSummary(draft) ? (
+                        <Typography
+                          title={creativeSkillSummary(draft)}
+                          sx={{
+                            color: "#cbd5e1",
+                            fontSize: "0.59rem",
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          {creativeSkillSummary(draft)}
+                        </Typography>
+                      ) : null}
+                    </>
+                  ) : null}
+                  <Typography
+                    noWrap
+                    title={draft.title}
+                    sx={{
+                      color: "#f8fafc",
+                      fontSize: "0.73rem",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {draft.title}
+                  </Typography>
+                  {draft.mockupProjectId ? (
+                    <Button
+                      component="a"
+                      href={`postagent://mockup?projectId=${encodeURIComponent(draft.mockupProjectId)}`}
+                      size="small"
+                      variant="outlined"
+                      sx={{
+                        textTransform: "none",
+                        alignSelf: "flex-start",
+                        fontSize: "0.66rem",
+                      }}
+                    >
+                      Åpne i Mockup Studio
+                    </Button>
+                  ) : (
+                    <LinearProgress
+                      variant="determinate"
+                      value={draft.progress}
+                      sx={{ height: 4, borderRadius: 2 }}
+                    />
+                  )}
+                </Stack>
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      ) : null}
+
       {error ? (
-        <Typography sx={{ color: '#fca5a5', fontSize: '0.82rem', mt: 1.2 }}>
+        <Typography sx={{ color: "#fca5a5", fontSize: "0.82rem", mt: 1.2 }}>
           {error}
         </Typography>
       ) : null}

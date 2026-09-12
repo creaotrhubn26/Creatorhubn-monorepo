@@ -79,8 +79,9 @@ export const SUBSCRIPTION_PLANS: Record<PlanTier, SubscriptionPlan> = {
     displayName: 'Basic Creator',
     shortName: 'Basic',
     description: 'Perfect for individual creators starting their journey',
-    priceMonthly: 299,
-    priceAnnual: 2990, // ~17% discount
+    // Synket med backend-fasit (buildCompatPlatformSubscriptionPlans, eks. mva NOK).
+    priceMonthly: 249,
+    priceAnnual: 2490, // 2 mnd gratis årlig
     features: [
       'Up to 10 active projects',
       '50GB cloud storage',
@@ -117,8 +118,9 @@ export const SUBSCRIPTION_PLANS: Record<PlanTier, SubscriptionPlan> = {
     displayName: 'Pro Creator',
     shortName: 'Pro',
     description: 'For professional creators who need advanced tools',
-    priceMonthly: 599,
-    priceAnnual: 5990, // ~17% discount
+    // Synket med backend-fasit «Professional» (buildCompatPlatformSubscriptionPlans).
+    priceMonthly: 449,
+    priceAnnual: 4490, // 2 mnd gratis årlig
     features: [
       'Unlimited projects',
       '500GB cloud storage',
@@ -154,14 +156,15 @@ export const SUBSCRIPTION_PLANS: Record<PlanTier, SubscriptionPlan> = {
     displayName: 'Creator Teams',
     shortName: 'Teams',
     description: 'For teams and agencies managing multiple creators',
-    priceMonthly: 1499,
-    priceAnnual: 14990, // ~17% discount
-    // Per-user pricing for Enterprise
+    // Synket med backend-fasit «Enterprise»: flat 3990/39900, 100 brukere inkl., 1TB.
+    priceMonthly: 3990,
+    priceAnnual: 39900, // 2 mnd gratis årlig
+    // Enterprise = flat pris med 100 brukere inkludert (ingen per-sete-påslag).
     perUserPricing: {
-      basePrice: 1499, // Base price for the plan (includes 3 users)
-      includedUsers: 3, // Minimum users included in base price
-      pricePerAdditionalUser: 299, // NOK per additional user per month
-      pricePerAdditionalUserAnnual: 2990, // NOK per additional user per year (~17% discount)
+      basePrice: 3990, // Flat pris — inkluderer 100 brukere
+      includedUsers: 100, // Alle 100 brukere inkludert i flat pris
+      pricePerAdditionalUser: 0, // Ingen per-bruker-påslag (100 er også taket)
+      pricePerAdditionalUserAnnual: 0,
       maxUsers: 100, // Maximum users per enterprise account
       volumeDiscounts: [
         { minUsers: 10, discount: 0.05 }, // 5% discount for 10+ users

@@ -2,10 +2,8 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -43,6 +41,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { useToast } from '@/hooks/use-toast';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 
 type TestStatus = 'draft' | 'running' | 'paused' | 'completed' | 'cancelled';
 type TestType = 'email' | 'social';
@@ -121,6 +120,7 @@ export default function ABTestingManager() {
   const [newMinSampleSize, setNewMinSampleSize] = useState<number>(1000);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const { data: tests = [], isLoading } = useQuery({
     queryKey: [...QUERY_KEYS.AB_TESTS, selectedTab],
@@ -131,6 +131,7 @@ export default function ABTestingManager() {
       }
       return (await res.json()) as ABTest[];
     },
+    select: (data) => (Array.isArray(data) ? data : []),
   });
 
   const createTestMutation = useMutation({
@@ -214,14 +215,14 @@ export default function ABTestingManager() {
     },
   });
 
-  const getStatusColor = (
+  const getStatusTone = (
     status: TestStatus,
-  ): 'default' | 'primary' | 'secondary' | 'success' | 'error' | 'warning' => {
+  ): 'success' | 'warning' | 'brand' | 'error' | 'neutral' => {
     if (status === 'running') return 'success';
     if (status === 'paused') return 'warning';
-    if (status === 'completed') return 'primary';
+    if (status === 'completed') return 'brand';
     if (status === 'cancelled') return 'error';
-    return 'default';
+    return 'neutral';
   };
 
   const getTypeIcon = (type: TestType) => {
@@ -252,7 +253,10 @@ export default function ABTestingManager() {
       tests.reduce(
         (sum, test) =>
           sum +
-          test.variants.reduce((variantSum, variant) => variantSum + (variant.metrics.views ?? 0), 0),
+          (Array.isArray(test.variants) ? test.variants : []).reduce(
+            (variantSum, variant) => variantSum + (variant.metrics?.views ?? 0),
+            0,
+          ),
         0,
       ),
     [tests],
@@ -308,18 +312,18 @@ export default function ABTestingManager() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+          <Typography variant="h4" component="h2" sx={{ fontWeight: 700 }}>
             A/B Testing
           </Typography>
           <Typography color="text.secondary">
             Optimize campaigns with controlled experiments and measurable winners.
           </Typography>
         </Box>
-        <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCreateDialogOpen(true)}>
+        <AdminButton tone="primary" startIcon={<AddIcon />} onClick={() => setCreateDialogOpen(true)}>
           Create Test
-        </Button>
+        </AdminButton>
       </Box>
 
       <Grid container spacing={2}>
@@ -397,15 +401,16 @@ export default function ABTestingManager() {
         <Card>
           <CardContent sx={{ textAlign: 'center', py: 6 }}>
             <Typography color="text.secondary">No tests found for this filter.</Typography>
-            <Button sx={{ mt: 2 }} startIcon={<AddIcon />} onClick={() => setCreateDialogOpen(true)}>
+            <AdminButton tone="ghost" sx={{ mt: 2 }} startIcon={<AddIcon />} onClick={() => setCreateDialogOpen(true)}>
               Create your first test
-            </Button>
+            </AdminButton>
           </CardContent>
         </Card>
       ) : (
         <Stack spacing={2}>
           {tests.map((test) => {
-            const winner = test.variants.find((variant) => variant.id === test.results?.winner);
+            const variants = Array.isArray(test.variants) ? test.variants : [];
+            const winner = variants.find((variant) => variant.id === test.results?.winner);
             return (
               <Card key={test.id}>
                 <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -419,57 +424,56 @@ export default function ABTestingManager() {
                       <Stack direction="row" alignItems="center" spacing={1}>
                         {getTypeIcon(test.type)}
                         <Typography variant="h6">{test.name}</Typography>
-                        <Chip size="small" label={test.status} color={getStatusColor(test.status)} />
+                        <StatusChip tone={getStatusTone(test.status)} label={test.status} />
                       </Stack>
                       <Typography color="text.secondary" variant="body2">
-                        {test.variants.length} variants | primary metric: {test.config.primaryMetric}
+                        {variants.length} variants | primary metric: {test.config.primaryMetric}
                       </Typography>
                     </Box>
                     <Stack direction="row" spacing={1}>
                       {test.status === 'draft' && (
-                        <Button
+                        <AdminButton
+                          tone="primary"
                           size="small"
-                          variant="contained"
                           startIcon={<PlayIcon />}
                           onClick={() => startTestMutation.mutate(test.id)}
                           disabled={isBusy}
                         >
                           Start
-                        </Button>
+                        </AdminButton>
                       )}
                       {test.status === 'running' && (
                         <>
-                          <Button
+                          <AdminButton
+                            tone="secondary"
                             size="small"
-                            variant="outlined"
                             startIcon={<PauseIcon />}
                             onClick={() => pauseTestMutation.mutate(test.id)}
                             disabled={isBusy}
                           >
                             Pause
-                          </Button>
-                          <Button
+                          </AdminButton>
+                          <AdminButton
+                            tone="danger"
                             size="small"
-                            variant="outlined"
-                            color="error"
                             startIcon={<StopIcon />}
                             onClick={() => stopTestMutation.mutate(test.id)}
                             disabled={isBusy}
                           >
                             Stop
-                          </Button>
+                          </AdminButton>
                         </>
                       )}
                       {test.status === 'paused' && (
-                        <Button
+                        <AdminButton
+                          tone="primary"
                           size="small"
-                          variant="contained"
                           startIcon={<PlayIcon />}
                           onClick={() => startTestMutation.mutate(test.id)}
                           disabled={isBusy}
                         >
                           Resume
-                        </Button>
+                        </AdminButton>
                       )}
                     </Stack>
                   </Stack>
@@ -489,7 +493,7 @@ export default function ABTestingManager() {
                   )}
 
                   <Grid container spacing={1.5}>
-                    {test.variants.map((variant) => (
+                    {variants.map((variant) => (
                       <Grid key={variant.id} xs={12} md={6} lg={4}>
                         <Card variant="outlined">
                           <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -506,7 +510,7 @@ export default function ABTestingManager() {
                             </Typography>
                             <Stack direction="row" justifyContent="space-between">
                               <Stack direction="row" spacing={0.5} alignItems="center">
-                                <ViewsIcon fontSize="small" />
+                                <ViewsIcon fontSize="small" aria-hidden />
                                 <Typography variant="caption">Views</Typography>
                               </Stack>
                               <Typography variant="caption" sx={{ fontWeight: 600 }}>
@@ -515,7 +519,7 @@ export default function ABTestingManager() {
                             </Stack>
                             <Stack direction="row" justifyContent="space-between">
                               <Stack direction="row" spacing={0.5} alignItems="center">
-                                <ClicksIcon fontSize="small" />
+                                <ClicksIcon fontSize="small" aria-hidden />
                                 <Typography variant="caption">Clicks</Typography>
                               </Stack>
                               <Typography variant="caption" sx={{ fontWeight: 600 }}>
@@ -524,7 +528,7 @@ export default function ABTestingManager() {
                             </Stack>
                             <Stack direction="row" justifyContent="space-between">
                               <Stack direction="row" spacing={0.5} alignItems="center">
-                                <ConversionIcon fontSize="small" />
+                                <ConversionIcon fontSize="small" aria-hidden />
                                 <Typography variant="caption">Conversions</Typography>
                               </Stack>
                               <Typography variant="caption" sx={{ fontWeight: 600 }}>
@@ -553,10 +557,9 @@ export default function ABTestingManager() {
                           <Typography variant="body2" color="text.secondary">
                             Winner
                           </Typography>
-                          <Chip
-                            size="small"
+                          <StatusChip
+                            tone={winner ? 'success' : 'neutral'}
                             label={winner?.name ?? 'No winner'}
-                            color={winner ? 'success' : 'default'}
                           />
                         </Stack>
                         <Stack direction="row" justifyContent="space-between">
@@ -593,7 +596,7 @@ export default function ABTestingManager() {
         </Stack>
       )}
 
-      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Create A/B Test</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
           <TextField
@@ -659,14 +662,15 @@ export default function ABTestingManager() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setCreateDialogOpen(false)}>Cancel</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleCreateTest}
-            variant="contained"
-            disabled={createTestMutation.isPending || !newTestName.trim()}
+            loading={createTestMutation.isPending}
+            disabled={!newTestName.trim()}
           >
             Create Test
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

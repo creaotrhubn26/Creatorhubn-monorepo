@@ -72,7 +72,7 @@ export default function FeedPlanTimeline({
     >
       <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
         <Stack direction="row" spacing={0.8} alignItems="center">
-          <CalendarMonthIcon fontSize="small" sx={{ color: '#22d3ee' }} />
+          <CalendarMonthIcon fontSize="small" sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
           <Typography sx={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.92rem' }}>
             Innholdsplan
           </Typography>
@@ -93,9 +93,9 @@ export default function FeedPlanTimeline({
                 fontWeight: 700,
                 ...(hasAnyScheduled
                   ? {
-                      color: '#22d3ee',
+                      color: 'var(--role-cyan, #22d3ee)',
                       borderColor: 'rgba(34,211,238,0.4)',
-                      '&:hover': { borderColor: '#22d3ee', bgcolor: 'rgba(34,211,238,0.08)' },
+                      '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)', bgcolor: 'rgba(34,211,238,0.08)' },
                     }
                   : {
                       color: '#062a30',
@@ -177,10 +177,10 @@ export default function FeedPlanTimeline({
                 p: 1,
                 borderRadius: 1.6,
                 bgcolor: isSelected ? 'rgba(34,211,238,0.12)' : 'rgba(15,23,42,0.7)',
-                border: `1px solid ${isSelected ? '#22d3ee' : 'rgba(148,163,184,0.18)'}`,
+                border: `1px solid ${isSelected ? 'var(--role-cyan, #22d3ee)' : 'rgba(148,163,184,0.18)'}`,
                 transition: 'transform 0.12s ease, border-color 0.12s ease, background 0.12s ease',
                 '&:hover': {
-                  borderColor: '#22d3ee',
+                  borderColor: 'var(--role-cyan, #22d3ee)',
                   transform: 'translateY(-1px)',
                 },
               }}
@@ -193,7 +193,7 @@ export default function FeedPlanTimeline({
                     borderRadius: 0.6,
                     background: post.customImageUrl
                       ? `center/cover no-repeat url(${post.customImageUrl})`
-                      : `linear-gradient(135deg, ${post.backgroundColor || '#0f172a'}, ${post.accentColor || '#22d3ee'})`,
+                      : `linear-gradient(135deg, ${post.backgroundColor || '#0f172a'}, ${post.accentColor || 'var(--role-cyan, #22d3ee)'})`,
                     flexShrink: 0,
                     border: '1px solid rgba(255,255,255,0.06)',
                   }}
@@ -219,7 +219,7 @@ export default function FeedPlanTimeline({
               </Stack>
               {date ? (
                 <Stack direction="row" spacing={0.6} alignItems="center">
-                  <EventAvailableIcon sx={{ color: '#22d3ee', fontSize: 14 }} />
+                  <EventAvailableIcon sx={{ color: 'var(--role-cyan, #22d3ee)', fontSize: 14 }} />
                   <Typography sx={{ color: '#e2e8f0', fontSize: '0.7rem', fontWeight: 700 }}>
                     {date.weekday} {date.date}
                   </Typography>

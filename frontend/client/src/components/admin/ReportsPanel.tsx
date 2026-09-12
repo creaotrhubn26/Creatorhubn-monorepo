@@ -7,7 +7,6 @@ import {
   Box,
   Button,
   Chip,
-  Divider,
   FormControl,
   InputLabel,
   LinearProgress,
@@ -19,11 +18,12 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Typography,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Assessment,
   CalendarMonth,
@@ -35,6 +35,12 @@ import {
   TrendingUp,
   Workspaces,
 } from '@mui/icons-material';
+import {
+  AdminCard,
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+} from './design-system';
 
 interface ReportsPanelProps {
   onFileDownload?: (file: {
@@ -114,13 +120,13 @@ function formatProfession(profession: string) {
 function getGrowthTone(value: number) {
   return value >= 0
     ? {
-        icon: <TrendingUp sx={{ fontSize: 18, color: '#1b7b4a' }} />,
-        color: '#1b7b4a',
+        icon: <TrendingUp aria-hidden="true" sx={{ fontSize: 18, color: '#86efac' }} />,
+        color: '#86efac',
         bg: '#e9f7ef',
       }
     : {
-        icon: <TrendingDown sx={{ fontSize: 18, color: '#b54747' }} />,
-        color: '#b54747',
+        icon: <TrendingDown aria-hidden="true" sx={{ fontSize: 18, color: '#fca5a5' }} />,
+        color: '#fca5a5',
         bg: '#fff1f1',
       };
 }
@@ -154,17 +160,18 @@ function MetricCard({
     >
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
         <Box>
-          <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
             {label}
           </Typography>
-          <Typography sx={{ mt: 0.9, fontSize: '1.7rem', fontWeight: 700, color: '#111827', letterSpacing: '-0.03em' }}>
+          <Typography sx={{ mt: 0.9, fontSize: '1.7rem', fontWeight: 700, color: '#ffffff', letterSpacing: '-0.03em' }}>
             {value}
           </Typography>
-          <Typography variant="body2" sx={{ mt: 0.6, color: '#6b7280', lineHeight: 1.5 }}>
+          <Typography variant="body2" sx={{ mt: 0.6, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
             {helper}
           </Typography>
         </Box>
         <Box
+          aria-hidden="true"
           sx={{
             width: 44,
             height: 44,
@@ -209,8 +216,8 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
     topProfession: 'professional',
   };
 
-  const professionStats = biData?.professionStats || [];
-  const monthlyData = reportsData?.monthlyData || [];
+  const professionStats = Array.isArray(biData?.professionStats) ? biData!.professionStats! : [];
+  const monthlyData = Array.isArray(reportsData?.monthlyData) ? reportsData!.monthlyData! : [];
   const totalUsers = Math.max(overview.totalUsers, 1);
 
   const activeProfessionCount = useMemo(
@@ -241,10 +248,10 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
     return (
       <Box sx={{ display: 'grid', gap: 2 }}>
         <Paper sx={{ ...surfaceSx, p: 3 }}>
-          <Typography sx={{ fontSize: '1.5rem', fontWeight: 700, color: '#181512' }}>
+          <Typography sx={{ fontSize: '1.5rem', fontWeight: 700, color: '#ffffff' }}>
             Rapporter
           </Typography>
-          <Typography sx={{ mt: 0.75, color: '#6b7280' }}>
+          <Typography sx={{ mt: 0.75, color: 'rgba(255,255,255,0.6)' }}>
             Laster innsikt, trender og kommersielle signaler.
           </Typography>
           <LinearProgress sx={{ mt: 2.5, borderRadius: '999px' }} />
@@ -254,6 +261,7 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
   }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ display: 'grid', gap: 3 }}>
       <Paper
         sx={{
@@ -261,7 +269,7 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
           px: { xs: 2.25, sm: 3 },
           py: { xs: 2.25, sm: 2.75 },
           background:
-            'linear-gradient(135deg, rgba(15, 52, 96, 0.08), rgba(255,255,255,0.04) 52%, rgba(233, 69, 96, 0.06))',
+            'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
         }}
       >
         <Stack
@@ -271,13 +279,13 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
           alignItems={{ xs: 'flex-start', xl: 'stretch' }}
         >
           <Box sx={{ maxWidth: 760, flex: 1 }}>
-            <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700, letterSpacing: '0.08em' }}>
+            <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700, letterSpacing: '0.08em' }}>
               CreatorHub Insights
             </Typography>
-            <Typography sx={{ mt: 0.5, fontSize: { xs: '1.9rem', sm: '2.3rem' }, fontWeight: 700, color: '#111827', letterSpacing: '-0.04em' }}>
+            <Typography sx={{ mt: 0.5, fontSize: { xs: '1.9rem', sm: '2.3rem' }, fontWeight: 700, color: '#ffffff', letterSpacing: '-0.04em' }}>
               Rapporter
             </Typography>
-            <Typography variant="body2" sx={{ mt: 1, color: '#5b6472', lineHeight: 1.7 }}>
+            <Typography variant="body2" sx={{ mt: 1, color: 'rgba(255,255,255,0.6)', lineHeight: 1.7 }}>
               Les omsetning, brukervekst og profesjonsmønstre uten å hoppe mellom gamle dashboards.
               Denne flaten skal gi Daniel et tydelig beslutningsgrunnlag, ikke bare rå tabeller.
             </Typography>
@@ -319,13 +327,13 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
             </Button>
 
             <Paper sx={{ ...insetSx, p: 1.5 }}>
-              <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                 Operativ lesing
               </Typography>
-              <Typography sx={{ mt: 0.6, color: '#111827', fontWeight: 700 }}>
+              <Typography sx={{ mt: 0.6, color: '#ffffff', fontWeight: 700 }}>
                 {overview.growthRate >= 0 ? 'Veksten peker oppover' : 'Veksten må følges opp'}
               </Typography>
-              <Typography variant="body2" sx={{ mt: 0.4, color: '#6b7280', lineHeight: 1.6 }}>
+              <Typography variant="body2" sx={{ mt: 0.4, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
                 {overview.growthRate >= 0
                   ? 'Du kan bruke denne flaten til å se hvilke profesjoner som faktisk driver betalt vekst.'
                   : 'Bruk profesjons- og trendtabellene til å se hvor konvertering eller ordreverdi faller.'}
@@ -349,10 +357,10 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
             value={formatCurrency(overview.totalRevenue)}
             helper={`${overview.growthRate >= 0 ? '+' : ''}${overview.growthRate}% mot forrige periode`}
             tone={{
-              bg: 'linear-gradient(180deg, rgba(236,255,252,0.98), rgba(255,255,255,0.04))',
+              bg: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04))',
               border: 'rgba(45, 122, 101, 0.18)',
               iconBg: '#dff7ef',
-              iconColor: '#1b7b4a',
+              iconColor: '#86efac',
             }}
           />
         </Grid>
@@ -363,7 +371,7 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
             value={String(overview.totalProjects)}
             helper="Totale prosjekter i valgt periode"
             tone={{
-              bg: 'linear-gradient(180deg, rgba(240,247,255,0.98), rgba(255,255,255,0.04))',
+              bg: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04))',
               border: 'rgba(37, 95, 164, 0.18)',
               iconBg: '#e9f2ff',
               iconColor: '#235fa4',
@@ -377,7 +385,7 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
             value={String(overview.totalUsers)}
             helper="Registrerte brukere i analysegrunnlaget"
             tone={{
-              bg: 'linear-gradient(180deg, rgba(250,244,255,0.98), rgba(255,255,255,0.04))',
+              bg: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04))',
               border: 'rgba(110, 69, 184, 0.18)',
               iconBg: '#efe7ff',
               iconColor: '#6e45b8',
@@ -391,7 +399,7 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
             value={formatCurrency(overview.averageProjectValue)}
             helper="Gjennomsnittlig prosjektverdi"
             tone={{
-              bg: 'linear-gradient(180deg, rgba(255,247,236,0.98), rgba(255,255,255,0.04))',
+              bg: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04))',
               border: 'rgba(160, 90, 0, 0.18)',
               iconBg: '#fff0d8',
               iconColor: '#a05a00',
@@ -402,16 +410,12 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, xl: 7 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#181512' }}>
-              Profesjonsbidrag
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
-              Sammenlign volum, prosjekter og omsetning uten å måtte hoppe mellom flere undersider.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
-
-            <TableContainer>
+          <AdminCard
+            title="Profesjonsbidrag"
+            subtitle="Sammenlign volum, prosjekter og omsetning uten å måtte hoppe mellom flere undersider."
+            disablePadding
+          >
+            <AdminTableContainer ariaLabel="Profesjonsbidrag">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -438,7 +442,7 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
                       const share = Math.round((stat.users / totalUsers) * 100);
                       return (
                         <TableRow key={stat.profession}>
-                          <TableCell sx={{ fontWeight: 600, color: '#111827' }}>
+                          <TableCell sx={{ fontWeight: 600, color: '#ffffff' }}>
                             {formatProfession(stat.profession)}
                           </TableCell>
                           <TableCell>{stat.users}</TableCell>
@@ -457,14 +461,15 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
                               <LinearProgress
                                 variant="determinate"
                                 value={share}
+                                aria-label={`Andel av brukere: ${share}%`}
                                 sx={{
                                   flex: 1,
                                   height: 8,
                                   borderRadius: '999px',
-                                  bgcolor: '#ede7dc',
+                                  bgcolor: 'rgba(255,255,255,0.06)',
                                 }}
                               />
-                              <Typography variant="caption" sx={{ minWidth: 30, color: '#6b7280', fontWeight: 700 }}>
+                              <Typography variant="caption" sx={{ minWidth: 30, color: 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
                                 {share}%
                               </Typography>
                             </Stack>
@@ -475,20 +480,15 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
                   )}
                 </TableBody>
               </Table>
-            </TableContainer>
-          </Paper>
+            </AdminTableContainer>
+          </AdminCard>
         </Grid>
 
         <Grid size={{ xs: 12, xl: 5 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#181512' }}>
-              Trendlinje
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
-              Bruk dette som månedlig puls på omsetning, prosjekter og nye brukere.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
-
+          <AdminCard
+            title="Trendlinje"
+            subtitle="Bruk dette som månedlig puls på omsetning, prosjekter og nye brukere."
+          >
             <Stack spacing={1.25}>
               {monthlyData.length === 0 ? (
                 <Alert severity="info" sx={{ borderRadius: '14px' }}>
@@ -499,80 +499,71 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
                   <Box key={`${row.month}-${index}`} sx={{ ...insetSx, p: 1.6 }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.5}>
                       <Box>
-                        <Typography sx={{ fontWeight: 700, color: '#111827' }}>
+                        <Typography sx={{ fontWeight: 700, color: '#ffffff' }}>
                           {row.month}
                         </Typography>
-                        <Typography variant="body2" sx={{ mt: 0.35, color: '#6b7280' }}>
+                        <Typography variant="body2" sx={{ mt: 0.35, color: 'rgba(255,255,255,0.6)' }}>
                           {row.projects} prosjekter · {row.users} nye brukere
                         </Typography>
                       </Box>
-                      <Chip
-                        size="small"
+                      <StatusChip
                         label={index === 0 ? 'Nåværende' : 'Historisk'}
-                        color={index === 0 ? 'primary' : 'default'}
+                        tone={index === 0 ? 'brand' : 'neutral'}
                       />
                     </Stack>
-                    <Typography sx={{ mt: 1, fontSize: '1.15rem', fontWeight: 700, color: '#181512' }}>
+                    <Typography sx={{ mt: 1, fontSize: '1.15rem', fontWeight: 700, color: '#ffffff' }}>
                       {formatCurrency(row.revenue)}
                     </Typography>
                   </Box>
                 ))
               )}
             </Stack>
-          </Paper>
+          </AdminCard>
         </Grid>
       </Grid>
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: '#181512' }}>
-              Fokus denne perioden
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
-              Kort lesing av hvor du bør bruke oppmerksomhet.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
+          <AdminCard
+            title="Fokus denne perioden"
+            subtitle="Kort lesing av hvor du bør bruke oppmerksomhet."
+          >
             <Stack spacing={1.5}>
               <Box sx={{ ...insetSx, p: 1.6 }}>
-                <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   Toppspor
                 </Typography>
-                <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#111827' }}>
+                <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#ffffff' }}>
                   {topProfession ? formatProfession(topProfession.profession) : formatProfession(overview.topProfession)}
                 </Typography>
-                <Typography variant="body2" sx={{ mt: 0.35, color: '#6b7280' }}>
+                <Typography variant="body2" sx={{ mt: 0.35, color: 'rgba(255,255,255,0.6)' }}>
                   {topProfession
                     ? `${formatCurrency(topProfession.revenue)} i omsetning og ${topProfession.projects} prosjekter.`
                     : 'Ingen ledende profesjon er tydelig ennå.'}
                 </Typography>
               </Box>
               <Box sx={{ ...insetSx, p: 1.6 }}>
-                <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   Vekstsignal
                 </Typography>
-                <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#111827' }}>
+                <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#ffffff' }}>
                   {overview.growthRate >= 0 ? 'Stabil positiv retning' : 'Behov for kommersiell oppfølging'}
                 </Typography>
-                <Typography variant="body2" sx={{ mt: 0.35, color: '#6b7280' }}>
+                <Typography variant="body2" sx={{ mt: 0.35, color: 'rgba(255,255,255,0.6)' }}>
                   {overview.growthRate >= 0
                     ? 'Omsetningen peker opp. Neste steg er å se om prosjektveksten følger samme spor.'
                     : 'Omsetningen peker ned. Start med profesjonstabellen og se hvilke segmenter som faller.'}
                 </Typography>
               </Box>
             </Stack>
-          </Paper>
+          </AdminCard>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: '#181512' }}>
-              Eksport og videre arbeid
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
-              Eksport brukes når teamet trenger delbar rapport utover denne arbeidsflaten.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
+          <AdminCard
+            title="Eksport og videre arbeid"
+            subtitle="Eksport brukes når teamet trenger delbar rapport utover denne arbeidsflaten."
+          >
             <Stack spacing={1.25}>
               {[
                 { label: 'CSV', helper: 'Rå tabell for regneark og videre filtrering.' },
@@ -582,26 +573,26 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
                 <Box key={item.label} sx={{ ...insetSx, p: 1.6 }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.5}>
                     <Box>
-                      <Typography sx={{ fontWeight: 700, color: '#111827' }}>
+                      <Typography sx={{ fontWeight: 700, color: '#ffffff' }}>
                         {item.label}
                       </Typography>
-                      <Typography variant="body2" sx={{ mt: 0.35, color: '#6b7280' }}>
+                      <Typography variant="body2" sx={{ mt: 0.35, color: 'rgba(255,255,255,0.6)' }}>
                         {item.helper}
                       </Typography>
                     </Box>
-                    <Button
+                    <AdminButton
                       size="small"
-                      variant="outlined"
+                      tone="secondary"
                       onClick={() => handleExport(item.label === 'Excel' ? 'xlsx' : item.label.toLowerCase() as 'csv' | 'pdf')}
                       sx={{ borderRadius: '999px' }}
                     >
                       Eksporter
-                    </Button>
+                    </AdminButton>
                   </Stack>
                 </Box>
               ))}
             </Stack>
-          </Paper>
+          </AdminCard>
         </Grid>
       </Grid>
 
@@ -611,5 +602,6 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
         <MenuItem onClick={() => handleExport('pdf')}>Eksporter PDF</MenuItem>
       </Menu>
     </Box>
+    </ThemeProvider>
   );
 }

@@ -243,6 +243,13 @@ export function NewProjectModal({ onClose, onComplete }: Props) {
         }
         unsubProm.then((u) => u());
         await finalize(customAudios);
+      } else {
+        // Uten picks-path kan vi ikke arkivere/registrere prosjektet —
+        // ikke la brukeren henge på "downloading"-stadiet. Rydd opp
+        // lytteren, meld fra, og gå tilbake til review.
+        unsubProm.then((u) => u());
+        setScanError("Mangler picks-path — kan ikke fullføre prosjekt-oppsettet");
+        setStage("review");
       }
     } catch (err) {
       unsubProm.then((u) => u());

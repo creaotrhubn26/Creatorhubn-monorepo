@@ -1,4 +1,5 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import {
   Box,
   Tabs as MuiTabs,
@@ -253,6 +254,7 @@ export default function AdministrationHub({
         )}
       </Box>
 
+      <ErrorBoundary componentName="administration-hub-quote-generator">
       <Suspense fallback={<Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>}>
         {showQuoteGenerator && (
           <QuoteGeneratorModal
@@ -265,6 +267,7 @@ export default function AdministrationHub({
           />
         )}
       </Suspense>
+      </ErrorBoundary>
     </Box>
   );
 }

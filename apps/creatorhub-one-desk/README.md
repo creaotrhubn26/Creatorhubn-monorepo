@@ -28,13 +28,12 @@ npm install
 npm run tauri dev
 ```
 
-## TODO før første real-bruker release
+## Status
 
-- [ ] **Roter minisign-nøkkel** fra passordløs dev-key (id `44F19650DE0B1E3A`) til en eier-eksklusiv nøkkel med passord. Se "Roter nøkkel før real release" nedenfor.
-- [ ] **Apple Developer ID-signing** — appen er per nå usignert. Brukere møter Gatekeeper-warning og må right-click → Open. For betalte kunder bør vi enten:
-   1. Få Apple Developer ID-cert ($99/år) og sette `APPLE_CERTIFICATE` + `APPLE_CERTIFICATE_PASSWORD` + `APPLE_SIGNING_IDENTITY` som GitHub secrets, ELLER
-   2. Notarize gjennom Apple's notarytool så DMG-en åpner uten warning.
-- [ ] **Erstatt placeholder-ikoner** i `src-tauri/icons/` (kopiert fra Post Agent — må byttes med Desk-branding før real release).
+Minisign-nøkkel er rotert til en eier-eksklusiv nøkkel (ikke lenger
+passordløs dev-key), appen er Apple Developer ID-signert + notarisert
+(Gatekeeper godkjenner uten right-click → Open), og ikonene er egen
+Desk-branding — ikke lenger kopiert fra Post Agent.
 
 ## Bygg lokalt
 
@@ -44,7 +43,9 @@ npm run tauri build
 
 Output: `src-tauri/target/release/bundle/macos/Creatorhub One Desk.app`
 
-Usignert i v0.1.x — brukerne må right-click → Open første gang.
+Lokale bygg er usignerte — brukerne må right-click → Open første gang.
+Release-workflowen (Apple Developer ID + notarisering) er det som
+produserer det signerte bygget de faktisk installerer.
 
 ## Distribusjon + auto-updater (F7)
 

@@ -1,0 +1,13 @@
+-- 0318_partner_intent_agreements.sql
+--
+-- Intensjonsavtale-flyt for Leadgrid-partnerskap. Super-admin sender en
+-- avtale-tekst (basert på partner_intent_templates per partner_type)
+-- til partneren. Partneren leser, signerer e-signatur (skriver navnet
+-- + bekrefter myndighet), IP+UA logges. Status flyter:
+--   sent → viewed → signed | rejected | expired | revoked
+--
+-- Tabeller:
+--   - partner_intent_agreements  (én avtale per sending)
+--   - partner_intent_templates   (gjenbrukbare maler m/ {{ORG_NAME}}-vars)
+--
+-- Body satt i DB via psql; denne filen er kun for sporbarhet.

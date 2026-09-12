@@ -13,7 +13,6 @@ import {
   CardContent,
   Stack,
   Typography,
-  Chip,
   Box,
   IconButton,
   Alert,
@@ -23,7 +22,9 @@ import {
   ListItemIcon,
   ListItemText,
   Divider,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   CheckCircle as OkIcon,
   Cancel as MissingIcon,
@@ -32,6 +33,8 @@ import {
   Settings as ConfigIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { StatusChip } from './design-system';
 
 interface ConfigCheck {
   status: 'ready' | 'partial' | 'broken';
@@ -57,6 +60,7 @@ const STATUS_LABEL: Record<string, { label: string; color: 'success' | 'warning'
 };
 
 const AdminConfigStatusCard: React.FC = () => {
+  const { auth } = useEnhancedMasterIntegration();
   const [data, setData] = useState<ConfigCheck | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +69,8 @@ const AdminConfigStatusCard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const r: any = await apiRequest('/api/admin/config-check');
+      const headers = await auth.getAuthHeader();
+      const r: any = await apiRequest('/api/admin/config-check', { headers });
       setData(r);
     } catch (e: any) {
       setError(e?.message || 'Kunne ikke hente config-status');
@@ -78,19 +83,21 @@ const AdminConfigStatusCard: React.FC = () => {
 
   if (loading && !data) {
     return (
-      <Card variant="outlined" sx={{ mb: 2 }}>
-        <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <CircularProgress size={16} />
-          <Typography variant="body2" color="text.secondary">Sjekker produksjons-config…</Typography>
-        </CardContent>
-      </Card>
+      <ThemeProvider theme={adminDarkTheme}>
+        <Card variant="outlined" sx={{ mb: 2 }}>
+          <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CircularProgress size={16} />
+            <Typography variant="body2" color="text.secondary">Sjekker produksjons-config…</Typography>
+          </CardContent>
+        </Card>
+      </ThemeProvider>
     );
   }
 
   if (error) {
     return (
       <Alert severity="error" sx={{ mb: 2 }} action={
-        <IconButton size="small" onClick={load}><RefreshIcon fontSize="small" /></IconButton>
+        <IconButton size="small" onClick={load} aria-label="Prøv å hente config-status på nytt"><RefreshIcon fontSize="small" /></IconButton>
       }>{error}</Alert>
     );
   }
@@ -102,15 +109,16 @@ const AdminConfigStatusCard: React.FC = () => {
   const warningMissing = data.missing.filter((m) => m.severity === 'warning');
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Card variant="outlined" sx={{ mb: 2, borderColor: statusInfo.color === 'success' ? 'success.main' : statusInfo.color === 'error' ? 'error.main' : 'warning.main' }}>
       <CardContent>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
           <Stack direction="row" alignItems="center" spacing={1}>
             <ConfigIcon color={statusInfo.color} />
-            <Typography variant="h6">Produksjons-config</Typography>
-            <Chip size="small" color={statusInfo.color} label={statusInfo.label} />
+            <Typography variant="h6" component="h2">Produksjons-config</Typography>
+            <StatusChip tone={statusInfo.color} label={statusInfo.label} />
           </Stack>
-          <IconButton size="small" onClick={load} disabled={loading}>
+          <IconButton size="small" onClick={load} disabled={loading} aria-label="Oppdater produksjons-config">
             {loading ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
           </IconButton>
         </Stack>
@@ -182,6 +190,7 @@ const AdminConfigStatusCard: React.FC = () => {
         </Typography>
       </CardContent>
     </Card>
+    </ThemeProvider>
   );
 };
 

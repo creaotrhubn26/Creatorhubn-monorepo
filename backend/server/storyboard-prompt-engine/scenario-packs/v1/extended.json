@@ -1,0 +1,3458 @@
+[
+  {
+    "schemaVersion": "trr-scenario-pack-v1",
+    "id": "police.security",
+    "version": "1.0.0",
+    "label": "Police & Security",
+    "domain": "security",
+    "description": "Readable public-safety environments, controlled team blocking, vehicles and evidence-safe continuity.",
+    "catalog": {
+      "zones": [
+        {
+          "id": "station-desk",
+          "label": "Station Desk",
+          "prompt": "station Desk with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "interview-room",
+          "label": "Interview Room",
+          "prompt": "interview Room with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "street-perimeter",
+          "label": "Street Perimeter",
+          "prompt": "street Perimeter with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "security-control",
+          "label": "Security Control Room",
+          "prompt": "security Control Room with clear entrances, working zones, eyelines and safe circulation"
+        }
+      ],
+      "roles": [
+        {
+          "id": "officer",
+          "label": "Police Officer",
+          "prompt": "police Officer with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for police Officer"
+        },
+        {
+          "id": "detective",
+          "label": "Detective",
+          "prompt": "detective with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for detective"
+        },
+        {
+          "id": "security-guard",
+          "label": "Security Guard",
+          "prompt": "security Guard with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for security Guard"
+        },
+        {
+          "id": "civilian",
+          "label": "Civilian",
+          "prompt": "civilian with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for civilian"
+        }
+      ],
+      "propTypes": [
+        {
+          "id": "patrol-car",
+          "label": "Patrol Car",
+          "prompt": "patrol Car with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "radio",
+          "label": "Service Radio",
+          "prompt": "service Radio with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "barrier",
+          "label": "Safety Barrier",
+          "prompt": "safety Barrier with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "evidence-case",
+          "label": "Evidence Case",
+          "prompt": "evidence Case with readable function, scale, orientation and interaction side"
+        }
+      ],
+      "actions": [
+        {
+          "id": "briefing",
+          "label": "Team Briefing",
+          "prompt": "team Briefing staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "interview",
+          "label": "Witness Interview",
+          "prompt": "witness Interview staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "perimeter-control",
+          "label": "Perimeter Control",
+          "prompt": "perimeter Control staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "arrival",
+          "label": "Controlled Arrival",
+          "prompt": "controlled Arrival staged as one legible action with clear cause, response and direction"
+        }
+      ],
+      "states": [
+        {
+          "id": "routine",
+          "label": "Routine",
+          "prompt": "routine conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "alert",
+          "label": "Alert",
+          "prompt": "alert conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "tense",
+          "label": "Tense",
+          "prompt": "tense conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "resolved",
+          "label": "Resolved",
+          "prompt": "resolved conveyed through restrained posture, spacing, light and environmental cues"
+        }
+      ],
+      "safetyContexts": [
+        {
+          "id": "fictional-production",
+          "label": "Fictional Production",
+          "prompt": "depict a fictional dramatic production scene, not operational instruction"
+        },
+        {
+          "id": "safe-readable-blocking",
+          "label": "Safe Readable Blocking",
+          "prompt": "preserve believable access, exits, working clearance and non-exploitative framing"
+        },
+        {
+          "id": "no-readable-private-data",
+          "label": "No Readable Private Data",
+          "prompt": "do not render readable personal records, credentials, addresses or private identifiers"
+        }
+      ],
+      "continuityLocks": [
+        {
+          "id": "screen-geography",
+          "label": "Screen Geography",
+          "prompt": "lock entrances, exits, screen direction and relative zone geography across connected shots"
+        },
+        {
+          "id": "role-wardrobe",
+          "label": "Role & Wardrobe",
+          "prompt": "lock role identity, wardrobe, carried equipment and visible state across connected shots"
+        },
+        {
+          "id": "prop-layout",
+          "label": "Prop Layout",
+          "prompt": "lock major prop position, orientation, ownership and used or unused state across connected shots"
+        }
+      ]
+    },
+    "subdomains": [
+      {
+        "id": "general",
+        "label": "Police & Security — General",
+        "zoneIds": [
+          "station-desk",
+          "interview-room",
+          "street-perimeter",
+          "security-control"
+        ],
+        "roleIds": [
+          "officer",
+          "detective",
+          "security-guard",
+          "civilian"
+        ],
+        "propTypeIds": [
+          "patrol-car",
+          "radio",
+          "barrier",
+          "evidence-case"
+        ],
+        "actionIds": [
+          "briefing",
+          "interview",
+          "perimeter-control",
+          "arrival"
+        ],
+        "stateIds": [
+          "routine",
+          "alert",
+          "tense",
+          "resolved"
+        ],
+        "safetyContextIds": [
+          "fictional-production",
+          "safe-readable-blocking",
+          "no-readable-private-data"
+        ],
+        "continuityLockIds": [
+          "screen-geography",
+          "role-wardrobe",
+          "prop-layout"
+        ]
+      }
+    ],
+    "families": [
+      {
+        "id": "environment",
+        "label": "Police & Security Environments",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "station-desk",
+            "label": "Station Desk",
+            "prompt": "station Desk with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "interview-room",
+            "label": "Interview Room",
+            "prompt": "interview Room with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "street-perimeter",
+            "label": "Street Perimeter",
+            "prompt": "street Perimeter with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "security-control",
+            "label": "Security Control Room",
+            "prompt": "security Control Room with clear entrances, working zones, eyelines and safe circulation"
+          }
+        ]
+      },
+      {
+        "id": "working-props",
+        "label": "Police & Security Props",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "patrol-car",
+            "label": "Patrol Car",
+            "prompt": "patrol Car with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "radio",
+            "label": "Service Radio",
+            "prompt": "service Radio with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "barrier",
+            "label": "Safety Barrier",
+            "prompt": "safety Barrier with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "evidence-case",
+            "label": "Evidence Case",
+            "prompt": "evidence Case with readable function, scale, orientation and interaction side"
+          }
+        ]
+      },
+      {
+        "id": "role-action",
+        "label": "Police & Security Role Actions",
+        "primaryStyleAnchor": "organic-nature",
+        "secondaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "briefing",
+            "label": "Team Briefing",
+            "prompt": "team Briefing staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "interview",
+            "label": "Witness Interview",
+            "prompt": "witness Interview staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "perimeter-control",
+            "label": "Perimeter Control",
+            "prompt": "perimeter Control staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "arrival",
+            "label": "Controlled Arrival",
+            "prompt": "controlled Arrival staged as one legible action with clear cause, response and direction"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schemaVersion": "trr-scenario-pack-v1",
+    "id": "fire.rescue",
+    "version": "1.0.0",
+    "label": "Fire & Rescue",
+    "domain": "rescue",
+    "description": "Emergency-response staging with clear apparatus scale, access paths, team roles and atmospheric effects.",
+    "catalog": {
+      "zones": [
+        {
+          "id": "fire-station",
+          "label": "Fire Station",
+          "prompt": "fire Station with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "incident-command",
+          "label": "Incident Command",
+          "prompt": "incident Command with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "building-exterior",
+          "label": "Building Exterior",
+          "prompt": "building Exterior with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "rescue-corridor",
+          "label": "Rescue Corridor",
+          "prompt": "rescue Corridor with clear entrances, working zones, eyelines and safe circulation"
+        }
+      ],
+      "roles": [
+        {
+          "id": "firefighter",
+          "label": "Firefighter",
+          "prompt": "firefighter with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for firefighter"
+        },
+        {
+          "id": "incident-commander",
+          "label": "Incident Commander",
+          "prompt": "incident Commander with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for incident Commander"
+        },
+        {
+          "id": "rescue-medic",
+          "label": "Rescue Medic",
+          "prompt": "rescue Medic with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for rescue Medic"
+        },
+        {
+          "id": "evacuee",
+          "label": "Evacuee",
+          "prompt": "evacuee with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for evacuee"
+        }
+      ],
+      "propTypes": [
+        {
+          "id": "fire-engine",
+          "label": "Fire Engine",
+          "prompt": "fire Engine with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "hose-line",
+          "label": "Hose Line",
+          "prompt": "hose Line with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "breathing-set",
+          "label": "Breathing Set",
+          "prompt": "breathing Set with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "rescue-stretcher",
+          "label": "Rescue Stretcher",
+          "prompt": "rescue Stretcher with readable function, scale, orientation and interaction side"
+        }
+      ],
+      "actions": [
+        {
+          "id": "rollout",
+          "label": "Apparatus Rollout",
+          "prompt": "apparatus Rollout staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "evacuation",
+          "label": "Evacuation",
+          "prompt": "evacuation staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "search-team",
+          "label": "Search Team Movement",
+          "prompt": "search Team Movement staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "handover",
+          "label": "Rescue Handover",
+          "prompt": "rescue Handover staged as one legible action with clear cause, response and direction"
+        }
+      ],
+      "states": [
+        {
+          "id": "standby",
+          "label": "Standby",
+          "prompt": "standby conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "smoke-filled",
+          "label": "Smoke-filled",
+          "prompt": "smoke-filled conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "urgent",
+          "label": "Urgent",
+          "prompt": "urgent conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "all-clear",
+          "label": "All Clear",
+          "prompt": "all Clear conveyed through restrained posture, spacing, light and environmental cues"
+        }
+      ],
+      "safetyContexts": [
+        {
+          "id": "fictional-production",
+          "label": "Fictional Production",
+          "prompt": "depict a fictional dramatic production scene, not operational instruction"
+        },
+        {
+          "id": "safe-readable-blocking",
+          "label": "Safe Readable Blocking",
+          "prompt": "preserve believable access, exits, working clearance and non-exploitative framing"
+        },
+        {
+          "id": "no-readable-private-data",
+          "label": "No Readable Private Data",
+          "prompt": "do not render readable personal records, credentials, addresses or private identifiers"
+        }
+      ],
+      "continuityLocks": [
+        {
+          "id": "screen-geography",
+          "label": "Screen Geography",
+          "prompt": "lock entrances, exits, screen direction and relative zone geography across connected shots"
+        },
+        {
+          "id": "role-wardrobe",
+          "label": "Role & Wardrobe",
+          "prompt": "lock role identity, wardrobe, carried equipment and visible state across connected shots"
+        },
+        {
+          "id": "prop-layout",
+          "label": "Prop Layout",
+          "prompt": "lock major prop position, orientation, ownership and used or unused state across connected shots"
+        }
+      ]
+    },
+    "subdomains": [
+      {
+        "id": "general",
+        "label": "Fire & Rescue — General",
+        "zoneIds": [
+          "fire-station",
+          "incident-command",
+          "building-exterior",
+          "rescue-corridor"
+        ],
+        "roleIds": [
+          "firefighter",
+          "incident-commander",
+          "rescue-medic",
+          "evacuee"
+        ],
+        "propTypeIds": [
+          "fire-engine",
+          "hose-line",
+          "breathing-set",
+          "rescue-stretcher"
+        ],
+        "actionIds": [
+          "rollout",
+          "evacuation",
+          "search-team",
+          "handover"
+        ],
+        "stateIds": [
+          "standby",
+          "smoke-filled",
+          "urgent",
+          "all-clear"
+        ],
+        "safetyContextIds": [
+          "fictional-production",
+          "safe-readable-blocking",
+          "no-readable-private-data"
+        ],
+        "continuityLockIds": [
+          "screen-geography",
+          "role-wardrobe",
+          "prop-layout"
+        ]
+      }
+    ],
+    "families": [
+      {
+        "id": "environment",
+        "label": "Fire & Rescue Environments",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "fire-station",
+            "label": "Fire Station",
+            "prompt": "fire Station with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "incident-command",
+            "label": "Incident Command",
+            "prompt": "incident Command with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "building-exterior",
+            "label": "Building Exterior",
+            "prompt": "building Exterior with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "rescue-corridor",
+            "label": "Rescue Corridor",
+            "prompt": "rescue Corridor with clear entrances, working zones, eyelines and safe circulation"
+          }
+        ]
+      },
+      {
+        "id": "working-props",
+        "label": "Fire & Rescue Props",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "fire-engine",
+            "label": "Fire Engine",
+            "prompt": "fire Engine with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "hose-line",
+            "label": "Hose Line",
+            "prompt": "hose Line with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "breathing-set",
+            "label": "Breathing Set",
+            "prompt": "breathing Set with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "rescue-stretcher",
+            "label": "Rescue Stretcher",
+            "prompt": "rescue Stretcher with readable function, scale, orientation and interaction side"
+          }
+        ]
+      },
+      {
+        "id": "role-action",
+        "label": "Fire & Rescue Role Actions",
+        "primaryStyleAnchor": "organic-nature",
+        "secondaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "rollout",
+            "label": "Apparatus Rollout",
+            "prompt": "apparatus Rollout staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "evacuation",
+            "label": "Evacuation",
+            "prompt": "evacuation staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "search-team",
+            "label": "Search Team Movement",
+            "prompt": "search Team Movement staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "handover",
+            "label": "Rescue Handover",
+            "prompt": "rescue Handover staged as one legible action with clear cause, response and direction"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schemaVersion": "trr-scenario-pack-v1",
+    "id": "education.school",
+    "version": "1.0.0",
+    "label": "Education & School",
+    "domain": "education",
+    "description": "Classroom, campus and workshop vocabulary with student-teacher eyelines and activity continuity.",
+    "catalog": {
+      "zones": [
+        {
+          "id": "classroom",
+          "label": "Classroom",
+          "prompt": "classroom with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "school-corridor",
+          "label": "School Corridor",
+          "prompt": "school Corridor with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "science-lab",
+          "label": "Science Lab",
+          "prompt": "science Lab with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "auditorium",
+          "label": "School Auditorium",
+          "prompt": "school Auditorium with clear entrances, working zones, eyelines and safe circulation"
+        }
+      ],
+      "roles": [
+        {
+          "id": "teacher",
+          "label": "Teacher",
+          "prompt": "teacher with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for teacher"
+        },
+        {
+          "id": "student",
+          "label": "Student",
+          "prompt": "student with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for student"
+        },
+        {
+          "id": "school-leader",
+          "label": "School Leader",
+          "prompt": "school Leader with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for school Leader"
+        },
+        {
+          "id": "guardian",
+          "label": "Guardian",
+          "prompt": "guardian with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for guardian"
+        }
+      ],
+      "propTypes": [
+        {
+          "id": "student-desk",
+          "label": "Student Desk",
+          "prompt": "student Desk with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "whiteboard",
+          "label": "Whiteboard",
+          "prompt": "whiteboard with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "school-bag",
+          "label": "School Bag",
+          "prompt": "school Bag with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "lab-bench",
+          "label": "Lab Bench",
+          "prompt": "lab Bench with readable function, scale, orientation and interaction side"
+        }
+      ],
+      "actions": [
+        {
+          "id": "lesson",
+          "label": "Classroom Lesson",
+          "prompt": "classroom Lesson staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "group-work",
+          "label": "Group Work",
+          "prompt": "group Work staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "presentation",
+          "label": "Student Presentation",
+          "prompt": "student Presentation staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "parent-meeting",
+          "label": "Parent Meeting",
+          "prompt": "parent Meeting staged as one legible action with clear cause, response and direction"
+        }
+      ],
+      "states": [
+        {
+          "id": "focused",
+          "label": "Focused",
+          "prompt": "focused conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "curious",
+          "label": "Curious",
+          "prompt": "curious conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "restless",
+          "label": "Restless",
+          "prompt": "restless conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "celebratory",
+          "label": "Celebratory",
+          "prompt": "celebratory conveyed through restrained posture, spacing, light and environmental cues"
+        }
+      ],
+      "safetyContexts": [
+        {
+          "id": "fictional-production",
+          "label": "Fictional Production",
+          "prompt": "depict a fictional dramatic production scene, not operational instruction"
+        },
+        {
+          "id": "safe-readable-blocking",
+          "label": "Safe Readable Blocking",
+          "prompt": "preserve believable access, exits, working clearance and non-exploitative framing"
+        },
+        {
+          "id": "no-readable-private-data",
+          "label": "No Readable Private Data",
+          "prompt": "do not render readable personal records, credentials, addresses or private identifiers"
+        }
+      ],
+      "continuityLocks": [
+        {
+          "id": "screen-geography",
+          "label": "Screen Geography",
+          "prompt": "lock entrances, exits, screen direction and relative zone geography across connected shots"
+        },
+        {
+          "id": "role-wardrobe",
+          "label": "Role & Wardrobe",
+          "prompt": "lock role identity, wardrobe, carried equipment and visible state across connected shots"
+        },
+        {
+          "id": "prop-layout",
+          "label": "Prop Layout",
+          "prompt": "lock major prop position, orientation, ownership and used or unused state across connected shots"
+        }
+      ]
+    },
+    "subdomains": [
+      {
+        "id": "general",
+        "label": "Education & School — General",
+        "zoneIds": [
+          "classroom",
+          "school-corridor",
+          "science-lab",
+          "auditorium"
+        ],
+        "roleIds": [
+          "teacher",
+          "student",
+          "school-leader",
+          "guardian"
+        ],
+        "propTypeIds": [
+          "student-desk",
+          "whiteboard",
+          "school-bag",
+          "lab-bench"
+        ],
+        "actionIds": [
+          "lesson",
+          "group-work",
+          "presentation",
+          "parent-meeting"
+        ],
+        "stateIds": [
+          "focused",
+          "curious",
+          "restless",
+          "celebratory"
+        ],
+        "safetyContextIds": [
+          "fictional-production",
+          "safe-readable-blocking",
+          "no-readable-private-data"
+        ],
+        "continuityLockIds": [
+          "screen-geography",
+          "role-wardrobe",
+          "prop-layout"
+        ]
+      }
+    ],
+    "families": [
+      {
+        "id": "environment",
+        "label": "Education & School Environments",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "classroom",
+            "label": "Classroom",
+            "prompt": "classroom with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "school-corridor",
+            "label": "School Corridor",
+            "prompt": "school Corridor with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "science-lab",
+            "label": "Science Lab",
+            "prompt": "science Lab with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "auditorium",
+            "label": "School Auditorium",
+            "prompt": "school Auditorium with clear entrances, working zones, eyelines and safe circulation"
+          }
+        ]
+      },
+      {
+        "id": "working-props",
+        "label": "Education & School Props",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "student-desk",
+            "label": "Student Desk",
+            "prompt": "student Desk with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "whiteboard",
+            "label": "Whiteboard",
+            "prompt": "whiteboard with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "school-bag",
+            "label": "School Bag",
+            "prompt": "school Bag with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "lab-bench",
+            "label": "Lab Bench",
+            "prompt": "lab Bench with readable function, scale, orientation and interaction side"
+          }
+        ]
+      },
+      {
+        "id": "role-action",
+        "label": "Education & School Role Actions",
+        "primaryStyleAnchor": "organic-nature",
+        "secondaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "lesson",
+            "label": "Classroom Lesson",
+            "prompt": "classroom Lesson staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "group-work",
+            "label": "Group Work",
+            "prompt": "group Work staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "presentation",
+            "label": "Student Presentation",
+            "prompt": "student Presentation staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "parent-meeting",
+            "label": "Parent Meeting",
+            "prompt": "parent Meeting staged as one legible action with clear cause, response and direction"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schemaVersion": "trr-scenario-pack-v1",
+    "id": "hospitality.hotel",
+    "version": "1.0.0",
+    "label": "Hotel & Hospitality",
+    "domain": "hospitality",
+    "description": "Guest-service environments, luggage and room-state continuity across arrival, stay and departure.",
+    "catalog": {
+      "zones": [
+        {
+          "id": "hotel-lobby",
+          "label": "Hotel Lobby",
+          "prompt": "hotel Lobby with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "guest-room",
+          "label": "Guest Room",
+          "prompt": "guest Room with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "service-corridor",
+          "label": "Service Corridor",
+          "prompt": "service Corridor with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "conference-room",
+          "label": "Conference Room",
+          "prompt": "conference Room with clear entrances, working zones, eyelines and safe circulation"
+        }
+      ],
+      "roles": [
+        {
+          "id": "guest",
+          "label": "Hotel Guest",
+          "prompt": "hotel Guest with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for hotel Guest"
+        },
+        {
+          "id": "receptionist",
+          "label": "Receptionist",
+          "prompt": "receptionist with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for receptionist"
+        },
+        {
+          "id": "housekeeper",
+          "label": "Housekeeper",
+          "prompt": "housekeeper with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for housekeeper"
+        },
+        {
+          "id": "concierge",
+          "label": "Concierge",
+          "prompt": "concierge with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for concierge"
+        }
+      ],
+      "propTypes": [
+        {
+          "id": "luggage-cart",
+          "label": "Luggage Cart",
+          "prompt": "luggage Cart with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "room-key",
+          "label": "Room Key",
+          "prompt": "room Key with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "reception-desk",
+          "label": "Reception Desk",
+          "prompt": "reception Desk with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "service-trolley",
+          "label": "Service Trolley",
+          "prompt": "service Trolley with readable function, scale, orientation and interaction side"
+        }
+      ],
+      "actions": [
+        {
+          "id": "check-in",
+          "label": "Guest Check-in",
+          "prompt": "guest Check-in staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "room-service",
+          "label": "Room Service",
+          "prompt": "room Service staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "guest-assistance",
+          "label": "Guest Assistance",
+          "prompt": "guest Assistance staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "conference-arrival",
+          "label": "Conference Arrival",
+          "prompt": "conference Arrival staged as one legible action with clear cause, response and direction"
+        }
+      ],
+      "states": [
+        {
+          "id": "welcoming",
+          "label": "Welcoming",
+          "prompt": "welcoming conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "busy",
+          "label": "Busy",
+          "prompt": "busy conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "private",
+          "label": "Private",
+          "prompt": "private conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "after-hours",
+          "label": "After Hours",
+          "prompt": "after Hours conveyed through restrained posture, spacing, light and environmental cues"
+        }
+      ],
+      "safetyContexts": [
+        {
+          "id": "fictional-production",
+          "label": "Fictional Production",
+          "prompt": "depict a fictional dramatic production scene, not operational instruction"
+        },
+        {
+          "id": "safe-readable-blocking",
+          "label": "Safe Readable Blocking",
+          "prompt": "preserve believable access, exits, working clearance and non-exploitative framing"
+        },
+        {
+          "id": "no-readable-private-data",
+          "label": "No Readable Private Data",
+          "prompt": "do not render readable personal records, credentials, addresses or private identifiers"
+        }
+      ],
+      "continuityLocks": [
+        {
+          "id": "screen-geography",
+          "label": "Screen Geography",
+          "prompt": "lock entrances, exits, screen direction and relative zone geography across connected shots"
+        },
+        {
+          "id": "role-wardrobe",
+          "label": "Role & Wardrobe",
+          "prompt": "lock role identity, wardrobe, carried equipment and visible state across connected shots"
+        },
+        {
+          "id": "prop-layout",
+          "label": "Prop Layout",
+          "prompt": "lock major prop position, orientation, ownership and used or unused state across connected shots"
+        }
+      ]
+    },
+    "subdomains": [
+      {
+        "id": "general",
+        "label": "Hotel & Hospitality — General",
+        "zoneIds": [
+          "hotel-lobby",
+          "guest-room",
+          "service-corridor",
+          "conference-room"
+        ],
+        "roleIds": [
+          "guest",
+          "receptionist",
+          "housekeeper",
+          "concierge"
+        ],
+        "propTypeIds": [
+          "luggage-cart",
+          "room-key",
+          "reception-desk",
+          "service-trolley"
+        ],
+        "actionIds": [
+          "check-in",
+          "room-service",
+          "guest-assistance",
+          "conference-arrival"
+        ],
+        "stateIds": [
+          "welcoming",
+          "busy",
+          "private",
+          "after-hours"
+        ],
+        "safetyContextIds": [
+          "fictional-production",
+          "safe-readable-blocking",
+          "no-readable-private-data"
+        ],
+        "continuityLockIds": [
+          "screen-geography",
+          "role-wardrobe",
+          "prop-layout"
+        ]
+      }
+    ],
+    "families": [
+      {
+        "id": "environment",
+        "label": "Hotel & Hospitality Environments",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "hotel-lobby",
+            "label": "Hotel Lobby",
+            "prompt": "hotel Lobby with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "guest-room",
+            "label": "Guest Room",
+            "prompt": "guest Room with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "service-corridor",
+            "label": "Service Corridor",
+            "prompt": "service Corridor with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "conference-room",
+            "label": "Conference Room",
+            "prompt": "conference Room with clear entrances, working zones, eyelines and safe circulation"
+          }
+        ]
+      },
+      {
+        "id": "working-props",
+        "label": "Hotel & Hospitality Props",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "luggage-cart",
+            "label": "Luggage Cart",
+            "prompt": "luggage Cart with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "room-key",
+            "label": "Room Key",
+            "prompt": "room Key with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "reception-desk",
+            "label": "Reception Desk",
+            "prompt": "reception Desk with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "service-trolley",
+            "label": "Service Trolley",
+            "prompt": "service Trolley with readable function, scale, orientation and interaction side"
+          }
+        ]
+      },
+      {
+        "id": "role-action",
+        "label": "Hotel & Hospitality Role Actions",
+        "primaryStyleAnchor": "organic-nature",
+        "secondaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "check-in",
+            "label": "Guest Check-in",
+            "prompt": "guest Check-in staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "room-service",
+            "label": "Room Service",
+            "prompt": "room Service staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "guest-assistance",
+            "label": "Guest Assistance",
+            "prompt": "guest Assistance staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "conference-arrival",
+            "label": "Conference Arrival",
+            "prompt": "conference Arrival staged as one legible action with clear cause, response and direction"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schemaVersion": "trr-scenario-pack-v1",
+    "id": "office.production",
+    "version": "1.0.0",
+    "label": "Office & Production Team",
+    "domain": "office",
+    "description": "Creative-team workspaces, production meetings and authentic The Role Room interface use.",
+    "catalog": {
+      "zones": [
+        {
+          "id": "writers-room",
+          "label": "Writers Room",
+          "prompt": "writers Room with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "production-office",
+          "label": "Production Office",
+          "prompt": "production Office with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "edit-suite",
+          "label": "Edit Suite",
+          "prompt": "edit Suite with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "video-meeting",
+          "label": "Video Meeting Space",
+          "prompt": "video Meeting Space with clear entrances, working zones, eyelines and safe circulation"
+        }
+      ],
+      "roles": [
+        {
+          "id": "director",
+          "label": "Director",
+          "prompt": "director with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for director"
+        },
+        {
+          "id": "screenwriter",
+          "label": "Screenwriter",
+          "prompt": "screenwriter with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for screenwriter"
+        },
+        {
+          "id": "producer",
+          "label": "Producer",
+          "prompt": "producer with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for producer"
+        },
+        {
+          "id": "editor",
+          "label": "Editor",
+          "prompt": "editor with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for editor"
+        }
+      ],
+      "propTypes": [
+        {
+          "id": "laptop",
+          "label": "Production Laptop",
+          "prompt": "production Laptop with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "storyboard-wall",
+          "label": "Storyboard Wall",
+          "prompt": "storyboard Wall with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "call-sheet",
+          "label": "Call Sheet",
+          "prompt": "call Sheet with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "editing-console",
+          "label": "Editing Console",
+          "prompt": "editing Console with readable function, scale, orientation and interaction side"
+        }
+      ],
+      "actions": [
+        {
+          "id": "team-building",
+          "label": "Building the Team",
+          "prompt": "building the Team staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "script-review",
+          "label": "Script Review",
+          "prompt": "script Review staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "storyboard-review",
+          "label": "Storyboard Review",
+          "prompt": "storyboard Review staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "approval",
+          "label": "Production Approval",
+          "prompt": "production Approval staged as one legible action with clear cause, response and direction"
+        }
+      ],
+      "states": [
+        {
+          "id": "exploratory",
+          "label": "Exploratory",
+          "prompt": "exploratory conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "collaborative",
+          "label": "Collaborative",
+          "prompt": "collaborative conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "deadline",
+          "label": "Deadline Pressure",
+          "prompt": "deadline Pressure conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "approved",
+          "label": "Approved",
+          "prompt": "approved conveyed through restrained posture, spacing, light and environmental cues"
+        }
+      ],
+      "safetyContexts": [
+        {
+          "id": "fictional-production",
+          "label": "Fictional Production",
+          "prompt": "depict a fictional dramatic production scene, not operational instruction"
+        },
+        {
+          "id": "safe-readable-blocking",
+          "label": "Safe Readable Blocking",
+          "prompt": "preserve believable access, exits, working clearance and non-exploitative framing"
+        },
+        {
+          "id": "no-readable-private-data",
+          "label": "No Readable Private Data",
+          "prompt": "do not render readable personal records, credentials, addresses or private identifiers"
+        }
+      ],
+      "continuityLocks": [
+        {
+          "id": "screen-geography",
+          "label": "Screen Geography",
+          "prompt": "lock entrances, exits, screen direction and relative zone geography across connected shots"
+        },
+        {
+          "id": "role-wardrobe",
+          "label": "Role & Wardrobe",
+          "prompt": "lock role identity, wardrobe, carried equipment and visible state across connected shots"
+        },
+        {
+          "id": "prop-layout",
+          "label": "Prop Layout",
+          "prompt": "lock major prop position, orientation, ownership and used or unused state across connected shots"
+        }
+      ]
+    },
+    "subdomains": [
+      {
+        "id": "general",
+        "label": "Office & Production Team — General",
+        "zoneIds": [
+          "writers-room",
+          "production-office",
+          "edit-suite",
+          "video-meeting"
+        ],
+        "roleIds": [
+          "director",
+          "screenwriter",
+          "producer",
+          "editor"
+        ],
+        "propTypeIds": [
+          "laptop",
+          "storyboard-wall",
+          "call-sheet",
+          "editing-console"
+        ],
+        "actionIds": [
+          "team-building",
+          "script-review",
+          "storyboard-review",
+          "approval"
+        ],
+        "stateIds": [
+          "exploratory",
+          "collaborative",
+          "deadline",
+          "approved"
+        ],
+        "safetyContextIds": [
+          "fictional-production",
+          "safe-readable-blocking",
+          "no-readable-private-data"
+        ],
+        "continuityLockIds": [
+          "screen-geography",
+          "role-wardrobe",
+          "prop-layout"
+        ]
+      }
+    ],
+    "families": [
+      {
+        "id": "environment",
+        "label": "Office & Production Team Environments",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "writers-room",
+            "label": "Writers Room",
+            "prompt": "writers Room with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "production-office",
+            "label": "Production Office",
+            "prompt": "production Office with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "edit-suite",
+            "label": "Edit Suite",
+            "prompt": "edit Suite with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "video-meeting",
+            "label": "Video Meeting Space",
+            "prompt": "video Meeting Space with clear entrances, working zones, eyelines and safe circulation"
+          }
+        ]
+      },
+      {
+        "id": "working-props",
+        "label": "Office & Production Team Props",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "laptop",
+            "label": "Production Laptop",
+            "prompt": "production Laptop with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "storyboard-wall",
+            "label": "Storyboard Wall",
+            "prompt": "storyboard Wall with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "call-sheet",
+            "label": "Call Sheet",
+            "prompt": "call Sheet with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "editing-console",
+            "label": "Editing Console",
+            "prompt": "editing Console with readable function, scale, orientation and interaction side"
+          }
+        ]
+      },
+      {
+        "id": "role-action",
+        "label": "Office & Production Team Role Actions",
+        "primaryStyleAnchor": "organic-nature",
+        "secondaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "team-building",
+            "label": "Building the Team",
+            "prompt": "building the Team staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "script-review",
+            "label": "Script Review",
+            "prompt": "script Review staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "storyboard-review",
+            "label": "Storyboard Review",
+            "prompt": "storyboard Review staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "approval",
+            "label": "Production Approval",
+            "prompt": "production Approval staged as one legible action with clear cause, response and direction"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schemaVersion": "trr-scenario-pack-v1",
+    "id": "retail.shop",
+    "version": "1.0.0",
+    "label": "Retail & Shop",
+    "domain": "retail",
+    "description": "Customer flow, product display, point-of-sale and stock continuity for retail stories.",
+    "catalog": {
+      "zones": [
+        {
+          "id": "storefront",
+          "label": "Storefront",
+          "prompt": "storefront with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "sales-floor",
+          "label": "Sales Floor",
+          "prompt": "sales Floor with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "checkout",
+          "label": "Checkout",
+          "prompt": "checkout with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "stock-room",
+          "label": "Stock Room",
+          "prompt": "stock Room with clear entrances, working zones, eyelines and safe circulation"
+        }
+      ],
+      "roles": [
+        {
+          "id": "customer",
+          "label": "Customer",
+          "prompt": "customer with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for customer"
+        },
+        {
+          "id": "sales-associate",
+          "label": "Sales Associate",
+          "prompt": "sales Associate with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for sales Associate"
+        },
+        {
+          "id": "cashier",
+          "label": "Cashier",
+          "prompt": "cashier with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for cashier"
+        },
+        {
+          "id": "store-manager",
+          "label": "Store Manager",
+          "prompt": "store Manager with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for store Manager"
+        }
+      ],
+      "propTypes": [
+        {
+          "id": "display-shelf",
+          "label": "Display Shelf",
+          "prompt": "display Shelf with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "shopping-basket",
+          "label": "Shopping Basket",
+          "prompt": "shopping Basket with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "pos-terminal",
+          "label": "POS Terminal",
+          "prompt": "pOS Terminal with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "stock-carton",
+          "label": "Stock Carton",
+          "prompt": "stock Carton with readable function, scale, orientation and interaction side"
+        }
+      ],
+      "actions": [
+        {
+          "id": "browsing",
+          "label": "Product Browsing",
+          "prompt": "product Browsing staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "recommendation",
+          "label": "Product Recommendation",
+          "prompt": "product Recommendation staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "checkout-action",
+          "label": "Checkout Transaction",
+          "prompt": "checkout Transaction staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "restocking",
+          "label": "Restocking",
+          "prompt": "restocking staged as one legible action with clear cause, response and direction"
+        }
+      ],
+      "states": [
+        {
+          "id": "quiet",
+          "label": "Quiet",
+          "prompt": "quiet conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "busy",
+          "label": "Busy",
+          "prompt": "busy conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "closing-time",
+          "label": "Closing Time",
+          "prompt": "closing Time conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "promotional",
+          "label": "Promotional",
+          "prompt": "promotional conveyed through restrained posture, spacing, light and environmental cues"
+        }
+      ],
+      "safetyContexts": [
+        {
+          "id": "fictional-production",
+          "label": "Fictional Production",
+          "prompt": "depict a fictional dramatic production scene, not operational instruction"
+        },
+        {
+          "id": "safe-readable-blocking",
+          "label": "Safe Readable Blocking",
+          "prompt": "preserve believable access, exits, working clearance and non-exploitative framing"
+        },
+        {
+          "id": "no-readable-private-data",
+          "label": "No Readable Private Data",
+          "prompt": "do not render readable personal records, credentials, addresses or private identifiers"
+        }
+      ],
+      "continuityLocks": [
+        {
+          "id": "screen-geography",
+          "label": "Screen Geography",
+          "prompt": "lock entrances, exits, screen direction and relative zone geography across connected shots"
+        },
+        {
+          "id": "role-wardrobe",
+          "label": "Role & Wardrobe",
+          "prompt": "lock role identity, wardrobe, carried equipment and visible state across connected shots"
+        },
+        {
+          "id": "prop-layout",
+          "label": "Prop Layout",
+          "prompt": "lock major prop position, orientation, ownership and used or unused state across connected shots"
+        }
+      ]
+    },
+    "subdomains": [
+      {
+        "id": "general",
+        "label": "Retail & Shop — General",
+        "zoneIds": [
+          "storefront",
+          "sales-floor",
+          "checkout",
+          "stock-room"
+        ],
+        "roleIds": [
+          "customer",
+          "sales-associate",
+          "cashier",
+          "store-manager"
+        ],
+        "propTypeIds": [
+          "display-shelf",
+          "shopping-basket",
+          "pos-terminal",
+          "stock-carton"
+        ],
+        "actionIds": [
+          "browsing",
+          "recommendation",
+          "checkout-action",
+          "restocking"
+        ],
+        "stateIds": [
+          "quiet",
+          "busy",
+          "closing-time",
+          "promotional"
+        ],
+        "safetyContextIds": [
+          "fictional-production",
+          "safe-readable-blocking",
+          "no-readable-private-data"
+        ],
+        "continuityLockIds": [
+          "screen-geography",
+          "role-wardrobe",
+          "prop-layout"
+        ]
+      }
+    ],
+    "families": [
+      {
+        "id": "environment",
+        "label": "Retail & Shop Environments",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "storefront",
+            "label": "Storefront",
+            "prompt": "storefront with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "sales-floor",
+            "label": "Sales Floor",
+            "prompt": "sales Floor with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "checkout",
+            "label": "Checkout",
+            "prompt": "checkout with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "stock-room",
+            "label": "Stock Room",
+            "prompt": "stock Room with clear entrances, working zones, eyelines and safe circulation"
+          }
+        ]
+      },
+      {
+        "id": "working-props",
+        "label": "Retail & Shop Props",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "display-shelf",
+            "label": "Display Shelf",
+            "prompt": "display Shelf with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "shopping-basket",
+            "label": "Shopping Basket",
+            "prompt": "shopping Basket with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "pos-terminal",
+            "label": "POS Terminal",
+            "prompt": "pOS Terminal with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "stock-carton",
+            "label": "Stock Carton",
+            "prompt": "stock Carton with readable function, scale, orientation and interaction side"
+          }
+        ]
+      },
+      {
+        "id": "role-action",
+        "label": "Retail & Shop Role Actions",
+        "primaryStyleAnchor": "organic-nature",
+        "secondaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "browsing",
+            "label": "Product Browsing",
+            "prompt": "product Browsing staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "recommendation",
+            "label": "Product Recommendation",
+            "prompt": "product Recommendation staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "checkout-action",
+            "label": "Checkout Transaction",
+            "prompt": "checkout Transaction staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "restocking",
+            "label": "Restocking",
+            "prompt": "restocking staged as one legible action with clear cause, response and direction"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schemaVersion": "trr-scenario-pack-v1",
+    "id": "airport.travel",
+    "version": "1.0.0",
+    "label": "Airport & Travel",
+    "domain": "travel",
+    "description": "Passenger journeys with gates, baggage, checkpoints and travel-direction continuity.",
+    "catalog": {
+      "zones": [
+        {
+          "id": "check-in-hall",
+          "label": "Check-in Hall",
+          "prompt": "check-in Hall with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "security-lane",
+          "label": "Security Lane",
+          "prompt": "security Lane with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "departure-gate",
+          "label": "Departure Gate",
+          "prompt": "departure Gate with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "baggage-claim",
+          "label": "Baggage Claim",
+          "prompt": "baggage Claim with clear entrances, working zones, eyelines and safe circulation"
+        }
+      ],
+      "roles": [
+        {
+          "id": "traveller",
+          "label": "Traveller",
+          "prompt": "traveller with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for traveller"
+        },
+        {
+          "id": "airline-agent",
+          "label": "Airline Agent",
+          "prompt": "airline Agent with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for airline Agent"
+        },
+        {
+          "id": "security-agent",
+          "label": "Security Agent",
+          "prompt": "security Agent with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for security Agent"
+        },
+        {
+          "id": "cabin-crew",
+          "label": "Cabin Crew",
+          "prompt": "cabin Crew with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for cabin Crew"
+        }
+      ],
+      "propTypes": [
+        {
+          "id": "suitcase",
+          "label": "Suitcase",
+          "prompt": "suitcase with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "boarding-pass",
+          "label": "Boarding Pass",
+          "prompt": "boarding Pass with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "check-in-kiosk",
+          "label": "Check-in Kiosk",
+          "prompt": "check-in Kiosk with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "baggage-belt",
+          "label": "Baggage Belt",
+          "prompt": "baggage Belt with readable function, scale, orientation and interaction side"
+        }
+      ],
+      "actions": [
+        {
+          "id": "check-in",
+          "label": "Travel Check-in",
+          "prompt": "travel Check-in staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "checkpoint-flow",
+          "label": "Checkpoint Flow",
+          "prompt": "checkpoint Flow staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "boarding",
+          "label": "Boarding",
+          "prompt": "boarding staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "reunion",
+          "label": "Arrival Reunion",
+          "prompt": "arrival Reunion staged as one legible action with clear cause, response and direction"
+        }
+      ],
+      "states": [
+        {
+          "id": "anticipation",
+          "label": "Anticipation",
+          "prompt": "anticipation conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "rushed",
+          "label": "Rushed",
+          "prompt": "rushed conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "delayed",
+          "label": "Delayed",
+          "prompt": "delayed conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "arrived",
+          "label": "Arrived",
+          "prompt": "arrived conveyed through restrained posture, spacing, light and environmental cues"
+        }
+      ],
+      "safetyContexts": [
+        {
+          "id": "fictional-production",
+          "label": "Fictional Production",
+          "prompt": "depict a fictional dramatic production scene, not operational instruction"
+        },
+        {
+          "id": "safe-readable-blocking",
+          "label": "Safe Readable Blocking",
+          "prompt": "preserve believable access, exits, working clearance and non-exploitative framing"
+        },
+        {
+          "id": "no-readable-private-data",
+          "label": "No Readable Private Data",
+          "prompt": "do not render readable personal records, credentials, addresses or private identifiers"
+        }
+      ],
+      "continuityLocks": [
+        {
+          "id": "screen-geography",
+          "label": "Screen Geography",
+          "prompt": "lock entrances, exits, screen direction and relative zone geography across connected shots"
+        },
+        {
+          "id": "role-wardrobe",
+          "label": "Role & Wardrobe",
+          "prompt": "lock role identity, wardrobe, carried equipment and visible state across connected shots"
+        },
+        {
+          "id": "prop-layout",
+          "label": "Prop Layout",
+          "prompt": "lock major prop position, orientation, ownership and used or unused state across connected shots"
+        }
+      ]
+    },
+    "subdomains": [
+      {
+        "id": "general",
+        "label": "Airport & Travel — General",
+        "zoneIds": [
+          "check-in-hall",
+          "security-lane",
+          "departure-gate",
+          "baggage-claim"
+        ],
+        "roleIds": [
+          "traveller",
+          "airline-agent",
+          "security-agent",
+          "cabin-crew"
+        ],
+        "propTypeIds": [
+          "suitcase",
+          "boarding-pass",
+          "check-in-kiosk",
+          "baggage-belt"
+        ],
+        "actionIds": [
+          "check-in",
+          "checkpoint-flow",
+          "boarding",
+          "reunion"
+        ],
+        "stateIds": [
+          "anticipation",
+          "rushed",
+          "delayed",
+          "arrived"
+        ],
+        "safetyContextIds": [
+          "fictional-production",
+          "safe-readable-blocking",
+          "no-readable-private-data"
+        ],
+        "continuityLockIds": [
+          "screen-geography",
+          "role-wardrobe",
+          "prop-layout"
+        ]
+      }
+    ],
+    "families": [
+      {
+        "id": "environment",
+        "label": "Airport & Travel Environments",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "check-in-hall",
+            "label": "Check-in Hall",
+            "prompt": "check-in Hall with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "security-lane",
+            "label": "Security Lane",
+            "prompt": "security Lane with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "departure-gate",
+            "label": "Departure Gate",
+            "prompt": "departure Gate with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "baggage-claim",
+            "label": "Baggage Claim",
+            "prompt": "baggage Claim with clear entrances, working zones, eyelines and safe circulation"
+          }
+        ]
+      },
+      {
+        "id": "working-props",
+        "label": "Airport & Travel Props",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "suitcase",
+            "label": "Suitcase",
+            "prompt": "suitcase with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "boarding-pass",
+            "label": "Boarding Pass",
+            "prompt": "boarding Pass with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "check-in-kiosk",
+            "label": "Check-in Kiosk",
+            "prompt": "check-in Kiosk with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "baggage-belt",
+            "label": "Baggage Belt",
+            "prompt": "baggage Belt with readable function, scale, orientation and interaction side"
+          }
+        ]
+      },
+      {
+        "id": "role-action",
+        "label": "Airport & Travel Role Actions",
+        "primaryStyleAnchor": "organic-nature",
+        "secondaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "check-in",
+            "label": "Travel Check-in",
+            "prompt": "travel Check-in staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "checkpoint-flow",
+            "label": "Checkpoint Flow",
+            "prompt": "checkpoint Flow staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "boarding",
+            "label": "Boarding",
+            "prompt": "boarding staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "reunion",
+            "label": "Arrival Reunion",
+            "prompt": "arrival Reunion staged as one legible action with clear cause, response and direction"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schemaVersion": "trr-scenario-pack-v1",
+    "id": "construction.site",
+    "version": "1.0.0",
+    "label": "Construction Site",
+    "domain": "construction",
+    "description": "Site geography, machinery scale, PPE continuity and readable work-team blocking.",
+    "catalog": {
+      "zones": [
+        {
+          "id": "site-gate",
+          "label": "Site Gate",
+          "prompt": "site Gate with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "active-build",
+          "label": "Active Build Area",
+          "prompt": "active Build Area with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "site-office",
+          "label": "Site Office",
+          "prompt": "site Office with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "scaffold-level",
+          "label": "Scaffold Level",
+          "prompt": "scaffold Level with clear entrances, working zones, eyelines and safe circulation"
+        }
+      ],
+      "roles": [
+        {
+          "id": "site-manager",
+          "label": "Site Manager",
+          "prompt": "site Manager with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for site Manager"
+        },
+        {
+          "id": "construction-worker",
+          "label": "Construction Worker",
+          "prompt": "construction Worker with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for construction Worker"
+        },
+        {
+          "id": "machine-operator",
+          "label": "Machine Operator",
+          "prompt": "machine Operator with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for machine Operator"
+        },
+        {
+          "id": "inspector",
+          "label": "Site Inspector",
+          "prompt": "site Inspector with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for site Inspector"
+        }
+      ],
+      "propTypes": [
+        {
+          "id": "excavator",
+          "label": "Excavator",
+          "prompt": "excavator with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "scaffold",
+          "label": "Scaffold",
+          "prompt": "scaffold with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "tool-case",
+          "label": "Tool Case",
+          "prompt": "tool Case with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "site-barrier",
+          "label": "Site Barrier",
+          "prompt": "site Barrier with readable function, scale, orientation and interaction side"
+        }
+      ],
+      "actions": [
+        {
+          "id": "site-briefing",
+          "label": "Site Briefing",
+          "prompt": "site Briefing staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "material-lift",
+          "label": "Material Lift",
+          "prompt": "material Lift staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "inspection",
+          "label": "Site Inspection",
+          "prompt": "site Inspection staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "shift-change",
+          "label": "Shift Change",
+          "prompt": "shift Change staged as one legible action with clear cause, response and direction"
+        }
+      ],
+      "states": [
+        {
+          "id": "active",
+          "label": "Active",
+          "prompt": "active conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "paused",
+          "label": "Paused",
+          "prompt": "paused conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "weather-exposed",
+          "label": "Weather Exposed",
+          "prompt": "weather Exposed conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "completed",
+          "label": "Completed",
+          "prompt": "completed conveyed through restrained posture, spacing, light and environmental cues"
+        }
+      ],
+      "safetyContexts": [
+        {
+          "id": "fictional-production",
+          "label": "Fictional Production",
+          "prompt": "depict a fictional dramatic production scene, not operational instruction"
+        },
+        {
+          "id": "safe-readable-blocking",
+          "label": "Safe Readable Blocking",
+          "prompt": "preserve believable access, exits, working clearance and non-exploitative framing"
+        },
+        {
+          "id": "no-readable-private-data",
+          "label": "No Readable Private Data",
+          "prompt": "do not render readable personal records, credentials, addresses or private identifiers"
+        }
+      ],
+      "continuityLocks": [
+        {
+          "id": "screen-geography",
+          "label": "Screen Geography",
+          "prompt": "lock entrances, exits, screen direction and relative zone geography across connected shots"
+        },
+        {
+          "id": "role-wardrobe",
+          "label": "Role & Wardrobe",
+          "prompt": "lock role identity, wardrobe, carried equipment and visible state across connected shots"
+        },
+        {
+          "id": "prop-layout",
+          "label": "Prop Layout",
+          "prompt": "lock major prop position, orientation, ownership and used or unused state across connected shots"
+        }
+      ]
+    },
+    "subdomains": [
+      {
+        "id": "general",
+        "label": "Construction Site — General",
+        "zoneIds": [
+          "site-gate",
+          "active-build",
+          "site-office",
+          "scaffold-level"
+        ],
+        "roleIds": [
+          "site-manager",
+          "construction-worker",
+          "machine-operator",
+          "inspector"
+        ],
+        "propTypeIds": [
+          "excavator",
+          "scaffold",
+          "tool-case",
+          "site-barrier"
+        ],
+        "actionIds": [
+          "site-briefing",
+          "material-lift",
+          "inspection",
+          "shift-change"
+        ],
+        "stateIds": [
+          "active",
+          "paused",
+          "weather-exposed",
+          "completed"
+        ],
+        "safetyContextIds": [
+          "fictional-production",
+          "safe-readable-blocking",
+          "no-readable-private-data"
+        ],
+        "continuityLockIds": [
+          "screen-geography",
+          "role-wardrobe",
+          "prop-layout"
+        ]
+      }
+    ],
+    "families": [
+      {
+        "id": "environment",
+        "label": "Construction Site Environments",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "site-gate",
+            "label": "Site Gate",
+            "prompt": "site Gate with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "active-build",
+            "label": "Active Build Area",
+            "prompt": "active Build Area with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "site-office",
+            "label": "Site Office",
+            "prompt": "site Office with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "scaffold-level",
+            "label": "Scaffold Level",
+            "prompt": "scaffold Level with clear entrances, working zones, eyelines and safe circulation"
+          }
+        ]
+      },
+      {
+        "id": "working-props",
+        "label": "Construction Site Props",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "excavator",
+            "label": "Excavator",
+            "prompt": "excavator with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "scaffold",
+            "label": "Scaffold",
+            "prompt": "scaffold with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "tool-case",
+            "label": "Tool Case",
+            "prompt": "tool Case with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "site-barrier",
+            "label": "Site Barrier",
+            "prompt": "site Barrier with readable function, scale, orientation and interaction side"
+          }
+        ]
+      },
+      {
+        "id": "role-action",
+        "label": "Construction Site Role Actions",
+        "primaryStyleAnchor": "organic-nature",
+        "secondaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "site-briefing",
+            "label": "Site Briefing",
+            "prompt": "site Briefing staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "material-lift",
+            "label": "Material Lift",
+            "prompt": "material Lift staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "inspection",
+            "label": "Site Inspection",
+            "prompt": "site Inspection staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "shift-change",
+            "label": "Shift Change",
+            "prompt": "shift Change staged as one legible action with clear cause, response and direction"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schemaVersion": "trr-scenario-pack-v1",
+    "id": "industrial.workshop",
+    "version": "1.0.0",
+    "label": "Industrial & Workshop",
+    "domain": "industrial",
+    "description": "Machines, work cells, tools and process-state continuity without creating operational instructions.",
+    "catalog": {
+      "zones": [
+        {
+          "id": "work-cell",
+          "label": "Industrial Work Cell",
+          "prompt": "industrial Work Cell with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "machine-bay",
+          "label": "Machine Bay",
+          "prompt": "machine Bay with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "loading-area",
+          "label": "Loading Area",
+          "prompt": "loading Area with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "control-room",
+          "label": "Industrial Control Room",
+          "prompt": "industrial Control Room with clear entrances, working zones, eyelines and safe circulation"
+        }
+      ],
+      "roles": [
+        {
+          "id": "technician",
+          "label": "Technician",
+          "prompt": "technician with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for technician"
+        },
+        {
+          "id": "operator",
+          "label": "Machine Operator",
+          "prompt": "machine Operator with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for machine Operator"
+        },
+        {
+          "id": "supervisor",
+          "label": "Workshop Supervisor",
+          "prompt": "workshop Supervisor with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for workshop Supervisor"
+        },
+        {
+          "id": "visitor",
+          "label": "Workshop Visitor",
+          "prompt": "workshop Visitor with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for workshop Visitor"
+        }
+      ],
+      "propTypes": [
+        {
+          "id": "workbench",
+          "label": "Workbench",
+          "prompt": "workbench with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "machine-console",
+          "label": "Machine Console",
+          "prompt": "machine Console with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "pallet-truck",
+          "label": "Pallet Truck",
+          "prompt": "pallet Truck with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "parts-bin",
+          "label": "Parts Bin",
+          "prompt": "parts Bin with readable function, scale, orientation and interaction side"
+        }
+      ],
+      "actions": [
+        {
+          "id": "team-brief",
+          "label": "Workshop Briefing",
+          "prompt": "workshop Briefing staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "assembly",
+          "label": "Assembly Work",
+          "prompt": "assembly Work staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "quality-check",
+          "label": "Quality Check",
+          "prompt": "quality Check staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "loading",
+          "label": "Material Loading",
+          "prompt": "material Loading staged as one legible action with clear cause, response and direction"
+        }
+      ],
+      "states": [
+        {
+          "id": "idle",
+          "label": "Idle",
+          "prompt": "idle conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "operating",
+          "label": "Operating",
+          "prompt": "operating conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "maintenance",
+          "label": "Maintenance",
+          "prompt": "maintenance conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "shift-end",
+          "label": "Shift End",
+          "prompt": "shift End conveyed through restrained posture, spacing, light and environmental cues"
+        }
+      ],
+      "safetyContexts": [
+        {
+          "id": "fictional-production",
+          "label": "Fictional Production",
+          "prompt": "depict a fictional dramatic production scene, not operational instruction"
+        },
+        {
+          "id": "safe-readable-blocking",
+          "label": "Safe Readable Blocking",
+          "prompt": "preserve believable access, exits, working clearance and non-exploitative framing"
+        },
+        {
+          "id": "no-readable-private-data",
+          "label": "No Readable Private Data",
+          "prompt": "do not render readable personal records, credentials, addresses or private identifiers"
+        }
+      ],
+      "continuityLocks": [
+        {
+          "id": "screen-geography",
+          "label": "Screen Geography",
+          "prompt": "lock entrances, exits, screen direction and relative zone geography across connected shots"
+        },
+        {
+          "id": "role-wardrobe",
+          "label": "Role & Wardrobe",
+          "prompt": "lock role identity, wardrobe, carried equipment and visible state across connected shots"
+        },
+        {
+          "id": "prop-layout",
+          "label": "Prop Layout",
+          "prompt": "lock major prop position, orientation, ownership and used or unused state across connected shots"
+        }
+      ]
+    },
+    "subdomains": [
+      {
+        "id": "general",
+        "label": "Industrial & Workshop — General",
+        "zoneIds": [
+          "work-cell",
+          "machine-bay",
+          "loading-area",
+          "control-room"
+        ],
+        "roleIds": [
+          "technician",
+          "operator",
+          "supervisor",
+          "visitor"
+        ],
+        "propTypeIds": [
+          "workbench",
+          "machine-console",
+          "pallet-truck",
+          "parts-bin"
+        ],
+        "actionIds": [
+          "team-brief",
+          "assembly",
+          "quality-check",
+          "loading"
+        ],
+        "stateIds": [
+          "idle",
+          "operating",
+          "maintenance",
+          "shift-end"
+        ],
+        "safetyContextIds": [
+          "fictional-production",
+          "safe-readable-blocking",
+          "no-readable-private-data"
+        ],
+        "continuityLockIds": [
+          "screen-geography",
+          "role-wardrobe",
+          "prop-layout"
+        ]
+      }
+    ],
+    "families": [
+      {
+        "id": "environment",
+        "label": "Industrial & Workshop Environments",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "work-cell",
+            "label": "Industrial Work Cell",
+            "prompt": "industrial Work Cell with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "machine-bay",
+            "label": "Machine Bay",
+            "prompt": "machine Bay with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "loading-area",
+            "label": "Loading Area",
+            "prompt": "loading Area with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "control-room",
+            "label": "Industrial Control Room",
+            "prompt": "industrial Control Room with clear entrances, working zones, eyelines and safe circulation"
+          }
+        ]
+      },
+      {
+        "id": "working-props",
+        "label": "Industrial & Workshop Props",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "workbench",
+            "label": "Workbench",
+            "prompt": "workbench with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "machine-console",
+            "label": "Machine Console",
+            "prompt": "machine Console with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "pallet-truck",
+            "label": "Pallet Truck",
+            "prompt": "pallet Truck with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "parts-bin",
+            "label": "Parts Bin",
+            "prompt": "parts Bin with readable function, scale, orientation and interaction side"
+          }
+        ]
+      },
+      {
+        "id": "role-action",
+        "label": "Industrial & Workshop Role Actions",
+        "primaryStyleAnchor": "organic-nature",
+        "secondaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "team-brief",
+            "label": "Workshop Briefing",
+            "prompt": "workshop Briefing staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "assembly",
+            "label": "Assembly Work",
+            "prompt": "assembly Work staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "quality-check",
+            "label": "Quality Check",
+            "prompt": "quality Check staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "loading",
+            "label": "Material Loading",
+            "prompt": "material Loading staged as one legible action with clear cause, response and direction"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schemaVersion": "trr-scenario-pack-v1",
+    "id": "residential.domestic",
+    "version": "1.0.0",
+    "label": "Residential & Domestic",
+    "domain": "residential",
+    "description": "Home geography, family blocking, furniture and object-state continuity for everyday drama.",
+    "catalog": {
+      "zones": [
+        {
+          "id": "living-room",
+          "label": "Living Room",
+          "prompt": "living Room with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "domestic-kitchen",
+          "label": "Domestic Kitchen",
+          "prompt": "domestic Kitchen with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "bedroom",
+          "label": "Bedroom",
+          "prompt": "bedroom with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "front-entry",
+          "label": "Front Entry",
+          "prompt": "front Entry with clear entrances, working zones, eyelines and safe circulation"
+        }
+      ],
+      "roles": [
+        {
+          "id": "resident",
+          "label": "Resident",
+          "prompt": "resident with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for resident"
+        },
+        {
+          "id": "family-member",
+          "label": "Family Member",
+          "prompt": "family Member with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for family Member"
+        },
+        {
+          "id": "guest",
+          "label": "Guest",
+          "prompt": "guest with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for guest"
+        },
+        {
+          "id": "service-worker",
+          "label": "Service Worker",
+          "prompt": "service Worker with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for service Worker"
+        }
+      ],
+      "propTypes": [
+        {
+          "id": "sofa",
+          "label": "Sofa",
+          "prompt": "sofa with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "dining-table",
+          "label": "Dining Table",
+          "prompt": "dining Table with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "house-key",
+          "label": "House Key",
+          "prompt": "house Key with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "family-photo",
+          "label": "Family Photo",
+          "prompt": "family Photo with readable function, scale, orientation and interaction side"
+        }
+      ],
+      "actions": [
+        {
+          "id": "arrival",
+          "label": "Arriving Home",
+          "prompt": "arriving Home staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "family-meal",
+          "label": "Family Meal",
+          "prompt": "family Meal staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "private-conversation",
+          "label": "Private Conversation",
+          "prompt": "private Conversation staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "departure",
+          "label": "Departure",
+          "prompt": "departure staged as one legible action with clear cause, response and direction"
+        }
+      ],
+      "states": [
+        {
+          "id": "comfortable",
+          "label": "Comfortable",
+          "prompt": "comfortable conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "tense",
+          "label": "Tense",
+          "prompt": "tense conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "messy",
+          "label": "Messy",
+          "prompt": "messy conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "quiet-night",
+          "label": "Quiet Night",
+          "prompt": "quiet Night conveyed through restrained posture, spacing, light and environmental cues"
+        }
+      ],
+      "safetyContexts": [
+        {
+          "id": "fictional-production",
+          "label": "Fictional Production",
+          "prompt": "depict a fictional dramatic production scene, not operational instruction"
+        },
+        {
+          "id": "safe-readable-blocking",
+          "label": "Safe Readable Blocking",
+          "prompt": "preserve believable access, exits, working clearance and non-exploitative framing"
+        },
+        {
+          "id": "no-readable-private-data",
+          "label": "No Readable Private Data",
+          "prompt": "do not render readable personal records, credentials, addresses or private identifiers"
+        }
+      ],
+      "continuityLocks": [
+        {
+          "id": "screen-geography",
+          "label": "Screen Geography",
+          "prompt": "lock entrances, exits, screen direction and relative zone geography across connected shots"
+        },
+        {
+          "id": "role-wardrobe",
+          "label": "Role & Wardrobe",
+          "prompt": "lock role identity, wardrobe, carried equipment and visible state across connected shots"
+        },
+        {
+          "id": "prop-layout",
+          "label": "Prop Layout",
+          "prompt": "lock major prop position, orientation, ownership and used or unused state across connected shots"
+        }
+      ]
+    },
+    "subdomains": [
+      {
+        "id": "general",
+        "label": "Residential & Domestic — General",
+        "zoneIds": [
+          "living-room",
+          "domestic-kitchen",
+          "bedroom",
+          "front-entry"
+        ],
+        "roleIds": [
+          "resident",
+          "family-member",
+          "guest",
+          "service-worker"
+        ],
+        "propTypeIds": [
+          "sofa",
+          "dining-table",
+          "house-key",
+          "family-photo"
+        ],
+        "actionIds": [
+          "arrival",
+          "family-meal",
+          "private-conversation",
+          "departure"
+        ],
+        "stateIds": [
+          "comfortable",
+          "tense",
+          "messy",
+          "quiet-night"
+        ],
+        "safetyContextIds": [
+          "fictional-production",
+          "safe-readable-blocking",
+          "no-readable-private-data"
+        ],
+        "continuityLockIds": [
+          "screen-geography",
+          "role-wardrobe",
+          "prop-layout"
+        ]
+      }
+    ],
+    "families": [
+      {
+        "id": "environment",
+        "label": "Residential & Domestic Environments",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "living-room",
+            "label": "Living Room",
+            "prompt": "living Room with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "domestic-kitchen",
+            "label": "Domestic Kitchen",
+            "prompt": "domestic Kitchen with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "bedroom",
+            "label": "Bedroom",
+            "prompt": "bedroom with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "front-entry",
+            "label": "Front Entry",
+            "prompt": "front Entry with clear entrances, working zones, eyelines and safe circulation"
+          }
+        ]
+      },
+      {
+        "id": "working-props",
+        "label": "Residential & Domestic Props",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "sofa",
+            "label": "Sofa",
+            "prompt": "sofa with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "dining-table",
+            "label": "Dining Table",
+            "prompt": "dining Table with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "house-key",
+            "label": "House Key",
+            "prompt": "house Key with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "family-photo",
+            "label": "Family Photo",
+            "prompt": "family Photo with readable function, scale, orientation and interaction side"
+          }
+        ]
+      },
+      {
+        "id": "role-action",
+        "label": "Residential & Domestic Role Actions",
+        "primaryStyleAnchor": "organic-nature",
+        "secondaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "arrival",
+            "label": "Arriving Home",
+            "prompt": "arriving Home staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "family-meal",
+            "label": "Family Meal",
+            "prompt": "family Meal staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "private-conversation",
+            "label": "Private Conversation",
+            "prompt": "private Conversation staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "departure",
+            "label": "Departure",
+            "prompt": "departure staged as one legible action with clear cause, response and direction"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schemaVersion": "trr-scenario-pack-v1",
+    "id": "sports.fitness",
+    "version": "1.0.0",
+    "label": "Sports & Fitness",
+    "domain": "sports",
+    "description": "Athlete movement, coaching eyelines, equipment and field geography across action coverage.",
+    "catalog": {
+      "zones": [
+        {
+          "id": "training-gym",
+          "label": "Training Gym",
+          "prompt": "training Gym with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "playing-field",
+          "label": "Playing Field",
+          "prompt": "playing Field with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "locker-room",
+          "label": "Locker Room",
+          "prompt": "locker Room with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "spectator-stand",
+          "label": "Spectator Stand",
+          "prompt": "spectator Stand with clear entrances, working zones, eyelines and safe circulation"
+        }
+      ],
+      "roles": [
+        {
+          "id": "athlete",
+          "label": "Athlete",
+          "prompt": "athlete with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for athlete"
+        },
+        {
+          "id": "coach",
+          "label": "Coach",
+          "prompt": "coach with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for coach"
+        },
+        {
+          "id": "official",
+          "label": "Official",
+          "prompt": "official with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for official"
+        },
+        {
+          "id": "spectator",
+          "label": "Spectator",
+          "prompt": "spectator with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for spectator"
+        }
+      ],
+      "propTypes": [
+        {
+          "id": "sports-ball",
+          "label": "Sports Ball",
+          "prompt": "sports Ball with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "training-bench",
+          "label": "Training Bench",
+          "prompt": "training Bench with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "scoreboard",
+          "label": "Scoreboard",
+          "prompt": "scoreboard with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "fitness-machine",
+          "label": "Fitness Machine",
+          "prompt": "fitness Machine with readable function, scale, orientation and interaction side"
+        }
+      ],
+      "actions": [
+        {
+          "id": "warm-up",
+          "label": "Warm-up",
+          "prompt": "warm-up staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "competition",
+          "label": "Competition Beat",
+          "prompt": "competition Beat staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "coaching",
+          "label": "Coaching Moment",
+          "prompt": "coaching Moment staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "celebration",
+          "label": "Team Celebration",
+          "prompt": "team Celebration staged as one legible action with clear cause, response and direction"
+        }
+      ],
+      "states": [
+        {
+          "id": "focused",
+          "label": "Focused",
+          "prompt": "focused conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "exertion",
+          "label": "Exertion",
+          "prompt": "exertion conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "setback",
+          "label": "Setback",
+          "prompt": "setback conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "victory",
+          "label": "Victory",
+          "prompt": "victory conveyed through restrained posture, spacing, light and environmental cues"
+        }
+      ],
+      "safetyContexts": [
+        {
+          "id": "fictional-production",
+          "label": "Fictional Production",
+          "prompt": "depict a fictional dramatic production scene, not operational instruction"
+        },
+        {
+          "id": "safe-readable-blocking",
+          "label": "Safe Readable Blocking",
+          "prompt": "preserve believable access, exits, working clearance and non-exploitative framing"
+        },
+        {
+          "id": "no-readable-private-data",
+          "label": "No Readable Private Data",
+          "prompt": "do not render readable personal records, credentials, addresses or private identifiers"
+        }
+      ],
+      "continuityLocks": [
+        {
+          "id": "screen-geography",
+          "label": "Screen Geography",
+          "prompt": "lock entrances, exits, screen direction and relative zone geography across connected shots"
+        },
+        {
+          "id": "role-wardrobe",
+          "label": "Role & Wardrobe",
+          "prompt": "lock role identity, wardrobe, carried equipment and visible state across connected shots"
+        },
+        {
+          "id": "prop-layout",
+          "label": "Prop Layout",
+          "prompt": "lock major prop position, orientation, ownership and used or unused state across connected shots"
+        }
+      ]
+    },
+    "subdomains": [
+      {
+        "id": "general",
+        "label": "Sports & Fitness — General",
+        "zoneIds": [
+          "training-gym",
+          "playing-field",
+          "locker-room",
+          "spectator-stand"
+        ],
+        "roleIds": [
+          "athlete",
+          "coach",
+          "official",
+          "spectator"
+        ],
+        "propTypeIds": [
+          "sports-ball",
+          "training-bench",
+          "scoreboard",
+          "fitness-machine"
+        ],
+        "actionIds": [
+          "warm-up",
+          "competition",
+          "coaching",
+          "celebration"
+        ],
+        "stateIds": [
+          "focused",
+          "exertion",
+          "setback",
+          "victory"
+        ],
+        "safetyContextIds": [
+          "fictional-production",
+          "safe-readable-blocking",
+          "no-readable-private-data"
+        ],
+        "continuityLockIds": [
+          "screen-geography",
+          "role-wardrobe",
+          "prop-layout"
+        ]
+      }
+    ],
+    "families": [
+      {
+        "id": "environment",
+        "label": "Sports & Fitness Environments",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "training-gym",
+            "label": "Training Gym",
+            "prompt": "training Gym with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "playing-field",
+            "label": "Playing Field",
+            "prompt": "playing Field with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "locker-room",
+            "label": "Locker Room",
+            "prompt": "locker Room with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "spectator-stand",
+            "label": "Spectator Stand",
+            "prompt": "spectator Stand with clear entrances, working zones, eyelines and safe circulation"
+          }
+        ]
+      },
+      {
+        "id": "working-props",
+        "label": "Sports & Fitness Props",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "sports-ball",
+            "label": "Sports Ball",
+            "prompt": "sports Ball with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "training-bench",
+            "label": "Training Bench",
+            "prompt": "training Bench with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "scoreboard",
+            "label": "Scoreboard",
+            "prompt": "scoreboard with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "fitness-machine",
+            "label": "Fitness Machine",
+            "prompt": "fitness Machine with readable function, scale, orientation and interaction side"
+          }
+        ]
+      },
+      {
+        "id": "role-action",
+        "label": "Sports & Fitness Role Actions",
+        "primaryStyleAnchor": "organic-nature",
+        "secondaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "warm-up",
+            "label": "Warm-up",
+            "prompt": "warm-up staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "competition",
+            "label": "Competition Beat",
+            "prompt": "competition Beat staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "coaching",
+            "label": "Coaching Moment",
+            "prompt": "coaching Moment staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "celebration",
+            "label": "Team Celebration",
+            "prompt": "team Celebration staged as one legible action with clear cause, response and direction"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schemaVersion": "trr-scenario-pack-v1",
+    "id": "event.entertainment",
+    "version": "1.0.0",
+    "label": "Event & Entertainment",
+    "domain": "event",
+    "description": "Stage, audience, backstage and technical-event continuity with production-aware blocking.",
+    "catalog": {
+      "zones": [
+        {
+          "id": "main-stage",
+          "label": "Main Stage",
+          "prompt": "main Stage with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "backstage",
+          "label": "Backstage",
+          "prompt": "backstage with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "audience-floor",
+          "label": "Audience Floor",
+          "prompt": "audience Floor with clear entrances, working zones, eyelines and safe circulation"
+        },
+        {
+          "id": "control-booth",
+          "label": "Event Control Booth",
+          "prompt": "event Control Booth with clear entrances, working zones, eyelines and safe circulation"
+        }
+      ],
+      "roles": [
+        {
+          "id": "performer",
+          "label": "Performer",
+          "prompt": "performer with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for performer"
+        },
+        {
+          "id": "stage-manager",
+          "label": "Stage Manager",
+          "prompt": "stage Manager with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for stage Manager"
+        },
+        {
+          "id": "technician",
+          "label": "Event Technician",
+          "prompt": "event Technician with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for event Technician"
+        },
+        {
+          "id": "audience-member",
+          "label": "Audience Member",
+          "prompt": "audience Member with a clear task, silhouette and relationship to the team",
+          "wardrobe": "consistent role-appropriate wardrobe and equipment for audience Member"
+        }
+      ],
+      "propTypes": [
+        {
+          "id": "stage-microphone",
+          "label": "Stage Microphone",
+          "prompt": "stage Microphone with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "lighting-rig",
+          "label": "Lighting Rig",
+          "prompt": "lighting Rig with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "road-case",
+          "label": "Road Case",
+          "prompt": "road Case with readable function, scale, orientation and interaction side"
+        },
+        {
+          "id": "crowd-barrier",
+          "label": "Crowd Barrier",
+          "prompt": "crowd Barrier with readable function, scale, orientation and interaction side"
+        }
+      ],
+      "actions": [
+        {
+          "id": "soundcheck",
+          "label": "Soundcheck",
+          "prompt": "soundcheck staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "stage-entrance",
+          "label": "Stage Entrance",
+          "prompt": "stage Entrance staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "performance",
+          "label": "Live Performance",
+          "prompt": "live Performance staged as one legible action with clear cause, response and direction"
+        },
+        {
+          "id": "show-call",
+          "label": "Stage Management Call",
+          "prompt": "stage Management Call staged as one legible action with clear cause, response and direction"
+        }
+      ],
+      "states": [
+        {
+          "id": "setup",
+          "label": "Setup",
+          "prompt": "setup conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "anticipation",
+          "label": "Anticipation",
+          "prompt": "anticipation conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "showtime",
+          "label": "Showtime",
+          "prompt": "showtime conveyed through restrained posture, spacing, light and environmental cues"
+        },
+        {
+          "id": "breakdown",
+          "label": "Breakdown",
+          "prompt": "breakdown conveyed through restrained posture, spacing, light and environmental cues"
+        }
+      ],
+      "safetyContexts": [
+        {
+          "id": "fictional-production",
+          "label": "Fictional Production",
+          "prompt": "depict a fictional dramatic production scene, not operational instruction"
+        },
+        {
+          "id": "safe-readable-blocking",
+          "label": "Safe Readable Blocking",
+          "prompt": "preserve believable access, exits, working clearance and non-exploitative framing"
+        },
+        {
+          "id": "no-readable-private-data",
+          "label": "No Readable Private Data",
+          "prompt": "do not render readable personal records, credentials, addresses or private identifiers"
+        }
+      ],
+      "continuityLocks": [
+        {
+          "id": "screen-geography",
+          "label": "Screen Geography",
+          "prompt": "lock entrances, exits, screen direction and relative zone geography across connected shots"
+        },
+        {
+          "id": "role-wardrobe",
+          "label": "Role & Wardrobe",
+          "prompt": "lock role identity, wardrobe, carried equipment and visible state across connected shots"
+        },
+        {
+          "id": "prop-layout",
+          "label": "Prop Layout",
+          "prompt": "lock major prop position, orientation, ownership and used or unused state across connected shots"
+        }
+      ]
+    },
+    "subdomains": [
+      {
+        "id": "general",
+        "label": "Event & Entertainment — General",
+        "zoneIds": [
+          "main-stage",
+          "backstage",
+          "audience-floor",
+          "control-booth"
+        ],
+        "roleIds": [
+          "performer",
+          "stage-manager",
+          "technician",
+          "audience-member"
+        ],
+        "propTypeIds": [
+          "stage-microphone",
+          "lighting-rig",
+          "road-case",
+          "crowd-barrier"
+        ],
+        "actionIds": [
+          "soundcheck",
+          "stage-entrance",
+          "performance",
+          "show-call"
+        ],
+        "stateIds": [
+          "setup",
+          "anticipation",
+          "showtime",
+          "breakdown"
+        ],
+        "safetyContextIds": [
+          "fictional-production",
+          "safe-readable-blocking",
+          "no-readable-private-data"
+        ],
+        "continuityLockIds": [
+          "screen-geography",
+          "role-wardrobe",
+          "prop-layout"
+        ]
+      }
+    ],
+    "families": [
+      {
+        "id": "environment",
+        "label": "Event & Entertainment Environments",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "main-stage",
+            "label": "Main Stage",
+            "prompt": "main Stage with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "backstage",
+            "label": "Backstage",
+            "prompt": "backstage with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "audience-floor",
+            "label": "Audience Floor",
+            "prompt": "audience Floor with clear entrances, working zones, eyelines and safe circulation"
+          },
+          {
+            "id": "control-booth",
+            "label": "Event Control Booth",
+            "prompt": "event Control Booth with clear entrances, working zones, eyelines and safe circulation"
+          }
+        ]
+      },
+      {
+        "id": "working-props",
+        "label": "Event & Entertainment Props",
+        "primaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "stage-microphone",
+            "label": "Stage Microphone",
+            "prompt": "stage Microphone with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "lighting-rig",
+            "label": "Lighting Rig",
+            "prompt": "lighting Rig with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "road-case",
+            "label": "Road Case",
+            "prompt": "road Case with readable function, scale, orientation and interaction side"
+          },
+          {
+            "id": "crowd-barrier",
+            "label": "Crowd Barrier",
+            "prompt": "crowd Barrier with readable function, scale, orientation and interaction side"
+          }
+        ]
+      },
+      {
+        "id": "role-action",
+        "label": "Event & Entertainment Role Actions",
+        "primaryStyleAnchor": "organic-nature",
+        "secondaryStyleAnchor": "object-architecture",
+        "variants": [
+          {
+            "id": "soundcheck",
+            "label": "Soundcheck",
+            "prompt": "soundcheck staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "stage-entrance",
+            "label": "Stage Entrance",
+            "prompt": "stage Entrance staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "performance",
+            "label": "Live Performance",
+            "prompt": "live Performance staged as one legible action with clear cause, response and direction"
+          },
+          {
+            "id": "show-call",
+            "label": "Stage Management Call",
+            "prompt": "stage Management Call staged as one legible action with clear cause, response and direction"
+          }
+        ]
+      }
+    ]
+  }
+]

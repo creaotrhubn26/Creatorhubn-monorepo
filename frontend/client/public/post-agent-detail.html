@@ -328,11 +328,28 @@
         </div>
 
         <div class="mode-tabs">
-          <button class="mode-tab active" data-mode="team">For produksjons-team</button>
-          <button class="mode-tab" data-mode="self">Kun meg selv</button>
+          <button class="mode-tab active" data-mode="alacarte">Moduler (à la carte)</button>
+          <button class="mode-tab" data-mode="team">Team (alt)</button>
+          <button class="mode-tab" data-mode="self">Kun meg (alt)</button>
         </div>
 
-        <div id="team-mode">
+        <div id="alacarte-mode">
+          <div class="alert info" style="margin-bottom:14px">
+            Kjøp kun modulene du trenger. Appen lastes ned én gang og låser opp det du abonnerer på. Alle fire = 299 NOK/mnd (Komplett).
+          </div>
+          <div id="module-list" style="display:grid;gap:10px">Laster moduler…</div>
+
+          <div id="download-block" style="display:none;margin-top:20px;padding-top:18px;border-top:1px solid rgba(160,48,192,0.25)">
+            <div style="font-size:14px;color:#f0eaff;font-weight:600;margin-bottom:8px">Last ned Post Agent (macOS)</div>
+            <div style="font-size:12px;color:#8674a8;margin-bottom:12px">Du eier minst én modul — last ned appen og logg inn for å låse opp modulene dine.</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="primary" id="dl-arm" style="flex:1">Apple Silicon (.dmg)</button>
+              <button class="ghost" id="dl-intel" style="flex:1">Intel (.dmg)</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="team-mode" style="display:none">
           <div class="field">
             <label>Velg produksjon</label>
             <select id="production-select">
@@ -550,9 +567,94 @@
           var mode = tab.getAttribute('data-mode');
           teamMode.style.display = mode === 'team' ? 'block' : 'none';
           selfMode.style.display = mode === 'self' ? 'block' : 'none';
+          var ala = document.getElementById('alacarte-mode');
+          if (ala) ala.style.display = mode === 'alacarte' ? 'block' : 'none';
           clearAlert();
         });
       });
+
+      /* ---- À la carte-moduler ---- */
+      var moduleListEl = document.getElementById('module-list');
+      var downloadBlock = document.getElementById('download-block');
+      var ownedModules = [];
+
+      function renderModules(modules) {
+        moduleListEl.innerHTML = modules.map(function (m) {
+          var owned = ownedModules.indexOf(m.key) !== -1;
+          var btn = owned
+            ? '<span style="color:#5fd98a;font-weight:600;font-size:13px">Eier ✓</span>'
+            : (m.available
+              ? '<button class="primary" data-module="' + m.key + '" style="padding:8px 16px;font-size:13px">Kjøp ' + m.priceNok + ' kr/mnd</button>'
+              : '<span style="color:#8674a8;font-size:12px">Kommer snart</span>');
+          return '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;background:rgba(110,63,199,0.08);border:1px solid rgba(160,48,192,0.2);border-radius:10px;padding:12px 14px">' +
+            '<div style="min-width:0"><div style="color:#f0eaff;font-weight:600;font-size:14px">' + m.name + '</div>' +
+            '<div style="color:#b8a8d8;font-size:12px;line-height:1.4;margin-top:2px">' + m.description + '</div></div>' +
+            '<div style="flex-shrink:0">' + btn + '</div></div>';
+        }).join('');
+        Array.prototype.forEach.call(moduleListEl.querySelectorAll('button[data-module]'), function (b) {
+          b.addEventListener('click', function () { buyModule(b.getAttribute('data-module'), b); });
+        });
+      }
+
+      async function buyModule(moduleKey, btn) {
+        if (!getBearer()) { showAlert('Du må være logget inn for å kjøpe.'); return; }
+        if (btn) { btn.disabled = true; btn.textContent = 'Åpner Stripe…'; }
+        track('module_checkout_start', { module: moduleKey });
+        try {
+          var res = await fetch(BASE + '/modules/checkout', {
+            method: 'POST',
+            credentials: 'include',
+            headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+            body: JSON.stringify({ module: moduleKey }),
+          });
+          var data = await res.json();
+          if (res.ok && data.url) { window.location.href = data.url; return; }
+          showAlert('Kunne ikke starte kjøp: ' + (data.detail || data.error || ('HTTP ' + res.status)));
+        } catch (e) {
+          showAlert('Nettverksfeil ved kjøp. Prøv igjen.');
+        }
+        if (btn) { btn.disabled = false; btn.textContent = 'Kjøp'; }
+      }
+
+      async function downloadApp(variant) {
+        if (!getBearer()) { showAlert('Du må være logget inn for å laste ned.'); return; }
+        try {
+          var res = await fetch(BASE + '/modules/download/' + variant, {
+            credentials: 'include',
+            headers: authHeaders(),
+          });
+          var data = await res.json();
+          if (res.ok && data.url) { track('app_download', { variant: variant }); window.location.href = data.url; return; }
+          showAlert('Nedlasting feilet: ' + (data.detail || data.error || ('HTTP ' + res.status)));
+        } catch (e) {
+          showAlert('Nettverksfeil ved nedlasting. Prøv igjen.');
+        }
+      }
+
+      async function loadModules() {
+        try {
+          var catRes = await fetch(BASE + '/modules/catalog');
+          var cat = await catRes.json();
+          if (getBearer()) {
+            try {
+              var entRes = await fetch(BASE + '/modules/entitlements', { credentials: 'include', headers: authHeaders() });
+              if (entRes.ok) {
+                var ent = await entRes.json();
+                ownedModules = ent.modules || [];
+                if (ent.canDownload) downloadBlock.style.display = 'block';
+              }
+            } catch (_) { /* ikke innlogget / lag — vis bare katalog */ }
+          }
+          renderModules(cat.modules || []);
+        } catch (e) {
+          moduleListEl.innerHTML = '<div class="alert error">Kunne ikke laste moduler.</div>';
+        }
+      }
+      loadModules();
+      var dlArm = document.getElementById('dl-arm');
+      var dlIntel = document.getElementById('dl-intel');
+      if (dlArm) dlArm.addEventListener('click', function () { downloadApp('aarch64'); });
+      if (dlIntel) dlIntel.addEventListener('click', function () { downloadApp('x86_64'); });
 
       function renderCrewCandidates(candidates) {
         var field = document.getElementById('crew-candidates-field');

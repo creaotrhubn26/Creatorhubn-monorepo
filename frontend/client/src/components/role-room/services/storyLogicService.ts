@@ -501,6 +501,28 @@ export const storyLogicService = {
       const allKeys = Object.keys(localStorage);
       let migrated = 0;
 
+      // Self-heal keys corrupted by an earlier version of this migrator, which
+      // matched the new namespaced keys (`story-logic-data:<id>` /
+      // `story-logic-sync-meta:<id>`) with the same `story-logic-` prefix used
+      // for the legacy format. `key.replace('story-logic-', '')` then yielded a
+      // projectId of `data:<id>` (or `sync-meta:<id>`), so every page load
+      // re-wrapped the key one level deeper — `story-logic-data:data:data:…` —
+      // until it blew past the localStorage quota. Drop those malformed keys.
+      for (const key of allKeys) {
+        if (
+          key.startsWith(`${STORAGE_KEY_PREFIX}data:`) ||
+          key.startsWith(`${STORAGE_KEY_PREFIX}sync-meta:`) ||
+          key.startsWith(`${SYNC_META_PREFIX}data:`) ||
+          key.startsWith(`${SYNC_META_PREFIX}sync-meta:`)
+        ) {
+          try {
+            localStorage.removeItem(key);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+
       const legacyAggregateRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
       if (legacyAggregateRaw) {
         try {
@@ -527,7 +549,15 @@ export const storyLogicService = {
         }
       }
 
-      const storyLogicKeys = allKeys.filter(k => k.startsWith('story-logic-') && k !== LEGACY_STORAGE_KEY);
+      // Only the genuine legacy format (`story-logic-<projectId>`) should be
+      // migrated here. Exclude the new namespaced keys — otherwise the prefix
+      // match re-wraps them and the key grows unbounded (see cleanup above).
+      const storyLogicKeys = allKeys.filter(k =>
+        k.startsWith('story-logic-')
+        && k !== LEGACY_STORAGE_KEY
+        && !k.startsWith(STORAGE_KEY_PREFIX)
+        && !k.startsWith(SYNC_META_PREFIX)
+      );
       for (const key of storyLogicKeys) {
         const projectId = key.replace('story-logic-', '');
         if (projectId === 'default' || getStorageData(projectId)) continue;

@@ -19,10 +19,15 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
+import FalCostBadge from "./FalCostBadge";
+import { opCost } from "../services/falPricing";
 
 interface Props {
   onClose: () => void;
 }
+
+/** Estimert kostnad per Flux-generering (vises i UI før og etter). */
+const COST_PER_IMAGE = opCost("flux");
 
 const SIZES: { value: AiImageSize; label: string }[] = [
   { value: "square_hd", label: "Square HD (1024×1024)" },
@@ -46,6 +51,9 @@ export function AiImageDialog({ onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AiImageResult | null>(null);
   const [history, setHistory] = useState<AiImageResult[]>([]);
+  // Løpende fal-forbruk i denne økten — teller kun fullførte genereringer.
+  const [spentUsd, setSpentUsd] = useState(0);
+  const [genCount, setGenCount] = useState(0);
 
   const run = useCallback(async () => {
     if (!prompt.trim()) return;
@@ -56,6 +64,8 @@ export function AiImageDialog({ onClose }: Props) {
       const r = await generateImage({ prompt: prompt.trim(), image_size: size });
       setResult(r);
       setHistory((prev) => [r, ...prev].slice(0, 6));
+      setSpentUsd((s) => s + COST_PER_IMAGE);
+      setGenCount((c) => c + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -80,7 +90,17 @@ export function AiImageDialog({ onClose }: Props) {
               Flux 1.1 Pro via Role Room — bildet lagres lokalt og kan brukes som smart-object
             </div>
           </div>
-          <button onClick={onClose} style={closeBtn}>✕</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {genCount > 0 && (
+              <FalCostBadge
+                usd={spentUsd}
+                tone="spent"
+                label={`Brukt i økten (${genCount})`}
+                showNok
+              />
+            )}
+            <button onClick={onClose} style={closeBtn}>✕</button>
+          </div>
         </header>
 
         <div style={body}>
@@ -121,6 +141,7 @@ export function AiImageDialog({ onClose }: Props) {
                   </option>
                 ))}
               </select>
+              <FalCostBadge usd={COST_PER_IMAGE} tone="estimate" showNok />
               <button
                 onClick={run}
                 disabled={busy || !prompt.trim()}
@@ -129,6 +150,9 @@ export function AiImageDialog({ onClose }: Props) {
                 <RocketLaunchIcon sx={{ fontSize: 14, marginRight: "6px", verticalAlign: "text-bottom" }} />
                 {busy ? "Genererer…" : "Generer bilde"}
               </button>
+            </div>
+            <div style={{ fontSize: 10.5, color: "#777", marginTop: 6 }}>
+              Estimert kostnad per bilde — faktisk forbruk føres på fal-dashbordet.
             </div>
           </section>
 

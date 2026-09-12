@@ -1,0 +1,196 @@
+/**
+ * Demo Studio sky-bibliotek — synk av genererte artefakter (infographics,
+ * one-pagers, Product Brain, guider) til backend, så de deles på tvers av
+ * enheter/team i stedet for kun localStorage.
+ *
+ * Endepunkter (auth: RR_BEARER_TOKEN):
+ *   GET    /api/role-room/demo-assets?host=theroleroom.com
+ *   POST   /api/role-room/demo-assets
+ *   DELETE /api/role-room/demo-assets/:id
+ *
+ * Tabell opprettes on-demand (ingen egen migrasjon). Tilgang gates på eier
+ * (created_by = innlogget bruker).
+ */
+
+import type { Express, Request, Response } from "express";
+import type { Pool } from "pg";
+import express from "express";
+import { randomBytes } from "node:crypto";
+
+type SessionData = { userId: string; role?: string; email?: string };
+interface Deps { pool: Pool; activeSessions: Map<string, SessionData> }
+
+const VALID_KINDS = ["infographic", "onepager", "brain", "variant", "thumbnail", "guide", "other"];
+const MAX_PAYLOAD = 2_000_000; // ~2 MB pr. artefakt (SVG/HTML/data-URL)
+
+function getUserId(req: Request, sessions: Map<string, SessionData>): string | null {
+  const auth = req.headers.authorization;
+  if (auth?.startsWith("Bearer ")) {
+    const t = auth.slice(7).trim();
+    return sessions.get(t)?.userId ?? null;
+  }
+  return null;
+}
+
+export function registerRoleRoomDemoAssetsRoutes(app: Express, deps: Deps): void {
+  const { pool, activeSessions } = deps;
+  let ready = false;
+  void pool
+    .query(
+      `CREATE TABLE IF NOT EXISTS demo_studio_assets (
+         id         TEXT PRIMARY KEY,
+         created_by TEXT NOT NULL,
+         host       TEXT,
+         kind       TEXT NOT NULL,
+         title      TEXT NOT NULL,
+         payload    JSONB NOT NULL,
+         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+       )`,
+    )
+    .then(() => { ready = true; })
+    .catch((e: Error) => console.warn("[demo-assets] tabell-feil:", e.message));
+
+  app.get("/api/role-room/demo-assets", async (req: Request, res: Response) => {
+    const uid = getUserId(req, activeSessions);
+    if (!uid) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    if (!ready) { res.json({ assets: [] }); return; }
+    const host = String(req.query.host ?? "").trim();
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, host, kind, title, payload, created_at
+           FROM demo_studio_assets
+          WHERE created_by = $1 ${host ? "AND host = $2" : ""}
+          ORDER BY created_at DESC LIMIT 200`,
+        host ? [uid, host] : [uid],
+      );
+      res.json({ assets: rows.map((r) => ({ ...r.payload, id: r.id, host: r.host, kind: r.kind, title: r.title, createdAt: r.created_at })) });
+    } catch (e) {
+      res.status(500).json({ error: "list_feil", detail: "internal_error" });
+    }
+  });
+
+  app.post("/api/role-room/demo-assets", express.json({ limit: "4mb" }), async (req: Request, res: Response) => {
+    const uid = getUserId(req, activeSessions);
+    if (!uid) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    if (!ready) { res.status(503).json({ error: "ikke_klar" }); return; }
+    const { kind, title, host } = req.body ?? {};
+    if (!VALID_KINDS.includes(String(kind))) { res.status(400).json({ error: "ugyldig_kind" }); return; }
+    if (!title || typeof title !== "string") { res.status(400).json({ error: "mangler_tittel" }); return; }
+    const payload = { svg: req.body?.svg, text: req.body?.text, dataUrl: req.body?.dataUrl, note: req.body?.note };
+    if (JSON.stringify(payload).length > MAX_PAYLOAD) { res.status(413).json({ error: "for_stor" }); return; }
+    const id = `c_${randomBytes(6).toString("hex")}`;
+    try {
+      await pool.query(
+        `INSERT INTO demo_studio_assets (id, created_by, host, kind, title, payload)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [id, uid, String(host ?? "") || null, String(kind), title, JSON.stringify(payload)],
+      );
+      res.json({ id, ok: true });
+    } catch (e) {
+      res.status(500).json({ error: "lagre_feil", detail: "internal_error" });
+    }
+  });
+
+  app.delete("/api/role-room/demo-assets/:id", async (req: Request, res: Response) => {
+    const uid = getUserId(req, activeSessions);
+    if (!uid) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    try {
+      await pool.query(`DELETE FROM demo_studio_assets WHERE id = $1 AND created_by = $2`, [String(req.params.id), uid]);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: "slett_feil", detail: "internal_error" });
+    }
+  });
+
+  // ── Sky-prosjekter (G16): selve DemoProject-et (scener/manus/hotspots) i
+  // skyen, ikke bare artefakter — prosjektet overlever maskinen og kan åpnes
+  // fra en annen enhet. Upsert-semantikk (prosjekter redigeres over tid),
+  // eier-scopet via komposit PK (id, created_by) så ingen kan skygge andres id.
+  let projReady = false;
+  void pool
+    .query(
+      `CREATE TABLE IF NOT EXISTS demo_studio_projects (
+         id          TEXT NOT NULL,
+         created_by  TEXT NOT NULL,
+         name        TEXT NOT NULL,
+         url         TEXT,
+         scene_count INTEGER NOT NULL DEFAULT 0,
+         payload     JSONB NOT NULL,
+         updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+         PRIMARY KEY (id, created_by)
+       )`,
+    )
+    .then(() => { projReady = true; })
+    .catch((e: Error) => console.warn("[demo-projects] tabell-feil:", e.message));
+
+  const MAX_PROJECT = 1_500_000; // ~1,5 MB — klienten stripper base64-bilder før push
+
+  app.get("/api/role-room/demo-projects", async (req: Request, res: Response) => {
+    const uid = getUserId(req, activeSessions);
+    if (!uid) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    if (!projReady) { res.json({ projects: [] }); return; }
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, name, url, scene_count, updated_at
+           FROM demo_studio_projects
+          WHERE created_by = $1
+          ORDER BY updated_at DESC LIMIT 100`,
+        [uid],
+      );
+      res.json({ projects: rows.map((r) => ({ id: r.id, name: r.name, url: r.url ?? "", sceneCount: r.scene_count, updatedAt: r.updated_at })) });
+    } catch (e) {
+      res.status(500).json({ error: "list_feil", detail: "internal_error" });
+    }
+  });
+
+  app.get("/api/role-room/demo-projects/:id", async (req: Request, res: Response) => {
+    const uid = getUserId(req, activeSessions);
+    if (!uid) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    if (!projReady) { res.status(503).json({ error: "ikke_klar" }); return; }
+    try {
+      const { rows } = await pool.query(
+        `SELECT payload FROM demo_studio_projects WHERE id = $1 AND created_by = $2`,
+        [String(req.params.id), uid],
+      );
+      if (!rows.length) { res.status(404).json({ error: "finnes_ikke" }); return; }
+      res.json({ project: rows[0].payload });
+    } catch (e) {
+      res.status(500).json({ error: "hent_feil", detail: "internal_error" });
+    }
+  });
+
+  app.put("/api/role-room/demo-projects/:id", express.json({ limit: "3mb" }), async (req: Request, res: Response) => {
+    const uid = getUserId(req, activeSessions);
+    if (!uid) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    if (!projReady) { res.status(503).json({ error: "ikke_klar" }); return; }
+    const project = req.body?.project;
+    const id = String(req.params.id);
+    if (!project || typeof project !== "object" || project.id !== id) { res.status(400).json({ error: "ugyldig_prosjekt" }); return; }
+    const raw = JSON.stringify(project);
+    if (raw.length > MAX_PROJECT) { res.status(413).json({ error: "for_stor" }); return; }
+    try {
+      await pool.query(
+        `INSERT INTO demo_studio_projects (id, created_by, name, url, scene_count, payload, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, now())
+         ON CONFLICT (id, created_by)
+         DO UPDATE SET name = $3, url = $4, scene_count = $5, payload = $6, updated_at = now()`,
+        [id, uid, String(project.name ?? "Untitled Demo").slice(0, 200), String(project.url ?? "").slice(0, 500) || null,
+          Array.isArray(project.scenes) ? project.scenes.length : 0, raw],
+      );
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: "lagre_feil", detail: "internal_error" });
+    }
+  });
+
+  app.delete("/api/role-room/demo-projects/:id", async (req: Request, res: Response) => {
+    const uid = getUserId(req, activeSessions);
+    if (!uid) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    try {
+      await pool.query(`DELETE FROM demo_studio_projects WHERE id = $1 AND created_by = $2`, [String(req.params.id), uid]);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: "slett_feil", detail: "internal_error" });
+    }
+  });
+}

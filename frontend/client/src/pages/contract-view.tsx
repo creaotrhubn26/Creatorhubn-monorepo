@@ -69,7 +69,7 @@ export default function ContractView({}: ContractViewProps) {
     error,
 } = useQuery<ContractDetails>({
     queryKey: ['/api/contracts', contractId],
-    enabled: !!contractd,
+    enabled: !!contractId,
 });
 
   if (isLoading) {

@@ -162,7 +162,7 @@ export function setupWeddingAssistantBriefNotesRoutes(deps: WeddingAssistantBrie
            WHERE a.id = $1 AND a.wedding_id = $2 AND a.primary_photographer_id = $3 LIMIT 1`,
         [req.params.assistantId, req.params.weddingId, uid],
       );
-      if (a.rowCount === 0) return res.status(404).json({ error: "Ikke funnet" });
+      if (!a.rows.length) return res.status(404).json({ error: "Ikke funnet" });
       const row = a.rows[0];
       const notes = String(row.brief_notes || "").trim();
       if (notes.length < 20) {
@@ -213,7 +213,7 @@ export function setupWeddingAssistantBriefNotesRoutes(deps: WeddingAssistantBrie
            WHERE id = $1 AND wedding_id = $2 AND primary_photographer_id = $3 LIMIT 1`,
         [req.params.assistantId, req.params.weddingId, uid],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: "Ikke funnet" });
+      if (!r.rows.length) return res.status(404).json({ error: "Ikke funnet" });
       const row = r.rows[0];
       res.json({
         brief: {

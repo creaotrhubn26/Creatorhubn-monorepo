@@ -34,6 +34,8 @@ import {
   useMediaQuery,
   alpha,
   Grid,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import {
   Print as PrintIcon,
@@ -64,8 +66,13 @@ import {
   Info as InfoIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
-import type { ProductionDay, CrewMember, Location, SceneBreakdown, Candidate, Role } from '../models/casting';
+import type { CastingProject, ProductionDay, CrewMember, Location, SceneBreakdown, Candidate, Role } from '../models/casting';
 import { castingService } from '../services/castingService';
+import { roleRoomAgentDefaultHeaders } from '../services/roleRoomAgentService';
+import { roleRoomProjectTabConfigService } from '../services/roleRoomProjectTabConfigService';
+import { hasRolePreset, presetForRole } from '../models/studioAccessModel';
+import { SECOND_AD_STATUS_LABELS, selectSecondAdProductionDay } from './assistant-director/secondAssistantDirectorWorkspaceModel';
+import { useProjectMemberAvailability } from '../hooks/useProjectMemberAvailability';
 
 // ============================================
 // INTERFACES
@@ -126,9 +133,13 @@ interface CallSheetCastMember {
   pickupTime?: string;
   callTime: string;
   makeupTime?: string;
+  wardrobeTime?: string;
   onSetTime: string;
+  transport?: string;
+  movementStatus?: string;
   scenes: string[];
   notes?: string;
+  email?: string;
 }
 
 interface CallSheetCrewMember {
@@ -149,11 +160,186 @@ interface EmergencyContact {
 
 interface CallSheetGeneratorProps {
   projectId: string;
+  project?: CastingProject;
+  canonicalDataReady?: boolean;
   productionDay?: ProductionDay;
+  productionDayId?: string;
   scenes?: SceneBreakdown[];
   crew?: CrewMember[];
   locations?: Location[];
   onGenerate?: (callSheet: CallSheetData) => void;
+  onDeliverySent?: () => void;
+}
+
+const EMPTY_SCENES: SceneBreakdown[] = [];
+const EMPTY_CREW: CrewMember[] = [];
+const EMPTY_LOCATIONS: Location[] = [];
+
+export interface CallSheetRecipientPreviewItem {
+  id: string;
+  name: string;
+  email: string;
+  source: 'cast' | 'crew';
+}
+
+export interface CallSheetRecipientPreview {
+  valid: CallSheetRecipientPreviewItem[];
+  invalid: Array<{ id: string; name: string; email: string; source: 'cast' | 'crew'; reason: string }>;
+  duplicateCount: number;
+}
+
+export interface CallSheetRevisionSnapshot {
+  schemaVersion: 1;
+  general: Record<string, unknown>;
+  locations: CallSheetLocation[];
+  scenes: CallSheetScene[];
+  cast: CallSheetCastMember[];
+  crew: CallSheetCrewMember[];
+  instructions: { specialInstructions: string; notes: string; emergencyContacts: EmergencyContact[]; weatherForecast: CallSheetData['weatherForecast'] | null };
+  recipientEmails: string[];
+}
+
+interface CallSheetDeliveryEvent {
+  id: string;
+  type: 'published' | 'delivery_completed' | 'reminded' | 'acknowledged' | 'retracted' | string;
+  actorUserId?: string | null;
+  recipientId?: string | null;
+  details?: Record<string, unknown>;
+  createdAt: string;
+}
+
+interface CallSheetDelivery {
+  id: string;
+  revision: number;
+  subject: string;
+  status: 'published' | 'superseded' | 'retracted';
+  supersedesDeliveryId?: string | null;
+  snapshot?: CallSheetRevisionSnapshot | null;
+  retractedAt?: string | null;
+  createdAt: string;
+  total: number;
+  sent: number;
+  failed: number;
+  acknowledged: number;
+  recipients: Array<{ id: string; email: string; deliveryStatus: string; acknowledgedAt?: string | null }>;
+  events: CallSheetDeliveryEvent[];
+}
+
+const cleanRevisionValue = <T,>(value: T): T => JSON.parse(JSON.stringify(value ?? null)) as T;
+
+export function buildCallSheetRevisionSnapshot(
+  callSheet: CallSheetData,
+  recipientEmails: string[],
+): CallSheetRevisionSnapshot {
+  return cleanRevisionValue({
+    schemaVersion: 1,
+    general: {
+      projectName: callSheet.projectName,
+      productionCompany: callSheet.productionCompany,
+      date: callSheet.date,
+      dayNumber: callSheet.dayNumber,
+      totalDays: callSheet.totalDays,
+      director: callSheet.director,
+      producer: callSheet.producer,
+      callTime: callSheet.callTime,
+      shootingCallTime: callSheet.shootingCallTime,
+      lunchTime: callSheet.lunchTime,
+      estimatedWrap: callSheet.estimatedWrap,
+    },
+    locations: callSheet.locations || [],
+    scenes: callSheet.scenes || [],
+    cast: callSheet.cast || [],
+    crew: callSheet.crew || [],
+    instructions: {
+      specialInstructions: callSheet.specialInstructions || '',
+      notes: callSheet.notes || '',
+      emergencyContacts: callSheet.emergencyContacts || [],
+      weatherForecast: callSheet.weatherForecast || null,
+    },
+    recipientEmails: [...new Set(recipientEmails.map((email) => email.trim().toLowerCase()).filter(Boolean))].sort(),
+  });
+}
+
+export function describeCallSheetRevisionChanges(
+  previous: CallSheetRevisionSnapshot | null | undefined,
+  current: CallSheetRevisionSnapshot,
+): { labels: string[]; contentChanged: boolean; recipientsChanged: boolean } {
+  if (!previous || previous.schemaVersion !== 1) {
+    return { labels: ['Første publisering'], contentChanged: true, recipientsChanged: true };
+  }
+  const labels: string[] = [];
+  const changed = (key: keyof CallSheetRevisionSnapshot) => JSON.stringify(previous[key]) !== JSON.stringify(current[key]);
+  if (changed('general')) labels.push('Dato og tider');
+  if (changed('locations')) labels.push('Lokasjoner');
+  if (changed('scenes')) labels.push('Scener');
+  if (changed('cast')) labels.push('Cast og individuelle tider');
+  if (changed('crew')) labels.push('Crew');
+  if (changed('instructions')) labels.push('Instruksjoner og nødinformasjon');
+  const recipientsChanged = changed('recipientEmails');
+  if (recipientsChanged) labels.push('Mottakerliste');
+  return { labels, contentChanged: labels.some((label) => label !== 'Mottakerliste'), recipientsChanged };
+}
+
+export function selectAffectedCallSheetRecipients(
+  currentEmails: string[],
+  previousDelivery: Pick<CallSheetDelivery, 'recipients'> | null | undefined,
+  changes: { contentChanged: boolean },
+): string[] {
+  const current = [...new Set(currentEmails.map((email) => email.trim().toLowerCase()).filter(Boolean))];
+  if (!previousDelivery || changes.contentChanged) return current;
+  const previousEmails = new Set(previousDelivery.recipients.map((recipient) => recipient.email.trim().toLowerCase()));
+  const failedEmails = new Set(previousDelivery.recipients
+    .filter((recipient) => recipient.deliveryStatus === 'failed')
+    .map((recipient) => recipient.email.trim().toLowerCase()));
+  return current.filter((email) => !previousEmails.has(email) || failedEmails.has(email));
+}
+
+function callSheetActivityLabel(delivery: CallSheetDelivery, event: CallSheetDeliveryEvent): string {
+  const details = event.details || {};
+  if (event.type === 'published') return `Revisjon ${delivery.revision} publisert`;
+  if (event.type === 'delivery_completed') return `Utsending fullført: ${Number(details.sent || 0)}/${Number(details.total || 0)} sendt`;
+  if (event.type === 'reminded') return `${Number(details.reminded || 0)} påminnelse${Number(details.reminded || 0) === 1 ? '' : 'r'} sendt`;
+  if (event.type === 'acknowledged') {
+    const recipient = delivery.recipients.find((item) => item.id === event.recipientId);
+    return recipient ? `${recipient.email} bekreftet mottak` : 'Mottak bekreftet';
+  }
+  if (event.type === 'retracted') return `Revisjon ${delivery.revision} trukket tilbake`;
+  return event.type;
+}
+
+export function buildCallSheetRecipientPreview(
+  crew: CallSheetCrewMember[],
+  cast: CallSheetCastMember[],
+): CallSheetRecipientPreview {
+  const emailRe = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  const valid: CallSheetRecipientPreviewItem[] = [];
+  const invalid: CallSheetRecipientPreview['invalid'] = [];
+  const seen = new Set<string>();
+  let duplicateCount = 0;
+
+  for (const { member, source } of [
+    ...crew.map((member) => ({ member, source: 'crew' as const })),
+    ...cast.map((member) => ({ member, source: 'cast' as const })),
+  ]) {
+    const email = typeof member.email === 'string' ? member.email.trim().toLowerCase() : '';
+    if (!email || !emailRe.test(email)) {
+      invalid.push({
+        id: `${source}:${member.id}`,
+        name: member.name || 'Uten navn',
+        email,
+        source,
+        reason: email ? 'Ugyldig e-postadresse' : 'Mangler e-postadresse',
+      });
+      continue;
+    }
+    if (seen.has(email)) {
+      duplicateCount += 1;
+      continue;
+    }
+    seen.add(email);
+    valid.push({ id: `${source}:${member.id}`, name: member.name || email, email, source });
+  }
+  return { valid, invalid, duplicateCount };
 }
 
 // ============================================
@@ -330,8 +516,22 @@ export function buildDayCallSheetFields(
   sceneList: SceneBreakdown[],
   crewList: CrewMember[],
   locList: Location[],
+  roleList: Role[] = [],
+  candidateList: Candidate[] = [],
+  productionDayList: ProductionDay[] = [],
 ): Partial<CallSheetData> {
   const fields: Partial<CallSheetData> = {};
+  const activeDays = productionDayList
+    .filter((day) => day.status !== 'cancelled')
+    .sort((left, right) => {
+      const dateComparison = String(left.date || '').localeCompare(String(right.date || ''));
+      return dateComparison !== 0 ? dateComparison : left.id.localeCompare(right.id);
+    });
+  const activeDayIndex = activeDays.findIndex((day) => day.id === productionDay.id);
+  if (activeDayIndex >= 0) {
+    fields.dayNumber = activeDayIndex + 1;
+    fields.totalDays = activeDays.length;
+  }
   if (productionDay.date) fields.date = productionDay.date;
   if (productionDay.callTime) fields.callTime = productionDay.callTime;
   if (productionDay.wrapTime) fields.estimatedWrap = productionDay.wrapTime;
@@ -351,26 +551,77 @@ export function buildDayCallSheetFields(
   const idSet = new Set(Array.isArray(productionDay.scenes) ? productionDay.scenes : []);
   const dayScenes = idSet.size > 0 ? sceneList.filter((s) => idSet.has(s.id)) : [];
   if (dayScenes.length > 0) {
+    const normalize = (value: unknown) => typeof value === 'string'
+      ? value.trim().toLocaleUpperCase('nb-NO').replace(/\s+/g, ' ')
+      : '';
+    const resolveRole = (reference: unknown) => roleList.find((role) => role.id === reference)
+      ?? roleList.find((role) => normalize(role.name) === normalize(reference));
+    const resolveCandidate = (role: Role | undefined) => {
+      if (!role) return undefined;
+      const directId = typeof role.assignedCandidateId === 'string'
+        ? role.assignedCandidateId
+        : typeof role.assigned_candidate_id === 'string'
+          ? role.assigned_candidate_id
+          : undefined;
+      return candidateList.find((candidate) => candidate.id === directId)
+        ?? candidateList.find((candidate) => {
+          const assigned = candidate.assignedRoles ?? candidate.assigned_roles ?? [];
+          return (Array.isArray(assigned) && assigned.includes(role.id))
+            || candidate.roleId === role.id
+            || candidate.role_id === role.id;
+        });
+    };
+    const canonicalCharacterName = (reference: unknown) => resolveRole(reference)?.name || String(reference ?? '').trim();
     fields.scenes = dayScenes.map((s) => ({
       sceneNumber: String(s.sceneNumber ?? ''),
       description: s.description || s.sceneHeading || '',
       intExt: s.intExt || '',
       dayNight: s.timeOfDay || '',
       pages: s.pageLength != null ? String(s.pageLength) : '',
-      cast: Array.isArray(s.characters) ? s.characters : [],
+      cast: Array.isArray(s.characters) ? s.characters.map(canonicalCharacterName).filter(Boolean) : [],
       location: loc?.name || s.locationName || '',
       estimatedTime: s.estimatedDuration != null ? `${s.estimatedDuration}t` : '',
     }));
-    const chars = Array.from(new Set(dayScenes.flatMap((s) => (Array.isArray(s.characters) ? s.characters : []))));
-    if (chars.length > 0) {
-      fields.cast = chars.map((ch, i) => ({
-        id: `cast-${i}`,
-        name: ch,
-        role: ch,
-        callTime: productionDay.callTime || '',
-        onSetTime: productionDay.callTime || '',
-        scenes: dayScenes.filter((s) => (Array.isArray(s.characters) ? s.characters : []).includes(ch)).map((s) => String(s.sceneNumber ?? '')),
-      }));
+    const characterMap = new Map<string, { reference: string; role?: Role }>();
+    for (const reference of dayScenes.flatMap((s) => (Array.isArray(s.characters) ? s.characters : []))) {
+      const ref = String(reference ?? '').trim();
+      if (!ref) continue;
+      const role = resolveRole(ref);
+      const key = role?.id || normalize(ref);
+      if (!characterMap.has(key)) characterMap.set(key, { reference: ref, role });
+    }
+    if (characterMap.size > 0) {
+      fields.cast = [...characterMap.entries()].map(([characterKey, { reference, role }], i) => {
+        const roleName = role?.name || reference;
+        const candidate = resolveCandidate(role);
+        const movement = productionDay.secondAd?.entries.find((entry) => (
+          Boolean(candidate?.id && entry.personId === candidate.id)
+          || entry.id === `cast:${candidate?.id ?? role?.id ?? normalize(reference)}`
+          || normalize(entry.roleName) === normalize(roleName)
+          || normalize(entry.roleName) === normalize(reference)
+        ));
+        return {
+          id: candidate?.id || movement?.personId || `cast-${i}`,
+          name: candidate?.name || movement?.name || roleName,
+          role: roleName,
+          pickupTime: movement?.pickupTime,
+          callTime: movement?.callTime || productionDay.callTime || '',
+          makeupTime: movement?.makeupTime,
+          wardrobeTime: movement?.wardrobeTime,
+          onSetTime: movement?.onSetTime || productionDay.callTime || '',
+          transport: movement?.transport,
+          movementStatus: movement?.status,
+          scenes: dayScenes.filter((scene) => (
+            Array.isArray(scene.characters)
+            && scene.characters.some((sceneCharacter) => {
+              const sceneRole = resolveRole(sceneCharacter);
+              return (sceneRole?.id || normalize(sceneCharacter)) === characterKey;
+            })
+          )).map((scene) => String(scene.sceneNumber ?? '')),
+          notes: movement?.notes,
+          email: candidate?.contactInfo?.email || candidate?.contact_info?.email || candidate?.email,
+        };
+      });
     }
   }
 
@@ -383,8 +634,8 @@ export function buildDayCallSheetFields(
       department: c.department ? String(c.department) : 'Crew',
       position: c.role ? String(c.role) : '',
       callTime: productionDay.callTime || '',
-      phone: c.contactInfo?.phone,
-      email: c.contactInfo?.email,
+      phone: c.contactInfo?.phone || c.contact_info?.phone || c.phone,
+      email: c.contactInfo?.email || c.contact_info?.email || c.email,
     }));
   }
 
@@ -409,25 +660,48 @@ function buildCallSheetEmailHtml(cs: CallSheetData): string {
   const sceneRows = (cs.scenes || [])
     .map((s) => `<tr><td style="padding:4px;border:1px solid #ddd">${esc(s.sceneNumber)}</td><td style="padding:4px;border:1px solid #ddd">${esc(s.intExt)}/${esc(s.dayNight)}</td><td style="padding:4px;border:1px solid #ddd">${esc(s.description)}</td></tr>`)
     .join('');
+  const statusLabels: Record<string, string> = {
+    not_called: 'Ikke innkalt', call_sent: 'Call sendt', acknowledged: 'Bekreftet', arrived: 'Ankommet',
+    makeup: 'Sminke', wardrobe: 'Kostyme', ready: 'Klar', on_set: 'På sett', wrapped: 'Ferdig',
+  };
+  const castRows = (cs.cast || [])
+    .map((member) => `<tr><td style="padding:4px;border:1px solid #ddd">${esc(member.name)}</td><td style="padding:4px;border:1px solid #ddd">${esc(member.role)}</td><td style="padding:4px;border:1px solid #ddd">${esc(member.pickupTime || '–')}</td><td style="padding:4px;border:1px solid #ddd">${esc(member.callTime || '–')}</td><td style="padding:4px;border:1px solid #ddd">${esc(member.makeupTime || '–')}</td><td style="padding:4px;border:1px solid #ddd">${esc(member.wardrobeTime || '–')}</td><td style="padding:4px;border:1px solid #ddd">${esc(member.onSetTime || '–')}</td><td style="padding:4px;border:1px solid #ddd">${esc(member.transport || '–')}</td><td style="padding:4px;border:1px solid #ddd">${esc(statusLabels[member.movementStatus || ''] || '–')}</td></tr>`)
+    .join('');
   return [
     '<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a">',
     `<h2 style="margin:0 0 4px">Call Sheet · ${esc(cs.projectName)}</h2>`,
     `<p><strong>Dato:</strong> ${esc(cs.date)} &nbsp;·&nbsp; <strong>Call:</strong> ${esc(cs.callTime)} &nbsp;·&nbsp; <strong>Wrap:</strong> ${esc(cs.estimatedWrap)}</p>`,
     loc ? `<p><strong>Lokasjon:</strong> ${esc(loc.name)}, ${esc(loc.address)}${loc.parkingInfo ? `<br/><em>Parkering:</em> ${esc(loc.parkingInfo)}` : ''}${loc.contactPhone ? `<br/><em>Kontakt:</em> ${esc(loc.contactPerson)} ${esc(loc.contactPhone)}` : ''}</p>` : '',
     cs.scenes?.length ? `<h3 style="margin:12px 0 4px">Scener</h3><table style="border-collapse:collapse;font-size:13px">${sceneRows}</table>` : '',
+    cs.cast?.length ? `<h3 style="margin:12px 0 4px">Cast og individuelle tider</h3><table style="border-collapse:collapse;font-size:12px"><thead><tr><th>Navn</th><th>Rolle</th><th>Pickup</th><th>Call</th><th>Sminke</th><th>Kostyme</th><th>På sett</th><th>Transport</th><th>Status</th></tr></thead><tbody>${castRows}</tbody></table>` : '',
     cs.specialInstructions ? `<h3 style="margin:12px 0 4px">Viktig</h3><p>${esc(cs.specialInstructions).replace(/\n/g, '<br/>')}</p>` : '',
     '<p style="color:#888;font-size:12px;margin-top:16px">Sendt fra The Role Room · produksjonsplan</p>',
     '</div>',
   ].join('');
 }
 
+function createEmptyCallSheet(productionDay?: ProductionDay): CallSheetData {
+  return {
+    id: `cs-${Date.now()}`,
+    projectName: '', productionCompany: '', date: productionDay?.date || '',
+    dayNumber: 1, totalDays: 0, director: '', producer: '',
+    callTime: productionDay?.callTime || '', shootingCallTime: '', lunchTime: '',
+    estimatedWrap: productionDay?.wrapTime || '', locations: [], scenes: [], cast: [], crew: [],
+    specialInstructions: '', emergencyContacts: [], notes: '',
+  };
+}
+
 export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   projectId,
+  project,
+  canonicalDataReady = false,
   productionDay,
-  scenes = [],
-  crew = [],
-  locations = [],
+  productionDayId,
+  scenes = EMPTY_SCENES,
+  crew = EMPTY_CREW,
+  locations = EMPTY_LOCATIONS,
   onGenerate,
+  onDeliverySent,
 }) => {
   const theme = useTheme();
   const responsive = useResponsiveConfig();
@@ -439,6 +713,15 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   const [isSynced, setIsSynced] = useState(false);
   const [sendingCallSheet, setSendingCallSheet] = useState(false);
   const [sendFeedback, setSendFeedback] = useState<{ severity: 'success' | 'warning' | 'error'; text: string } | null>(null);
+  const [activeProductionDay, setActiveProductionDay] = useState<ProductionDay | undefined>(productionDay);
+  const [sendPermission, setSendPermission] = useState<'loading' | 'manage' | 'view'>('loading');
+  const [recipientPreviewOpen, setRecipientPreviewOpen] = useState(false);
+  const [selectedRecipientEmails, setSelectedRecipientEmails] = useState<Set<string>>(new Set());
+  const [deliveryHistory, setDeliveryHistory] = useState<CallSheetDelivery[]>([]);
+  const [deliveryHistoryLoading, setDeliveryHistoryLoading] = useState(false);
+  const [deliveryHistoryRefresh, setDeliveryHistoryRefresh] = useState(0);
+  const [retractTarget, setRetractTarget] = useState<CallSheetDelivery | null>(null);
+  const [retracting, setRetracting] = useState(false);
   
   // Data from casting service
   const [castingCandidates, setCastingCandidates] = useState<Candidate[]>([]);
@@ -446,129 +729,226 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
   const [castingCrew, setCastingCrew] = useState<CrewMember[]>([]);
   const [castingLocations, setCastingLocations] = useState<Location[]>([]);
 
-  // Demo data for TROLL production
-  const [callSheet, setCallSheet] = useState<CallSheetData>({
-    id: `cs-${Date.now()}`,
-    projectName: 'TROLL',
-    productionCompany: 'Motion Blur Films',
-    date: productionDay?.date || '2026-02-15',
-    dayNumber: 1,
-    totalDays: 42,
-    director: 'Roar Uthaug',
-    producer: 'Espen Horn',
-    callTime: productionDay?.callTime || '06:00',
-    shootingCallTime: '08:00',
-    lunchTime: '12:30',
-    estimatedWrap: productionDay?.wrapTime || '19:00',
-    locations: [
-      {
-        id: '1',
-        name: 'Trollstigen',
-        address: 'Trollstigen, 6300 Åndalsnes, Møre og Romsdal',
-        parkingInfo: 'P-plass ved besøkssenter. Shuttle til set kl 05:30.',
-        contactPerson: 'Lars Filming',
-        contactPhone: '+47 900 12 345',
-      },
-    ],
-    scenes: [
-      {
-        sceneNumber: '1',
-        description: 'TROLLET våkner under fjellet - jordskjelv',
-        intExt: 'EXT',
-        dayNight: 'DAY',
-        pages: '2 3/8',
-        cast: ['NORA', 'TOBIAS', 'ARBEIDER 1'],
-        location: 'Trollstigen',
-        estimatedTime: '3t',
-      },
-      {
-        sceneNumber: '5',
-        description: 'Helikopter spotter trollet i fjellsiden',
-        intExt: 'EXT',
-        dayNight: 'DAY',
-        pages: '1 5/8',
-        cast: ['PILOT', 'GENERAL LUND'],
-        location: 'Trollstigen',
-        estimatedTime: '2t',
-      },
-      {
-        sceneNumber: '12',
-        description: 'Nora konfronterer trollet',
-        intExt: 'EXT',
-        dayNight: 'DUSK',
-        pages: '4 1/8',
-        cast: ['NORA', 'TOBIAS'],
-        location: 'Trollstigen',
-        estimatedTime: '4t',
-      },
-    ],
-    cast: [
-      {
-        id: '1',
-        name: 'Ine Marie Wilmann',
-        role: 'NORA',
-        pickupTime: '05:00',
-        callTime: '05:30',
-        makeupTime: '06:00',
-        onSetTime: '08:00',
-        scenes: ['1', '12'],
-        notes: 'Kontaktlinser (spesialeffekt)',
-      },
-      {
-        id: '2',
-        name: 'Kim Falck',
-        role: 'TOBIAS',
-        pickupTime: '05:30',
-        callTime: '06:00',
-        onSetTime: '08:00',
-        scenes: ['1', '12'],
-      },
-      {
-        id: '3',
-        name: 'Mads Ousdal',
-        role: 'GENERAL LUND',
-        callTime: '09:00',
-        onSetTime: '10:30',
-        scenes: ['5'],
-        notes: 'Militæruniform',
-      },
-    ],
-    crew: [
-      { id: '1', name: 'Roar Uthaug', department: 'Regi', position: 'Regissør', callTime: '06:00', phone: '+47 900 00 001' },
-      { id: '2', name: 'Jallo Faber', department: 'Foto', position: 'DOP', callTime: '05:30', phone: '+47 900 00 002' },
-      { id: '3', name: 'Erik Poppe', department: 'Produksjon', position: '1st AD', callTime: '05:00', phone: '+47 900 00 003' },
-      { id: '4', name: 'Anna Hansen', department: 'Lyd', position: 'Sound Mixer', callTime: '06:00', phone: '+47 900 00 004' },
-      { id: '5', name: 'Lars Berg', department: 'Grip', position: 'Key Grip', callTime: '05:30', phone: '+47 900 00 005' },
-      { id: '6', name: 'Maria Olsen', department: 'Lys', position: 'Gaffer', callTime: '05:30', phone: '+47 900 00 006' },
-      { id: '7', name: 'Kari Sminke', department: 'Sminke', position: 'HMU Chief', callTime: '05:00', phone: '+47 900 00 007' },
-      { id: '8', name: 'Jon VFX', department: 'VFX', position: 'VFX Supervisor', callTime: '07:00', phone: '+47 900 00 008' },
-    ],
-    specialInstructions: '• Alle må ha gyldig ID for adgang til sperret fjellområde\n• VÆRFORBEHOLD: Ved vindstyrke over 15 m/s flyttes til backup i studio\n• Droner i bruk - respekter sikkerhetssoner (rød markering)\n• Pyroteknikk scene 1 - evakueringsplan ved basecamp\n• Helikopter landing kun på markert helipad',
-    weatherForecast: {
-      temperature: 8,
-      conditions: 'Delvis skyet, lett bris',
-      sunrise: '06:42',
-      sunset: '18:58',
-    },
-    emergencyContacts: [
-      { name: 'Produksjonsleder', role: 'Set Contact', phone: '+47 900 00 100' },
-      { name: 'Legevakt Åndalsnes', role: 'Medisinsk', phone: '116 117' },
-      { name: 'Nødnummer', role: 'Nødsituasjon', phone: '113' },
-    ],
-    notes: '',
-  });
+  // Tilgjengelighet fra crew-medlemmenes egne kalendere (samme delte kilde som
+  // Crew Management) — så vi kan varsle om noen på dagens crew har markert seg
+  // opptatt akkurat denne innspillingsdagen.
+  const { availabilityByUser, emailToUser } = useProjectMemberAvailability(projectId);
+
+  // Start tomt. Ekte prosjekt- og produksjonsdagsdata fylles inn under; en
+  // call sheet må aldri arve navn, steder eller tider fra et annet prosjekt.
+  const [callSheet, setCallSheet] = useState<CallSheetData>(() => createEmptyCallSheet(productionDay));
+  const recipientPreview = useMemo(
+    () => buildCallSheetRecipientPreview(callSheet.crew || [], callSheet.cast || []),
+    [callSheet.crew, callSheet.cast],
+  );
+  const deliveryDayId = activeProductionDay?.id || productionDayId || '';
+  const latestPublishedDelivery = useMemo(
+    () => deliveryHistory.find((delivery) => delivery.status === 'published') || null,
+    [deliveryHistory],
+  );
+  const currentRevisionSnapshot = useMemo(
+    () => buildCallSheetRevisionSnapshot(callSheet, recipientPreview.valid.map((recipient) => recipient.email)),
+    [callSheet, recipientPreview.valid],
+  );
+  const revisionChanges = useMemo(
+    () => describeCallSheetRevisionChanges(latestPublishedDelivery?.snapshot, currentRevisionSnapshot),
+    [latestPublishedDelivery?.snapshot, currentRevisionSnapshot],
+  );
+  const nextRevision = Math.max(0, ...deliveryHistory.map((delivery) => delivery.revision || 0)) + 1;
+  const affectedRecipientEmails = useMemo(
+    () => selectAffectedCallSheetRecipients(
+      recipientPreview.valid.map((recipient) => recipient.email),
+      latestPublishedDelivery,
+      revisionChanges,
+    ),
+    [recipientPreview.valid, latestPublishedDelivery, revisionChanges],
+  );
+  const deliveryActivity = useMemo(
+    () => deliveryHistory
+      .flatMap((delivery) => (delivery.events || []).map((event) => ({ delivery, event })))
+      .sort((a, b) => new Date(b.event.createdAt).getTime() - new Date(a.event.createdAt).getTime())
+      .slice(0, 8),
+    [deliveryHistory],
+  );
+
+  useEffect(() => {
+    if (!projectId || !deliveryDayId) {
+      setDeliveryHistory([]);
+      return;
+    }
+    let cancelled = false;
+    setDeliveryHistoryLoading(true);
+    void fetch(`/api/role-room/projects/${encodeURIComponent(projectId)}/call-sheet-deliveries?productionDayId=${encodeURIComponent(deliveryDayId)}`, {
+      headers: roleRoomAgentDefaultHeaders(),
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Kunne ikke laste revisjonshistorikken.');
+        return response.json();
+      })
+      .then((data) => {
+        if (!cancelled) setDeliveryHistory(Array.isArray(data?.deliveries) ? data.deliveries : []);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setDeliveryHistory([]);
+          setSendFeedback({ severity: 'warning', text: error instanceof Error ? error.message : 'Kunne ikke laste revisjonshistorikken.' });
+        }
+      })
+      .finally(() => { if (!cancelled) setDeliveryHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [projectId, deliveryDayId, deliveryHistoryRefresh]);
+
+  useEffect(() => {
+    if (!projectId) {
+      setSendPermission('view');
+      return;
+    }
+    let cancelled = false;
+    setSendPermission('loading');
+    void roleRoomProjectTabConfigService.getMyTabs(projectId)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.tabAccess) {
+          setSendPermission(result.tabAccess.callsheet === 'manage' ? 'manage' : 'view');
+          return;
+        }
+        if (result.role === 'leder') {
+          setSendPermission('manage');
+          return;
+        }
+        const access = hasRolePreset(result.role) ? presetForRole(result.role) : null;
+        setSendPermission(access?.callsheet === 'manage' ? 'manage' : 'view');
+      })
+      .catch(() => {
+        if (!cancelled) setSendPermission('view');
+      });
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  // Kalender-konflikt pr. crew-e-post for innspillingsdagen: slår crew-raden
+  // (via e-post) opp mot medlemmets egen tilgjengelighet, og flagger dager der
+  // de har markert seg 'unavailable' (opptatt) eller 'hold' (tentativ).
+  const crewConflictByEmail = useMemo(() => {
+    const out = new Map<string, 'unavailable' | 'hold'>();
+    const day = callSheet.date;
+    if (!day) return out;
+    for (const member of callSheet.crew) {
+      const em = (member.email || '').toLowerCase().trim();
+      if (!em) continue;
+      const userId = emailToUser.get(em);
+      if (!userId) continue;
+      const overlay = availabilityByUser.get(userId);
+      const cell = overlay?.cells.find((c) => c.date === day);
+      if (cell?.availability === 'unavailable') out.set(em, 'unavailable');
+      else if (cell?.availability === 'hold') out.set(em, 'hold');
+    }
+    return out;
+  }, [callSheet.date, callSheet.crew, availabilityByUser, emailToUser]);
+
+  // Kandidat-tilgjengelighet (produsent-satt på kandidat-kortet) → flagg på cast.
+  // Kandidater har ingen medlemskonto; cellene ligger inline på kandidaten. Cast
+  // matches mot kandidat via navn (skuespillernavn = kandidatens navn).
+  const castConflictByName = useMemo(() => {
+    const out = new Map<string, 'unavailable' | 'hold'>();
+    const day = callSheet.date;
+    if (!day) return out;
+    for (const candidate of castingCandidates) {
+      const nm = (candidate.name || '').toLowerCase().trim();
+      if (!nm) continue;
+      const cells = candidate.availabilityCells;
+      if (!Array.isArray(cells)) continue;
+      const cell = cells.find((c) => c.date === day);
+      if (cell?.availability === 'unavailable') out.set(nm, 'unavailable');
+      else if (cell?.availability === 'hold') out.set(nm, 'hold');
+    }
+    return out;
+  }, [callSheet.date, castingCandidates]);
+
+  // The selected production day is the live source while the dialog is open.
+  // Apply 2AD edits immediately; background hydration below only enriches the
+  // sheet with project, role and candidate metadata.
+  useEffect(() => {
+    setCallSheet(createEmptyCallSheet(productionDay));
+    setActiveProductionDay(productionDay);
+    setCastingCandidates([]);
+    setCastingRoles([]);
+    setCastingCrew([]);
+    setCastingLocations([]);
+    setIsSynced(false);
+  }, [projectId, productionDay]);
+
+  useEffect(() => {
+    if (!productionDay) return;
+    const hasCanonicalProject = canonicalDataReady && Boolean(project);
+    const dayFields = buildDayCallSheetFields(
+      productionDay,
+      scenes,
+      hasCanonicalProject ? (crew.length ? crew : project?.crew ?? []) : (crew.length ? crew : castingCrew),
+      hasCanonicalProject ? (locations.length ? locations : project?.locations ?? []) : (locations.length ? locations : castingLocations),
+      hasCanonicalProject ? (project?.roles ?? []) : castingRoles,
+      hasCanonicalProject ? (project?.candidates ?? []) : castingCandidates,
+      hasCanonicalProject ? (project?.productionDays ?? []) : [],
+    );
+    setActiveProductionDay(productionDay);
+    setCallSheet((current) => ({ ...current, ...dayFields }));
+    setIsSynced(canonicalDataReady || !project);
+  }, [productionDay, scenes, crew, locations, castingCrew, castingLocations, castingRoles, castingCandidates, canonicalDataReady, project]);
 
   // Load data from casting service (background, non-blocking)
   useEffect(() => {
     const loadCastingData = async () => {
-      // Don't block UI - demo data is already shown
+      // Ikke blokker UI mens registrerte prosjektdata lastes.
       try {
-        const [project, candidates, roles, crewMembers, locs] = await Promise.all([
+        setIsSynced(false);
+        if (canonicalDataReady && project) {
+          const projectDays = project.productionDays ?? [];
+          const projectScenes = scenes.length ? scenes : (project.sceneBreakdowns ?? []);
+          const projectCrew = crew.length ? crew : (project.crew ?? []);
+          const projectLocations = locations.length ? locations : (project.locations ?? []);
+          const projectRoles = project.roles ?? [];
+          const projectCandidates = project.candidates ?? [];
+          const resolvedDay = productionDay
+            ?? (productionDayId ? projectDays.find((day) => day.id === productionDayId) : undefined)
+            ?? selectSecondAdProductionDay(projectDays)
+            ?? undefined;
+          const dayFields = resolvedDay
+            ? buildDayCallSheetFields(
+                resolvedDay,
+                projectScenes,
+                projectCrew,
+                projectLocations,
+                projectRoles,
+                projectCandidates,
+                projectDays,
+              )
+            : {};
+          const director = projectCrew.find((member) => member.role?.toLowerCase().includes('regissør') || member.role?.toLowerCase().includes('director'));
+          const producer = projectCrew.find((member) => member.role?.toLowerCase().includes('produsent') || member.role?.toLowerCase().includes('producer'));
+
+          setCastingCandidates(projectCandidates);
+          setCastingRoles(projectRoles);
+          setCastingCrew(projectCrew);
+          setCastingLocations(projectLocations);
+          setActiveProductionDay(resolvedDay);
+          setCallSheet({
+            ...createEmptyCallSheet(resolvedDay),
+            ...dayFields,
+            projectName: project.name || '',
+            director: director?.name || '',
+            producer: producer?.name || '',
+          });
+          setIsSynced(true);
+          return;
+        }
+
+        const [loadedProject, candidates, roles, crewMembers, locs, productionDays, loadedScenes] = await Promise.all([
           castingService.getProject(projectId).catch(() => null),
           castingService.getCandidates(projectId).catch(() => []),
           castingService.getRoles(projectId).catch(() => []),
           castingService.getCrew(projectId).catch(() => []),
           castingService.getLocations(projectId).catch(() => []),
+          castingService.getProductionDays(projectId).catch(() => []),
+          castingService.getSceneBreakdowns(projectId).catch(() => []),
         ]);
 
         setCastingCandidates(candidates || []);
@@ -578,25 +958,40 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
 
         // Auto-fyll call-sheeten fra den faktiske produksjonsdagen. Foretrekk
         // eksplisitte props, ellers nylig lastet prosjekt-data.
-        const resolvedScenes = scenes && scenes.length ? scenes : [];
+        const resolvedDay = productionDay
+          ?? (productionDayId ? productionDays.find((day) => day.id === productionDayId) : undefined)
+          ?? selectSecondAdProductionDay(productionDays)
+          ?? undefined;
+        setActiveProductionDay(resolvedDay);
+        const resolvedScenes = scenes && scenes.length ? scenes : (loadedScenes || []);
         const resolvedCrew = crew && crew.length ? crew : (crewMembers || []);
         const resolvedLocs = locations && locations.length ? locations : (locs || []);
-        const dayFields = productionDay
-          ? buildDayCallSheetFields(productionDay, resolvedScenes, resolvedCrew, resolvedLocs)
+        const dayFields = resolvedDay
+          ? buildDayCallSheetFields(resolvedDay, resolvedScenes, resolvedCrew, resolvedLocs, roles || [], candidates || [], productionDays)
           : {};
+        if (dayFields.cast) {
+          dayFields.cast = dayFields.cast.map((castMember) => {
+            const role = (roles || []).find((item) => item.name.trim().toLocaleUpperCase('nb-NO') === castMember.role.trim().toLocaleUpperCase('nb-NO'));
+            const assignedId = typeof role?.assignedCandidateId === 'string' ? role.assignedCandidateId : undefined;
+            const candidate = (candidates || []).find((item) => item.id === castMember.id)
+              ?? (candidates || []).find((item) => assignedId && item.id === assignedId)
+              ?? (candidates || []).find((item) => item.name.trim().toLocaleUpperCase('nb-NO') === castMember.name.trim().toLocaleUpperCase('nb-NO'));
+            return { ...castMember, email: candidate?.contactInfo?.email || candidate?.contact_info?.email || candidate?.email };
+          });
+        }
         const director = resolvedCrew.find(c =>
           c.role?.toLowerCase().includes('regissør') || c.role?.toLowerCase().includes('director'));
         const producer = resolvedCrew.find(c =>
           c.role?.toLowerCase().includes('produsent') || c.role?.toLowerCase().includes('producer'));
 
-        if (project || productionDay) {
-          setCallSheet(prev => ({
-            ...prev,
+        if (loadedProject || resolvedDay) {
+          setCallSheet({
+            ...createEmptyCallSheet(resolvedDay),
             ...dayFields,
-            projectName: project?.name || prev.projectName,
-            director: director?.name || prev.director,
-            producer: producer?.name || prev.producer,
-          }));
+            projectName: loadedProject?.name || '',
+            director: director?.name || '',
+            producer: producer?.name || '',
+          });
           setIsSynced(true);
         }
       } catch (error) {
@@ -606,22 +1001,39 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
       }
     };
 
-    // Show content immediately, load in background
+    // Vis tom struktur umiddelbart og last prosjektdata i bakgrunnen.
     setIsLoading(false);
     
     if (projectId) {
       // Background load - don't await
       loadCastingData();
     }
-  }, [projectId, productionDay, scenes, crew, locations]);
+  }, [projectId, productionDay, productionDayId, canonicalDataReady, project, scenes, crew, locations]);
+
+  const openRecipientPreview = () => {
+    if (sendPermission !== 'manage') {
+      setSendFeedback({ severity: 'warning', text: 'Du har lesetilgang til call sheet, men kan ikke sende det.' });
+      return;
+    }
+    const recipients = recipientPreview.valid;
+    if (recipients.length === 0) {
+      setSendFeedback({ severity: 'warning', text: 'Ingen cast eller crew har gyldig e-postadresse.' });
+      return;
+    }
+    if (latestPublishedDelivery && revisionChanges.labels.length === 0 && affectedRecipientEmails.length === 0) {
+      setSendFeedback({ severity: 'warning', text: `Revisjon ${latestPublishedDelivery.revision} er allerede oppdatert. Det finnes ingen endringer eller mislykkede mottakere å sende på nytt.` });
+      return;
+    }
+    setSelectedRecipientEmails(new Set(affectedRecipientEmails));
+    setRecipientPreviewOpen(true);
+  };
 
   const handleSendToCrew = async () => {
-    const emailRe = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-    const recipients = (callSheet.crew || [])
-      .filter((c) => c.email && emailRe.test(c.email))
-      .map((c) => ({ name: c.name, email: c.email as string }));
+    const recipients = recipientPreview.valid
+      .filter((recipient) => selectedRecipientEmails.has(recipient.email))
+      .map(({ name, email }) => ({ name, email }));
     if (recipients.length === 0) {
-      setSendFeedback({ severity: 'warning', text: 'Ingen crew med e-postadresse. Legg til e-post på crew-medlemmene først.' });
+      setSendFeedback({ severity: 'warning', text: 'Velg minst én gyldig mottaker.' });
       return;
     }
     setSendingCallSheet(true);
@@ -629,28 +1041,60 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
     try {
       const response = await fetch('/api/role-room/call-sheets/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // Endepunktet er session-gated (requireUserSession) — uten Bearer-token
+        // ga «Send til crew» 401 og e-posten ble aldri sendt.
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
         body: JSON.stringify({
           projectId,
+          productionDayId: deliveryDayId || null,
+          supersedesDeliveryId: latestPublishedDelivery?.id || null,
           subject: `Call Sheet · ${callSheet.projectName} · ${callSheet.date}`,
           html: buildCallSheetEmailHtml(callSheet),
+          snapshot: currentRevisionSnapshot,
           recipients,
         }),
       });
-      const data = (await response.json().catch(() => ({}))) as { sent?: number; total?: number; error?: string };
+      const data = (await response.json().catch(() => ({}))) as { sent?: number; total?: number; revision?: number; error?: string };
       if (!response.ok) throw new Error(data?.error || 'Sending feilet');
       const sent = data.sent ?? 0;
       const total = data.total ?? recipients.length;
+      const publishedRevision = data.revision ?? nextRevision;
       setSendFeedback({
         severity: sent === total ? 'success' : 'warning',
         text: sent === total
-          ? `Call sheet sendt til alle ${total} crew-medlemmer.`
-          : `Sendt til ${sent} av ${total}. Sjekk e-postadressene til resten.`,
+          ? `Revisjon ${publishedRevision} er publisert til alle ${total} mottakere.`
+          : `Revisjon ${publishedRevision} er publisert. Sendt til ${sent} av ${total}; sjekk resten i historikken.`,
       });
+      if (sent > 0) onDeliverySent?.();
+      setDeliveryHistoryRefresh((value) => value + 1);
+      setRecipientPreviewOpen(false);
     } catch (error) {
       setSendFeedback({ severity: 'error', text: error instanceof Error ? error.message : 'Kunne ikke sende call sheet.' });
     } finally {
       setSendingCallSheet(false);
+    }
+  };
+
+  const handleRetractDelivery = async () => {
+    if (!retractTarget) return;
+    setRetracting(true);
+    setSendFeedback(null);
+    try {
+      const response = await fetch(`/api/role-room/call-sheet-deliveries/${encodeURIComponent(retractTarget.id)}/retract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
+        body: JSON.stringify({ reason: 'Trukket tilbake fra call-sheet-generatoren' }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || 'Tilbaketrekking feilet');
+      setSendFeedback({ severity: 'success', text: `Revisjon ${retractTarget.revision} er trukket tilbake. Alle ubekreftede kvitteringslenker er ugyldige.` });
+      setRetractTarget(null);
+      setDeliveryHistoryRefresh((value) => value + 1);
+      onDeliverySent?.();
+    } catch (error) {
+      setSendFeedback({ severity: 'error', text: error instanceof Error ? error.message : 'Kunne ikke trekke tilbake call sheeten.' });
+    } finally {
+      setRetracting(false);
     }
   };
 
@@ -941,6 +1385,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
               size={responsive.compactMode ? 'small' : 'medium'}
               startIcon={<EditIcon sx={{ fontSize: responsive.iconSize }} />}
               onClick={() => setEditMode(!editMode)}
+              disabled={sendPermission !== 'manage'}
               color={editMode ? 'secondary' : 'primary'}
               sx={{ fontSize: responsive.fontSize.caption }}
             >
@@ -964,19 +1409,33 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
             >
               {responsive.showFullLabels ? 'Eksporter PDF' : 'PDF'}
             </Button>
-            <Button
-              variant="contained"
-              color="success"
-              size={responsive.compactMode ? 'small' : 'medium'}
-              startIcon={sendingCallSheet
-                ? <CircularProgress size={responsive.iconSize} color="inherit" />
-                : <EmailIcon sx={{ fontSize: responsive.iconSize }} />}
-              onClick={handleSendToCrew}
-              disabled={sendingCallSheet}
-              sx={{ fontSize: responsive.fontSize.caption }}
-            >
-              {responsive.showFullLabels ? (sendingCallSheet ? 'Sender…' : 'Send til crew') : ''}
-            </Button>
+            <Tooltip title={sendPermission === 'manage' ? 'Kontroller mottakerne før utsending' : 'Krever administrasjonstilgang til call sheet'}>
+              <span>
+                <Button
+                  variant="contained"
+                  color="success"
+                  size={responsive.compactMode ? 'small' : 'medium'}
+                  startIcon={sendingCallSheet
+                    ? <CircularProgress size={responsive.iconSize} color="inherit" />
+                    : <EmailIcon sx={{ fontSize: responsive.iconSize }} />}
+                  onClick={openRecipientPreview}
+                  disabled={sendingCallSheet || sendPermission !== 'manage' || !isSynced}
+                  sx={{ fontSize: responsive.fontSize.caption }}
+                >
+                  {responsive.showFullLabels
+                    ? sendingCallSheet
+                      ? 'Sender…'
+                      : sendPermission === 'view'
+                        ? 'Kun lesetilgang'
+                        : !isSynced
+                          ? 'Laster mottakere…'
+                        : latestPublishedDelivery
+                          ? `Kontroller revisjon ${nextRevision}`
+                          : 'Kontroller mottakere'
+                    : ''}
+                </Button>
+              </span>
+            </Tooltip>
           </Stack>
           {sendFeedback && (
             <Alert
@@ -989,6 +1448,175 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
           )}
         </Stack>
       </Paper>
+
+      <Paper
+        variant="outlined"
+        data-testid="call-sheet-revision-status"
+        sx={{ p: 1.5, mb: responsive.spacing, borderRadius: 2 }}
+      >
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
+          <Box>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Typography sx={{ fontWeight: 800 }}>Revisjoner</Typography>
+              {deliveryHistoryLoading ? (
+                <CircularProgress size={16} />
+              ) : latestPublishedDelivery ? (
+                <Chip size="small" color={revisionChanges.labels.length ? 'warning' : 'success'} label={revisionChanges.labels.length ? 'Upubliserte endringer' : `Publisert revisjon ${latestPublishedDelivery.revision}`} />
+              ) : (
+                <Chip size="small" color="warning" label="Utkast · ikke publisert" />
+              )}
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              {revisionChanges.labels.length
+                ? `Neste publisering blir revisjon ${nextRevision}: ${revisionChanges.labels.join(', ')}.`
+                : 'Call sheeten samsvarer med siste publiserte revisjon.'}
+            </Typography>
+          </Box>
+          {latestPublishedDelivery && sendPermission === 'manage' && (
+            <Button
+              size="small"
+              color="error"
+              variant="outlined"
+              startIcon={<DeleteIcon />}
+              onClick={() => setRetractTarget(latestPublishedDelivery)}
+            >
+              Trekk tilbake revisjon {latestPublishedDelivery.revision}
+            </Button>
+          )}
+        </Stack>
+
+        {deliveryHistory.length > 0 && (
+          <Stack spacing={0.75} sx={{ mt: 1.5 }}>
+            {deliveryHistory.slice(0, 5).map((delivery) => (
+              <Box key={delivery.id} sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, py: 0.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="body2" sx={{ fontWeight: 800 }}>Rev. {delivery.revision}</Typography>
+                <Chip
+                  size="small"
+                  color={delivery.status === 'published' ? 'success' : delivery.status === 'retracted' ? 'error' : 'default'}
+                  label={delivery.status === 'published' ? 'Aktiv' : delivery.status === 'retracted' ? 'Trukket tilbake' : 'Erstattet'}
+                />
+                <Typography variant="caption" color="text.secondary">
+                  {new Date(delivery.createdAt).toLocaleString('nb-NO')} · {delivery.sent}/{delivery.total} sendt · {delivery.acknowledged} bekreftet
+                  {delivery.failed ? ` · ${delivery.failed} feilet` : ''}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+        )}
+        {deliveryActivity.length > 0 && (
+          <Box sx={{ mt: 1.5 }}>
+            <Divider sx={{ mb: 1 }} />
+            <Typography variant="caption" sx={{ fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>Aktivitetslogg</Typography>
+            <Stack spacing={0.5} sx={{ mt: 0.75 }}>
+              {deliveryActivity.map(({ delivery, event }) => (
+                <Typography key={event.id} variant="caption" color="text.secondary">
+                  {new Date(event.createdAt).toLocaleString('nb-NO')} · {callSheetActivityLabel(delivery, event)}
+                </Typography>
+              ))}
+            </Stack>
+          </Box>
+        )}
+      </Paper>
+
+      <Dialog
+        open={recipientPreviewOpen}
+        onClose={() => !sendingCallSheet && setRecipientPreviewOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ 'data-testid': 'call-sheet-recipient-preview' }}
+      >
+        <DialogTitle>{latestPublishedDelivery ? `Publiser revisjon ${nextRevision}` : 'Publiser første revisjon'}</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ mb: 1.5, color: 'text.secondary' }}>
+            Ingen e-post sendes før du bekrefter listen. Fjern mottakere som ikke skal ha denne revisjonen.
+          </Typography>
+          <Alert severity={revisionChanges.contentChanged ? 'warning' : 'info'} sx={{ mb: 1.5 }}>
+            {revisionChanges.labels.length ? `Endringer: ${revisionChanges.labels.join(', ')}.` : 'Ingen innholdsendringer.'}
+            {latestPublishedDelivery && revisionChanges.contentChanged
+              ? ' Innholdet er endret, derfor er alle nåværende mottakere valgt.'
+              : latestPublishedDelivery
+                ? ' Bare nye mottakere og tidligere mislykkede utsendinger velges automatisk.'
+                : ''}
+          </Alert>
+          {selectedRecipientEmails.size === 0 && (
+            <Alert severity="warning" sx={{ mb: 1.5 }}>
+              Ingen mottakere er automatisk berørt. Velg manuelt hvis revisjonen likevel skal sendes på nytt.
+            </Alert>
+          )}
+          <Stack spacing={0.5}>
+            {recipientPreview.valid.map((recipient) => (
+              <FormControlLabel
+                key={recipient.email}
+                control={(
+                  <Checkbox
+                    checked={selectedRecipientEmails.has(recipient.email)}
+                    onChange={(event) => setSelectedRecipientEmails((current) => {
+                      const next = new Set(current);
+                      if (event.target.checked) next.add(recipient.email);
+                      else next.delete(recipient.email);
+                      return next;
+                    })}
+                  />
+                )}
+                label={(
+                  <Box>
+                    <Typography sx={{ fontWeight: 700 }}>{recipient.name}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {recipient.email} · {recipient.source === 'cast' ? 'Cast' : 'Crew'}
+                    </Typography>
+                  </Box>
+                )}
+              />
+            ))}
+          </Stack>
+          {(recipientPreview.invalid.length > 0 || recipientPreview.duplicateCount > 0) && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              {recipientPreview.invalid.length > 0
+                ? `${recipientPreview.invalid.length} personer er utelatt fordi e-post mangler eller er ugyldig.`
+                : ''}
+              {recipientPreview.invalid.length > 0 && recipientPreview.duplicateCount > 0 ? ' ' : ''}
+              {recipientPreview.duplicateCount > 0
+                ? `${recipientPreview.duplicateCount} duplikate adresser er slått sammen.`
+                : ''}
+            </Alert>
+          )}
+          {recipientPreview.invalid.length > 0 && (
+            <Stack spacing={0.5} sx={{ mt: 1.5 }}>
+              {recipientPreview.invalid.map((recipient) => (
+                <Typography key={recipient.id} variant="caption" color="text.secondary">
+                  {recipient.name} · {recipient.reason}
+                </Typography>
+              ))}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={sendingCallSheet} onClick={() => setRecipientPreviewOpen(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            color="success"
+            disabled={sendingCallSheet || selectedRecipientEmails.size === 0}
+            onClick={() => void handleSendToCrew()}
+          >
+            {sendingCallSheet ? 'Publiserer…' : `Publiser til ${selectedRecipientEmails.size} mottakere`}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(retractTarget)} onClose={() => !retracting && setRetractTarget(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Trekk tilbake revisjon {retractTarget?.revision}</DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="error">
+            Revisjonen markeres som trukket tilbake, og alle ubekreftede mottakslenker blir ugyldige. Historikken beholdes.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={retracting} onClick={() => setRetractTarget(null)}>Avbryt</Button>
+          <Button disabled={retracting} color="error" variant="contained" onClick={() => void handleRetractDelivery()}>
+            {retracting ? 'Trekker tilbake…' : 'Bekreft tilbaketrekking'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Call Sheet Preview */}
       <Box 
@@ -1104,13 +1732,13 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
         <Grid container spacing={responsive.spacing} sx={{ mb: responsive.spacing * 2 }}>
           {[
             { label: 'DATO', key: 'date', value: new Date(callSheet.date).toLocaleDateString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }), editValue: callSheet.date, type: 'date' },
-            { label: 'DAG', key: 'dayNumber', value: `${callSheet.dayNumber} / ${callSheet.totalDays}`, editValue: callSheet.dayNumber, type: 'number' },
-            { label: 'CREW CALL', key: 'callTime', value: callSheet.callTime, editValue: callSheet.callTime, type: 'time' },
-            { label: 'SHOOTING CALL', key: 'shootingCallTime', value: callSheet.shootingCallTime, editValue: callSheet.shootingCallTime, type: 'time' },
-            { label: 'LUNSJ', key: 'lunchTime', value: callSheet.lunchTime, editValue: callSheet.lunchTime, type: 'time' },
-            { label: 'EST. WRAP', key: 'estimatedWrap', value: callSheet.estimatedWrap, editValue: callSheet.estimatedWrap, type: 'time' },
-            { label: 'REGISSØR', key: 'director', value: callSheet.director, editValue: callSheet.director, type: 'text' },
-            { label: 'PRODUSENT', key: 'producer', value: callSheet.producer, editValue: callSheet.producer, type: 'text' },
+            { label: 'DAG', key: 'dayNumber', value: callSheet.totalDays > 0 ? `${callSheet.dayNumber} / ${callSheet.totalDays}` : 'Ikke satt', editValue: callSheet.dayNumber, type: 'number' },
+            { label: 'CREW CALL', key: 'callTime', value: callSheet.callTime || 'Ikke satt', editValue: callSheet.callTime, type: 'time' },
+            { label: 'SHOOTING CALL', key: 'shootingCallTime', value: callSheet.shootingCallTime || 'Ikke satt', editValue: callSheet.shootingCallTime, type: 'time' },
+            { label: 'LUNSJ', key: 'lunchTime', value: callSheet.lunchTime || 'Ikke satt', editValue: callSheet.lunchTime, type: 'time' },
+            { label: 'EST. WRAP', key: 'estimatedWrap', value: callSheet.estimatedWrap || 'Ikke satt', editValue: callSheet.estimatedWrap, type: 'time' },
+            { label: 'REGISSØR', key: 'director', value: callSheet.director || 'Ikke satt', editValue: callSheet.director, type: 'text' },
+            { label: 'PRODUSENT', key: 'producer', value: callSheet.producer || 'Ikke satt', editValue: callSheet.producer, type: 'text' },
           ].map((item, i) => (
             <Grid key={i} size={{ xs: responsive.gridColumns.meta }}>
               <Paper 
@@ -1486,8 +2114,37 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                       >
                         {member.name}
                       </Typography>
+                      {(() => {
+                        const conflict = castConflictByName.get((member.name || '').toLowerCase().trim());
+                        if (!conflict) return null;
+                        const isBusy = conflict === 'unavailable';
+                        return (
+                          <Tooltip
+                            title={isBusy
+                              ? 'Produsent har markert kandidaten som opptatt denne dagen'
+                              : 'Produsent har markert kandidaten som tentativ denne dagen'}
+                            arrow
+                          >
+                            <Chip
+                              size="small"
+                              icon={<WarningIcon sx={{ fontSize: 12 }} />}
+                              label={isBusy ? 'Opptatt denne dagen' : 'Tentativ denne dagen'}
+                              sx={{
+                                mt: 0.5,
+                                height: 18,
+                                fontSize: responsive.fontSize.tiny,
+                                fontWeight: 700,
+                                color: isBusy ? '#b91c1c' : '#b45309',
+                                bgcolor: isBusy ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.14)',
+                                border: `1px solid ${isBusy ? '#ef4444' : '#f59e0b'}`,
+                                '& .MuiChip-icon': { color: isBusy ? '#b91c1c' : '#b45309' },
+                              }}
+                            />
+                          </Tooltip>
+                        );
+                      })()}
                     </Box>
-                    <Chip 
+                    <Chip
                       label={`Sc. ${member.scenes.join(', ')}`}
                       size="small"
                       sx={{ 
@@ -1515,7 +2172,7 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                         Call
                       </Typography>
                       <Typography sx={{ fontSize: responsive.fontSize.caption, color: COLORS.textPrimary, fontWeight: 700 }}>
-                        {member.callTime}
+                        {member.callTime || 'Ikke satt'}
                       </Typography>
                     </Grid>
                     {member.makeupTime && (
@@ -1528,6 +2185,16 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                         </Typography>
                       </Grid>
                     )}
+                    {member.wardrobeTime && (
+                      <Grid size={{ xs: 6, sm: 3 }}>
+                        <Typography sx={{ fontSize: responsive.fontSize.tiny, color: COLORS.textSecondary, fontWeight: 600, textTransform: 'uppercase' }}>
+                          Kostyme
+                        </Typography>
+                        <Typography sx={{ fontSize: responsive.fontSize.caption, color: COLORS.textPrimary, fontWeight: 700 }}>
+                          {member.wardrobeTime}
+                        </Typography>
+                      </Grid>
+                    )}
                     <Grid size={{ xs: 6, sm: 3 }}>
                       <Typography sx={{ fontSize: responsive.fontSize.tiny, color: COLORS.textSecondary, fontWeight: 600, textTransform: 'uppercase' }}>
                         On Set
@@ -1536,6 +2203,26 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                         {member.onSetTime}
                       </Typography>
                     </Grid>
+                    {member.transport && (
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography sx={{ fontSize: responsive.fontSize.tiny, color: COLORS.textSecondary, fontWeight: 600, textTransform: 'uppercase' }}>
+                          Transport
+                        </Typography>
+                        <Typography sx={{ fontSize: responsive.fontSize.caption, color: COLORS.textPrimary, fontWeight: 700 }}>
+                          {member.transport}
+                        </Typography>
+                      </Grid>
+                    )}
+                    {member.movementStatus && (
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography sx={{ fontSize: responsive.fontSize.tiny, color: COLORS.textSecondary, fontWeight: 600, textTransform: 'uppercase' }}>
+                          Dagsstatus
+                        </Typography>
+                        <Typography sx={{ fontSize: responsive.fontSize.caption, color: COLORS.textPrimary, fontWeight: 700 }}>
+                          {SECOND_AD_STATUS_LABELS[member.movementStatus] || member.movementStatus}
+                        </Typography>
+                      </Grid>
+                    )}
                   </Grid>
                   {member.notes && (
                     <Paper 
@@ -1622,8 +2309,39 @@ export const CallSheetGenerator: FC<CallSheetGeneratorProps> = ({
                       mt: 0.25,
                     }}
                   >
-                    Call: {member.callTime}
+                    Call: {member.callTime || 'Ikke satt'}
                   </Typography>
+                  {(() => {
+                    const conflict = member.email
+                      ? crewConflictByEmail.get(member.email.toLowerCase().trim())
+                      : undefined;
+                    if (!conflict) return null;
+                    const isBusy = conflict === 'unavailable';
+                    return (
+                      <Tooltip
+                        title={isBusy
+                          ? 'Medlemmet har markert seg opptatt denne dagen i sin egen kalender'
+                          : 'Medlemmet har markert dagen som tentativ i sin egen kalender'}
+                        arrow
+                      >
+                        <Chip
+                          size="small"
+                          icon={<WarningIcon sx={{ fontSize: 12 }} />}
+                          label={isBusy ? 'Opptatt denne dagen' : 'Tentativ denne dagen'}
+                          sx={{
+                            mt: 0.5,
+                            height: 18,
+                            fontSize: responsive.fontSize.tiny,
+                            fontWeight: 700,
+                            color: isBusy ? '#b91c1c' : '#b45309',
+                            bgcolor: isBusy ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.14)',
+                            border: `1px solid ${isBusy ? '#ef4444' : '#f59e0b'}`,
+                            '& .MuiChip-icon': { color: isBusy ? '#b91c1c' : '#b45309' },
+                          }}
+                        />
+                      </Tooltip>
+                    );
+                  })()}
                 </Paper>
               </Grid>
             ))}

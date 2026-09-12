@@ -1,5 +1,5 @@
 import { useTheming } from '../../utils/theming-helper';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
@@ -12,7 +12,6 @@ import {
   Alert,
   Chip,
   Tooltip,
-  Button,
   LinearProgress,
   Accordion,
   AccordionSummary,
@@ -20,10 +19,10 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -32,7 +31,13 @@ import {
   Api,
   Code,
   IntegrationInstructions,
+  Search as SearchIcon,
 } from '@mui/icons-material';
+import {
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+} from './design-system';
 
 interface EndpointHealthCheck {
   endpoint: string;
@@ -62,6 +67,7 @@ interface RegistryEndpoint {
 
 const APIEndpointMonitor: React.FC = () => {
   const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
 
   // Enhanced Master Integration
   const { auth, analytics, features } = useEnhancedMasterIntegration();
@@ -223,19 +229,20 @@ const APIEndpointMonitor: React.FC = () => {
           </Typography>
         </Alert>
 
-        <Button
-          variant="contained"
+        <AdminButton
+          tone="primary"
           startIcon={theming.getThemedIcon('refresh')}
           onClick={() => queryClient.invalidateQueries()}
           sx={{ mt: 2, ...theming.getThemedButtonSx() }}
         >
           Prøv igjen
-        </Button>
+        </AdminButton>
       </Box>
     );
   }
 
   const healthSummary = healthData as APIHealthSummary;
+  const healthEndpoints = Array.isArray(healthSummary?.endpoints) ? healthSummary.endpoints : [];
 
   return (
     <Box sx={{ p: 3 }}>
@@ -254,17 +261,15 @@ const APIEndpointMonitor: React.FC = () => {
           Sanntids overvåkning av alle API-endepunkter for system-helse og ytelse-tracking
         </Typography>
 
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-          <Button
-            variant="contained"
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+          <AdminButton
+            tone="primary"
             startIcon={theming.getThemedIcon('play')}
             onClick={triggerHealthCheck}
-            sx={{
-              backgroundColor: '#ff8c00', '&:hover': { backgroundColor: '#e67e00' },
-              ...theming.getThemedButtonSx()}}
+            sx={{ ...theming.getThemedButtonSx() }}
           >
             Kjør Health Check
-          </Button>
+          </AdminButton>
 
           <Typography variant="body2" color="text.secondary">
             Sist sjekket:{', '}
@@ -325,7 +330,7 @@ const APIEndpointMonitor: React.FC = () => {
         <Grid2 size={{ xs: 12, sm: 6, md: 3 }}>
           <Card sx={{ height: '100%', backgroundColor: '#e3f2fd', ...theming.getThemedCardSx() }}>
             <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
-              <Api sx={{ fontSize: 48, color: '#1976d2', mb: 1 }} />
+              <Api sx={{ fontSize: 48, color: '#60a5fa', mb: 1 }} />
               <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 600}}>
                 {(healthSummary?.healthyEndpoints ?? 0) +
                   (healthSummary?.degradedEndpoints ?? 0) +
@@ -352,22 +357,45 @@ const APIEndpointMonitor: React.FC = () => {
       )}
 
       {/* API Endpoints by Category */}
+      {registryData?.categorizedEndpoints && (
+        <TextField
+          size="small"
+          fullWidth
+          placeholder="Søk i endepunkter (path, method, beskrivelse) …"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ mb: 2 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+      )}
       {registryData?.categorizedEndpoints &&
         Object.entries(registryData.categorizedEndpoints).map(([category, endpoints]) => {
-          const endpointsArray = endpoints as RegistryEndpoint[];
-          const healthyCount =
-            healthSummary?.endpoints.filter(
-              (h) =>
-                endpointsArray.some((e: RegistryEndpoint) => e.path === h.endpoint) &&
-                h.status === 'healthy',
-            ).length ?? 0;
+          const endpointsArrayAll = Array.isArray(endpoints) ? (endpoints as RegistryEndpoint[]) : [];
+          const endpointsArray = endpointsArrayAll.filter((e) =>
+            [e.path, e.method, e.description]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase()
+              .includes(search.toLowerCase()),
+          );
+          if (search && endpointsArray.length === 0) return null;
+          const healthyCount = healthEndpoints.filter(
+            (h) =>
+              endpointsArray.some((e: RegistryEndpoint) => e.path === h.endpoint) &&
+              h.status === 'healthy',
+          ).length;
 
-          const failedCount =
-            healthSummary?.endpoints.filter(
-              (h) =>
-                endpointsArray.some((e: RegistryEndpoint) => e.path === h.endpoint) &&
-                h.status === 'failed',
-            ).length ?? 0;
+          const failedCount = healthEndpoints.filter(
+            (h) =>
+              endpointsArray.some((e: RegistryEndpoint) => e.path === h.endpoint) &&
+              h.status === 'failed',
+          ).length;
 
           return (
             <Accordion key={category} sx={{ mb: 2 }}>
@@ -382,25 +410,17 @@ const APIEndpointMonitor: React.FC = () => {
                   </Typography>
                   <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
                     {healthyCount > 0 && (
-                      <Chip
-                        size="small"
-                        label={`${healthyCount} healthy`}
-                        sx={{ backgroundColor: '#4caf50', color: 'white' }}
-                      />
+                      <StatusChip tone="success" label={`${healthyCount} healthy`} />
                     )}
                     {failedCount > 0 && (
-                      <Chip
-                        size="small"
-                        label={`${failedCount} failed`}
-                        sx={{ backgroundColor: '#f44336', color: 'white' }}
-                      />
+                      <StatusChip tone="error" label={`${failedCount} failed`} />
                     )}
                   </Box>
                 </Box>
               </AccordionSummary>
 
               <AccordionDetails>
-                <TableContainer component={Paper} variant="outlined">
+                <AdminTableContainer ariaLabel={`${category} API-endepunkter`}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -415,7 +435,7 @@ const APIEndpointMonitor: React.FC = () => {
 
                     <TableBody>
                       {endpointsArray.map((endpoint: RegistryEndpoint) => {
-                        const health = healthSummary?.endpoints.find(
+                        const health = healthEndpoints.find(
                           (h) => h.endpoint === endpoint.path,
                         );
                         return (
@@ -498,7 +518,7 @@ const APIEndpointMonitor: React.FC = () => {
                       })}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </AccordionDetails>
             </Accordion>
           );

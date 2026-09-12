@@ -87,7 +87,22 @@ describe("Sprint B.2 — runLegacyStorageMigration", () => {
 
   it("setter migrasjons-marker-key etter første run", () => {
     runLegacyStorageMigration();
-    expect(window.localStorage.getItem("_legacy-storage-migration-version")).toBe("1");
+    expect(window.localStorage.getItem("_legacy-storage-migration-version")).toBe("2");
+  });
+
+  it("fjerner pensjonerte hosting-credentials også for brukere på migrasjon v1", () => {
+    window.localStorage.setItem("_legacy-storage-migration-version", "1");
+    window.localStorage.setItem("vercel_token", "retired-token");
+    window.localStorage.setItem("vercel_team_id", "retired-team");
+    window.localStorage.setItem("unrelated_token", "keep-me");
+
+    const report = runLegacyStorageMigration();
+
+    expect(report.removedRetiredCredentials).toBe(2);
+    expect(window.localStorage.getItem("vercel_token")).toBeNull();
+    expect(window.localStorage.getItem("vercel_team_id")).toBeNull();
+    expect(window.localStorage.getItem("unrelated_token")).toBe("keep-me");
+    expect(window.localStorage.getItem("_legacy-storage-migration-version")).toBe("2");
   });
 
   it("beholder _legacyCompatRaw så eksisterende lesere kan fortsette uendret", () => {

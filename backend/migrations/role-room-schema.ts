@@ -166,10 +166,26 @@ export const castingProductionDays = pgTable('casting_production_days', {
   notes: text('notes'),
   weatherForecast: jsonb('weather_forecast'),
   auditLog: jsonb('audit_log').default([]),
+  /** Rich production-day payload used by the REST service. */
+  data: jsonb('data').default({}),
+  /** Independent concurrency lane for production-management operations. */
+  managementVersion: integer('management_version').default(0).notNull(),
+  managementUpdatedBy: varchar('management_updated_by', { length: 255 }),
+  managementUpdatedAt: timestamp('management_updated_at', { withTimezone: true, mode: 'string' }),
+  /** Independent concurrency lane for production-coordination operations. */
+  coordinationVersion: integer('coordination_version').default(0).notNull(),
+  coordinationUpdatedBy: varchar('coordination_updated_by', { length: 255 }),
+  coordinationUpdatedAt: timestamp('coordination_updated_at', { withTimezone: true, mode: 'string' }),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
   index('casting_production_days_project_id_idx').using('btree', table.projectId),
+  index('idx_casting_production_days_management_updated')
+    .using('btree', table.projectId, table.managementUpdatedAt.desc())
+    .where(sql`${table.managementUpdatedAt} IS NOT NULL`),
+  index('idx_casting_production_days_coordination_updated')
+    .using('btree', table.projectId, table.coordinationUpdatedAt.desc())
+    .where(sql`${table.coordinationUpdatedAt} IS NOT NULL`),
 ]);
 
 export const castingShotLists = pgTable('casting_shot_lists', {
@@ -194,11 +210,16 @@ export const castingUserRoles = pgTable('casting_user_roles', {
   role: varchar('role', { length: 50 }).notNull(),
   permissions: jsonb('permissions').default({}),
   addedBy: varchar('added_by', { length: 255 }),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }),
+  deactivatedAt: timestamp('deactivated_at', { withTimezone: true, mode: 'string' }),
+  deactivatedByUserId: varchar('deactivated_by_user_id', { length: 255 }),
+  deactivationReason: text('deactivation_reason'),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
   uniqueIndex('casting_user_roles_project_user_unique').using('btree', table.projectId, table.userId),
   index('casting_user_roles_user_id_idx').using('btree', table.userId),
+  index('idx_cur_project_active').using('btree', table.projectId, table.deactivatedAt),
 ]);
 
 // ── Consent Management ───────────────────────────────────────
@@ -776,4 +797,65 @@ export const roleRoomIntegrationIdempotencyKeys = pgTable('role_room_integration
 }, (table) => [
   uniqueIndex('idx_rr_integration_idempotency_unique').using('btree', table.scopeKey, table.requestMethod, table.requestPath, table.idempotencyKey),
   index('idx_rr_integration_idempotency_account').using('btree', table.integrationAccountId),
+]);
+
+export const roleRoomCallSheetDeliveries = pgTable('role_room_call_sheet_deliveries', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  productionDayId: varchar('production_day_id', { length: 255 }), revision: integer('revision').default(1).notNull(),
+  subject: varchar('subject', { length: 200 }).notNull(), sentByUserId: varchar('sent_by_user_id', { length: 255 }).notNull(),
+  status: varchar('status', { length: 24 }).default('published').notNull(),
+  supersedesDeliveryId: uuid('supersedes_delivery_id'),
+  contentHash: varchar('content_hash', { length: 64 }),
+  snapshot: jsonb('snapshot').default({}).notNull(),
+  retractedAt: timestamp('retracted_at', { withTimezone: true, mode: 'string' }),
+  retractedByUserId: varchar('retracted_by_user_id', { length: 255 }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_rr_call_sheet_deliveries_project_day').using('btree', table.projectId, table.productionDayId, table.createdAt),
+  uniqueIndex('idx_rr_call_sheet_delivery_revision').using('btree', table.projectId, sql`COALESCE(${table.productionDayId}, '')`, table.revision),
+  uniqueIndex('idx_rr_call_sheet_one_published').using('btree', table.projectId, sql`COALESCE(${table.productionDayId}, '')`).where(sql`${table.status} = 'published'`),
+  index('idx_rr_call_sheet_supersedes').using('btree', table.supersedesDeliveryId),
+]);
+
+export const roleRoomCallSheetRecipients = pgTable('role_room_call_sheet_recipients', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  deliveryId: uuid('delivery_id').notNull().references(() => roleRoomCallSheetDeliveries.id, { onDelete: 'cascade' }),
+  recipientName: varchar('recipient_name', { length: 255 }), recipientEmail: varchar('recipient_email', { length: 320 }).notNull(),
+  tokenHash: varchar('token_hash', { length: 64 }).notNull(), deliveryStatus: varchar('delivery_status', { length: 24 }).default('pending').notNull(),
+  failureReason: varchar('failure_reason', { length: 80 }), providerMessageId: varchar('provider_message_id', { length: 255 }),
+  sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }), acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true, mode: 'string' }),
+  reminderCount: integer('reminder_count').default(0).notNull(),
+  lastRemindedAt: timestamp('last_reminded_at', { withTimezone: true, mode: 'string' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).default(sql`now() + interval '14 days'`).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [uniqueIndex('idx_rr_call_sheet_recipients_token').using('btree', table.tokenHash), index('idx_rr_call_sheet_recipients_delivery').using('btree', table.deliveryId)]);
+
+export const roleRoomCallSheetRecipientTokens = pgTable('role_room_call_sheet_recipient_tokens', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  recipientId: uuid('recipient_id').notNull().references(() => roleRoomCallSheetRecipients.id, { onDelete: 'cascade' }),
+  tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).default(sql`now() + interval '14 days'`).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true, mode: 'string' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('idx_rr_call_sheet_recipient_tokens_hash').using('btree', table.tokenHash),
+  index('idx_rr_call_sheet_recipient_tokens_recipient').using('btree', table.recipientId, table.createdAt),
+]);
+
+export const roleRoomCallSheetEvents = pgTable('role_room_call_sheet_events', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  deliveryId: uuid('delivery_id').notNull().references(() => roleRoomCallSheetDeliveries.id, { onDelete: 'cascade' }),
+  projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  productionDayId: varchar('production_day_id', { length: 255 }),
+  actorUserId: varchar('actor_user_id', { length: 255 }),
+  recipientId: uuid('recipient_id').references(() => roleRoomCallSheetRecipients.id, { onDelete: 'set null' }),
+  eventType: varchar('event_type', { length: 40 }).notNull(),
+  details: jsonb('details').default({}).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  index('idx_rr_call_sheet_events_delivery').using('btree', table.deliveryId, table.createdAt),
+  index('idx_rr_call_sheet_events_project_day').using('btree', table.projectId, table.productionDayId, table.createdAt),
 ]);

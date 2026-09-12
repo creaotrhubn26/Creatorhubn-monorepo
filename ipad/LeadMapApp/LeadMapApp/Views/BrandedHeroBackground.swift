@@ -1,0 +1,89 @@
+// BrandedHeroBackground.swift
+//
+// Gjenbrukbar hero-bakgrunn som applyerer en backdrop (Backdrop1..17)
+// med gradient-overlay slik at innhold over den er lesbart.
+//
+// Bruk:
+//   var body: some View {
+//       ScrollView { ... }
+//           .background(BrandedHeroBackground(.backdrop1).ignoresSafeArea())
+//   }
+//
+// Designvalg:
+//   - Top 30% av skjermen viser backdrop'en sterkt (lett gradient over)
+//   - Resten gradient-overgår til solid mørk lilla #0b0518 (matcher
+//     landing-siden + warm-dark-tema)
+//   - Backdrop-bilde i .scaledToFill() med top-anchored — pin-konstellasjoner
+//     beholder sitt visuelle tyngdepunkt øverst
+//   - .preferredColorScheme(.dark) sikrer at content-tekst er hvit
+
+import SwiftUI
+
+enum LeadgridBackdrop: String, CaseIterable {
+    case backdrop1 = "Backdrop1"   // Kart-pin-konstellasjon (horisontal)
+    case backdrop2 = "Backdrop2"   // Lilla scene m/ purple-glow
+    case backdrop3 = "Backdrop3"   // Vertikal pin-path (signaturen)
+    case backdrop4 = "Backdrop4"   // Sci-fi grid isometric pin
+    case backdrop5 = "Backdrop5"   // Cityscape m/ pin-overlay
+    case backdrop6 = "Backdrop6"   // Mac+iPad-mockup (mer detaljert)
+    case backdrop7 = "Backdrop7"   // Pencil-path m/ pin
+    case backdrop8 = "Backdrop8"   // Isometric workspace
+
+    // ── Markedssjef-Leadgrid-serien (fase 28) ────────────────────
+    case backdrop9 = "Backdrop9"    // CRM Hjem — landskap m/ glowing pin-pillars + aurora
+    case backdrop10 = "Backdrop10"  // Won/Lost — grønn vs rød pin-pidestaller m/ trapper
+    case backdrop11 = "Backdrop11"  // Customer Journey — pin-cluster → pink destination m/ touchpoints
+    case backdrop12 = "Backdrop12"  // Reports & Schedule — 3 kalender-plater + envelope + bar-chart pin
+    case backdrop18 = "Backdrop18"  // Notifications — waterfall av message-bubbles m/ status-dots
+
+    // ── Salgshierarki-serien (fase 29) ───────────────────────────
+    case backdrop19 = "Backdrop19"  // Team Leader Bridge — bridge over team-konstellasjon m/ KPI-graphs
+    case backdrop20 = "Backdrop20"  // Sales Rep Path — selgers rute m/ pin-stops + bil-light-trail
+    case backdrop21 = "Backdrop21"  // First Touch — pin med shockwave + lys-ribboner (promotør)
+    case backdrop22 = "Backdrop22"  // Research Lab — 3D wireframe-sfære m/ data-paneler (Claude AI)
+
+    // ── Super Admin-serien (fase 27) ────────────────────────────
+    case backdrop13 = "Backdrop13"  // Command Center — silhouette m/ 3 hologramskjermer (kart/graf/hub)
+    case backdrop14 = "Backdrop14"  // B2B Funnel — 3 transparente plater → green pin/bar-chart
+    case backdrop15 = "Backdrop15"  // Marketing Cockpit — 4 hexagonale moduler (people/news/video/refresh)
+    case backdrop16 = "Backdrop16"  // Ad-Tech Stack — 4 stablete plater m/ earth/sphere
+    case backdrop17 = "Backdrop17"  // Platform Health — server-racks m/ waveform pulse
+}
+
+struct BrandedHeroBackground: View {
+    let backdrop: LeadgridBackdrop
+    /// Hvor sterkt content over backdrop'en skal mørkes ned.
+    /// 0.0 = se backdrop helt klart, 1.0 = nesten svart.
+    var darkenFrom: Double = 0.35
+    var darkenTo: Double = 0.92
+
+    init(_ backdrop: LeadgridBackdrop,
+         darkenFrom: Double = 0.35, darkenTo: Double = 0.92) {
+        self.backdrop = backdrop
+        self.darkenFrom = darkenFrom
+        self.darkenTo = darkenTo
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            // Solid mørk-lilla bunn — matcher landing-side-bg
+            Color(red: 0.043, green: 0.020, blue: 0.094)
+
+            // Backdrop øverst, scaledToFill m/ top-anchor
+            Image(backdrop.rawValue)
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity, alignment: .top)
+                .clipped()
+
+            // Gradient overlay — gradvis mørkere mot bunnen
+            LinearGradient(
+                colors: [
+                    .black.opacity(darkenFrom),
+                    Color(red: 0.043, green: 0.020, blue: 0.094).opacity(darkenTo),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+        }
+    }
+}

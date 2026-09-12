@@ -13,9 +13,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
 import {
   Alert, Box, Card, CardContent, Chip, CircularProgress, Stack, Typography,
-  Button, Divider, Link as MuiLink, TextField, MenuItem,
+  Button, Divider, Link as MuiLink, TextField, MenuItem, Tabs, Tab,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import FacebookIcon from '@mui/icons-material/Facebook';
@@ -27,6 +28,20 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import CompetitorsPanel from './CompetitorsPanel';
+import B2BAcquisitionPanel from './B2BAcquisitionPanel';
+import AgencyAcquisitionDashboard from './AgencyAcquisitionDashboard';
+import CustomerSuccessDashboard from './CustomerSuccessDashboard';
+import LeadMapPanel from './LeadMapPanel';
+import { TerritoryGridManager } from '../../components/leadgrid/TerritoryGridManager';
+import { TerritoryCoveragePanel } from '../../components/leadgrid/TerritoryCoveragePanel';
+import { TerritoryManagerDashboard } from '../../components/leadgrid/TerritoryManagerDashboard';
+import LeadMapMyDayPanel from './LeadMapMyDayPanel';
+import LeadMapLeaderboardPanel from './LeadMapLeaderboardPanel';
+import LeadMapNotificationBell from './LeadMapNotificationBell';
+import MarketIntelligenceSection from '../../components/admin-room/market-intelligence/MarketIntelligenceSection';
+import TenderBoardPanel from '../../components/admin-room/market-intelligence/TenderBoardPanel';
+import TenderIntelPanel from '../../components/admin-room/market-intelligence/TenderIntelPanel';
+import MarketingCockpitTiktokSection from '../../components/admin-room/marketing-cockpit/MarketingCockpitTiktokSection';
 import CompetitorReportPanel from './CompetitorReportPanel';
 import PostDraftsPanel from './PostDraftsPanel';
 import SocialConnectionsPanel from './SocialConnectionsPanel';
@@ -301,7 +316,52 @@ function CampaignActionsPanel({ onAction }: { onAction: () => void }) {
   );
 }
 
+/**
+ * Scoped mørkt MUI-tema for cockpiten. Flere paneler (LeadMapMyDayPanel,
+ * WonLostDashboard m.fl.) bruker theme-defaults (text.primary, Card-bakgrunn)
+ * og arvet appens LYSE tema — usynlige titler og hvite kort på det mørke
+ * AdminRoom-lerretet. Temaet scopes her (ikke i komponentene) fordi de samme
+ * panelene også brukes i lyse kontekster i Leadgrid-appen.
+ */
+const cockpitDarkTheme = createTheme({
+  palette: {
+    mode: 'dark',
+    primary: { main: '#7c3aed' },
+    background: { default: '#0b1120', paper: 'rgba(15,23,42,0.72)' },
+    text: { primary: '#e2e8f0', secondary: 'rgba(203,213,225,0.68)' },
+  },
+});
+
+const COCKPIT_TABS = [
+  { value: 'oversikt', label: 'Oversikt' },
+  { value: 'innhold', label: 'Innhold & kampanjer' },
+  { value: 'konkurrenter', label: 'Konkurrenter' },
+  { value: 'b2b', label: 'B2B & kunder' },
+  { value: 'leads', label: 'Leads & territorier' },
+  { value: 'anbud', label: 'Anbud' },
+  { value: 'mi', label: 'Markedsintelligens' },
+] as const;
+type CockpitTab = (typeof COCKPIT_TABS)[number]['value'];
+
+function readCockpitTabFromUrl(): CockpitTab {
+  if (typeof window === 'undefined') return 'oversikt';
+  const raw = new URLSearchParams(window.location.search).get('cockpitTab');
+  return COCKPIT_TABS.some((t) => t.value === raw) ? (raw as CockpitTab) : 'oversikt';
+}
+
 export default function MarketingCockpitTab() {
+  const [cockpitTab, setCockpitTab] = useState<CockpitTab>(readCockpitTabFromUrl);
+  const changeCockpitTab = useCallback((next: CockpitTab) => {
+    setCockpitTab(next);
+    // Deep-link-vennlig uten history-spam: ?adminTab=marketing-cockpit&cockpitTab=<fane>
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('cockpitTab', next);
+      window.history.replaceState(null, '', url.toString());
+    } catch {
+      // URL-sync er ren bekvemmelighet — aldri la den velte fanebyttet.
+    }
+  }, []);
   const [data, setData] = useState<CockpitSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -355,6 +415,7 @@ export default function MarketingCockpitTab() {
   }, [data]);
 
   return (
+    <ThemeProvider theme={cockpitDarkTheme}>
     <Stack spacing={2} data-testid="marketing-cockpit-root">
       <Stack direction="row" alignItems="center" spacing={2}>
         <Typography variant="h6" sx={{ color: '#e2e8f0' }}>Marketing Cockpit — The Role Room</Typography>
@@ -367,11 +428,14 @@ export default function MarketingCockpitTab() {
         >
           {loading ? 'Henter…' : 'Refresh'}
         </Button>
-        {data && (
-          <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.5)', ml: 'auto' }}>
-            Sist oppdatert {new Date(data.generatedAt).toLocaleTimeString('nb-NO')} ({data.durationMs}ms)
-          </Typography>
-        )}
+        <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+          {data && (
+            <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.5)' }}>
+              Sist oppdatert {new Date(data.generatedAt).toLocaleTimeString('nb-NO')} ({data.durationMs}ms)
+            </Typography>
+          )}
+          <LeadMapNotificationBell />
+        </Box>
       </Stack>
 
       {error && (
@@ -384,6 +448,25 @@ export default function MarketingCockpitTab() {
         </Box>
       )}
 
+      <Tabs
+        value={cockpitTab}
+        onChange={(_e, next: CockpitTab) => changeCockpitTab(next)}
+        variant="scrollable"
+        allowScrollButtonsMobile
+        data-testid="cockpit-tabs"
+        sx={{
+          borderBottom: '1px solid rgba(148,163,184,0.16)',
+          '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, color: 'rgba(226,232,240,0.72)', minHeight: 40 },
+          '& .Mui-selected': { color: '#f8fafc' },
+          '& .MuiTabs-indicator': { backgroundColor: '#a78bfa' },
+        }}
+      >
+        {COCKPIT_TABS.map((t) => (
+          <Tab key={t.value} value={t.value} label={t.label} />
+        ))}
+      </Tabs>
+
+      {cockpitTab === 'oversikt' && (<>
       {/* SocialConnectionsPanel — hoistet ut av {data && ...}-blokken slik
           at den vises selv om cockpit-summary feiler (auth, network). Panelet
           gjør sine egne fetches og er ikke avhengig av parent-data. */}
@@ -478,11 +561,11 @@ export default function MarketingCockpitTab() {
                 <SectionHeader icon={<TagIcon sx={{ color: '#a78bfa', fontSize: 20 }} />}
                   title="Mentions" sectionOk={data.mentions.ok} testid="mentions" />
                 {!data.mentions.ok ? <ErrorBody section={data.mentions} /> :
-                  data.mentions.data && data.mentions.data.recent.length === 0 ? (
+                  data.mentions.data && (Array.isArray(data.mentions.data.recent) ? data.mentions.data.recent : []).length === 0 ? (
                     <Typography variant="body2" sx={{ color: 'rgba(203,213,225,0.5)' }}>
                       Ingen mentions ennå. Når noen tagger @theroleroom-Page-en, vises de her.
                     </Typography>
-                  ) : data.mentions.data?.recent.map((m) => (
+                  ) : (Array.isArray(data.mentions.data?.recent) ? data.mentions.data.recent : []).map((m) => (
                     <Box key={m.id} sx={{ py: 1, borderBottom: '1px solid rgba(148,163,184,0.10)' }} data-testid="mention-row">
                       <Typography variant="caption" sx={{ color: '#a78bfa', fontWeight: 600 }}>
                         {m.fromName || '(unknown)'} · {m.createdTime ? new Date(m.createdTime).toLocaleDateString('nb-NO') : ''}
@@ -500,11 +583,11 @@ export default function MarketingCockpitTab() {
                 <SectionHeader icon={<CampaignIcon sx={{ color: '#22d3ee', fontSize: 20 }} />}
                   title="Lead-former" sectionOk={data.leads.ok} testid="leads" />
                 {!data.leads.ok ? <ErrorBody section={data.leads} /> :
-                  data.leads.data && data.leads.data.forms.length === 0 ? (
+                  data.leads.data && (Array.isArray(data.leads.data.forms) ? data.leads.data.forms : []).length === 0 ? (
                     <Typography variant="body2" sx={{ color: 'rgba(203,213,225,0.5)' }}>
                       Ingen Lead Ad-former. Når du kjører Lead Ads på The Role Room Page, vises de her.
                     </Typography>
-                  ) : data.leads.data?.forms.map((f) => (
+                  ) : (Array.isArray(data.leads.data?.forms) ? data.leads.data.forms : []).map((f) => (
                     <Stack key={f.id} direction="row" alignItems="center" spacing={1} sx={{ py: 0.5 }} data-testid="lead-form-row">
                       <Chip size="small" label={f.status || 'unknown'}
                         sx={{
@@ -547,11 +630,11 @@ export default function MarketingCockpitTab() {
                 <SectionHeader icon={<EventIcon sx={{ color: '#f97316', fontSize: 20 }} />}
                   title="IG upcoming events" sectionOk={data.ig.ok} testid="events" />
                 {!data.ig.ok ? <ErrorBody section={data.ig} /> :
-                  data.ig.data && data.ig.data.upcomingEvents.length === 0 ? (
+                  data.ig.data && (Array.isArray(data.ig.data.upcomingEvents) ? data.ig.data.upcomingEvents : []).length === 0 ? (
                     <Typography variant="body2" sx={{ color: 'rgba(203,213,225,0.5)' }}>
                       Ingen kommende IG-events. Publiser kasting-events, demo-dager eller premiere-screenings her.
                     </Typography>
-                  ) : data.ig.data?.upcomingEvents.map((e) => (
+                  ) : (Array.isArray(data.ig.data?.upcomingEvents) ? data.ig.data.upcomingEvents : []).map((e) => (
                     <Stack key={e.id} direction="row" alignItems="center" spacing={1} sx={{ py: 0.5 }} data-testid="event-row">
                       <Typography variant="body2" sx={{ color: '#e2e8f0', flex: 1 }}>{e.title}</Typography>
                       <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.5)' }}>
@@ -570,7 +653,7 @@ export default function MarketingCockpitTab() {
                 title="Hashtag-tracker" sectionOk={data.hashtags.ok} testid="hashtags" />
               {!data.hashtags.ok ? <ErrorBody section={data.hashtags} /> : data.hashtags.data && (
                 <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' } }}>
-                  {data.hashtags.data.tracked.map((t) => (
+                  {(Array.isArray(data.hashtags.data.tracked) ? data.hashtags.data.tracked : []).map((t) => (
                     <Stack key={t.tag} direction="row" alignItems="center" spacing={1}
                       sx={{ p: 1, background: 'rgba(2,6,23,0.40)', borderRadius: 1 }} data-testid="hashtag-row">
                       <Typography sx={{ color: '#22c55e', fontWeight: 600, fontSize: '0.85rem' }}>#{t.tag}</Typography>
@@ -589,29 +672,85 @@ export default function MarketingCockpitTab() {
             </CardContent>
           </Card>
 
-          <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)' }}>
-            <Chip label="KONKURRENT-INTELLIGENCE" size="small"
-              sx={{ background: 'rgba(168,85,247,0.15)', color: '#c4b5fd', fontSize: '0.7rem' }} />
-          </Divider>
-
-          <CompetitorReportPanel />
-          <PostDraftsPanel />
-          <CompetitorsPanel />
-
-          <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)' }}>
-            <Chip label="CAMPAIGN ACTIONS" size="small"
-              sx={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', fontSize: '0.7rem' }} />
-          </Divider>
-
-          <CampaignActionsPanel onAction={() => void load()} />
-
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)' }} />
           <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.4)', textAlign: 'center' }}>
             Konfigurasjon: pageId={data.configured.pageId ? '✓' : '✗'} · pageToken={data.configured.pageToken ? '✓' : '✗'} ·
-            igUserId={data.configured.igUserId ? '✓' : '✗'} · {data.configured.trackedHashtags.length} hashtags trackes
+            igUserId={data.configured.igUserId ? '✓' : '✗'} · {(Array.isArray(data.configured.trackedHashtags) ? data.configured.trackedHashtags : []).length} hashtags trackes
           </Typography>
         </>
       )}
+      </>)}
+
+      {/* Fanene under er BEVISST uavhengige av cockpit-summary (data) —
+          panelene henter selv, og skal ikke dø når Meta-API-et feiler. */}
+
+      {cockpitTab === 'innhold' && (<>
+        <PostDraftsPanel />
+        <CampaignActionsPanel onAction={() => void load()} />
+        {/* TikTok — The Role Rooms egen markedsføring */}
+        <MarketingCockpitTiktokSection />
+      </>)}
+
+      {cockpitTab === 'konkurrenter' && (<>
+        <CompetitorReportPanel />
+        <CompetitorsPanel />
+      </>)}
+
+      {cockpitTab === 'b2b' && (<>
+        <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+          <Chip label="B2B-AKKVISISJON" size="small"
+            sx={{ background: 'rgba(217,70,239,0.18)', color: '#e879f9', fontSize: '0.7rem', fontWeight: 700 }} />
+        </Divider>
+        <AgencyAcquisitionDashboard />
+        <B2BAcquisitionPanel />
+        <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+          <Chip label="CUSTOMER SUCCESS" size="small"
+            sx={{ background: 'rgba(52,211,153,0.18)', color: '#34d399', fontSize: '0.7rem', fontWeight: 700 }} />
+        </Divider>
+        <CustomerSuccessDashboard />
+      </>)}
+
+      {cockpitTab === 'leads' && (<>
+        <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+          <Chip label="MIN DAG" size="small"
+            sx={{ background: 'rgba(192,132,252,0.18)', color: '#c084fc', fontSize: '0.7rem', fontWeight: 700 }} />
+        </Divider>
+        <LeadMapMyDayPanel />
+        <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+          <Chip label="TEAM-LEADERBOARD" size="small"
+            sx={{ background: 'rgba(249,115,22,0.18)', color: '#f97316', fontSize: '0.7rem', fontWeight: 700 }} />
+        </Divider>
+        <LeadMapLeaderboardPanel />
+        <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+          <Chip label="LEAD MAP" size="small"
+            sx={{ background: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontSize: '0.7rem', fontWeight: 700 }} />
+        </Divider>
+        <LeadMapPanel />
+        <Divider sx={{ borderColor: 'rgba(168,85,247,0.32)' }}>
+          <Chip label="GRIDS / TERRITORIER" size="small"
+            sx={{ background: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontSize: '0.7rem', fontWeight: 700 }} />
+        </Divider>
+        <TerritoryGridManager />
+        <TerritoryCoveragePanel />
+        <TerritoryManagerDashboard />
+      </>)}
+
+      {cockpitTab === 'anbud' && (<>
+        <Divider textAlign="left">
+          <Chip label="ANBUD — TRIAGE / FRISTER / RADAR" size="small"
+            sx={{ background: 'rgba(192,132,252,0.18)', color: '#c084fc', fontSize: '0.7rem', fontWeight: 700 }} />
+        </Divider>
+        <TenderBoardPanel />
+        <TenderIntelPanel />
+      </>)}
+
+      {cockpitTab === 'mi' && (
+        <MarketIntelligenceSection
+          projectId="theroleroom"
+          defaultBrandScanUrl="https://theroleroom.com"
+        />
+      )}
     </Stack>
+    </ThemeProvider>
   );
 }

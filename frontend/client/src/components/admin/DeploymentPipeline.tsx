@@ -13,7 +13,6 @@ import {
   Card,
   CardContent,
   Typography,
-  Button,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -31,17 +30,19 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   CloudUpload as DeployIcon,
   History as RollbackIcon,
+  Search as SearchIcon,
   PlayArrow as PlayIcon,
   Refresh as RefreshIcon,
   Timeline as TimelineIcon,
@@ -51,6 +52,7 @@ import {
   BugReport as TestIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
+import { AdminCard, AdminButton, StatusChip, AdminTableContainer, adminTokens, useIsMobile } from './design-system';
 
 interface DeploymentStep {
   id: string;
@@ -107,6 +109,7 @@ export default function DeploymentPipeline() {
   // Theming system
   const theming = useTheming('prototype_tester');
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
@@ -116,6 +119,7 @@ export default function DeploymentPipeline() {
   const [deploymentDialogOpen, setDeploymentDialogOpen] = useState(false);
   const [rollbackDialogOpen, setRollbackDialogOpen] = useState(false);
   const [selectedDeployment, setSelectedDeployment] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   // Fetch data
   const fetchWithAuth = async (url: string) => {
@@ -239,24 +243,24 @@ export default function DeploymentPipeline() {
     <Box sx={{ p: { xs: 2, sm:  3 } }}>
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
-        <Typography variant="h5" sx={{  color: '#ff8c00', fontWeight: 600}}>
+        <Typography variant="h5" component="h2" sx={{  color: adminTokens.color.brand, fontWeight: 600}}>
           🚀 Deployment Pipeline
         </Typography>
         <Box sx={{ display: 'flex', gap:  2 }}>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="ghost"
             startIcon={<RefreshIcon />}
             onClick={() => queryClient.invalidateQueries()}
           >
             Oppdater
-          </Button>
-          <Button variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<DeployIcon />}
             onClick={() => setDeploymentDialogOpen(true)}
-            sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00'} }}
           >
             Ny Deployment
-          </Button>
+          </AdminButton>
         </Box>
       </Box>
 
@@ -268,7 +272,7 @@ export default function DeploymentPipeline() {
 
       {/* Environment Health Status */}
       <Grid container spacing={3} sx={{ mb:  4 }}>
-        {(healthData?.environments || []).map((health) => (
+        {(Array.isArray(healthData?.environments) ? healthData.environments : []).map((health) => (
           <Grid item xs={12} md={4} key={health.environment}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
@@ -327,13 +331,24 @@ export default function DeploymentPipeline() {
       </Grid>
 
       {/* Recent Deployments */}
-      <Card sx={{ mb: 4, ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" sx={{  mb:  3  }}>
-            📊 Recent Deployments
-          </Typography>
-          
-          <TableContainer>
+      <AdminCard title="📊 Recent Deployments" disablePadding sx={{ mb: 4, ...theming.getThemedCardSx() }}>
+          <Box sx={{ px: 2, pt: 2 }}>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Søk i deployments …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
+          <AdminTableContainer ariaLabel="Nylige deployments">
             <Table>
               <TableHead>
                 <TableRow>
@@ -347,7 +362,7 @@ export default function DeploymentPipeline() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {(deploymentsData?.deployments || []).map((deployment) => (
+                {(Array.isArray(deploymentsData?.deployments) ? deploymentsData.deployments : []).filter((deployment) => `${deployment.version} ${deployment.environment} ${deployment.status} ${deployment.commitHash} ${deployment.initiatedBy}`.toLowerCase().includes(search.toLowerCase())).map((deployment) => (
                   <TableRow key={deployment.id} hover>
                     <TableCell>
                       <Typography variant="body2" fontWeight={600}>
@@ -398,8 +413,9 @@ export default function DeploymentPipeline() {
                       <Box sx={{ display: 'flex', gap:  1 }}>
                         {deployment.rollbackAvailable && (
                           <Tooltip title="Rollback">
-                            <IconButton 
+                            <IconButton
                               size="small"
+                              aria-label="Rull tilbake deployment"
                               onClick={() => {
                                 setSelectedDeployment(deployment.id);
                                 setRollbackDialogOpen(true);
@@ -410,8 +426,9 @@ export default function DeploymentPipeline() {
                           </Tooltip>
                         )}
                         <Tooltip title="View Details">
-                          <IconButton 
+                          <IconButton
                             size="small"
+                            aria-label="Vis detaljer"
                             onClick={() => setSelectedDeployment(deployment.id)}
                           >
                             <TimelineIcon fontSize="inherit" />
@@ -423,20 +440,19 @@ export default function DeploymentPipeline() {
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
-        </CardContent>
-      </Card>
+          </AdminTableContainer>
+        </AdminCard>
 
       {/* Deployment Steps Timeline */}
       {selectedDeployment && (
         <Card sx={{ mb: 4, ...theming.getThemedCardSx() }}>
           <CardContent sx={theming.getThemedCardSx()}>
             <Typography variant="h6" sx={{  mb:  3  }}>
-              📋 Deployment Steps - {(deploymentsData?.deployments || []).find(d => d.id === selectedDeployment)?.version}
+              📋 Deployment Steps - {(Array.isArray(deploymentsData?.deployments) ? deploymentsData.deployments : []).find(d => d.id === selectedDeployment)?.version}
             </Typography>
             
             <Stepper orientation="vertical">
-              {((deploymentsData?.deployments || []).find(d => d.id === selectedDeployment)?.steps || []).map((step) => (
+              {((Array.isArray(deploymentsData?.deployments) ? deploymentsData.deployments : []).find(d => d.id === selectedDeployment)?.steps || []).map((step) => (
                 <Step key={step.id} active={step.status !== 'pending'} completed={step.status === 'completed'}>
                   <StepLabel 
                     error={step.status === 'failed'}
@@ -483,15 +499,16 @@ export default function DeploymentPipeline() {
       )}
 
       {/* New Deployment Dialog */}
-      <Dialog 
+      <Dialog
         open={deploymentDialogOpen}
         onClose={() => setDeploymentDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
-            <DeployIcon sx={{ color: '#ff8c00'}} />
+            <DeployIcon sx={{ color: adminTokens.color.brand }} />
             Start New Deployment
           </Box>
         </DialogTitle>
@@ -519,33 +536,34 @@ export default function DeploymentPipeline() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeploymentDialogOpen(false)}>
+          <AdminButton tone="ghost" onClick={() => setDeploymentDialogOpen(false)}>
             Avbryt
-          </Button>
-          <Button 
-            onClick={() => startDeploymentMutation.mutate({ 
-              environment: selectedEnvironment, 
-              version: 'v4.1.2' 
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            onClick={() => startDeploymentMutation.mutate({
+              environment: selectedEnvironment,
+              version: 'v4.1.2'
         })}
-            variant="contained"
+            loading={startDeploymentMutation.isPending}
             disabled={startDeploymentMutation.isPending}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00'} }}
           >
             {startDeploymentMutation.isPending ? 'Starter...' : 'Start Deployment'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Rollback Dialog */}
-      <Dialog 
+      <Dialog
         open={rollbackDialogOpen}
         onClose={() => setRollbackDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
-            <RollbackIcon sx={{ color: '#f44336'}} />
+            <RollbackIcon sx={{ color: adminTokens.color.error }} />
             Rollback Deployment
           </Box>
         </DialogTitle>
@@ -555,21 +573,21 @@ export default function DeploymentPipeline() {
           </Alert>
           <Typography variant="body1">
             Er du sikker på at du vil rulle tilbake deployment{''}
-            <strong>{(deploymentsData?.deployments || []).find(d => d.id === selectedDeployment)?.version}</strong>?
+            <strong>{(Array.isArray(deploymentsData?.deployments) ? deploymentsData.deployments : []).find(d => d.id === selectedDeployment)?.version}</strong>?
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRollbackDialogOpen(false)}>
+          <AdminButton tone="ghost" onClick={() => setRollbackDialogOpen(false)}>
             Avbryt
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
+            tone="danger"
             onClick={() => selectedDeployment && rollbackMutation.mutate(selectedDeployment)}
-            variant="contained"
-            color="error"
+            loading={rollbackMutation.isPending}
             disabled={rollbackMutation.isPending}
           >
             {rollbackMutation.isPending ? 'Ruller tilbake...' : 'Rollback'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

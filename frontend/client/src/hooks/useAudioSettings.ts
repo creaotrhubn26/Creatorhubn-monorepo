@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 
 interface DuckingPreset {
   id?: number;
@@ -60,25 +61,17 @@ export function useDuckingPresets() {
   const { data: presets = [], isLoading } = useQuery({
     queryKey: ['ducking-presets'],
     queryFn: async () => {
-      const response = await fetch('/api/audio-settings/ducking-presets', {
-        credentials: 'include'
-      });
-      if (!response.ok) throw new Error('Failed to fetch ducking presets');
-      const data = await response.json();
+      const data = await apiRequest('/api/audio-settings/ducking-presets') as { presets?: DuckingPreset[] };
       return data.presets || [];
     }
   });
 
   const saveMutation = useMutation({
     mutationFn: async (preset: DuckingPreset) => {
-      const response = await fetch('/api/audio-settings/ducking-presets', {
+      return await apiRequest('/api/audio-settings/ducking-presets', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(preset)
+        body: JSON.stringify(preset),
       });
-      if (!response.ok) throw new Error('Failed to save ducking preset');
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ducking-presets'] });
@@ -87,12 +80,9 @@ export function useDuckingPresets() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      const response = await fetch(`/api/audio-settings/ducking-presets/${id}`, {
+      return await apiRequest(`/api/audio-settings/ducking-presets/${id}`, {
         method: 'DELETE',
-        credentials: 'include'
       });
-      if (!response.ok) throw new Error('Failed to delete ducking preset');
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ducking-presets'] });
@@ -118,25 +108,17 @@ export function useEQPresets() {
   const { data: presets = [], isLoading } = useQuery({
     queryKey: ['eq-presets'],
     queryFn: async () => {
-      const response = await fetch('/api/audio-settings/eq-presets', {
-        credentials: 'include'
-      });
-      if (!response.ok) throw new Error('Failed to fetch EQ presets');
-      const data = await response.json();
+      const data = await apiRequest('/api/audio-settings/eq-presets') as { presets?: EQPreset[] };
       return data.presets || [];
     }
   });
 
   const saveMutation = useMutation({
     mutationFn: async (preset: EQPreset) => {
-      const response = await fetch('/api/audio-settings/eq-presets', {
+      return await apiRequest('/api/audio-settings/eq-presets', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(preset)
+        body: JSON.stringify(preset),
       });
-      if (!response.ok) throw new Error('Failed to save EQ preset');
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['eq-presets'] });
@@ -163,26 +145,19 @@ export function useMixerSettings(projectId?: number, trackId?: string) {
       const params = new URLSearchParams();
       if (projectId) params.append('projectId', projectId.toString());
       if (trackId) params.append('trackId', trackId);
-      
-      const response = await fetch(`/api/audio-settings/mixer-settings?${params}`, {
-        credentials: 'include'
-      });
-      if (!response.ok) throw new Error('Failed to fetch mixer settings');
-      const data = await response.json();
+
+      const data = await apiRequest(`/api/audio-settings/mixer-settings?${params}`) as
+        { settings?: MixerSettings[] };
       return data.settings || [];
     }
   });
 
   const saveMutation = useMutation({
     mutationFn: async (mixerSettings: MixerSettings) => {
-      const response = await fetch('/api/audio-settings/mixer-settings', {
+      return await apiRequest('/api/audio-settings/mixer-settings', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(mixerSettings)
+        body: JSON.stringify(mixerSettings),
       });
-      if (!response.ok) throw new Error('Failed to save mixer settings');
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mixer-settings'] });
@@ -205,11 +180,8 @@ export function useWaveformCache() {
 
   const getWaveform = useCallback(async (hash: string): Promise<WaveformCache | null> => {
     try {
-      const response = await fetch(`/api/audio-settings/waveform-cache/${hash}`, {
-        credentials: 'include'
-      });
-      if (!response.ok) return null;
-      const data = await response.json();
+      const data = await apiRequest(`/api/audio-settings/waveform-cache/${hash}`) as
+        { waveform?: WaveformCache | null };
       return data.waveform || null;
     } catch (error) {
       console.error('Error fetching waveform cache: ', error);
@@ -219,14 +191,10 @@ export function useWaveformCache() {
 
   const saveMutation = useMutation({
     mutationFn: async (waveform: WaveformCache) => {
-      const response = await fetch('/api/audio-settings/waveform-cache', {
+      return await apiRequest('/api/audio-settings/waveform-cache', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(waveform)
+        body: JSON.stringify(waveform),
       });
-      if (!response.ok) throw new Error('Failed to save waveform cache');
-      return response.json();
     }
   });
 
@@ -252,14 +220,10 @@ export function useEnhancementHistory() {
       metrics?: any;
       processingTimeSeconds?: number;
     }) => {
-      const response = await fetch('/api/audio-settings/enhancement-history', {
+      return await apiRequest('/api/audio-settings/enhancement-history', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
-        credentials:'include',
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
       });
-      if (!response.ok) throw new Error('Failed to log enhancement history');
-      return response.json();
     }
   });
 

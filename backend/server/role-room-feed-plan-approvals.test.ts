@@ -41,6 +41,43 @@ describe('normalizeFeedPostsPayload — approval-state preservation', () => {
     }
   });
 
+  it('preserves gridAspect + cover thumbnail through save roundtrip', () => {
+    const cover = `data:image/png;base64,${'A'.repeat(64)}`;
+    const [post] = normalizeFeedPostsPayload([
+      {
+        id: 'p',
+        concept: '',
+        title: '',
+        caption: '',
+        hashtags: [],
+        callToAction: '',
+        imageStyle: '',
+        gridAspect: '16:9',
+        coverImageUrl: cover,
+        coverImageName: 'cover.png',
+      },
+    ]);
+    expect(post.gridAspect).toBe('16:9');
+    expect(post.coverImageUrl).toBe(cover);
+    expect(post.coverImageName).toBe('cover.png');
+  });
+
+  it('drops invalid gridAspect to null', () => {
+    const [post] = normalizeFeedPostsPayload([
+      {
+        id: 'p',
+        concept: '',
+        title: '',
+        caption: '',
+        hashtags: [],
+        callToAction: '',
+        imageStyle: '',
+        gridAspect: '3:2',
+      },
+    ]);
+    expect(post.gridAspect).toBeNull();
+  });
+
   it('sanitizes invalid approvalState back to draft', () => {
     const [post] = normalizeFeedPostsPayload([
       {
@@ -100,7 +137,22 @@ describe('normalizeFeedPostsPayload — approval-state preservation', () => {
 // ── markFeedPlanPostFailed ─────────────────────────────────────────────
 
 function makePool(impl: (sql: string, args: unknown[]) => Promise<{ rows: unknown[]; rowCount?: number }>) {
-  return { query: vi.fn(async (sql: string, args: unknown[] = []) => impl(sql, args)) };
+  // mutateFeedPlanLocked acquires a client and wraps the read-modify-write in
+  // BEGIN/SELECT … FOR UPDATE/INSERT/COMMIT, so the mock pool must support
+  // connect() in addition to query(). BEGIN/COMMIT/ROLLBACK resolve to empty;
+  // everything else routes through the same impl.
+  const clientQuery = vi.fn(async (sql: string, args: unknown[] = []) => {
+    const verb = sql.trim().toUpperCase();
+    if (verb === 'BEGIN' || verb === 'COMMIT' || verb === 'ROLLBACK') return { rows: [] };
+    // Transaction-scoped advisory lock taken before the SELECT … FOR UPDATE —
+    // resolve to empty so it doesn't fall through to the impl's SELECT branch.
+    if (sql.includes('pg_advisory_xact_lock')) return { rows: [] };
+    return impl(sql, args);
+  });
+  return {
+    query: vi.fn(async (sql: string, args: unknown[] = []) => impl(sql, args)),
+    connect: vi.fn(async () => ({ query: clientQuery, release: vi.fn() })),
+  };
 }
 
 describe('markFeedPlanPostFailed', () => {

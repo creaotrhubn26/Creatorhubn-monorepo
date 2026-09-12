@@ -1,5 +1,6 @@
 // client/src/components/notes/NoteEditor.tsx
 import { useTheming } from '../../utils/theming-helper';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import React, { Suspense } from 'react';
 const ReactQuill = React.lazy(() => import('react-quill')); // resolved by Vite alias if configured
 
@@ -21,6 +22,7 @@ export default function NoteEditor({
   readOnly = false,
 }: Props) {
   return (
+    <ErrorBoundary componentName="note-editor">
     <Suspense fallback={<div style={{ padding: 16 }}>Laster editor …</div>}>
       <ReactQuill
         theme="snow"
@@ -32,5 +34,6 @@ export default function NoteEditor({
         readOnly={readOnly}
       />
     </Suspense>
+    </ErrorBoundary>
   );
 }

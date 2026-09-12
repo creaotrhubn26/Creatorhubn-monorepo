@@ -21,6 +21,11 @@ import {
   Tooltip,
   Stack,
   Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import {
   Close,
@@ -87,6 +92,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
   
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Simulate real-time activity feed
   useEffect(() => {
@@ -303,8 +309,11 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
         {activities.length === 0 ? (
           <Box sx={{ p: 4, textAlign: 'center' }}>
             <Notifications sx={{ fontSize: 64, color: 'rgba(255,255,255,0.3)', mb: 2 }} />
-            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-              No recent activity
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 1 }}>
+              Ingen aktivitet ennå
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', maxWidth: 280, display: 'block', mx: 'auto' }}>
+              Hendelser dukker opp her etter hvert som du laster opp, kommenterer og samarbeider.
             </Typography>
           </Box>
         ) : (
@@ -404,21 +413,57 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
         display: 'flex',
         justifyContent: 'space-between'
       }}>
-        <Button 
-          size="small" 
+        <Button
+          size="small"
           sx={{ color: 'rgba(255,255,255,0.7)' }}
-          onClick={() => setActivities([])}
+          onClick={() => setShowClearConfirm(true)}
+          disabled={activities.length === 0}
         >
-          Clear All
+          Tøm aktivitet
         </Button>
-        <Button 
-          size="small" 
+        <Button
+          size="small"
           sx={{ color: accentColor }}
           onClick={onClose}
         >
-          Close
+          Lukk
         </Button>
       </Box>
+
+      <Dialog
+        open={showClearConfirm}
+        onClose={() => setShowClearConfirm(false)}
+        PaperProps={{
+          sx: {
+            bgcolor: '#06080d',
+            color: '#edf0f7',
+            border: '1px solid rgba(245,166,35,0.22)',
+          },
+        }}
+      >
+        <DialogTitle>Tøm aktivitetsloggen?</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ color: 'rgba(255,255,255,0.75)' }}>
+            Dette fjerner alle {activities.length} hendelser fra visningen. Handlingen kan ikke angres,
+            men nye hendelser vil dukke opp etter hvert som du jobber.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowClearConfirm(false)} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+            Avbryt
+          </Button>
+          <Button
+            onClick={() => {
+              setActivities([]);
+              setShowClearConfirm(false);
+            }}
+            color="error"
+            variant="contained"
+          >
+            Tøm
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Drawer>
   );
 };

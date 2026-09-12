@@ -3,12 +3,12 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { apiRequest } from '@/lib/queryClient';
+import { adminTokens, AdminButton, useIsMobile } from './design-system';
 
 import {
   Fab,
   Box,
   Tooltip,
-  Button,
   Typography,
   IconButton,
   Dialog,
@@ -120,6 +120,7 @@ export default function AdminFloatingActionButtons({
   onGoogleWorkspaceResellerOpen,
 }: AdminFloatingActionButtonsProps) {
   const [open, setOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
@@ -267,9 +268,9 @@ export default function AdminFloatingActionButtons({
   const getPriorityColor = (priority: 'high' | 'medium' | 'low'): string => {
     switch (priority) {
       case 'high': return '#ff4444'; // Red for critical admin actions
-      case 'medium': return '#ff8c00'; // Orange for normal actions
+      case 'medium': return adminTokens.color.brand; // Orange for normal actions
       case 'low': return '#4caf50'; // Green for low priority
-      default: return '#ff8c00';
+      default: return adminTokens.color.brand;
 }
 };
 
@@ -278,13 +279,23 @@ export default function AdminFloatingActionButtons({
       {/* Info Message */}
       {showInfoMessage && (
         <Box
+          role="button"
+          tabIndex={0}
+          aria-label="Lukk informasjonsmelding"
           onClick={() => setShowInfoMessage(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setShowInfoMessage(false);
+            }
+          }}
           sx={{
             position: 'fixed',
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
             width: '320px',
+            maxWidth: '100%',
             height: '200px',
             zIndex: 9999,
             background: 'linear-gradient(135deg, #ff4444 0%, #ff6b00 50%, #ff8500 100%)',
@@ -310,8 +321,8 @@ export default function AdminFloatingActionButtons({
               '0%': { transform: 'scale(1)' }, '50%': { transform: 'scale(1.05)' }, '100%': { transform: 'scale(1)' }
           }
         }}>
-            <AdminPanelSettings sx={{ 
-              fontSize: 40, 
+            <AdminPanelSettings aria-hidden sx={{
+              fontSize: 40,
               color: 'white',
               animation: 'pulse 1.5s infinite'
           }} />
@@ -345,6 +356,7 @@ export default function AdminFloatingActionButtons({
         onClose={() => setOrganizerDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           Admin SpeedDial Organiser
@@ -370,17 +382,12 @@ export default function AdminFloatingActionButtons({
           </List>
         </DialogContent>
         <DialogActions>
-          <Button
+          <AdminButton
+            tone="primary"
             onClick={() => setOrganizerDialogOpen(false)}
-            variant="contained"
-            sx={{ 
-              background: 'linear-gradient(135deg, #ff4444, #ff6b00)', '&:hover': {
-                background: 'linear-gradient(135deg, #ff6b00, #ff4444)',
-            }
-          }}
           >
             Ferdig
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -468,6 +475,7 @@ export default function AdminFloatingActionButtons({
                   <Fab
                     size="medium"
                     tabIndex={0}
+                    aria-label={action.name.replace(/-/g, ' ')}
                     onFocus={() => setFocusedIndex(index)}
                     onClick={() => handleActionClick(action.name, action.action)}
                     sx={{
@@ -499,6 +507,8 @@ export default function AdminFloatingActionButtons({
         <Fab
           color="primary"
           tabIndex={0}
+          aria-label="Åpne admin-handlinger"
+          aria-expanded={open}
           onClick={() => {
             setOpen(!open);
             setFocusedIndex(open ? -1 : 0);

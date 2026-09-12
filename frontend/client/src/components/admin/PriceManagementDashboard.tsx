@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTheming } from '../../utils/theming-helper';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
@@ -27,13 +27,14 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Tabs,
   TextField,
   Typography,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import type { ChipProps } from '@mui/material';
 import {
   AddCircle as AddIcon,
@@ -54,6 +55,14 @@ import {
   type PlatformSubscriptionPlan,
 } from '../../services/PlatformPricingService';
 import { PostAgentPricingPanel } from './PostAgentPricingPanel';
+import LeadMapPricingPanel from './LeadMapPricingPanel';
+import {
+  AdminButton,
+  AdminTableContainer,
+  StatusChip,
+  useIsMobile,
+} from './design-system';
+import DOMPurify from 'dompurify';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -107,7 +116,14 @@ interface CreatorHubEmailTemplateRow {
     | 'creatorhub_account_activated'
     | 'creatorhub_payment_failed'
     | 'creatorhub_payment_recovered'
-    | 'creatorhub_subscription_cancelled';
+    | 'creatorhub_subscription_cancelled'
+    | 'creatorhub_access_request_received'
+    | 'creatorhub_prototype_tester_invite'
+    | 'creatorhub_prototype_tester_signing_code'
+    | 'creatorhub_prototype_tester_signature_receipt'
+    | 'creatorhub_access_request_approved'
+    | 'creatorhub_access_request_rejected'
+    | 'creatorhub_tester_access_activated';
   name: string;
   description: string;
   subject: string;
@@ -183,6 +199,15 @@ interface EnterprisePricingConfig {
   }>;
 }
 
+interface StripeDriftAlert {
+  id: string | number;
+  title: string;
+  message: string;
+  severity: string;
+  status: string;
+  created_at: string;
+}
+
 interface CreatorHubFeature {
   id: string;
   name: string;
@@ -203,7 +228,9 @@ type PriceManagementSection =
   | 'email-templates'
   | 'analytics'
   | 'enterprise'
-  | 'post-agent';
+  | 'post-agent'
+  | 'lead-map';
+;
 
 interface PriceManagementDashboardProps {
   onMeetingCreate?: (meeting: WorkflowPayload) => void;
@@ -319,7 +346,7 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
     domain: 'creatorhubn.com',
     supportEmail: 'hello@creatorhubn.com',
     docsUrl: 'https://creatorhubn.com',
-    emailLogoUrl: '/creatorhub-wordmark-light.png',
+    emailLogoUrl: 'https://creatorhubn.com/creatorhub-wordmark-light.png',
   },
   email: {
     fromEmail: 'billing@creatorhubn.com',
@@ -400,6 +427,87 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
         footerNote:
           'Dette er en systemmelding. Hvis du trenger hjelp, kan du kontakte oss via supportsiden i CreatorHub.',
       },
+      {
+        id: 'creatorhub_access_request_received',
+        name: 'Tilgangsforespørsel mottatt',
+        description: 'Sendes til søkeren når en CreatorHub- eller prototype-tester-søknad er registrert.',
+        subject: 'Vi har mottatt CreatorHub-søknaden din',
+        title: 'Søknaden din er mottatt',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Takk for at du søkte om tilgang til CreatorHub som <strong>{{professionName}}</strong>.</p><p>CreatorHub-teamet gjennomgår søknaden personlig. Du får svar på e-post innen <strong>1–3 virkedager</strong>.</p>',
+        footerNote:
+          'Du trenger ikke sende inn søknaden på nytt. Svar på denne e-posten hvis du vil legge til noe.',
+      },
+      {
+        id: 'creatorhub_prototype_tester_invite',
+        name: 'Direkte prototype-invitasjon',
+        description: 'Sendes når CreatorHub inviterer en prototype-tester direkte fra adminpanelet.',
+        subject: 'Du er invitert til CreatorHubs prototypeprogram',
+        title: 'Vil du bli prototype-tester?',
+        body:
+          '<p>Hei {{recipientName}},</p><p>CreatorHub-teamet har invitert deg til prototype-testerprogrammet.</p><p>Programmet varer i <strong>{{programDurationWeeks}} uker</strong>. Før tilgangen aktiveres må du lese og akseptere programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen via knappen under.</p>',
+        ctaLabel: 'Les vilkår og signer',
+        footerNote:
+          'Den personlige lenken utløper om {{inviteExpiresDays}} dager. Svar på denne e-posten hvis du trenger hjelp.',
+      },
+      {
+        id: 'creatorhub_prototype_tester_signing_code',
+        name: 'Bekreftelseskode for signering',
+        description: 'Sendes når en prototype-tester bekrefter den inviterte e-postadressen før signering.',
+        subject: 'Bekreft signeringen i CreatorHub',
+        title: 'Din bekreftelseskode',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Bruk denne koden for å bekrefte e-postadressen din og signere prototype-testeravtalene:</p><p style="font-size:30px;font-weight:800;letter-spacing:0.2em"><strong>{{signingCode}}</strong></p><p>Koden er gyldig i <strong>{{codeExpiresMinutes}} minutter</strong> og kan bare brukes én gang.</p>',
+        footerNote:
+          'Hvis du ikke ba om koden, kan du ignorere e-posten. Ikke videresend koden til andre.',
+      },
+      {
+        id: 'creatorhub_prototype_tester_signature_receipt',
+        name: 'Kvittering for prototype-signering',
+        description: 'Sendes etter fullført signering og viser hvor den etterprøvbare PDF-kvitteringen finnes.',
+        subject: 'Kvittering for signerte CreatorHub-avtaler',
+        title: 'Avtalene dine er signert',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Vi har registrert signeringen av programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen.</p><p>Kvitterings-ID: <strong>{{receiptId}}</strong></p><p>Du kan laste ned en etterprøvbar PDF-kvittering fra <strong>Mine avtaler</strong>.</p>',
+        ctaLabel: 'Åpne Mine avtaler',
+        footerNote:
+          'Integritetskontroll (SHA-256): {{agreementDigest}}. Oppbevar denne e-posten som dokumentasjon.',
+      },
+      {
+        id: 'creatorhub_access_request_approved',
+        name: 'Tilgangsforespørsel godkjent',
+        description: 'Sendes når en prototype-tester er godkjent og skal lese og signere hele avtalegrunnlaget.',
+        subject: 'Du er godkjent som prototype-tester i CreatorHub',
+        title: 'Søknaden din er godkjent',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Vi har godkjent søknaden din til CreatorHub sitt prototype-testerprogram.</p><p>Programmet varer i <strong>{{programDurationWeeks}} uker</strong>. Før tilgangen aktiveres må du lese og akseptere programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen via knappen under.</p>',
+        ctaLabel: 'Les vilkår og signer',
+        footerNote:
+          'Den personlige lenken utløper om {{inviteExpiresDays}} dager. Svar på denne e-posten hvis du trenger hjelp.',
+      },
+      {
+        id: 'creatorhub_access_request_rejected',
+        name: 'Tilgangsforespørsel avslått',
+        description: 'Sendes når teamet avslår en CreatorHub- eller prototype-tester-søknad.',
+        subject: 'En oppdatering om CreatorHub-søknaden din',
+        title: 'Takk for interessen',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Takk for at du søkte om tilgang til CreatorHub.</p><p>Vi har dessverre ikke anledning til å tilby deg plass i prototype-testerprogrammet denne gangen. Du er velkommen til å søke igjen ved en senere opptaksrunde.</p>',
+        footerNote:
+          'Har du spørsmål til avgjørelsen, kan du svare direkte på denne e-posten.',
+      },
+      {
+        id: 'creatorhub_tester_access_activated',
+        name: 'Prototype-tilgang aktivert',
+        description: 'Sendes etter at testeren har akseptert hele avtalegrunnlaget og kontoen er aktivert.',
+        subject: 'Tilgangen din til CreatorHub er aktivert',
+        title: 'Velkommen som prototype-tester',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen er registrert, og CreatorHub-kontoen din er nå aktiv.</p><p>Logg inn med <strong>{{recipientEmail}}</strong>. Testperioden varer til <strong>{{programEndsAt}}</strong>.</p>',
+        ctaLabel: 'Logg inn i CreatorHub',
+        footerNote:
+          'Svar på denne e-posten hvis du trenger hjelp med innlogging eller tilgang.',
+      },
     ],
   },
 };
@@ -409,6 +517,13 @@ function getCreatorHubTemplateSenderKind(
 ): CreatorHubEmailSenderKind {
   switch (templateId) {
     case 'creatorhub_account_activated':
+    case 'creatorhub_access_request_received':
+    case 'creatorhub_prototype_tester_invite':
+    case 'creatorhub_prototype_tester_signing_code':
+    case 'creatorhub_prototype_tester_signature_receipt':
+    case 'creatorhub_access_request_approved':
+    case 'creatorhub_access_request_rejected':
+    case 'creatorhub_tester_access_activated':
       return 'welcome';
     case 'creatorhub_subscription_cancelled':
       return 'system';
@@ -577,13 +692,40 @@ export default function PriceManagementDashboard({
   const [enterprisePricing, setEnterprisePricing] = useState<EnterprisePricingConfig>(defaultEnterprisePricing);
   const [enterprisePricingSaving, setEnterprisePricingSaving] = useState(false);
   const [enterprisePricingSaved, setEnterprisePricingSaved] = useState(false);
+  // Snapshot av sist lagrede enterprise-priser → dirty-deteksjon uten å røre
+  // hver input-handler. dirty = nåværende state avviker fra sist lagret.
+  const [lastSavedEnterprise, setLastSavedEnterprise] = useState<string>(() =>
+    JSON.stringify(defaultEnterprisePricing),
+  );
+  const enterprisePricingDirty = JSON.stringify(enterprisePricing) !== lastSavedEnterprise;
+
+  // Forlat-vakt: advar ved navigasjon bort med ulagrede enterprise-prisendringer.
+  useEffect(() => {
+    if (!enterprisePricingDirty) return undefined;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [enterprisePricingDirty]);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
     severity: 'success' | 'error' | 'info';
   }>({ open: false, message: '', severity: 'info' });
 
+  // ─── Stripe-sync / drift-status (read-only berikelse) ───────────────────
+  // Henter siste drift-varsler fra admin_notifications. Lar admin oppdage at
+  // CreatorHub-pris og Stripe-pris har kommet ut av sync. Degraderer trygt.
+  const [driftAlerts, setDriftAlerts] = useState<StripeDriftAlert[]>([]);
+  const [driftLoading, setDriftLoading] = useState(false);
+  const [driftChecking, setDriftChecking] = useState(false);
+
+  const isMobile = useIsMobile();
   const theming = useTheming('prototype_tester');
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const { getProfessionDisplayName: getDynamicProfessionName } = useDynamicProfessions();
   const { auth } = useEnhancedMasterIntegration();
   const { subscriptionPlans, features: platformFeatures, isLoading: pricingLoading, formatPrice } = usePlatformPricing();
@@ -598,6 +740,7 @@ export default function PriceManagementDashboard({
     analytics: 3,
     enterprise: 4,
     'post-agent': 5,
+    'lead-map': 6,
   };
 
   useEffect(() => {
@@ -688,6 +831,7 @@ export default function PriceManagementDashboard({
             };
             if (mounted && enterpriseData.success && enterpriseData.data) {
               setEnterprisePricing(enterpriseData.data);
+              setLastSavedEnterprise(JSON.stringify(enterpriseData.data));
             }
           }
         } catch {
@@ -751,7 +895,9 @@ export default function PriceManagementDashboard({
     () => features.filter((feature) => feature.isEnabled).length,
     [features],
   );
-  const activeBillingTemplateCount = creatorHubEmailSettings.email.templates.length;
+  const activeBillingTemplateCount = Array.isArray(creatorHubEmailSettings.email.templates)
+    ? creatorHubEmailSettings.email.templates.length
+    : 0;
   const priceManagementSurfaceSx = {
     borderRadius: '24px',
     border: '1px solid rgba(255,255,255,0.10)',
@@ -900,7 +1046,7 @@ export default function PriceManagementDashboard({
             suggestedMonthlyPriceNok: data.breakdown.suggestedMonthlyPriceNok,
             suggestedOveragePricePerGbNok:
               data.breakdown.suggestedOveragePricePerGbNok,
-            notes: data.breakdown.notes ?? [],
+            notes: Array.isArray(data.breakdown.notes) ? data.breakdown.notes : [],
           });
         }
       } catch {
@@ -1131,7 +1277,7 @@ export default function PriceManagementDashboard({
       ...creatorHubEmailSettings,
       email: {
         ...creatorHubEmailSettings.email,
-        templates: creatorHubEmailSettings.email.templates.map((template) =>
+        templates: (Array.isArray(creatorHubEmailSettings.email.templates) ? creatorHubEmailSettings.email.templates : []).map((template) =>
           template.id === editingEmailTemplateId
             ? {
                 ...template,
@@ -1154,7 +1300,39 @@ export default function PriceManagementDashboard({
     }
   };
 
+  const validateEnterprisePricing = (config: EnterprisePricingConfig): string | null => {
+    // Betalings-kritisk: avvis NaN/negative/uendelige tall før POST (samme
+    // strenghet som savePlanEdit), slik at vi aldri publiserer ugyldige priser.
+    const numericFields: Array<[string, number]> = [
+      ['Grunnpris (måned)', config.basePrice],
+      ['Grunnpris (år)', config.basePriceAnnual],
+      ['Inkluderte brukere', config.includedUsers],
+      ['Pris per bruker (måned)', config.pricePerUser],
+      ['Pris per bruker (år)', config.pricePerUserAnnual],
+    ];
+    for (const [label, value] of numericFields) {
+      if (!Number.isFinite(value) || value < 0) {
+        return `${label} må være et tall som er 0 eller høyere.`;
+      }
+    }
+    for (let i = 0; i < config.volumeDiscounts.length; i += 1) {
+      const { minUsers, discount } = config.volumeDiscounts[i];
+      if (!Number.isFinite(minUsers) || minUsers < 0) {
+        return `Volumrabatt #${i + 1}: «min. brukere» må være 0 eller høyere.`;
+      }
+      if (!Number.isFinite(discount) || discount < 0 || discount > 100) {
+        return `Volumrabatt #${i + 1}: rabatt må være mellom 0 og 100 %.`;
+      }
+    }
+    return null;
+  };
+
   const saveEnterprisePricing = async () => {
+    const validationError = validateEnterprisePricing(enterprisePricing);
+    if (validationError) {
+      setSnackbar({ open: true, message: validationError, severity: 'error' });
+      return;
+    }
     setEnterprisePricingSaving(true);
     try {
       const headers = await auth.getAuthHeader();
@@ -1170,6 +1348,7 @@ export default function PriceManagementDashboard({
       }
 
       setEnterprisePricingSaved(true);
+      setLastSavedEnterprise(JSON.stringify(enterprisePricing));
       onNotificationCreate?.({
         id: `enterprise-pricing-updated-${Date.now()}`,
         source: 'price_management',
@@ -1189,23 +1368,83 @@ export default function PriceManagementDashboard({
     }
   };
 
+  const loadDriftHistory = useCallback(async () => {
+    setDriftLoading(true);
+    try {
+      const headers = await auth.getAuthHeader();
+      const response = await fetch('/api/admin/marketplace/stripe-price-drift/history', {
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        setDriftAlerts([]);
+        return;
+      }
+      const json = (await response.json()) as { success?: boolean; data?: StripeDriftAlert[] };
+      setDriftAlerts(Array.isArray(json.data) ? json.data : []);
+    } catch {
+      // Drift-status er berikelse — feil her skal aldri velte prispanelet.
+      setDriftAlerts([]);
+    } finally {
+      setDriftLoading(false);
+    }
+  }, [auth]);
+
+  const runDriftCheck = useCallback(async () => {
+    setDriftChecking(true);
+    try {
+      const headers = await auth.getAuthHeader();
+      const response = await fetch('/api/admin/marketplace/stripe-price-drift/check', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error('drift check failed');
+      }
+      await loadDriftHistory();
+      setSnackbar({ open: true, message: 'Stripe-synksjekk fullført.', severity: 'success' });
+    } catch {
+      setSnackbar({ open: true, message: 'Kunne ikke kjøre Stripe-synksjekk.', severity: 'error' });
+    } finally {
+      setDriftChecking(false);
+    }
+  }, [auth, loadDriftHistory]);
+
+  useEffect(() => {
+    void loadDriftHistory();
+  }, [loadDriftHistory]);
+
+  // Åpne drift-varsler = nyere enn 14 dager og ikke kvittert ut (resolved/dismissed/read).
+  const openDriftAlerts = driftAlerts.filter((alert) => {
+    const status = String(alert.status || '').toLowerCase();
+    if (['resolved', 'dismissed', 'read', 'closed'].includes(status)) return false;
+    const createdMs = Date.parse(alert.created_at);
+    if (Number.isFinite(createdMs) && createdMs < Date.now() - 14 * 24 * 60 * 60 * 1000) return false;
+    return true;
+  });
+  const latestDrift = driftAlerts[0] ?? null;
+
   if (loading || pricingLoading) {
     return (
-      <Box sx={{ width: '100%', mt: 2 }}>
-        <LinearProgress />
-        <Typography sx={{ mt: 2, textAlign: 'center' }}>Laster prisstyring...</Typography>
-      </Box>
+      <ThemeProvider theme={adminDarkTheme}>
+        <Box sx={{ width: '100%', mt: 2 }}>
+          <LinearProgress />
+          <Typography sx={{ mt: 2, textAlign: 'center' }}>Laster prisstyring...</Typography>
+        </Box>
+      </ThemeProvider>
     );
   }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ width: '100%' }}>
       <Box
         sx={{
           mb: 3,
           borderRadius: '24px',
-          border: '1px solid rgba(15, 52, 96, 0.08)',
-          background: 'linear-gradient(135deg, rgba(15, 52, 96, 0.08), rgba(233, 69, 96, 0.05))',
+          border: '1px solid rgba(255,255,255,0.12)',
+          background: 'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
           px: { xs: 2, sm: 3 },
           py: { xs: 2.25, sm: 2.75 },
         }}
@@ -1217,13 +1456,13 @@ export default function PriceManagementDashboard({
           alignItems={{ xs: 'flex-start', xl: 'stretch' }}
         >
           <Box sx={{ maxWidth: 720, flex: 1 }}>
-            <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700, letterSpacing: '0.08em' }}>
+            <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700, letterSpacing: '0.08em' }}>
               CreatorHub Commerce
             </Typography>
-            <Typography variant="h4" sx={{ mt: 0.5, fontWeight: 700, letterSpacing: '-0.03em', color: '#111827' }}>
+            <Typography variant="h4" component="h1" sx={{ mt: 0.5, fontWeight: 700, letterSpacing: '-0.03em', color: '#ffffff' }}>
               Prisstyring
             </Typography>
-            <Typography variant="body2" sx={{ mt: 1, color: '#5b6472', lineHeight: 1.7 }}>
+            <Typography variant="body2" sx={{ mt: 1, color: 'rgba(255,255,255,0.6)', lineHeight: 1.7 }}>
               Hold selvbetjente planer, årsprising og enterprise-sporet samlet i én arbeidsflate.
               Endringene her skal være lesbare både for teamet og for det som faktisk publiseres på CreatorHub.
             </Typography>
@@ -1268,10 +1507,10 @@ export default function PriceManagementDashboard({
                 py: 1.5,
               }}
             >
-              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>
+              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
                 Det som publiseres nå
               </Typography>
-              <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#111827' }}>
+              <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#ffffff' }}>
                 {selfServePlans.length} selvbetjente planer og {annualPlanCount} årspriser er ute.
               </Typography>
             </Box>
@@ -1284,12 +1523,52 @@ export default function PriceManagementDashboard({
                 py: 1.5,
               }}
             >
-              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>
+              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
                 Operativ kontroll
               </Typography>
-              <Typography sx={{ mt: 0.6, color: '#5b6472', lineHeight: 1.6 }}>
+              <Typography sx={{ mt: 0.6, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
                 Samme innhold styrer landingssiden, abonnementssiden, checkout og CreatorHub-mailene.
               </Typography>
+            </Box>
+            <Box
+              sx={{
+                borderRadius: '18px',
+                border: openDriftAlerts.length > 0
+                  ? '1px solid rgba(248,113,113,0.5)'
+                  : '1px solid rgba(255,255,255,0.10)',
+                bgcolor: openDriftAlerts.length > 0
+                  ? 'rgba(248,113,113,0.12)'
+                  : 'rgba(255,255,255,0.04)',
+                px: 1.75,
+                py: 1.5,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: openDriftAlerts.length > 0 ? '#fca5a5' : 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
+                  Stripe-sync
+                </Typography>
+                <Button
+                  size="small"
+                  variant="text"
+                  disabled={driftChecking || driftLoading}
+                  onClick={() => void runDriftCheck()}
+                  sx={{ minWidth: 0, color: '#ff8c00', textTransform: 'none', fontWeight: 700, fontSize: '0.72rem' }}
+                >
+                  {driftChecking ? 'Sjekker…' : 'Kjør ny sjekk'}
+                </Button>
+              </Box>
+              {openDriftAlerts.length > 0 ? (
+                <Typography sx={{ mt: 0.6, color: '#fecaca', lineHeight: 1.6, fontSize: '0.82rem' }}>
+                  {openDriftAlerts.length === 1
+                    ? 'Publisert pris matcher ikke Stripe.'
+                    : `${openDriftAlerts.length} prisavvik mot Stripe.`}{' '}
+                  {latestDrift?.message ? <span style={{ opacity: 0.85 }}>{latestDrift.message}</span> : null}
+                </Typography>
+              ) : (
+                <Typography sx={{ mt: 0.6, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, fontSize: '0.82rem' }}>
+                  {driftLoading ? 'Sjekker synkronisering…' : 'CreatorHub-priser er i sync med Stripe.'}
+                </Typography>
+              )}
             </Box>
           </Box>
         </Stack>
@@ -1342,7 +1621,7 @@ export default function PriceManagementDashboard({
             '& .MuiTab-root': {
               minHeight: 42,
               textTransform: 'none',
-              color: '#667085',
+              color: 'rgba(255,255,255,0.6)',
               borderRadius: '12px',
               px: 1.75,
               mr: 0.75,
@@ -1361,7 +1640,8 @@ export default function PriceManagementDashboard({
           <Tab icon={<AnalyticsIcon />} label="Analyse" />
           <Tab icon={<EnterpriseIcon />} label="Enterprise" />
           <Tab icon={<MoneyIcon />} label="Post Agent" />
-        </Tabs>
+          <Tab icon={<MoneyIcon />} label="Lead Map" />
+</Tabs>
       </Box>
 
       <TabPanel value={tabValue} index={0}>
@@ -1441,10 +1721,10 @@ export default function PriceManagementDashboard({
                       }}
                     />
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                      <Typography variant="h6" sx={{ fontWeight: 'bold', flex: 1, color: theming.colors.primary }}>
+                      <Typography variant="h6" sx={{ fontWeight: 'bold', flex: 1, color: themeColors.primary }}>
                         {feature.name}
                       </Typography>
-                      <Switch checked={isEnabled} onChange={() => void toggleFeature(feature.id)} color="primary" />
+                      <Switch checked={isEnabled} onChange={() => void toggleFeature(feature.id)} color="primary" inputProps={{ 'aria-label': `Slå ${feature.name} av eller på` }} />
                     </Box>
 
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -1501,8 +1781,8 @@ export default function PriceManagementDashboard({
                   sx={{ mb: 2.5 }}
                 >
                   <Box>
-                    <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', fontWeight: 700 }}>
-                      <MoneyIcon sx={{ mr: 1 }} />
+                    <Typography variant="h6" component="h2" sx={{ display: 'flex', alignItems: 'center', fontWeight: 700 }}>
+                      <MoneyIcon aria-hidden sx={{ mr: 1 }} />
                       Selvbetjente abonnementer
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -1514,7 +1794,8 @@ export default function PriceManagementDashboard({
                     sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)', fontWeight: 700 }}
                   />
                 </Stack>
-                <TableContainer
+                <AdminTableContainer
+                  ariaLabel="Selvbetjente abonnementer"
                   sx={{
                     borderRadius: '20px',
                     border: '1px solid rgba(255,255,255,0.10)',
@@ -1526,7 +1807,7 @@ export default function PriceManagementDashboard({
                     sx={{
                       '& thead th': {
                         bgcolor: 'rgba(255,255,255,0.04)',
-                        color: '#6b6257',
+                        color: 'rgba(255,255,255,0.6)',
                         fontSize: '0.78rem',
                         borderBottom: '1px solid rgba(255,255,255,0.10)',
                       },
@@ -1535,7 +1816,7 @@ export default function PriceManagementDashboard({
                         verticalAlign: 'top',
                       },
                       '& tbody tr:hover': {
-                        bgcolor: '#fffaf1',
+                        bgcolor: 'rgba(255,255,255,0.06)',
                       },
                     }}
                   >
@@ -1579,7 +1860,7 @@ export default function PriceManagementDashboard({
                                 {plan.features.length} features i visning
                               </Typography>
                               {plan.contactSalesOnly ? (
-                                <Chip size="small" label="Kontakt salg" color="warning" sx={{ width: 'fit-content' }} />
+                                <StatusChip label="Kontakt salg" tone="warning" sx={{ width: 'fit-content' }} />
                               ) : null}
                             </Stack>
                           </TableCell>
@@ -1617,10 +1898,9 @@ export default function PriceManagementDashboard({
                           <TableCell>
                             {plan.allowsStorageOverage ? (
                               <Stack spacing={0.25}>
-                                <Chip
+                                <StatusChip
                                   label="Tillatt"
-                                  color="warning"
-                                  size="small"
+                                  tone="warning"
                                   sx={{ fontWeight: 700, width: 'fit-content' }}
                                 />
                                 {plan.storageOveragePricePerGbNok != null ? (
@@ -1630,9 +1910,9 @@ export default function PriceManagementDashboard({
                                 ) : null}
                               </Stack>
                             ) : (
-                              <Chip
+                              <StatusChip
                                 label="Hard cap"
-                                size="small"
+                                tone="neutral"
                                 sx={{ fontWeight: 700, width: 'fit-content' }}
                               />
                             )}
@@ -1641,11 +1921,9 @@ export default function PriceManagementDashboard({
                             {plan.publicPriceLabel || (plan.contactSalesOnly ? 'Kontakt salg' : 'Pris vises automatisk')}
                           </TableCell>
                           <TableCell>
-                            <Chip
+                            <StatusChip
                               label={plan.isActive ? 'Aktiv' : 'Inaktiv'}
-                              color={plan.isActive ? 'success' : 'default'}
-                              size="small"
-                              sx={{ fontWeight: 700 }}
+                              tone={plan.isActive ? 'success' : 'neutral'}
                             />
                             <Button
                               size="small"
@@ -1684,7 +1962,7 @@ export default function PriceManagementDashboard({
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </CardContent>
             </Card>
           </Grid>
@@ -1692,7 +1970,7 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12, md: 4 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 1.5, fontWeight: 700 }}>
+                <Typography variant="h6" component="h2" sx={{ mb: 1.5, fontWeight: 700 }}>
                   Publiseringsstatus
                 </Typography>
                 <Stack spacing={1.25}>
@@ -1724,7 +2002,7 @@ export default function PriceManagementDashboard({
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
                       Hva oppdateres automatisk
                     </Typography>
-                    <Typography variant="body2" sx={{ mt: 0.6, color: '#5b6472', lineHeight: 1.6 }}>
+                    <Typography variant="body2" sx={{ mt: 0.6, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
                       Landingssiden, abonnementssiden og CreatorHub-checkout bruker samme planstruktur
                       som denne tabellen.
                     </Typography>
@@ -1749,33 +2027,32 @@ export default function PriceManagementDashboard({
                   sx={{ mb: 2.5 }}
                 >
                   <Box>
-                    <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', fontWeight: 700 }}>
-                      <EmailIcon sx={{ mr: 1 }} />
+                    <Typography variant="h6" component="h2" sx={{ display: 'flex', alignItems: 'center', fontWeight: 700 }}>
+                      <EmailIcon aria-hidden sx={{ mr: 1 }} />
                       CreatorHub e-postmaler
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
-                      Samme settings brukes i checkout, webhook og i all automatisk billing-kommunikasjon.
+                      Samme oppsett brukes i checkout, webhook og i automatisk betalings- og tilgangskommunikasjon.
                     </Typography>
                   </Box>
-                  <Button
-                    variant="contained"
+                  <AdminButton
+                    tone="primary"
                     startIcon={<SaveIcon />}
-                    disabled={creatorHubEmailSettingsSaving}
+                    loading={creatorHubEmailSettingsSaving}
                     onClick={() =>
                       void saveCreatorHubEmailSettings(
                         creatorHubEmailSettings,
                         'CreatorHub e-postinnstillinger lagret.',
                       )
                     }
-                    sx={theming.getThemedButtonSx()}
                   >
                     {creatorHubEmailSettingsSaving ? 'Lagrer...' : 'Lagre oppsett'}
-                  </Button>
+                  </AdminButton>
                 </Stack>
 
                 <Stack spacing={2.25}>
                   <Box sx={priceManagementInsetSx}>
-                    <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700 }}>
                       Brand og support
                     </Typography>
                     <Stack spacing={1.5} sx={{ mt: 1 }}>
@@ -1827,7 +2104,7 @@ export default function PriceManagementDashboard({
                   </Box>
 
                   <Box sx={priceManagementInsetSx}>
-                    <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700 }}>
                       Avsendere
                     </Typography>
                     <Stack spacing={1.5} sx={{ mt: 1 }}>
@@ -1899,12 +2176,12 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12, lg: 7 }}>
             <Card sx={{ ...priceManagementSurfaceSx, height: '100%' }}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+                <Typography variant="h6" component="h2" sx={{ fontWeight: 700, mb: 2 }}>
                   Når disse mailene går ut
                 </Typography>
                 <Stack spacing={1.5}>
                   <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(255,255,255,0.04)' }}>
-                    <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700 }}>
                       Første vellykkede betaling
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -1912,7 +2189,7 @@ export default function PriceManagementDashboard({
                     </Typography>
                   </Box>
                   <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(33,150,243,0.08)' }}>
-                    <Typography variant="overline" sx={{ color: '#1d4ed8', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#60a5fa', fontWeight: 700 }}>
                       Konto aktivert
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -1928,7 +2205,7 @@ export default function PriceManagementDashboard({
                     </Typography>
                   </Box>
                   <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(76,175,80,0.10)' }}>
-                    <Typography variant="overline" sx={{ color: '#047857', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#34d399', fontWeight: 700 }}>
                       Betaling gjenopprettet
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -1936,7 +2213,7 @@ export default function PriceManagementDashboard({
                     </Typography>
                   </Box>
                   <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(124,58,237,0.10)' }}>
-                    <Typography variant="overline" sx={{ color: '#6d28d9', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#c084fc', fontWeight: 700 }}>
                       Alias i bruk
                     </Typography>
                     <Stack spacing={1} sx={{ mt: 1 }}>
@@ -1961,7 +2238,7 @@ export default function PriceManagementDashboard({
                   sx={{ mb: 2.5 }}
                 >
                   <Box>
-                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>
                       Maler som går ut automatisk
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -1969,12 +2246,13 @@ export default function PriceManagementDashboard({
                     </Typography>
                   </Box>
                   <Chip
-                    label={`${activeBillingTemplateCount} aktive billing-maler`}
+                    label={`${activeBillingTemplateCount} aktive automatiske maler`}
                     sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)', fontWeight: 700 }}
                   />
                 </Stack>
 
-                <TableContainer
+                <AdminTableContainer
+                  ariaLabel="CreatorHub e-postmaler"
                   sx={{
                     borderRadius: '20px',
                     border: '1px solid rgba(255,255,255,0.10)',
@@ -1986,7 +2264,7 @@ export default function PriceManagementDashboard({
                     sx={{
                       '& thead th': {
                         bgcolor: 'rgba(255,255,255,0.04)',
-                        color: '#6b6257',
+                        color: 'rgba(255,255,255,0.6)',
                         fontSize: '0.78rem',
                         borderBottom: '1px solid rgba(255,255,255,0.10)',
                       },
@@ -1995,7 +2273,7 @@ export default function PriceManagementDashboard({
                         verticalAlign: 'top',
                       },
                       '& tbody tr:hover': {
-                        bgcolor: '#fffaf1',
+                        bgcolor: 'rgba(255,255,255,0.06)',
                       },
                     }}
                   >
@@ -2009,7 +2287,7 @@ export default function PriceManagementDashboard({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {creatorHubEmailSettings.email.templates.map((template) => (
+                      {(Array.isArray(creatorHubEmailSettings.email.templates) ? creatorHubEmailSettings.email.templates : []).map((template) => (
                         <TableRow key={template.id}>
                           <TableCell>
                             <Stack spacing={0.5}>
@@ -2046,7 +2324,7 @@ export default function PriceManagementDashboard({
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </CardContent>
             </Card>
           </Grid>
@@ -2079,10 +2357,10 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" component="h2" sx={{ mb: 2, color: themeColors.primary }}>
                   Top Features by Usage
                 </Typography>
-                <TableContainer>
+                <AdminTableContainer ariaLabel="Top features by usage">
                   <Table>
                     <TableHead>
                       <TableRow>
@@ -2098,7 +2376,7 @@ export default function PriceManagementDashboard({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {analytics.topFeatures.slice(0, 10).map((feature) => (
+                      {(Array.isArray(analytics.topFeatures) ? analytics.topFeatures : []).slice(0, 10).map((feature) => (
                         <TableRow key={feature.featureId}>
                           <TableCell>{feature.featureId}</TableCell>
                           <TableCell>{feature.usageCount}</TableCell>
@@ -2107,7 +2385,7 @@ export default function PriceManagementDashboard({
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </CardContent>
             </Card>
           </Grid>
@@ -2123,8 +2401,8 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
-                  <EnterpriseIcon sx={{ mr: 1 }} />
+                <Typography variant="h6" component="h2" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: themeColors.primary }}>
+                  <EnterpriseIcon aria-hidden sx={{ mr: 1 }} />
                   Enterprise Basispriser (eks. MVA)
                 </Typography>
                 <TextField
@@ -2163,8 +2441,8 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
-                  <PeopleIcon sx={{ mr: 1 }} />
+                <Typography variant="h6" component="h2" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: themeColors.primary }}>
+                  <PeopleIcon aria-hidden sx={{ mr: 1 }} />
                   Pris per ekstra bruker (eks. MVA)
                 </Typography>
                 <TextField
@@ -2193,10 +2471,10 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 3, color: theming.colors.primary }}>
+                <Typography variant="h6" component="h2" sx={{ mb: 3, color: themeColors.primary }}>
                   Volumrabatter
                 </Typography>
-                <TableContainer>
+                <AdminTableContainer ariaLabel="Volumrabatter">
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -2212,12 +2490,13 @@ export default function PriceManagementDashboard({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {enterprisePricing.volumeDiscounts.map((discount, index) => (
+                      {(Array.isArray(enterprisePricing.volumeDiscounts) ? enterprisePricing.volumeDiscounts : []).map((discount, index) => (
                         <TableRow key={`${discount.minUsers}-${index}`}>
                           <TableCell>
                             <TextField
                               type="number"
                               size="small"
+                              aria-label={`Minimum brukere for rabattnivå ${index + 1}`}
                               value={discount.minUsers}
                               onChange={(event) => {
                                 const value = Number(event.target.value);
@@ -2234,6 +2513,7 @@ export default function PriceManagementDashboard({
                             <TextField
                               type="number"
                               size="small"
+                              aria-label={`Rabatt i prosent for rabattnivå ${index + 1}`}
                               value={discount.discount}
                               onChange={(event) => {
                                 const value = Number(event.target.value);
@@ -2247,9 +2527,9 @@ export default function PriceManagementDashboard({
                             />
                           </TableCell>
                           <TableCell>
-                            <Button
+                            <AdminButton
+                              tone="danger"
                               size="small"
-                              color="error"
                               onClick={() =>
                                 setEnterprisePricing((previous) => ({
                                   ...previous,
@@ -2258,13 +2538,13 @@ export default function PriceManagementDashboard({
                               }
                             >
                               Fjern
-                            </Button>
+                            </AdminButton>
                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
                 <Button
                   startIcon={<AddIcon />}
                   sx={{ mt: 2 }}
@@ -2282,17 +2562,29 @@ export default function PriceManagementDashboard({
           </Grid>
 
           <Grid size={{ xs: 12 }}>
-            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', alignItems: 'center' }}>
               {enterprisePricingSaved ? <Alert severity="success">Enterprise-priser lagret!</Alert> : null}
-              <Button
-                variant="contained"
+              {enterprisePricingDirty && !enterprisePricingSaved ? (
+                <Chip
+                  size="small"
+                  label="Ulagrede endringer"
+                  sx={{
+                    bgcolor: 'rgba(251,191,36,0.16)',
+                    color: '#fbbf24',
+                    fontWeight: 700,
+                    border: '1px solid rgba(251,191,36,0.4)',
+                  }}
+                />
+              ) : null}
+              <AdminButton
+                tone="primary"
                 startIcon={<SaveIcon />}
-                disabled={enterprisePricingSaving}
+                loading={enterprisePricingSaving}
+                disabled={enterprisePricingSaving || !enterprisePricingDirty}
                 onClick={() => void saveEnterprisePricing()}
-                sx={theming.getThemedButtonSx()}
               >
                 {enterprisePricingSaving ? 'Lagrer...' : 'Lagre Enterprise-priser'}
-              </Button>
+              </AdminButton>
             </Box>
           </Grid>
         </Grid>
@@ -2302,7 +2594,14 @@ export default function PriceManagementDashboard({
         <PostAgentPricingPanel theming={theming} priceManagementSurfaceSx={priceManagementSurfaceSx} />
       </TabPanel>
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth>
+      <TabPanel value={tabValue} index={6}>
+        <LeadMapPricingPanel />
+      </TabPanel>
+
+
+
+
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>{editingFeature ? 'Rediger feature' : 'Legg til ny feature'}</DialogTitle>
         <DialogContent>
           <TextField
@@ -2339,14 +2638,14 @@ export default function PriceManagementDashboard({
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Avbryt</Button>
-          <Button onClick={() => void saveFeature()} variant="contained" sx={theming.getThemedButtonSx()}>
+          <AdminButton tone="ghost" onClick={() => setDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton tone="primary" onClick={() => void saveFeature()}>
             Lagre
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={editPlanDialogOpen} onClose={() => setEditPlanDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={editPlanDialogOpen} onClose={() => setEditPlanDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Rediger plan</DialogTitle>
         <DialogContent>
           {editingPlanContactSalesOnly ? (
@@ -2583,10 +2882,10 @@ export default function PriceManagementDashboard({
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditPlanDialogOpen(false)}>Avbryt</Button>
-          <Button variant="contained" onClick={() => void savePlanEdit()}>
+          <AdminButton tone="ghost" onClick={() => setEditPlanDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton tone="primary" onClick={() => void savePlanEdit()}>
             Lagre
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -2595,6 +2894,7 @@ export default function PriceManagementDashboard({
         onClose={() => setEditEmailTemplateDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Rediger CreatorHub e-postmal</DialogTitle>
         <DialogContent>
@@ -2630,7 +2930,7 @@ export default function PriceManagementDashboard({
               label="Body (HTML tillatt)"
               value={editingEmailTemplateBody}
               onChange={(event) => setEditingEmailTemplateBody(event.target.value)}
-              helperText="Bruk variabler som {{recipientName}}, {{planName}}, {{amountLabel}} og {{billingCycleLabel}}."
+              helperText="Bruk variabler som {{recipientName}}, {{recipientEmail}}, {{professionName}}, {{planName}}, {{amountLabel}}, {{programDurationWeeks}}, {{inviteExpiresDays}} og {{programEndsAt}}."
             />
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>
@@ -2750,7 +3050,7 @@ export default function PriceManagementDashboard({
                 <Box sx={{ px: { xs: 2.25, sm: 3.5 }, py: { xs: 2.5, sm: 3.5 } }}>
                   <Box
                     sx={{ color: creatorHubEmailSettings.email.theme.bodyText, lineHeight: 1.9, fontSize: '0.98rem' }}
-                    dangerouslySetInnerHTML={{ __html: editingEmailTemplateBody || '<p>Forhåndsvisning av e-postinnhold.</p>' }}
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(editingEmailTemplateBody || '<p>Forhåndsvisning av e-postinnhold.</p>') }}
                   />
                   <Box
                     sx={{
@@ -2819,10 +3119,10 @@ export default function PriceManagementDashboard({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditEmailTemplateDialogOpen(false)}>Avbryt</Button>
-          <Button variant="contained" onClick={() => void saveEmailTemplate()}>
+          <AdminButton tone="ghost" onClick={() => setEditEmailTemplateDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton tone="primary" onClick={() => void saveEmailTemplate()}>
             Lagre mal
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -2841,6 +3141,7 @@ export default function PriceManagementDashboard({
         </Alert>
       </Snackbar>
     </Box>
+    </ThemeProvider>
   );
 }
 
@@ -2861,40 +3162,40 @@ function MetricCard({
 }) {
   const toneMap = {
     teal: {
-      background: 'linear-gradient(180deg, #f2fbf8 0%, #ffffff 100%)',
-      border: 'rgba(13, 148, 136, 0.20)',
-      icon: '#0f766e',
-      value: '#0f766e',
+      background: 'rgba(13, 148, 136, 0.12)',
+      border: 'rgba(45, 212, 191, 0.30)',
+      icon: '#2dd4bf',
+      value: '#2dd4bf',
     },
     blue: {
-      background: 'linear-gradient(180deg, #f4f8ff 0%, #ffffff 100%)',
-      border: 'rgba(37, 99, 235, 0.18)',
-      icon: '#1d4ed8',
-      value: '#1d4ed8',
+      background: 'rgba(37, 99, 235, 0.14)',
+      border: 'rgba(96, 165, 250, 0.30)',
+      icon: '#60a5fa',
+      value: '#60a5fa',
     },
     violet: {
-      background: 'linear-gradient(180deg, #f8f5ff 0%, #ffffff 100%)',
-      border: 'rgba(124, 58, 237, 0.18)',
-      icon: '#7c3aed',
-      value: '#6d28d9',
+      background: 'rgba(124, 58, 237, 0.14)',
+      border: 'rgba(192, 132, 252, 0.30)',
+      icon: '#c084fc',
+      value: '#c084fc',
     },
     amber: {
-      background: 'linear-gradient(180deg, #fff8ed 0%, #ffffff 100%)',
-      border: 'rgba(217, 119, 6, 0.18)',
-      icon: '#b45309',
-      value: '#c2410c',
+      background: 'rgba(217, 119, 6, 0.16)',
+      border: 'rgba(251, 191, 36, 0.30)',
+      icon: '#fbbf24',
+      value: '#fbbf24',
     },
     emerald: {
-      background: 'linear-gradient(180deg, #effcf5 0%, #ffffff 100%)',
-      border: 'rgba(5, 150, 105, 0.18)',
-      icon: '#059669',
-      value: '#047857',
+      background: 'rgba(5, 150, 105, 0.14)',
+      border: 'rgba(52, 211, 153, 0.30)',
+      icon: '#34d399',
+      value: '#34d399',
     },
     slate: {
-      background: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)',
-      border: 'rgba(100, 116, 139, 0.16)',
-      icon: '#475569',
-      value: '#111827',
+      background: 'rgba(255, 255, 255, 0.04)',
+      border: 'rgba(255, 255, 255, 0.14)',
+      icon: 'rgba(255,255,255,0.7)',
+      value: '#ffffff',
     },
   } as const;
   const palette = toneMap[tone];

@@ -46,9 +46,18 @@ struct ShotListItem: Codable, Sendable, Equatable, Identifiable {
     /// ``ShotListStore.toggleCompletion`` når shotet er tatt.
     var isCompleted: Bool?
 
-    /// Kobler dette shotet til en `Asset.id` — slik at shot-listen kan
-    /// vise thumbnail når flagget completed.
+    /// Kobler dette shotet til en LOKAL `Asset.id` — for on-device thumbnail.
     var capturedAssetId: String?
+
+    /// BACKEND asset-id (satt post-levering fra idMap) — lar web + call-sheet +
+    /// andre enheter hente thumbnailen via `/api/capture/assets/:id/preview`.
+    /// Optional + bakoverkompatibel.
+    var capturedAssetBackendId: String?
+
+    /// Hvem som tok shotet (fotografens visningsnavn) — for team-attribusjon
+    /// («Ole tok: Ring detail»). Settes ved auto-huk, nil når ikke fullført.
+    /// Optional + bakoverkompatibel.
+    var completedBy: String?
 
     /// Base64-encoded PencilKit-strokes. Brukt for håndtegnede skisser
     /// av kameravinkel/komposisjon. Hard 200 KB-grense før vi tvinger
@@ -67,6 +76,8 @@ struct ShotListItem: Codable, Sendable, Equatable, Identifiable {
         scouted: Bool? = nil,
         isCompleted: Bool? = nil,
         capturedAssetId: String? = nil,
+        capturedAssetBackendId: String? = nil,
+        completedBy: String? = nil,
         inkData: String? = nil,
     ) {
         self.id = id
@@ -80,6 +91,8 @@ struct ShotListItem: Codable, Sendable, Equatable, Identifiable {
         self.scouted = scouted
         self.isCompleted = isCompleted
         self.capturedAssetId = capturedAssetId
+        self.capturedAssetBackendId = capturedAssetBackendId
+        self.completedBy = completedBy
         self.inkData = inkData
     }
 }

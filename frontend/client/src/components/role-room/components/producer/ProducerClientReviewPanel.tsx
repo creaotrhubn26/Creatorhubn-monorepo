@@ -13,7 +13,10 @@ import {
   MenuItem,
   Select,
   Stack,
+  Tab,
+  Tabs,
   TextField,
+  Tooltip,
   Typography,
   useMediaQuery,
 } from '@mui/material';
@@ -23,6 +26,11 @@ import {
   ChevronRight as ChevronRightIcon,
   RateReview as RateReviewIcon,
   Send as SendIcon,
+  CheckCircle as CheckCircleIcon,
+  Download as DownloadIcon,
+  Block as BlockIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import type {
@@ -38,11 +46,13 @@ import type {
   ProducerWorkflowProjectStatus,
 } from '../../models/casting';
 import { useProducerReviews } from '../../hooks/useProducerReviews';
+import { useClientPresence } from '../../hooks/useClientPresence';
 import {
   getProducerOperationalReviews,
   isClientGroundingManagedReview,
   producerWorkflowService,
   type ProducerClientReview,
+  type ProducerClientConsent,
   type ProducerReviewDecision,
 } from '../../services/producerWorkflowService';
 import {
@@ -61,6 +71,7 @@ import {
   type ProducerWorkflowFocusPayload,
 } from '../../services/producerWorkflowFocusEvents';
 import settingsService from '../../services/settingsService';
+import roleRoomAgentService from '../../services/roleRoomAgentService';
 import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
 import {
@@ -105,6 +116,7 @@ import {
   normalizeProducerProjectPlanning,
 } from '../../utils/producerProjectPlanning';
 import { buildClientPortalUrl, type ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
+import { CollapsibleSection } from '../CollapsibleSection';
 
 interface ProducerClientReviewPanelProps {
   projectId: string;
@@ -471,7 +483,7 @@ function buildReviewClientInviteEmailSubject(
   }
   const contentLogicMomentKind = getContentLogicMomentKindForReview(review);
   if (contentLogicMomentKind) {
-    return `${projectName} · Content Logic · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}`;
+    return `${projectName} · Innholdsplan · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}`;
   }
   return `${projectName} · Klientreview · ${review.title}`;
 }
@@ -496,10 +508,242 @@ export default function ProducerClientReviewPanel({
   const { enqueueSnackbar } = useSnackbar();
   const theme = useTheme();
   const isMobileReview = useMediaQuery(theme.breakpoints.down('sm'));
-  const { items, summary, loading, error, createReview, addComment, setDecision } = useProducerReviews(projectId);
+  const {
+    items,
+    summary,
+    loading,
+    error,
+    lastSyncedAt,
+    livePollActive,
+    createReview,
+    addComment,
+    setDecision,
+  } = useProducerReviews(projectId, { livePollMs: 15000 });
+  // Klient-tilstedeværelse: hvem har klientportalen åpen akkurat nå.
+  const { clients: presentClients, anyPresent: clientPresent } = useClientPresence(projectId, { pollMs: 20000 });
+  // Klient-samtykker: hvilke plattformer klienten har godkjent tilgang til.
+  // Endrer seg sjelden — henter ved mount + sakte poll (30 sek) så et nytt
+  // samtykke dukker opp uten reload.
+  // Godkjenning-visning: skiller «Grunnlag & blokkeringer» (status,
+  // prosjektgrunnlag, åpne blokkeringer, retning) fra «Reviews &
+  // beslutninger» (mobilreview + selve review-lista) så alt ikke ligger i
+  // én lang scroll. Begge holdes montert (display-toggle).
+  const [reviewView, setReviewView] = useState<'grunnlag' | 'reviews'>('grunnlag');
+  const [clientConsents, setClientConsents] = useState<ProducerClientConsent[]>([]);
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    const load = () => {
+      void producerWorkflowService.getClientConsents(projectId).then((rows) => {
+        if (!cancelled) setClientConsents(rows);
+      });
+    };
+    load();
+    const intervalId = window.setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [projectId]);
+  const consentPlatformLabels: Record<string, string> = {
+    instagram: 'Instagram',
+    facebook: 'Facebook',
+    tiktok: 'TikTok',
+    linkedin: 'LinkedIn',
+    google_ads: 'Google Ads',
+    google: 'Google Workspace',
+  };
+
+  // Produsent-styrt synlighet: hvilke «Koblede kontoer» klienten ser i portalen.
+  // Lagrer SKJULTE plattformer; Google Workspace skjult som standard.
+  const [portalHidden, setPortalHidden] = useState<Set<string>>(new Set());
+  const [portalPlatformOptions, setPortalPlatformOptions] = useState<{ key: string; label: string }[]>([]);
+  const [savingVisibility, setSavingVisibility] = useState<string | null>(null);
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    void producerWorkflowService.getClientPortalPlatformPrefs(projectId).then((prefs) => {
+      if (cancelled) return;
+      setPortalHidden(new Set(prefs.hiddenPlatforms));
+      setPortalPlatformOptions(prefs.available);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+  const handleTogglePortalPlatform = useCallback(
+    async (platformKey: string) => {
+      setSavingVisibility(platformKey);
+      const next = new Set(portalHidden);
+      if (next.has(platformKey)) next.delete(platformKey);
+      else next.add(platformKey);
+      setPortalHidden(next); // optimistisk
+      const ok = await producerWorkflowService.setClientPortalPlatformPrefs(
+        projectId,
+        Array.from(next),
+      );
+      if (!ok) {
+        // Rull tilbake ved feil.
+        setPortalHidden((prev) => {
+          const rolledBack = new Set(prev);
+          if (rolledBack.has(platformKey)) rolledBack.delete(platformKey);
+          else rolledBack.add(platformKey);
+          return rolledBack;
+        });
+      }
+      setSavingVisibility(null);
+    },
+    [portalHidden, projectId],
+  );
+
+  // Produsent-trigger: opprett standard-konverteringer i klientens Google Ads.
+  const [adsSyncing, setAdsSyncing] = useState(false);
+  const [adsSyncResult, setAdsSyncResult] = useState<{ severity: 'success' | 'error'; text: string } | null>(null);
+  const handleSyncGoogleAdsConversions = useCallback(async () => {
+    setAdsSyncing(true);
+    setAdsSyncResult(null);
+    const r = await producerWorkflowService.syncClientGoogleAdsConversions(projectId);
+    if (!r.success) {
+      setAdsSyncResult({ severity: 'error', text: r.error || 'Kunne ikke opprette konverteringer.' });
+    } else {
+      const c = r.created?.length ?? 0;
+      const s = r.skipped?.length ?? 0;
+      const f = r.failed?.length ?? 0;
+      setAdsSyncResult({
+        severity: f > 0 ? 'error' : 'success',
+        text: `Opprettet ${c}${s ? `, hoppet over ${s} (fantes alt)` : ''}${f ? `, ${f} feilet` : ''}.`,
+      });
+    }
+    setAdsSyncing(false);
+  }, [projectId]);
+
+  // Filer klienten har lastet opp fra portalen (logo/brand/brief) — vises med
+  // nedlastingsknapp så produsenten får tak i dem uten e-post.
+  const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
+  const handleDownloadClientFile = useCallback(
+    async (material: ProducerClientMaterial) => {
+      const meta = material.metadata as { file?: { originalName?: string } } | undefined;
+      const fileName = meta?.file?.originalName || material.title || 'fil';
+      setDownloadingFileId(material.id);
+      try {
+        await producerWorkflowService.downloadClientMaterialFile(projectId, material.id, fileName);
+      } catch {
+        /* nedlasting feilet stille — produsenten kan prøve igjen */
+      } finally {
+        setDownloadingFileId(null);
+      }
+    },
+    [projectId],
+  );
+  const presentClientLabel = useMemo(() => {
+    if (presentClients.length === 0) return null;
+    const first = presentClients[0];
+    const name = (first.name && first.name.trim()) || first.email.split('@')[0];
+    if (presentClients.length === 1) return name;
+    return `${name} +${presentClients.length - 1}`;
+  }, [presentClients]);
+  // Klient-handlinger (godkjenn/kommenter i portalen) skjer på en annen enhet,
+  // så vi poll'er backend hvert 15. sek for å vise dem i tilnærmet sanntid.
+  const lastSyncedLabel = useMemo(() => {
+    if (!lastSyncedAt) return null;
+    try {
+      return new Date(lastSyncedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return null;
+    }
+  }, [lastSyncedAt]);
+
+  // Live aktivitets-feed: utledet fra de poll'ede reviewsene (beslutninger +
+  // kommentarer), nyeste først. Siden hooken poll'er hvert 15. sek, oppdaterer
+  // denne seg automatisk når klienten handler i portalen — Stig ser «Helene
+  // godkjente Storyboard for 2 min siden» uten å laste på nytt.
+  const clientActivity = useMemo(() => {
+    const isClientRole = (role?: string | null) => Boolean(role && /client|reviewer|klient/i.test(role));
+    const humanActor = (value?: string | null): string | null => {
+      const trimmed = (value ?? '').trim();
+      if (!trimmed) return null;
+      // Vis e-post/navn, men skjul rene UUID-er (lite informativt for Stig).
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) return null;
+      return trimmed.includes('@') ? trimmed.split('@')[0] : trimmed;
+    };
+    const clip = (text: string, max = 90) => {
+      const clean = text.replace(/\s+/g, ' ').trim();
+      return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+    };
+
+    type ActivityEvent = {
+      id: string;
+      at: string;
+      fromClient: boolean;
+      actor: string;
+      action: string;
+    };
+    const events: ActivityEvent[] = [];
+    for (const review of items) {
+      if (
+        review.decision_at
+        && (review.status === 'approved' || review.status === 'rejected' || review.status === 'changes_requested')
+      ) {
+        const verb = review.status === 'approved'
+          ? 'godkjente'
+          : review.status === 'rejected'
+            ? 'avslo'
+            : 'ba om endringer på';
+        events.push({
+          id: `decision-${review.id}`,
+          at: review.decision_at,
+          fromClient: true,
+          actor: humanActor(review.decision_by_user_id) ?? 'Klienten',
+          action: `${verb} «${clip(review.title, 48)}»${review.decision_reason ? ` — «${clip(review.decision_reason, 70)}»` : ''}`,
+        });
+      }
+      for (const comment of review.comments ?? []) {
+        if (!comment.comment_text.trim()) continue;
+        const fromClient = isClientRole(comment.author_role);
+        events.push({
+          id: `comment-${comment.id}`,
+          at: comment.created_at,
+          fromClient,
+          actor: humanActor(comment.author_user_id) ?? (fromClient ? 'Klienten' : 'Teamet'),
+          action: `kommenterte på «${clip(review.title, 40)}»: «${clip(comment.comment_text, 70)}»`,
+        });
+      }
+    }
+    events.sort((left, right) => (left.at < right.at ? 1 : left.at > right.at ? -1 : 0));
+    return events.slice(0, 5);
+  }, [items]);
+
+  const formatRelativeTime = useCallback((iso: string): string => {
+    const then = new Date(iso).getTime();
+    if (!Number.isFinite(then)) return '';
+    const diffMs = Date.now() - then;
+    if (diffMs < 0) return 'nå';
+    const min = Math.floor(diffMs / 60000);
+    if (min < 1) return 'akkurat nå';
+    if (min < 60) return `for ${min} min siden`;
+    const hours = Math.floor(min / 60);
+    if (hours < 24) return `for ${hours} t siden`;
+    try {
+      return new Date(iso).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short' });
+    } catch {
+      return '';
+    }
+  }, []);
   const [agreementsById, setAgreementsById] = useState<Record<string, ProjectAgreement>>({});
   const [clientIntake, setClientIntake] = useState<ProducerClientIntake>(EMPTY_CLIENT_INTAKE);
   const [clientMaterials, setClientMaterials] = useState<ProducerClientMaterial[]>([]);
+  // Flyttet hit (under clientMaterials-deklarasjonen) for å unngå TDZ-krasj
+  // («Cannot access 'clientMaterials' before initialization» → Error Boundary):
+  // denne useMemo-en lå tidligere ABOVE useState-en og leste clientMaterials i
+  // factory + dep-array før den var initialisert.
+  const clientUploadedFiles = useMemo(
+    () =>
+      clientMaterials.filter((material) => {
+        const meta = material.metadata as { uploadedByClient?: boolean; file?: unknown } | undefined;
+        return Boolean(meta?.uploadedByClient && meta?.file);
+      }),
+    [clientMaterials],
+  );
   const [clientInputLoading, setClientInputLoading] = useState(false);
   const [clientInputError, setClientInputError] = useState<string | null>(null);
   const clientInputLoadRequestRef = useRef(0);
@@ -1456,7 +1700,7 @@ export default function ProducerClientReviewPanel({
     const eyebrow = accountAccessPlatforms.length > 0
       ? `[Kontotilgang · ${accountAccessPlatforms.map((platform) => PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform]).join(' / ')}]`
       : contentLogicMomentKind
-      ? `[Content Logic · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}]`
+      ? `[Innholdsplan · ${PRODUCER_CONTENT_LOGIC_MOMENT_LABELS[contentLogicMomentKind]}]`
       : `[${getProducerReviewTypeLabel(review.review_type)}]`;
     const actionLabel = getReviewClientInviteActionLabel(contentLogicMomentKind, review);
     return [
@@ -1487,16 +1731,29 @@ export default function ProducerClientReviewPanel({
     enqueueSnackbar('Clipboard er ikke tilgjengelig for denne saken.', { variant: 'info' });
   }, [buildReviewClientInviteText, enqueueSnackbar]);
 
-  const handleOpenReviewClientInviteMail = useCallback((review: ProducerClientReview) => {
-    if (typeof window === 'undefined') {
+  // Sender en EKTE invitasjons-e-post (magic-lenke til klientportalen) via
+  // serveren — erstatter den gamle mailto:-kladden. Backend (POST
+  // /api/role-room/client-portal/invite) komponerer og sender e-posten.
+  const handleSendReviewClientInvite = useCallback(async () => {
+    const recipient = readFirstNonEmptyString(clientIntake.contactEmail);
+    if (!recipient) {
+      enqueueSnackbar('Mangler klientens e-postadresse — legg den inn i klient-intaket først.', { variant: 'warning' });
       return;
     }
-    const recipient = readFirstNonEmptyString(clientIntake.contactEmail);
-    const subject = buildReviewClientInviteEmailSubject(projectName, review);
-    const body = buildReviewClientInviteText(review);
-    const mailtoUrl = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailtoUrl;
-  }, [buildReviewClientInviteText, clientIntake.contactEmail, projectName]);
+    try {
+      await roleRoomAgentService.createClientPortalInvite({
+        projectId,
+        clientEmail: recipient,
+        clientName: readFirstNonEmptyString(clientIntake.contactName) ?? null,
+      });
+      enqueueSnackbar(`Invitasjon sendt til ${recipient}.`, { variant: 'success' });
+    } catch (caught) {
+      enqueueSnackbar(
+        caught instanceof Error ? caught.message : 'Kunne ikke sende invitasjonen.',
+        { variant: 'error' },
+      );
+    }
+  }, [clientIntake.contactEmail, clientIntake.contactName, projectId, enqueueSnackbar]);
 
   const handleOpenReviewPortal = useCallback((review: ProducerClientReview) => {
     const reviewPortalUrl = buildReviewPortalUrl(review);
@@ -1735,10 +1992,259 @@ export default function ProducerClientReviewPanel({
                   {projectStatusLabel}
                 </Typography>
               </Box>
+              {livePollActive ? (
+                <Tooltip
+                  arrow
+                  placement="bottom"
+                  title={
+                    'Sanntid med klienten: del en magic-link fra et godkjenningspunkt (kopier invitasjon / '
+                    + 'send e-post). Klienten åpner klientportalen og kan godkjenne, be om endringer eller '
+                    + 'kommentere — uten innlogging. Beslutninger og kommentarer dukker opp her automatisk '
+                    + 'innen ~15 sek, så du slipper å laste på nytt. For live samskriving: del et Google Drive-'
+                    + 'dokument med skrive- eller kommentartilgang fra Google-samarbeid-flaten (krever at '
+                    + 'prosjektet er koblet til Google Workspace) — samredigeringen skjer i Google sin egen '
+                    + 'editor. For samtale: opprett en Meet-lenke i møteflaten.'
+                  }
+                >
+                  <Box
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 0.6,
+                      px: 1,
+                      py: 0.35,
+                      borderRadius: 999,
+                      border: '1px solid rgba(34,197,94,0.4)',
+                      bgcolor: 'rgba(34,197,94,0.12)',
+                      cursor: 'help',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: '50%',
+                        bgcolor: '#22c55e',
+                        boxShadow: '0 0 0 0 rgba(34,197,94,0.6)',
+                        animation: 'rrLivePulse 1.8s ease-out infinite',
+                        '@keyframes rrLivePulse': {
+                          '0%': { boxShadow: '0 0 0 0 rgba(34,197,94,0.55)' },
+                          '70%': { boxShadow: '0 0 0 6px rgba(34,197,94,0)' },
+                          '100%': { boxShadow: '0 0 0 0 rgba(34,197,94,0)' },
+                        },
+                      }}
+                    />
+                    <Typography sx={{ color: '#bbf7d0', fontSize: '0.7rem', fontWeight: 700 }}>
+                      {lastSyncedLabel ? `Sanntid · oppdatert ${lastSyncedLabel}` : 'Sanntid på'}
+                    </Typography>
+                  </Box>
+                </Tooltip>
+              ) : null}
+              {clientPresent && presentClientLabel ? (
+                <Tooltip
+                  arrow
+                  placement="bottom"
+                  title={`${presentClients
+                    .map((entry) => (entry.name && entry.name.trim()) || entry.email)
+                    .join(', ')} har klientportalen åpen akkurat nå.`}
+                >
+                  <Box
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 0.6,
+                      px: 1,
+                      py: 0.35,
+                      borderRadius: 999,
+                      border: '1px solid rgba(56,189,248,0.45)',
+                      bgcolor: 'rgba(56,189,248,0.14)',
+                      cursor: 'help',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: '50%',
+                        bgcolor: '#38bdf8',
+                        animation: 'rrPresencePulse 1.8s ease-out infinite',
+                        '@keyframes rrPresencePulse': {
+                          '0%': { boxShadow: '0 0 0 0 rgba(56,189,248,0.55)' },
+                          '70%': { boxShadow: '0 0 0 6px rgba(56,189,248,0)' },
+                          '100%': { boxShadow: '0 0 0 0 rgba(56,189,248,0)' },
+                        },
+                      }}
+                    />
+                    <Typography sx={{ color: '#bae6fd', fontSize: '0.7rem', fontWeight: 700 }}>
+                      {`${presentClientLabel} ser på nå`}
+                    </Typography>
+                  </Box>
+                </Tooltip>
+              ) : null}
             </Stack>
             <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.82rem' }}>
               {projectName} · Venter {summary.pending} · Godkjent {summary.approved} · Endringer {summary.changesRequested}
             </Typography>
+            {clientConsents.length > 0 ? (
+              <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mt: 0.2 }}>
+                <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.72rem', fontWeight: 600 }}>
+                  Klient-tilgang:
+                </Typography>
+                {clientConsents.map((consent) => {
+                  const label = consentPlatformLabels[consent.platform] ?? consent.platform;
+                  const when = new Date(consent.consentedAt);
+                  const whenLabel = Number.isNaN(when.getTime())
+                    ? ''
+                    : when.toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit' });
+                  const who = (consent.clientName && consent.clientName.trim()) || consent.clientEmail;
+                  const revoked = consent.action === 'revoked';
+                  return (
+                    <Tooltip
+                      key={consent.platform}
+                      title={
+                        revoked
+                          ? `${who} trakk tilbake tilgangen til ${label}${whenLabel ? ` den ${whenLabel}` : ''}`
+                          : `${who} godkjente tilgang til ${label}${whenLabel ? ` den ${whenLabel}` : ''}`
+                      }
+                      arrow
+                    >
+                      <Chip
+                        size="small"
+                        icon={
+                          revoked
+                            ? <BlockIcon sx={{ fontSize: '0.85rem !important', color: '#fca5a5 !important' }} />
+                            : <CheckCircleIcon sx={{ fontSize: '0.85rem !important', color: '#34d399 !important' }} />
+                        }
+                        label={`${label}${whenLabel ? ` · ${whenLabel}` : ''}`}
+                        sx={{
+                          height: 20,
+                          bgcolor: revoked ? 'rgba(248,113,113,0.14)' : 'rgba(52,211,153,0.14)',
+                          color: revoked ? '#fca5a5' : '#6ee7b7',
+                          fontWeight: 700,
+                          fontSize: '0.68rem',
+                          border: revoked ? '1px solid rgba(248,113,113,0.35)' : '1px solid rgba(52,211,153,0.35)',
+                          textDecoration: revoked ? 'line-through' : 'none',
+                          cursor: 'help',
+                        }}
+                      />
+                    </Tooltip>
+                  );
+                })}
+              </Stack>
+            ) : null}
+            {portalPlatformOptions.length > 0 ? (
+              <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mt: 0.2 }}>
+                <Tooltip
+                  title="Velg hvilke plattformer klienten ser og kan koble til i portalen. En plattform som allerede er koblet vises uansett."
+                  arrow
+                >
+                  <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.72rem', fontWeight: 600, cursor: 'help' }}>
+                    Vis i portalen:
+                  </Typography>
+                </Tooltip>
+                {portalPlatformOptions.map((opt) => {
+                  const visible = !portalHidden.has(opt.key);
+                  return (
+                    <Chip
+                      key={opt.key}
+                      size="small"
+                      onClick={() => { void handleTogglePortalPlatform(opt.key); }}
+                      disabled={savingVisibility === opt.key}
+                      icon={
+                        visible
+                          ? <VisibilityIcon sx={{ fontSize: '0.8rem !important', color: '#7dd3fc !important' }} />
+                          : <VisibilityOffIcon sx={{ fontSize: '0.8rem !important', color: '#94a3b8 !important' }} />
+                      }
+                      label={opt.label}
+                      sx={{
+                        height: 20,
+                        cursor: 'pointer',
+                        bgcolor: visible ? 'rgba(56,189,248,0.14)' : 'rgba(148,163,184,0.10)',
+                        color: visible ? '#bae6fd' : '#94a3b8',
+                        fontWeight: 700,
+                        fontSize: '0.68rem',
+                        border: visible ? '1px solid rgba(56,189,248,0.35)' : '1px dashed rgba(148,163,184,0.4)',
+                        opacity: visible ? 1 : 0.72,
+                      }}
+                    />
+                  );
+                })}
+              </Stack>
+            ) : null}
+            {portalPlatformOptions.some((o) => o.key === 'google_ads') && !portalHidden.has('google_ads') ? (
+              <Box sx={{ mt: 0.6, p: 1.1, borderRadius: 1.5, bgcolor: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.28)' }}>
+                <Typography sx={{ color: '#fde68a', fontSize: '0.73rem', fontWeight: 800, mb: 0.25 }}>
+                  ⚠️ Google Ads krever test-bruker
+                </Typography>
+                <Typography sx={{ color: 'rgba(253,230,138,0.85)', fontSize: '0.7rem', lineHeight: 1.5 }}>
+                  Mens Google-appen er i «Testing»-modus kan kun e-poster som er lagt til som
+                  test-brukere koble Google Ads. Legg til <strong>klientens e-post</strong> under
+                  Google Cloud → OAuth consent screen → <strong>Test users</strong>, ellers får
+                  klienten «Access blocked». For å åpne for alle klienter må appen publiseres/verifiseres.
+                </Typography>
+                <Button
+                  href="https://console.cloud.google.com/auth/audience?project=creatorhubn-com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  size="small"
+                  sx={{ mt: 0.3, textTransform: 'none', color: '#fbbf24', fontWeight: 800, fontSize: '0.7rem', px: 0.5, minWidth: 0 }}
+                >
+                  Åpne Test users i Google Cloud →
+                </Button>
+                <Box sx={{ mt: 0.7, display: 'flex', flexDirection: 'column', gap: 0.4 }}>
+                  <Button
+                    onClick={() => { void handleSyncGoogleAdsConversions(); }}
+                    disabled={adsSyncing}
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      alignSelf: 'flex-start', textTransform: 'none', fontWeight: 800, fontSize: '0.7rem',
+                      color: '#fde68a', borderColor: 'rgba(251,191,36,0.45)',
+                      '&:hover': { borderColor: '#fbbf24', bgcolor: 'rgba(251,191,36,0.08)' },
+                    }}
+                  >
+                    {adsSyncing ? 'Oppretter…' : 'Opprett konverteringer i klientens Google Ads'}
+                  </Button>
+                  {adsSyncResult ? (
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: adsSyncResult.severity === 'error' ? '#fca5a5' : '#86efac' }}>
+                      {adsSyncResult.text}
+                    </Typography>
+                  ) : null}
+                </Box>
+              </Box>
+            ) : null}
+            {clientUploadedFiles.length > 0 ? (
+              <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mt: 0.2 }}>
+                <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.72rem', fontWeight: 600 }}>
+                  Filer fra klient:
+                </Typography>
+                {clientUploadedFiles.map((material) => {
+                  const meta = material.metadata as { file?: { originalName?: string } } | undefined;
+                  const name = meta?.file?.originalName || material.title;
+                  return (
+                    <Tooltip key={material.id} title={`Last ned ${name}`} arrow>
+                      <Chip
+                        size="small"
+                        clickable
+                        disabled={downloadingFileId === material.id}
+                        onClick={() => void handleDownloadClientFile(material)}
+                        icon={<DownloadIcon sx={{ fontSize: '0.85rem !important', color: '#93c5fd !important' }} />}
+                        label={name.length > 26 ? `${name.slice(0, 24)}…` : name}
+                        sx={{
+                          height: 20,
+                          bgcolor: 'rgba(59,130,246,0.14)',
+                          color: '#bfdbfe',
+                          fontWeight: 700,
+                          fontSize: '0.68rem',
+                          border: '1px solid rgba(59,130,246,0.35)',
+                          cursor: 'pointer',
+                        }}
+                      />
+                    </Tooltip>
+                  );
+                })}
+              </Stack>
+            ) : null}
           </Stack>
           {(statusDriverEconomyFocus && onOpenEconomy) || (statusDriverTimelineFocus && onOpenTimeline) ? (
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8}>
@@ -1787,6 +2293,55 @@ export default function ProducerClientReviewPanel({
             {statusDriverReview && statusDriverCopy ? statusDriverCopy : `Prosjektstatus styres av klientbeslutningene: ${projectStatusDetail}`}
           </Typography>
         </Box>
+
+        {clientActivity.length > 0 ? (
+          <Box
+            sx={{
+              p: 1.25,
+              borderRadius: 2,
+              border: '1px solid rgba(34,197,94,0.22)',
+              bgcolor: 'rgba(34,197,94,0.06)',
+            }}
+          >
+            <Stack direction="row" spacing={0.8} alignItems="center" sx={{ mb: 0.75 }}>
+              <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: '#22c55e' }} />
+              <Typography sx={{ color: '#bbf7d0', fontSize: '0.78rem', fontWeight: 700 }}>
+                Live klient-aktivitet
+              </Typography>
+            </Stack>
+            <Stack spacing={0.6}>
+              {clientActivity.map((event) => (
+                <Stack
+                  key={event.id}
+                  direction="row"
+                  spacing={0.8}
+                  alignItems="baseline"
+                  sx={{ flexWrap: 'wrap' }}
+                >
+                  <Typography
+                    component="span"
+                    sx={{
+                      color: event.fromClient ? '#86efac' : 'rgba(203,213,225,0.85)',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {event.actor}
+                  </Typography>
+                  <Typography component="span" sx={{ color: 'rgba(226,232,240,0.82)', fontSize: '0.78rem' }}>
+                    {event.action}
+                  </Typography>
+                  <Typography
+                    component="span"
+                    sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.7rem', ml: 'auto', whiteSpace: 'nowrap' }}
+                  >
+                    {formatRelativeTime(event.at)}
+                  </Typography>
+                </Stack>
+              ))}
+            </Stack>
+          </Box>
+        ) : null}
 
         <Box
           sx={{
@@ -1850,6 +2405,33 @@ export default function ProducerClientReviewPanel({
           ))}
         </Stack>
       </Stack>
+
+      {/* Godkjenning-faner: grunnlag/blokkeringer vs. selve reviews — jf.
+          Daniels ønske om at Godkjenning ikke skal være én lang scroll. */}
+      <Tabs
+        value={reviewView}
+        onChange={(_event, next) => setReviewView(next)}
+        variant="scrollable"
+        allowScrollButtonsMobile
+        sx={{
+          borderBottom: '1px solid rgba(148,163,184,0.18)',
+          minHeight: 44,
+          '& .MuiTab-root': {
+            textTransform: 'none',
+            fontWeight: 800,
+            fontSize: '0.9rem',
+            color: 'rgba(226,232,240,0.78)',
+            minHeight: 44,
+          },
+          '& .Mui-selected': { color: '#f8fafc' },
+          '& .MuiTabs-indicator': { backgroundColor: '#c084fc', height: 3 },
+        }}
+      >
+        <Tab value="grunnlag" label="Grunnlag & blokkeringer" />
+        <Tab value="reviews" label="Reviews & beslutninger" />
+      </Tabs>
+
+      <Box sx={{ display: reviewView === 'grunnlag' ? 'flex' : 'none', flexDirection: 'column', gap: 2 }}>
 
       <Box
         sx={{
@@ -1918,34 +2500,20 @@ export default function ProducerClientReviewPanel({
         )}
       </Box>
 
-      <Box
-        sx={{
-          p: 1.25,
-          borderRadius: 1.5,
-          border: '1px solid rgba(148,163,184,0.2)',
-          background: 'rgba(15,23,42,0.52)',
-        }}
+      <CollapsibleSection
+        title="Åpne blokkeringer"
+        summary="Dette stopper videre arbeid akkurat nå"
       >
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} justifyContent="space-between">
-          <Box sx={{ minWidth: 0 }}>
-            <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-              Åpne blokkeringer
-            </Typography>
-            <Typography sx={{ color: 'rgba(226,232,240,0.88)', fontSize: '0.84rem', mt: 0.35 }}>
-              Dette stopper videre arbeid akkurat nå.
-            </Typography>
-          </Box>
-          {onOpenMedia ? (
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => onOpenMedia(primaryClientWorkspaceFocus)}
-              sx={{ textTransform: 'none', fontWeight: 700, alignSelf: { md: 'flex-start' }, minHeight: 44 }}
-            >
-              Åpne grunnlag
-            </Button>
-          ) : null}
-        </Stack>
+        {onOpenMedia ? (
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => onOpenMedia(primaryClientWorkspaceFocus)}
+            sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, mb: 1 }}
+          >
+            Åpne grunnlag
+          </Button>
+        ) : null}
         {activeClientGroundingReviews.length > 0 ? (
           <Stack spacing={0.9} sx={{ mt: 1.1 }}>
             {activeClientGroundingReviews.map((review) => (
@@ -2036,21 +2604,14 @@ export default function ProducerClientReviewPanel({
             ))}
           </Stack>
         ) : null}
-      </Box>
+      </CollapsibleSection>
 
       {strategySnapshot.length > 0 || clientMoments.length > 0 ? (
-        <Box
-          sx={{
-            p: 1.25,
-            borderRadius: 1.5,
-            border: '1px solid rgba(148,163,184,0.2)',
-            background: 'rgba(15,23,42,0.52)',
-          }}
+        <CollapsibleSection
+          title="Retning og neste klientpunkter"
+          summary="Strategi-signaler og neste klientpunkter"
         >
           <Stack spacing={1}>
-            <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-              Retning og neste klientpunkter
-            </Typography>
             {strategySnapshot.length > 0 ? (
               <Stack direction="row" spacing={0.75} flexWrap="wrap">
                 {strategySnapshot.map((item) => (
@@ -2106,7 +2667,7 @@ export default function ProducerClientReviewPanel({
                           <Stack direction="row" spacing={0.65} flexWrap="wrap" sx={{ mb: 0.45 }}>
                             <Chip
                               size="small"
-                              label={isContentLogicMoment ? 'Content Logic' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
+                              label={isContentLogicMoment ? 'Innholdsplan' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
                               sx={{
                                 bgcolor: isContentLogicMoment ? 'rgba(167,139,250,0.18)' : 'rgba(59,130,246,0.14)',
                                 color: isContentLogicMoment ? '#ede9fe' : '#bfdbfe',
@@ -2188,7 +2749,7 @@ export default function ProducerClientReviewPanel({
                               sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                             >
                               {isContentLogicMoment
-                                ? 'Åpne Content Logic'
+                                ? 'Åpne Innholdsplan'
                                 : isAccountAccessMoment
                                   ? 'Åpne kontotilgang'
                                   : 'Åpne brief og materiale'}
@@ -2216,7 +2777,7 @@ export default function ProducerClientReviewPanel({
               </Typography>
             )}
           </Stack>
-        </Box>
+        </CollapsibleSection>
       ) : null}
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -2379,6 +2940,9 @@ export default function ProducerClientReviewPanel({
         </Stack>
       )}
 
+      </Box>
+
+      <Box sx={{ display: reviewView === 'reviews' ? 'flex' : 'none', flexDirection: 'column', gap: 2 }}>
       <Divider sx={{ borderColor: 'rgba(148,163,184,0.2)' }} />
 
       <Stack spacing={1.2}>
@@ -2501,7 +3065,7 @@ export default function ProducerClientReviewPanel({
               ? getAgreementSignatureTone(linkedAgreement.google_signature)
               : null;
             const reviewMetaLine = [
-              isContentLogicReview ? 'Content Logic' : isAccountAccessReview ? 'Kontotilgang' : getProducerReviewTypeLabel(review.review_type),
+              isContentLogicReview ? 'Innholdsplan' : isAccountAccessReview ? 'Kontotilgang' : getProducerReviewTypeLabel(review.review_type),
               isAccountAccessReview ? `Plattform: ${linkedAccountAccessPlatforms.map((platform) => PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[platform]).join(' · ')}` : '',
               isContentLogicReview ? `Fokus: ${contentLogicMomentLabel}` : entityLabel ? `Mål: ${entityLabel}` : '',
               review.due_at ? `Frist: ${new Date(review.due_at).toLocaleString('nb-NO')}` : '',
@@ -2559,7 +3123,7 @@ export default function ProducerClientReviewPanel({
                       <Stack direction="row" spacing={0.65} flexWrap="wrap" useFlexGap sx={{ mb: 0.45 }}>
                         <Chip
                           size="small"
-                          label="Content Logic"
+                          label="Innholdsplan"
                           sx={{ bgcolor: 'rgba(167,139,250,0.18)', color: '#ede9fe' }}
                         />
                         <Chip
@@ -2828,7 +3392,7 @@ export default function ProducerClientReviewPanel({
                           sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                         >
                           {isContentLogicReview
-                            ? 'Åpne Content Logic'
+                            ? 'Åpne Innholdsplan'
                             : isAccountAccessReview
                               ? 'Åpne kontotilgang'
                             : isDeliveryManagedReview
@@ -2875,10 +3439,10 @@ export default function ProducerClientReviewPanel({
                       <Button
                         size="small"
                         variant="text"
-                        onClick={() => handleOpenReviewClientInviteMail(review)}
+                        onClick={handleSendReviewClientInvite}
                         sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(191,219,254,0.92)', minHeight: 44 }}
                       >
-                        Åpne e-postutkast
+                        Send invitasjon
                       </Button>
                       <Button
                         size="small"
@@ -3017,6 +3581,7 @@ export default function ProducerClientReviewPanel({
           </Box>
         )}
       </Stack>
+      </Box>
     </Box>
   );
 }

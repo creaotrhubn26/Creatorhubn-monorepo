@@ -289,7 +289,7 @@ const SmartEmailCenter: React.FC<SmartEmailCenterProps> = ({
 }) as { data: EmailActivity | undefined };
 
   // Fetch project context for email linking with profession-aware data
-  const { data: projects = [, ],} = useQuery({
+  const { data: projects = [],} = useQuery({
     queryKey: ['/api/dashboard', userProfession, userId],
     queryFn: async () => {
       const response = await apiRequest(`/api/dashboard/${userProfession}/${userId}`);

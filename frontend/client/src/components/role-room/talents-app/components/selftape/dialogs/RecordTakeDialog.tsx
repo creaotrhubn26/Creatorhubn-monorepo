@@ -12,7 +12,7 @@
  */
 import {
   Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton,
-  LinearProgress, Stack, Typography,
+  LinearProgress, Stack, Typography, useMediaQuery, useTheme,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
@@ -49,6 +49,10 @@ function pickMimeType(): string {
 export default function RecordTakeDialog({
   open, projectId, onClose, onUploaded,
 }: Props) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const supportsMediaRecorder = typeof window !== 'undefined'
+    && typeof window.MediaRecorder !== 'undefined';
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -193,12 +197,17 @@ export default function RecordTakeDialog({
       onClose={phase === 'uploading' ? undefined : onClose}
       fullWidth
       maxWidth="md"
+      fullScreen={isMobile}
       PaperProps={{
         sx: {
           bgcolor: palette.bgShell,
           color: palette.textPrimary,
-          border: `1px solid ${palette.border}`,
-          borderRadius: radius.lg,
+          border: isMobile ? 'none' : `1px solid ${palette.border}`,
+          borderRadius: isMobile ? 0 : radius.lg,
+          ...(isMobile && {
+            paddingTop: 'env(safe-area-inset-top, 0)',
+            paddingBottom: 'env(safe-area-inset-bottom, 0)',
+          }),
         },
       }}
     >
@@ -220,21 +229,60 @@ export default function RecordTakeDialog({
               Vi trenger tilgang til kamera og mikrofon for å spille inn taken din. Opptaket
               lagres trygt i Cloudflare Stream og du eier alltid filen.
             </Typography>
-            <Button
-              onClick={requestPermission}
-              variant="contained"
-              sx={{
-                background: palette.accentGradient,
-                color: '#fff',
-                textTransform: 'none',
-                fontWeight: 700,
-                px: 3,
-                py: 1.2,
-                '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
-              }}
-            >
-              Aktiver kamera + mikrofon
-            </Button>
+            {supportsMediaRecorder ? (
+              <Button
+                onClick={requestPermission}
+                variant="contained"
+                sx={{
+                  background: palette.accentGradient,
+                  color: '#fff',
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  px: 3,
+                  py: 1.2,
+                  minHeight: 44, // Apple HIG touch-target
+                  '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                }}
+              >
+                Aktiver kamera + mikrofon
+              </Button>
+            ) : (
+              <Stack alignItems="center" spacing={1.2}>
+                <Typography sx={{ color: '#fbbf24', fontSize: '0.86rem', textAlign: 'center', maxWidth: 360 }}>
+                  Nettleseren din støtter ikke in-browser opptak. Bruk i stedet
+                  kamera-appen direkte:
+                </Typography>
+                <Button
+                  component="label"
+                  variant="contained"
+                  sx={{
+                    background: palette.accentGradient,
+                    color: '#fff',
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    px: 3,
+                    py: 1.2,
+                    minHeight: 44,
+                    '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+                  }}
+                >
+                  Åpne kamera
+                  <input
+                    type="file"
+                    accept="video/*"
+                    capture="user"
+                    hidden
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) {
+                        setRecordedBlob(f);
+                        setPhase('review');
+                      }
+                    }}
+                  />
+                </Button>
+              </Stack>
+            )}
           </Stack>
         ) : null}
 

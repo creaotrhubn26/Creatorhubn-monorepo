@@ -769,7 +769,8 @@ let oauthClient = null;
 
 try {
   const health = await assertOkJson("Backend health", `${baseUrl}/api/health`);
-  assertShaMatches("Backend commit", health.commit);
+  const version = await assertOkJson("Backend version", `${baseUrl}/api/version`);
+  assertShaMatches("Backend commit", version.commit);
 
   const googleConnection = await findUsableRoleRoomGoogleConnection();
   oauthClient = googleConnection.oauthClient;
@@ -941,7 +942,7 @@ try {
     ok: true,
     baseUrl,
     expectedSha: expectedSha || null,
-    backendCommit: health.commit || null,
+    backendCommit: version.commit || null,
     runId,
     projectId,
     cleanup,

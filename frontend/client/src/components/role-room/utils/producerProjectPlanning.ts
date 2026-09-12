@@ -499,8 +499,8 @@ export const PRODUCER_WORKSPACE_SURFACE_LABELS: Record<ProducerWorkspaceSurfaceK
 };
 
 export const PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS: Record<ProducerAccountAccessPlatform, string> = {
-  google: 'Google Workspace',
-  meta: 'Meta Business',
+  google: 'Google (Workspace + Analytics)',
+  meta: 'Meta (Facebook + Instagram)',
   linkedin: 'LinkedIn',
   youtube: 'YouTube',
   tiktok: 'TikTok',
@@ -513,8 +513,8 @@ export const PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS: Record<ProducerAccountAccess
 };
 
 export const PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS: Record<ProducerAccountAccessStatus, string> = {
-  not_started: 'Ikke startet',
-  client_action: 'Venter på klient',
+  not_started: 'Ikke begynt ennå',
+  client_action: 'Venter på kunden',
   invite_sent: 'Invitasjon sendt',
   connected: 'Koblet',
   revoked: 'Avsluttet',
@@ -868,7 +868,7 @@ const DEFAULT_ACCOUNT_ACCESS: ProducerAccountAccessWorkspace = {
       status: 'not_started',
       tier: 'delegated_access',
       riskLevel: 'low',
-      accessScope: 'Drive, Kalender og Meet for prosjektet.',
+      accessScope: 'Drive, Kalender og Meet — pluss GA4, Search Console og Site Verification for agentens analytics-oppsett.',
       sharedWithRoles: ['producer', 'admin'],
       twoFactorStatus: 'unknown',
       secretStatus: 'not_shared',
@@ -1705,6 +1705,24 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
       layout: 'focus',
     },
   );
+  // Markedsplanen (pillars, post-kalender, KPI) er en førsteklasses
+  // produsent-flate, men lå tidligere KUN tilgjengelig via Role Room
+  // Agent-dialogen. Egen seksjon her gjør den til en stående fane. Fordi
+  // det er en separat seksjon med en surface (marketing-plan) som ikke
+  // finnes i eksisterende prosjekters lagrede nav, plukker
+  // normalizeProducerWorkspaceNavigation den opp automatisk for dem også.
+  const marketingSection = createProducerWorkspaceSection(
+    'Markedsføring',
+    [
+      createProducerWorkspacePage('marketing-plan', { id: 'workspace-page-marketing-plan', pinned: true, order: 0 }),
+    ],
+    {
+      id: 'workspace-section-marketing',
+      color: '#ec4899',
+      order: 2,
+      layout: 'focus',
+    },
+  );
   const deliverySection = createProducerWorkspaceSection(
     'Retning, tilgang og levering',
     [
@@ -1715,7 +1733,7 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
     {
       id: 'workspace-section-delivery',
       color: '#a855f7',
-      order: 2,
+      order: 3,
       layout: 'focus',
     },
   );
@@ -1727,7 +1745,7 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
     {
       id: 'workspace-section-meetings',
       color: '#f97316',
-      order: 3,
+      order: 4,
       layout: 'focus',
     },
   );
@@ -1738,7 +1756,7 @@ export const getDefaultProducerWorkspaceNavigation = (): ProducerWorkspaceNaviga
     navigationPinned: true,
     activeSectionId: foundationSection.id,
     activePageId: foundationSection.pages[0]?.id,
-    sections: [foundationSection, editorialSection, deliverySection, meetingsSection],
+    sections: [foundationSection, editorialSection, marketingSection, deliverySection, meetingsSection],
   };
 };
 
@@ -1833,13 +1851,35 @@ export const normalizeProducerWorkspaceNavigation = (
   const existingSurfaces = new Set(
     normalizedSectionsBase.flatMap((section) => flattenProducerWorkspacePages(section).map((page) => page.surface)),
   );
+  // Legg til BARE de manglende sidene (ikke hele fallback-seksjonen) — ellers
+  // ville en fallback-seksjon med én ny + én eksisterende side duplisert den
+  // eksisterende siden.
   const missingFallbackSections = fallback.sections
-    .filter((section) => flattenProducerWorkspacePages(section).some((page) => !existingSurfaces.has(page.surface)))
     .map((section) => ({
       ...section,
-      pages: section.pages.map((page) => ({ ...page })),
-    }));
+      pages: section.pages
+        .filter((page) => !existingSurfaces.has(page.surface))
+        .map((page) => ({ ...page })),
+    }))
+    .filter((section) => section.pages.length > 0);
+  // Global de-dup på `surface`: hver flate skal forekomme NØYAKTIG én gang i
+  // navigasjonen. Dette (a) gjør normaliseringen idempotent —
+  // normalize(normalize(x)) === normalize(x) — så gjentatte klikk/re-normaliser
+  // ikke hoper opp faner, og (b) selv-helbreder nav-er som ALLEREDE har
+  // akkumulert duplikater (f.eks. «Markedsplan» som dukket opp flere ganger).
+  const seenSurfaces = new Set<string>();
   const normalizedSections = [...normalizedSectionsBase, ...missingFallbackSections]
+    .map((section) => ({
+      ...section,
+      pages: flattenProducerWorkspacePages(section).filter((page) => {
+        if (seenSurfaces.has(page.surface)) {
+          return false;
+        }
+        seenSurfaces.add(page.surface);
+        return true;
+      }),
+    }))
+    .filter((section) => section.pages.length > 0)
     .map((section, index) => ({
       ...section,
       order: index,

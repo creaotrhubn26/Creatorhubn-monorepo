@@ -202,7 +202,8 @@ export default function UniversalCommunicationHub({
   useEffect(() => {
     const connectWebSocket = () => {
       const protocol = window.location.protocol === 'https: ' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws/communication?userId=${userId}`;
+      const wsToken = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token') || '';
+      const wsUrl = `${protocol}//${window.location.host}/ws/communication?userId=${userId}${wsToken ? `&token=${encodeURIComponent(wsToken)}` : ''}`;
 
       wsRef.current = new WebSocket(wsUrl);
 

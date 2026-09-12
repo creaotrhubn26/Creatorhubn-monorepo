@@ -15,6 +15,7 @@ import {
   buildAcademyStudentSupportCard,
   useAcademyStudentAccessSummary,
 } from './academyStudentExperience';
+import { useAcademyLocale } from './academyLocale';
 
 type TranslateFn = (no: string, en: string) => string;
 
@@ -64,6 +65,7 @@ function AcademyStudentSidebar({
   nextActionRoute,
   nextActionLabel,
 }: AcademyStudentSidebarProps) {
+  const { navLabel } = useAcademyLocale();
   const { data: accessSummary } = useAcademyStudentAccessSummary(
     activeCourseId ? String(activeCourseId) : undefined,
   );
@@ -71,7 +73,7 @@ function AcademyStudentSidebar({
     () => [
       {
         id: 'overview',
-        label: tt('Oversikt', 'Overview'),
+        label: navLabel('Overview'),
         route: '/academy/student-dashboard',
         icon: <HomeOutlined fontSize="small" />,
       },
@@ -89,7 +91,7 @@ function AcademyStudentSidebar({
       },
       {
         id: 'assignments',
-        label: tt('Oppgaver', 'Assignments'),
+        label: navLabel('Assignments'),
         route: '/academy/assignments',
         icon: <TaskAltOutlined fontSize="small" />,
       },
@@ -107,12 +109,12 @@ function AcademyStudentSidebar({
       },
       {
         id: 'settings',
-        label: tt('Innstillinger', 'Settings'),
+        label: navLabel('Settings'),
         route: '/academy/settings?tab=profile',
         icon: <SettingsOutlined fontSize="small" />,
       },
     ],
-    [tt],
+    [navLabel, tt],
   );
 
   const withCourseContext = useCallback(

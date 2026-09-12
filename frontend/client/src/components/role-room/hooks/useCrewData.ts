@@ -47,6 +47,7 @@ export const ROLE_DEPARTMENT_MAP: Record<CrewRole, CrewDepartment> = {
   producer: 'production',
   casting_director: 'production',
   production_manager: 'production',
+  production_coordinator: 'production',
   production_assistant: 'production',
   script_supervisor: 'production',
   location_manager: 'production',
@@ -768,4 +769,3 @@ export function useCrewData(
     getAvailabilityCells,
   };
 }
-

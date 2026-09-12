@@ -14,12 +14,10 @@ import {
   Step,
   StepLabel,
   StepContent,
-  Button,
   Typography,
   Stack,
   Alert,
   CircularProgress,
-  Chip,
   Card,
   CardContent,
   IconButton,
@@ -35,6 +33,7 @@ import {
   VideoLibrary,
 } from '@mui/icons-material';
 import AIVideoGenerator from './AIVideoGenerator';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 import { useVideoJourneyBridge } from '@/hooks/useVideoJourneyBridge';
 import { useNavigate } from 'react-router-dom';
 
@@ -86,6 +85,7 @@ export default function VideoGenerationWorkflowModal({
 }: VideoGenerationWorkflowModalProps) {
   const navigate = useNavigate();
   const videoJourneyBridge = useVideoJourneyBridge();
+  const isMobile = useIsMobile();
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STATE
@@ -227,14 +227,14 @@ export default function VideoGenerationWorkflowModal({
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box display="flex" alignItems="center" justifyContent="space-between">
             <Box display="flex" alignItems="center" gap={1}>
               <VideoLibrary color="primary" />
               <Typography variant="h6">Video Generation Workflow</Typography>
             </Box>
-            <IconButton onClick={onClose} size="small">
+            <IconButton onClick={onClose} size="small" aria-label="Lukk">
               <Close />
             </IconButton>
           </Box>
@@ -294,13 +294,13 @@ export default function VideoGenerationWorkflowModal({
                                   Click the button below to open the AI Video Generator. Create a
                                   video based on your journey step content.
                                 </Typography>
-                                <Button
-                                  variant="contained"
+                                <AdminButton
+                                  tone="primary"
                                   startIcon={<MovieCreation />}
                                   onClick={() => setShowVideoGenerator(true)}
                                 >
                                   Open Video Generator
-                                </Button>
+                                </AdminButton>
                               </Stack>
                             ) : (
                               <Stack spacing={2}>
@@ -310,14 +310,15 @@ export default function VideoGenerationWorkflowModal({
                                 <video
                                   src={generatedVideo.videoUrl}
                                   controls
+                                  aria-label="Generert video – forhåndsvisning"
                                   style={{ width: '100%', maxHeight: 300, borderRadius: 8 }} />
-                                <Button
-                                  variant="contained"
+                                <AdminButton
+                                  tone="primary"
                                   endIcon={<ArrowForward />}
                                   onClick={() => setActiveStep(1)}
                                 >
                                   Next: Edit in StoryArc
-                                </Button>
+                                </AdminButton>
                               </Stack>
                             )}
                           </CardContent>
@@ -334,16 +335,16 @@ export default function VideoGenerationWorkflowModal({
                                 tools, transitions, color grading, and more.
                               </Typography>
                               <Stack direction="row" spacing={2}>
-                                <Button
-                                  variant="contained"
+                                <AdminButton
+                                  tone="primary"
                                   startIcon={<SmartDisplay />}
                                   onClick={handleOpenStoryArc}
                                 >
                                   Open in StoryArc Studio
-                                </Button>
-                                <Button variant="outlined" onClick={handleSkipStoryArc}>
+                                </AdminButton>
+                                <AdminButton tone="ghost" onClick={handleSkipStoryArc}>
                                   Skip Editing
-                                </Button>
+                                </AdminButton>
                               </Stack>
                               <Typography variant="caption" color="text.secondary">
                                 Note: You'll be navigated to StoryArc Studio. Return here when done
@@ -367,28 +368,28 @@ export default function VideoGenerationWorkflowModal({
                                       Analyzing video quality, pacing, and engagement metrics...
                                     </Typography>
                                   </Stack>
-                                  <Button
-                                    variant="outlined"
+                                  <AdminButton
+                                    tone="ghost"
                                     onClick={() => handleAnalysisComplete({})}
                                   >
                                     Skip Analysis
-                                  </Button>
+                                  </AdminButton>
                                 </>
                               ) : (
                                 <>
                                   <Alert severity="success">Analysis complete!</Alert>
                                   <Stack direction="row" spacing={1} flexWrap="wrap">
-                                    <Chip label="Quality: 87%" color="success" size="small" />
-                                    <Chip label="Pacing: Good" color="success" size="small" />
-                                    <Chip label="5 Scenes" size="small" />
+                                    <StatusChip tone="success" label="Quality: 87%" />
+                                    <StatusChip tone="success" label="Pacing: Good" />
+                                    <StatusChip tone="neutral" label="5 Scenes" />
                                   </Stack>
-                                  <Button
-                                    variant="contained"
+                                  <AdminButton
+                                    tone="primary"
                                     onClick={() => setActiveStep(3)}
                                     endIcon={<ArrowForward />}
                                   >
                                     Next: Update Journey
-                                  </Button>
+                                  </AdminButton>
                                 </>
                               )}
                             </Stack>
@@ -409,14 +410,13 @@ export default function VideoGenerationWorkflowModal({
                                 The video, analysis data, and any StoryArc edits will be
                                 automatically synced to your customer journey.
                               </Typography>
-                              <Button
-                                variant="contained"
-                                color="success"
+                              <AdminButton
+                                tone="primary"
                                 onClick={handleComplete}
                                 startIcon={<CheckCircle />}
                               >
                                 Complete & Update Journey
-                              </Button>
+                              </AdminButton>
                             </Stack>
                           </CardContent>
                         </Card>

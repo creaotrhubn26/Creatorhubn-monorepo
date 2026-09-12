@@ -11,7 +11,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
-  Card,
+  Card as MuiCard,
   CardContent,
   Typography,
   List,
@@ -19,11 +19,8 @@ import {
   ListItemAvatar,
   ListItemText,
   Avatar,
-  Chip,
   IconButton,
-  Button,
   Divider,
-  Badge,
   Tooltip,
   Dialog,
   DialogTitle,
@@ -42,6 +39,7 @@ import {
   FormControl,
   InputLabel,
   InputAdornment,
+  ThemeProvider,
 } from '@mui/material';
 import {
   Science,
@@ -89,6 +87,9 @@ import { useLocation } from 'wouter';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
+import { adminDarkTheme } from './adminDarkTheme';
+import { adminTokens } from './design-system/adminTokens';
 
 interface ActivityItem {
   id: string;
@@ -197,7 +198,7 @@ export default function EnhancedActivityFeed({
     retry: false,
   });
 
-  const activities = activityData?.activities || [];
+  const activities = Array.isArray(activityData?.activities) ? activityData.activities : [];
   const total = activityData?.total || 0;
   const hasMore = activityData?.hasMore || false;
 
@@ -228,7 +229,7 @@ useEffect(() => {
   if (!enableNotifications) return;
   if (typeof window === 'undefined' || !('Notification' in window)) return;
 
-  const items = activityData?.activities ?? [];
+  const items = Array.isArray(activityData?.activities) ? activityData.activities : [];
   const criticalActivities = items.filter(
     (a: ActivityItem) => a.priority === 'critical' && a.status === 'pending'
   );
@@ -272,36 +273,36 @@ useEffect(() => {
 
   const getActivityIcon = (type: string) => {
     switch (type) {
-      case 'prototype_feedback': return <Feedback sx={{ color: '#2196f3' }} />;
-      case 'invite_request': return <PersonAdd sx={{ color: '#ff8c00' }} />;
-      case 'bug_report': return <BugReport sx={{ color: '#f44336' }} />;
-      case 'feature_vote': return <ThumbUp sx={{ color: '#4caf50' }} />;
-      case 'user_approved': return <CheckCircle sx={{ color: '#4caf50' }} />;
-      case 'user_rejected': return <Cancel sx={{ color: '#f44336' }} />;
-      case 'account_activated': return <AccountCircle sx={{ color: '#4caf50' }} />;
-      case 'subscription_created': return <CardMembership sx={{ color: '#9c27b0' }} />;
-      case 'payment_completed': return <Payment sx={{ color: '#2e7d32' }} />;
-      case 'user_login': return <Login sx={{ color: '#1976d2' }} />;
-      case 'feature_enabled': return <SettingsIcon sx={{ color: '#ff9800' }} />;
-      default: return <DashboardIcon sx={{ color: '#9e9e9e' }} />;
+      case 'prototype_feedback': return <Feedback sx={{ color: adminTokens.color.info }} />;
+      case 'invite_request': return <PersonAdd sx={{ color: adminTokens.color.brand }} />;
+      case 'bug_report': return <BugReport sx={{ color: adminTokens.color.error }} />;
+      case 'feature_vote': return <ThumbUp sx={{ color: adminTokens.color.success }} />;
+      case 'user_approved': return <CheckCircle sx={{ color: adminTokens.color.success }} />;
+      case 'user_rejected': return <Cancel sx={{ color: adminTokens.color.error }} />;
+      case 'account_activated': return <AccountCircle sx={{ color: adminTokens.color.success }} />;
+      case 'subscription_created': return <CardMembership sx={{ color: '#ce93d8' }} />;
+      case 'payment_completed': return <Payment sx={{ color: adminTokens.color.success }} />;
+      case 'user_login': return <Login sx={{ color: adminTokens.color.info }} />;
+      case 'feature_enabled': return <SettingsIcon sx={{ color: adminTokens.color.warning }} />;
+      default: return <DashboardIcon sx={{ color: adminTokens.color.textMuted }} />;
     }
   };
 
   const getActivityColor = (type: string) => {
     const colors: Record<string, string> = {
-      prototype_feedback: '#2196f3',
-      invite_request: '#ff8c00',
-      bug_report: '#f44336',
-      feature_vote: '#4caf50',
-      user_approved: '#4caf50',
-      user_rejected: '#f44336',
-      account_activated: '#4caf50',
+      prototype_feedback: adminTokens.color.info,
+      invite_request: adminTokens.color.brand,
+      bug_report: adminTokens.color.error,
+      feature_vote: adminTokens.color.success,
+      user_approved: adminTokens.color.success,
+      user_rejected: adminTokens.color.error,
+      account_activated: adminTokens.color.success,
       subscription_created: '#9c27b0',
-      payment_completed: '#2e7d32',
-      user_login: '#1976d2',
-      feature_enabled: '#ff9800'
+      payment_completed: adminTokens.color.success,
+      user_login: adminTokens.color.info,
+      feature_enabled: adminTokens.color.warning,
     };
-    return colors[type] || '#9e9e9e';
+    return colors[type] || adminTokens.color.textMuted;
   };
 
   const handleActivityClick = (activity: ActivityItem) => {
@@ -340,21 +341,16 @@ useEffect(() => {
             secondaryAction={
               <Stack direction="row" spacing={1} alignItems="center">
                 {activity.priority === 'critical' && (
-                  <Chip label="CRITICAL" size="small" color="error" sx={{ fontSize: '0.65rem', height: 18, fontWeight: 'bold' }} />
+                  <StatusChip tone="error" label="CRITICAL" size="small" sx={{ fontSize: '0.65rem', height: 18, fontWeight: 'bold' }} />
                 )}
                 {activity.status && (
-                  <Chip
-                    label={activity.status}
+                  <StatusChip
+                    status={activity.status}
                     size="small"
-                    color={
-                      activity.status === 'approved' || activity.status === 'active' || activity.status === 'paid' ? 'success' :
-                      activity.status === 'rejected' ? 'error' :
-                      activity.status === 'pending' ? 'warning' : 'default'
-                    }
                     sx={{ fontSize: '0.7rem', height: 20 }}
                   />
                 )}
-                <IconButton size="small" onClick={() => handleActivityClick(activity)}>
+                <IconButton size="small" aria-label="Åpne aktivitet" onClick={() => handleActivityClick(activity)}>
                   <ArrowForward fontSize="small" />
                 </IconButton>
               </Stack>
@@ -366,13 +362,14 @@ useEffect(() => {
               </Avatar>
             </ListItemAvatar>
             <ListItemText
+              disableTypography
               primary={
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Typography variant="body2" sx={{ fontWeight: 600}}>
                     {activity.title}
                   </Typography>
                   {activity.user.profession && (
-                    <Chip label={activity.user.profession} size="small" sx={{ fontSize: '0.65rem', height: 18 }} />
+                    <StatusChip label={activity.user.profession} size="small" sx={{ fontSize: '0.65rem', height: 18 }} />
                   )}
                 </Stack>
               }
@@ -423,30 +420,37 @@ useEffect(() => {
             <TimelineConnector />
           </TimelineSeparator>
           <TimelineContent>
-            <Paper 
-              elevation={1} 
-              sx={{ 
-                p: 2, 
-                cursor: 'pointer','&:hover': { bgcolor: 'action.hover' }
+            <MuiCard
+              role="button"
+              tabIndex={0}
+              sx={{
+                p: 2,
+                cursor: 'pointer',
+                bgcolor: adminTokens.color.surface,
+                border: `1px solid ${adminTokens.color.border}`,
+                borderRadius: `${adminTokens.radius.md}px`,
+                boxShadow: 'none',
+                '&:hover': { bgcolor: adminTokens.color.surfaceHover }
               }}
               onClick={() => handleActivityClick(activity)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleActivityClick(activity);
+                }
+              }}
             >
               <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
                   {activity.title}
                 </Typography>
                 {activity.user.profession && (
-                  <Chip label={activity.user.profession} size="small" sx={{ fontSize: '0.65rem', height: 18 }} />
+                  <StatusChip label={activity.user.profession} size="small" sx={{ fontSize: '0.65rem', height: 18 }} />
                 )}
                 {activity.status && (
-                  <Chip
-                    label={activity.status}
+                  <StatusChip
+                    status={activity.status}
                     size="small"
-                    color={
-                      activity.status === 'approved' || activity.status === 'active' || activity.status === 'paid' ? 'success' :
-                      activity.status === 'rejected' ? 'error' :
-                      activity.status === 'pending' ? 'warning' : 'default'
-                    }
                     sx={{ fontSize: '0.7rem', height: 18 }}
                   />
                 )}
@@ -457,7 +461,7 @@ useEffect(() => {
               <Typography variant="caption" color="text.secondary">
                 {activity.user.name}
               </Typography>
-            </Paper>
+            </MuiCard>
           </TimelineContent>
         </TimelineItem>
       ))}
@@ -465,8 +469,15 @@ useEffect(() => {
   );
 
   return (
-    <Card>
-      <CardContent>
+    <ThemeProvider theme={adminDarkTheme}>
+    <MuiCard
+      sx={{
+        border: `1px solid ${adminTokens.color.border}`,
+        borderRadius: `${adminTokens.radius.lg}px`,
+        boxShadow: '0 18px 36px rgba(0,0,0,0.30)',
+      }}
+    >
+      <CardContent sx={theming.getThemedCardSx()}>
         {!activityFeedEnabled && !pendingCountsEnabled ? (
           <Alert severity="info" sx={{ mb: 3, borderRadius: '18px' }}>
             Aktivitetsstrømmen er ikke live i production ennå. Panelet er derfor satt i passiv
@@ -491,17 +502,17 @@ useEffect(() => {
             
             <Stack direction="row" spacing={1}>
               {pendingCounts && pendingCounts.total > 0 && (
-                <Chip
+                <StatusChip
+                  tone="warning"
                   label={`${pendingCounts.total} pending`}
                   size="small"
-                  color="warning"
                   icon={<Notifications />}
                 />
               )}
               
               {isSupported && (
                 <Tooltip title="Push-varsler innstillinger">
-                  <IconButton size="small" onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
+                  <IconButton size="small" aria-label="Push-varsler innstillinger" onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
                     <Notifications />
                   </IconButton>
                 </Tooltip>
@@ -509,14 +520,14 @@ useEffect(() => {
               
               {enableExport && (
                 <Tooltip title="Export to CSV">
-                  <IconButton size="small" onClick={handleExportCSV}>
+                  <IconButton size="small" aria-label="Export to CSV" onClick={handleExportCSV}>
                     <FileDownload />
                   </IconButton>
                 </Tooltip>
               )}
               
               <Tooltip title="Refresh">
-                <IconButton size="small" onClick={handleRefresh}>
+                <IconButton size="small" aria-label="Refresh" onClick={handleRefresh}>
                   <Refresh />
                 </IconButton>
               </Tooltip>
@@ -528,6 +539,7 @@ useEffect(() => {
             <TextField
               size="small"
               placeholder="Search activities..."
+              aria-label="Søk i aktiviteter"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               InputProps={{
@@ -547,12 +559,12 @@ useEffect(() => {
                 exclusive
                 onChange={(_, newMode) => newMode && setViewMode(newMode)}
               >
-                <ToggleButton value="list">
+                <ToggleButton value="list" aria-label="Listevisning">
                   <Tooltip title="List View">
                     <ViewList fontSize="small" />
                   </Tooltip>
                 </ToggleButton>
-                <ToggleButton value="timeline">
+                <ToggleButton value="timeline" aria-label="Tidslinjevisning">
                   <Tooltip title="Timeline View">
                     <ViewTimeline fontSize="small" />
                   </Tooltip>
@@ -560,14 +572,14 @@ useEffect(() => {
               </ToggleButtonGroup>
             )}
             
-            <IconButton size="small" onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}>
+            <IconButton size="small" aria-label="Vis avanserte filtre" onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}>
               <FilterList />
             </IconButton>
           </Stack>
 
           {/* Advanced Filters (Collapsible) */}
           <Collapse in={showAdvancedFilters}>
-            <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+            <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: adminTokens.color.surface, border: `1px solid ${adminTokens.color.border}` }}>
               <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600}}>
                 Advanced Filters
               </Typography>
@@ -625,9 +637,9 @@ useEffect(() => {
                   </FormControl>
                 </Stack>
                 
-                <Button 
-                  size="small" 
-                  variant="outlined"
+                <AdminButton
+                  size="small"
+                  tone="secondary"
                   onClick={() => {
                     setSearchQuery('');
                     setStartDate('');
@@ -637,7 +649,7 @@ useEffect(() => {
                   }}
                 >
                   Clear Filters
-                </Button>
+                </AdminButton>
               </Stack>
             </Paper>
           </Collapse>
@@ -646,31 +658,31 @@ useEffect(() => {
           {pendingCounts && (
             <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
               {pendingCounts.inviteRequests > 0 && (
-                <Chip
+                <StatusChip
+                  tone="warning"
                   icon={<PersonAdd />}
                   label={`${pendingCounts.inviteRequests} invite requests`}
                   size="small"
-                  color="warning"
                   onClick={() => setLocation('/admin/invite-system')}
                   sx={{ cursor: 'pointer' }}
                 />
               )}
               {pendingCounts.prototypeFeedback > 0 && (
-                <Chip
+                <StatusChip
+                  tone="info"
                   icon={<Feedback />}
                   label={`${pendingCounts.prototypeFeedback} feedback items`}
                   size="small"
-                  color="info"
                   onClick={() => setLocation('/admin?tab=5')}
                   sx={{ cursor: 'pointer' }}
                 />
               )}
               {pendingCounts.bugReports > 0 && (
-                <Chip
+                <StatusChip
+                  tone="error"
                   icon={<BugReport />}
                   label={`${pendingCounts.bugReports} bug reports`}
                   size="small"
-                  color="error"
                   onClick={() => setLocation('/admin?tab=5')}
                   sx={{ cursor: 'pointer' }}
                 />
@@ -697,14 +709,14 @@ useEffect(() => {
             {/* Show More / View All */}
             {hasMore && (
               <Box sx={{ mt: 2, textAlign:'center' }}>
-                <Button
-                  variant="outlined"
+                <AdminButton
+                  tone="secondary"
                   size="small"
                   onClick={() => setLocation('/admin/activity-feed-full')}
                   endIcon={<ArrowForward />}
                 >
                   View All {total} Activities
-                </Button>
+                </AdminButton>
               </Box>
             )}
           </>
@@ -712,7 +724,7 @@ useEffect(() => {
       </CardContent>
 
       {/* Activity Details Dialog */}
-      <Dialog open={!!selectedActivity} onClose={() => setSelectedActivity(null)} maxWidth="sm" fullWidth>
+      <Dialog open={!!selectedActivity} onClose={() => setSelectedActivity(null)} maxWidth="sm" fullWidth fullScreen={useIsMobile()}>
         {selectedActivity && (
           <>
             <DialogTitle>
@@ -750,17 +762,17 @@ useEffect(() => {
               </Alert>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setSelectedActivity(null)}>Close</Button>
+              <AdminButton tone="ghost" onClick={() => setSelectedActivity(null)}>Close</AdminButton>
               {selectedActivity.actionUrl && (
-                <Button
-                  variant="contained"
+                <AdminButton
+                  tone="primary"
                   onClick={() => {
                     setLocation(selectedActivity.actionUrl!);
                     setSelectedActivity(null);
                   }}
                 >
                   View Details
-                </Button>
+                </AdminButton>
               )}
             </DialogActions>
           </>
@@ -768,7 +780,7 @@ useEffect(() => {
       </Dialog>
 
       {/* Push Notification Settings Dialog */}
-      <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth fullScreen={useIsMobile()}>
         <DialogTitle>Push-varsler innstillinger</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
@@ -776,9 +788,10 @@ useEffect(() => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+          <AdminButton tone="ghost" onClick={() => setPushSettingsOpen(false)}>Lukk</AdminButton>
         </DialogActions>
       </Dialog>
-    </Card>
+    </MuiCard>
+    </ThemeProvider>
   );
 }

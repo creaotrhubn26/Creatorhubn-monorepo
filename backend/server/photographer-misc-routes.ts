@@ -28,7 +28,7 @@ export function setupPhotographerMiscRoutes(
       }
     };
 
-    const [unreadMessages, newGallerySubmissions, pendingPrintOrders] = await Promise.all([
+    const [unreadMessages, newGallerySubmissions, pendingPrintOrders, recentDownloads] = await Promise.all([
       safeCount('unread_messages', async () => {
         const r = await pool.query(
           `SELECT COUNT(*)::int AS c
@@ -66,9 +66,20 @@ export function setupPhotographerMiscRoutes(
         );
         return Number(r.rows[0]?.c ?? 0);
       }),
+      // Klient-nedlastinger siste 7 dager (showcase) — varsler ellers kun på e-post
+      safeCount('recent_downloads', async () => {
+        const r = await pool.query(
+          `SELECT COUNT(*)::int AS c
+           FROM gallery_download_audit
+           WHERE photographer_id = $1
+             AND downloaded_at > NOW() - INTERVAL '7 days'`,
+          [photographerId],
+        );
+        return Number(r.rows[0]?.c ?? 0);
+      }),
     ]);
 
-    res.json({ unreadMessages, newGallerySubmissions, pendingPrintOrders });
+    res.json({ unreadMessages, newGallerySubmissions, pendingPrintOrders, recentDownloads });
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -150,8 +161,20 @@ export function setupPhotographerMiscRoutes(
         },
       });
     } catch (err) {
-      console.error('[photographer-settings] overview failed:', err);
-      res.status(500).json({ error: 'overview_failed' });
+      // Schema-drift skal ikke krasje settings-siden. Returner tom-shape
+      // (profile=null, alle counts=0, ingen integrasjoner) i stedet for 500.
+      console.warn('[photographer-settings] overview degraded:', (err as any)?.message || err);
+      res.json({
+        profile: null,
+        google: {
+          workspaceConnected: false,
+          driveConnected: false,
+          gmailConnected: false,
+          calendarConnected: false,
+        },
+        counts: { projects: 0, clients: 0, galleries: 0 },
+        integrations: { poweroffice: { connected: false, status: null } },
+      });
     }
   });
 
@@ -371,7 +394,7 @@ export function setupPhotographerMiscRoutes(
           message: 'Mangler Google Drive-tilgang. Koble til Google på nytt og godkjenn Drive-scope.',
         });
       }
-      res.status(500).json({ error: 'setup_failed', message: String(err?.message ?? '').slice(0, 200) });
+      res.status(500).json({ error: 'setup_failed', message: 'internal_error' });
     }
   });
   app.get("/api/photographer/worklog/summary", async (req, res) => {
@@ -379,8 +402,25 @@ export function setupPhotographerMiscRoutes(
     if (!session) return;
     const photographerId = session.userId;
 
+    // Defensiv: hvis project_time_tracking-tabellen ikke finnes eller
+    // projects-skjemaet har drift, returner tom data istedet for 500.
+    // Brukerens dashboard krasjer aldri på "ingen logger ennå".
+    const empty = {
+      totals: { weekHours: 0, monthHours: 0, totalHours: 0, avgPerDay: 0 },
+      perProject: [],
+      dailyLast14: [],
+    };
+
     try {
       await ensurePhotographerProjectsSchemaShared(pool);
+
+      // Bekreft at project_time_tracking finnes — ellers tom respons
+      const tableCheck = await pool.query(
+        `SELECT to_regclass('public.project_time_tracking') AS exists`,
+      );
+      if (!tableCheck.rows[0]?.exists) {
+        return res.json(empty);
+      }
 
       // Aggregert per prosjekt — denne uka + denne måneden + total
       const r = await pool.query(
@@ -458,8 +498,10 @@ export function setupPhotographerMiscRoutes(
         })),
       });
     } catch (err) {
-      console.error('[worklog-summary] failed:', err);
-      res.status(500).json({ error: 'summary_failed' });
+      // Logg, men returner 200 m/ tom-data — UI skal aldri vise 500-feil
+      // for "ingen arbeidslogg ennå". Schema-drift håndteres gracefully.
+      console.warn('[worklog-summary] degraded (returning empty):', (err as any)?.message || err);
+      res.json(empty);
     }
   });
 

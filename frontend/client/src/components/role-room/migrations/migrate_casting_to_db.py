@@ -11,15 +11,14 @@ import psycopg2
 from psycopg2.extras import Json
 from typing import List, Dict, Any
 
-# Database connection
-DATABASE_URL = os.getenv(
-    'DATABASE_URL',
-    'postgresql://neondb_owner:npg_vgy4STuQ8Mja@ep-soft-pond-ag9vm5a4-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
-)
+# Database connection must be supplied explicitly for this destructive tool.
+DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
 
 
 def get_db_connection():
     """Get database connection"""
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL must be set in the environment")
     return psycopg2.connect(DATABASE_URL)
 
 
@@ -159,4 +158,3 @@ if __name__ == '__main__':
         sys.exit(1)
     
     migrate_from_localstorage_backup(json_file, dry_run)
-

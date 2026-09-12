@@ -22,11 +22,9 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Chip,
-  CircularProgress,
   Alert,
   Button,
   IconButton,
@@ -36,8 +34,19 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  InputAdornment,
   Snackbar,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
+import {
+  AdminCard,
+  AdminButton,
+  AdminTableContainer,
+  AdminLoading,
+  adminTokens,
+  useIsMobile,
+} from './design-system';
 import {
   Refresh as RefreshIcon,
   CheckCircle as RotatedIcon,
@@ -45,6 +54,7 @@ import {
   Schedule as DueSoonIcon,
   Cancel as MissingIcon,
   HistoryToggleOff as NeverIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 
 type Status = 'overdue' | 'due_soon' | 'ok' | 'never_rotated';
@@ -83,7 +93,7 @@ const statusChip = (status: Status, days: number | null) => {
           icon={<OverdueIcon style={{ fontSize: 16 }} />}
           label={`Forfalt ${days != null ? `(${Math.abs(days)} dager)` : ''}`}
           size="small"
-          sx={{ bgcolor: '#fee2e2', color: '#991b1b', fontWeight: 700 }}
+          sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#fca5a5', fontWeight: 700 }}
         />
       );
     case 'due_soon':
@@ -92,7 +102,7 @@ const statusChip = (status: Status, days: number | null) => {
           icon={<DueSoonIcon style={{ fontSize: 16 }} />}
           label={`Snart (${days} dager)`}
           size="small"
-          sx={{ bgcolor: '#fef3c7', color: '#92400e', fontWeight: 700 }}
+          sx={{ bgcolor: 'rgba(245,158,11,0.18)', color: '#fcd34d', fontWeight: 700 }}
         />
       );
     case 'never_rotated':
@@ -101,7 +111,7 @@ const statusChip = (status: Status, days: number | null) => {
           icon={<NeverIcon style={{ fontSize: 16 }} />}
           label="Aldri rotert"
           size="small"
-          sx={{ bgcolor: '#e0e7ff', color: '#3730a3', fontWeight: 700 }}
+          sx={{ bgcolor: 'rgba(99,102,241,0.18)', color: '#a5b4fc', fontWeight: 700 }}
         />
       );
     default:
@@ -110,7 +120,7 @@ const statusChip = (status: Status, days: number | null) => {
           icon={<RotatedIcon style={{ fontSize: 16 }} />}
           label={`OK (${days} dager)`}
           size="small"
-          sx={{ bgcolor: '#dcfce7', color: '#166534', fontWeight: 700 }}
+          sx={{ bgcolor: 'rgba(34,197,94,0.18)', color: '#86efac', fontWeight: 700 }}
         />
       );
   }
@@ -118,12 +128,14 @@ const statusChip = (status: Status, days: number | null) => {
 
 export const SecretsRotationPanel: React.FC = () => {
   const [data, setData] = useState<RotationResponse | null>(null);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [markingDialog, setMarkingDialog] = useState<SecretRow | null>(null);
   const [markingNotes, setMarkingNotes] = useState('');
   const [marking, setMarking] = useState(false);
   const [toast, setToast] = useState<{ severity: 'success' | 'error'; msg: string } | null>(null);
+  const isMobile = useIsMobile();
 
   const fetchData = async () => {
     setLoading(true);
@@ -179,7 +191,8 @@ export const SecretsRotationPanel: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: 3, bgcolor: 'rgba(255,255,255,0.04)', minHeight: '100%' }}>
+    <ThemeProvider theme={adminDarkTheme}>
+    <Box sx={{ p: 3, bgcolor: adminTokens.color.surface, minHeight: '100%' }}>
       <Stack
         direction="row"
         justifyContent="space-between"
@@ -187,7 +200,7 @@ export const SecretsRotationPanel: React.FC = () => {
         sx={{ mb: 3 }}
       >
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 700 }}>
             Nøkkel-rotering
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -195,14 +208,14 @@ export const SecretsRotationPanel: React.FC = () => {
             har gjort selve rotasjonen i Stripe/Cloudflare/Render-dashboardet.
           </Typography>
         </Box>
-        <Button
-          variant="outlined"
+        <AdminButton
+          tone="ghost"
           startIcon={<RefreshIcon />}
           onClick={() => void fetchData()}
           disabled={loading}
         >
           Oppdater
-        </Button>
+        </AdminButton>
       </Stack>
 
       {error ? (
@@ -224,19 +237,19 @@ export const SecretsRotationPanel: React.FC = () => {
           <SummaryCard
             label="Forfalt"
             value={String(data.summary.overdue)}
-            color={data.summary.overdue > 0 ? '#dc2626' : '#9ca3af'}
+            color={data.summary.overdue > 0 ? '#dc2626' : 'rgba(255,255,255,0.5)'}
             icon={<OverdueIcon />}
           />
           <SummaryCard
             label="Snart forfalt"
             value={String(data.summary.dueSoon)}
-            color={data.summary.dueSoon > 0 ? '#f59e0b' : '#9ca3af'}
+            color={data.summary.dueSoon > 0 ? '#f59e0b' : 'rgba(255,255,255,0.5)'}
             icon={<DueSoonIcon />}
           />
           <SummaryCard
             label="Aldri rotert"
             value={String(data.summary.neverRotated)}
-            color={data.summary.neverRotated > 0 ? '#3730a3' : '#9ca3af'}
+            color={data.summary.neverRotated > 0 ? '#a5b4fc' : 'rgba(255,255,255,0.5)'}
             icon={<NeverIcon />}
           />
           <SummaryCard
@@ -248,19 +261,32 @@ export const SecretsRotationPanel: React.FC = () => {
           <SummaryCard
             label="Mangler i env"
             value={String(data.summary.missingFromEnv)}
-            color={data.summary.missingFromEnv > 0 ? '#9333ea' : '#9ca3af'}
+            color={data.summary.missingFromEnv > 0 ? '#9333ea' : 'rgba(255,255,255,0.5)'}
             icon={<MissingIcon />}
           />
         </Box>
       ) : null}
 
-      <Card sx={{ borderRadius: 2 }}>
-        <CardContent sx={{ p: 0 }}>
-          <TableContainer>
+      <AdminCard title="Sporede nøkler" disablePadding>
+          <Box sx={{ px: 2, pt: 2 }}>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Søk i nøkler …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
+          <AdminTableContainer ariaLabel="Sporede nøkler og rotasjonsstatus">
             {loading && !data ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-                <CircularProgress />
-              </Box>
+              <AdminLoading label="Laster rotation-status…" />
             ) : (
               <Table size="small">
                 <TableHead>
@@ -276,7 +302,15 @@ export const SecretsRotationPanel: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {data?.rows.map((row) => (
+                  {(Array.isArray(data?.rows) ? data.rows : [])
+                    .filter((row) =>
+                      [row.displayName, row.keyName, row.category]
+                        .filter(Boolean)
+                        .some((field) =>
+                          field.toLowerCase().includes(search.toLowerCase()),
+                        ),
+                    )
+                    .map((row) => (
                     <TableRow
                       key={row.keyName}
                       sx={{
@@ -370,33 +404,33 @@ export const SecretsRotationPanel: React.FC = () => {
                           <Chip
                             label="✓"
                             size="small"
-                            sx={{ bgcolor: '#dcfce7', color: '#166534' }}
+                            sx={{ bgcolor: 'rgba(34,197,94,0.18)', color: '#86efac' }}
                           />
                         ) : (
                           <Tooltip title="Env-vars mangler i Render — sjekk at navnet stemmer">
                             <Chip
                               label="✗"
                               size="small"
-                              sx={{ bgcolor: '#fee2e2', color: '#991b1b' }}
+                              sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#fca5a5' }}
                             />
                           </Tooltip>
                         )}
                       </TableCell>
                       <TableCell align="right">
-                        <Button
+                        <AdminButton
                           size="small"
-                          variant="outlined"
+                          tone="ghost"
                           onClick={() => {
                             setMarkingDialog(row);
                             setMarkingNotes('');
                           }}
                         >
                           Markér som rotert
-                        </Button>
+                        </AdminButton>
                       </TableCell>
                     </TableRow>
                   ))}
-                  {!data?.rows.length && !loading ? (
+                  {!(Array.isArray(data?.rows) ? data.rows : []).length && !loading ? (
                     <TableRow>
                       <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
                         <Typography color="text.secondary">
@@ -408,9 +442,8 @@ export const SecretsRotationPanel: React.FC = () => {
                 </TableBody>
               </Table>
             )}
-          </TableContainer>
-        </CardContent>
-      </Card>
+          </AdminTableContainer>
+      </AdminCard>
 
       {/* Mark-as-rotated dialog */}
       <Dialog
@@ -418,6 +451,7 @@ export const SecretsRotationPanel: React.FC = () => {
         onClose={() => setMarkingDialog(null)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Markér som rotert</DialogTitle>
         <DialogContent>
@@ -446,17 +480,17 @@ export const SecretsRotationPanel: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setMarkingDialog(null)} disabled={marking}>
+          <AdminButton tone="ghost" onClick={() => setMarkingDialog(null)} disabled={marking}>
             Avbryt
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => void markAsRotated()}
+            loading={marking}
             disabled={marking}
           >
-            {marking ? 'Lagrer…' : 'Bekreft rotering'}
-          </Button>
+            Bekreft rotering
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -473,6 +507,7 @@ export const SecretsRotationPanel: React.FC = () => {
         ) : undefined}
       </Snackbar>
     </Box>
+    </ThemeProvider>
   );
 };
 

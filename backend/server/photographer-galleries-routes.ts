@@ -36,6 +36,126 @@ export function setupPhotographerGalleriesRoutes(
     escapeHtml,
   } = deps;
 
+  /// Felles helper for å sende "galleriet ditt er klart"-mail til klient.
+  /// Brukt både av eksplisitt /notify-client og av /mark-complete-auto-
+  /// trigger (gap #3+#10 fra workflow-analyse: fotograf glemmer ofte
+  /// step 2 "send mail" etter "marker komplett" — vi auto-fyrer det nå).
+  ///
+  /// Returnerer { sent, reason } så caller kan logge eller bestemme om
+  /// gallery-state skal rulles tilbake (per nå: aldri rull tilbake —
+  /// mail er best-effort).
+  async function sendGalleryNotification(opts: {
+    galleryId: string;
+    photographerId: string;
+    customMessage?: string | null;
+    triggerKind: 'manual' | 'auto_on_complete';
+  }): Promise<{
+    sent: boolean;
+    reason: 'missing_email' | 'mailer_not_configured' | 'send_failed' | null;
+    recipient: string | null;
+    shareUrl: string | null;
+  }> {
+    const galleryQ = await pool.query(
+      `SELECT g.client_name, g.client_email, g.project_title, g.access_token,
+              g.gallery_settings,
+              u.first_name AS photographer_first, u.last_name AS photographer_last,
+              u.email AS photographer_email, u.company_name
+         FROM photographer_client_galleries g
+         LEFT JOIN users u ON u.id = g.photographer_id::varchar
+        WHERE g.id = $1 AND g.photographer_id = $2 LIMIT 1`,
+      [opts.galleryId, opts.photographerId],
+    );
+    if (!galleryQ.rows.length) {
+      return { sent: false, reason: 'send_failed', recipient: null, shareUrl: null };
+    }
+    const g = galleryQ.rows[0];
+    if (!g.client_email || !String(g.client_email).includes('@')) {
+      return { sent: false, reason: 'missing_email', recipient: null, shareUrl: null };
+    }
+
+    const shareUrl = buildGalleryShareUrl(g.access_token);
+    const photographerName = [g.photographer_first, g.photographer_last]
+      .filter(Boolean).join(' ') || g.company_name || 'Creatorhubn';
+
+    // Sjekk om galleriet er passordbeskyttet. Klienten må vite det
+    // FØR de klikker lenken så de ikke blir overrasket av en passord-
+    // prompt. Fotografen forventes å sende passordet i en separat
+    // kanal (SMS/Signal), ikke i samme mail.
+    const settings = (g.gallery_settings ?? {}) as Record<string, unknown>;
+    const isPasswordProtected = settings.requiresPassword === true
+      && typeof settings.passwordHash === 'string'
+      && (settings.passwordHash as string).length > 0;
+
+    const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || '').trim();
+    const mailPass = (process.env.GMAIL_APP_PASSWORD || '').trim().replace(/\s+/g, '');
+    if (!mailUser || !mailPass) {
+      return { sent: false, reason: 'mailer_not_configured', recipient: g.client_email, shareUrl };
+    }
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: mailUser, pass: mailPass },
+    });
+
+    const customMessage = opts.customMessage?.trim().slice(0, 2000) ?? null;
+    const passwordNoticeHtml = isPasswordProtected
+      ? `
+        <div style="margin:24px 0;padding:14px 18px;background:#fff7e6;border:1px solid #ffd591;border-radius:8px;">
+          <p style="margin:0;font-size:14px;color:#7a5c00;line-height:1.5;">
+            <strong>Galleriet er passordbeskyttet.</strong>
+            ${escapeHtml(photographerName)} skal ha sendt deg passordet i en separat melding
+            (SMS, Signal eller lignende). Du blir bedt om å taste det inn etter du klikker
+            "Åpne galleriet".
+          </p>
+        </div>
+      `
+      : '';
+    const html = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+        <h2 style="color:#1a1a1a;margin:0 0 16px;">Hei ${escapeHtml(g.client_name)},</h2>
+        <p style="font-size:15px;line-height:1.6;color:#333;">
+          ${customMessage
+            ? escapeHtml(customMessage)
+            : `Bildene fra <strong>${escapeHtml(g.project_title)}</strong> er klare. Klikk knappen under for å se galleriet ditt.`
+          }
+        </p>
+        ${passwordNoticeHtml}
+        <div style="margin:32px 0;text-align:center;">
+          <a href="${shareUrl}" style="display:inline-block;background:#ff8c00;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Åpne galleriet</a>
+        </div>
+        <p style="font-size:13px;color:#666;line-height:1.5;">
+          Eller kopier denne lenken: <br>
+          <a href="${shareUrl}" style="color:#1976d2;word-break:break-all;">${shareUrl}</a>
+        </p>
+        <hr style="border:none;border-top:1px solid #eee;margin:32px 0 16px;">
+        <p style="font-size:13px;color:#999;">
+          Hilsen ${escapeHtml(photographerName)}
+        </p>
+      </div>
+    `;
+
+    try {
+      await transporter.sendMail({
+        from: `"${photographerName}" <${mailUser}>`,
+        to: g.client_email,
+        replyTo: g.photographer_email || undefined,
+        subject: `Galleriet ditt fra "${g.project_title}" er klart`,
+        html,
+      });
+    } catch (err) {
+      console.error('[photographer-galleries] sendMail failed:', err);
+      return { sent: false, reason: 'send_failed', recipient: g.client_email, shareUrl };
+    }
+
+    recordAnalyticsEvent('gallery.notified', {
+      entityType: 'gallery',
+      entityId: opts.galleryId,
+      actorUserId: opts.photographerId,
+      metadata: { recipient: g.client_email, trigger: opts.triggerKind },
+    });
+    return { sent: true, reason: null, recipient: g.client_email, shareUrl };
+  }
+
   async function lookupDefaultPackageId(ownerUserId: string): Promise<string | null> {
     if (!ownerUserId) return null;
     try {
@@ -172,8 +292,10 @@ export function setupPhotographerGalleriesRoutes(
         }),
       });
     } catch (error) {
-      console.error("[photographer-galleries] list failed", error);
-      res.status(500).json({ error: "list_failed" });
+      // Schema-drift på korrelerte subqueries (pricing_packages, packages, projects)
+      // skal ikke krasje gallerilisten. Returner tom-shape istedet for 500.
+      console.warn("[photographer-galleries] list degraded:", (error as any)?.message || error);
+      res.json({ galleries: [] });
     }
   });
 
@@ -271,7 +393,7 @@ export function setupPhotographerGalleriesRoutes(
          WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      if (!owned.rows.length) return res.status(404).json({ error: "gallery_not_found" });
       const currentSettings = (owned.rows[0].gallery_settings ?? {}) as Record<string, unknown>;
       const next: Record<string, unknown> = { ...currentSettings };
 
@@ -490,7 +612,7 @@ export function setupPhotographerGalleriesRoutes(
          WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      if (!owned.rows.length) return res.status(404).json({ error: "gallery_not_found" });
       const row = owned.rows[0];
       const settings = (row.gallery_settings ?? {}) as Record<string, unknown>;
       const linkedProjectId = typeof settings.projectId === 'string' ? settings.projectId : null;
@@ -527,8 +649,8 @@ export function setupPhotographerGalleriesRoutes(
                    to_jsonb($2::text),
                    true
                  )
-             WHERE id = $1`,
-            [linkedProjectId, galleryId],
+             WHERE id = $1 AND user_id = $3`,
+            [linkedProjectId, galleryId, session.userId],
           );
           projectCallbackOk = (updateResult.rowCount ?? 0) > 0;
         } catch (projectErr) {
@@ -551,10 +673,31 @@ export function setupPhotographerGalleriesRoutes(
         });
       }
 
+      // Auto-send "galleriet ditt er klart"-mail (gap #3+#10 fra
+      // workflow-analyse: fotograf glemte ofte step 2 "trykk send mail"
+      // etter "marker komplett"). Fyres KUN ved ekte transition, ikke
+      // idempotent re-call, og er best-effort — feil blokkerer ikke
+      // mark-complete.
+      let autoNotifyResult: Awaited<ReturnType<typeof sendGalleryNotification>> | null = null;
+      if (!alreadyCompleted) {
+        try {
+          autoNotifyResult = await sendGalleryNotification({
+            galleryId,
+            photographerId: session.userId,
+            triggerKind: 'auto_on_complete',
+          });
+        } catch (notifyErr) {
+          console.warn('[gallery-complete] auto-notify failed (non-fatal):', notifyErr);
+        }
+      }
+
       return res.json({
         id: galleryId,
         status: 'completed',
         alreadyCompleted,
+        autoNotified: autoNotifyResult?.sent ?? false,
+        autoNotifyReason: autoNotifyResult?.reason ?? null,
+        autoNotifyRecipient: autoNotifyResult?.recipient ?? null,
         linkedProjectId,
         projectCallbackOk,
       });
@@ -607,7 +750,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE g.id = $1 AND g.photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (galleryQ.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+      if (!galleryQ.rows.length) return res.status(404).json({ error: 'gallery_not_found' });
       const g = galleryQ.rows[0];
 
       const imagesQ = await pool.query(
@@ -671,7 +814,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'gallery_not_found' });
 
       const [commentsQ, selectionsQ] = await Promise.all([
         pool.query(
@@ -763,7 +906,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      if (!owned.rows.length) return res.status(404).json({ error: "gallery_not_found" });
 
       // Bygg UPDATE-fragmenter dynamisk så vi bare oppdaterer feltene
       // som faktisk ble sendt inn.
@@ -805,6 +948,9 @@ export function setupPhotographerGalleriesRoutes(
 
   // POST /api/photographer/galleries/:id/notify-client — send share-URL på epost.
   // Body: { customMessage?: string }
+  // Per gap-analyse 2026-05-31: helper-funksjonen brukes også av
+  // /mark-complete for auto-trigger. Dette endepunktet beholdes for
+  // re-send + custom-message-bruk.
   app.post("/api/photographer/galleries/:id/notify-client", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
@@ -812,83 +958,26 @@ export function setupPhotographerGalleriesRoutes(
     if (!galleryId) return res.status(400).json({ error: 'gallery_id_required' });
     const customMessage = typeof req.body?.customMessage === 'string'
       ? req.body.customMessage.trim().slice(0, 2000) : null;
-
     try {
-      const galleryQ = await pool.query(
-        `SELECT g.client_name, g.client_email, g.project_title, g.access_token,
-                u.first_name AS photographer_first, u.last_name AS photographer_last,
-                u.email AS photographer_email, u.company_name
-           FROM photographer_client_galleries g
-           LEFT JOIN users u ON u.id = g.photographer_id::varchar
-          WHERE g.id = $1 AND g.photographer_id = $2 LIMIT 1`,
-        [galleryId, session.userId],
-      );
-      if (galleryQ.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
-      const g = galleryQ.rows[0];
-      if (!g.client_email || !String(g.client_email).includes('@')) {
-        return res.status(400).json({ error: 'invalid_client_email' });
-      }
-
-      const shareUrl = buildGalleryShareUrl(g.access_token);
-      const photographerName = [g.photographer_first, g.photographer_last]
-        .filter(Boolean).join(' ') || g.company_name || 'Creatorhubn';
-
-      // Reuse existing nodemailer-mønster (GMAIL_USER + GMAIL_APP_PASSWORD)
-      const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || '').trim();
-      const mailPass = (process.env.GMAIL_APP_PASSWORD || '').trim().replace(/\s+/g, '');
-      if (!mailUser || !mailPass) {
-        return res.status(503).json({
-          error: 'mailer_not_configured',
-          message: 'Sett GMAIL_USER + GMAIL_APP_PASSWORD i Render for å sende epost.',
-          shareUrl,
+      const result = await sendGalleryNotification({
+        galleryId,
+        photographerId: session.userId,
+        customMessage,
+        triggerKind: 'manual',
+      });
+      if (!result.sent) {
+        const status = result.reason === 'mailer_not_configured' ? 503
+          : result.reason === 'missing_email' ? 400
+          : 500;
+        return res.status(status).json({
+          error: result.reason ?? 'notify_failed',
+          message: result.reason === 'mailer_not_configured'
+            ? 'Sett GMAIL_USER + GMAIL_APP_PASSWORD i Render for å sende epost.'
+            : undefined,
+          shareUrl: result.shareUrl ?? undefined,
         });
       }
-
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user: mailUser, pass: mailPass },
-      });
-
-      const html = `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
-          <h2 style="color:#1a1a1a;margin:0 0 16px;">Hei ${escapeHtml(g.client_name)},</h2>
-          <p style="font-size:15px;line-height:1.6;color:#333;">
-            ${customMessage
-              ? escapeHtml(customMessage)
-              : `Bildene fra <strong>${escapeHtml(g.project_title)}</strong> er klare. Klikk knappen under for å se galleriet ditt.`
-            }
-          </p>
-          <div style="margin:32px 0;text-align:center;">
-            <a href="${shareUrl}" style="display:inline-block;background:#ff8c00;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;">Åpne galleriet</a>
-          </div>
-          <p style="font-size:13px;color:#666;line-height:1.5;">
-            Eller kopier denne lenken: <br>
-            <a href="${shareUrl}" style="color:#1976d2;word-break:break-all;">${shareUrl}</a>
-          </p>
-          <hr style="border:none;border-top:1px solid #eee;margin:32px 0 16px;">
-          <p style="font-size:13px;color:#999;">
-            Hilsen ${escapeHtml(photographerName)}
-          </p>
-        </div>
-      `;
-
-      await transporter.sendMail({
-        from: `"${photographerName}" <${mailUser}>`,
-        to: g.client_email,
-        replyTo: g.photographer_email || undefined,
-        subject: `Galleriet ditt fra "${g.project_title}" er klart`,
-        html,
-      });
-
-      // Logg som event
-      recordAnalyticsEvent('gallery.notified', {
-        entityType: 'gallery',
-        entityId: galleryId,
-        actorUserId: session.userId,
-        metadata: { recipient: g.client_email },
-      });
-
-      res.json({ sent: true, recipient: g.client_email, shareUrl });
+      res.json({ sent: true, recipient: result.recipient, shareUrl: result.shareUrl });
     } catch (err) {
       console.error('[photographer-galleries] notify-client failed:', err);
       res.status(500).json({ error: 'notify_failed' });
@@ -922,7 +1011,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'gallery_not_found' });
 
       if (contractId) {
         // Verifiser at fotografen eier kontrakten
@@ -930,7 +1019,7 @@ export function setupPhotographerGalleriesRoutes(
           `SELECT 1 FROM contracts WHERE id = $1 AND user_id = $2 LIMIT 1`,
           [contractId, session.userId],
         );
-        if (contractCheck.rowCount === 0) {
+        if (!contractCheck.rows.length) {
           return res.status(403).json({ error: 'contract_not_owned' });
         }
       }
@@ -964,7 +1053,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'gallery_not_found' });
       const g = owned.rows[0];
       const settings = (g.gallery_settings ?? {}) as Record<string, unknown>;
       const contractedImages = Math.max(0, Number(settings.contractedImages) || 0);
@@ -1135,7 +1224,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'gallery_not_found' });
 
       // Generér unique kode med opp til 5 forsøk
       let code = '';
@@ -1145,7 +1234,7 @@ export function setupPhotographerGalleriesRoutes(
           `SELECT 1 FROM gallery_access_codes WHERE code = $1 AND is_active = true LIMIT 1`,
           [candidate],
         );
-        if (exists.rowCount === 0) {
+        if (!exists.rows.length) {
           code = candidate;
           break;
         }
@@ -1193,7 +1282,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'gallery_not_found' });
 
       const r = await pool.query(
         `SELECT id, code, label, expires_at, max_uses, use_count,
@@ -1240,7 +1329,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'gallery_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'gallery_not_found' });
 
       const r = await pool.query(
         `UPDATE gallery_access_codes
@@ -1259,7 +1348,42 @@ export function setupPhotographerGalleriesRoutes(
   // GET /api/portal/lookup?code=XXXXXX — public-endepunkt for /portal-siden.
   // Validerer kode + returnerer access_token slik at frontend kan redirecte
   // til /client-gallery/:token. Ingen auth nødvendig.
+  //
+  // Kodene er korte (4–12 tegn) og dette er et uautentisert endepunkt, så en
+  // angriper kan ellers brute-force kode-rommet for å høste gyldige gallery
+  // access_tokens. Per-IP rate-limiter (in-memory, sliding window) kutter den
+  // vektoren uten å påvirke ekte klienter (som slår opp én kode).
+  const portalLookupHits = new Map<string, number[]>();
+  const PORTAL_LOOKUP_WINDOW_MS = 60_000;
+  const PORTAL_LOOKUP_MAX = 20;
+  const portalLookupRateLimited = (ip: string): boolean => {
+    const now = Date.now();
+    const prior = (portalLookupHits.get(ip) || []).filter(
+      (t) => now - t < PORTAL_LOOKUP_WINDOW_MS,
+    );
+    prior.push(now);
+    portalLookupHits.set(ip, prior);
+    // Opportunistisk opprydding så mappet ikke vokser ubegrenset.
+    if (portalLookupHits.size > 5000) {
+      for (const [key, hits] of portalLookupHits) {
+        if (hits.every((t) => now - t >= PORTAL_LOOKUP_WINDOW_MS)) {
+          portalLookupHits.delete(key);
+        }
+      }
+    }
+    return prior.length > PORTAL_LOOKUP_MAX;
+  };
+
   app.get("/api/portal/lookup", async (req, res) => {
+    const clientIp = String(
+      req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+    )
+      .split(',')[0]
+      .trim();
+    if (portalLookupRateLimited(clientIp)) {
+      return res.status(429).json({ error: 'rate_limited' });
+    }
+
     const code = String(req.query?.code || '').trim().toUpperCase();
     if (!code || code.length < 4 || code.length > 12) {
       return res.status(400).json({ error: 'invalid_code_format' });
@@ -1276,7 +1400,7 @@ export function setupPhotographerGalleriesRoutes(
           LIMIT 1`,
         [code],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: 'code_not_found' });
+      if (!r.rows.length) return res.status(404).json({ error: 'code_not_found' });
       const row = r.rows[0];
 
       // Sjekk utløp
@@ -1438,7 +1562,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      if (!owned.rows.length) return res.status(404).json({ error: "gallery_not_found" });
       await ensureVideoTimecodeCommentsSchema();
       const rows = await pool.query(
         `SELECT id, chapter_id, timecode_sec, end_timecode_sec,
@@ -1499,7 +1623,7 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      if (!owned.rows.length) return res.status(404).json({ error: "gallery_not_found" });
       const updated = await pool.query(
         `UPDATE video_timecode_comments
             SET status = $1,
@@ -1537,13 +1661,13 @@ export function setupPhotographerGalleriesRoutes(
           WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      if (!owned.rows.length) return res.status(404).json({ error: "gallery_not_found" });
       const parent = await pool.query(
         `SELECT chapter_id, timecode_sec FROM video_timecode_comments
           WHERE id = $1 AND gallery_id = $2 LIMIT 1`,
         [parentId, galleryId],
       );
-      if (parent.rowCount === 0) return res.status(404).json({ error: "parent_not_found" });
+      if (!parent.rows.length) return res.status(404).json({ error: "parent_not_found" });
       const { chapter_id, timecode_sec } = parent.rows[0];
       const inserted = await pool.query(
         `INSERT INTO video_timecode_comments
@@ -1579,7 +1703,7 @@ export function setupPhotographerGalleriesRoutes(
          WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
         [galleryId, session.userId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: "gallery_not_found" });
+      if (!owned.rows.length) return res.status(404).json({ error: "gallery_not_found" });
 
       const result = await pool.query(
         `(SELECT 'comment' AS event_type, id::text, image_id::text, client_name, client_email,

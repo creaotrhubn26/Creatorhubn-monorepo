@@ -17,11 +17,17 @@
  *   - Returnerer rapport som JSON
  */
 
-import type { Express, Request, Response, NextFunction } from "express";
+import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import Stripe from "stripe";
 
-type RequireAdminSession = (req: Request, res: Response, next: NextFunction) => void;
+// Guard-signatur (matcher den ekte requireAdminSession i index.ts): 2 args,
+// returnerer session-objektet eller null (sender selv 401/403). Ikke en
+// (req,res,next)=>void-middleware — koden bruker den som `if (!guard(req,res)) return`.
+type RequireAdminSession = (
+  req: Request,
+  res: Response,
+) => { userId: string; email: string; name: string; role: string; loginAt: string } | null;
 
 let stripeClient: Stripe | null = null;
 const getStripe = (): Stripe | null => {
@@ -237,14 +243,17 @@ export function registerStripePriceDriftRoutes(
   // ─── Admin: manuell trigger fra marketplace-UI ─────────────────
   app.post(
     '/api/admin/marketplace/stripe-price-drift/check',
-    requireAdminSession,
-    async (_req, res) => {
+    async (req, res) => {
+      // requireAdminSession is a guard (returns session | null and sends
+      // 401/403) — NOT Express middleware. Used as middleware it never calls
+      // next(), so the request hangs for a valid admin. Call it in-handler.
+      if (!requireAdminSession(req, res)) return;
       try {
         const report = await runPriceDriftCheck(pool);
         res.json({ success: true, report });
       } catch (err: any) {
         console.error('[stripe-drift admin] failed:', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -252,8 +261,8 @@ export function registerStripePriceDriftRoutes(
   // ─── Admin: hent siste lagrede drift-rapport (fra notifications) ─
   app.get(
     '/api/admin/marketplace/stripe-price-drift/history',
-    requireAdminSession,
-    async (_req, res) => {
+    async (req, res) => {
+      if (!requireAdminSession(req, res)) return;
       try {
         const result = await pool.query(`
           SELECT id, title, message, severity, created_at, status
@@ -265,7 +274,7 @@ export function registerStripePriceDriftRoutes(
         res.json({ success: true, data: result.rows });
       } catch (err: any) {
         if (err?.code === '42P01') return res.json({ success: true, data: [] });
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );

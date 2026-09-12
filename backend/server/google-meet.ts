@@ -255,49 +255,7 @@ export async function createGoogleMeetLink(
       preferredUserId,
       options?.preferredOauthApps,
     );
-    const oauthClient = new google.auth.OAuth2(
-      credentialSource.clientId,
-      credentialSource.clientSecret,
-      credentialSource.redirectUri ?? 'http://localhost:5050/api/creatorhub/google/oauth/callback',
-    );
-
-    const tokenSeed: {
-      refresh_token?: string;
-      access_token?: string;
-      expiry_date?: number;
-    } = {};
-
-    if (credentialSource.refreshToken) {
-      tokenSeed.refresh_token = credentialSource.refreshToken;
-    }
-    if (credentialSource.accessToken) {
-      tokenSeed.access_token = credentialSource.accessToken;
-    }
-    if (credentialSource.expiryDate) {
-      const expiryTimestamp = Date.parse(credentialSource.expiryDate);
-      if (Number.isFinite(expiryTimestamp)) {
-        tokenSeed.expiry_date = expiryTimestamp;
-      }
-    }
-
-    oauthClient.setCredentials(tokenSeed);
-
-    if (tokenSeed.refresh_token) {
-      if (shouldForceGoogleAccessTokenRefresh(tokenSeed.expiry_date)) {
-        oauthClient.setCredentials({ refresh_token: tokenSeed.refresh_token });
-        // Slice 9X.80 — wrapper markerer needs_reauth ved invalid_grant
-        const { refreshAccessTokenWithStateTracking } = await import('./google-oauth-shared.js');
-        await refreshAccessTokenWithStateTracking(oauthClient, {
-          pool,
-          userId: (credentialSource as any).userId ?? preferredUserId ?? null,
-          context: 'google_meet_refresh',
-        });
-      } else {
-        await oauthClient.getAccessToken();
-      }
-    } else if (!tokenSeed.access_token) {
-      throw new Error('Google-tilkoblingen mangler refresh-token og access-token.');
-    }
+    const oauthClient = await buildWorkspaceOauthClient(pool, credentialSource, preferredUserId);
 
     const { startDateTime, endDateTime, timeZone } = resolveMeetingWindow(payload);
     const attendees = normalizeAttendees(payload);
@@ -366,6 +324,231 @@ export async function createGoogleMeetLink(
       calendarEventId: readStringValue(eventData.id),
       webViewUrl: readStringValue(eventData.htmlLink),
     };
+  } catch (error) {
+    throw new Error(normalizeGoogleMeetError(error));
+  }
+}
+
+type WorkspaceCredentialSource = Awaited<ReturnType<typeof resolveRoleRoomGoogleCredentialSource>>;
+
+/**
+ * Bygger en autorisert Google OAuth2-klient fra en lagret Workspace-tilkobling
+ * (samme token-seed/refresh-logikk som createGoogleMeetLink brukte inline).
+ * Delt av Meet-opptak-import + Apps Script-automatisering.
+ */
+async function buildWorkspaceOauthClient(
+  pool: Pool,
+  credentialSource: WorkspaceCredentialSource,
+  preferredUserId?: string | null,
+) {
+  const oauthClient = new google.auth.OAuth2(
+    credentialSource.clientId,
+    credentialSource.clientSecret,
+    credentialSource.redirectUri ?? 'http://localhost:5050/api/creatorhub/google/oauth/callback',
+  );
+
+  const tokenSeed: {
+    refresh_token?: string;
+    access_token?: string;
+    expiry_date?: number;
+  } = {};
+
+  if (credentialSource.refreshToken) {
+    tokenSeed.refresh_token = credentialSource.refreshToken;
+  }
+  if (credentialSource.accessToken) {
+    tokenSeed.access_token = credentialSource.accessToken;
+  }
+  if (credentialSource.expiryDate) {
+    const expiryTimestamp = Date.parse(credentialSource.expiryDate);
+    if (Number.isFinite(expiryTimestamp)) {
+      tokenSeed.expiry_date = expiryTimestamp;
+    }
+  }
+
+  oauthClient.setCredentials(tokenSeed);
+
+  if (tokenSeed.refresh_token) {
+    if (shouldForceGoogleAccessTokenRefresh(tokenSeed.expiry_date)) {
+      oauthClient.setCredentials({ refresh_token: tokenSeed.refresh_token });
+      // Slice 9X.80 — wrapper markerer needs_reauth ved invalid_grant
+      const { refreshAccessTokenWithStateTracking } = await import('./google-oauth-shared.js');
+      await refreshAccessTokenWithStateTracking(oauthClient, {
+        pool,
+        userId: credentialSource.userId ?? preferredUserId ?? null,
+        context: 'google_meet_refresh',
+      });
+    } else {
+      await oauthClient.getAccessToken();
+    }
+  } else if (!tokenSeed.access_token) {
+    throw new Error('Google-tilkoblingen mangler refresh-token og access-token.');
+  }
+
+  return oauthClient;
+}
+
+/**
+ * Henter en autorisert Workspace-klient for en gitt bruker. Eksportert så andre
+ * Google-Workspace-funksjoner (f.eks. Apps Script-automatisering) kan gjenbruke
+ * samme tilkobling/refresh-håndtering.
+ */
+export async function getAuthorizedWorkspaceClient(
+  pool: Pool,
+  preferredUserId?: string | null,
+  options?: { preferredOauthApps?: GoogleWorkspaceOauthApp[] },
+) {
+  const credentialSource = await resolveRoleRoomGoogleCredentialSource(
+    pool,
+    preferredUserId,
+    options?.preferredOauthApps,
+  );
+  return buildWorkspaceOauthClient(pool, credentialSource, preferredUserId);
+}
+
+export type MeetArtifact = {
+  type: 'recording' | 'transcript';
+  driveFileId: string | null;
+  name: string | null;
+  webViewLink: string | null;
+  conferenceRecord: string | null;
+  startTime: string | null;
+  endTime: string | null;
+};
+
+/** Trekker ut Meet-koden (f.eks. "abc-defg-hij") fra en Meet-lenke. */
+function extractMeetingCodeFromLink(link?: string | null): string | null {
+  const value = readStringValue(link);
+  if (!value) {
+    return null;
+  }
+  const match = value.match(/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
+/**
+ * Leser en Meet-generert Drive-fil (opptak/transkript). Dette er hvor
+ * `drive.meet.readonly` faktisk utøves — lesetilgang til filer Google Meet
+ * la i Drive.
+ */
+async function readMeetDriveFile(
+  driveApi: ReturnType<typeof google.drive>,
+  fileId: string,
+): Promise<{ name: string | null; webViewLink: string | null } | null> {
+  try {
+    const file = await driveApi.files.get({
+      fileId,
+      fields: 'id,name,webViewLink,mimeType,createdTime',
+      supportsAllDrives: true,
+    });
+    return {
+      name: readStringValue(file?.data?.name),
+      webViewLink: readStringValue(file?.data?.webViewLink),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Lister opptak + transkripsjoner for et Google Meet-møte og fester dem til
+ * Drive-filene. Bruker Meet REST API v2 (`meetings.space.readonly`) for å finne
+ * conferenceRecords/recordings/transcripts, og Drive (`drive.meet.readonly`) for
+ * å lese selve de Meet-genererte filene.
+ */
+export async function listMeetArtifactsForMeeting(
+  pool: Pool,
+  params: {
+    meetingCode?: string | null;
+    meetLink?: string | null;
+    startTime?: string | null;
+  },
+  preferredUserId?: string | null,
+  options?: { preferredOauthApps?: GoogleWorkspaceOauthApp[] },
+): Promise<{ success: true; meetingCode: string; artifacts: MeetArtifact[] }> {
+  try {
+    const credentialSource = await resolveRoleRoomGoogleCredentialSource(
+      pool,
+      preferredUserId,
+      options?.preferredOauthApps,
+    );
+    const oauthClient = await buildWorkspaceOauthClient(pool, credentialSource, preferredUserId);
+
+    const meetingCode =
+      readStringValue(params.meetingCode) ?? extractMeetingCodeFromLink(params.meetLink);
+    if (!meetingCode) {
+      throw new Error('Mangler Meet-kode eller -lenke for å finne opptak.');
+    }
+
+    // Meet REST API v2 — krever meetings.space.readonly.
+    const meetApi = (google as any).meet({ version: 'v2', auth: oauthClient });
+    // Drive-klient som leser Meet-genererte filer — krever drive.meet.readonly.
+    const driveApi = google.drive({ version: 'v3', auth: oauthClient });
+
+    const filterParts = [`space.meeting_code = "${meetingCode}"`];
+    const startTime = readStringValue(params.startTime);
+    if (startTime) {
+      const parsed = Date.parse(startTime);
+      if (Number.isFinite(parsed)) {
+        filterParts.push(`start_time >= "${new Date(parsed).toISOString()}"`);
+      }
+    }
+
+    const conferenceResponse = await meetApi.conferenceRecords.list({
+      filter: filterParts.join(' AND '),
+      pageSize: 20,
+    });
+    const records: any[] = Array.isArray(conferenceResponse?.data?.conferenceRecords)
+      ? conferenceResponse.data.conferenceRecords
+      : [];
+
+    const artifacts: MeetArtifact[] = [];
+    for (const record of records) {
+      const recordName = readStringValue(record?.name);
+      if (!recordName) {
+        continue;
+      }
+
+      try {
+        const recordingsResponse = await meetApi.conferenceRecords.recordings.list({ parent: recordName });
+        for (const recording of (recordingsResponse?.data?.recordings ?? []) as any[]) {
+          const fileId = readStringValue(recording?.driveDestination?.file);
+          const meta = fileId ? await readMeetDriveFile(driveApi, fileId) : null;
+          artifacts.push({
+            type: 'recording',
+            driveFileId: fileId,
+            name: meta?.name ?? null,
+            webViewLink: meta?.webViewLink ?? readStringValue(recording?.driveDestination?.exportUri),
+            conferenceRecord: recordName,
+            startTime: readStringValue(recording?.startTime),
+            endTime: readStringValue(recording?.endTime),
+          });
+        }
+      } catch {
+        // Møtet kan mangle opptak — hopp over.
+      }
+
+      try {
+        const transcriptsResponse = await meetApi.conferenceRecords.transcripts.list({ parent: recordName });
+        for (const transcript of (transcriptsResponse?.data?.transcripts ?? []) as any[]) {
+          const docId = readStringValue(transcript?.docsDestination?.document);
+          const meta = docId ? await readMeetDriveFile(driveApi, docId) : null;
+          artifacts.push({
+            type: 'transcript',
+            driveFileId: docId,
+            name: meta?.name ?? null,
+            webViewLink: meta?.webViewLink ?? readStringValue(transcript?.docsDestination?.exportUri),
+            conferenceRecord: recordName,
+            startTime: readStringValue(transcript?.startTime),
+            endTime: readStringValue(transcript?.endTime),
+          });
+        }
+      } catch {
+        // Møtet kan mangle transkript — hopp over.
+      }
+    }
+
+    return { success: true, meetingCode, artifacts };
   } catch (error) {
     throw new Error(normalizeGoogleMeetError(error));
   }

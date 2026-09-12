@@ -19,6 +19,11 @@ import {
   Typography,
   Divider,
   Stack,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import { useDynamicProfessions } from '../../universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
@@ -132,6 +137,12 @@ export const ContextualActionBar: React.FC<ContextualActionBarProps> = ({
   onUpdateInventory
 }) => {
   const [moreMenuAnchor, setMoreMenuAnchor] = React.useState<null | HTMLElement>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState(false);
+
+  const requestDelete = () => {
+    if (!onDelete) return;
+    setConfirmDeleteOpen(true);
+  };
 
   // Profession system hooks
   const { professionConfigs, getUserProfessionColor } = useDynamicProfessions();
@@ -153,7 +164,7 @@ export const ContextualActionBar: React.FC<ContextualActionBarProps> = ({
           { label: 'Enhance', icon: <AutoFixHigh />, onClick: onEnhance, color: '#FF6B35' },
           { label: 'Watermark', icon: <Copyright />, onClick: onWatermark, color: '#FF8C00' },
           { label: 'Download', icon: <CloudDownload />, onClick: onDownload, color: '#4CAF50' },
-          { label: 'Delete', icon: <Delete />, onClick: onDelete, color: '#F44336' }
+          { label: 'Delete', icon: <Delete />, onClick: requestDelete, color: '#F44336' }
         ];
       
       case 'videographer':
@@ -455,6 +466,48 @@ export const ContextualActionBar: React.FC<ContextualActionBarProps> = ({
           }
         `}
       </style>
+
+      <Dialog
+        open={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        PaperProps={{
+          sx: {
+            bgcolor: '#06080d',
+            color: '#edf0f7',
+            border: '1px solid rgba(244, 67, 54, 0.45)',
+          },
+        }}
+      >
+        <DialogTitle sx={{ color: '#F44336' }}>
+          Slette {selectedCount} element{selectedCount === 1 ? '' : 'er'}?
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ color: 'rgba(255,255,255,0.8)' }}>
+            Dette fjerner {selectedCount} valgt{selectedCount === 1 ? '' : 'e'} element
+            {selectedCount === 1 ? '' : 'er'} fra showcase. Handlingen kan ikke angres.
+            {selectedCount > 10 && ' Sjekk at du faktisk har valgt riktig før du fortsetter.'}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setConfirmDeleteOpen(false)}
+            sx={{ color: 'rgba(255,255,255,0.7)' }}
+          >
+            Avbryt
+          </Button>
+          <Button
+            onClick={() => {
+              setConfirmDeleteOpen(false);
+              onDelete?.();
+            }}
+            color="error"
+            variant="contained"
+            startIcon={<Delete />}
+          >
+            Slett {selectedCount}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

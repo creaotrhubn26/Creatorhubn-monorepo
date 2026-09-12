@@ -2,10 +2,12 @@ import express from "express";
 import type { Pool } from "pg";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type Stripe from "stripe";
+import type sharpFactory from "sharp";
 import { createRequire } from "module";
 import * as schema from "../migrations/schema.js";
 import { broadcastUserEvent } from "./realtime-user-events.js";
 import { recordProjectChange } from "./project-change-log.js";
+import { updateAssetLabels } from "./capture-assets-service.js";
 import {
   fetchClientGalleryByAccessToken,
   listClientGalleryImages,
@@ -76,6 +78,65 @@ export interface ClientGalleryRoutesDeps {
   ) => Promise<void>;
   getCreatorHubStripeClient: () => Stripe | null;
   getActiveSessionFromRequest: (req: express.Request) => any;
+}
+
+/// Sender bekreftelses-e-post til KLIENT etter at de har submittet
+/// utvalg. Tidligere fikk kun fotografen mail — klient satt igjen
+/// uten kvittering, undret om submit faktisk gikk gjennom, og hadde
+/// ingen lenke å gå tilbake til.
+///
+/// Best-effort: e-post-feil aborter ikke submit-flowen, vi bare
+/// console.warn'er. SMTP-konfigurasjon brukes via samme dynamiske
+/// import som photographer-notify (casting-reminder-sender).
+async function sendClientSelectionReceivedMail(opts: {
+  clientEmail: string;
+  clientName: string;
+  projectTitle: string;
+  favCount: number;
+  galleryUrl: string;
+  totalAmountText?: string | null;
+}): Promise<void> {
+  try {
+    const { sendEmail } = await import('./casting-reminder-sender.js').catch(() => ({ sendEmail: null as any }));
+    if (!sendEmail) return;
+    const greeting = opts.clientName.trim() || 'Hei';
+    const itemWord = opts.favCount === 1 ? 'bilde' : 'bilder';
+    const subject = `Vi har mottatt valget ditt fra "${opts.projectTitle}"`;
+    const extraLine = opts.totalAmountText
+      ? `<p style="margin: 12px 0; font-size: 14px;">${opts.totalAmountText}</p>`
+      : '';
+    const html = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
+        <h2 style="color: #1a1a1a; margin: 0 0 16px;">${greeting},</h2>
+        <p style="font-size: 15px; line-height: 1.6; color: #333;">
+          Vi har mottatt valget ditt på <strong>${opts.favCount} ${itemWord}</strong>
+          fra galleriet "<strong>${opts.projectTitle}</strong>". Fotografen får
+          beskjed automatisk og kommer tilbake til deg innen kort tid.
+        </p>
+        ${extraLine}
+        <p style="font-size: 14px; color: #555; line-height: 1.6;">
+          Du kan fortsatt åpne galleriet og endre valget ditt så lenge fotografen
+          ikke har låst utvalget. Lenken er den samme:
+        </p>
+        <div style="margin: 24px 0; text-align: center;">
+          <a href="${opts.galleryUrl}" style="display: inline-block; background: #1976d2; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Åpne galleriet</a>
+        </div>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0 16px;">
+        <p style="font-size: 13px; color: #999;">
+          Hilsen Creatorhub Norge
+        </p>
+      </div>
+    `;
+    const text = `${greeting},\n\nVi har mottatt valget ditt på ${opts.favCount} ${itemWord} fra "${opts.projectTitle}". Fotografen får beskjed og kommer tilbake til deg.\n\nÅpne galleriet: ${opts.galleryUrl}`;
+    await sendEmail({
+      to: opts.clientEmail,
+      subject,
+      html,
+      text,
+    });
+  } catch (err) {
+    console.warn('[client-gallery] client-confirmation send failed:', err);
+  }
 }
 
 export function setupClientGalleryRoutes(
@@ -274,10 +335,31 @@ export function setupClientGalleryRoutes(
         console.warn('[client-gallery] profession/branding lookup failed', lookupErr);
       }
 
+      // «Nye bilder»-signal til viewer-banneret: bilder lagt til ETTER at
+      // galleriet ble opprettet (så første levering ikke maser) og innen siste
+      // 7 dager (så gamle re-leveringer ikke nager for alltid). Tidsbasert
+      // approksimasjon — ingen per-klient «sett»-sporing.
+      let recentlyAddedCount = 0;
+      try {
+        const rc = await pool.query(
+          `SELECT COUNT(*)::int AS n FROM client_gallery_images
+             WHERE gallery_id = $1
+               AND created_at > $2::timestamptz + INTERVAL '2 minutes'
+               AND created_at > NOW() - INTERVAL '7 days'`,
+          [gallery.id, gallery.createdAt],
+        );
+        recentlyAddedCount = rc.rows[0]?.n ?? 0;
+      } catch (err) {
+        console.warn('[client-gallery] recentlyAddedCount failed', err);
+      }
+
       return res.json({
         id: gallery.id,
         clientName: gallery.clientName,
-        clientEmail: gallery.clientEmail,
+        recentlyAddedCount,
+        // Ikke lek klientens e-post til en passord-beskyttet lenke FØR passordet
+        // er tastet — access-tokenet alene skal ikke avsløre klient-PII.
+        clientEmail: requiresPassword ? null : gallery.clientEmail,
         projectTitle: gallery.projectTitle,
         status: gallery.status,
         createdAt: gallery.createdAt,
@@ -805,48 +887,49 @@ export function setupClientGalleryRoutes(
       }
       const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
       if (!gallery) return res.status(404).json({ error: "not_found" });
-      // Upsert by (gallery, image, client_email) so each repeat click just
-      // toggles the row's selectionType rather than piling up duplicates.
-      await pool.query(
-        `INSERT INTO client_image_selections (
-           gallery_id, image_id, client_email, selection_type, priority, client_notes, created_at, updated_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-         ON CONFLICT (gallery_id, image_id, client_email)
-         DO UPDATE SET
-           selection_type = EXCLUDED.selection_type,
-           priority       = EXCLUDED.priority,
-           client_notes   = COALESCE(EXCLUDED.client_notes, client_image_selections.client_notes),
-           updated_at     = NOW()`,
-        [gallery.id, imageId, clientEmail || gallery.clientEmail, selectionType, priority, clientNotes],
-      ).catch(async (err) => {
-        // No unique constraint yet on (gallery_id, image_id, client_email)?
-        // Fall back to a manual upsert so a fresh DB still works.
-        if (String(err?.message || "").includes("ON CONFLICT")) {
-          const existing = await pool.query(
-            `SELECT id FROM client_image_selections
-             WHERE gallery_id = $1 AND image_id = $2 AND client_email = $3 LIMIT 1`,
-            [gallery.id, imageId, clientEmail || gallery.clientEmail],
-          );
-          if (existing.rowCount && existing.rows[0]) {
-            await pool.query(
-              `UPDATE client_image_selections
-               SET selection_type = $1, priority = $2,
-                   client_notes = COALESCE($3, client_notes), updated_at = NOW()
-               WHERE id = $4`,
-              [selectionType, priority, clientNotes, existing.rows[0].id],
-            );
-          } else {
-            await pool.query(
-              `INSERT INTO client_image_selections (
-                 gallery_id, image_id, client_email, selection_type, priority, client_notes
-               ) VALUES ($1, $2, $3, $4, $5, $6)`,
-              [gallery.id, imageId, clientEmail || gallery.clientEmail, selectionType, priority, clientNotes],
-            );
-          }
-          return;
-        }
-        throw err;
-      });
+
+      // Multi-round: hver runde har sin egen selections-rad så Fredrik
+      // kan sammenligne runde 1 vs runde 2. Round leses fra gallery_
+      // settings.proofingRound (default 1, oppdateres av /start-new-round).
+      // Manual upsert keyed på (gallery, image, email, round) for å unngå
+      // ON CONFLICT-constraint som ikke nødvendigvis er installert.
+      const currentRound = Number(
+        (access.settings as any)?.proofingRound ?? 1,
+      ) || 1;
+      try {
+        await pool.query(
+          `ALTER TABLE client_image_selections
+             ADD COLUMN IF NOT EXISTS proofing_round INTEGER DEFAULT 1`,
+        );
+      } catch { /* idempotent */ }
+      const effectiveEmail = clientEmail || gallery.clientEmail;
+      const existing = await pool.query(
+        `SELECT id FROM client_image_selections
+          WHERE gallery_id = $1 AND image_id = $2 AND client_email = $3
+            AND COALESCE(proofing_round, 1) = $4
+          LIMIT 1`,
+        [gallery.id, imageId, effectiveEmail, currentRound],
+      );
+      if (existing.rowCount && existing.rows[0]) {
+        await pool.query(
+          `UPDATE client_image_selections
+             SET selection_type = $1, priority = $2,
+                 client_notes = COALESCE($3, client_notes), updated_at = NOW()
+           WHERE id = $4`,
+          [selectionType, priority, clientNotes, existing.rows[0].id],
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO client_image_selections (
+             gallery_id, image_id, client_email, selection_type, priority,
+             client_notes, proofing_round, created_at, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+          [
+            gallery.id, imageId, effectiveEmail, selectionType, priority,
+            clientNotes, currentRound,
+          ],
+        );
+      }
 
       // Push a realtime event to the photographer's connected clients
       // (iPad + any open tabs) AND persist to the project change-log
@@ -867,6 +950,23 @@ export function setupClientGalleryRoutes(
           });
         } catch (err) {
           console.warn("[client-gallery] broadcast asset.hearted failed", err);
+        }
+        // Klient-samarbeidende culling: et hjerte i galleriet auto-flagger det
+        // koblede capture-asset som keeper (flaggedForClient) — så fotografens
+        // pick-filter + samme-dags levering plukker det opp uten manuelt steg.
+        try {
+          const imgRow = await pool.query(
+            `SELECT image_metadata FROM client_gallery_images WHERE id = $1 LIMIT 1`,
+            [imageId],
+          );
+          const captureAssetId = imgRow.rows[0]?.image_metadata?.captureAssetId;
+          if (captureAssetId) {
+            await updateAssetLabels(db as unknown as Parameters<typeof updateAssetLabels>[0], gallery.photographerId, String(captureAssetId), {
+              flaggedForClient: hearted,
+            });
+          }
+        } catch (err) {
+          console.warn("[client-gallery] flaggedForClient sync failed", err);
         }
         if (gallery.projectId) {
           try {
@@ -907,14 +1007,35 @@ export function setupClientGalleryRoutes(
       }
       const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
       if (!gallery) return res.status(404).json({ error: "not_found" });
-      const result = await pool.query(
-        `SELECT id, image_id, client_email, selection_type, priority, client_notes, updated_at
-         FROM client_image_selections WHERE gallery_id = $1
-         ORDER BY updated_at DESC`,
-        [gallery.id],
-      );
+      // proofing_round-kolonnen kan mangle på galler-DB-er som aldri
+      // har sett en multi-round flow — bruk COALESCE for å degradere
+      // pent til round=1 hvis kolonnen ikke fins ennå.
+      const currentRound = Number(
+        (access.settings as any)?.proofingRound ?? 1,
+      ) || 1;
+      let result;
+      try {
+        result = await pool.query(
+          `SELECT id, image_id, client_email, selection_type, priority,
+                  client_notes, updated_at,
+                  COALESCE(proofing_round, 1) AS proofing_round
+             FROM client_image_selections
+            WHERE gallery_id = $1
+            ORDER BY updated_at DESC`,
+          [gallery.id],
+        );
+      } catch {
+        // Kolonnen finnes ikke ennå — fallback uten den.
+        result = await pool.query(
+          `SELECT id, image_id, client_email, selection_type, priority, client_notes, updated_at
+             FROM client_image_selections WHERE gallery_id = $1
+             ORDER BY updated_at DESC`,
+          [gallery.id],
+        );
+      }
       res.json({
         galleryId: gallery.id,
+        currentRound,
         selections: result.rows.map((r: any) => ({
           id: r.id,
           imageId: r.image_id,
@@ -923,6 +1044,7 @@ export function setupClientGalleryRoutes(
           priority: r.priority,
           clientNotes: r.client_notes,
           updatedAt: r.updated_at,
+          proofingRound: Number(r.proofing_round ?? 1) || 1,
         })),
       });
     } catch (error) {
@@ -1051,7 +1173,7 @@ export function setupClientGalleryRoutes(
           `SELECT id FROM video_timecode_comments WHERE id = $1 AND gallery_id = $2 LIMIT 1`,
           [parentIdRaw, access.gallery.id],
         );
-        if (p.rowCount === 0) return res.status(400).json({ error: "invalid_parent" });
+        if (!p.rows.length) return res.status(400).json({ error: "invalid_parent" });
         parentId = parentIdRaw;
       }
       const inserted = await pool.query(
@@ -1223,10 +1345,115 @@ export function setupClientGalleryRoutes(
         });
       } catch { /* best-effort */ }
 
+      // Send bekreftelses-mail til klient (gap-analyse: tidligere fikk
+      // kun fotograf mail, klient satt igjen uten kvittering).
+      void sendClientSelectionReceivedMail({
+        clientEmail,
+        clientName,
+        projectTitle: gallery.projectTitle || 'galleriet',
+        favCount,
+        galleryUrl: buildGalleryShareUrl(accessToken),
+      });
+
       res.json({ success: true, favoriteCount: favCount, submittedAt: new Date().toISOString() });
     } catch (error) {
       console.error("[client-gallery] selection submit failed", error);
       res.status(500).json({ error: "selection_submit_failed" });
+    }
+  });
+
+  // ─── Delt chat (kunde ↔ team) ──────────────────────────────────────────
+  // Kundens leseflate for «Delt»-rommet i Team Chat. Serverer KUN meldinger
+  // med metadata.visibility='shared' — filteret håndheves her (server-side)
+  // så interne team-meldinger aldri kan nå klienten. accessToken er auth
+  // (samme gate som resten av galleriet, inkl. passord).
+  app.get("/api/client/gallery/:accessToken/chat", async (req, res) => {
+    const accessToken = String(req.params.accessToken || "").trim();
+    if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+    try {
+      const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+      if (!access.ok) {
+        return res.status(access.status).json({
+          error: access.error,
+          ...(access.requiresPassword ? { requiresPassword: true } : {}),
+        });
+      }
+      const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
+      if (!gallery?.projectId) return res.json({ messages: [] });
+      const r = await pool.query(
+        `SELECT id, content, metadata, created_at
+           FROM communication_messages
+          WHERE channel_id = $1 AND metadata->>'visibility' = 'shared'
+          ORDER BY created_at DESC LIMIT 100`,
+        [`project-${gallery.projectId}`],
+      );
+      // Kun visningsnavn eksponeres — aldri sender_id (e-post) eller annen
+      // metadata fra teamets side.
+      const messages = r.rows.reverse().map((m: any) => ({
+        id: m.id,
+        senderName: (m.metadata?.senderName as string) || "Team",
+        fromClient: m.metadata?.fromClient === true,
+        content: m.content,
+        timestamp: m.created_at,
+      }));
+      res.json({ messages });
+    } catch (e) {
+      console.error("GET client gallery chat", e);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  app.post("/api/client/gallery/:accessToken/chat", async (req, res) => {
+    const accessToken = String(req.params.accessToken || "").trim();
+    if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+    const content = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+    if (!content) return res.status(400).json({ error: "message_required" });
+    if (content.length > 2000) return res.status(400).json({ error: "message_too_long" });
+    try {
+      const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+      if (!access.ok) {
+        return res.status(access.status).json({
+          error: access.error,
+          ...(access.requiresPassword ? { requiresPassword: true } : {}),
+        });
+      }
+      const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
+      if (!gallery?.projectId) return res.status(404).json({ error: "not_found" });
+      const channelId = `project-${gallery.projectId}`;
+      const clientName =
+        (typeof req.body?.clientName === "string" && req.body.clientName.trim().slice(0, 80)) ||
+        gallery.clientName || "Kunde";
+      await pool.query(
+        `INSERT INTO communication_channels (id, name, type) VALUES ($1, '# Produksjon', 'team') ON CONFLICT (id) DO NOTHING`,
+        [channelId],
+      );
+      await pool.query(
+        `INSERT INTO communication_messages (channel_id, sender_id, message_type, content, metadata)
+         VALUES ($1, $2, 'text', $3, $4)`,
+        [channelId, `client:${accessToken.slice(0, 8)}`, content,
+         JSON.stringify({ visibility: "shared", senderName: clientName, fromClient: true })],
+      );
+      // Live-varsel + uleste hos teamet (eier i public/legacy + aktive medlemmer).
+      try {
+        const pid = String(gallery.projectId);
+        const [pubOwner, legOwner, members] = await Promise.all([
+          pool.query(`SELECT user_id::text AS uid FROM projects WHERE id::text = $1`, [pid]).catch(() => ({ rows: [] as any[] })),
+          pool.query(`SELECT user_id AS uid FROM legacy.projects WHERE id = $1`, [pid]).catch(() => ({ rows: [] as any[] })),
+          pool.query(`SELECT user_id::text AS uid FROM project_team_members WHERE project_id = $1 AND status = 'active' AND deactivated_at IS NULL AND user_id IS NOT NULL`, [pid]).catch(() => ({ rows: [] as any[] })),
+        ]);
+        const timestamp = new Date().toISOString();
+        const seen = new Set<string>();
+        for (const row of [...pubOwner.rows, ...legOwner.rows, ...members.rows]) {
+          const uid = String(row.uid || "");
+          if (!uid || seen.has(uid)) continue;
+          seen.add(uid);
+          broadcastUserEvent(uid, { kind: "chat.message", channelId, projectId: pid, timestamp });
+        }
+      } catch { /* best-effort */ }
+      res.status(201).json({ success: true });
+    } catch (e) {
+      console.error("POST client gallery chat", e);
+      res.status(500).json({ error: "failed" });
     }
   });
 
@@ -1415,6 +1642,38 @@ export function setupClientGalleryRoutes(
       const effectiveEmail = clientEmail || gallery.clientEmail;
       if (!effectiveEmail) return res.status(400).json({ error: "client_email_required" });
 
+      // Bildekjøp skal betales til FOTOGRAFENS egen Stripe Connect-konto, ikke
+      // CreatorHubs plattform. Krev at fotografen er tilkoblet + KYC-godkjent —
+      // ellers stoppes kjøpet (pengene skal aldri lande på plattform-kontoen).
+      let photographerStripeAccountId: string;
+      try {
+        const acctRes = await pool.query(
+          `SELECT stripe_account_id, payouts_enabled
+             FROM photographer_stripe_accounts
+            WHERE photographer_id = $1`,
+          [gallery.photographerId],
+        );
+        const acct = acctRes.rows[0];
+        if (!acct || !acct.stripe_account_id) {
+          return res.status(409).json({
+            error: "photographer_not_connected",
+            message: "Fotografen har ikke koblet til Stripe ennå.",
+          });
+        }
+        if (!acct.payouts_enabled) {
+          return res.status(409).json({
+            error: "photographer_payouts_disabled",
+            message: "Fotografens Stripe-konto er ikke ferdig verifisert.",
+          });
+        }
+        photographerStripeAccountId = acct.stripe_account_id as string;
+      } catch (lookupErr) {
+        if ((lookupErr as { code?: string })?.code === "42P01") {
+          return res.status(409).json({ error: "photographer_not_connected" });
+        }
+        throw lookupErr;
+      }
+
       const pricing = calculateGalleryPricing(access.settings, selectedImageIds.length);
       if (pricing.totalAmount <= 0) {
         return res.status(400).json({ error: "no_payment_needed", pricing });
@@ -1428,22 +1687,32 @@ export function setupClientGalleryRoutes(
       // Stripe wants amount in the smallest currency unit. NOK + most
       // EUR are 100 cents/øre per unit.
       const amount = Math.round(pricing.totalAmount * 100);
+      // Plattform-kutt (application fee) — konfigurerbart, default 0 % (fotografen
+      // får alt). Sett PHOTO_PURCHASE_PLATFORM_FEE_PERCENT for å aktivere et kutt.
+      const feePercent = Number(process.env.PHOTO_PURCHASE_PLATFORM_FEE_PERCENT || "0");
+      const platformFeeAmount = feePercent > 0 ? Math.round(amount * (feePercent / 100)) : 0;
 
-      const intent = await stripe.paymentIntents.create({
-        amount,
-        currency: pricing.currency.toLowerCase(),
-        receipt_email: effectiveEmail,
-        // Metadata feeds the webhook handler — without galleryId it
-        // can't associate the success event with the right row.
-        metadata: {
-          galleryId: gallery.id,
-          clientEmail: effectiveEmail,
-          extraImages: String(pricing.extraImages),
-          accessToken: accessToken.slice(0, 32), // truncated for log readability
+      const intent = await stripe.paymentIntents.create(
+        {
+          amount,
+          currency: pricing.currency.toLowerCase(),
+          receipt_email: effectiveEmail,
+          // Destination charge → pengene går til fotografens Connect-konto.
+          transfer_data: { destination: photographerStripeAccountId },
+          ...(platformFeeAmount > 0 ? { application_fee_amount: platformFeeAmount } : {}),
+          // Metadata feeds the webhook handler — without galleryId it
+          // can't associate the success event with the right row.
+          metadata: {
+            galleryId: gallery.id,
+            clientEmail: effectiveEmail,
+            extraImages: String(pricing.extraImages),
+            accessToken: accessToken.slice(0, 32), // truncated for log readability
+          },
+          description: `CreatorHub klient-galleri ekstra-bilder (${pricing.extraImages} stk)`,
+          automatic_payment_methods: { enabled: true },
         },
-        description: `CreatorHub klient-galleri ekstra-bilder (${pricing.extraImages} stk)`,
-        automatic_payment_methods: { enabled: true },
-      });
+        { idempotencyKey: `gallery-pay:${gallery.id}:${effectiveEmail}:${amount}:${pricing.extraImages}` },
+      );
 
       // Insert pending payment row. Webhook flips status to 'succeeded'
       // and stamps download_token on confirmation.
@@ -1503,6 +1772,38 @@ export function setupClientGalleryRoutes(
       const effectiveEmail = clientEmail || gallery.clientEmail;
       if (!effectiveEmail) return res.status(400).json({ error: "client_email_required" });
 
+      // Bildekjøp skal betales til FOTOGRAFENS egen Stripe Connect-konto, ikke
+      // CreatorHubs plattform. Krev at fotografen er tilkoblet + KYC-godkjent —
+      // ellers stoppes kjøpet (pengene skal aldri lande på plattform-kontoen).
+      let photographerStripeAccountId: string;
+      try {
+        const acctRes = await pool.query(
+          `SELECT stripe_account_id, payouts_enabled
+             FROM photographer_stripe_accounts
+            WHERE photographer_id = $1`,
+          [gallery.photographerId],
+        );
+        const acct = acctRes.rows[0];
+        if (!acct || !acct.stripe_account_id) {
+          return res.status(409).json({
+            error: "photographer_not_connected",
+            message: "Fotografen har ikke koblet til Stripe ennå.",
+          });
+        }
+        if (!acct.payouts_enabled) {
+          return res.status(409).json({
+            error: "photographer_payouts_disabled",
+            message: "Fotografens Stripe-konto er ikke ferdig verifisert.",
+          });
+        }
+        photographerStripeAccountId = acct.stripe_account_id as string;
+      } catch (lookupErr) {
+        if ((lookupErr as { code?: string })?.code === "42P01") {
+          return res.status(409).json({ error: "photographer_not_connected" });
+        }
+        throw lookupErr;
+      }
+
       const pricing = calculateGalleryPricing(access.settings, selectedImageIds.length);
       if (pricing.totalAmount <= 0) {
         return res.status(400).json({ error: "no_payment_needed", pricing });
@@ -1512,6 +1813,10 @@ export function setupClientGalleryRoutes(
       if (!stripe) return res.status(503).json({ error: "stripe_not_configured" });
 
       const amount = Math.round(pricing.totalAmount * 100);
+      // Plattform-kutt (application fee) — konfigurerbart, default 0 % (fotografen
+      // får alt). Sett PHOTO_PURCHASE_PLATFORM_FEE_PERCENT for å aktivere et kutt.
+      const feePercent = Number(process.env.PHOTO_PURCHASE_PLATFORM_FEE_PERCENT || "0");
+      const platformFeeAmount = feePercent > 0 ? Math.round(amount * (feePercent / 100)) : 0;
       const publicHost = (process.env.CREATORHUB_PUBLIC_URL ?? 'https://app.creatorhubn.com').replace(/\/$/, '');
       const successUrl = `${publicHost}/client/gallery/${accessToken}?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
       const cancelUrl = `${publicHost}/client/gallery/${accessToken}?checkout=cancelled`;
@@ -1542,6 +1847,9 @@ export function setupClientGalleryRoutes(
           accessToken: accessToken.slice(0, 32),
         },
         payment_intent_data: {
+          // Destination charge → pengene går til fotografens Connect-konto.
+          transfer_data: { destination: photographerStripeAccountId },
+          ...(platformFeeAmount > 0 ? { application_fee_amount: platformFeeAmount } : {}),
           // Mirror metadata på PaymentIntent slik at den eksisterende
           // payment_intent.succeeded-webhook (Slice 10.2) finner
           // galleryId og kan stempe ned download_token.
@@ -1922,6 +2230,19 @@ export function setupClientGalleryRoutes(
               requiresPayment: pricing.totalAmount > 0,
             },
           });
+          // Bekreftelses-mail til klient — parallell med fotograf-notify
+          // (gap-analyse: klient hadde ingen kvittering før).
+          const totalAmountText = pricing.totalAmount > 0
+            ? `Sum å betale for ekstra bilder: ${pricing.totalAmount} ${pricing.currency}.`
+            : null;
+          void sendClientSelectionReceivedMail({
+            clientEmail: effectiveEmail,
+            clientName: row.client_name || '',
+            projectTitle: row.project_title || 'galleriet',
+            favCount: selectedImageIds.length,
+            galleryUrl: buildGalleryShareUrl(accessToken),
+            totalAmountText,
+          });
         } catch (err) {
           console.warn('[gallery-notify] selection_submitted dispatch failed:', err);
         }
@@ -1994,9 +2315,11 @@ export function setupClientGalleryRoutes(
         });
       }
 
-      const clientEmail = typeof req.body?.clientEmail === 'string'
-        ? req.body.clientEmail.trim()
-        : gallery.clientEmail;
+      // Nedlastings-kvoten telles PER klient-e-post. Hvis vi stolte på en
+      // body-oppgitt e-post kunne en klient rotere e-post og nulle kvoten
+      // (ubegrenset gratis nedlasting forbi contracted limit). Bind alltid
+      // til galleriets registrerte klient-e-post.
+      const clientEmail = String(gallery.clientEmail || '').trim();
 
       // Slice 9X.11 — count-gate mot contractedImages. Tell HVOR MANGE
       // UNIKE bilder denne klienten allerede har lastet ned, og blokker
@@ -2047,7 +2370,7 @@ export function setupClientGalleryRoutes(
            LIMIT 1`,
           [gallery.id, clientEmail],
         );
-        if (paid.rowCount === 0) {
+        if (!paid.rows.length) {
           return res.status(402).json({
             error: "payment_required",
             pricing,
@@ -2072,10 +2395,16 @@ export function setupClientGalleryRoutes(
       // Sharp-pipeline for on-the-fly watermark. Importeres dynamisk så
       // vi unngår å laste ~50MB av sharp's binær når galleriet ikke
       // krever det. Cached på første call.
-      let sharpModulePromise: Promise<typeof import('sharp')> | null = null;
+      type SharpFactory = typeof sharpFactory;
+      let sharpModulePromise: Promise<SharpFactory> | null = null;
       const getSharp = () => {
         if (!sharpModulePromise) {
-          sharpModulePromise = import('sharp').then((m) => (m as any).default ?? m);
+          sharpModulePromise = import('sharp').then((module) => {
+            const interoperable = module as unknown as {
+              default?: SharpFactory;
+            };
+            return interoperable.default ?? (module as unknown as SharpFactory);
+          });
         }
         return sharpModulePromise;
       };

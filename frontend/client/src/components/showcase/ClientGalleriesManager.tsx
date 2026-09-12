@@ -318,7 +318,27 @@ export const ClientGalleriesManager: React.FC<ClientGalleriesManagerProps> = ({ 
       </Grid>
 
       {/* Create dialog */}
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: '#fff',
+            '& .MuiOutlinedInput-root': { color: '#fff' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+            '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' },
+            '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.6)' },
+            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.5)', opacity: 1 },
+          },
+        }}
+      >
         <DialogTitle>{`Nytt klient-${terms.collection}`}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -762,7 +782,29 @@ const GallerySettingsDialog: React.FC<{
   });
 
   return (
-    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog
+      open
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          bgcolor: 'rgba(15,23,42,0.96)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          color: '#fff',
+          '& .MuiOutlinedInput-root': { color: '#fff' },
+          '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.23)' },
+          '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#fff' },
+          '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
+          '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.6)' },
+          '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+          '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.5)', opacity: 1 },
+          '& .MuiDivider-root': { borderColor: 'rgba(255,255,255,0.12)' },
+          '& input[type="date"]::-webkit-calendar-picker-indicator': { filter: 'invert(1)' },
+        },
+      }}
+    >
       <DialogTitle>Innstillinger — {gallery.projectTitle || gallery.clientName}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={3}>
@@ -1027,7 +1069,21 @@ const GalleryEventsDialog: React.FC<{
   });
   const events = data?.events ?? [];
   return (
-    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog
+      open
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      PaperProps={{
+        sx: {
+          bgcolor: 'rgba(15,23,42,0.96)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          color: '#fff',
+          '& .MuiTypography-root[class*="colorTextSecondary"], & .MuiTypography-colorTextSecondary': { color: 'rgba(255,255,255,0.65)' },
+        },
+      }}
+    >
       <DialogTitle>Hendelser — {gallery.projectTitle || gallery.clientName}</DialogTitle>
       <DialogContent dividers sx={{ minHeight: 320 }}>
         {isLoading && <CircularProgress />}

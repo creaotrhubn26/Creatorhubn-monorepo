@@ -31,6 +31,7 @@ import {
   Collapse,
   useMediaQuery,
   Drawer,
+  Button,
 } from '@mui/material';
 import {
   Lock as LockIcon,
@@ -54,8 +55,15 @@ import {
   ExpandLess as ExpandLessIcon,
   ChatBubbleOutline as CommentIcon,
 } from '@mui/icons-material';
-import { ScreenplayEditor } from './ScreenplayEditor';
-import { SceneNavigatorSidebar, reorderScenesInContent, buildLineCommentAnchor, resolveLineCommentAnchor, type ParsedScene } from './SceneNavigatorSidebar';
+import { ScreenplayEditor, type ScreenplayTextSelection } from './ScreenplayEditor';
+import {
+  SceneNavigatorSidebar,
+  reorderScenesInContent,
+  buildLineCommentAnchor,
+  buildTextSelectionCommentAnchor,
+  resolveScreenplayCommentAnchor,
+  type ParsedScene,
+} from './SceneNavigatorSidebar';
 import { PostCommentLayer } from './PostCommentLayer';
 import authSessionService from '../services/authSessionService';
 import { BeatBoard } from './BeatBoard';
@@ -204,7 +212,7 @@ const getResponsiveValues = (tier: ScreenTier) => {
 
 export type ScriptLockState = 'unlocked' | 'locked' | 'final';
 export type RightPanelType = 'none' | 'analysis' | 'beatboard' | 'tableread' | 'structure' | 'grammar' | 'storyboard' | 'comments';
-export type HeaderSaveState = 'saved' | 'saving' | 'unsaved' | 'error';
+export type HeaderSaveState = 'saved' | 'saving' | 'unsaved' | 'local-only' | 'conflict' | 'error';
 
 export interface ScreenplayHeaderSummary {
   pages: number;
@@ -224,8 +232,8 @@ export interface ScreenplayEditorWithNavigatorProps {
   locations?: string[];
   roles?: Role[];
   candidates?: Candidate[];
-  onCharacterAdd?: (name: string) => void;
-  onLocationAdd?: (name: string) => void;
+  onCharacterAdd?: (name: string) => void | boolean | Promise<void | boolean>;
+  onLocationAdd?: (name: string) => void | boolean | Promise<void | boolean>;
   onCharacterProfileOpen?: (payload: { characterName: string; role: Role | null; candidate: Candidate | null }) => void;
   showLineNumbers?: boolean;
   editorKey?: string;
@@ -307,7 +315,18 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
   // tråd. Markør-linjene utledes fra ankrene + GJELDENDE innhold (useMemo under),
   // så markørene følger teksten ved skriving/reorder uten å lagre absolutt linje.
   const [lineCommentAnchors, setLineCommentAnchors] = useState<string[]>([]);
+  const [screenplayComments, setScreenplayComments] = useState<Array<{
+    id: string;
+    anchorRef: string;
+    commentText: string;
+    status: string;
+    authorDisplayName?: string;
+    replyCount?: number;
+    parentId?: string | null;
+  }>>([]);
+  const [commentsRefreshNonce, setCommentsRefreshNonce] = useState(0);
   const [activeCommentAnchor, setActiveCommentAnchor] = useState<string | null>(null);
+  const [editorSelection, setEditorSelection] = useState<ScreenplayTextSelection | null>(null);
   const storyFoundationLogline = storyLogicData?.logline?.fullLogline?.trim() || '';
   const hasStoryFoundation = Boolean(
     storyFoundationLogline ||
@@ -319,15 +338,15 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     const set = new Set<number>();
     if (!manuscriptId) return set;
     for (const ref of lineCommentAnchors) {
-      const line = resolveLineCommentAnchor(value, manuscriptId, ref);
-      if (line != null && line > 0) set.add(line);
+      const resolved = resolveScreenplayCommentAnchor(value, manuscriptId, ref);
+      if (resolved?.startLine != null && resolved.startLine > 0) set.add(resolved.startLine);
     }
     return set;
   }, [lineCommentAnchors, value, manuscriptId]);
   // Gjeldende linje for den åpne tråden (for "Linje X"-chip + gå-til-linje).
-  const activeCommentLine = useMemo(() => {
+  const activeCommentLocation = useMemo(() => {
     if (!activeCommentAnchor || !manuscriptId) return null;
-    return resolveLineCommentAnchor(value, manuscriptId, activeCommentAnchor);
+    return resolveScreenplayCommentAnchor(value, manuscriptId, activeCommentAnchor);
   }, [activeCommentAnchor, value, manuscriptId]);
   const responsive = getResponsiveValues(tier);
 
@@ -376,6 +395,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     canEdit: true,
     canLock: true,
     canTableRead: true,
+    canComment: true,
   });
 
   // Check permissions on mount and when role changes
@@ -392,18 +412,25 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
               canEdit: defaultPerms.canEditScript ?? true,
               canLock: defaultPerms.canLockScript ?? false,
               canTableRead: defaultPerms.canRunTableRead ?? true,
+              canComment: defaultPerms.canComment === true || defaultPerms.canEditScript === true,
             });
           }
           return;
         }
 
-        const [canEdit, canLock, canTableRead] = await Promise.all([
+        const [canEdit, canLock, canTableRead, canComment] = await Promise.all([
           castingAuthService.canEditScript(projectId),
           castingAuthService.canLockScript(projectId),
           castingAuthService.canRunTableRead(projectId),
+          castingAuthService.canComment(projectId),
         ]);
 
-        if (!cancelled) setPermissions({ canEdit, canLock, canTableRead });
+        if (!cancelled) setPermissions({
+          canEdit,
+          canLock,
+          canTableRead,
+          canComment: canComment || canEdit,
+        });
       } catch (err) {
         if (!cancelled) {
           if (process.env.NODE_ENV !== 'production') console.error('Permission check failed:', err);
@@ -471,6 +498,32 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     setHighlightedLine(lineNumber);
     setTimeout(() => setHighlightedLine(null), 2000);
   }
+
+  const gotoCommentAnchor = useCallback((anchorRef: string) => {
+    if (!manuscriptId) return;
+    const resolved = resolveScreenplayCommentAnchor(value, manuscriptId, anchorRef);
+    if (!resolved) return;
+    const textarea = resolveEditorTextarea();
+    if (!textarea) return;
+    textarea.focus();
+    textarea.setSelectionRange(resolved.start, resolved.end);
+    textarea.scrollTop = Math.max(0, (resolved.startLine - 5) * 24);
+    setHighlightedLine(resolved.startLine);
+    window.setTimeout(() => setHighlightedLine(null), 2000);
+  }, [manuscriptId, resolveEditorTextarea, value]);
+
+  const openCommentComposer = useCallback((selection?: ScreenplayTextSelection | null) => {
+    if (!manuscriptId) return;
+    const chosen = selection ?? editorSelection;
+    const selectionAnchor = chosen
+      ? buildTextSelectionCommentAnchor(value, manuscriptId, chosen.start, chosen.end)
+      : null;
+    setActiveCommentAnchor(
+      selectionAnchor ?? buildLineCommentAnchor(value, manuscriptId, chosen?.startLine || currentLine || 1),
+    );
+    dispatchUi({ type: 'SET_RIGHT_PANEL', payload: 'comments' });
+    if (isMobile) dispatchUi({ type: 'OPEN_RIGHT_DRAWER' });
+  }, [currentLine, editorSelection, isMobile, manuscriptId, value]);
 
   // Handle scene selection from sidebar
   const handleSceneSelect = useCallback((scene: ParsedScene | SceneBreakdown, lineNumber: number) => {
@@ -551,6 +604,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     const token = authSessionService.getSessionTokenSync();
     if (!projectId || !manuscriptId || !token) {
       setLineCommentAnchors([]);
+      setScreenplayComments([]);
       return;
     }
     let cancelled = false;
@@ -562,14 +616,42 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
         });
         if (!res.ok) return;
         const data = await res.json();
-        const items: Array<{ anchorType?: string; anchorRef?: string | null }> =
+        const items: Array<{
+          id?: string;
+          anchorType?: string;
+          anchorRef?: string | null;
+          commentText?: string;
+          status?: string;
+          authorDisplayName?: string;
+          replyCount?: number;
+          parentId?: string | null;
+        }> =
           Array.isArray(data?.comments) ? data.comments : Array.isArray(data) ? data : [];
         const anchors = Array.from(new Set(
           items
             .filter((c) => c.anchorType === 'screenplay_line' && typeof c.anchorRef === 'string' && c.anchorRef.startsWith(prefix))
             .map((c) => c.anchorRef as string),
         ));
-        if (!cancelled) setLineCommentAnchors(anchors);
+        if (!cancelled) {
+          setLineCommentAnchors(anchors);
+          setScreenplayComments(items.flatMap((comment) => (
+            comment.anchorType === 'screenplay_line'
+              && typeof comment.id === 'string'
+              && typeof comment.anchorRef === 'string'
+              && comment.anchorRef.startsWith(prefix)
+              && !comment.parentId
+              ? [{
+                  id: comment.id,
+                  anchorRef: comment.anchorRef,
+                  commentText: comment.commentText ?? '',
+                  status: comment.status ?? 'open',
+                  authorDisplayName: comment.authorDisplayName,
+                  replyCount: comment.replyCount,
+                  parentId: comment.parentId,
+                }]
+              : []
+          )));
+        }
       } catch {
         /* best-effort */
       }
@@ -577,7 +659,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     void fetchAnchors();
     const timer = setInterval(fetchAnchors, 20000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [projectId, manuscriptId]);
+  }, [commentsRefreshNonce, projectId, manuscriptId]);
 
   const issueCount = analysis.characterConflicts.length + analysis.consistencyIssues.length;
 
@@ -687,6 +769,164 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
     if (isMobile || rightPanel !== 'storyboard') return null;
     return storyboardPanelWidth ?? getDefaultStoryboardPanelWidth();
   }, [getDefaultStoryboardPanelWidth, isMobile, rightPanel, storyboardPanelWidth]);
+
+  const renderCommentsPanel = () => {
+    const token = authSessionService.getSessionTokenSync();
+    if (!projectId || !token) {
+      return (
+        <Box sx={{ p: isMobile ? 2 : 3, textAlign: 'center', color: 'text.secondary' }}>
+          <CommentIcon sx={{ fontSize: is4K ? 64 : 48, opacity: 0.5, mb: 2 }} />
+          <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
+            Logg inn og åpne et prosjekt for å bruke manuskommentarer.
+          </Typography>
+        </Box>
+      );
+    }
+
+    const lineMode = activeCommentAnchor != null && Boolean(manuscriptId);
+    const selectionHasText = Boolean(editorSelection?.text.trim());
+    if (lineMode) {
+      const orphaned = activeCommentLocation == null;
+      const lineLabel = activeCommentLocation
+        ? activeCommentLocation.startLine === activeCommentLocation.endLine
+          ? `Linje ${activeCommentLocation.startLine}`
+          : `Linje ${activeCommentLocation.startLine}–${activeCommentLocation.endLine}`
+        : 'Mistet tekstanker';
+      return (
+        <Box sx={{ p: 1.5, height: '100%', overflow: 'auto' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+            <Chip
+              size="small"
+              color={orphaned ? 'error' : 'warning'}
+              label={lineLabel}
+              onClick={() => activeCommentAnchor && gotoCommentAnchor(activeCommentAnchor)}
+            />
+            <Button size="small" onClick={() => setActiveCommentAnchor(null)}>
+              Alle annotasjoner
+            </Button>
+          </Box>
+          {activeCommentLocation?.quote && (
+            <Box
+              component="blockquote"
+              sx={{
+                m: '0 0 10px', px: 1.25, py: 1,
+                borderLeft: '3px solid #f59e0b',
+                bgcolor: 'rgba(245,158,11,0.08)',
+                color: 'rgba(255,255,255,0.82)',
+                fontFamily: 'Courier Prime, Courier New, monospace',
+                fontSize: responsive.captionFontSize,
+                whiteSpace: 'pre-wrap',
+                maxHeight: 120,
+                overflow: 'hidden',
+              }}
+            >
+              {activeCommentLocation.quote}
+            </Box>
+          )}
+          {orphaned && (
+            <Alert severity="warning" sx={{ mb: 1, fontSize: responsive.captionFontSize }}>
+              Teksten eller scenen er endret. Kommentaren beholdes, men festes ikke automatisk til en annen replikk.
+            </Alert>
+          )}
+          <PostCommentLayer
+            key={activeCommentAnchor!}
+            projectId={projectId}
+            anchorType="screenplay_line"
+            anchorRef={activeCommentAnchor!}
+            auth={{ kind: 'bearer', token }}
+            readOnly={!permissions.canComment}
+            autoFocusComposer={!orphaned}
+            composerPlaceholder="Skriv kommentar til dette tekstutvalget …"
+            onChanged={() => setCommentsRefreshNonce((current) => current + 1)}
+          />
+        </Box>
+      );
+    }
+
+    return (
+      <Box sx={{ p: 1.5, height: '100%', overflow: 'auto' }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.25 }}>
+          Script Annotations & Comments
+        </Typography>
+        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.25 }}>
+          Marker tekst og bruk ⌘/Ctrl+Alt+M, eller kommenter gjeldende linje. Kommentarer endrer aldri manuset.
+        </Typography>
+        <Button
+          size="small"
+          variant="contained"
+          startIcon={<CommentIcon sx={{ fontSize: 16 }} />}
+          disabled={!manuscriptId || !permissions.canComment}
+          onClick={() => openCommentComposer(editorSelection)}
+          fullWidth
+        >
+          {selectionHasText
+            ? `Kommenter utvalg (${editorSelection!.startLine}${editorSelection!.endLine !== editorSelection!.startLine ? `–${editorSelection!.endLine}` : ''})`
+            : `Kommenter linje ${currentLine || 1}`}
+        </Button>
+
+        <Box sx={{ mt: 2, mb: 0.75, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+            Tekstannotasjoner
+          </Typography>
+          <Chip size="small" label={screenplayComments.length} />
+        </Box>
+        {screenplayComments.length === 0 ? (
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            Ingen tekstannotasjoner ennå.
+          </Typography>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+            {screenplayComments.map((comment) => {
+              const location = manuscriptId
+                ? resolveScreenplayCommentAnchor(value, manuscriptId, comment.anchorRef)
+                : null;
+              const resolved = comment.status === 'resolved' || comment.status === 'wontfix';
+              const locationLabel = location
+                ? location.startLine === location.endLine
+                  ? `Linje ${location.startLine}`
+                  : `Linje ${location.startLine}–${location.endLine}`
+                : 'Mistet tekstanker';
+              return (
+                <Button
+                  key={comment.id}
+                  variant="outlined"
+                  color={location ? 'inherit' : 'error'}
+                  onClick={() => {
+                    setActiveCommentAnchor(comment.anchorRef);
+                    if (location) gotoCommentAnchor(comment.anchorRef);
+                  }}
+                  sx={{
+                    display: 'block', textAlign: 'left', textTransform: 'none',
+                    opacity: resolved ? 0.6 : 1, px: 1, py: 0.75,
+                  }}
+                >
+                  <Typography component="span" variant="caption" sx={{ display: 'block', color: location ? '#fbbf24' : '#f87171', fontWeight: 700 }}>
+                    {locationLabel}{resolved ? ' · Løst' : ''}{comment.replyCount ? ` · ${comment.replyCount} svar` : ''}
+                  </Typography>
+                  <Typography component="span" variant="caption" sx={{ display: 'block', color: 'text.primary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {comment.commentText || location?.quote || 'Kommentar'}
+                  </Typography>
+                </Button>
+              );
+            })}
+          </Box>
+        )}
+
+        <Divider sx={{ my: 2 }} />
+        <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+          Hele manuset
+        </Typography>
+        <PostCommentLayer
+          projectId={projectId}
+          anchorType="manuscript"
+          anchorRef={manuscriptId || projectId}
+          auth={{ kind: 'bearer', token }}
+          readOnly={!permissions.canComment}
+          onChanged={() => setCommentsRefreshNonce((current) => current + 1)}
+        />
+      </Box>
+    );
+  };
 
   return (
     <Box
@@ -848,7 +1088,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                     <CheckCircleIcon sx={{ fontSize: responsive.iconSize - 8, color: '#34d399' }} />
                   ) : headerSummary.saveState === 'saving' ? (
                     <CircularProgress size={14} sx={{ color: '#60a5fa' }} />
-                  ) : headerSummary.saveState === 'error' ? (
+                  ) : headerSummary.saveState === 'error' || headerSummary.saveState === 'conflict' ? (
                     <WarningIcon sx={{ fontSize: responsive.iconSize - 8, color: '#f43f5e' }} />
                   ) : undefined
                 }
@@ -860,7 +1100,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                       ? 'rgba(52, 211, 153, 0.2)'
                       : headerSummary.saveState === 'saving'
                         ? 'rgba(59, 130, 246, 0.2)'
-                        : headerSummary.saveState === 'error'
+                        : headerSummary.saveState === 'error' || headerSummary.saveState === 'conflict'
                           ? 'rgba(244, 63, 94, 0.2)'
                           : 'rgba(251, 191, 36, 0.2)',
                   color:
@@ -868,7 +1108,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                       ? '#34d399'
                       : headerSummary.saveState === 'saving'
                         ? '#60a5fa'
-                        : headerSummary.saveState === 'error'
+                        : headerSummary.saveState === 'error' || headerSummary.saveState === 'conflict'
                           ? '#f43f5e'
                           : '#fbbf24',
                 }}
@@ -909,18 +1149,34 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
 
         {/* Right Panel Toggles */}
         {isMobile ? (
-          // Mobile: Show menu button for right panel
-          <IconButton
-            size={responsive.buttonSize}
-            onClick={() => dispatchUi({ type: 'OPEN_RIGHT_DRAWER' })}
-            disabled={rightPanel === 'none'}
-            color={rightPanel !== 'none' ? 'primary' : 'default'}
-            aria-label="Åpne analysepanel"
-          >
-            <Badge badgeContent={issueCount} color="warning" max={99}>
-              <AnalysisIcon sx={{ fontSize: responsive.iconSize }} />
-            </Badge>
-          </IconButton>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <IconButton
+              size={responsive.buttonSize}
+              onClick={() => {
+                dispatchUi({ type: 'SET_RIGHT_PANEL', payload: rightPanel === 'none' ? 'analysis' : rightPanel });
+                dispatchUi({ type: 'OPEN_RIGHT_DRAWER' });
+              }}
+              color={rightPanel !== 'none' && rightPanel !== 'comments' ? 'primary' : 'default'}
+              aria-label="Åpne analysepanel"
+            >
+              <Badge badgeContent={issueCount} color="warning" max={99}>
+                <AnalysisIcon sx={{ fontSize: responsive.iconSize }} />
+              </Badge>
+            </IconButton>
+            <IconButton
+              size={responsive.buttonSize}
+              onClick={() => {
+                dispatchUi({ type: 'SET_RIGHT_PANEL', payload: 'comments' });
+                dispatchUi({ type: 'OPEN_RIGHT_DRAWER' });
+              }}
+              color={rightPanel === 'comments' ? 'primary' : 'default'}
+              aria-label="Åpne manuskommentarer"
+            >
+              <Badge badgeContent={screenplayComments.filter((comment) => comment.status !== 'resolved').length} color="warning" max={99}>
+                <CommentIcon sx={{ fontSize: responsive.iconSize }} />
+              </Badge>
+            </IconButton>
+          </Box>
         ) : (
           <ToggleButtonGroup
             value={rightPanel}
@@ -1111,6 +1367,9 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             key={editorKey}
             value={value}
             onChange={handleChange}
+            manuscriptId={manuscriptId}
+            cloudSaveState={headerSummary?.saveState}
+            cloudSaveLabel={headerSummary?.saveLabel}
             characters={characters}
             locations={locations}
             roles={roles}
@@ -1123,9 +1382,13 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             onCursorChange={handleCursorChange}
             spellCheck={enableSpellcheck}
             commentLines={commentLineSet}
+            onSelectionChange={setEditorSelection}
+            onAddComment={openCommentComposer}
             onCommentLineClick={(line) => {
               if (manuscriptId) {
-                const ref = lineCommentAnchors.find((r) => resolveLineCommentAnchor(value, manuscriptId, r) === line)
+                const ref = lineCommentAnchors.find(
+                  (candidate) => resolveScreenplayCommentAnchor(value, manuscriptId, candidate)?.startLine === line,
+                )
                   ?? buildLineCommentAnchor(value, manuscriptId, line);
                 setActiveCommentAnchor(ref);
               }
@@ -1141,7 +1404,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
             aria-orientation={rightPanel === 'storyboard' ? 'vertical' : undefined}
             onMouseDown={rightPanel === 'storyboard' ? startRightPanelResize : undefined}
             sx={{
-              width: rightPanel === 'storyboard' ? 10 : 1,
+              width: rightPanel === 'storyboard' ? 10 : '1px',
               cursor: rightPanel === 'storyboard' ? 'col-resize' : 'default',
               bgcolor: rightPanel === 'storyboard' ? 'transparent' : 'rgba(255,255,255,0.1)',
               position: 'relative',
@@ -1194,6 +1457,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                 <ToggleButton value="analysis"><AnalysisIcon sx={{ fontSize: 18 }} /></ToggleButton>
                 <ToggleButton value="beatboard"><BeatBoardIcon sx={{ fontSize: 18 }} /></ToggleButton>
                 <ToggleButton value="tableread"><TableReadIcon sx={{ fontSize: 18 }} /></ToggleButton>
+                <ToggleButton value="comments" aria-label="Kommentarer"><CommentIcon sx={{ fontSize: 18 }} /></ToggleButton>
               </ToggleButtonGroup>
               <IconButton onClick={() => dispatchUi({ type: 'CLOSE_RIGHT_DRAWER' })} size="small" aria-label="Lukk analysepanel">
                 <CloseIcon />
@@ -1232,6 +1496,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                   darkMode={true}
                 />
               )}
+              {rightPanel === 'comments' && renderCommentsPanel()}
             </Box>
           </Drawer>
         ) : (
@@ -1330,59 +1595,7 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
                   </Typography>
                 </Box>
               )}
-              {rightPanel === 'comments' && (() => {
-                const token = authSessionService.getSessionTokenSync();
-                if (!projectId || !token) {
-                  return (
-                    <Box sx={{ p: isMobile ? 2 : 3, textAlign: 'center', color: 'text.secondary' }}>
-                      <CommentIcon sx={{ fontSize: is4K ? 64 : 48, opacity: 0.5, mb: 2 }} />
-                      <Typography variant="body2" sx={{ fontSize: responsive.bodyFontSize }}>
-                        Logg inn og åpne et prosjekt for å se og legge til kommentarer på manuset.
-                      </Typography>
-                    </Box>
-                  );
-                }
-                const lineMode = activeCommentAnchor != null && Boolean(manuscriptId);
-                const orphaned = lineMode && activeCommentLine == null;
-                return (
-                  <Box sx={{ p: 1.5, height: '100%', overflow: 'auto' }}>
-                    {/* Modus-bryter: hele manuset vs. en konkret linje */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
-                      {lineMode ? (
-                        <>
-                          <Chip
-                            size="small"
-                            color={orphaned ? 'default' : 'warning'}
-                            label={orphaned ? 'Scene slettet' : `Linje ${activeCommentLine}`}
-                            onClick={() => activeCommentLine != null && gotoLine(activeCommentLine)}
-                          />
-                          <Button size="small" onClick={() => setActiveCommentAnchor(null)}>
-                            Vis hele manuset
-                          </Button>
-                        </>
-                      ) : (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<CommentIcon sx={{ fontSize: 16 }} />}
-                          disabled={isReadOnly || !manuscriptId}
-                          onClick={() => manuscriptId && setActiveCommentAnchor(buildLineCommentAnchor(value, manuscriptId, currentLine || 1))}
-                        >
-                          Kommenter linje {currentLine || 1}
-                        </Button>
-                      )}
-                    </Box>
-                    <PostCommentLayer
-                      key={lineMode ? activeCommentAnchor! : 'manuscript'}
-                      projectId={projectId}
-                      anchorType={lineMode ? 'screenplay_line' : 'manuscript'}
-                      anchorRef={lineMode ? activeCommentAnchor! : (manuscriptId || projectId)}
-                      auth={{ kind: 'bearer', token }}
-                      readOnly={isReadOnly}
-                    />
-                  </Box>
-                );
-              })()}
+              {rightPanel === 'comments' && renderCommentsPanel()}
             </Box>
           )
         )}

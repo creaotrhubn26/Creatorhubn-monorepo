@@ -108,7 +108,7 @@ struct AutoCleanService: Sendable {
             detections = resp.detections
         } catch {
             #if DEBUG
-            print("[AutoCleanService] detect failed for asset \(asset.id): \(error)")
+            AppLog.sync.error("[AutoCleanService] detect failed for asset \(String(describing: asset.id), privacy: .public): \(error.localizedDescription, privacy: .public)")
             #endif
             return
         }
@@ -232,7 +232,7 @@ struct AutoCleanService: Sendable {
             )
         } catch {
             #if DEBUG
-            print("[AutoCleanService] inpaint failed for asset \(asset.id): \(error)")
+            AppLog.sync.error("[AutoCleanService] inpaint failed for asset \(String(describing: asset.id), privacy: .public): \(error.localizedDescription, privacy: .public)")
             #endif
             return
         }
@@ -252,7 +252,7 @@ struct AutoCleanService: Sendable {
             try cleanedBytes.write(to: dest, options: .atomic)
         } catch {
             #if DEBUG
-            print("[AutoCleanService] failed to persist cleaned JPEG for \(asset.id): \(error)")
+            AppLog.sync.error("[AutoCleanService] failed to persist cleaned JPEG for \(String(describing: asset.id), privacy: .public): \(error.localizedDescription, privacy: .public)")
             #endif
             return
         }
@@ -277,7 +277,7 @@ struct AutoCleanService: Sendable {
             )
         } catch {
             #if DEBUG
-            print("[AutoCleanService] cleaned-variant upload failed for \(asset.id): \(error)")
+            AppLog.sync.error("[AutoCleanService] cleaned-variant upload failed for \(String(describing: asset.id), privacy: .public): \(error.localizedDescription, privacy: .public)")
             #endif
         }
     }

@@ -28,10 +28,28 @@ import {
 } from 'express';
 import type { Pool } from 'pg';
 import { loadPersistedAuthSession, persistAuthSession } from './auth-session-store.js';
+import { resolveOrgIdForUser } from './leadgrid-org-resolver.js';
+import { enqueueCampaignPosts } from './post-agent-campaign-enqueue.js';
+import { fetchUpdateManifest } from './post-agent-update-manifest.js';
 import { aiRateLimit } from './ai-rate-limiter.js';
 import { checkAgentEntitlement } from './role-room-agent-entitlements.js';
+import { falSubmit, falPoll, falOutputUrl, falConfigured, GEN_MODELS } from './generative-media.js';
+import { safeAppBaseUrl, safeReturnPath } from './web-origin-allowlist.js';
 import { sendEmail } from './casting-reminder-sender.js';
 import { presignTakeReadUrl } from './coverage-take-service.js';
+import { presignRoleRoomB2Download } from './b2-archive-helper.js';
+import {
+  getUserFileContent,
+  uploadUserFile,
+} from './role-room-user-storage-service.js';
+import {
+  POST_AGENT_MODULES,
+  getUserModules,
+  isPostAgentModule,
+  priceIdForModule,
+  getModuleDef,
+  type PostAgentModule,
+} from './post-agent-modules.js';
 import {
   countActiveSeats,
   deletePairingCode,
@@ -72,6 +90,110 @@ interface SessionData {
   role: string;
   loginAt: string;
   [key: string]: unknown;
+}
+
+export function postAgentOpenAiImageSize(
+  imageSize?: string,
+): '1024x1024' | '1024x1536' | '1536x1024' {
+  if (String(imageSize ?? '').startsWith('portrait')) return '1024x1536';
+  if (String(imageSize ?? '').startsWith('landscape')) return '1536x1024';
+  return '1024x1024';
+}
+
+export function buildPostAgentOpenAiImagePayload(input: {
+  prompt: string;
+  imageSize?: string;
+  quality: string;
+  background: string;
+  outputFormat: string;
+}): Record<string, unknown> {
+  return {
+    model: 'gpt-image-2',
+    prompt: input.prompt,
+    n: 1,
+    size: postAgentOpenAiImageSize(input.imageSize),
+    quality: input.quality,
+    background: input.background,
+    output_format: input.outputFormat,
+  };
+}
+
+export function buildPostAgentVisualAuditPayload(input: {
+  imageDataUrl: string;
+  referenceDataUrl?: string | null;
+  primaryColor?: string | null;
+  accentColor?: string | null;
+  model?: string;
+}): Record<string, unknown> {
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: 'input_text',
+      text: [
+        'Audit this original feature-animation-style campaign character.',
+        'Judge only visible evidence. Check anatomical coherence, both hands and fingers, facial/eye symmetry, collisions between body/wardrobe/props, clean subject isolation, brand-colour harmony, and identity continuity when a reference image follows.',
+        `Expected brand colours: ${input.primaryColor || 'unspecified'} and ${input.accentColor || 'unspecified'}.`,
+      ].join(' '),
+    },
+    { type: 'input_image', image_url: input.imageDataUrl, detail: 'high' },
+  ];
+  if (input.referenceDataUrl) {
+    content.push({ type: 'input_text', text: 'Identity reference:' });
+    content.push({ type: 'input_image', image_url: input.referenceDataUrl, detail: 'high' });
+  }
+  const checkSchema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      passed: { type: 'boolean' },
+      score: { type: 'integer', minimum: 0, maximum: 100 },
+      detail: { type: 'string' },
+    },
+    required: ['passed', 'score', 'detail'],
+  };
+  return {
+    model: input.model || process.env.OPENAI_VISUAL_QA_MODEL || 'gpt-5-mini',
+    store: false,
+    max_output_tokens: 900,
+    input: [{ role: 'user', content }],
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'mockup_figure_visual_qa',
+        strict: true,
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            score: { type: 'integer', minimum: 0, maximum: 100 },
+            summary: { type: 'string' },
+            anatomy: checkSchema,
+            hands: checkSchema,
+            symmetry: checkSchema,
+            collisions: checkSchema,
+            subject_isolation: checkSchema,
+            brand_harmony: checkSchema,
+            identity_continuity: checkSchema,
+          },
+          required: ['score', 'summary', 'anatomy', 'hands', 'symmetry', 'collisions', 'subject_isolation', 'brand_harmony', 'identity_continuity'],
+        },
+      },
+    },
+  };
+}
+
+function responseOutputText(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const output = (value as { output?: unknown }).output;
+  if (!Array.isArray(output)) return null;
+  for (const item of output) {
+    if (!item || typeof item !== 'object' || !Array.isArray((item as { content?: unknown }).content)) continue;
+    for (const part of (item as { content: unknown[] }).content) {
+      if (part && typeof part === 'object' && (part as { type?: unknown }).type === 'output_text' && typeof (part as { text?: unknown }).text === 'string') {
+        return (part as { text: string }).text;
+      }
+    }
+  }
+  return null;
 }
 
 type AuthedRequest = Request & { userId: string; bearerToken: string };
@@ -167,6 +289,8 @@ function generatePairingCode(): string {
   return `${pick(3)}-${pick(3)}`;
 }
 
+const ORG_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function createPostAgentRouter(
   pool: Pool,
   activeSessions?: Map<string, SessionData>,
@@ -191,6 +315,29 @@ export function createPostAgentRouter(
     });
   });
 
+  // ---- Robust updater-manifest (PUBLIC — updateren sender ingen bearer) ----
+
+  router.get('/update/:key', async (req: Request, res: Response) => {
+    const result = await fetchUpdateManifest(req.params.key);
+    if (!result.ok) { res.status(result.status).json({ error: result.error }); return; }
+    res.type('application/json').setHeader('Cache-Control', 'public, max-age=120').send(result.body);
+  });
+
+  // ---- Kampanje-regissør → sosial-køen ----
+
+  router.post('/campaign/enqueue', postAgentAuth, async (req: Request, res: Response) => {
+    try {
+      const orgId = await resolveOrgIdForUser(pool, (req as AuthedRequest).userId);
+      if (!ORG_UUID_RE.test(orgId)) { res.status(409).json({ error: 'ingen_organisasjon' }); return; }
+      const result = await enqueueCampaignPosts(pool, orgId, req.body);
+      if (result.created === 0) { res.status(422).json({ error: 'ingen_gyldige_poster', ...result }); return; }
+      res.json(result); // { created, skipped } — postene ligger som draft i køen for godkjenning
+    } catch (err) {
+      console.error('[post-agent] campaign enqueue failed', err);
+      res.status(500).json({ error: 'enqueue_failed' });
+    }
+  });
+
   // ---- Pairing flow ----
 
   router.post(
@@ -213,10 +360,20 @@ export function createPostAgentRouter(
         res.status(503).json({ error: 'pairing_storage_unavailable' });
         return;
       }
+      // Redeem-siden (/link) ligger i SAMME Netlify-bundle for både
+      // theroleroom.com og creatorhubn.com og bruker relativ fetch — så en
+      // pairing-kode kan løses inn på hvilket som helst av domenene. Returnér
+      // begge, så appen kan vise det domenet brukeren faktisk er logget inn på.
+      const primaryVerificationUrl =
+        process.env.POST_AGENT_PAIRING_URL || 'https://theroleroom.com/link';
       res.json({
         code,
         expiresAt: new Date(Date.now() + PAIRING_TTL_MS).toISOString(),
-        verificationUrl: 'https://theroleroom.com/link',
+        verificationUrl: primaryVerificationUrl,
+        verificationUrls: [
+          'https://theroleroom.com/link',
+          'https://creatorhubn.com/link',
+        ],
         pollIntervalMs: 2000,
       });
     },
@@ -415,13 +572,41 @@ export function createPostAgentRouter(
    */
   router.get('/me', postAgentAuth, async (req: Request, res: Response) => {
     const userId = (req as AuthedRequest).userId;
-    // Robust mot databaser der profession/company_name-kolonnene ikke har
-    // blitt migrert ennå (migrasjon 0001 + 212). Hvis full-select feiler
-    // med "column ... does not exist", fall tilbake til minimum-set og
-    // returner profession/companyName som null — UI viser fortsatt
-    // brukeren som pålogget istedenfor "Token utløpt".
+    // Sesjons-email som fallback: enkelte users-rader (f.eks. OAuth-/migrerte
+    // kontoer) har tom `email`-kolonne selv om innloggings-sesjonen alltid har
+    // en gyldig email (validert i auth-session-store). Uten denne fallbacken
+    // returnerer /me email=null → appen tolker det som «Token utløpt» selv om
+    // token-et er gyldig (App.tsx silentAuthCheck krever me.email).
+    const sessionForEmail = await resolveUser(pool, activeSessions, (req as AuthedRequest).bearerToken);
+    const sessionEmail = typeof sessionForEmail?.email === 'string' ? sessionForEmail.email : null;
+    // Skuddsikker fallback: feiler users-oppslaget på NOEN måte (manglende
+    // kolonne, ingen rad, DB-feil) men token-et resolverte til en sesjon med
+    // email → regn brukeren som pålogget og bygg svaret fra sesjonen. Gyldig
+    // token skal ALDRI gi «Token utløpt».
+    const s = (sessionForEmail ?? {}) as Record<string, unknown>;
+    const sessionFallback = (reason: string): boolean => {
+      if (!sessionEmail) return false;
+      console.warn(`[pa-me] DB-lookup feilet (${reason}) — sesjons-svar for ${sessionEmail}`);
+      res.json({
+        id: userId,
+        email: sessionEmail,
+        name:
+          (typeof s.displayName === 'string' && s.displayName) ||
+          (typeof s.name === 'string' && s.name) ||
+          sessionEmail.split('@')[0],
+        role: typeof s.role === 'string' ? s.role : 'user',
+        profileImageUrl: typeof s.picture === 'string' ? s.picture : undefined,
+        isAdministrator: false,
+        schemaDegraded: true,
+      });
+      return true;
+    };
+
+    // Robust mot databaser der enkelte kolonner ikke er migrert. NB: minCols
+    // dropper is_administrator (kan mangle i prod → ville fått min-select til å
+    // kaste også); admin-status er uansett ikke nødvendig for innlogging.
     const fullCols = 'id, email, first_name, last_name, role, profile_image_url, profession, company_name, is_administrator';
-    const minCols  = 'id, email, first_name, last_name, role, profile_image_url, is_administrator';
+    const minCols  = 'id, email, first_name, last_name, role, profile_image_url';
     let u: Record<string, unknown> | undefined;
     let degraded = false;
     try {
@@ -441,23 +626,32 @@ export function createPostAgentRouter(
           );
           u = rows[0];
         } catch (err2) {
+          if (sessionFallback('min-select: ' + (err2 as Error).message)) return;
           res.status(500).json({ error: 'profile_lookup_failed', detail: (err2 as Error).message });
           return;
         }
       } else {
+        if (sessionFallback('select: ' + msg)) return;
         res.status(500).json({ error: 'profile_lookup_failed', detail: msg });
         return;
       }
     }
     if (!u) {
+      // Token gyldig men ingen users-rad → sesjons-svar (eller 404).
+      if (sessionFallback('no-row')) return;
+      console.warn(`[pa-me] user_not_found userId=${userId} — token resolverte men ingen users-rad med den id`);
       res.status(404).json({ error: 'user_not_found' });
       return;
+    }
+    const email = ((u.email as string | null | undefined) || sessionEmail) ?? null;
+    if (!u.email && sessionEmail) {
+      console.warn(`[pa-me] users.email tom for userId=${userId} — falt tilbake til sesjons-email`);
     }
     const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
     res.json({
       id: u.id,
-      email: u.email,
-      name: fullName || (u.email as string | undefined)?.split('@')[0] || 'Bruker',
+      email,
+      name: fullName || email?.split('@')[0] || 'Bruker',
       firstName: u.first_name,
       lastName: u.last_name,
       role: u.role || 'user',
@@ -579,17 +773,30 @@ Tidspunkt: ${new Date().toISOString()}
   // ---- AI image generation ----
 
   /**
-   * POST /ai/generate-image — proxer mot fal.ai Flux 1.1 Pro for å lage
-   * et bilde fra et prompt. Brukes av Post Agent som Phase 2 av
+   * POST /ai/generate-image — proxer mot valgt, eksplisitt bildeprovider.
+   * Brukes av Post Agent som Phase 2 av
    * "AI-to-editable-PSD"-pipelinen. Resultatet er en URL eller base64
    * som klienten henter ned og lagrer som en fil for å bruke som
    * smart-object-innhold i scaffolded PSD.
    *
-   * Body: { prompt, options?: { width?, height?, image_size? } }
+   * Body: { prompt, options?: { image_size?, model?, quality?, background?, output_format? } }
    * Returns: { image_url, model, seed? }
    */
-  router.post('/ai/generate-image', postAgentAuth, async (req: Request, res: Response) => {
+  router.post('/ai/generate-image', postAgentAuth,
+    aiRateLimit({ windowMs: 60_000, max: 20, label: 'post-agent-image-gen' }),
+    async (req: Request, res: Response) => {
     const userId = (req as AuthedRequest).userId;
+    // Entitlement-gate (som /anthropic/messages) — dette kaller en betalt bildeprovider.
+    // Uten den kunne enhver PARET (men ikke-abonnert) konto generere ubegrenset →
+    // wallet-DoS. Admin/abonnement/team-seat kreves, ellers 402.
+    {
+      const session = activeSessions?.get((req as AuthedRequest).bearerToken);
+      const entitlement = await checkAgentEntitlement(pool, userId, session?.role);
+      if (!entitlement.allowed && !(await userHasActiveTeamSeat(pool, userId))) {
+        res.status(402).json({ error: 'subscription_required', detail: entitlement.reason });
+        return;
+      }
+    }
     const body = (req.body ?? {}) as {
       prompt?: string;
       options?: {
@@ -597,6 +804,19 @@ Tidspunkt: ${new Date().toISOString()}
         num_inference_steps?: number;
         guidance_scale?: number;
         seed?: number | null;
+        model?: string;
+        quality?: string;
+        background?: string;
+        output_format?: string;
+        reference_image?: string;
+        audit_image?: boolean;
+        brand_primary?: string;
+        brand_accent?: string;
+        asset_context?: {
+          project_id?: string;
+          image_id?: string;
+          variant_key?: string;
+        };
       };
     };
     const prompt = (body.prompt ?? '').toString().trim();
@@ -605,81 +825,346 @@ Tidspunkt: ${new Date().toISOString()}
       return;
     }
 
-    const falKey = process.env.FAL_KEY?.trim();
-    if (!falKey) {
-      res.status(503).json({
-        error: 'image_provider_not_configured',
-        detail: 'FAL_KEY env var er ikke satt på serveren. Sett FAL_KEY i Render env og restart.',
+    const opts = body.options ?? {};
+    const requestedModel = opts.model ?? 'fal-flux-pro-1.1';
+    if (!['fal-flux-pro-1.1', 'gpt-image-2'].includes(requestedModel)) {
+      res.status(400).json({ error: 'unsupported_image_model' });
+      return;
+    }
+    const quality = opts.quality ?? (requestedModel === 'gpt-image-2' ? 'high' : 'medium');
+    const background = opts.background ?? (requestedModel === 'gpt-image-2' ? 'transparent' : 'auto');
+    const outputFormat = opts.output_format ?? 'png';
+    if (!['low', 'medium', 'high'].includes(quality)) {
+      res.status(400).json({ error: 'unsupported_image_quality' });
+      return;
+    }
+    if (!['transparent', 'opaque', 'auto'].includes(background)) {
+      res.status(400).json({ error: 'unsupported_image_background' });
+      return;
+    }
+    if (!['png', 'webp', 'jpeg'].includes(outputFormat)) {
+      res.status(400).json({ error: 'unsupported_image_output_format' });
+      return;
+    }
+    if (background === 'transparent' && outputFormat === 'jpeg') {
+      res.status(400).json({
+        error: 'transparent_background_requires_png_or_webp',
       });
       return;
     }
 
-    const opts = body.options ?? {};
-    const falBody = {
-      prompt,
-      image_size: opts.image_size ?? 'square_hd',
-      num_inference_steps: opts.num_inference_steps ?? 28,
-      guidance_scale: opts.guidance_scale ?? 3.5,
-      ...(opts.seed != null ? { seed: opts.seed } : {}),
-    };
-
     try {
-      const r = await fetch('https://fal.run/fal-ai/flux-pro/v1.1', {
-        method: 'POST',
-        headers: {
-          Authorization: `Key ${falKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(falBody),
-      });
-      if (!r.ok) {
-        const txt = await r.text();
-        res.status(r.status).json({
-          error: 'image_provider_failed',
-          status: r.status,
-          detail: txt.slice(0, 500),
+      let imageUrl: string;
+      let width: number | null = null;
+      let height: number | null = null;
+      let model: string;
+      let seed: number | null = null;
+      let providerSupportsSeed = false;
+      let providerMode = 'text-generation';
+      let generatedBytes: Buffer | null = null;
+      let generatedContentType = 'image/png';
+      let referenceDataUrl: string | null = null;
+      let visualAudit: Record<string, unknown> | null = null;
+      let assetRef: string | null = null;
+      let assetHash: string | null = null;
+
+      if (requestedModel === 'gpt-image-2') {
+        const openAiKey = process.env.OPENAI_API_KEY?.trim();
+        if (!openAiKey) {
+          res.status(503).json({
+            error: 'image_provider_not_configured',
+            detail: 'OPENAI_API_KEY er ikke satt på serveren.',
+          });
+          return;
+        }
+        const providerSize = postAgentOpenAiImageSize(opts.image_size);
+        const referenceImage = opts.reference_image?.trim();
+        let openAiResponse: Awaited<ReturnType<typeof fetch>>;
+        if (referenceImage) {
+          providerMode = 'reference-edit';
+          const inlineMatch = referenceImage.match(
+            /^data:(image\/(?:png|webp|jpeg));base64,([A-Za-z0-9+/=]+)$/,
+          );
+          const cloudMatch = referenceImage.match(
+            /^mockup-cloud-file:[^:]{1,255}:([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i,
+          );
+          let bytes: Buffer | null = null;
+          let mime = 'image/png';
+          if (inlineMatch) {
+            bytes = Buffer.from(inlineMatch[2], 'base64');
+            mime = inlineMatch[1];
+          } else if (cloudMatch) {
+            const stored = await getUserFileContent(pool, {
+              userId,
+              fileId: cloudMatch[1],
+            });
+            if (stored.ok) {
+              bytes = Buffer.from(stored.body);
+              mime = stored.contentType;
+            }
+          }
+          if (!/^image\/(?:png|webp|jpeg)$/i.test(mime)) {
+            res.status(400).json({ error: 'invalid_reference_image_type' });
+            return;
+          }
+          if (!bytes) {
+            res.status(400).json({
+              error: 'invalid_reference_image',
+              detail: 'reference_image må være en inline eller privat Mockup Studio PNG, WEBP eller JPEG.',
+            });
+            return;
+          }
+          if (bytes.length === 0 || bytes.length > 20 * 1024 * 1024) {
+            res.status(400).json({ error: 'invalid_reference_image_size' });
+            return;
+          }
+          const form = new FormData();
+          form.set('model', 'gpt-image-2');
+          form.set('prompt', prompt);
+          form.set('size', providerSize);
+          form.set('quality', quality);
+          form.set('background', background);
+          form.set('output_format', outputFormat);
+          form.append(
+            'image[]',
+            new Blob([
+              bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+            ], { type: mime }),
+            `figure-reference.${mime.split('/')[1] || 'png'}`,
+          );
+          referenceDataUrl = `data:${mime};base64,${bytes.toString('base64')}`;
+          openAiResponse = await fetch('https://api.openai.com/v1/images/edits', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${openAiKey}` },
+            body: form,
+          });
+        } else {
+          openAiResponse = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${openAiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(buildPostAgentOpenAiImagePayload({
+              prompt,
+              imageSize: opts.image_size,
+              quality,
+              background,
+              outputFormat,
+            })),
+          });
+        }
+        if (!openAiResponse.ok) {
+          const detail = await openAiResponse.text();
+          res.status(
+            openAiResponse.status === 402 || openAiResponse.status === 429
+              ? openAiResponse.status
+              : 502,
+          ).json({
+            error: 'image_provider_failed',
+            status: openAiResponse.status,
+            detail: detail.slice(0, 500),
+          });
+          return;
+        }
+        const data = await openAiResponse.json() as {
+          data?: Array<{ b64_json?: string }>;
+        };
+        const imageBase64 = data.data?.[0]?.b64_json;
+        if (!imageBase64) {
+          res.status(502).json({ error: 'no_image_in_response' });
+          return;
+        }
+        generatedBytes = Buffer.from(imageBase64, 'base64');
+        generatedContentType = `image/${outputFormat === 'jpeg' ? 'jpeg' : outputFormat}`;
+        imageUrl = `data:${generatedContentType};base64,${imageBase64}`;
+        [width, height] = providerSize.split('x').map(Number);
+        model = 'gpt-image-2';
+      } else {
+        const falKey = process.env.FAL_KEY?.trim();
+        if (!falKey) {
+          res.status(503).json({
+            error: 'image_provider_not_configured',
+            detail: 'FAL_KEY env var er ikke satt på serveren.',
+          });
+          return;
+        }
+        const falResponse = await fetch('https://fal.run/fal-ai/flux-pro/v1.1', {
+          method: 'POST',
+          headers: {
+            Authorization: `Key ${falKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt,
+            image_size: opts.image_size ?? 'square_hd',
+            num_inference_steps: opts.num_inference_steps ?? 28,
+            guidance_scale: opts.guidance_scale ?? 3.5,
+            ...(opts.seed != null ? { seed: opts.seed } : {}),
+          }),
         });
-        return;
-      }
-      const data = await r.json() as {
-        images?: Array<{ url?: string; width?: number; height?: number }>;
-        seed?: number;
-        timings?: unknown;
-      };
-      const firstImage = data.images?.[0];
-      if (!firstImage?.url) {
-        res.status(502).json({ error: 'no_image_in_response', detail: JSON.stringify(data).slice(0, 500) });
-        return;
+        if (!falResponse.ok) {
+          const detail = await falResponse.text();
+          res.status(falResponse.status).json({
+            error: 'image_provider_failed',
+            status: falResponse.status,
+            detail: detail.slice(0, 500),
+          });
+          return;
+        }
+        const data = await falResponse.json() as {
+          images?: Array<{ url?: string; width?: number; height?: number }>;
+          seed?: number;
+        };
+        const firstImage = data.images?.[0];
+        if (!firstImage?.url) {
+          res.status(502).json({
+            error: 'no_image_in_response',
+            detail: JSON.stringify(data).slice(0, 500),
+          });
+          return;
+        }
+        imageUrl = firstImage.url;
+        width = firstImage.width ?? null;
+        height = firstImage.height ?? null;
+        model = 'black-forest-labs/flux-pro-1.1';
+        seed = data.seed ?? null;
+        providerSupportsSeed = true;
       }
 
-      // Audit-log: lagre en rad så vi har historikk på hva brukerne genererer.
-      // Best-effort — hvis tabellen mangler, fortsett uten.
+      if (requestedModel === 'gpt-image-2' && generatedBytes) {
+        assetHash = crypto.createHash('sha256').update(generatedBytes).digest('hex');
+
+        if (opts.audit_image === true) {
+          try {
+            const auditResponse = await fetch('https://api.openai.com/v1/responses', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${process.env.OPENAI_API_KEY?.trim()}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(buildPostAgentVisualAuditPayload({
+                imageDataUrl: imageUrl,
+                referenceDataUrl,
+                primaryColor: opts.brand_primary,
+                accentColor: opts.brand_accent,
+              })),
+            });
+            if (auditResponse.ok) {
+              const responseJson = await auditResponse.json() as Record<string, unknown>;
+              const outputText = responseOutputText(responseJson);
+              visualAudit = outputText ? JSON.parse(outputText) as Record<string, unknown> : null;
+              if (visualAudit) visualAudit.model = responseJson.model || process.env.OPENAI_VISUAL_QA_MODEL || 'gpt-5-mini';
+            } else {
+              visualAudit = {
+                unavailable: true,
+                detail: `visual_audit_provider_${auditResponse.status}`,
+              };
+            }
+          } catch (auditError) {
+            visualAudit = {
+              unavailable: true,
+              detail: (auditError as Error).message.slice(0, 240),
+            };
+          }
+        }
+
+        const projectId = String(opts.asset_context?.project_id || '').trim().slice(0, 255);
+        const imageId = String(opts.asset_context?.image_id || '').trim().slice(0, 255);
+        const variantKey = String(opts.asset_context?.variant_key || 'figure').trim().slice(0, 120);
+        if (projectId && imageId) {
+          try {
+            const existing = await pool.query<{ id: string }>(
+              `SELECT id::text FROM role_room_user_files
+                WHERE user_id=$1 AND source_module='mockup-studio-ai'
+                  AND attached_to_entity_type='mockup-project'
+                  AND attached_to_entity_id=$2
+                  AND metadata->>'sha256'=$3 AND deleted_at IS NULL
+                LIMIT 1`,
+              [userId, projectId, assetHash],
+            );
+            let fileId = existing.rows[0]?.id || null;
+            if (!fileId) {
+              const extension = outputFormat === 'jpeg' ? 'jpg' : outputFormat;
+              const uploaded = await uploadUserFile(pool, {
+                userId,
+                displayName: `${imageId}-${variantKey}.${extension}`,
+                body: generatedBytes,
+                contentType: generatedContentType,
+                sourceModule: 'mockup-studio-ai',
+                metadata: {
+                  sha256: assetHash,
+                  provider: 'openai',
+                  model,
+                  quality,
+                  variantKey,
+                  visualAudit,
+                },
+                context: {
+                  attachedToEntityType: 'mockup-project',
+                  attachedToEntityId: projectId,
+                  attachmentNote: `High-fidelity figure asset for ${imageId}`,
+                },
+              });
+              if (uploaded.ok) fileId = uploaded.file.id;
+              else if (uploaded.reason === 'upload_failed') {
+                const raced = await pool.query<{ id: string }>(
+                  `SELECT id::text FROM role_room_user_files
+                    WHERE user_id=$1 AND source_module='mockup-studio-ai'
+                      AND attached_to_entity_type='mockup-project'
+                      AND attached_to_entity_id=$2
+                      AND metadata->>'sha256'=$3 AND deleted_at IS NULL
+                    LIMIT 1`,
+                  [userId, projectId, assetHash],
+                );
+                fileId = raced.rows[0]?.id || null;
+              }
+            }
+            if (fileId) assetRef = `mockup-cloud-file:${projectId}:${fileId}`;
+          } catch (storageError) {
+            console.warn('[post-agent ai/generate-image] asset persistence unavailable:', (storageError as Error).message);
+          }
+        }
+      }
+
+      // Audit-loggen opprettes av migrasjon. Inline bilder lagres som fingerprint,
+      // ikke som store base64-felter i Postgres.
       try {
+        const auditImageRef = imageUrl.startsWith('data:')
+          ? `inline:${model}:${crypto.createHash('sha256').update(imageUrl).digest('hex')}`
+          : imageUrl;
         await pool.query(
-          `CREATE TABLE IF NOT EXISTS post_agent_ai_image_log (
-            id          SERIAL PRIMARY KEY,
-            user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
-            prompt      TEXT NOT NULL,
-            image_url   TEXT NOT NULL,
-            seed        BIGINT,
-            created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-          )`,
+          `INSERT INTO post_agent_ai_image_log
+             (user_id, prompt, image_url, provider, model, seed, asset_file_id, visual_audit)
+           VALUES ($1, $2, $3, $4, $5, $6, $7::uuid, $8::jsonb)`,
+          [
+            userId,
+            prompt,
+            auditImageRef,
+            requestedModel === 'gpt-image-2' ? 'openai' : 'fal',
+            model,
+            seed,
+            assetRef?.split(':').at(-1) || null,
+            visualAudit ? JSON.stringify(visualAudit) : null,
+          ],
         );
-        await pool.query(
-          `INSERT INTO post_agent_ai_image_log (user_id, prompt, image_url, seed)
-           VALUES ($1, $2, $3, $4)`,
-          [userId, prompt, firstImage.url, data.seed ?? null],
-        );
+        // Retention (personvern): ikke lagre bruker-prompts på ubestemt tid.
+        await pool.query(`DELETE FROM post_agent_ai_image_log WHERE created_at < NOW() - INTERVAL '90 days'`).catch(() => {});
       } catch (logErr) {
         console.warn('[post-agent ai/generate-image] log insert failed:', (logErr as Error).message);
       }
 
       res.json({
-        image_url: firstImage.url,
-        width: firstImage.width ?? null,
-        height: firstImage.height ?? null,
-        model: 'black-forest-labs/flux-pro-1.1',
-        seed: data.seed ?? null,
+        image_url: imageUrl,
+        width,
+        height,
+        model,
+        seed,
+        provider_supports_seed: providerSupportsSeed,
+        provider_mode: providerMode,
+        asset_ref: assetRef,
+        asset_hash: assetHash,
+        visual_audit: visualAudit,
       });
     } catch (err) {
       res.status(500).json({
@@ -688,6 +1173,116 @@ Tidspunkt: ${new Date().toISOString()}
       });
     }
   });
+
+  // ---- AI video (fal Seedance) — serverside provider for Demo Studio broll ----
+  //
+  // Lar Post Agent generere kinematiske klipp UTEN lokal higgsfield-CLI/kreditter:
+  // FAL_KEY bor på serveren. Seedance-modellen er image-to-video, så en start-
+  // ramme (image_url) KREVES — passer med «forankre i produkt-ramme» i klienten.
+  // Kø-basert: submit returnerer en responseUrl klienten poller til COMPLETED.
+  //
+  // POST /ai/generate-video  { prompt, imageUrl, durationSec?, resolution? }
+  //   → 202 { responseUrl }
+  router.post('/ai/generate-video', postAgentAuth,
+    aiRateLimit({ windowMs: 60_000, max: 12, label: 'post-agent-video-gen' }),
+    async (req: Request, res: Response): Promise<void> => {
+      const userId = (req as AuthedRequest).userId;
+      // Entitlement-gate (som /ai/generate-image) — dette kaller betalt fal Seedance.
+      {
+        const session = activeSessions?.get((req as AuthedRequest).bearerToken);
+        const entitlement = await checkAgentEntitlement(pool, userId, session?.role);
+        if (!entitlement.allowed && !(await userHasActiveTeamSeat(pool, userId))) {
+          res.status(402).json({ error: 'subscription_required', detail: entitlement.reason });
+          return;
+        }
+      }
+      if (!falConfigured()) {
+        res.status(503).json({ error: 'video_provider_not_configured', detail: 'FAL_KEY ikke satt på serveren.' });
+        return;
+      }
+      const body = (req.body ?? {}) as { prompt?: string; imageUrl?: string; durationSec?: number; resolution?: string };
+      const prompt = (body.prompt ?? '').toString().trim();
+      const imageUrl = (body.imageUrl ?? '').toString().trim();
+      if (!prompt) { res.status(400).json({ error: 'prompt_required' }); return; }
+      // Seedance er image-to-video → start-ramme kreves (data-URI eller http-URL).
+      if (!imageUrl) { res.status(400).json({ error: 'image_required', detail: 'fal Seedance er image-to-video — send imageUrl (forankre i en produkt-ramme).' }); return; }
+      const duration = Math.max(4, Math.min(15, Math.round(Number(body.durationSec) || 6)));
+      const resolution = ['480p', '720p', '1080p'].includes(String(body.resolution)) ? String(body.resolution) : '720p';
+      // Seedance v1 Pro i2v — den produksjons-beviste stien (fal-ai/-prefiks).
+      // Speiler ad-film-Python sitt kall {image_url, prompt}; duration er en
+      // enum ("5"/"10") på denne modellen, så vi mapper i stedet for å sende sek.
+      const model = GEN_MODELS['seedance-i2v-pro'];
+      const durEnum = duration <= 7 ? '5' : '10';
+      const sub = await falSubmit(model.falPath, { prompt, image_url: imageUrl, resolution, duration: durEnum });
+      if (sub.error || !sub.responseUrl) {
+        res.status(502).json({ error: 'video_submit_failed', detail: sub.error ?? 'ingen responseUrl' });
+        return;
+      }
+      res.status(202).json({ responseUrl: sub.responseUrl, requestId: sub.requestId ?? null, estCostUsd: duration * (model.costPerSecondUsd ?? 0.1) });
+    });
+
+  // POST /ai/generate-video/poll  { responseUrl }
+  //   → { status } | { status: 'COMPLETED', videoUrl }
+  router.post('/ai/generate-video/poll', postAgentAuth,
+    aiRateLimit({ windowMs: 60_000, max: 120, label: 'post-agent-video-poll' }),
+    async (req: Request, res: Response): Promise<void> => {
+      const responseUrl = String((req.body ?? {}).responseUrl ?? '').trim();
+      // Kun fal-kø-URL-er tillates (SSRF-vakt) — ikke poll vilkårlige verter.
+      if (!/^https:\/\/queue\.fal\.run\//.test(responseUrl)) {
+        res.status(400).json({ error: 'invalid_response_url' });
+        return;
+      }
+      const r = await falPoll(responseUrl);
+      if (r.status === 'COMPLETED') {
+        const out = falOutputUrl(r.result);
+        if (!out.url) { res.status(502).json({ error: 'no_video_in_result' }); return; }
+        res.json({ status: 'COMPLETED', videoUrl: out.url });
+        return;
+      }
+      if (r.status === 'ERROR') { res.status(502).json({ error: 'video_poll_failed', detail: r.error }); return; }
+      res.json({ status: r.status });
+    });
+
+  // ---- Tekst-til-tale (ElevenLabs) ----
+  //
+  // POST /tts — proxer mot ElevenLabs så API-nøkkelen blir på SERVEREN (aldri i
+  // den distribuerte appen). Brukes av Post Agent Demo Studio til autonom demo-
+  // voiceover. Returnerer audio/mpeg (mp3).
+  router.post(
+    '/tts',
+    postAgentAuth,
+    aiRateLimit({ windowMs: 60_000, max: 90, label: 'post-agent-tts' }),
+    async (req: Request, res: Response): Promise<void> => {
+      const key = process.env.ELEVENLABS_API_KEY?.trim();
+      if (!key) {
+        res.status(503).json({ error: 'tts_not_configured', detail: 'ELEVENLABS_API_KEY ikke satt på serveren.' });
+        return;
+      }
+      const text = String(req.body?.text ?? '').trim();
+      if (!text) { res.status(400).json({ error: 'missing_text' }); return; }
+      if (text.length > 1500) { res.status(400).json({ error: 'text_too_long' }); return; }
+      const voiceId = (String(req.body?.voiceId ?? '').trim()) || 'EXAVITQu4vr4xnSDxMaL';
+      const modelId = (String(req.body?.modelId ?? '').trim()) || 'eleven_multilingual_v2';
+      try {
+        const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
+          method: 'POST',
+          headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+          body: JSON.stringify({ text, model_id: modelId }),
+        });
+        if (!r.ok) {
+          const txt = await r.text();
+          res.status(r.status).json({ error: 'tts_provider_failed', status: r.status, detail: txt.slice(0, 400) });
+          return;
+        }
+        const buf = Buffer.from(await r.arrayBuffer());
+        res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader('Content-Length', String(buf.length));
+        res.send(buf);
+      } catch (err) {
+        res.status(500).json({ error: 'tts_provider_error', detail: "internal_error" });
+      }
+    },
+  );
 
   // ---- Creator Profile ----
   //
@@ -995,7 +1590,7 @@ Tidspunkt: ${new Date().toISOString()}
 
       res.json({ subscriptions: out, totalMonthlyNok: Math.round(totalMonthlyNok), currency, mixedCurrencies: currencies.size > 1 });
     } catch (err) {
-      res.json({ subscriptions: [], totalMonthlyNok: 0, currency: 'NOK', degraded: true, detail: (err as Error).message });
+      res.json({ subscriptions: [], totalMonthlyNok: 0, currency: 'NOK', degraded: true, detail: "internal_error" });
     }
   });
 
@@ -1036,10 +1631,8 @@ Tidspunkt: ${new Date().toISOString()}
         return;
       }
 
-      const origin =
-        (req.headers.origin as string | undefined) ||
-        (process.env.PUBLIC_APP_URL ?? 'https://creatorhubn.com');
-      const returnPath = typeof req.body?.returnPath === 'string' ? req.body.returnPath : '/';
+      const origin = safeAppBaseUrl(req);
+      const returnPath = safeReturnPath(req.body?.returnPath, '/');
 
       const { default: Stripe } = await import('stripe');
       const stripe = new Stripe(secret);
@@ -1050,7 +1643,7 @@ Tidspunkt: ${new Date().toISOString()}
       res.json({ ok: true, url: session.url });
     } catch (err) {
       console.error('[post-agent] customer-portal failed:', err);
-      res.status(500).json({ error: 'portal_create_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'portal_create_failed', detail: "internal_error" });
     }
   });
 
@@ -1083,9 +1676,7 @@ Tidspunkt: ${new Date().toISOString()}
       const email = userRows[0]?.email;
       const existingCustomer = userRows[0]?.stripe_customer_id;
 
-      const origin =
-        (req.headers.origin as string | undefined) ||
-        (process.env.PUBLIC_APP_URL ?? 'https://creatorhubn.com');
+      const origin = safeAppBaseUrl(req);
       const successQuery = productionId
         ? `productionId=${encodeURIComponent(productionId)}&checkout=success`
         : 'checkout=success';
@@ -1118,7 +1709,193 @@ Tidspunkt: ${new Date().toISOString()}
       res.json({ ok: true, url: session.url, id: session.id });
     } catch (err) {
       console.error('[post-agent] standalone-checkout failed:', err);
-      res.status(500).json({ error: 'checkout_create_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'checkout_create_failed', detail: "internal_error" });
+    }
+  });
+
+  /* ----------------------------------------------------------------- *
+   *  À la carte-moduler (migrasjon 259 + post-agent-modules.ts)        *
+   *  Marketplace selger Demo Studio / Marketing / Capture / Resolve    *
+   *  som separate abonnementer; appen låses opp per modul runtime.     *
+   * ----------------------------------------------------------------- */
+
+  /** Siste publiserte macOS-build (B2-key: downloads/post-agent/<ver>/...). */
+  const POST_AGENT_LATEST_VERSION = process.env.POST_AGENT_LATEST_VERSION || 'v0.2.21';
+
+  // Offentlig katalog — marketplace henter pris + beskrivelse herfra.
+  router.get('/modules/catalog', (_req: Request, res: Response) => {
+    res.json({
+      version: POST_AGENT_LATEST_VERSION,
+      modules: POST_AGENT_MODULES.map((m) => ({
+        key: m.key,
+        name: m.name,
+        description: m.description,
+        priceNok: m.priceNok,
+        available: !!priceIdForModule(m.key),
+      })),
+    });
+  });
+
+  // Hvilke moduler den innloggede brukeren eier (leses av Tauri-appen ved
+  // oppstart for runtime feature-gating + av marketplace for "Eier"-merking).
+  router.get('/modules/entitlements', userAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    try {
+      const modules = await getUserModules(pool, userId);
+      res.json({
+        modules,
+        canDownload: modules.length > 0,
+        version: POST_AGENT_LATEST_VERSION,
+      });
+    } catch (err) {
+      console.error('[post-agent] modules/entitlements failed:', err);
+      res.status(500).json({ error: 'entitlements_failed', detail: "internal_error" });
+    }
+  });
+
+  // ── Delt lærings-lager (Demo Studio) — hvor interaktive elementer er per host.
+  // Kunnskapen deles på tvers av brukere, men GET krever nå INNLOGGING (userAuth) så
+  // den ikke lekker (bl.a. eksistensen av + struktur til) skannede private/interne
+  // hosts til uautentiserte. POST krever auth mot spam. ───────────────────────────
+  router.get('/learned-targets', userAuth, async (req: Request, res: Response) => {
+    const host = String(req.query.host ?? '').trim().toLowerCase();
+    if (!host) { res.status(400).json({ error: 'missing_host' }); return; }
+    try {
+      const { rows } = await pool.query(
+        `SELECT label, selector, hotspot, action_type, correct_label, reject_selectors, count, updated_at
+         FROM post_agent_learned_targets WHERE host = $1 ORDER BY count DESC LIMIT 500`,
+        [host],
+      );
+      res.json({
+        host,
+        targets: (rows as Array<Record<string, unknown>>).map((r) => ({
+          label: r.label,
+          selector: r.selector ?? undefined,
+          hotspot: r.hotspot ?? undefined,
+          actionType: r.action_type ?? undefined,
+          correctLabel: r.correct_label ?? undefined,
+          rejectSelectors: r.reject_selectors ?? undefined,
+          count: r.count,
+          updatedAt: r.updated_at instanceof Date ? r.updated_at.toISOString() : String(r.updated_at),
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ error: 'learned_fetch_failed', detail: "internal_error" });
+    }
+  });
+
+  router.post('/learned-targets', userAuth, async (req: Request, res: Response) => {
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const host = String(b.host ?? '').trim().toLowerCase();
+    const label = String(b.label ?? '').trim();
+    if (!host || !label) { res.status(400).json({ error: 'missing_host_or_label' }); return; }
+    try {
+      await pool.query(
+        `INSERT INTO post_agent_learned_targets (host, label, selector, hotspot, action_type, correct_label, reject_selectors, count, updated_at)
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7::jsonb, 1, now())
+         ON CONFLICT (host, label) DO UPDATE SET
+           selector = COALESCE(EXCLUDED.selector, post_agent_learned_targets.selector),
+           hotspot = COALESCE(EXCLUDED.hotspot, post_agent_learned_targets.hotspot),
+           action_type = COALESCE(EXCLUDED.action_type, post_agent_learned_targets.action_type),
+           correct_label = COALESCE(EXCLUDED.correct_label, post_agent_learned_targets.correct_label),
+           reject_selectors = COALESCE(EXCLUDED.reject_selectors, post_agent_learned_targets.reject_selectors),
+           count = post_agent_learned_targets.count + 1,
+           updated_at = now()`,
+        [
+          host, label,
+          b.selector ?? null,
+          b.hotspot ? JSON.stringify(b.hotspot) : null,
+          b.actionType ?? null,
+          b.correctLabel ?? null,
+          b.rejectSelectors ? JSON.stringify(b.rejectSelectors) : null,
+        ],
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: 'learned_save_failed', detail: "internal_error" });
+    }
+  });
+
+  // Start Stripe Checkout for ÉN modul. Webhooken skriver entitlement når
+  // checkout fullføres (metadata.module → post_agent_module_entitlements).
+  router.post('/modules/checkout', userAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const moduleKey = String(req.body?.module ?? '').trim();
+    if (!isPostAgentModule(moduleKey)) {
+      res.status(400).json({ error: 'unknown_module', detail: `module må være en av: ${POST_AGENT_MODULES.map((m) => m.key).join(', ')}` });
+      return;
+    }
+    const priceId = priceIdForModule(moduleKey as PostAgentModule);
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!priceId || !secret) {
+      res.status(503).json({ error: 'stripe_not_configured', detail: `Mangler price-ID for modul ${moduleKey}` });
+      return;
+    }
+    try {
+      const { rows: userRows } = await pool.query(
+        `SELECT email, stripe_customer_id FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      const email = userRows[0]?.email;
+      const existingCustomer = userRows[0]?.stripe_customer_id;
+      const origin = safeAppBaseUrl(req);
+      const def = getModuleDef(moduleKey as PostAgentModule);
+
+      const { default: Stripe } = await import('stripe');
+      const stripe = new Stripe(secret);
+      const session = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        line_items: [{ price: priceId, quantity: 1 }],
+        success_url: `${origin}/marketplace/post-agent?module=${moduleKey}&checkout=success`,
+        cancel_url: `${origin}/marketplace/post-agent?module=${moduleKey}`,
+        client_reference_id: userId,
+        ...(existingCustomer ? { customer: existingCustomer } : email ? { customer_email: email } : {}),
+        metadata: {
+          product: 'post_agent_module',
+          module: moduleKey,
+          role_room_user_id: userId,
+        },
+        subscription_data: {
+          metadata: {
+            product: 'post_agent_module',
+            module: moduleKey,
+            role_room_user_id: userId,
+          },
+          description: def ? `Post Agent — ${def.name}` : undefined,
+        },
+      });
+      res.json({ ok: true, url: session.url, id: session.id });
+    } catch (err) {
+      console.error('[post-agent] modules/checkout failed:', err);
+      res.status(500).json({ error: 'checkout_create_failed', detail: "internal_error" });
+    }
+  });
+
+  // Gated nedlasting: kun brukere med minst én aktiv modul får en presigned
+  // B2-URL (5 min). Bøtta forblir privat. variant = aarch64 | x86_64.
+  router.get('/modules/download/:variant', userAuth, async (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const variant = req.params.variant === 'x86_64' ? 'x86_64' : 'aarch64';
+    try {
+      const modules = await getUserModules(pool, userId);
+      if (modules.length === 0) {
+        res.status(403).json({ error: 'no_active_module', detail: 'Kjøp minst én Post Agent-modul for å laste ned appen.' });
+        return;
+      }
+      const filename = `post-agent-darwin-${variant}.dmg`;
+      const key = `downloads/post-agent/${POST_AGENT_LATEST_VERSION}/${filename}`;
+      const url = await presignRoleRoomB2Download(key, filename, 300);
+      if (!url) {
+        res.status(503).json({ error: 'download_unavailable', detail: 'B2 ikke konfigurert eller fil mangler.' });
+        return;
+      }
+      // Returnér presigned URL som JSON — klienten må sende Bearer via fetch og
+      // kan ikke følge en 302 med auth-header. Klienten gjør window.location=url.
+      console.log(`[post-agent] download user=${userId} variant=${variant} modules=${modules.join(',')}`);
+      res.json({ ok: true, url, filename, expiresIn: 300 });
+    } catch (err) {
+      console.error('[post-agent] modules/download failed:', err);
+      res.status(500).json({ error: 'download_failed', detail: "internal_error" });
     }
   });
 
@@ -1148,7 +1925,7 @@ Tidspunkt: ${new Date().toISOString()}
       );
       stripeSubscriptionId = rows[0]?.stripe_subscription_id ?? null;
     } catch (err) {
-      res.status(500).json({ error: 'subscription_lookup_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'subscription_lookup_failed', detail: "internal_error" });
       return;
     }
 
@@ -1412,7 +2189,7 @@ Tidspunkt: ${new Date().toISOString()}
       }
       return true;
     } catch (err) {
-      res.status(500).json({ error: 'project_lookup_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'project_lookup_failed', detail: "internal_error" });
       return false;
     }
   }
@@ -1670,18 +2447,18 @@ Spørsmål? Svar på denne eposten.
       const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; max-width: 560px; color: #1a0d45; line-height: 1.6;">
   <div style="border-left: 3px solid #a030c0; padding-left: 16px; margin-bottom: 24px;">
     <h2 style="font-size: 18px; margin: 0 0 4px; font-weight: 700;">Du har fått Post Agent-tilgang</h2>
-    <p style="margin: 0; color: #6e3fc7; font-size: 14px;">Produksjon: <strong>${productionName}</strong></p>
+    <p style="margin: 0; color: #6e3fc7; font-size: 14px;">Produksjon: <strong>${escapeHtml(productionName)}</strong></p>
   </div>
 
-  <p>${greeting}</p>
+  <p>${escapeHtml(greeting)}</p>
 
-  <p><strong>${ownerName}</strong> har gitt deg tilgang til The Role Room Post Agent for denne produksjonen.</p>
+  <p><strong>${escapeHtml(ownerName)}</strong> har gitt deg tilgang til The Role Room Post Agent for denne produksjonen.</p>
 
   <p style="margin-top: 24px;"><strong>Slik kommer du i gang:</strong></p>
   <ol style="padding-left: 20px;">
     <li style="margin-bottom: 8px;">Last ned <a href="https://creatorhubn.com/link" style="color: #a030c0; text-decoration: none; font-weight: 600;">Post Agent for Mac</a> (Apple Silicon).</li>
-    <li style="margin-bottom: 8px;">Logg inn med Role Room-kontoen din (<code>${crewEmail}</code>).</li>
-    <li style="margin-bottom: 8px;">Velg <strong>${productionName}</strong> i prosjekt-pickeren — appen leser scener, utstyr og fangede klipp automatisk.</li>
+    <li style="margin-bottom: 8px;">Logg inn med Role Room-kontoen din (<code>${escapeHtml(crewEmail)}</code>).</li>
+    <li style="margin-bottom: 8px;">Velg <strong>${escapeHtml(productionName)}</strong> i prosjekt-pickeren — appen leser scener, utstyr og fangede klipp automatisk.</li>
   </ol>
 
   <p style="background: #f4eefd; padding: 12px 16px; border-radius: 8px; font-size: 13px; color: #4a2e7a;">
@@ -1771,12 +2548,12 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
       const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; max-width: 560px; color: #1a0d45; line-height: 1.6;">
   <div style="border-left: 3px solid #6e3fc7; padding-left: 16px; margin-bottom: 24px;">
     <h2 style="font-size: 18px; margin: 0 0 4px; font-weight: 700;">Post Agent-tilgang avsluttet</h2>
-    <p style="margin: 0; color: #6e3fc7; font-size: 14px;">Produksjon: <strong>${productionName}</strong></p>
+    <p style="margin: 0; color: #6e3fc7; font-size: 14px;">Produksjon: <strong>${escapeHtml(productionName)}</strong></p>
   </div>
 
-  <p>${greeting}</p>
+  <p>${escapeHtml(greeting)}</p>
 
-  <p><strong>${ownerName}</strong> har avsluttet Post Agent-tilgangen din til denne produksjonen.</p>
+  <p><strong>${escapeHtml(ownerName)}</strong> har avsluttet Post Agent-tilgangen din til denne produksjonen.</p>
 
   <p>Det betyr at AI-cull, scene-detection og andre Post Agent-funksjoner ikke lenger er
   tilgjengelige for dette prosjektet. Lokale klipp og prosjektfiler er upåvirket.</p>
@@ -1870,7 +2647,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         },
       });
     } catch (e) {
-      res.json({ seats: [], summary: { activeSeatCount: 0, seatPriceNok: 299, monthlyMrrNok: 0 }, degraded: true, detail: (e as Error).message });
+      res.json({ seats: [], summary: { activeSeatCount: 0, seatPriceNok: 299, monthlyMrrNok: 0 }, degraded: true, detail: "internal_error" });
     }
   });
 
@@ -1917,7 +2694,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
           })),
         });
       } catch (e) {
-        res.json({ crew: [], degraded: true, detail: (e as Error).message });
+        res.json({ crew: [], degraded: true, detail: "internal_error" });
       }
     },
   );
@@ -1936,7 +2713,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
            WHERE is_active = true
            GROUP BY project_id
          ) s ON s.project_id = p.id
-         WHERE p.owner_id = $1
+         WHERE p.user_id = $1
          ORDER BY p.event_date DESC NULLS LAST, p.created_at DESC NULLS LAST
          LIMIT 100`,
         [userId],
@@ -1951,7 +2728,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         })),
       });
     } catch (e) {
-      res.json({ productions: [], degraded: true, detail: (e as Error).message });
+      res.json({ productions: [], degraded: true, detail: "internal_error" });
     }
   });
 
@@ -1995,7 +2772,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
       }
       return true;
     } catch (err) {
-      res.status(500).json({ error: 'project_lookup_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'project_lookup_failed', detail: "internal_error" });
       return false;
     }
   }
@@ -2025,7 +2802,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         })),
       });
     } catch (e) {
-      res.json({ scenes: [], degraded: true, detail: (e as Error).message });
+      res.json({ scenes: [], degraded: true, detail: "internal_error" });
     }
   });
 
@@ -2066,7 +2843,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
           : null,
       });
     } catch (e) {
-      res.json({ equipment: [], projectSettings: null, degraded: true, detail: (e as Error).message });
+      res.json({ equipment: [], projectSettings: null, degraded: true, detail: "internal_error" });
     }
   });
 
@@ -2111,7 +2888,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         })),
       });
     } catch (e) {
-      res.json({ clips: [], sceneMarkers: [], degraded: true, detail: (e as Error).message });
+      res.json({ clips: [], sceneMarkers: [], degraded: true, detail: "internal_error" });
     }
   });
 
@@ -2165,7 +2942,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         );
         res.json({ urls });
       } catch (e) {
-        res.status(500).json({ error: 'download_urls_failed', detail: (e as Error).message });
+        res.status(500).json({ error: 'download_urls_failed', detail: "internal_error" });
       }
     },
   );

@@ -2,21 +2,37 @@
 //!
 //! Exposes commands consumed by the React frontend via `invoke()`.
 
+mod autonomous_demo;
+mod blender;
+mod broll;
+mod capture_sources;
 mod card_watcher;
 mod creations;
 mod cull;
+mod demo_capture;
+mod demo_export;
+mod demo_recording;
 mod folder_watcher;
 mod history;
 mod media_probe;
+mod mockup_render;
 mod photoshop_bridge;
+mod playwright_render;
+mod product_brain;
 mod psd_indexer;
 mod python;
+mod resolve_mcp;
+mod resolve_mcp_bridge;
+mod resolve_mcp_gateway;
 mod role_room_api;
 
 use std::path::PathBuf;
 
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde_json::Value;
-use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::menu::{
+    AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
+};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_deep_link::DeepLinkExt;
 use uuid::Uuid;
@@ -27,9 +43,22 @@ use folder_watcher::{FolderWatcherState, WatchedFolder};
 use history::HistoryRecord;
 use photoshop_bridge::PhotoshopBridgeState;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use python::{python_root, spawn_python, AppSettings, RunSummary, RunningScriptsState};
+#[derive(Default)]
+struct PendingDeepLinks(Mutex<Vec<String>>);
+
+#[tauri::command]
+fn take_pending_deep_links(state: State<'_, PendingDeepLinks>) -> Vec<String> {
+    std::mem::take(
+        &mut *state
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()),
+    )
+}
+
+use python::{AppSettings, RunSummary, RunningScriptsState, python_root, spawn_python};
 
 fn persist_run(app: &AppHandle, summary: &RunSummary) {
     if let Err(err) = history::append(app, summary) {
@@ -45,6 +74,169 @@ fn read_json(path: std::path::PathBuf) -> Result<Value, String> {
 #[tauri::command]
 async fn list_scripts(app: AppHandle) -> Result<Value, String> {
     read_json(python_root(&app)?.join("registry.json"))
+}
+
+#[tauri::command]
+async fn get_resolve_mcp_status() -> resolve_mcp::ResolveMcpStatus {
+    resolve_mcp::status().await
+}
+
+#[tauri::command]
+async fn list_resolve_mcp_skills() -> Vec<resolve_mcp::ResolveMcpSkillDefinition> {
+    resolve_mcp::skills()
+}
+
+async fn execute_resolve_mcp_skill(
+    app: &AppHandle,
+    skill_id: &str,
+    history_script_id: &str,
+) -> RunSummary {
+    let run_id = Uuid::new_v4().to_string();
+    let started_at = chrono::Utc::now().to_rfc3339();
+    let outcome = resolve_mcp::run_skill(skill_id.to_string()).await;
+    let finished_at = chrono::Utc::now().to_rfc3339();
+    let succeeded = outcome.is_ok();
+    let events = match outcome {
+        Ok(value) => vec![serde_json::json!({
+            "type": "result",
+            "runId": run_id,
+            "scriptId": history_script_id,
+            "value": value,
+            "readOnly": true,
+        })],
+        Err(message) => vec![serde_json::json!({
+            "type": "error",
+            "runId": run_id,
+            "scriptId": history_script_id,
+            "message": message,
+            "readOnly": true,
+        })],
+    };
+    let summary = RunSummary {
+        run_id,
+        script_id: history_script_id.to_string(),
+        exit_code: Some(if succeeded { 0 } else { 1 }),
+        succeeded,
+        events,
+        started_at,
+        finished_at,
+        dry_run: true,
+    };
+    persist_run(app, &summary);
+    summary
+}
+
+#[tauri::command]
+async fn run_resolve_mcp_skill(app: AppHandle, skill_id: String) -> Result<RunSummary, String> {
+    let definition = resolve_mcp::skills()
+        .into_iter()
+        .find(|skill| skill.id == skill_id)
+        .ok_or_else(|| format!("Ukjent Resolve-skill: {skill_id}"))?;
+    if definition.status != "available" {
+        return Err(format!(
+            "Resolve-skillen {skill_id} er ikke aktivert før godkjenningslaget er på plass"
+        ));
+    }
+    if !definition.read_only {
+        return Err(format!(
+            "Resolve-skillen {skill_id} må kjøres via plan → godkjenning → utførelse"
+        ));
+    }
+    Ok(execute_resolve_mcp_skill(&app, &skill_id, &skill_id).await)
+}
+
+#[tauri::command]
+async fn get_resolve_mcp_intelligence()
+-> Result<resolve_mcp_gateway::ResolveMcpIntelligence, String> {
+    resolve_mcp_gateway::intelligence().await
+}
+
+#[tauri::command]
+async fn create_resolve_mcp_plan(
+    state: State<'_, resolve_mcp_gateway::ResolveMcpGatewayState>,
+    skill_id: String,
+    input: Option<Value>,
+) -> Result<resolve_mcp_gateway::ResolveMcpWorkflowPlan, String> {
+    resolve_mcp_gateway::create_plan(
+        &state,
+        skill_id,
+        input.unwrap_or_else(|| serde_json::json!({})),
+    )
+    .await
+}
+
+fn persist_mcp_plan_event(
+    app: &AppHandle,
+    event_name: &str,
+    plan: &resolve_mcp_gateway::ResolveMcpWorkflowPlan,
+) {
+    let now = chrono::Utc::now().to_rfc3339();
+    let summary = RunSummary {
+        run_id: Uuid::new_v4().to_string(),
+        script_id: format!("resolve_mcp_{}_{}", event_name, plan.skill_id),
+        exit_code: Some(0),
+        succeeded: true,
+        events: vec![serde_json::json!({
+            "type": "result",
+            "event": event_name,
+            "planId": plan.plan_id,
+            "skillId": plan.skill_id,
+            "target": plan.target,
+            "state": plan.state,
+            "verification": plan.verification,
+        })],
+        started_at: now.clone(),
+        finished_at: now,
+        dry_run: false,
+    };
+    persist_run(app, &summary);
+}
+
+#[tauri::command]
+async fn apply_resolve_mcp_plan(
+    app: AppHandle,
+    state: State<'_, resolve_mcp_gateway::ResolveMcpGatewayState>,
+    plan_id: String,
+    confirmation_token: String,
+) -> Result<resolve_mcp_gateway::ResolveMcpWorkflowPlan, String> {
+    let plan = resolve_mcp_gateway::apply_plan(&state, plan_id, confirmation_token).await?;
+    persist_mcp_plan_event(&app, "apply", &plan);
+    Ok(plan)
+}
+
+#[tauri::command]
+async fn rollback_resolve_mcp_plan(
+    app: AppHandle,
+    state: State<'_, resolve_mcp_gateway::ResolveMcpGatewayState>,
+    plan_id: String,
+    confirmation_token: String,
+) -> Result<resolve_mcp_gateway::ResolveMcpWorkflowPlan, String> {
+    let plan = resolve_mcp_gateway::rollback_plan(&state, plan_id, confirmation_token).await?;
+    persist_mcp_plan_event(&app, "rollback", &plan);
+    Ok(plan)
+}
+
+#[tauri::command]
+fn get_resolve_mcp_plan(
+    state: State<'_, resolve_mcp_gateway::ResolveMcpGatewayState>,
+    plan_id: String,
+) -> Result<resolve_mcp_gateway::ResolveMcpWorkflowPlan, String> {
+    resolve_mcp_gateway::get_plan(&state, &plan_id)
+}
+
+#[tauri::command]
+fn get_latest_resolve_mcp_plan(
+    state: State<'_, resolve_mcp_gateway::ResolveMcpGatewayState>,
+) -> Option<resolve_mcp_gateway::ResolveMcpWorkflowPlan> {
+    resolve_mcp_gateway::latest_plan(&state)
+}
+
+#[tauri::command]
+async fn run_resolve_mcp_project_doctor(app: AppHandle) -> Result<RunSummary, String> {
+    Ok(
+        execute_resolve_mcp_skill(&app, "resolve-project-doctor", "resolve_mcp_project_doctor")
+            .await,
+    )
 }
 
 /// Claude chat — proxies via The Role Room backend (/api/post-agent/anthropic/messages).
@@ -75,22 +267,30 @@ async fn claude_chat(
             snap.get("ANTHROPIC_API_KEY").cloned().unwrap_or_default(),
         )
     } else {
-        (String::new(), "https://creatorhubn.com/api/post-agent".to_string(), String::new())
+        (
+            String::new(),
+            "https://creatorhubn.com/api/post-agent".to_string(),
+            String::new(),
+        )
     };
 
     if bearer.is_empty() && api_key.is_empty() {
         return Err("Ikke logget inn til The Role Room (RR_BEARER_TOKEN mangler) og ingen ANTHROPIC_API_KEY. Logg inn fra Settings.".into());
     }
 
-    let model = model.unwrap_or_else(|| "claude-opus-4-7".to_string());
+    let model = model.unwrap_or_else(|| "claude-opus-4-8".to_string());
     let max_tokens = max_tokens.unwrap_or(1024);
     let mut body = serde_json::json!({
         "model": model,
         "max_tokens": max_tokens,
         "messages": messages,
     });
-    if let Some(sys) = system { body["system"] = Value::String(sys); }
-    if let Some(t) = tools { body["tools"] = Value::Array(t); }
+    if let Some(sys) = system {
+        body["system"] = Value::String(sys);
+    }
+    if let Some(t) = tools {
+        body["tools"] = Value::Array(t);
+    }
 
     let client = reqwest::Client::new();
     let resp = if !bearer.is_empty() {
@@ -135,7 +335,11 @@ async fn list_workflows(app: AppHandle) -> Result<Value, String> {
 
 #[tauri::command]
 async fn read_wedding_template(app: AppHandle) -> Result<Value, String> {
-    read_json(python_root(&app)?.join("templates").join("wedding_bins.json"))
+    read_json(
+        python_root(&app)?
+            .join("templates")
+            .join("wedding_bins.json"),
+    )
 }
 
 #[tauri::command]
@@ -176,7 +380,11 @@ async fn read_project_template(app: AppHandle, template_id: String) -> Result<Va
 
 #[tauri::command]
 async fn list_look_packs(app: AppHandle) -> Result<Value, String> {
-    read_json(python_root(&app)?.join("templates").join("look_packs_index.json"))
+    read_json(
+        python_root(&app)?
+            .join("templates")
+            .join("look_packs_index.json"),
+    )
 }
 
 /// Launch DaVinci Resolve.app via `open -a`.
@@ -219,6 +427,16 @@ pub struct PhotoshopSetupStatus {
     pub plugin_manifest_exists: bool,
 }
 
+/// Mulige installasjons-stier for Adobe UXP Developer Tool(s). Adobe omdøpte den
+/// fra «Adobe UXP Developer Tool.app» (entall, direkte i /Applications) til
+/// «Adobe UXP Developer Tools» (flertall, nøstet i egen mappe) — så vi må sjekke
+/// flere kandidater, nyeste først, ellers rapporteres den som «ikke installert».
+const UDT_APP_CANDIDATES: &[&str] = &[
+    "/Applications/Adobe UXP Developer Tools/Adobe UXP Developer Tools.app",
+    "/Applications/Adobe UXP Developer Tools.app",
+    "/Applications/Adobe UXP Developer Tool.app",
+];
+
 #[tauri::command]
 fn photoshop_setup_status() -> Result<PhotoshopSetupStatus, String> {
     // Photoshop — let etter de vanlige path-mønstrene
@@ -244,7 +462,7 @@ fn photoshop_setup_status() -> Result<PhotoshopSetupStatus, String> {
     }
 
     // UXP Developer Tool
-    let udt_path = ["/Applications/Adobe UXP Developer Tool.app"]
+    let udt_path = UDT_APP_CANDIDATES
         .iter()
         .find(|p| std::path::Path::new(p).exists())
         .map(|p| p.to_string());
@@ -257,7 +475,8 @@ fn photoshop_setup_status() -> Result<PhotoshopSetupStatus, String> {
             .join("../../post-agent-photoshop-plugin/manifest.json"),
         // Alternative dev-paths
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..").join("apps/post-agent-photoshop-plugin/manifest.json"),
+            .join("../..")
+            .join("apps/post-agent-photoshop-plugin/manifest.json"),
     ];
     let plugin_manifest_path = manifest_candidates
         .iter()
@@ -281,12 +500,13 @@ fn photoshop_setup_status() -> Result<PhotoshopSetupStatus, String> {
 /// å lete etter den.
 #[tauri::command]
 async fn open_udt() -> Result<String, String> {
-    let udt_path = "/Applications/Adobe UXP Developer Tool.app";
-    if !std::path::Path::new(udt_path).exists() {
-        return Err(format!(
+    let udt_path = UDT_APP_CANDIDATES
+        .iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .ok_or_else(|| {
             "UXP Developer Tool ikke installert. Installer fra Creative Cloud Desktop først."
-        ));
-    }
+                .to_string()
+        })?;
     let output = std::process::Command::new("open")
         .arg("-a")
         .arg(udt_path)
@@ -323,8 +543,8 @@ async fn reveal_photoshop_plugin_manifest() -> Result<String, String> {
     Ok(manifest)
 }
 
-/// AI image generation — kaller Role Room-backend som proxer mot fal.ai
-/// for Flux 1.1 Pro, henter ned bildet og lagrer det lokalt så det kan
+/// AI image generation — kaller Role Room-backend som proxer mot valgt
+/// bildeprovider, henter bildet og lagrer det lokalt så det kan
 /// brukes som smart-object i template.scaffold. Phase 2 av
 /// "AI-to-editable-PSD"-pipelinen.
 #[derive(serde::Serialize)]
@@ -334,6 +554,10 @@ pub struct AiImageResult {
     pub height: Option<u32>,
     pub model: String,
     pub seed: Option<i64>,
+    pub provider_mode: Option<String>,
+    pub asset_ref: Option<String>,
+    pub asset_hash: Option<String>,
+    pub visual_audit: Option<serde_json::Value>,
 }
 
 #[tauri::command]
@@ -342,6 +566,15 @@ async fn ai_generate_image(
     prompt: String,
     image_size: Option<String>,
     seed: Option<i64>,
+    model: Option<String>,
+    quality: Option<String>,
+    background: Option<String>,
+    output_format: Option<String>,
+    reference_image: Option<String>,
+    audit_image: Option<bool>,
+    brand_primary: Option<String>,
+    brand_accent: Option<String>,
+    asset_context: Option<serde_json::Value>,
 ) -> Result<AiImageResult, String> {
     let (bearer, base_url) = if let Some(settings) = app.try_state::<AppSettings>() {
         let snap = settings.snapshot();
@@ -353,7 +586,10 @@ async fn ai_generate_image(
                 .unwrap_or_else(|| "https://creatorhubn.com/api/post-agent".to_string()),
         )
     } else {
-        (String::new(), "https://creatorhubn.com/api/post-agent".to_string())
+        (
+            String::new(),
+            "https://creatorhubn.com/api/post-agent".to_string(),
+        )
     };
     if bearer.is_empty() {
         return Err(
@@ -369,6 +605,15 @@ async fn ai_generate_image(
         "options": {
             "image_size": image_size.unwrap_or_else(|| "square_hd".to_string()),
             "seed": seed,
+            "model": model,
+            "quality": quality,
+            "background": background,
+            "output_format": output_format,
+            "reference_image": reference_image,
+            "audit_image": audit_image,
+            "brand_primary": brand_primary,
+            "brand_accent": brand_accent,
+            "asset_context": asset_context,
         },
     });
     let client = reqwest::Client::new();
@@ -381,12 +626,15 @@ async fn ai_generate_image(
         .await
         .map_err(|e| format!("Backend request failed: {}", e))?;
     let status = resp.status();
-    let text = resp.text().await.map_err(|e| format!("Read response: {}", e))?;
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("Read response: {}", e))?;
     if !status.is_success() {
         return Err(format!("Backend {} — {}", status, text));
     }
-    let data: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| format!("Parse response: {}", e))?;
+    let data: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Parse response: {}", e))?;
     let image_url = data
         .get("image_url")
         .and_then(|v| v.as_str())
@@ -398,29 +646,66 @@ async fn ai_generate_image(
         .unwrap_or("unknown")
         .to_string();
     let seed_out = data.get("seed").and_then(|v| v.as_i64());
+    let provider_mode = data
+        .get("provider_mode")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string());
+    let asset_ref = data
+        .get("asset_ref")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string());
+    let asset_hash = data
+        .get("asset_hash")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string());
+    let visual_audit = data.get("visual_audit").filter(|v| !v.is_null()).cloned();
     let width = data.get("width").and_then(|v| v.as_u64()).map(|v| v as u32);
-    let height = data.get("height").and_then(|v| v.as_u64()).map(|v| v as u32);
+    let height = data
+        .get("height")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32);
 
-    // Last ned bildet og lagre det lokalt
-    let img_resp = client
-        .get(&image_url)
-        .send()
-        .await
-        .map_err(|e| format!("Download image: {}", e))?;
-    if !img_resp.status().is_success() {
-        return Err(format!("Image download {}: failed", img_resp.status()));
-    }
-    let bytes = img_resp
-        .bytes()
-        .await
-        .map_err(|e| format!("Read image bytes: {}", e))?;
+    // OpenAI returnerer inline base64; URL-baserte providere lastes ned.
+    let (bytes, extension): (Vec<u8>, &str) = if image_url.starts_with("data:image/") {
+        let (metadata, encoded) = image_url
+            .split_once(',')
+            .ok_or_else(|| "Ugyldig data-URL fra bildeprovider".to_string())?;
+        if !metadata.ends_with(";base64") {
+            return Err("Bildeprovider returnerte en data-URL uten base64".to_string());
+        }
+        let extension = if metadata.starts_with("data:image/webp") {
+            "webp"
+        } else if metadata.starts_with("data:image/jpeg") {
+            "jpg"
+        } else {
+            "png"
+        };
+        let decoded = BASE64_STANDARD
+            .decode(encoded)
+            .map_err(|e| format!("Decode image base64: {}", e))?;
+        (decoded, extension)
+    } else {
+        let img_resp = client
+            .get(&image_url)
+            .send()
+            .await
+            .map_err(|e| format!("Download image: {}", e))?;
+        if !img_resp.status().is_success() {
+            return Err(format!("Image download {}: failed", img_resp.status()));
+        }
+        let downloaded = img_resp
+            .bytes()
+            .await
+            .map_err(|e| format!("Read image bytes: {}", e))?;
+        (downloaded.to_vec(), "png")
+    };
 
     let dir = std::path::PathBuf::from(
         std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?,
     )
     .join("Library/Application Support/no.creatorhubn.roleroom-post-agent/generated-images");
     std::fs::create_dir_all(&dir).map_err(|e| format!("Create dir: {}", e))?;
-    let filename = format!("{}.png", Uuid::new_v4());
+    let filename = format!("{}.{}", Uuid::new_v4(), extension);
     let out_path = dir.join(&filename);
     std::fs::write(&out_path, &bytes).map_err(|e| format!("Write file: {}", e))?;
 
@@ -430,6 +715,100 @@ async fn ai_generate_image(
         height,
         model,
         seed: seed_out,
+        provider_mode,
+        asset_ref,
+        asset_hash,
+        visual_audit,
+    })
+}
+
+/// Én storyboard-still regenerert fra tilbakemelding («Forbedre shot»).
+#[derive(serde::Serialize)]
+pub struct ShotVariant {
+    pub image_path: String,
+    pub attempt: u32,
+}
+
+/// Regenerer ETT enkelt ad-film-shot med en fix-prompt fra brukerens
+/// tilbakemelding. Kaller python-broen `adfilm_regenerate.py` (som bruker
+/// motorens `_gen_one_still` med continuity-ref + GROUNDED/SCREEN_PLATE-
+/// direktivene). Kun det ene bildet regenereres — resten røres ikke.
+#[tauri::command]
+async fn ad_film_regenerate_shot(
+    app: AppHandle,
+    spec_path: String,
+    shot_id: String,
+    fix: String,
+) -> Result<ShotVariant, String> {
+    let script = python::python_root(&app)?.join("scripts/adfilm_regenerate.py");
+    if !script.exists() {
+        return Err(format!("Fant ikke {}", script.display()));
+    }
+
+    // Samme python-oppløsning som spawn_python: foretrekk bundlet venv, ellers python3.
+    let venv_python: Option<PathBuf> = std::env::var("HOME").ok().map(|h| {
+        PathBuf::from(h)
+            .join("Library/Application Support/no.creatorhubn.roleroom-post-agent")
+            .join("venv-py312/bin/python")
+    });
+    let python_bin: PathBuf = match venv_python {
+        Some(p) if p.is_file() => p,
+        _ => PathBuf::from("python3"),
+    };
+
+    let mut cmd = std::process::Command::new(&python_bin);
+    // Hindre .pyc-skriving inn i den signerte bundelen (bryter kode-signaturen
+    // → Gatekeeper «damaged»). Samme grunn som i python::spawn_python.
+    cmd.env("PYTHONDONTWRITEBYTECODE", "1");
+    cmd.arg(&script)
+        .arg("--spec")
+        .arg(&spec_path)
+        .arg("--shot")
+        .arg(&shot_id)
+        .arg("--fix")
+        .arg(&fix);
+    // Injiser bruker-konfigurerte env-vars (FAL_KEY, ANTHROPIC_API_KEY, …).
+    if let Some(settings) = app.try_state::<AppSettings>() {
+        for (k, v) in settings.snapshot().into_iter() {
+            if !v.is_empty() {
+                cmd.env(k, v);
+            }
+        }
+    }
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Klarte ikke starte python3: {}. Er Python 3 installert?", e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "Regenerering feilet: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    // Siste ikke-tomme stdout-linje er JSON-resultatet.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let last = stdout
+        .lines()
+        .rev()
+        .find(|l| l.trim_start().starts_with('{'))
+        .ok_or_else(|| format!("Ingen JSON fra adfilm_regenerate. stdout: {}", stdout))?;
+    let data: serde_json::Value =
+        serde_json::from_str(last.trim()).map_err(|e| format!("Parse resultat: {}", e))?;
+    if let Some(err) = data.get("error").and_then(|v| v.as_str()) {
+        return Err(err.to_string());
+    }
+    let image_path = data
+        .get("image_path")
+        .and_then(|v| v.as_str())
+        .ok_or("image_path mangler i resultat")?
+        .to_string();
+    let attempt = data.get("attempt").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+    Ok(ShotVariant {
+        image_path,
+        attempt,
     })
 }
 
@@ -592,15 +971,8 @@ async fn execute_script(
     }
 
     let run_id = Uuid::new_v4().to_string();
-    let summary = spawn_python(
-        app.clone(),
-        run_id,
-        script_id,
-        script_path,
-        params,
-        dry_run,
-    )
-    .await?;
+    let summary =
+        spawn_python(app.clone(), run_id, script_id, script_path, params, dry_run).await?;
     persist_run(&app, &summary);
     Ok(summary)
 }
@@ -641,7 +1013,10 @@ async fn save_cull_session(app: AppHandle, session: CullSession) -> Result<Strin
 }
 
 #[tauri::command]
-async fn load_cull_session(app: AppHandle, session_id: String) -> Result<Option<CullSession>, String> {
+async fn load_cull_session(
+    app: AppHandle,
+    session_id: String,
+) -> Result<Option<CullSession>, String> {
     cull::load_session(&app, &session_id)
 }
 
@@ -682,8 +1057,7 @@ async fn read_learning_profile() -> Result<Value, String> {
         serde_json::from_slice::<Value>(&bytes).ok()
     };
 
-    let global = read_json(&base.join("profile.json"))
-        .unwrap_or_else(|| serde_json::json!({}));
+    let global = read_json(&base.join("profile.json")).unwrap_or_else(|| serde_json::json!({}));
 
     // Per-project profiles
     let mut projects: HashMap<String, Value> = HashMap::new();
@@ -717,10 +1091,7 @@ async fn read_learning_profile() -> Result<Value, String> {
         for path in paths.into_iter().take(10) {
             if let Some(mut v) = read_json(&path) {
                 if let Some(obj) = v.as_object_mut() {
-                    obj.insert(
-                        "_path".into(),
-                        Value::String(path.display().to_string()),
-                    );
+                    obj.insert("_path".into(), Value::String(path.display().to_string()));
                     obj.insert(
                         "_filename".into(),
                         Value::String(
@@ -750,7 +1121,11 @@ async fn read_learning_profile() -> Result<Value, String> {
 /// invokes the actual workflow.
 fn build_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, tauri::Error> {
     let app_submenu = SubmenuBuilder::new(app, "The Role Room Post Agent")
-        .item(&PredefinedMenuItem::about(app, Some("About"), Some(AboutMetadata::default()))?)
+        .item(&PredefinedMenuItem::about(
+            app,
+            Some("About"),
+            Some(AboutMetadata::default()),
+        )?)
         .separator()
         .item(&PredefinedMenuItem::hide(app, None)?)
         .item(&PredefinedMenuItem::hide_others(app, None)?)
@@ -765,8 +1140,8 @@ fn build_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, tauri::E
     let new_workflow_item = MenuItemBuilder::with_id("menu_new_workflow", "New workflow…")
         .accelerator("CmdOrCtrl+N")
         .build(app)?;
-    let check_updates_item = MenuItemBuilder::with_id("menu_check_updates", "Check for updates…")
-        .build(app)?;
+    let check_updates_item =
+        MenuItemBuilder::with_id("menu_check_updates", "Check for updates…").build(app)?;
     let file_submenu = SubmenuBuilder::new(app, "File")
         .item(&new_workflow_item)
         .item(&rerun_item)
@@ -799,7 +1174,11 @@ fn build_menu(app: &AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, tauri::E
 
     MenuBuilder::new(app)
         .items(&[
-            &app_submenu, &file_submenu, &edit_submenu, &view_submenu, &window_submenu,
+            &app_submenu,
+            &file_submenu,
+            &edit_submenu,
+            &view_submenu,
+            &window_submenu,
         ])
         .build()
 }
@@ -810,13 +1189,32 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
         .manage(CardWatcherState::default())
         .manage(RunningScriptsState::default())
         .manage(AppSettings::default())
         .manage(FolderWatcherState::default())
+        .manage(resolve_mcp_gateway::ResolveMcpGatewayState::default())
+        .manage(capture_sources::ScreenRecState::default())
         .manage(Arc::new(PhotoshopBridgeState::default()))
+        .manage(PendingDeepLinks::default())
         .setup(|app| {
+            // Tilpass hovedvinduet til skjermen det åpner på + sentrer det. Den faste
+            // størrelsen (1560×980) er HØYERE enn det brukbare området på en 13/14"
+            // innebygd skjerm (≈1512×982 logisk minus menylinje) → bunnen (tidslinje/
+            // transport) havnet UTENFOR skjermen. Klamp til ~94 % bredde / ~90 % høyde
+            // av monitoren (aldri større enn standard, aldri under et brukbart minimum).
+            if let Some(win) = app.get_webview_window("main") {
+                if let Ok(Some(mon)) = win.current_monitor() {
+                    let scale = mon.scale_factor();
+                    let msize = mon.size().to_logical::<f64>(scale);
+                    let w = 1560.0_f64.min((msize.width * 0.94).max(1000.0));
+                    let h = 980.0_f64.min((msize.height * 0.90).max(680.0));
+                    let _ = win.set_size(tauri::LogicalSize::new(w, h));
+                    let _ = win.center();
+                }
+            }
             // (#186/#187) Build + attach native menubar
             let handle = app.handle().clone();
             match build_menu(&handle) {
@@ -830,7 +1228,13 @@ pub fn run() {
             // Forward menu events to frontend as "menu://<id>" events
             app.on_menu_event(move |app_handle, event| {
                 let id = event.id().0.as_str();
-                let event_name = format!("menu://{}", id.trim_start_matches("menu_"));
+                // Frontend lytter på bindestrek-navn (menu://check-updates); meny-
+                // id-ene bruker understrek (menu_check_updates) → konverter, ellers
+                // matcher ikke event-navnet og meny-klikk gjør ingenting.
+                let event_name = format!(
+                    "menu://{}",
+                    id.trim_start_matches("menu_").replace('_', "-")
+                );
                 if let Err(err) = app_handle.emit(&event_name, ()) {
                     eprintln!("Failed to emit menu event {}: {}", event_name, err);
                 }
@@ -843,6 +1247,14 @@ pub fn run() {
             app.deep_link().on_open_url(move |event| {
                 let urls: Vec<String> = event.urls().iter().map(|u| u.to_string()).collect();
                 eprintln!("Deep link received: {:?}", urls);
+                {
+                    let pending = deep_handle.state::<PendingDeepLinks>();
+                    pending
+                        .0
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .extend(urls.clone());
+                }
                 if let Some(window) = deep_handle.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.unminimize();
@@ -858,15 +1270,27 @@ pub fn run() {
                 eprintln!("Failed to start card watcher: {}", err);
             }
             // Start lokal WS-server for Photoshop UXP-plugin (port 1733).
-            let bridge_state = app
-                .state::<Arc<PhotoshopBridgeState>>()
-                .inner()
-                .clone();
+            let bridge_state = app.state::<Arc<PhotoshopBridgeState>>().inner().clone();
             photoshop_bridge::spawn_server(handle, bridge_state);
+            // Authenticated, read/plan-only loopback bridge for Claude and
+            // future ChatGPT Secure MCP Tunnel clients. Resolve writes remain
+            // exclusive to the visible Post Agent approval UI.
+            resolve_mcp_bridge::spawn_server(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            take_pending_deep_links,
             list_scripts,
+            get_resolve_mcp_status,
+            list_resolve_mcp_skills,
+            run_resolve_mcp_skill,
+            run_resolve_mcp_project_doctor,
+            get_resolve_mcp_intelligence,
+            create_resolve_mcp_plan,
+            apply_resolve_mcp_plan,
+            rollback_resolve_mcp_plan,
+            get_resolve_mcp_plan,
+            get_latest_resolve_mcp_plan,
             list_workflows,
             claude_chat,
             read_wedding_template,
@@ -906,6 +1330,65 @@ pub fn run() {
             role_room_api::role_room_fetch_clip_download_urls,
             role_room_api::role_room_download_clip,
             media_probe::probe_media_files,
+            mockup_render::mockup_render_video,
+            playwright_render::playwright_status,
+            playwright_render::setup_playwright,
+            playwright_render::run_playwright_demo,
+            playwright_render::playwright_capture_shots,
+            playwright_render::render_infographic,
+            playwright_render::export_infographic,
+            demo_recording::save_demo_recording,
+            demo_recording::check_url_embeddable,
+            demo_capture::start_demo_capture,
+            demo_capture::demo_capture_step,
+            demo_capture::demo_capture_done,
+            demo_capture::demo_fetch_site_context,
+            demo_capture::fetch_live_data,
+            demo_capture::demo_scan_dom,
+            demo_capture::demo_scan_result,
+            demo_capture::demo_scan_progress,
+            demo_capture::demo_scan_cancel,
+            demo_capture::demo_screenshot,
+            demo_capture::demo_shot_result,
+            demo_capture::demo_session_open,
+            demo_capture::demo_session_exec,
+            demo_capture::demo_session_verify,
+            demo_capture::demo_session_shot,
+            demo_capture::demo_session_close,
+            demo_capture::demo_session_report,
+            demo_export::demo_write_text,
+            demo_export::demo_write_binary,
+            demo_export::demo_print_html,
+            capture_sources::list_capture_sources,
+            capture_sources::record_avfoundation,
+            capture_sources::record_simulator,
+            capture_sources::record_iphone_mirroring,
+            capture_sources::open_iphone_mirroring,
+            capture_sources::start_screen_record,
+            capture_sources::stop_screen_record,
+            capture_sources::ios_sim_boot,
+            capture_sources::ios_sim_launch,
+            capture_sources::ios_sim_openurl,
+            capture_sources::ios_sim_list_apps,
+            capture_sources::ios_sim_screenshot,
+            capture_sources::ios_sim_describe,
+            capture_sources::ios_sim_tap,
+            capture_sources::ios_sim_swipe,
+            capture_sources::ios_sim_text,
+            capture_sources::ios_sim_key,
+            broll::higgsfield_account_status,
+            blender::render_blender_cinematic,
+            broll::generate_broll_clip,
+            broll::generate_broll_clip_fal,
+            broll::generate_presenter_clip,
+            broll::list_broll_jobs,
+            autonomous_demo::synthesize_tts,
+            autonomous_demo::tts_from_audio,
+            autonomous_demo::extract_frame,
+            autonomous_demo::read_image_b64,
+            autonomous_demo::mux_demo_video,
+            autonomous_demo::system_open,
+            product_brain::extract_pdf_text,
             photoshop_bridge::photoshop_send_command,
             photoshop_bridge::photoshop_status,
             psd_indexer::psd_index_directory,
@@ -914,6 +1397,7 @@ pub fn run() {
             open_udt,
             reveal_photoshop_plugin_manifest,
             ai_generate_image,
+            ad_film_regenerate_shot,
             creations::creation_save,
             creations::creation_list,
             creations::creation_load,

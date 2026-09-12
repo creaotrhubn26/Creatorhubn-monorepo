@@ -19,7 +19,7 @@ from freq_sep_save import encode_png_16bit, parse_payload as parse_freq_sep_save
 from hsl_retouch import apply_hsl
 from lut_library import get_builtin_lut, list_builtin_luts
 from portrait_retouch import apply_portrait_retouch, apply_portrait_retouch_multi, detect_all_face_regions
-from subject_retouch import apply_subject_look
+from subject_retouch import apply_background_look, apply_subject_look
 
 
 DEFAULT_GFPGAN_KEYS = [
@@ -116,6 +116,52 @@ def _r2_config() -> dict[str, Any]:
     }
 
 
+def _b2_config() -> dict[str, Any]:
+    # Backblaze B2 (S3-compatible) — the photographer pipeline's storage
+    # provider. Weights live under models/... in this bucket, so the whole
+    # runner is on B2 (capture/gallery/editing/enhance-source already are).
+    region = os.getenv("B2_REGION", "eu-central-003")
+    bucket = _first_non_empty(
+        os.getenv("PHOTO_ENHANCER_B2_MODELS_BUCKET"),
+        os.getenv("B2_ROLE_ROOM_BUCKET_NAME"),
+    )
+    key_id = os.getenv("B2_ROLE_ROOM_APPLICATION_KEY_ID")
+    app_key = os.getenv("B2_ROLE_ROOM_APPLICATION_KEY")
+    return {
+        "enabled": bool(bucket and key_id and app_key),
+        "endpoint": f"https://s3.{region}.backblazeb2.com",
+        "buckets": [bucket] if bucket else [],
+        "region": region,
+        "access_key_id": key_id,
+        "secret_access_key": app_key,
+    }
+
+
+def _make_s3_client(config: dict[str, Any]) -> Any:
+    return boto3.client(
+        "s3",
+        endpoint_url=config["endpoint"],
+        aws_access_key_id=config["access_key_id"],
+        aws_secret_access_key=config["secret_access_key"],
+        region_name=config.get("region") or "auto",
+        config=Config(signature_version="s3v4"),
+    )
+
+
+def _weight_storages() -> list[dict[str, Any]]:
+    """Ordered weight backends: B2 first (photographer pipeline's provider),
+    R2 second (legacy fallback so existing deployments keep working during
+    migration). Each entry: {client, buckets, label}."""
+    storages: list[dict[str, Any]] = []
+    b2 = _b2_config()
+    if b2["enabled"]:
+        storages.append({"client": _make_s3_client(b2), "buckets": b2["buckets"], "label": "b2"})
+    r2 = _r2_config()
+    if r2["enabled"] and r2["buckets"]:
+        storages.append({"client": _make_s3_client(r2), "buckets": r2["buckets"], "label": "r2"})
+    return storages
+
+
 def _candidate_keys(requested_key: str | None) -> list[str]:
     keys: list[str] = []
     if requested_key and requested_key.startswith("models/gfpgan/"):
@@ -134,18 +180,9 @@ def _cache_path_for_key(key: str) -> Path:
 
 
 def _download_weight(requested_key: str | None) -> tuple[Path, str, str]:
-    config = _r2_config()
-    if not config["enabled"]:
-        raise RuntimeError("R2 model credentials are not configured")
-
-    client = boto3.client(
-        "s3",
-        endpoint_url=config["endpoint"],
-        aws_access_key_id=config["access_key_id"],
-        aws_secret_access_key=config["secret_access_key"],
-        region_name="auto",
-        config=Config(signature_version="s3v4"),
-    )
+    storages = _weight_storages()
+    if not storages:
+        raise RuntimeError("no weight storage configured (B2 or R2)")
 
     last_error: Exception | None = None
     for key in _candidate_keys(requested_key):
@@ -154,21 +191,170 @@ def _download_weight(requested_key: str | None) -> tuple[Path, str, str]:
             return cache_path, "cache", key
 
         tmp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
-        for bucket in config["buckets"]:
+        for storage in storages:  # B2 first, then R2
+            for bucket in storage["buckets"]:
+                try:
+                    storage["client"].download_file(bucket, key, str(tmp_path))
+                    tmp_path.replace(cache_path)
+                    return cache_path, f"{storage['label']}:{bucket}", key
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+                    try:
+                        tmp_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+
+    if last_error:
+        raise RuntimeError(f"weights not found in B2/R2: {last_error.__class__.__name__}")
+    raise RuntimeError("weights not found in any storage")
+
+
+# ── Subjekt-matte (ONNX) ──────────────────────────────────────────────
+# Generalisert modell-nedlasting (ikke gfpgan-spesifikk) + cachet ONNX-matter
+# per nøkkel. DEFAULT = U²-Net (176 MB) — LETT nok til å være drifts-stabil på
+# 2 GB-instansen ved siden av torch/gfpgan. BiRefNet (972 MB, høyere kant-kvalitet)
+# OOM-et standard-instansen (live-verifisert) → opt-in via modelKey på større instans.
+MATTE_DEFAULT_KEY = "models/rembg/u2net/u2net.onnx"
+_matte_models: dict[str, Any] = {}
+_birefnet_lock = threading.Lock()
+
+
+def _download_model(key: str) -> Path:
+    """Last ned en vilkårlig modell-nøkkel fra B2/R2 (cachet), gjenbruker samme
+    storages + cache-mate som gfpgan-vektene."""
+    storages = _weight_storages()
+    if not storages:
+        raise RuntimeError("no weight storage configured (B2 or R2)")
+    cache_path = _cache_path_for_key(key)
+    if cache_path.exists() and cache_path.stat().st_size > 1_000_000:
+        return cache_path
+    tmp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
+    last_error: Exception | None = None
+    for storage in storages:
+        for bucket in storage["buckets"]:
             try:
-                client.download_file(bucket, key, str(tmp_path))
+                storage["client"].download_file(bucket, key, str(tmp_path))
                 tmp_path.replace(cache_path)
-                return cache_path, bucket, key
+                return cache_path
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 try:
                     tmp_path.unlink(missing_ok=True)
                 except Exception:
                     pass
+    raise RuntimeError(f"model {key!r} not found in B2/R2: "
+                       f"{last_error.__class__.__name__ if last_error else 'unknown'}")
 
-    if last_error:
-        raise RuntimeError(f"GFPGAN weights were not found in R2: {last_error.__class__.__name__}")
-    raise RuntimeError("GFPGAN weights were not found in R2")
+
+def _matte_variant_for_key(key: str) -> str:
+    """Utled ONNX-matte-varianten av nøkkelen (styrer pre/postprosessering)."""
+    k = key.lower()
+    if "u2net" in k:
+        return "u2net"
+    if "isnet" in k:
+        return "isnet"
+    if "birefnet" in k:
+        return "birefnet"
+    return "u2net"
+
+
+def _get_matter(key: str | None = None) -> Any:
+    """Cachet ONNX-matter per modell-nøkkel. Default = U²-Net (lett, stabil i 2 GB)."""
+    resolved = key or MATTE_DEFAULT_KEY
+    with _birefnet_lock:
+        matter = _matte_models.get(resolved)
+        if matter is None:
+            from birefnet_matte import OnnxMatte
+            path = _download_model(resolved)
+            matter = OnnxMatte.from_onnx(str(path), variant=_matte_variant_for_key(resolved))
+            _matte_models[resolved] = matter
+        return matter
+
+
+# ── Weight bootstrap ──────────────────────────────────────────────────
+# The backend gates each model on the weight file EXISTING in the models bucket
+# (HeadObject), and the runner only READS weights — so on a fresh environment
+# nothing routes to the runner (chicken-and-egg). To make a deploy self-healing,
+# on startup we ensure the canonical weights exist in the PRIMARY storage (B2
+# when configured, else R2), pulling them from the official public releases when
+# missing. Idempotent: a weight already present is skipped. Runs in a background
+# thread so the health check binds the port immediately.
+
+WEIGHT_SOURCES: list[tuple[str, str]] = [
+    ("models/gfpgan/weights/GFPGANv1.4.pth",
+     "https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth"),
+    ("models/realesrgan/weights/RealESRGAN_x4plus.pth",
+     "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth"),
+    ("models/realesrgan/weights/RealESRGAN_x2plus.pth",
+     "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth"),
+    ("models/codeformer/weights/codeformer.pth",
+     "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth"),
+]
+
+_bootstrap_status: dict[str, Any] = {"state": "idle", "uploaded": [], "skipped": [], "errors": []}
+
+
+def _object_exists(client: Any, buckets: list[str], key: str) -> bool:
+    for bucket in buckets:
+        try:
+            client.head_object(Bucket=bucket, Key=key)
+            return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
+def _ensure_weights() -> None:
+    """Seed the PRIMARY weight storage (B2 if configured, else R2) with the
+    canonical weights, pulling from the official public releases when missing.
+    Idempotent. Runs in a background thread on startup."""
+    import urllib.request
+
+    storages = _weight_storages()
+    if not storages:
+        _bootstrap_status["state"] = "no_storage"
+        return
+    primary = storages[0]
+    client = primary["client"]
+    write_bucket = primary["buckets"][0]
+    _bootstrap_status["state"] = "running"
+    _bootstrap_status["target"] = primary["label"]
+
+    for key, url in WEIGHT_SOURCES:
+        try:
+            if _object_exists(client, primary["buckets"], key):
+                _bootstrap_status["skipped"].append(key)
+                continue
+            cache_dir = Path(os.getenv("GFPGAN_CACHE_DIR", "/tmp/creatorhub-gfpgan"))
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            tmp = cache_dir / (Path(key).name + ".download")
+            req = urllib.request.Request(url, headers={"User-Agent": "creatorhub-gfpgan-runner"})
+            with urllib.request.urlopen(req, timeout=600) as resp, open(tmp, "wb") as out:
+                while True:
+                    chunk = resp.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+            if tmp.stat().st_size < 1_000_000:
+                raise RuntimeError(f"download too small ({tmp.stat().st_size} bytes)")
+            client.upload_file(str(tmp), write_bucket, key)
+            try:
+                tmp.unlink(missing_ok=True)
+            except Exception:  # noqa: BLE001
+                pass
+            _bootstrap_status["uploaded"].append(key)
+        except Exception as exc:  # noqa: BLE001
+            _bootstrap_status["errors"].append(f"{key}: {exc.__class__.__name__}: {exc}")
+
+    _bootstrap_status["state"] = "done"
+
+
+@app.on_event("startup")
+def _bootstrap_on_startup() -> None:
+    if os.getenv("GFPGAN_DISABLE_WEIGHT_BOOTSTRAP") == "true":
+        _bootstrap_status["state"] = "disabled"
+        return
+    threading.Thread(target=_ensure_weights, name="weight-bootstrap", daemon=True).start()
 
 
 def _patch_torchvision_functional_tensor() -> None:
@@ -245,6 +431,57 @@ def _resize_for_budget(image: np.ndarray) -> tuple[np.ndarray, float]:
     return resized, scale
 
 
+class SubjectMattePayload(BaseModel):
+    imageBase64: str
+    modelKey: str | None = None
+    returnCutout: bool = False
+    applyBackgroundLook: bool = False
+    backgroundStrength: float = 1.0
+
+
+@app.post("/subject-matte")
+@app.post("/api/subject/matte")
+def subject_matte(payload: SubjectMattePayload) -> dict[str, Any]:
+    """ONNX forgrunns-matte. Default = U²-Net (176 MB, stabil på 2 GB); BiRefNet
+    (972 MB, høyere kant-kvalitet) er opt-in via ``modelKey`` på en større instans.
+    Returnerer matten (PNG-grå, base64) + valgfritt RGBA-utklipp og/eller den subjekt-
+    beskyttede bakgrunns-looken (løvverk-demping med EKTE maske). On-device-motpart =
+    iOS Vision-person-segmentering (CaptureApp); her får den LEVERTE retusjen en
+    modell-matte."""
+    try:
+        image = _decode_image(payload.imageBase64)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    process_image, _ = _resize_for_budget(image)
+    try:
+        matte = _get_matter(payload.modelKey).matte(process_image)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"matte model unavailable: {exc}") from exc
+
+    matte_u8 = (np.clip(matte, 0.0, 1.0) * 255.0).astype(np.uint8)
+    ok, buf = cv2.imencode(".png", matte_u8)
+    if not ok:
+        raise HTTPException(status_code=500, detail="matte encode failed")
+    resp: dict[str, Any] = {
+        "success": True,
+        "matteBase64": base64.b64encode(buf.tobytes()).decode("ascii"),
+        "width": int(process_image.shape[1]),
+        "height": int(process_image.shape[0]),
+    }
+    if payload.returnCutout:
+        rgba = cv2.cvtColor(process_image, cv2.COLOR_BGR2BGRA)
+        rgba[:, :, 3] = matte_u8
+        ok2, buf2 = cv2.imencode(".png", rgba)
+        if ok2:
+            resp["cutoutBase64"] = base64.b64encode(buf2.tobytes()).decode("ascii")
+    if payload.applyBackgroundLook:
+        graded = apply_background_look(process_image, matte, strength=payload.backgroundStrength)
+        ok3, buf3 = cv2.imencode(".jpg", graded, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        if ok3:
+            resp["gradedBase64"] = base64.b64encode(buf3.tobytes()).decode("ascii")
+    return resp
+
+
 @app.get("/luts")
 def list_luts() -> dict[str, Any]:
     """Return the runner's built-in LUT registry so the Node/Express
@@ -310,6 +547,7 @@ def health() -> dict[str, Any]:
         "lastError": _last_error,
         "maxInputEdge": int(os.getenv("GFPGAN_MAX_INPUT_EDGE", "1600")),
         "upscale": int(os.getenv("GFPGAN_UPSCALE", "1")),
+        "weightBootstrap": _bootstrap_status,
     }
 
 

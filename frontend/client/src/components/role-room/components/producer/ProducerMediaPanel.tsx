@@ -45,6 +45,7 @@ import {
   PushPin as PushPinIcon,
   PushPinOutlined as PushPinOutlinedIcon,
   SaveOutlined as SaveOutlinedIcon,
+  CloudUploadOutlined as CloudUploadOutlinedIcon,
   SpaceDashboardOutlined as SpaceDashboardOutlinedIcon,
   SubdirectoryArrowRight as SubdirectoryArrowRightIcon,
   CloudUpload as CloudUploadIcon,
@@ -99,6 +100,7 @@ import {
   type ProducerTimelineItem,
 } from '../../services/producerWorkflowService';
 import roleRoomAgentService, {
+  roleRoomAgentDefaultHeaders,
   type RoleRoomAgentAccess,
   type RoleRoomAgentBrandColor,
   type RoleRoomAgentProducerBootstrapResult,
@@ -115,6 +117,7 @@ import {
   type ProjectAgreement,
 } from '../../services/castingApiService';
 import VaultRevealMfaPrompt from './VaultRevealMfaPrompt';
+import VaultRevealCountdown from './VaultRevealCountdown';
 import VaultSecurityGuide from './VaultSecurityGuide';
 import {
   applyProducerDeliveryWorkflowPreset,
@@ -170,12 +173,16 @@ import {
   type ProjectFileRecord,
 } from '../../utils/projectFiles';
 import { buildClientPortalUrl, toClientPortalWorkspace, type ClientPortalWorkspaceFocus } from '../../utils/clientPortal';
+import { describeProducerError } from '../../utils/producerErrorMessage';
 import type { StoryArcNavigationFocus } from '../../utils/storyArcFocus';
 import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
 import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
+import ProducerReceivedMaterialsPanel from './ProducerReceivedMaterialsPanel';
 import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
 import RoleRoomAgentDialog from './RoleRoomAgentDialog';
+import type { TabId as RoleRoomAgentTabId } from './agentTabs';
+import { RoleRoomAgentIcon } from './RoleRoomAgentIcon';
 import MarketingPlanWorkspace from './MarketingPlanWorkspace';
 import { useResearchProgress } from '../../hooks/useResearchProgress';
 import DataSourcesPanel from './DataSourcesPanel';
@@ -396,9 +403,13 @@ const MATERIAL_TYPE_LABELS: Record<ProducerClientMaterialType, string> = {
   brief_note: 'Briefnotat',
   asset_link: 'Lenke til materiale',
   brand_asset: 'Merkevarefil',
+  brand_logo: 'Logo',
+  brand_colors: 'Farger / profil',
+  brand_fonts: 'Fonter',
   reference: 'Referanse',
   document: 'Dokument',
   feedback: 'Tilbakemelding',
+  other: 'Annet',
 };
 
 const MATERIAL_STATUS_LABELS: Record<string, string> = {
@@ -836,7 +847,7 @@ const ACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG: Record<ProducerAccountAccessPlatform,
   google: {
     primaryLabel: 'Google Workspace',
     primaryHref: '',
-    primaryDescription: 'Drive, Kalender og Meet brukes automatisk som del av prosjektflyten.',
+    primaryDescription: 'Én Google-kobling dekker både prosjektflyten (Drive, Kalender, Meet) og agentens analytics-oppsett (GA4, Search Console, Site Verification).',
   },
   meta: {
     primaryLabel: 'Åpne Meta Business',
@@ -1959,6 +1970,7 @@ export default function ProducerMediaPanel({
   // platform + tilgjengelige metoder så modalen kan vises og retry'e.
   const [vaultMfaPrompt, setVaultMfaPrompt] = useState<{
     platform: ProducerAccountAccessPlatform;
+    accountLabel?: string;
     availableMethods: { totp: boolean; emailCode: boolean };
     policy: string;
     message: string;
@@ -1970,8 +1982,24 @@ export default function ProducerMediaPanel({
   const [roleRoomAgentAccess, setRoleRoomAgentAccess] = useState<RoleRoomAgentAccess | null>(null);
   const [loadingRoleRoomAgentAccess, setLoadingRoleRoomAgentAccess] = useState(false);
   const [roleRoomAgentDialogOpen, setRoleRoomAgentDialogOpen] = useState(false);
+  // Bumpes når Agent-dialogen lukkes, så Markedsplan-fanen re-henter en plan
+  // som kan ha blitt generert inne i dialogen.
+  const [marketingReloadNonce, setMarketingReloadNonce] = useState(0);
   const [roleRoomAgentDialogInitialTab, setRoleRoomAgentDialogInitialTab] =
-    useState<'research' | 'marketing-plan'>('research');
+    useState<RoleRoomAgentTabId>('research');
+
+  // LinkedIn Ads OAuth is a full-page redirect. The callback preserves this
+  // marker so content-producer mode can reopen the Agent on the same project
+  // instead of dropping the user into Admin Room.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('roleRoomAgentTab') !== 'ads-setup') return;
+    setRoleRoomAgentDialogInitialTab('ads-setup');
+    setRoleRoomAgentDialogOpen(true);
+    url.searchParams.delete('roleRoomAgentTab');
+    window.history.replaceState({}, '', url.toString());
+  }, []);
   const [roleRoomAgentGenerating, setRoleRoomAgentGenerating] = useState(false);
   const [roleRoomAgentApplying, setRoleRoomAgentApplying] = useState(false);
   const [roleRoomAgentResult, setRoleRoomAgentResult] = useState<RoleRoomAgentProducerBootstrapResult | null>(null);
@@ -1997,6 +2025,13 @@ export default function ProducerMediaPanel({
   const savedPlanningSnapshotRef = useRef<string>('');
   const mobileWorkspaceDraftHydratedRef = useRef(false);
   const appliedInitialWorkspaceFocusKeyRef = useRef<string>('');
+  // Verdibasert idempotens-vakt mot en render-løkke i klient-portalen:
+  // activeSection/activePage er memo-er hvis identitet endres når
+  // workspaceSections rebygges, så URL-sync-effekten kan re-fyre uten at den
+  // *semantiske* verdien har endret seg. (Emit-effektens tilsvarende guard
+  // ligger nå på main som `lastReportedWorkspaceFocusRef`.) Denne ref-en sørger
+  // for at vi bare skriver URL når faktisk innhold endres.
+  const lastWrittenClientPortalUrlRef = useRef<string | null>(null);
 
   const canEditClientInput = canContributeClientInput && !readOnly;
 
@@ -2020,6 +2055,13 @@ export default function ProducerMediaPanel({
     || sessionRoleForVault === 'production_manager'
     || sessionRoleForVault === 'admin'
     || sessionRoleForVault === 'super_admin'
+  );
+  // Godkjenningsmyndighet for innsyns-forespørsler (admin/super_admin/director).
+  const canDecideAccessVaultReveal = !isClientReviewerMode && (
+    sessionRoleForVault === 'admin'
+    || sessionRoleForVault === 'super_admin'
+    || sessionRoleForVault === 'director'
+    || sessionRoleForVault === 'production_manager'
   );
   const isBriefLockedByApproval = project.producerWorkflowStatus === 'approved';
   const canEditBriefInput = canEditClientInput && !isBriefLockedByApproval;
@@ -2069,13 +2111,28 @@ export default function ProducerMediaPanel({
     mobileWorkspaceDraftHydratedRef.current = false;
   }, [projectId]);
 
+  // onWorkspaceFocusChange er en inline-callback hos forelderen (ny identitet
+  // hver render), så denne effekten fyrer på HVER parent-render — ikke bare
+  // ved reelle fokus-endringer. Med to monterte instanser (planner-project_room
+  // + producer-media-tabpanelet) på hver sin side ping-ponget fokuset A→B→A i
+  // render-hastighet: forelderen sendte fokus tilbake ned som initialPageId,
+  // begge re-anvendte, og hele arbeidsflaten ristet (mount/unmount-løkke).
+  // Ref-guarden gjør rapporten idempotent: samme fokus rapporteres aldri to
+  // ganger, så kjeden dør ut ved første konvergens.
+  const lastReportedWorkspaceFocusRef = useRef('');
   useEffect(() => {
-    onWorkspaceFocusChange?.({
+    const focus = {
       workspace: toClientPortalWorkspace(activeWorkspace),
       sectionId: activeSection?.id,
       pageId: activePage?.id,
       artifactId: focusedArtifactId ?? undefined,
-    });
+    };
+    const focusKey = `${focus.workspace ?? ''}|${focus.sectionId ?? ''}|${focus.pageId ?? ''}|${focus.artifactId ?? ''}`;
+    if (lastReportedWorkspaceFocusRef.current === focusKey) {
+      return;
+    }
+    lastReportedWorkspaceFocusRef.current = focusKey;
+    onWorkspaceFocusChange?.(focus);
   }, [activePage?.id, activeSection?.id, activeWorkspace, focusedArtifactId, onWorkspaceFocusChange]);
   const strategySnapshot = useMemo(
     () => getProducerStrategySnapshot(planningDraft),
@@ -2569,6 +2626,18 @@ export default function ProducerMediaPanel({
   useEffect(() => {
     let cancelled = false;
 
+    // Klient-portalen autentiserer med invitasjons-Bearer-token, ikke en
+    // medlems-sesjon. `GET /api/casting/manuscripts` krever medlems-sesjon
+    // (requireUserSession) og svarer 401 for klienter. Manuskript er dessuten
+    // et produsent-/medlems-konsept som ikke vises i klient-flaten — så vi
+    // hopper over lasten helt og unngår støyende 401-er.
+    if (isClientPortalView || isClientReviewerMode) {
+      setManuscripts([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const loadManuscripts = async () => {
       try {
         const nextManuscripts = await manuscriptService.getManuscripts(projectId);
@@ -2588,7 +2657,7 @@ export default function ProducerMediaPanel({
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, isClientPortalView, isClientReviewerMode]);
 
   const loadLinkedInAccessStatus = useCallback(async () => {
     const requestId = ++linkedInAccessRequestRef.current;
@@ -2618,6 +2687,107 @@ export default function ProducerMediaPanel({
     }
     void loadLinkedInAccessStatus();
   }, [activeWorkspace, loadLinkedInAccessStatus, showWorkspaceOperations]);
+
+  // Koblingsstatus for Kontotilgang (eierskap + verifisert Meta) — samme
+  // binding-først-logikk som agentens GA4/GSC-oppsett bygger på.
+  // Chip-støy-grepet fra vault-gjennomgangen: sekundær-info (delt med /
+  // 2FA / utløp) ligger bak en detalj-toggle per kort — én tydelig
+  // status synlig, resten ett klikk unna.
+  const [expandedAccessDetails, setExpandedAccessDetails] = useState<Record<string, boolean>>({});
+  // Kontokortene er kompakte som standard: header m/ status leses på ett
+  // blikk, redigeringsdelen (metode/status, felter, notater, sikker deling,
+  // 2FA) foldes ut per kort. Før sto alle fem kortene fullt utfoldet
+  // samtidig — en vegg av felter uten lesbar samlet status.
+  const [expandedAccountCards, setExpandedAccountCards] = useState<Record<string, boolean>>({});
+  // Enkel/Avansert for Kontotilgang: Enkel (standard) skjuler proff-
+  // maskineriet (tier/risiko-nivåene) så en ikke-proff bare ser koble-
+  // handlingen og grunnfeltene. Klient-review er ALLTID enkel — kunden
+  // skal aldri møte risiko-taksonomien.
+  const [accountAccessAdvanced, setAccountAccessAdvanced] = useState(false);
+  const accountAccessShowAdvanced = accountAccessAdvanced && !isClientReviewerMode;
+  const [agentConnectionStatus, setAgentConnectionStatus] = useState<{
+    google: { connected: boolean; source: 'project' | 'self' | null; email: string | null };
+    meta: { connected: boolean; verified: boolean; name: string | null };
+    manages?: {
+      ga4PropertyId: string | null;
+      ga4MeasurementId: string | null;
+      gscSites: string[];
+      gscError: 'needs_reauth' | 'unavailable' | null;
+      youtubeChannels: string[];
+      metaPages: string[];
+      igUsername: string | null;
+      facebookPageName: string | null;
+    };
+  } | null>(null);
+  const loadAgentConnectionStatus = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const r = await fetch(`/api/role-room/agent/connection-status/${encodeURIComponent(projectId)}`, {
+        credentials: 'include',
+        headers: roleRoomAgentDefaultHeaders(),
+      });
+      const body = await r.json();
+      if (body?.success) {
+        setAgentConnectionStatus({ google: body.google, meta: body.meta, manages: body.manages ?? undefined });
+      }
+    } catch {
+      // Stille — statusen er berikelse, ikke blokkerende.
+    }
+  }, [projectId]);
+  useEffect(() => {
+    if (activeWorkspace !== 'accounts') return;
+    void loadAgentConnectionStatus();
+  }, [activeWorkspace, loadAgentConnectionStatus]);
+  // «Koble til Google»-knappen på Google-kortet: starter OAuth i eget
+  // vindu (mode 'link' = kobler innlogget produsent). Samtykket skjer hos
+  // Google; når vinduet lukkes re-leses koblingsstatusen.
+  const [googleOauthStarting, setGoogleOauthStarting] = useState(false);
+  const handleStartGoogleOauthLink = useCallback(async () => {
+    setGoogleOauthStarting(true);
+    try {
+      const r = await fetch('/api/role-room/google/oauth/start', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
+        body: JSON.stringify({
+          mode: 'link',
+          projectId,
+          browserOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
+          returnPath: typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : undefined,
+        }),
+      });
+      const body = await r.json();
+      if (body?.authorizationUrl && typeof window !== 'undefined') {
+        const popup = window.open(body.authorizationUrl, '_blank', 'width=620,height=760');
+        const poll = window.setInterval(() => {
+          if (!popup || popup.closed) {
+            window.clearInterval(poll);
+            void loadAgentConnectionStatus();
+          }
+        }, 1200);
+      } else {
+        setError(body?.error ?? 'Kunne ikke starte Google-koblingen.');
+      }
+    } catch {
+      setError('Kunne ikke starte Google-koblingen.');
+    } finally {
+      setGoogleOauthStarting(false);
+    }
+  }, [loadAgentConnectionStatus, projectId]);
+  // Felles popup-åpner for GET-baserte OAuth-starter (Meta/LinkedIn):
+  // samme vindu-størrelse som Google-flyten, og koblingsstatusen re-leses
+  // når popupen lukkes — konsistent opplevelse på tvers av kortene.
+  const openOauthPopupAndRefresh = useCallback((url: string) => {
+    if (typeof window === 'undefined') return;
+    const popup = window.open(url, '_blank', 'width=620,height=760');
+    const poll = window.setInterval(() => {
+      if (!popup || popup.closed) {
+        window.clearInterval(poll);
+        void loadAgentConnectionStatus();
+        void loadLinkedInAccessStatus();
+      }
+    }, 1200);
+  }, [loadAgentConnectionStatus, loadLinkedInAccessStatus]);
 
   useEffect(() => () => {
     linkedInAccessRequestRef.current += 1;
@@ -2692,6 +2862,16 @@ export default function ProducerMediaPanel({
     if (currentUrl === nextUrl) {
       return;
     }
+    // Ekstra vakt: hvis vi allerede har skrevet nøyaktig denne URL-en, ikke
+    // skriv igjen. Beskytter mot en flom av replaceState hvis buildClientPortal-
+    // Url og bar-URL-en aldri blir helt like (f.eks. path-normalisering) mens
+    // effekten re-fyrer pga. memo-identitets-churn. En replaceState-flom
+    // trigger analytics-bibliotekenes history-patch → «Throttling navigation»
+    // + synlig URL-risting.
+    if (lastWrittenClientPortalUrlRef.current === nextUrl) {
+      return;
+    }
+    lastWrittenClientPortalUrlRef.current = nextUrl;
     window.history.replaceState({}, '', nextUrl);
   }, [activePage, activeSection, activeWorkspace, focusedArtifactId, isClientPortalView, projectId]);
 
@@ -2709,7 +2889,15 @@ export default function ProducerMediaPanel({
         useLocalAgreementFallback
           ? readLocalAgreements()
           : projectAgreementsApi.getAll(projectId),
-        googleWorkspaceApi.getStatus(projectId).catch(() => null),
+        googleWorkspaceApi.getStatus(projectId).catch((statusError) => {
+          // Ikke helt stille: en ekte Google-nedetid skal være sporbar i
+          // diagnostikk (artefakt-listen degraderer til tom uansett).
+          logRoleRoomDiagnostic('delivery-workspace-assets:google-status-failed', {
+            projectId,
+            message: statusError instanceof Error ? statusError.message : String(statusError),
+          });
+          return null;
+        }),
       ]);
       const normalizedProjectFiles = normalizeProjectFileRecords(projectFiles);
       setProjectFiles(normalizedProjectFiles);
@@ -2752,7 +2940,7 @@ export default function ProducerMediaPanel({
         projectId,
         message: vaultError instanceof Error ? vaultError.message : String(vaultError),
       });
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke hente Client Access Vault.');
+      setAccessVaultError(describeProducerError(vaultError, 'hente Client Access Vault'));
     } finally {
       setLoadingAccessVault(false);
     }
@@ -2973,6 +3161,25 @@ export default function ProducerMediaPanel({
     }
   }, [intakeDraft, isBriefLockedByApproval, persistPlanningDraft, planningDraft, projectId, serializeIntakeSnapshot]);
 
+  const [publishingIntake, setPublishingIntake] = useState(false);
+  const handlePublishIntake = useCallback(async (shouldPublish: boolean) => {
+    setPublishingIntake(true);
+    setError(null);
+    try {
+      // Lagre eventuelle endringer først, så er det den ferske briefen som publiseres.
+      await producerWorkflowService.updateClientIntake(projectId, intakeDraft);
+      const saved = await producerWorkflowService.publishClientIntake(projectId, shouldPublish);
+      const nextDraft = { ...EMPTY_INTAKE, ...saved };
+      setIntakeDraft(nextDraft);
+      savedIntakeSnapshotRef.current = serializeIntakeSnapshot(nextDraft);
+    } catch (publishError) {
+      console.error('[ProducerMediaPanel] Failed to publish client intake', publishError);
+      setError('Kunne ikke publisere briefen til klienten.');
+    } finally {
+      setPublishingIntake(false);
+    }
+  }, [intakeDraft, projectId, serializeIntakeSnapshot]);
+
   const handleGenerateRoleRoomAgent = useCallback(async (input: {
     projectId: string;
     projectName: string;
@@ -3088,10 +3295,13 @@ export default function ProducerMediaPanel({
         updatedAt: now,
       };
 
-      const savedIntake = await producerWorkflowService.updateClientIntake(projectId, nextIntake);
-      await persistPlanningDraft(nextPlanning, nextProject);
-
-      const existingStoryLogic = await storyLogicService.getStoryLogic(projectId);
+      // Tre uavhengige rundturer i parallell (intake-skriv, planning-skriv,
+      // story-logic-les) — «Lagrer…» gikk fra 4 sekvensielle til 2 bølger.
+      const [savedIntake, , existingStoryLogic] = await Promise.all([
+        producerWorkflowService.updateClientIntake(projectId, nextIntake),
+        persistPlanningDraft(nextPlanning, nextProject),
+        storyLogicService.getStoryLogic(projectId),
+      ]);
       const existingStoryLogicRecord = asRecord(existingStoryLogic);
       const storyLogicDraftRecord = asRecord(result.storyLogicDraft);
       const existingLocks = asRecord(existingStoryLogicRecord.locks);
@@ -3141,6 +3351,7 @@ export default function ProducerMediaPanel({
       savedIntakeSnapshotRef.current = serializeIntakeSnapshot(nextDraft);
       setRoleRoomAgentResult(result);
       setRoleRoomAgentDialogOpen(false);
+      setMarketingReloadNonce((n) => n + 1);
       setRoleRoomAgentNotice('The Role Room Agent fylte nå brief, branding-utkast og story logikk i prosjektet.');
     } catch (agentError) {
       console.error('[ProducerMediaPanel] Failed to apply Role Room Agent result', agentError);
@@ -3247,6 +3458,7 @@ export default function ProducerMediaPanel({
       },
     });
     setRoleRoomAgentDialogOpen(false);
+    setMarketingReloadNonce((n) => n + 1);
     setRoleRoomAgentNotice('Prosjektmodalen er forhåndsutfylt med Brreg-data og agentens avtaleforslag. Kontroller kontaktfelt og lagre prosjektet.');
   }, [onCreateProjectFromAgent]);
 
@@ -3548,11 +3760,35 @@ export default function ProducerMediaPanel({
   }, [persistPlanningDraft, planningDraft]);
 
   const handleConfirmAccountAccessConnected = useCallback(async (platform: ProducerAccountAccessPlatform) => {
+    // Meta kan VERIFISERES (Graph /me på prosjektets kobling) — gjør det i
+    // stedet for selvattestering. Øvrige plattformer mangler verifiserings-
+    // API her og beholder manuell bekreftelse (ærlig begrensning).
+    if (platform === 'meta' && projectId) {
+      try {
+        const r = await fetch(`/api/role-room/agent/connection-status/${encodeURIComponent(projectId)}`, {
+          credentials: 'include',
+          headers: roleRoomAgentDefaultHeaders(),
+        });
+        const body = await r.json().catch(() => null);
+        if (!body?.meta?.verified) {
+          setAccessVaultError(
+            body?.meta?.connected
+              ? 'Meta-koblingen finnes, men svarer ikke (utløpt token?) — koble til på nytt før bekreftelse.'
+              : 'Fant ingen fungerende Meta-kobling på prosjektet — fullfør invite/OAuth-flyten først.',
+          );
+          return;
+        }
+        setAgentConnectionStatus((cur) => (cur ? { ...cur, meta: body.meta } : cur));
+      } catch {
+        setAccessVaultError('Kunne ikke verifisere Meta-koblingen akkurat nå — prøv igjen.');
+        return;
+      }
+    }
     await persistAccountAccessEntry(platform, (entry) => ({
       ...entry,
       status: 'connected',
     }));
-  }, [persistAccountAccessEntry]);
+  }, [persistAccountAccessEntry, projectId]);
 
   const handleSaveAccessVaultSecret = useCallback(async (
     entry: ProducerProjectPlanning['accountAccess']['entries'][number],
@@ -3595,7 +3831,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to save access vault secret', vaultError);
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke lagre secret.');
+      setAccessVaultError(describeProducerError(vaultError, 'lagre secret-en'));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -3609,7 +3845,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to revoke access vault secret', vaultError);
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke tilbakekalle secret.');
+      setAccessVaultError(describeProducerError(vaultError, 'tilbakekalle secret-en'));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -3619,13 +3855,15 @@ export default function ProducerMediaPanel({
   // krever step-up. Brukes både fra direkte CTA og fra retry i modalen.
   const submitRevealRequest = useCallback(async (
     platform: ProducerAccountAccessPlatform,
-    extraPayload: { totpCode?: string; emailCode?: string } = {},
+    extraPayload: { totpCode?: string; emailCode?: string; accountLabel?: string } = {},
   ): Promise<{ ok: boolean; needsMfa?: { availableMethods: { totp: boolean; emailCode: boolean }; policy: string; message: string }; errorMessage?: string }> => {
     const draft = accessVaultDrafts[platform] ?? EMPTY_VAULT_SECRET_DRAFT;
+    const { accountLabel, ...mfaPayload } = extraPayload;
     try {
       await roleRoomAccessVaultApi.requestReveal(projectId, platform, {
         requestReason: draft.requestReason.trim() || undefined,
-        ...extraPayload,
+        accountLabel: accountLabel || undefined,
+        ...mfaPayload,
       });
       return { ok: true };
     } catch (err) {
@@ -3649,11 +3887,11 @@ export default function ProducerMediaPanel({
     }
   }, [accessVaultDrafts, projectId]);
 
-  const handleRequestAccessVaultReveal = useCallback(async (platform: ProducerAccountAccessPlatform) => {
-    setAccessVaultActionKey(`${platform}:request`);
+  const handleRequestAccessVaultReveal = useCallback(async (platform: ProducerAccountAccessPlatform, accountLabel = '') => {
+    setAccessVaultActionKey(`${platform}:${accountLabel}:request`);
     setAccessVaultError(null);
     try {
-      const result = await submitRevealRequest(platform);
+      const result = await submitRevealRequest(platform, { accountLabel });
       if (result.ok) {
         setAccessVaultDrafts((previous) => ({
           ...previous,
@@ -3666,6 +3904,7 @@ export default function ProducerMediaPanel({
       } else if (result.needsMfa) {
         setVaultMfaPrompt({
           platform,
+          accountLabel,
           availableMethods: result.needsMfa.availableMethods,
           policy: result.needsMfa.policy,
           message: result.needsMfa.message,
@@ -3685,7 +3924,7 @@ export default function ProducerMediaPanel({
     input: { totpCode?: string; emailCode?: string },
   ): Promise<{ ok: boolean; errorMessage?: string }> => {
     if (!vaultMfaPrompt) return { ok: false };
-    const result = await submitRevealRequest(vaultMfaPrompt.platform, input);
+    const result = await submitRevealRequest(vaultMfaPrompt.platform, { ...input, accountLabel: vaultMfaPrompt.accountLabel });
     if (result.ok) {
       setAccessVaultDrafts((previous) => ({
         ...previous,
@@ -3726,7 +3965,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to decide access vault reveal', vaultError);
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke oppdatere reveal-forespørselen.');
+      setAccessVaultError(describeProducerError(vaultError, 'oppdatere reveal-forespørselen'));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -3746,7 +3985,7 @@ export default function ProducerMediaPanel({
       await loadAccessVault();
     } catch (vaultError) {
       console.error('[ProducerMediaPanel] Failed to reveal access vault secret', vaultError);
-      setAccessVaultError(vaultError instanceof Error ? vaultError.message : 'Kunne ikke åpne secret.');
+      setAccessVaultError(describeProducerError(vaultError, 'åpne secret-en'));
     } finally {
       setAccessVaultActionKey(null);
     }
@@ -4341,8 +4580,13 @@ export default function ProducerMediaPanel({
   );
   const accessVaultSecretsByPlatform = useMemo(() => {
     const lookup = new Map<ProducerAccountAccessPlatform, RoleRoomAccessVaultSecretSummary>();
+    // Primær per plattform = enkelt-secret (account_label tom), ellers første.
     accessVaultState.secrets.forEach((entry) => {
-      lookup.set(entry.platform, entry);
+      const existing = lookup.get(entry.platform);
+      if (!existing) { lookup.set(entry.platform, entry); return; }
+      if (!((entry.accountLabel ?? '').trim()) && (existing.accountLabel ?? '').trim()) {
+        lookup.set(entry.platform, entry);
+      }
     });
     return lookup;
   }, [accessVaultState.secrets]);
@@ -4352,6 +4596,26 @@ export default function ProducerMediaPanel({
       const current = lookup.get(request.platform) ?? [];
       current.push(request);
       lookup.set(request.platform, current);
+    });
+    return lookup;
+  }, [accessVaultState.requests]);
+  // Multi-secret: ekstra kontoer per plattform (utover primær-secret).
+  const extraVaultSecretsByPlatform = useMemo(() => {
+    const lookup = new Map<ProducerAccountAccessPlatform, RoleRoomAccessVaultSecretSummary[]>();
+    accessVaultState.secrets.forEach((entry) => {
+      const primary = accessVaultSecretsByPlatform.get(entry.platform);
+      if (primary && primary.id === entry.id) return;
+      const list = lookup.get(entry.platform) ?? [];
+      list.push(entry);
+      lookup.set(entry.platform, list);
+    });
+    return lookup;
+  }, [accessVaultState.secrets, accessVaultSecretsByPlatform]);
+  // Aktiv reveal-forespørsel per secretId (for ekstra-kontoer).
+  const activeVaultRequestBySecretId = useMemo(() => {
+    const lookup = new Map<string, RoleRoomAccessVaultRevealRequest>();
+    accessVaultState.requests.forEach((r) => {
+      if (r.status === 'pending' || r.status === 'approved') lookup.set(r.secretId, r);
     });
     return lookup;
   }, [accessVaultState.requests]);
@@ -4584,10 +4848,10 @@ export default function ProducerMediaPanel({
   const missingLogicFields = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
     if (!hasText(contentLogicDraft.objective)) {
-      items.push({ id: 'logic-objective', label: 'Content Logic-mål mangler' });
+      items.push({ id: 'logic-objective', label: 'Innholdsplan-mål mangler' });
     }
     if (!hasText(contentLogicDraft.audience)) {
-      items.push({ id: 'logic-audience', label: 'Content Logic-målgruppe mangler' });
+      items.push({ id: 'logic-audience', label: 'Innholdsplan-målgruppe mangler' });
     }
     if (!hasText(contentLogicDraft.hook)) {
       items.push({ id: 'logic-hook', label: 'Hook mangler' });
@@ -4744,7 +5008,7 @@ export default function ProducerMediaPanel({
     },
     {
       key: 'logic' as const,
-      label: 'Content Logic',
+      label: 'Innholdsplan',
       description: 'Mål, krok og handling slik produsenten planlegger videre.',
       status: briefStepProgress.logic.ready === briefStepProgress.logic.total
         ? 'Klar'
@@ -4838,7 +5102,7 @@ export default function ProducerMediaPanel({
         contentLogicDraft.objective,
         contentLogicDraft.hook,
         contentLogicDraft.callToAction,
-        'Content Logic er ikke fylt ut ennå.',
+        'Innholdsplan er ikke fylt ut ennå.',
       );
     }
     if (activeBriefStep === 'foundation') {
@@ -5200,7 +5464,7 @@ export default function ProducerMediaPanel({
     {
       key: 'decision',
       label: 'Beslutning',
-      value: foundationBlockingItems.length > 0 ? 'Låst til grunnlaget er klart' : `${pendingReviewCount} åpne reviews · ${openMeetingFollowUpCount} oppfølging`,
+      value: foundationBlockingItems.length > 0 ? `Låst — ${foundationBlockingItems.length} mangler i grunnlaget` : `${pendingReviewCount} åpne reviews · ${openMeetingFollowUpCount} oppfølging`,
       tone: foundationBlockingItems.length > 0 ? '#94a3b8' : (pendingReviewCount > 0 || openMeetingFollowUpCount > 0 ? '#fcd34d' : '#86efac'),
     },
   ]), [
@@ -5498,7 +5762,7 @@ export default function ProducerMediaPanel({
       setError(null);
     } catch (uploadError) {
       console.error('[ProducerMediaPanel] Failed to upload client material file', uploadError);
-      setError('Kunne ikke laste opp filen til prosjektet.');
+      setError(describeProducerError(uploadError, 'laste opp filen til prosjektet'));
     } finally {
       setUploadingMaterialFile(false);
     }
@@ -5570,7 +5834,7 @@ export default function ProducerMediaPanel({
       await persistPlanningDraft(nextPlanning);
     } catch (brandLogoError) {
       console.error('[ProducerMediaPanel] Failed to upload or analyze brand logo', brandLogoError);
-      setError('Kunne ikke laste opp og analysere logoen.');
+      setError(describeProducerError(brandLogoError, 'laste opp og analysere logoen'));
     } finally {
       setUploadingBrandLogo(false);
       if (brandLogoFileInputRef.current) {
@@ -6496,7 +6760,11 @@ export default function ProducerMediaPanel({
         intro: activeWorkspace === 'brief'
           ? 'Fullfør briefen før produksjon og godkjenning åpnes opp som parallelle spor.'
           : 'Hold fokus på produksjonsgrunnlaget først. Resten av flyten skal vente til briefen er tydelig.',
-        chipLabel: `${foundationBlockingItems.length} mangler`,
+        // Navngi det første som mangler så chipen er handlingsorientert, ikke
+        // bare et tall — Stig ser umiddelbart hvor han skal begynne.
+        chipLabel: foundationBlockingItems[0]
+          ? `${foundationBlockingItems.length} mangler — start med «${foundationBlockingItems[0].label}»`
+          : `${foundationBlockingItems.length} mangler`,
         priority: foundationBlockingItems.length >= 3 ? 'critical' : 'warning',
         sections,
       };
@@ -6678,12 +6946,20 @@ export default function ProducerMediaPanel({
                 id: `account-status-${entry.platform}`,
                 eyebrow: `${PRODUCER_ACCOUNT_ACCESS_METHOD_LABELS[entry.method]} · ${PRODUCER_ACCOUNT_ACCESS_STATUS_LABELS[entry.status]}`,
                 title: PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform],
+                // Forklar hva statusen betyr og hva som venter — ellers ser
+                // Stig bare «Ikke koblet» uten å vite om han skal gjøre noe selv
+                // eller vente på klienten.
                 detail: readFirstNonEmptyString(
                   entry.accountLabel || '',
                   entry.accessScope || '',
                   entry.notes || '',
-                  'Tilgangen er ikke avklart ennå.',
-                ),
+                ) ?? (({
+                  not_started: 'Ikke startet — åpne kontotilgang for å koble kontoen, eller be klienten om tilgang.',
+                  client_action: 'Venter på klienten — be klienten koble kontoen eller godta invitasjonen.',
+                  invite_sent: 'Invitasjon sendt — venter på at klienten godtar.',
+                  connected: 'Koblet og klar.',
+                  revoked: 'Tilgangen er trukket tilbake — koble på nytt hvis den fortsatt trengs.',
+                } as Record<string, string>)[entry.status] ?? 'Tilgangen er ikke avklart ennå.'),
               }))
               : [
                 {
@@ -6775,7 +7051,7 @@ export default function ProducerMediaPanel({
               {
                 id: 'materials-calendar',
                 title: `${linkedCalendarMaterialCount} koblet til kalender`,
-                detail: linkedCalendarMaterialCount > 0 ? 'Materiale er allerede koblet til publiseringspunkter eller opptaksplan.' : 'Koble materiale til kalenderen når det påvirker timing eller publisering.',
+                detail: linkedCalendarMaterialCount > 0 ? 'Materiale er allerede koblet til innlegg som skal ut eller opptaksplan.' : 'Koble materiale til kalenderen når det påvirker timing eller publisering.',
               },
               {
                 id: 'materials-shotlist',
@@ -7763,7 +8039,7 @@ export default function ProducerMediaPanel({
               <Button
                 size="small"
                 variant="contained"
-                startIcon={<AutoFixHighIcon />}
+                startIcon={<RoleRoomAgentIcon size={18} working={roleRoomAgentGenerating} />}
                 onClick={() => {
                   setRoleRoomAgentError(null);
                   setRoleRoomAgentNotice(null);
@@ -9061,7 +9337,7 @@ export default function ProducerMediaPanel({
                       }}
                     >
                       <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', mb: 0.22 }}>
-                        Content Logic
+                        Innholdsplan
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.76rem', lineHeight: 1.5, mb: 1 }}>
                         Samme struktur som produsenten bruker videre i planlegging og levering. Klienten beskriver målet, kroken og handlingen direkte her.
@@ -9074,7 +9350,7 @@ export default function ProducerMediaPanel({
                               hasText(contentLogicDraft.objective) ? 'filled' : 'missing',
                             )}
                             <TextField
-                              label="Content Logic mål"
+                              label="Innholdsplan mål"
                               value={contentLogicDraft.objective}
                               onChange={(event) => setPlanningDraft((previous) => ({
                                 ...previous,
@@ -9098,7 +9374,7 @@ export default function ProducerMediaPanel({
                               hasText(contentLogicDraft.audience) ? 'filled' : 'missing',
                             )}
                             <TextField
-                              label="Content Logic målgruppe"
+                              label="Innholdsplan målgruppe"
                               value={contentLogicDraft.audience}
                               onChange={(event) => setPlanningDraft((previous) => ({
                                 ...previous,
@@ -9446,7 +9722,7 @@ export default function ProducerMediaPanel({
                       }}
                     >
                       <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.92rem', mb: 0.22 }}>
-                        Content Logic videreføring
+                        Innholdsplan videreføring
                       </Typography>
                       <Typography sx={{ color: 'rgba(203,213,225,0.68)', fontSize: '0.76rem', lineHeight: 1.5, mb: 1 }}>
                         Her konkretiseres hva som beviser budskapet og hvordan innholdet skal fordeles på flater.
@@ -9677,16 +9953,43 @@ export default function ProducerMediaPanel({
                       </Stack>
                       <Button
                         size="small"
-                        variant="contained"
+                        variant="outlined"
                         startIcon={<SaveOutlinedIcon />}
                         onClick={() => {
                           void handleSaveIntake();
                         }}
                         disabled={!canEditBriefInput || savingIntake}
-                        sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, bgcolor: '#38bdf8', color: '#082f49', '&:hover': { bgcolor: '#0ea5e9' } }}
+                        sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44 }}
                       >
-                        {savingIntake ? 'Lagrer brief...' : 'Lagre brief'}
+                        {savingIntake ? 'Lagrer brief...' : 'Lagre utkast'}
                       </Button>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<CloudUploadOutlinedIcon />}
+                        onClick={() => {
+                          void handlePublishIntake(true);
+                        }}
+                        disabled={!canEditBriefInput || publishingIntake}
+                        sx={{ textTransform: 'none', fontWeight: 700, minHeight: 44, bgcolor: '#0f766e', color: '#fff', '&:hover': { bgcolor: '#0d655e' } }}
+                      >
+                        {publishingIntake
+                          ? 'Publiserer...'
+                          : intakeDraft.publishedAt
+                            ? 'Publiser oppdatering'
+                            : 'Publiser til klient'}
+                      </Button>
+                      {intakeDraft.publishedAt ? (
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => { void handlePublishIntake(false); }}
+                          disabled={publishingIntake}
+                          sx={{ textTransform: 'none', fontWeight: 600, minHeight: 44, color: 'rgba(226,232,240,0.7)' }}
+                        >
+                          Avpubliser
+                        </Button>
+                      ) : null}
                     </>
                   )}
                 </Stack>
@@ -12253,6 +12556,64 @@ export default function ProducerMediaPanel({
               ) : null}
 
               {accountAccessVaultTab === 'accounts' ? (
+              <>
+              <Stack
+                direction="row"
+                spacing={0.55}
+                flexWrap="wrap"
+                useFlexGap
+                alignItems="center"
+                sx={{ mb: 0.9 }}
+              >
+                {([
+                  ['connected', 'koblet', 'rgba(34,197,94,0.16)', '#bbf7d0'],
+                  ['invite_sent', 'invite sendt', 'rgba(56,189,248,0.16)', '#dbeafe'],
+                  ['client_action', 'venter på klient', 'rgba(245,158,11,0.18)', '#fde68a'],
+                  ['not_started', 'ikke startet', 'rgba(148,163,184,0.16)', '#e2e8f0'],
+                ] as const).map(([statusKey, label, bg, fg]) => {
+                  const count = effectiveAccountEntries.filter((e) => e.platform !== 'google' && e.status === statusKey).length;
+                  if (count === 0) return null;
+                  return (
+                    <Chip
+                      key={statusKey}
+                      size="small"
+                      label={`${count} ${label}`}
+                      sx={{ bgcolor: bg, color: fg, fontWeight: 700 }}
+                    />
+                  );
+                })}
+                {effectiveAccountEntries.some((e) => !e.expiresAt) ? (
+                  <Chip
+                    size="small"
+                    label={`${effectiveAccountEntries.filter((e) => !e.expiresAt).length} uten utløpsdato`}
+                    sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a', fontWeight: 700 }}
+                  />
+                ) : null}
+                <Box sx={{ flex: 1 }} />
+                {!isClientReviewerMode && canEditClientInput ? (
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => setAccountAccessAdvanced((v) => !v)}
+                    sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 28, color: accountAccessAdvanced ? '#c084fc' : 'rgba(148,163,184,0.8)' }}
+                  >
+                    {accountAccessAdvanced ? 'Avansert ✓' : 'Vis avansert'}
+                  </Button>
+                ) : null}
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => {
+                    const anyOpen = effectiveAccountEntries.some((e) => expandedAccountCards[e.platform]);
+                    setExpandedAccountCards(anyOpen
+                      ? {}
+                      : Object.fromEntries(effectiveAccountEntries.map((e) => [e.platform, true])));
+                  }}
+                  sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 28 }}
+                >
+                  {effectiveAccountEntries.some((e) => expandedAccountCards[e.platform]) ? 'Lukk alle' : 'Åpne alle'}
+                </Button>
+              </Stack>
               <Box
                 sx={{
                   display: 'grid',
@@ -12267,7 +12628,13 @@ export default function ProducerMediaPanel({
                   const isLinkedInEntry = entry.platform === 'linkedin';
                   const linkedAccountReview = accountAccessReviewByPlatform.get(entry.platform) ?? null;
                   const platformFlow = ACCOUNT_ACCESS_PLATFORM_FLOW_CONFIG[entry.platform];
-                  const googleConnectionDetail = '';
+                  const googleConnectionDetail = isGoogleEntry && agentConnectionStatus
+                    ? (agentConnectionStatus.google.connected
+                      ? (agentConnectionStatus.google.source === 'project'
+                        ? `Prosjektets kobling: ${agentConnectionStatus.google.email ?? 'ukjent konto'} — klient-eid oppsett (GA4/GSC lander her).`
+                        : `Din Google-konto (${agentConnectionStatus.google.email ?? 'ukjent'}) — oppsett lander hos deg. Koble klientens konto på prosjektet for klient-eierskap.`)
+                      : 'Ingen Google-kobling på prosjektet ennå — GA4-/Search Console-oppsettet i agenten krever den.')
+                    : '';
                   const linkedInConnectionDetail = isLinkedInEntry
                     ? readFirstNonEmptyString(
                       linkedInAccessStatus?.connection?.linkedInName && linkedInAccessStatus?.connection?.linkedInEmail
@@ -12335,6 +12702,13 @@ export default function ProducerMediaPanel({
                               label={isRequired ? 'Nødvendig i dette prosjektet' : 'Valgfri plattform'}
                               sx={{ bgcolor: isRequired ? 'rgba(20,184,166,0.16)' : 'rgba(148,163,184,0.1)', color: isRequired ? '#ccfbf1' : '#cbd5e1' }}
                             />
+                            {!entry.expiresAt && !expandedAccountCards[entry.platform] ? (
+                              <Chip
+                                size="small"
+                                label="Ingen utløp satt"
+                                sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a', fontWeight: 700 }}
+                              />
+                            ) : null}
                             {isLinkedInEntry && linkedInAccessStatus?.state === 'connected' ? (
                               <Chip
                                 size="small"
@@ -12364,9 +12738,101 @@ export default function ProducerMediaPanel({
                               'Ingen sikker tilgang definert ennå.',
                             )}
                           </Typography>
+                          {(() => {
+                            // «Styrer»-raden: de konkrete ressursene koblingen
+                            // faktisk rår over (GA4-ID, GSC-siter, @IG-konto,
+                            // sider, kanaler) — «koblet» alene sier ingenting.
+                            const m = agentConnectionStatus?.manages;
+                            if (!m) return null;
+                            const styrer: string[] = [];
+                            if (isGoogleEntry) {
+                              if (m.ga4MeasurementId) styrer.push(`GA4: ${m.ga4MeasurementId}`);
+                              else if (m.ga4PropertyId) styrer.push(`GA4-property: ${m.ga4PropertyId}`);
+                              m.gscSites.slice(0, 3).forEach((s) => styrer.push(
+                                `Search Console: ${s.replace(/^sc-domain:/, '').replace(/^https?:\/\//, '').replace(/\/$/, '')}`,
+                              ));
+                              if (m.gscError === 'needs_reauth') styrer.push('Search Console: krever ny innlogging');
+                            }
+                            if (entry.platform === 'meta') {
+                              if (m.igUsername) styrer.push(`Instagram: @${m.igUsername}`);
+                              if (m.facebookPageName) styrer.push(`Facebook-side: ${m.facebookPageName}`);
+                              m.metaPages.filter((p) => p !== m.facebookPageName).slice(0, 3)
+                                .forEach((p) => styrer.push(`Side: ${p}`));
+                            }
+                            if (entry.platform === 'youtube') {
+                              m.youtubeChannels.slice(0, 3).forEach((c) => styrer.push(`Kanal: ${c}`));
+                            }
+                            if (styrer.length === 0) return null;
+                            return (
+                              <Stack direction="row" spacing={0.45} flexWrap="wrap" useFlexGap sx={{ mt: 0.55 }}>
+                                <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.7rem', fontWeight: 700, alignSelf: 'center' }}>
+                                  Styrer:
+                                </Typography>
+                                {styrer.map((label) => (
+                                  <Chip
+                                    key={label}
+                                    size="small"
+                                    label={label}
+                                    sx={{ bgcolor: 'rgba(59,130,246,0.12)', color: '#dbeafe', fontSize: '0.68rem', height: 20 }}
+                                  />
+                                ))}
+                              </Stack>
+                            );
+                          })()}
                         </Box>
-                        {isLinkedInEntry ? (
-                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
+                        {isGoogleEntry ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
+                            {agentConnectionStatus?.google.connected ? (
+                              <Chip
+                                size="small"
+                                label={`Koblet: ${agentConnectionStatus.google.email ?? 'ukjent konto'}`}
+                                sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: '#bbf7d0', fontWeight: 700 }}
+                              />
+                            ) : null}
+                            {canEditClientInput ? (
+                              <Button
+                                size="small"
+                                variant={agentConnectionStatus?.google.connected ? 'outlined' : 'contained'}
+                                onClick={() => { void handleStartGoogleOauthLink(); }}
+                                disabled={googleOauthStarting}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                              >
+                                {googleOauthStarting
+                                  ? 'Starter...'
+                                  : agentConnectionStatus?.google.connected
+                                    ? 'Koble til på nytt'
+                                    : 'Koble til Google'}
+                              </Button>
+                            ) : null}
+                          </Stack>
+                        ) : entry.platform === 'meta' ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
+                            {agentConnectionStatus?.meta.connected ? (
+                              <Chip
+                                size="small"
+                                label={agentConnectionStatus.meta.verified
+                                  ? `Koblet: ${agentConnectionStatus.manages?.igUsername ? `@${agentConnectionStatus.manages.igUsername}` : agentConnectionStatus.meta.name ?? 'verifisert'}`
+                                  : 'Koblet (ikke verifisert)'}
+                                sx={{
+                                  bgcolor: agentConnectionStatus.meta.verified ? 'rgba(34,197,94,0.16)' : 'rgba(245,158,11,0.18)',
+                                  color: agentConnectionStatus.meta.verified ? '#bbf7d0' : '#fde68a',
+                                  fontWeight: 700,
+                                }}
+                              />
+                            ) : null}
+                            {canEditClientInput ? (
+                              <Button
+                                size="small"
+                                variant={agentConnectionStatus?.meta.connected ? 'outlined' : 'contained'}
+                                onClick={() => openOauthPopupAndRefresh(`/api/role-room/instagram/oauth/start?projectId=${encodeURIComponent(projectId)}`)}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                              >
+                                {agentConnectionStatus?.meta.connected ? 'Koble til på nytt' : 'Koble til Meta'}
+                              </Button>
+                            ) : null}
+                          </Stack>
+                        ) : isLinkedInEntry ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
                             <Tooltip title="Oppdater LinkedIn-status">
                               <span>
                                 <IconButton
@@ -12391,22 +12857,59 @@ export default function ProducerMediaPanel({
                                 size="small"
                                 variant={linkedInAccessStatus?.state === 'connected' ? 'outlined' : 'contained'}
                                 onClick={() => {
-                                  if (linkedInAccessStatus?.state !== 'connected') {
-                                    void handleStartLinkedInAccountLink();
-                                  }
+                                  void handleStartLinkedInAccountLink();
                                 }}
                                 disabled={linkedInAccessActionKey === 'connect' || linkedInAccessStatus?.configured === false}
                                 sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
                               >
                                 {linkedInAccessStatus?.configured === false
                                   ? 'LinkedIn ikke konfigurert'
-                                  : linkedInAccessStatus?.state === 'connected'
-                                    ? 'LinkedIn aktivert'
-                                    : linkedInAccessActionKey === 'connect'
-                                      ? 'Starter...'
-                                      : 'Aktiver LinkedIn'}
+                                  : linkedInAccessActionKey === 'connect'
+                                    ? 'Starter...'
+                                    : linkedInAccessStatus?.state === 'connected'
+                                      ? 'Koble til på nytt'
+                                      : 'Koble til LinkedIn'}
                               </Button>
                             ) : null}
+                          </Stack>
+                        ) : entry.platform === 'youtube' ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
+                            {agentConnectionStatus?.google.connected ? (
+                              <Chip
+                                size="small"
+                                label="Bruker Google-koblingen"
+                                sx={{ bgcolor: 'rgba(34,197,94,0.16)', color: '#bbf7d0', fontWeight: 700 }}
+                              />
+                            ) : null}
+                            {canEditClientInput ? (
+                              <Button
+                                size="small"
+                                variant={agentConnectionStatus?.google.connected ? 'outlined' : 'contained'}
+                                onClick={() => { void handleStartGoogleOauthLink(); }}
+                                disabled={googleOauthStarting}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                              >
+                                {googleOauthStarting
+                                  ? 'Starter...'
+                                  : agentConnectionStatus?.google.connected
+                                    ? 'Koble til på nytt'
+                                    : 'Koble til Google'}
+                              </Button>
+                            ) : null}
+                          </Stack>
+                        ) : entry.platform === 'tiktok' ? (
+                          <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
+                            <Button
+                              size="small"
+                              variant="contained"
+                              component="a"
+                              href="https://business.tiktok.com"
+                              target="_blank"
+                              rel="noreferrer"
+                              sx={{ textTransform: 'none', fontWeight: 700, minHeight: 38 }}
+                            >
+                              Åpne TikTok Business Center
+                            </Button>
                           </Stack>
                         ) : linkedAccountReview ? (
                           <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap>
@@ -12422,6 +12925,26 @@ export default function ProducerMediaPanel({
                           </Stack>
                         ) : null}
                       </Stack>
+
+                      <Button
+                        fullWidth
+                        size="small"
+                        variant="text"
+                        onClick={() => setExpandedAccountCards((cur) => ({ ...cur, [entry.platform]: !cur[entry.platform] }))}
+                        sx={{
+                          textTransform: 'none',
+                          fontWeight: 700,
+                          fontSize: '0.76rem',
+                          minHeight: 30,
+                          mb: expandedAccountCards[entry.platform] ? 0.6 : 0,
+                          justifyContent: 'flex-start',
+                          color: 'rgba(165,243,252,0.85)',
+                        }}
+                      >
+                        {expandedAccountCards[entry.platform] ? '▾ Skjul redigering' : '▸ Rediger tilgang og detaljer'}
+                      </Button>
+                      <Collapse in={Boolean(expandedAccountCards[entry.platform])} unmountOnExit>
+                      <Box>
 
                       {!isGoogleEntry ? (
                         <>
@@ -12580,22 +13103,43 @@ export default function ProducerMediaPanel({
                         </>
                       ) : null}
 
-                      <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap sx={{ mb: 0.8 }}>
-                        <Chip
+                      <Stack direction="row" spacing={0.55} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 0.8 }}>
+                        {!entry.expiresAt ? (
+                          <Chip
+                            size="small"
+                            label="Ingen utløp satt"
+                            sx={{ bgcolor: 'rgba(251,191,36,0.14)', color: '#fde68a', fontWeight: 700 }}
+                          />
+                        ) : null}
+                        <Button
                           size="small"
-                          label={`Delt med: ${readFirstNonEmptyString(stringifyAccountAccessRoleTargets(entry.sharedWithRoles), 'Ingen mottakere satt')}`}
-                          sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
-                        />
-                        <Chip
-                          size="small"
-                          label={PRODUCER_ACCOUNT_ACCESS_TWO_FACTOR_STATUS_LABELS[entry.twoFactorStatus ?? 'unknown']}
-                          sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
-                        />
-                        <Chip
-                          size="small"
-                          label={entry.expiresAt ? `Utløper ${formatTimestamp(entry.expiresAt)}` : 'Ingen utløp satt'}
-                          sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
-                        />
+                          variant="text"
+                          onClick={() => setExpandedAccessDetails((cur) => ({ ...cur, [entry.platform]: !cur[entry.platform] }))}
+                          sx={{ textTransform: 'none', fontWeight: 700, minHeight: 28, fontSize: '0.74rem' }}
+                        >
+                          {expandedAccessDetails[entry.platform] ? 'Skjul detaljer' : 'Detaljer'}
+                        </Button>
+                        {expandedAccessDetails[entry.platform] ? (
+                          <>
+                            <Chip
+                              size="small"
+                              label={`Delt med: ${readFirstNonEmptyString(stringifyAccountAccessRoleTargets(entry.sharedWithRoles), 'Ingen mottakere satt')}`}
+                              sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
+                            />
+                            <Chip
+                              size="small"
+                              label={PRODUCER_ACCOUNT_ACCESS_TWO_FACTOR_STATUS_LABELS[entry.twoFactorStatus ?? 'unknown']}
+                              sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
+                            />
+                            {entry.expiresAt ? (
+                              <Chip
+                                size="small"
+                                label={`Utløper ${formatTimestamp(entry.expiresAt)}`}
+                                sx={{ bgcolor: 'rgba(15,23,42,0.48)', color: '#cbd5e1' }}
+                              />
+                            ) : null}
+                          </>
+                        ) : null}
                       </Stack>
 
                       <Box
@@ -12656,20 +13200,37 @@ export default function ProducerMediaPanel({
                           disabled={!canEditClientInput}
                           helperText="For eksempel Klienteier, Innholdsprodusent, Editor, SoMe-ansvarlig."
                         />
-                        <TextField
-                          label="Utløper"
-                          type="datetime-local"
-                          value={toDateTimeLocalValue(entry.expiresAt)}
-                          onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
-                            ...current,
-                            expiresAt: fromDateTimeLocalValue(event.target.value),
-                          }))}
-                          fullWidth
-                          disabled={!canEditClientInput}
-                          InputLabelProps={{ shrink: true }}
-                        />
+                        <Box>
+                          <TextField
+                            label="Utløper"
+                            type="datetime-local"
+                            value={toDateTimeLocalValue(entry.expiresAt)}
+                            onChange={(event) => updateAccountAccessEntry(entry.platform, (current) => ({
+                              ...current,
+                              expiresAt: fromDateTimeLocalValue(event.target.value),
+                            }))}
+                            fullWidth
+                            disabled={!canEditClientInput}
+                            InputLabelProps={{ shrink: true }}
+                            helperText={entry.expiresAt ? undefined : 'Evigvarende delegert tilgang er risikoen vaulten skal fjerne.'}
+                          />
+                          {!entry.expiresAt && canEditClientInput ? (
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => updateAccountAccessEntry(entry.platform, (current) => ({
+                                ...current,
+                                expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+                              }))}
+                              sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', mt: 0.25 }}
+                            >
+                              Sett 90 dager (anbefalt)
+                            </Button>
+                          ) : null}
+                        </Box>
                       </Box>
 
+                      {accountAccessShowAdvanced && (
                       <Stack
                         direction={{ xs: 'column', md: 'row' }}
                         spacing={0.7}
@@ -12750,6 +13311,7 @@ export default function ProducerMediaPanel({
                           <ToggleButton value="high" disabled={!canEditClientInput}>Høy</ToggleButton>
                         </ToggleButtonGroup>
                       </Stack>
+                      )}
 
                       <TextField
                         label="Notater"
@@ -12937,10 +13499,13 @@ export default function ProducerMediaPanel({
                           <ToggleButton value="unknown" disabled={!canEditClientInput}>Ikke bekreftet</ToggleButton>
                         </ToggleButtonGroup>
                       </Stack>
+                      </Box>
+                      </Collapse>
                     </Box>
                   );
                 })}
               </Box>
+              </>
               ) : null}
 
               {accountAccessVaultTab === 'accounts' ? (
@@ -13137,7 +13702,7 @@ export default function ProducerMediaPanel({
                                   void handleRevealAccessVaultSecret(request);
                                 }}
                                 disabled={Boolean(accessVaultActionKey)}
-                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' } }}
+                                sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: '#7c3aed' } }}
                               >
                                 {accessVaultActionKey === `${request.id}:reveal` ? 'Åpner...' : 'Åpne én gang'}
                               </Button>
@@ -13388,9 +13953,18 @@ export default function ProducerMediaPanel({
                                   <TextField label="Secret" value={revealed.secretValue ?? ''} fullWidth InputProps={{ readOnly: true }} />
                                   <TextField label="Backup-kode" value={revealed.backupCode ?? ''} fullWidth InputProps={{ readOnly: true }} />
                                 </Box>
-                                <Typography sx={{ color: 'rgba(254,240,138,0.84)', fontSize: '0.73rem', lineHeight: 1.45, mt: 0.55 }}>
-                                  Åpnet {formatTimestamp(revealed.revealedAt ?? '')}. Behandle dette som midlertidig innsyn og roter tilgangen ved behov.
-                                </Typography>
+                                <VaultRevealCountdown
+                                  revealedAt={revealed.revealedAt}
+                                  ttlSeconds={entry.revealTtlSeconds}
+                                  onLock={() => {
+                                    if (!activeRevealRequest) return;
+                                    setRevealedVaultSecrets((prev) => {
+                                      const next = { ...prev };
+                                      delete next[activeRevealRequest.id];
+                                      return next;
+                                    });
+                                  }}
+                                />
                               </Box>
                             ) : null}
 
@@ -13403,7 +13977,7 @@ export default function ProducerMediaPanel({
                                     void handleSaveAccessVaultSecret(entry);
                                   }}
                                   disabled={Boolean(accessVaultActionKey)}
-                                  sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' } }}
+                                  sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, bgcolor: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: '#7c3aed' } }}
                                 >
                                   {accessVaultActionKey === `${entry.platform}:save` ? 'Lagrer sikkert...' : 'Lagre sikkert'}
                                 </Button>
@@ -13418,7 +13992,7 @@ export default function ProducerMediaPanel({
                                   disabled={Boolean(accessVaultActionKey)}
                                   sx={{ textTransform: 'none', fontWeight: 700, minHeight: 34, borderColor: 'rgba(125,211,252,0.28)', color: '#e0f2fe' }}
                                 >
-                                  {accessVaultActionKey === `${entry.platform}:request` ? 'Ber om innsyn...' : 'Be om innsyn'}
+                                  {accessVaultActionKey === `${entry.platform}::request` ? 'Ber om innsyn...' : 'Be om innsyn'}
                                 </Button>
                               ) : null}
                               {canRevealApprovedSecret && activeRevealRequest ? (
@@ -13474,6 +14048,69 @@ export default function ProducerMediaPanel({
                                   ? 'Innsyn er godkjent. Åpne det her eller fra Tilgangsforespørsler.'
                                   : `Innsyn venter allerede på behandling for ${PRODUCER_ACCOUNT_ACCESS_PLATFORM_LABELS[entry.platform]}.`}
                               </Alert>
+                            ) : null}
+
+                            {/* Multi-secret: flere kontoer på samme plattform */}
+                            {(extraVaultSecretsByPlatform.get(entry.platform) ?? []).length > 0 ? (
+                              <Box sx={{ mt: 0.6, pt: 0.6, borderTop: '1px dashed rgba(148,163,184,0.18)' }}>
+                                <Typography sx={{ color: 'rgba(196,181,253,0.92)', fontSize: '0.72rem', fontWeight: 700, mb: 0.5 }}>
+                                  Flere kontoer på denne plattformen
+                                </Typography>
+                                <Stack spacing={0.6}>
+                                  {(extraVaultSecretsByPlatform.get(entry.platform) ?? []).map((extra) => {
+                                    const exReq = activeVaultRequestBySecretId.get(extra.id);
+                                    const exRevealed = exReq ? revealedVaultSecrets[exReq.id] : null;
+                                    const exBusy = accessVaultActionKey === `${entry.platform}:${extra.accountLabel ?? ''}:request`;
+                                    return (
+                                      <Box key={`extra-${extra.id}`} sx={{ p: 0.8, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)', bgcolor: 'rgba(15,23,42,0.45)' }}>
+                                        <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" rowGap={0.4}>
+                                          <Typography sx={{ color: '#fff', fontSize: '0.82rem', fontWeight: 700 }}>
+                                            {extra.accountLabel || extra.label || 'Konto'}
+                                          </Typography>
+                                          <Chip size="small" label={extra.ownerSide === 'client' ? 'Klient-eid' : 'Produsent'} sx={{ height: 17, fontSize: '0.58rem', fontWeight: 700, color: extra.ownerSide === 'client' ? '#6ee7b7' : '#c4b5fd', bgcolor: extra.ownerSide === 'client' ? 'rgba(16,185,129,0.12)' : 'rgba(168,85,247,0.14)' }} />
+                                          {extra.maskedReference ? <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.7rem', fontFamily: 'monospace' }}>{extra.maskedReference}</Typography> : null}
+                                        </Stack>
+                                        <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap" rowGap={0.4}>
+                                          {canRequestAccessVaultReveal && extra.hasStoredSecret && !exReq ? (
+                                            <Button size="small" variant="outlined" disabled={exBusy} onClick={() => { void handleRequestAccessVaultReveal(entry.platform, extra.accountLabel ?? ''); }}
+                                              sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 34 }}>
+                                              {exBusy ? 'Ber om…' : 'Be om innsyn'}
+                                            </Button>
+                                          ) : null}
+                                          {exReq && exReq.status === 'pending' && canDecideAccessVaultReveal ? (
+                                            <>
+                                              <Button size="small" variant="contained" onClick={() => { void handleDecideAccessVaultReveal(exReq, 'approve'); }} sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 34, bgcolor: '#0f766e' }}>Godkjenn</Button>
+                                              <Button size="small" variant="text" onClick={() => { void handleDecideAccessVaultReveal(exReq, 'reject'); }} sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.74rem', minHeight: 34, color: 'rgba(252,165,165,0.9)' }}>Avslå</Button>
+                                            </>
+                                          ) : null}
+                                          {exReq && exReq.status === 'pending' && !canDecideAccessVaultReveal ? (
+                                            <Typography sx={{ color: 'rgba(251,191,36,0.9)', fontSize: '0.74rem', fontWeight: 600, alignSelf: 'center' }}>Venter på godkjenning</Typography>
+                                          ) : null}
+                                          {canRevealApprovedSecret && exReq && exReq.status === 'approved' && !exRevealed ? (
+                                            <Button size="small" variant="contained" onClick={() => { void handleRevealAccessVaultSecret(exReq); }} sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.74rem', minHeight: 34, bgcolor: '#7c3aed' }}>
+                                              {accessVaultActionKey === `${exReq.id}:reveal` ? 'Åpner…' : 'Åpne godkjent innsyn'}
+                                            </Button>
+                                          ) : null}
+                                        </Stack>
+                                        {exRevealed && exReq ? (
+                                          <Box sx={{ mt: 0.6, p: 0.7, borderRadius: 1.5, bgcolor: 'rgba(120,53,15,0.28)', border: '1px solid rgba(245,158,11,0.35)' }}>
+                                            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0,1fr))' }, gap: 0.6 }}>
+                                              <TextField label="Brukernavn" value={exRevealed.username ?? ''} fullWidth size="small" InputProps={{ readOnly: true }} />
+                                              <TextField label="Secret" value={exRevealed.secretValue ?? ''} fullWidth size="small" InputProps={{ readOnly: true }} />
+                                              <TextField label="Backup-kode" value={exRevealed.backupCode ?? ''} fullWidth size="small" InputProps={{ readOnly: true }} />
+                                            </Box>
+                                            <VaultRevealCountdown
+                                              revealedAt={exRevealed.revealedAt}
+                                              ttlSeconds={extra.revealTtlSeconds}
+                                              onLock={() => setRevealedVaultSecrets((prev) => { const next = { ...prev }; delete next[exReq.id]; return next; })}
+                                            />
+                                          </Box>
+                                        ) : null}
+                                      </Box>
+                                    );
+                                  })}
+                                </Stack>
+                              </Box>
                             ) : null}
                           </Stack>
                         </Box>
@@ -14466,6 +15103,7 @@ export default function ProducerMediaPanel({
           {!showClientWorkspaceEmptyState && activeWorkspace === 'marketing-plan' ? (
             <MarketingPlanWorkspace
               projectId={projectId}
+              reloadSignal={marketingReloadNonce}
               onOpenAdvancedEditor={() => {
                 setRoleRoomAgentDialogInitialTab('marketing-plan');
                 setRoleRoomAgentDialogOpen(true);
@@ -15692,6 +16330,8 @@ export default function ProducerMediaPanel({
                 ) : null}
 
               {materialsMode === 'library' ? (
+                <>
+                <ProducerReceivedMaterialsPanel projectId={projectId} />
                 <Box
                   sx={{
                     borderRadius: 2,
@@ -15892,6 +16532,7 @@ export default function ProducerMediaPanel({
                   ) : null}
                 </Stack>
                 </Box>
+                </>
                 ) : null}
               </Box>
             </>
@@ -16430,7 +17071,7 @@ export default function ProducerMediaPanel({
       </Menu>
       <RoleRoomAgentDialog
         open={roleRoomAgentDialogOpen}
-        onClose={() => setRoleRoomAgentDialogOpen(false)}
+        onClose={() => { setRoleRoomAgentDialogOpen(false); setMarketingReloadNonce((n) => n + 1); }}
         projectId={projectId}
         projectName={projectName}
         currentUserId={currentRoleRoomUserId || undefined}
@@ -16447,10 +17088,23 @@ export default function ProducerMediaPanel({
         notice={roleRoomAgentNotice}
         onGenerate={handleGenerateRoleRoomAgent}
         onApply={handleApplyRoleRoomAgent}
+        onOpenAccountAccess={() => {
+          setRoleRoomAgentDialogOpen(false);
+          const sectionWithAccounts = workspaceSections.find(
+            (section) => flattenProducerWorkspacePages(section).some((page) => page.surface === 'accounts'),
+          );
+          if (!sectionWithAccounts) return;
+          const accountsPage = flattenProducerWorkspacePages(sectionWithAccounts).find(
+            (page) => page.surface === 'accounts',
+          );
+          setActiveSectionId(sectionWithAccounts.id);
+          if (accountsPage) setActivePageId(accountsPage.id);
+        }}
         onCreateProject={handleCreateProjectFromRoleRoomAgent}
         progressStages={researchProgress.stages}
         progressStatus={researchProgress.status}
         progressError={researchProgress.error}
+        progressMockups={researchProgress.mockups}
       />
       {/* MFA step-up modal for vault-reveal — vises kun når backend
           har returnert mfa_required for siste reveal-request */}

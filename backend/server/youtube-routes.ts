@@ -11,9 +11,10 @@ import { resolveRoleRoomGoogleConnection } from "./contract-google-signing.js";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
 import { derivePreferredGoogleWorkspaceOauthApps } from "./google-workspace-oauth.js";
 
+// `youtube` er et superset av `youtube.upload` (dekker opplasting + admin) og
+// kan ikke kombineres med det i samme OAuth-request.
 const YOUTUBE_REQUIRED_SCOPES = [
   "https://www.googleapis.com/auth/youtube",
-  "https://www.googleapis.com/auth/youtube.upload",
 ] as const;
 
 class YouTubeRouteError extends Error {
@@ -73,15 +74,19 @@ const uploadStorage = multer.diskStorage({
 
 const videoUpload = multer({
   storage: uploadStorage,
-  limits: {
-    fileSize: 1024 * 1024 * 1024,
+  limits: { fileSize: 1024 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("video/")) cb(null, true);
+    else cb(new Error("Kun videofiler er tillatt") as any, false);
   },
 });
 
 const thumbnailUpload = multer({
   storage: uploadStorage,
-  limits: {
-    fileSize: 10 * 1024 * 1024,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Kun bildefiler er tillatt") as any, false);
   },
 });
 
@@ -175,6 +180,36 @@ async function resolveUserId(pool: Pool, req: Request): Promise<string | null> {
   return readStringValue(session?.userId);
 }
 
+// Eierskaps-sjekk for sensitive lese-endepunkter (analytics/inntekter). Krever en
+// autentisert sesjon (bearer) OG at en evt. eksplisitt ?userId/x-user-id matcher
+// sesjonsbrukeren. Hindrer IDOR: uten dette kunne ?userId=<annen> lekket en annen
+// brukers YouTube-statistikk/inntekter. Returnerer null → kaller svarer 403.
+async function resolveOwnedUserId(pool: Pool, req: Request): Promise<string | null> {
+  const bearer = readStringValue(req.headers.authorization)?.replace(/^Bearer\s+/i, "").trim();
+  if (!bearer) {
+    return null;
+  }
+  const session = await loadPersistedAuthSession<{
+    userId: string;
+    email: string;
+    name: string;
+    role: string;
+    loginAt: string;
+  }>(pool, bearer);
+  const sessionUserId = readStringValue(session?.userId);
+  if (!sessionUserId) {
+    return null;
+  }
+  const requested =
+    readStringValue(req.query.userId)
+    ?? readStringValue(req.body?.userId)
+    ?? readStringValue(req.headers["x-user-id"]);
+  if (requested && requested !== sessionUserId) {
+    return null;
+  }
+  return sessionUserId;
+}
+
 function normalizePrivacyStatus(value: unknown): "private" | "unlisted" | "public" {
   const normalized = readStringValue(value)?.toLowerCase();
   if (normalized === "public" || normalized === "unlisted") {
@@ -225,10 +260,12 @@ function mapPublishingPlaylist(item: any): PublishingPlaylist {
   };
 }
 
-async function buildAuthorizedYoutubeClient(pool: Pool, userId: string, req?: Request) {
+export async function buildAuthorizedYoutubeClient(pool: Pool, userId: string, req?: Request) {
   const authorized = await resolveRoleRoomGoogleConnection(pool, userId, {
     allowFallbackToAnyUser: false,
-    preferredOauthApps: derivePreferredGoogleWorkspaceOauthApps(req),
+    // Den dedikerte YouTube-consenten (egen credential) foretrekkes; eldre
+    // Workspace-tilkoblinger som fortsatt bærer youtube-scopet er fallback.
+    preferredOauthApps: ['creatorhub_youtube', ...derivePreferredGoogleWorkspaceOauthApps(req)],
   });
 
   return {
@@ -237,6 +274,19 @@ async function buildAuthorizedYoutubeClient(pool: Pool, userId: string, req?: Re
       version: "v3",
       auth: authorized.oauthClient,
     }),
+  };
+}
+
+// Gjenbruker samme Google-tilkobling for Calendar (krever calendar-scope på
+// tilkoblingen; ellers feiler insert med insufficient-scope og håndteres pent).
+export async function buildAuthorizedGoogleCalendar(pool: Pool, userId: string, req?: Request) {
+  const authorized = await resolveRoleRoomGoogleConnection(pool, userId, {
+    allowFallbackToAnyUser: false,
+    preferredOauthApps: derivePreferredGoogleWorkspaceOauthApps(req),
+  });
+  return {
+    authorized,
+    calendar: google.calendar({ version: "v3", auth: authorized.oauthClient }),
   };
 }
 
@@ -540,6 +590,23 @@ function getYoutubeErrorStatus(error: unknown) {
 
 function sendYoutubeError(res: Response, error: unknown) {
   res.status(getYoutubeErrorStatus(error)).json({ error: normalizeYoutubeError(error) });
+}
+
+function toIsoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+// YouTube Analytics-rapportene krever et [startDate, endDate]-vindu (YYYY-MM-DD).
+// Default = siste 28 dager; kan overstyres via ?startDate/?endDate.
+function analyticsDateRange(req: Request): { startDate: string; endDate: string } {
+  const end = readStringValue(req.query.endDate) ?? toIsoDate(new Date());
+  const explicitStart = readStringValue(req.query.startDate);
+  if (explicitStart) {
+    return { startDate: explicitStart, endDate: end };
+  }
+  const start = new Date(end);
+  start.setDate(start.getDate() - 27);
+  return { startDate: toIsoDate(start), endDate: end };
 }
 
 export function createYouTubeRouter(pool: Pool) {
@@ -974,6 +1041,77 @@ export function createYouTubeRouter(pool: Pool) {
       sendYoutubeError(res, error);
     } finally {
       await cleanupTempFile(filePath);
+    }
+  });
+
+  // YouTube Analytics — kanal-/videostatistikk (visninger, seertid, abonnenter).
+  // Krever scopet auth/yt-analytics.readonly. Dette gis IKKE i hoved-Workspace-
+  // consenten (Google avviser det sammen med Drive) — brukeren må først kjøre den
+  // inkrementelle «Koble YouTube Analytics»-consenten (mode='youtube-analytics').
+  router.get("/analytics", async (req: Request, res: Response) => {
+    const userId = await resolveOwnedUserId(pool, req);
+    if (!userId) {
+      res.status(403).json({ error: "Ingen tilgang — autentisert sesjon kreves og må eie den forespurte kontoen." });
+      return;
+    }
+
+    try {
+      const { authorized } = await buildAuthorizedYoutubeClient(pool, userId, req);
+      const analytics = google.youtubeAnalytics({ version: "v2", auth: authorized.oauthClient });
+      const { startDate, endDate } = analyticsDateRange(req);
+
+      const report = await analytics.reports.query({
+        ids: "channel==MINE",
+        startDate,
+        endDate,
+        metrics: "views,estimatedMinutesWatched,averageViewDuration,subscribersGained,likes,comments,shares",
+        dimensions: "day",
+        sort: "day",
+      });
+
+      res.json({
+        startDate,
+        endDate,
+        columnHeaders: report.data.columnHeaders ?? [],
+        rows: report.data.rows ?? [],
+      });
+    } catch (error) {
+      sendYoutubeError(res, error);
+    }
+  });
+
+  // YouTube Analytics — inntekter per dag. Bruker scopet
+  // auth/yt-analytics-monetary.readonly. Krever monetisert kanal; hvis ikke
+  // monetisert svarer Google 403 → normaliseres til en tydelig melding.
+  router.get("/analytics/revenue", async (req: Request, res: Response) => {
+    const userId = await resolveOwnedUserId(pool, req);
+    if (!userId) {
+      res.status(403).json({ error: "Ingen tilgang — autentisert sesjon kreves og må eie den forespurte kontoen." });
+      return;
+    }
+
+    try {
+      const { authorized } = await buildAuthorizedYoutubeClient(pool, userId, req);
+      const analytics = google.youtubeAnalytics({ version: "v2", auth: authorized.oauthClient });
+      const { startDate, endDate } = analyticsDateRange(req);
+
+      const report = await analytics.reports.query({
+        ids: "channel==MINE",
+        startDate,
+        endDate,
+        metrics: "estimatedRevenue,estimatedAdRevenue,grossRevenue,cpm,adImpressions",
+        dimensions: "day",
+        sort: "day",
+      });
+
+      res.json({
+        startDate,
+        endDate,
+        columnHeaders: report.data.columnHeaders ?? [],
+        rows: report.data.rows ?? [],
+      });
+    } catch (error) {
+      sendYoutubeError(res, error);
     }
   });
 

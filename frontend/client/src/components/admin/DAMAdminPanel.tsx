@@ -110,6 +110,11 @@ import {
   Archive as ArchiveIcon,
   Unarchive as UnarchiveIcon,
 } from '@mui/icons-material';
+import {
+  AdminButton,
+  AdminTableContainer,
+  useIsMobile,
+} from './design-system';
 
 interface Asset {
   id: string;
@@ -184,6 +189,7 @@ export default function DAMAdminPanel() {
   
   // Theming system
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
   const [error, setError] = useState<string | null>(null);
 
   // UI state
@@ -247,7 +253,7 @@ export default function DAMAdminPanel() {
       const data = await response.json();
 
       if (data.success) {
-        setAssets(data.assets);
+        setAssets(Array.isArray(data.assets) ? data.assets : []);
         setTotalAssets(data.total);
         setHasMore(data.hasMore);
     } else {
@@ -268,7 +274,7 @@ export default function DAMAdminPanel() {
       const data = await response.json();
 
       if (data.success) {
-        setCollections(data.collections);
+        setCollections(Array.isArray(data.collections) ? data.collections : []);
     }
   } catch (err) {
       console.error('Load collections error:', err);
@@ -357,7 +363,7 @@ export default function DAMAdminPanel() {
     <Box sx={{ p:  3 }}>
       {/* Header */}
       <Box sx={{ mb:  3 }}>
-        <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+        <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
           Digital Asset Management
         </Typography>
         <Typography variant="body1" color="text.secondary">
@@ -446,6 +452,7 @@ export default function DAMAdminPanel() {
             <Grid item xs={12}>
               <TextField
                 fullWidth
+                aria-label="Søk i eiendeler"
                 placeholder="Search assets..."
                 value={searchFilters.query}
                 onChange={(e) => handleFilterChange('query', e.target.value)}
@@ -501,14 +508,14 @@ export default function DAMAdminPanel() {
             </Grid>
             <Grid item xs={12}>
               <Stack direction="row" spacing={1}>
-                <Button variant="contained"
+                <AdminButton tone="primary"
                   onClick={handleSearch}
                   startIcon={<SearchIcon />}
                 >
                   Search
-                </Button>
-                <Button
-                  variant="outlined"
+                </AdminButton>
+                <AdminButton
+                  tone="secondary"
                   onClick={() => setSearchFilters({
                     query: '',
                     tags:  [],
@@ -519,7 +526,7 @@ export default function DAMAdminPanel() {
                 })}
                 >
                   Clear
-                </Button>
+                </AdminButton>
               </Stack>
             </Grid>
           </Grid>
@@ -531,27 +538,26 @@ export default function DAMAdminPanel() {
         <CardContent sx={theming.getThemedCardSx()}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Stack direction="row" spacing={2} alignItems="center">
-              <Button variant="contained"
+              <AdminButton tone="primary"
                 startIcon={<UploadIcon />}
                 onClick={() => setUploadDialogOpen(true)}
               >
                 Upload Assets
-              </Button>
-              <Button
-                variant="outlined"
+              </AdminButton>
+              <AdminButton
+                tone="secondary"
                 startIcon={<AddIcon />}
                 onClick={() => setCollectionDialogOpen(true)}
               >
                 New Collection
-              </Button>
+              </AdminButton>
               {selectedAssets.length > 0 && (
-                <Button
-                  variant="outlined"
-                  color="error"
+                <AdminButton
+                  tone="danger"
                   startIcon={<DeleteIcon />}
                 >
                   Delete ({selectedAssets.length})
-                </Button>
+                </AdminButton>
               )}
             </Stack>
             <Stack direction="row" spacing={1} alignItems="center">
@@ -569,7 +575,7 @@ export default function DAMAdminPanel() {
               >
                 List
               </Button>
-              <IconButton onClick={() => loadAssets()}>
+              <IconButton aria-label="Oppdater" onClick={() => loadAssets()}>
                 <RefreshIcon />
               </IconButton>
             </Stack>
@@ -603,13 +609,14 @@ export default function DAMAdminPanel() {
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb:  2 }}>
                     <Checkbox
+                      inputProps={{ 'aria-label': 'Velg eiendel' }}
                       checked={selectedAssets.includes(asset.id)}
                       onChange={(e) => {
                         e.stopPropagation();
                         handleAssetSelect(asset.id, e.target.checked);
                     }}
                     />
-                    <IconButton size="small">
+                    <IconButton aria-label="Flere handlinger" size="small">
                       <MoreIcon />
                     </IconButton>
                   </Stack>
@@ -651,12 +658,13 @@ export default function DAMAdminPanel() {
         </Grid>
       ) : (
         <Card sx={theming.getThemedCardSx()}>
-          <TableContainer>
+          <AdminTableContainer ariaLabel="Eiendeler">
             <Table>
               <TableHead>
                 <TableRow>
                   <TableCell padding="checkbox">
                     <Checkbox
+                      inputProps={{ 'aria-label': 'Velg alle eiendeler' }}
                       checked={selectedAssets.length === assets.length && assets.length > 0}
                       indeterminate={selectedAssets.length > 0 && selectedAssets.length < assets.length}
                       onChange={(e) => handleSelectAll(e.target.checked)}
@@ -678,6 +686,7 @@ export default function DAMAdminPanel() {
                   <TableRow key={asset.id} hover>
                     <TableCell padding="checkbox">
                       <Checkbox
+                        inputProps={{ 'aria-label': 'Velg eiendel' }}
                         checked={selectedAssets.includes(asset.id)}
                         onChange={(e) => handleAssetSelect(asset.id, e.target.checked)}
                       />
@@ -723,16 +732,16 @@ export default function DAMAdminPanel() {
                     </TableCell>
                     <TableCell>
                       <Stack direction="row" spacing={0.5}>
-                        <IconButton size="small">
+                        <IconButton aria-label="Last ned" size="small">
                           <DownloadIcon />
                         </IconButton>
-                        <IconButton size="small">
+                        <IconButton aria-label="Rediger" size="small">
                           <EditIcon />
                         </IconButton>
-                        <IconButton size="small">
+                        <IconButton aria-label="Del" size="small">
                           <ShareIcon />
                         </IconButton>
-                        <IconButton size="small">
+                        <IconButton aria-label="Flere handlinger" size="small">
                           <MoreIcon />
                         </IconButton>
                       </Stack>
@@ -741,7 +750,7 @@ export default function DAMAdminPanel() {
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
           <TablePagination
             component="div"
             count={totalAssets}
@@ -763,13 +772,14 @@ export default function DAMAdminPanel() {
         onClose={() => setAssetDetailsOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Typography variant="h6" sx={{ color: theming.colors.primary }}>
               {selectedAsset?.name}
             </Typography>
-            <IconButton onClick={() => setAssetDetailsOpen(false)}>
+            <IconButton aria-label="Lukk" onClick={() => setAssetDetailsOpen(false)}>
               <CloseIcon />
             </IconButton>
           </Stack>

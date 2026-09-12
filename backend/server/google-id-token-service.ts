@@ -129,11 +129,30 @@ export async function exchangeGoogleIdToken(
   const familyName = payload.family_name?.trim() ?? null;
   const profileImage = payload.picture?.trim() ?? null;
 
+  // `username` AND `password` are both NOT NULL on the users table, so a
+  // first-time Google sign-in (the INSERT path) MUST provide both or the
+  // whole login 500s. Mirror the web/Leadgrid convention: username = the
+  // verified email (unique per user, same as the conflict target). The user
+  // authenticates via Google and never via password, so store a bcrypt hash
+  // of a high-entropy random secret — non-null, never matches any real
+  // password, same `$2…` shape as password-created rows. Backfill both on
+  // the UPDATE branch so older rows with a null/empty value self-heal.
+  const bcrypt = await import("bcrypt");
+  const placeholderPassword = await bcrypt.default.hash(
+    `${crypto.randomUUID()}${crypto.randomUUID()}`,
+    10,
+  );
+  // Each column gets its OWN placeholder — even though email and username
+  // carry the same value. Reusing one `$1` for two columns makes Postgres
+  // try to deduce a single type from both positions and throw
+  // "inconsistent types deduced for parameter $1" at prepare time.
   const upsert = await input.pool.query<{ id: string; role: string | null }>(
     `
-      INSERT INTO users (email, first_name, last_name, profile_image_url, role, last_login_at, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, 'user', NOW(), NOW(), NOW())
+      INSERT INTO users (email, username, password, first_name, last_name, profile_image_url, role, last_login_at, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, 'user', NOW(), NOW(), NOW())
       ON CONFLICT (email) DO UPDATE SET
+        username   = COALESCE(NULLIF(users.username, ''), EXCLUDED.username),
+        password   = COALESCE(NULLIF(users.password, ''), EXCLUDED.password),
         first_name = COALESCE(EXCLUDED.first_name, users.first_name),
         last_name  = COALESCE(EXCLUDED.last_name,  users.last_name),
         profile_image_url = COALESCE(EXCLUDED.profile_image_url, users.profile_image_url),
@@ -141,7 +160,7 @@ export async function exchangeGoogleIdToken(
         updated_at = NOW()
       RETURNING id, role
     `,
-    [email, givenName, familyName, profileImage],
+    [email, email, placeholderPassword, givenName, familyName, profileImage],
   );
   const userRow = upsert.rows[0];
   if (!userRow) {

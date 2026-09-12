@@ -13,16 +13,18 @@ import {
   TableRow,
   Chip,
   IconButton,
-  Alert,
-  CircularProgress,
   Typography,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   Edit,
   Delete,
   Visibility,
   CheckCircle,
+  Search,
 } from '@mui/icons-material';
+import { AdminLoading, AdminEmpty } from './design-system';
 
 interface PaymentMethod {
   id: number;
@@ -39,6 +41,8 @@ interface PaymentMethod {
 }
 
 export default function PaymentMethodsTable() {
+  const [search, setSearch] = React.useState("");
+
   // Fetch payment methods
   const { data: paymentMethods, isLoading } = useQuery({
     queryKey: [ '/api/admin/payment-methods'],
@@ -47,24 +51,17 @@ export default function PaymentMethodsTable() {
   });
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <AdminLoading />;
   }
 
   const methods = paymentMethods?.paymentMethods || [];
 
   if (methods.length === 0) {
     return (
-      <Alert severity="info">
-        Ingen betalingsmetoder registrert ennå.
-        <br />
-        <Typography variant="caption">
-          Betalingsmetoder fra brukere vil vises her når de legger til dem.
-        </Typography>
-      </Alert>
+      <AdminEmpty
+        title="Ingen betalingsmetoder registrert ennå."
+        description="Betalingsmetoder fra brukere vil vises her når de legger til dem."
+      />
     );
   }
 
@@ -81,10 +78,32 @@ export default function PaymentMethodsTable() {
     }
   };
 
+  const query = search.toLowerCase();
+  const filteredMethods = methods.filter((method: PaymentMethod) =>
+    `${method.first_name} ${method.last_name} ${method.user_email} ${method.payment_type} ${method.last_four}`
+      .toLowerCase()
+      .includes(query)
+  );
+
   return (
+    <Box>
+      <TextField
+        size="small"
+        placeholder="Søk etter navn, e-post, betalingsmetode …"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ mb: 2, width: { xs: '100%', sm: 360 } }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <Search fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
     <Paper style={{ height: 600, width: '100%' }}>
       <TableVirtuoso
-        data={methods}
+        data={filteredMethods}
         components={{
           Scroller: React.forwardRef<HTMLDivElement>((props, ref) => (
             <TableContainer component={Paper} {...props} ref={ref} />
@@ -141,7 +160,7 @@ export default function PaymentMethodsTable() {
                   label="Standard" 
                   size="small" 
                   color="success" 
-                  icon={<CheckCircle />}
+                  icon={<CheckCircle aria-hidden />}
                 />
               )}
             </TableCell>
@@ -160,6 +179,7 @@ export default function PaymentMethodsTable() {
                   size="small"
                   color="primary"
                   title="Vis detaljer"
+                  aria-label="Vis detaljer"
                 >
                   <Visibility />
                 </IconButton>
@@ -167,6 +187,7 @@ export default function PaymentMethodsTable() {
                   size="small"
                   color="primary"
                   title="Rediger"
+                  aria-label="Rediger"
                 >
                   <Edit />
                 </IconButton>
@@ -174,6 +195,7 @@ export default function PaymentMethodsTable() {
                   size="small"
                   color="error"
                   title="Slett"
+                  aria-label="Slett"
                 >
                   <Delete />
                 </IconButton>
@@ -183,5 +205,6 @@ export default function PaymentMethodsTable() {
         )}
       />
     </Paper>
+    </Box>
   );
 }

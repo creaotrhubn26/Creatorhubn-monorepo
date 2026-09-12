@@ -8,7 +8,6 @@ import {
   Button,
   Grid,
   Alert,
-  Chip,
   Paper,
   IconButton,
   Dialog,
@@ -42,6 +41,7 @@ import {
 } from '@mui/icons-material';
 import { mockBackendService } from '../../services/MockBackendService';
 import UniversalChatWidget from '../chat/UniversalChatWidget';
+import { AdminButton, StatusChip, adminTokens, useIsMobile } from './design-system';
 
 interface LiveDemoState {
   isRunning: boolean;
@@ -59,6 +59,7 @@ interface LiveDemoState {
 export default function LiveVerificationDemo() {
   // Theming system
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
 
   const [demoState, setDemoState] = useState<LiveDemoState>({
     isRunning: false,
@@ -325,7 +326,7 @@ export default function LiveVerificationDemo() {
 
   return (
     <Box sx={{ p: 3, minHeight: '100vh', bgcolor: '#f5f5f5' }}>
-      <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+      <Typography variant="h4" component="h2" gutterBottom sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
         🔴 LIVE Verification System Demo
       </Typography>
 
@@ -338,29 +339,27 @@ export default function LiveVerificationDemo() {
       {/* Demo Controls */}
       <Card sx={{ mb: 3, ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2}}>
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                 Demo Controls
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Status: <Chip 
-                  label={demoState.currentStep} 
-                  size="small" 
-                  color={demoState.isRunning ? 'warning' : 'default'} 
+                Status: <StatusChip
+                  label={demoState.currentStep}
+                  tone={demoState.isRunning ? 'warning' : 'neutral'}
                 />
               </Typography>
             </Box>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button
-                variant="contained"
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <AdminButton
+                tone="primary"
                 startIcon={theming.getThemedIcon('play')}
                 onClick={startLiveDemo}
                 disabled={demoState.isRunning}
-                sx={{ ...theming.getThemedButtonSx(), bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
               >
                 Start Live Demo
-              </Button>
+              </AdminButton>
               <Button
                 variant="outlined"
                 startIcon={theming.getThemedIcon('refresh')}
@@ -398,7 +397,7 @@ export default function LiveVerificationDemo() {
       {demoState.notifications.length > 0 && (
         <Card sx={{ mb: 3, ...theming.getThemedCardSx() }}>
           <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
               Live Updates
             </Typography>
             <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
@@ -426,14 +425,22 @@ export default function LiveVerificationDemo() {
         <Grid item xs={12} md={8}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                 Live Feedback Data
               </Typography>
               {demoState.feedbackItems.map((feedback) => (
                 <Paper
                   key={feedback.id}
                   sx={{ ...theming.getThemedCardSx(), p: 2, mb: 2, cursor: 'pointer' }}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setDemoState(prev => ({ ...prev, selectedFeedback: feedback }))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setDemoState(prev => ({ ...prev, selectedFeedback: feedback }));
+                    }
+                  }}
                 >
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Box>
@@ -444,13 +451,12 @@ export default function LiveVerificationDemo() {
                         {feedback.description}
                       </Typography>
                       <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                        <Chip label={feedback.status} size="small" color="primary" />
-                        <Chip label={feedback.priority} size="small" color="warning" />
+                        <StatusChip label={feedback.status} tone="brand" />
+                        <StatusChip label={feedback.priority} tone="warning" />
                         {feedback.verification && (
-                          <Chip
+                          <StatusChip
                             label={feedback.verification.userValidation?.status || 'pending'}
-                            size="small"
-                            color={feedback.verification.userValidation?.status === 'validated' ? 'success' : 'default'}
+                            tone={feedback.verification.userValidation?.status === 'validated' ? 'success' : 'neutral'}
                           />
                         )}
                       </Box>
@@ -473,7 +479,7 @@ export default function LiveVerificationDemo() {
         <Grid item xs={12} md={4}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                 Demo Instructions
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
@@ -507,8 +513,8 @@ export default function LiveVerificationDemo() {
       )}
 
       {/* User Validation Dialog */}
-      <Dialog open={demoState.showValidationDialog} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ bgcolor: '#ff8c00', color: 'white'}}>
+      <Dialog open={demoState.showValidationDialog} maxWidth="md" fullWidth fullScreen={isMobile}>
+        <DialogTitle sx={{ bgcolor: adminTokens.color.brand, color: 'white'}}>
           🔍 User Validation Required
         </DialogTitle>
         <DialogContent sx={{ p:  3 }}>
@@ -519,10 +525,11 @@ export default function LiveVerificationDemo() {
           </Alert>
           
           <Box sx={{ mb:  3 }}>
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
               Did this fix resolve your original problem?
             </Typography>
             <Switch
+              inputProps={{ 'aria-label': 'Løste rettelsen problemet ditt?' }}
               checked={demoState.validationData.userConfirmed}
               onChange={(e) => setDemoState(prev => ({
                 ...prev,
@@ -550,9 +557,10 @@ export default function LiveVerificationDemo() {
           />
 
           <Box sx={{ mb:  2 }}>
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
               Rate the fix quality: </Typography>
             <Rating
+              aria-label="Vurder kvaliteten på rettelsen"
               value={demoState.validationData.userRating}
               onChange={(_, value) => setDemoState(prev => ({
                 ...prev,
@@ -563,9 +571,9 @@ export default function LiveVerificationDemo() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ p:  3 }}>
-          <Button onClick={handleUserValidation} variant="contained" disabled={demoState.validationData.userRating === 0} sx={theming.getThemedButtonSx()}>
+          <AdminButton tone="primary" onClick={handleUserValidation} disabled={demoState.validationData.userRating === 0}>
             Submit Validation
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

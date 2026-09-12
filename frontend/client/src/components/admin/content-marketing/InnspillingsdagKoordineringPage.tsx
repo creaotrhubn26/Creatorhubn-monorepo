@@ -1,6 +1,9 @@
 import { Box, Chip, Container, Stack, Typography } from '@mui/material';
 import CameraRollIcon from '@mui/icons-material/CameraRoll';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Innspillingsdag-koordinering — Industry Data-pillar for live-på-sett-
@@ -67,6 +70,12 @@ const COORDINATION_PAINS: PainPoint[] = [
 ];
 
 export function InnspillingsdagKoordineringPage() {
+  const cmsBlocks = useCmsBlocks('innspillingsdag-koordinering');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"

@@ -82,9 +82,7 @@ export default function EmailCRMBridge({
         ...(statusFilter !== 'all' && { status: statusFilter }),
       });
 
-      const response = await fetch(`/api/admin/users?${params.toString()}`);
-      if (!response.ok) throw new Error('Failed to fetch customers');
-      return response.json();
+      return await apiRequest(`/api/admin/users?${params.toString()}`);
     },
     staleTime: 60000,
   });

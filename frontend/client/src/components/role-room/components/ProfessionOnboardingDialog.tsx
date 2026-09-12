@@ -164,17 +164,17 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         content: 'Inviter teammedlemmer og tildel oppgaver basert på deres rolle i produksjonen.',
         features: [
           {
-            icon: <ShareIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Del prosjektet',
             description: 'Inviter fotografer, produsenter og andre ved å dele en link eller sende invitasjoner',
           },
           {
-            icon: <TaskIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <TaskIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Tildel oppgaver',
             description: 'Marker shots med ansvarlig person og følg fremdriften i sanntid',
           },
           {
-            icon: <GroupsIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Kanban-tavle',
             description: 'Bruk Team Dashboard for å se hvem som jobber med hva og hva som gjenstår',
           },
@@ -286,17 +286,17 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         content: 'Del planene med stylister, makeup-artister og assistenter.',
         features: [
           {
-            icon: <ShareIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Del moodboards',
             description: 'Gi teamet tilgang til visjonen din før shootet',
           },
           {
-            icon: <TaskIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <TaskIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Sjekklister',
             description: 'Opprett sjekklister for utstyr, styling og location',
           },
           {
-            icon: <GroupsIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Rollefordeling',
             description: 'Tildel ansvar til hvert teammedlem for smidig gjennomføring',
           },
@@ -398,17 +398,17 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         content: 'Del den visuelle planen med regissør, gaffer og kamerateam.',
         features: [
           {
-            icon: <ShareIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Del lookbook',
             description: 'Gi hele teamet tilgang til visuelle referanser',
           },
           {
-            icon: <TaskIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <TaskIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Lys-planer',
             description: 'Del detaljerte lysoppsett med gaffer og elektriker',
           },
           {
-            icon: <GroupsIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Kamera-team',
             description: 'Koordiner med focus puller, dolly grip og assistenter',
           },
@@ -452,7 +452,7 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
                   },
                 }}
               >
-                <Typography variant="body2" sx={{ color: '#8b5cf6', fontWeight: 600 }}>
+                <Typography variant="body2" sx={{ color: 'var(--role-violet, #8b5cf6)', fontWeight: 600 }}>
                   {item}
                 </Typography>
               </Paper>
@@ -466,17 +466,17 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         content: 'Hold styr på fremdrift, versjoner, leveranser og samarbeid uten å hoppe mellom flere verktøy.',
         features: [
           {
-            icon: <TimelineIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <TimelineIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Tidslinje og status',
             description: 'Se hvor produksjonen står, hva som gjenstår og hva som er klart for levering',
           },
           {
-            icon: <GroupsIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Klientsamarbeid',
             description: 'Samle tilbakemeldinger, del materiale og hold kunden oppdatert i samme flyt',
           },
           {
-            icon: <TaskIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <TaskIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Eksport og levering',
             description: 'Klargjør filer, overleveringer og produksjonsgrunnlag uten ekstra mellomledd',
           },
@@ -488,17 +488,17 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         content: 'Fanene i toppen er bygget for innholdsprodusentflyten, slik at du raskt kommer til storyboard, media, økonomi og levering.',
         features: [
           {
-            icon: <SearchIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <SearchIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Storyboard og plan',
             description: 'Start i storyboardet og bygg opp innhold, shot-behov og struktur før opptak',
           },
           {
-            icon: <TaskIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <TaskIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Media og økonomi',
             description: 'Bytt raskt mellom mediebibliotek, leveranser og økonomi uten å miste kontekst',
           },
           {
-            icon: <GroupsIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Klient og eksport',
             description: 'Finn alt som handler om godkjenning, deling og sluttlevering i egne dedikerte faner',
           },
@@ -577,12 +577,12 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         content: 'Koordiner med scenografi, rekvisitt og kostyme.',
         features: [
           {
-            icon: <ShareIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Del stilguide',
             description: 'Gi alle tilgang til den visuelle retningen',
           },
           {
-            icon: <TaskIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <TaskIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Sjekklister',
             description: 'Opprett lister for rekvisitter og sceneelementer',
           },
@@ -639,12 +639,12 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         content: 'Koordiner med koreograf, stylist og artist.',
         features: [
           {
-            icon: <ShareIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Del konseptet',
             description: 'Gi alle tilgang til visjonen',
           },
           {
-            icon: <GroupsIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Rolleoversikt',
             description: 'Hold styr på alle involverte',
           },
@@ -701,12 +701,12 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         content: 'Koordiner med byrå, kunde og produksjonsteam.',
         features: [
           {
-            icon: <ShareIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Del med klient',
             description: 'Gi kunden innsyn i planleggingen',
           },
           {
-            icon: <GroupsIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Byrå-samarbeid',
             description: 'Hold byrået oppdatert på fremdrift',
           },
@@ -763,12 +763,12 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         content: 'Samarbeid med research-team og redigerere.',
         features: [
           {
-            icon: <ShareIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Del research',
             description: 'Gi teamet tilgang til alle kilder',
           },
           {
-            icon: <GroupsIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Produksjonsteam',
             description: 'Koordiner feltopptak og intervjuer',
           },
@@ -875,17 +875,17 @@ const professionContent: Record<ProfessionType, ProfessionOnboardingContent> = {
         content: 'Inviter teammedlemmer og del ansvaret.',
         features: [
           {
-            icon: <ShareIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <ShareIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Del prosjektet',
             description: 'Inviter via link eller e-post',
           },
           {
-            icon: <TaskIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <TaskIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Oppgaver',
             description: 'Tildel shots til teammedlemmer',
           },
           {
-            icon: <GroupsIcon sx={{ color: '#8b5cf6' }} />,
+            icon: <GroupsIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />,
             title: 'Kanban',
             description: 'Følg fremdriften i sanntid',
           },

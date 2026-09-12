@@ -17,7 +17,7 @@ struct LiveSetDashboardView: View {
     @State private var isCollagePresented: Bool = false
 
     private let columns: [GridItem] = [
-        GridItem(.adaptive(minimum: 140, maximum: 220), spacing: 12),
+        GridItem(.adaptive(minimum: 140, maximum: 220), spacing: 12)
     ]
 
     var body: some View {
@@ -212,8 +212,8 @@ struct LiveSetDashboardView: View {
     private func severityChip(_ severity: CoverageSeverity) -> some View {
         let (label, color): (String, Color) = {
             switch severity {
-            case .critical:    return ("kritisk",      .red)
-            case .recommended: return ("anbefalt",     .orange)
+            case .critical:    return ("kritisk", .red)
+            case .recommended: return ("anbefalt", .orange)
             case .niceToHave:  return ("nice-to-have", .secondary)
             }
         }()

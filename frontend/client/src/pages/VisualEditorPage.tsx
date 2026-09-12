@@ -104,7 +104,8 @@ const VisualEditorContent: React.FC<VisualEditorContentProps> = ({
         height: '100vh',
         width: '100vw',
         overflow: 'hidden',
-        bgcolor: '#F5F5F5',
+        bgcolor: 'rgba(15,23,42,0.96)',
+        color: '#fff',
       }}>
       {/* Top Toolbar with Grid Controls */}
       <Box
@@ -112,9 +113,9 @@ const VisualEditorContent: React.FC<VisualEditorContentProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          bgcolor: 'white',
-          borderBottom: 1,
-          borderColor: 'divider',
+          bgcolor: 'rgba(15,23,42,0.96)',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          color: '#fff',
         }}>
         <Box sx={{ flex: 1 }}>
           <EnhancedTopToolbar />
@@ -147,9 +148,9 @@ const VisualEditorContent: React.FC<VisualEditorContentProps> = ({
             flexDirection: 'column',
             position: 'relative',
             overflow: 'hidden',
-            bgcolor: '#FFFFFF',
+            bgcolor: 'rgba(15,23,42,0.96)',
           }}>
-          {/* Canvas */}
+          {/* Canvas frame (mørk ramme rundt artboard — som Figma/Photoshop) */}
           <Box
             sx={{
               flex: 1,
@@ -158,15 +159,16 @@ const VisualEditorContent: React.FC<VisualEditorContentProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              bgcolor: '#E8E8E8',
+              bgcolor: '#1a1f2e',
             }}>
+            {/* Artboard-flaten — bevart lys: dette er selve design-canvas (Figma/Photoshop-konvensjon) */}
             <Box
               sx={{
                 width: '100%',
                 maxWidth: 1200,
                 height: '100%',
                 bgcolor: 'white',
-                boxShadow: '0 0 40px rgba(0,0,0,0.1)',
+                boxShadow: '0 0 40px rgba(0,0,0,0.4)',
                 position:'relative',
               }}>
               <CanvasGridOverlay

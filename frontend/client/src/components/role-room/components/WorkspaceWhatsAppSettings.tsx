@@ -308,7 +308,7 @@ const WorkspaceWhatsAppSettings: FC<WorkspaceWhatsAppSettingsProps> = ({ orgKey 
             {/* ── Produksjonsteam-gruppe-strategi ───────────────────────── */}
             <Box sx={{ pt: 1.5, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ pt: 1.5, mb: 1.2 }}>
-                <GroupsIcon sx={{ color: '#7dd3fc', fontSize: 18 }} />
+                <GroupsIcon sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: 18 }} />
                 <Typography sx={{ fontWeight: 700 }}>Produksjonsteam-chat</Typography>
               </Stack>
               <Typography sx={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.7)', mb: 1.5, lineHeight: 1.55 }}>

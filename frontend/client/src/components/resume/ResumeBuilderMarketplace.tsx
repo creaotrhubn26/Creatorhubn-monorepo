@@ -57,6 +57,7 @@ import {
 import { apiRequest } from '../../lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
 import { marketplaceEvents } from '../../utils/creatorhub-events';
+import { ws } from '../workspace/workspaceTheme';
 import fikenLogo from '../../assets/integrations/fiken-logo.svg';
 import tripletexLogo from '../../assets/integrations/tripletex-logo.svg';
 
@@ -66,6 +67,7 @@ interface AppStoreItem {
   category: string;
   rating: number;
   reviews: number;
+  reviewsCount?: number;
   description: string;
   longDescription: string;
   featured?: boolean;
@@ -320,8 +322,6 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
     comment: '',
     userName: '',
   });
-  const [marketplaceStats, setMarketplaceStats] = useState<MarketplaceStats | null>(null);
-  const [statsLoading, setStatsLoading] = useState(false);
 
   const hardcodedApps: AppStoreItem[] = [
     {
@@ -409,146 +409,95 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       categoryIcon: <BriefcaseIcon />,
     },
     {
-      id: 'portfolio-pro',
-      name: 'Portfolio Pro',
-      category: 'Showcase',
+      id: 'post-agent',
+      name: 'Post Agent',
+      category: 'Produksjon',
       rating: 0,
       reviews: 0,
-      description: 'Imponerende porteføljer som konverterer',
-      longDescription: 'Bygget for kreative fagfolk. Vis frem dine beste prosjekter med moderne design og interaktive elementer.',
-      trending: false,
-      downloadCount: 0,
-      monthlyGrowth: 0,
-      features: [
-        { icon: <DocumentIcon />, text: 'Responsivt design' },
-        { icon: <AIIcon />, text: 'SEO-optimalisert' },
-        { icon: <AnalyzeIcon />, text: 'Analytics dashboard' },
-        { icon: <UploadIcon />, text: 'Drag & drop editor' },
-      ],
-      mediaGallery: marketplaceGalleryById['portfolio-pro'],
-      pricing: { free: true, price: 199, currency: 'kr/mnd' },
-      gradientStart: '#6366F1',
-      gradientEnd: '#EC4899',
-      categoryIcon: <ImageIcon />,
-    },
-    {
-      id: 'contract-genius',
-      name: 'Contract Genius',
-      category: 'Legal',
-      rating: 0,
-      reviews: 0,
-      description: 'Automatiserte juridiske avtaler',
-      longDescription: 'Opprett profesjonelle kontrakter på minutter. Maler for alle situasjoner, inkludert e‑signering.',
-      downloadCount: 0,
-      monthlyGrowth: 0,
-      features: [
-        { icon: <DocumentIcon />, text: 'Avtalmaler' },
-        { icon: <AIIcon />, text: 'E-signering' },
-        { icon: <CheckIcon />, text: 'Juridisk gjennomgang' },
-      ],
-      mediaGallery: marketplaceGalleryById['contract-genius'],
-      pricing: { free: false, price: 99, currency: 'kr/mnd' },
-      gradientStart: '#10B981',
-      gradientEnd: '#059669',
-      categoryIcon: <GavelIcon />,
-    },
-    {
-      id: 'accounting-integration',
-      name: 'Fakturaflyt og regnskapsoppsett',
-      category: 'Finance',
-      rating: 0,
-      reviews: 0,
-      description: 'For deg som vil gjøre veien fra avtale til faktura, betaling og regnskap enklere med Fiken eller Tripletex.',
-      longDescription: 'Vi setter opp fakturaflyt for CreatorHub og klargjør betalingshistorikk, kvitteringer og regnskapsgrunnlag slik at oppfølgingen blir enklere fra avtale til betaling og videre til regnskap.',
+      description: 'Hele produksjonen — fra opptak til ferdig demo.',
+      longDescription:
+        'Mac-app (Apple Silicon) for film- og innholdsproduksjon. Kjøp kun modulene du trenger: Demo Studio (interaktive produktdemoer + Product Brain + publisering), Marketing (persona×funnel×kanal-motor med 11 rammeverk), Capture & iPad (Canon-tethering + AI-culling + on-set iPad + leveranse), og Resolve-bro (DaVinci Resolve + Photoshop/Firefly + voiceover). Appen låser opp modulene du abonnerer på — last ned én gang, betal kun for det du bruker.',
       featured: true,
+      trending: true,
       downloadCount: 0,
+      monthlyGrowth: 0,
       features: [
-        { icon: <ReceiptIcon />, text: 'Fakturaer, kvitteringer og historikk' },
-        { icon: <DriveIcon />, text: 'Oppsett av fakturaflyt' },
-        { icon: <AnalyzeIcon />, text: 'Bilagsgrunnlag for videre bokføring' },
-        { icon: <GroupsIcon />, text: 'Enterprise inkludert i avtalen' },
+        { icon: <ImageIcon />, text: 'Demo Studio: interaktive produktdemoer' },
+        { icon: <AIIcon />, text: 'Marketing: 11 rammeverk × persona × funnel' },
+        { icon: <UploadIcon />, text: 'Capture: Canon-tethering + AI-culling + iPad' },
+        { icon: <AnalyzeIcon />, text: 'Resolve + Photoshop/Firefly-bro' },
+        { icon: <GetAppIcon />, text: 'Last ned én app — moduler låses opp etter kjøp' },
+        { icon: <TimerIcon />, text: 'Krever Mac med Apple Silicon' },
       ],
-      mediaGallery: marketplaceGalleryById['accounting-integration'],
       pricing: {
         free: false,
-        displayPrice: 'Fra 6 900 kr',
-        currency: 'engangspris',
-        note: 'Løpende drift og overvåking fra 990 kr/mnd. Eventuelle lisenser håndteres direkte med leverandøren.',
-        enterpriseIncluded: true,
+        price: 149,
+        currency: 'kr/mnd',
+        displayPrice: 'Fra 149 kr / mnd',
+        note: 'À la carte — kjøp kun modulene du trenger. Alle fire = 299 kr/mnd (Komplett-pakke).',
       },
-      gradientStart: '#0f172a',
-      gradientEnd: '#1e293b',
-      categoryIcon: <ReceiptIcon />,
-      partnerLogos: [
-        { name: 'Fiken', src: fikenLogo, background: '#ffffff' },
-        { name: 'Tripletex', src: tripletexLogo, background: '#ffffff' },
+      subscriptionTiers: [
+        {
+          id: 'demo_studio',
+          name: 'Demo Studio',
+          price: '199 kr / mnd',
+          bestFor: 'Lag interaktive produktdemoer + one-pagere + publiser delbare guider',
+          recommendedFor: ['marketing', 'consultant', 'creator', 'developer'],
+          recommendationReason: 'Du selger produkt eller tjeneste — Demo Studio gjør komplekse ting forklart på minutter.',
+          features: [
+            'Interaktive produktdemoer med hotspots',
+            'Product Brain: one-pager → verifisert tankekart',
+            'AI-infographics + branding fra siden din',
+            'Publiser som delbar hostet lenke + analytics',
+          ],
+        },
+        {
+          id: 'marketing',
+          name: 'Marketing',
+          price: '199 kr / mnd',
+          bestFor: 'Markedsføring med struktur: persona × funnel × kanal',
+          recommendedFor: ['marketing', 'agency'],
+          recommendationReason: 'Markedsmotoren binder metode til faktiske produktdeler — ikke generisk fyll.',
+          features: [
+            '11 rammeverk × 7 mål × 7 kanaler',
+            'Beat→evidens-binding mot produktet',
+            'Kontekstuelle infographics',
+            'Asset-bibliotek for gjenbruk',
+          ],
+        },
+        {
+          id: 'capture',
+          name: 'Capture & iPad',
+          price: '399 kr / mnd',
+          bestFor: 'Fotografer/studioer: tethering, culling og leveranse',
+          recommendedFor: ['photographer', 'videographer'],
+          recommendationReason: 'Erstatter tethering + culling + leveranse-galleri i ett — den dyreste delen av flyten.',
+          features: [
+            'Canon R6 MkII-tethering (CCAPI)',
+            'AI-culling + highlight-scoring',
+            'iPad on-set capture (TestFlight)',
+            'Leveranse + signerte galleri-lenker',
+          ],
+        },
+        {
+          id: 'resolve',
+          name: 'Resolve-bro',
+          price: '149 kr / mnd',
+          bestFor: 'Redigerere som lever i DaVinci Resolve + Photoshop',
+          recommendedFor: ['videographer', 'editor'],
+          recommendationReason: 'Multi-agent-bro mellom Resolve native og Photoshop+Firefly — automatiserer kjedelig grading/eksport.',
+          features: [
+            'DaVinci Resolve 21-bro (live command-router)',
+            'Photoshop + Firefly-integrasjon',
+            'Quick Export + PowerGrade',
+            'Auto-voiceover (Resolve + Web Speech)',
+          ],
+        },
       ],
-      ctaLabel: 'Bestill oppsett',
-    },
-    {
-      id: 'invoice-pro',
-      name: 'Invoice Pro',
-      category: 'Finance',
-      rating: 0,
-      reviews: 0,
-      description: 'Profesjonelle fakturaer på sekunder',
-      longDescription: 'Effektiviser fakturering med automatisk sporing, påminnelser og integrasjoner med regnskapssystemer.',
-      featured: true,
-      downloadCount: 0,
-      monthlyGrowth: 0,
-      features: [
-        { icon: <DocumentIcon />, text: 'Automatisk fakturering' },
-        { icon: <AnalyzeIcon />, text: 'Betalingssporing' },
-        { icon: <UploadIcon />, text: 'Integrasjoner' },
-      ],
-      mediaGallery: marketplaceGalleryById['invoice-pro'],
-      pricing: { free: true, price: 79, currency: 'kr/mnd' },
-      gradientStart: '#F59E0B',
-      gradientEnd: '#D97706',
-      categoryIcon: <ReceiptIcon />,
-    },
-    {
-      id: 'client-management',
-      name: 'Client Hub',
-      category: 'Business',
-      rating: 0,
-      reviews: 0,
-      description: 'Alt-i-ett klientadministrasjon',
-      longDescription: 'Administrer alle klientinteraksjoner på ett sted: e-post, avtaler, prosjekter og betalinger.',
-      trending: false,
-      downloadCount: 0,
-      monthlyGrowth: 0,
-      features: [
-        { icon: <DocumentIcon />, text: 'CRM-system' },
-        { icon: <AIIcon />, text: 'Automatisering' },
-        { icon: <AnalyzeIcon />, text: 'Rapporter' },
-      ],
-      mediaGallery: marketplaceGalleryById['client-management'],
-      pricing: { free: false, price: 129, currency: 'kr/mnd' },
-      gradientStart: '#8B5CF6',
-      gradientEnd: '#6366F1',
-      categoryIcon: <GroupsIcon />,
-    },
-    {
-      id: 'time-tracker',
-      name: 'Time Tracker',
-      category: 'Productivity',
-      rating: 0,
-      reviews: 0,
-      description: 'Tidsregistrering og timeadministrasjon',
-      longDescription: 'Spor timer automatisk, generer timesedler og analyser tidsbruk – integrert med prosjekter.',
-      downloadCount: 0,
-      monthlyGrowth: 0,
-      features: [
-        { icon: <DocumentIcon />, text: 'Automatisk sporing' },
-        { icon: <AnalyzeIcon />, text: 'Timesedler' },
-        { icon: <TrendingIcon />, text: 'Produktivitetsanalyse' },
-      ],
-      mediaGallery: marketplaceGalleryById['time-tracker'],
-      pricing: { free: true, price: 49, currency: 'kr/mnd' },
-      gradientStart: '#06B6D4',
-      gradientEnd: '#0891B2',
-      categoryIcon: <TimerIcon />,
+      ctaLabel: 'Velg moduler',
+      gradientStart: '#0F172A',
+      gradientEnd: '#6D28D9',
+      categoryIcon: <ImageIcon />,
     },
     {
       id: 'role-room',
@@ -647,7 +596,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
   // Slice 9X.70 — admin-styrt marketplace. Apper hentes fra
   // /api/marketplace/apps (admin-konfigurert). Faller tilbake på hardkodet
   // liste hvis backend ikke svarer eller tabellen er tom.
-  const { data: apiAppsData } = useQuery({
+  const { data: apiAppsData, isLoading: appsLoading } = useQuery({
     queryKey: ['marketplace-apps-public'],
     queryFn: async () => {
       try {
@@ -665,6 +614,26 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
     const hardcodedFallback = hardcodedApps.filter((a) => !adminIds.has(a.id));
     return [...apiApps, ...hardcodedFallback];
   }, [apiAppsData, hardcodedApps]);
+
+  // Stats utledes fra den faktiske app-lista (DB + katalog). Det gamle
+  // /api/marketplace/stats-endepunktet aggregerte feil tabell (editing-vendor-
+  // produkter, 333 stk) og viste meningsløse tall (rating 1, downloads=reviews).
+  const statsLoading = appsLoading;
+  const marketplaceStats: MarketplaceStats = useMemo(() => {
+    const rc = (a: AppStoreItem) => a.reviewsCount ?? a.reviews ?? 0;
+    const totalDownloads = apps.reduce((s, a) => s + (a.downloadCount || 0), 0);
+    const totalReviews = apps.reduce((s, a) => s + rc(a), 0);
+    const rated = apps.filter((a) => (a.rating || 0) > 0 && rc(a) > 0);
+    const weighted = rated.reduce((s, a) => s + (a.rating || 0) * rc(a), 0);
+    const ratingWeight = rated.reduce((s, a) => s + rc(a), 0);
+    return {
+      totalApps: apps.length,
+      totalDownloads,
+      averageRating: ratingWeight ? weighted / ratingWeight : 0,
+      totalReviews,
+      activeUsers: totalReviews, // 4. felt viser nå «Vurderinger»
+    };
+  }, [apps, appsLoading]);
 
   const categories = ['all', 'Career', 'Showcase', 'Legal', 'Finance', 'Business', 'Productivity'];
 
@@ -773,21 +742,6 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
     }
   }, [reviewDialogOpen, activeReviewApp]);
 
-  useEffect(() => {
-    const loadStats = async () => {
-      setStatsLoading(true);
-      try {
-        const stats = await apiRequest('/api/marketplace/stats');
-        setMarketplaceStats(stats);
-      } catch (error) {
-        setMarketplaceStats(null);
-      } finally {
-        setStatsLoading(false);
-      }
-    };
-
-    loadStats();
-  }, []);
 
   const formatCompactNumber = (value?: number | null) => {
     if (!value || Number.isNaN(value)) return '—';
@@ -819,29 +773,25 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
           minHeight: featured ? 660 : 580,
           display: 'flex',
           flexDirection: 'column',
-          borderRadius: featured ? 3 : 2,
-          border: featured ? `2px solid ${app.gradientStart}` : '1px solid rgba(255,255,255,0.10)',
+          borderRadius: `${ws.radius}px`,
+          border: `1px solid ${featured ? ws.accentBorder : ws.borderSoft}`,
           overflow: 'hidden',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          background: featured
-            ? `linear-gradient(135deg, ${app.gradientStart}10 0%, ${app.gradientEnd}10 100%)`
-            : 'rgba(255,255,255,0.04)',
+          background: ws.panel,
+          backdropFilter: 'blur(18px)',
           '&:hover': {
-            transform: `translateY(${featured ? -12 : -8}px)`,
-            boxShadow: featured
-              ? `0 30px 60px rgba(0, 0, 0, 0.40)`
-              : '0 20px 40px rgba(0, 0, 0, 0.30)',
-            borderColor: app.gradientStart,
-            background: featured
-              ? `linear-gradient(135deg, ${app.gradientStart}18 0%, ${app.gradientEnd}18 100%)`
-              : 'rgba(255,255,255,0.06)',
+            transform: `translateY(${featured ? -10 : -6}px)`,
+            boxShadow: '0 20px 44px rgba(0, 0, 0, 0.38)',
+            borderColor: ws.accentBorder,
+            background: ws.panelAlt,
           },
         }}
       >
         <Box
           sx={{
-            background: `linear-gradient(135deg, ${app.gradientStart} 0%, ${app.gradientEnd} 100%)`,
-            height: featured ? 160 : 120,
+            background: `linear-gradient(150deg, ${ws.accentSoft} 0%, ${ws.panelAlt} 70%)`,
+            borderBottom: `1px solid ${ws.borderSoft}`,
+            height: featured ? 150 : 116,
             position: 'relative',
             overflow: 'hidden',
             px: 2.5,
@@ -856,7 +806,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 size="small"
                 sx={{
                   background: 'rgba(255,255,255,0.04)',
-                  color: app.gradientStart,
+                  color: ws.accent,
                   fontWeight: 700,
                   fontSize: '0.7rem',
                 }}
@@ -869,7 +819,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 size="small"
                 sx={{
                   background: 'rgba(255,186,108,0.18)',
-                  color: app.gradientStart,
+                  color: ws.accent,
                   fontWeight: 700,
                   fontSize: '0.7rem',
                 }}
@@ -940,7 +890,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 {app.name}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box sx={{ color: app.gradientStart }}>
+                <Box sx={{ color: ws.accent }}>
                   <CategoryIcon category={app.category} />
                 </Box>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', fontWeight: 500 }}>
@@ -953,11 +903,11 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 size="small"
                 onClick={() => toggleFavorite(app.id)}
                 sx={{
-                  color: favorites.has(app.id) ? app.gradientStart : '#ccc',
+                  color: favorites.has(app.id) ? ws.accent : '#ccc',
                   transition: 'transform 0.1s',
                   '&:hover': {
-                    color: app.gradientStart,
-                    background: `${app.gradientStart}15`,
+                    color: ws.accent,
+                    background: `${ws.accent}15`,
                   },
                   '&:active': { transform: 'scale(0.95)' },
                 }}
@@ -1039,7 +989,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
             </Box>
           ) : null}
 
-          <Box sx={{ display: 'flex', gap: 2, mb: 2.5, pb: 2.5, borderBottom: '1px solid #f0f0f0' }}>
+          <Box sx={{ display: 'flex', gap: 2, mb: 2.5, pb: 2.5, borderBottom: `1px solid ${ws.borderSoft}` }}>
             <Box sx={{ flex: 1 }}>
               {displayReviews > 0 ? (
                 <>
@@ -1060,12 +1010,12 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                   label="Ny app — venter på vurderinger"
                   size="small"
                   sx={{
-                    bgcolor: 'rgba(79, 172, 254, 0.12)',
-                    color: '#0284c7',
+                    bgcolor: ws.blueSoft,
+                    color: ws.blue,
                     fontWeight: 700,
                     fontSize: '0.66rem',
                     height: 22,
-                    '& .MuiChip-icon': { color: '#0284c7' },
+                    '& .MuiChip-icon': { color: ws.blue },
                   }}
                 />
               )}
@@ -1093,7 +1043,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                       sx={{
                         height: '100%',
                         width: `${Math.min((app.downloadCount / 160000) * 100, 100)}%`,
-                        background: `linear-gradient(90deg, ${app.gradientStart} 0%, ${app.gradientEnd} 100%)`,
+                        background: `linear-gradient(90deg, ${ws.accent} 0%, ${ws.accentHover} 100%)`,
                       }}
                     />
                   </Box>
@@ -1118,7 +1068,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
             {app.features.slice(0, 3).map((feature, idx) => (
               <Grid item xs={6} key={idx}>
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                  <Box sx={{ color: app.gradientStart, mt: 0.25, fontSize: '1rem' }}>
+                  <Box sx={{ color: ws.accent, mt: 0.25, fontSize: '1rem' }}>
                     {feature.icon}
                   </Box>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.70)', fontSize: '0.8rem' }}>
@@ -1138,8 +1088,8 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                       label="Gratis"
                       size="small"
                       sx={{
-                        background: '#E8F5E9',
-                        color: '#2E7D32',
+                        background: ws.greenSoft,
+                        color: ws.green,
                         fontWeight: 700,
                       }}
                     />
@@ -1153,14 +1103,14 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                   <Chip
                     label={app.pricing.displayPrice || `Fra ${app.pricing.price} ${app.pricing.currency}`}
                     sx={{
-                      background: app.gradientStart,
+                      background: ws.accent,
                       color: '#fff',
                       fontWeight: 800,
                       fontSize: '1rem',
                       px: 1.5,
                       py: 2.5,
                       height: 'auto',
-                      border: `1.5px solid ${app.gradientStart}55`,
+                      border: `1.5px solid ${ws.accent}55`,
                     }}
                   />
                 )}
@@ -1169,8 +1119,8 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                     label="Inkludert i Enterprise"
                     size="small"
                     sx={{
-                      background: '#E8F5E9',
-                      color: '#2E7D32',
+                      background: ws.greenSoft,
+                      color: ws.green,
                       fontWeight: 700,
                     }}
                   />
@@ -1200,11 +1150,11 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                           sx={{
                             p: 2,
                             borderRadius: 3.5,
-                            border: isRecommended ? `2px solid ${app.gradientStart}` : '1px solid rgba(255,255,255,0.10)',
-                            background: isRecommended ? `${app.gradientStart}18` : 'rgba(255,255,255,0.04)',
+                            border: isRecommended ? `2px solid ${ws.accent}` : '1px solid rgba(255,255,255,0.10)',
+                            background: isRecommended ? `${ws.accent}18` : 'rgba(255,255,255,0.04)',
                             position: 'relative',
                             transition: 'all 0.2s',
-                            '&:hover': { borderColor: app.gradientStart, transform: 'translateY(-1px)' },
+                            '&:hover': { borderColor: ws.accent, transform: 'translateY(-1px)' },
                           }}
                         >
                           {isRecommended && (
@@ -1215,7 +1165,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                                 position: 'absolute',
                                 top: -10,
                                 left: 12,
-                                bgcolor: app.gradientStart,
+                                bgcolor: ws.accent,
                                 color: '#fff',
                                 fontWeight: 700,
                                 fontSize: '0.65rem',
@@ -1229,7 +1179,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                             </Typography>
                             <Typography
                               variant="body2"
-                              sx={{ fontWeight: 800, color: app.gradientStart, fontFamily: '"Space Grotesk", sans-serif' }}
+                              sx={{ fontWeight: 800, color: ws.accent, fontFamily: '"Space Grotesk", sans-serif' }}
                             >
                               {tier.price}
                             </Typography>
@@ -1240,7 +1190,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                           <Stack spacing={0.25}>
                             {tier.features.map((f) => (
                               <Stack key={f} direction="row" spacing={0.5} alignItems="flex-start">
-                                <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: app.gradientStart, mt: 0.7, flexShrink: 0 }} />
+                                <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: ws.accent, mt: 0.7, flexShrink: 0 }} />
                                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.70)', fontSize: '0.72rem', lineHeight: 1.45 }}>
                                   {f}
                                 </Typography>
@@ -1248,9 +1198,9 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                             ))}
                           </Stack>
                           {isRecommended && tier.recommendationReason && (
-                            <Box sx={{ mt: 1, p: 1, borderRadius: 1, bgcolor: `${app.gradientStart}14`, border: `1px solid ${app.gradientStart}33` }}>
+                            <Box sx={{ mt: 1, p: 1, borderRadius: 1, bgcolor: `${ws.accent}14`, border: `1px solid ${ws.accent}33` }}>
                               <Typography variant="caption" sx={{ color: '#444', fontStyle: 'italic', lineHeight: 1.45, display: 'block' }}>
-                                <strong style={{ color: app.gradientStart }}>Hvorfor anbefalt: </strong>
+                                <strong style={{ color: ws.accent }}>Hvorfor anbefalt: </strong>
                                 {tier.recommendationReason}
                               </Typography>
                             </Box>
@@ -1270,8 +1220,8 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                     p: 1.2,
                     borderRadius: 1.75,
                     border: '1px solid',
-                    borderColor: appState.accentColor ? `${appState.accentColor}33` : '#e5e7eb',
-                    background: appState.accentColor ? `${appState.accentColor}12` : '#f8fafc',
+                    borderColor: appState.accentColor ? `${appState.accentColor}33` : ws.borderSoft,
+                    background: appState.accentColor ? `${appState.accentColor}12` : ws.panelAlt,
                   }}
                 >
                   <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
@@ -1279,8 +1229,8 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                       label={appState.statusLabel}
                       size="small"
                       sx={{
-                        background: appState.accentColor ? `${appState.accentColor}22` : '#ffffff',
-                        color: appState.accentColor || '#334155',
+                        background: appState.accentColor ? `${appState.accentColor}22` : ws.panelAlt,
+                        color: appState.accentColor || ws.textDim,
                         fontWeight: 700,
                       }}
                     />
@@ -1308,7 +1258,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
               }}
               startIcon={<GetAppIcon />}
               sx={{
-                background: `linear-gradient(135deg, ${app.gradientStart} 0%, ${app.gradientEnd} 100%)`,
+                background: `linear-gradient(135deg, ${ws.accent} 0%, ${ws.accentHover} 100%)`,
                 color: '#fff',
                 fontWeight: 700,
                 textTransform: 'none',
@@ -1329,13 +1279,13 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                 size="small"
                 onClick={() => handleOpenReviewDialog(app)}
                 sx={{
-                  borderColor: `${app.gradientStart}55`,
-                  color: app.gradientStart,
+                  borderColor: `${ws.accent}55`,
+                  color: ws.accent,
                   fontWeight: 600,
                   textTransform: 'none',
                   '&:hover': {
-                    borderColor: app.gradientStart,
-                    background: `${app.gradientStart}10`,
+                    borderColor: ws.accent,
+                    background: `${ws.accent}10`,
                   },
                 }}
               >
@@ -1356,7 +1306,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
           sx={{
             fontWeight: 900,
             mb: 1,
-            background: 'linear-gradient(135deg, #ff8c00 0%, #14b8a6 100%)',
+            background: 'linear-gradient(135deg, #ff8c00 0%, #ffb347 100%)',
             backgroundClip: 'text',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
@@ -1417,7 +1367,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                     : '—'}
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>
-                Aktive brukere
+                Vurderinger
               </Typography>
             </Box>
           </Grid>
@@ -1454,10 +1404,10 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                   background: 'rgba(255,255,255,0.04)',
                   fontSize: '0.95rem',
                   '&:hover': {
-                    background: '#f0f0f0',
+                    background: 'rgba(255,255,255,0.07)',
                   },
                   '& fieldset': {
-                    borderColor: 'rgba(255,255,255,0.10)',
+                    borderColor: ws.borderSoft,
                   },
                 },
               }}
@@ -1607,8 +1557,8 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                     fontWeight: 800,
                     textTransform: 'none',
                     borderRadius: 999,
-                    background: 'linear-gradient(135deg, #f59e0b 0%, #fb7185 100%)',
-                    color: '#111827',
+                    background: 'linear-gradient(135deg, #ff8c00 0%, #e67e00 100%)',
+                    color: '#150d05',
                     '&:hover': {
                       opacity: 0.94,
                     },

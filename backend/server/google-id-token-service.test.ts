@@ -136,9 +136,20 @@ describe('exchangeGoogleIdToken', () => {
       role: 'user',
     });
     const upsertCall = calls.find(c => c.sql.includes('INSERT INTO users'));
-    expect(upsertCall?.params[0]).toBe('daniel@creatorhubn.com');
-    expect(upsertCall?.params[1]).toBe('Daniel');
-    expect(upsertCall?.params[2]).toBe('Q');
+    // params: [email, username(=email), password, first_name, last_name, profile_image]
+    expect(upsertCall?.params[0]).toBe('daniel@creatorhubn.com'); // email
+    expect(upsertCall?.params[1]).toBe('daniel@creatorhubn.com'); // username
+    expect(upsertCall?.params[3]).toBe('Daniel'); // first_name
+    expect(upsertCall?.params[4]).toBe('Q');      // last_name
+    // Regression: `username` AND `password` are both NOT NULL on users — a
+    // first-time sign-in INSERT that omits either 500s the whole login. Both
+    // must be in the column list; password is a bcrypt placeholder ($3).
+    expect(upsertCall?.sql).toContain('username');
+    expect(upsertCall?.sql).toContain('password');
+    expect(upsertCall?.params[2]).toMatch(/^\$2[ayb]\$/);
+    // Each column must use its OWN placeholder ($1..$6) — reusing one for
+    // two columns throws "inconsistent types deduced for parameter $1".
+    expect(upsertCall?.sql).toContain('VALUES ($1, $2, $3, $4, $5, $6');
   });
 
   it('falls back to email when name is missing', async () => {

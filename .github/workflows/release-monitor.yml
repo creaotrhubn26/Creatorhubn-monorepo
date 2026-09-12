@@ -1,0 +1,97 @@
+name: Control Center release-monitor
+
+# Release-vakt (Documentation Intelligence, mekanisk lag): ukentlig sjekk av
+# siste release for leverandør-flater med drift-historikk (Resolve, Xcode,
+# Moodle, Blender, Stripe-SDK). Varsler super_admin kun ved versjons-transisjon;
+# impact-vurderingen gjøres etterpå med skill-pakken.
+#
+# Endepunkt: POST /api/control-center/release-monitor/run
+
+on:
+  schedule:
+    - cron: '23 6 * * 1'   # mandager ~06:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-monitor
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
+jobs:
+  run-release-monitor:
+    name: Sjekk leverandør-releaser
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: POST /api/control-center/release-monitor/run
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN GitHub-secret er ikke satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-trigger-token: $CRON_TRIGGER_TOKEN" \
+            --max-time 120 \
+            "$BACKEND_URL/api/control-center/release-monitor/run")
+          CODE=$(echo "$RES" | tail -1)
+          BODY=$(echo "$RES" | sed '$d')
+          echo "HTTP $CODE"
+          echo "Body: $BODY"
+          if [ "$CODE" = "401" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN matcher ikke Render-env."
+            exit 1
+          fi
+          if [ "$CODE" -ge 500 ]; then
+            echo "::error::Backend-feil ($CODE)"
+            exit 1
+          fi
+          UPDATED=$(echo "$BODY" | jq -r '.updated // 0' 2>/dev/null || echo 0)
+          ERRORS=$(echo "$BODY" | jq -r '.errors // 0' 2>/dev/null || echo 0)
+          if [ "$UPDATED" != "0" ] && [ -n "$UPDATED" ]; then
+            echo "::warning::$UPDATED ny(e) leverandør-release(r) — kjør impact-vurdering (documentation-intelligence)."
+          fi
+          if [ "$ERRORS" != "0" ] && [ -n "$ERRORS" ]; then
+            echo "::warning::$ERRORS vakt(er) feilet henting/ekstraksjon — sjekk mønstre/kilder."
+          fi
+          echo "$BODY" > /tmp/release-monitor-body.json
+          echo "::notice::Release-monitor ferdig"
+
+      # Stale-detektor: ny release for en vendor → flagg evidensfiler/beslutninger
+      # i docs/evidence/ som kan være blitt stale. Ren tekst-match, ingen AI.
+      - name: Stale-sjekk mot docs/evidence
+        run: |
+          BODY=$(cat /tmp/release-monitor-body.json 2>/dev/null || echo '{}')
+          UPDATED_KEYS=$(echo "$BODY" | jq -r '.results[]? | select(.status=="updated") | .key' 2>/dev/null)
+          [ -z "$UPDATED_KEYS" ] && { echo "Ingen nye releaser — ingen stale-sjekk nødvendig."; exit 0; }
+          # vakt-nøkkel → grep-termer for vendor i evidensfilene
+          terms_for() {
+            case "$1" in
+              resolve)     echo "Blackmagic|Resolve" ;;
+              xcode)       echo "Apple|Xcode|iOS" ;;
+              moodle)      echo "Moodle" ;;
+              blender)     echo "Blender" ;;
+              stripe-node) echo "Stripe" ;;
+              *)           echo "$1" ;;
+            esac
+          }
+          for KEY in $UPDATED_KEYS; do
+            VERSION=$(echo "$BODY" | jq -r ".results[] | select(.key==\"$KEY\") | .version")
+            TERMS=$(terms_for "$KEY")
+            HITS=$(grep -liE "$TERMS" docs/evidence/*.yaml 2>/dev/null || true)
+            for F in $HITS; do
+              EXTRA=""
+              grep -q "valid_to" "$F" && EXTRA=" (har valid_to — livssyklus-bundet beslutning)"
+              echo "::warning file=$F::Ny release $KEY $VERSION — beslutningen i $F kan være stale$EXTRA. Re-vurder med documentation-intelligence."
+            done
+          done

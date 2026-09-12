@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -36,6 +35,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 
 type Profession = 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'other' | 'enterprise';
 
@@ -162,19 +162,6 @@ function parseApplications(raw: unknown): PrototypeTesterApplication[] {
     .filter((application): application is PrototypeTesterApplication => application !== null);
 }
 
-function statusColor(status: ApplicationStatus): 'warning' | 'success' | 'error' | 'default' {
-  switch (status) {
-    case 'pending':
-      return 'warning';
-    case 'approved':
-      return 'success';
-    case 'rejected':
-      return 'error';
-    default:
-      return 'default';
-  }
-}
-
 function toCsv(applications: PrototypeTesterApplication[]): string {
   const headers = [
     'Name',
@@ -205,6 +192,7 @@ function toCsv(applications: PrototypeTesterApplication[]): string {
 
 export default function PrototypeTesterApplicationPanel() {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const { analytics, performance, lifecycle, auth } = useEnhancedMasterIntegration();
 
   const [selectedApplication, setSelectedApplication] = useState<PrototypeTesterApplication | null>(null);
@@ -390,12 +378,12 @@ export default function PrototypeTesterApplicationPanel() {
   return (
     <Box sx={{ p: 3 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Typography variant="h5" fontWeight={700}>
+        <Typography variant="h5" component="h2" fontWeight={700}>
           Prototype Tester Applications
         </Typography>
-        <Button variant="outlined" startIcon={<Download />} onClick={exportCsv}>
+        <AdminButton tone="secondary" startIcon={<Download />} onClick={exportCsv}>
           Export CSV
-        </Button>
+        </AdminButton>
       </Stack>
 
       <Grid container spacing={2} sx={{ mb: 2 }}>
@@ -472,7 +460,7 @@ export default function PrototypeTesterApplicationPanel() {
               InputProps={{
                 startAdornment: (
                   <Box sx={{ mr: 1, display: 'flex', alignItems: 'center' }}>
-                    <Search fontSize="small" />
+                    <Search fontSize="small" aria-hidden="true" />
                   </Box>
                 ),
               }}
@@ -489,7 +477,7 @@ export default function PrototypeTesterApplicationPanel() {
                 onChange={(event) => setStatusFilter(event.target.value as ApplicationStatus[])}
                 startAdornment={
                   <Box sx={{ mr: 1, display: 'flex', alignItems: 'center' }}>
-                    <FilterList fontSize="small" />
+                    <FilterList fontSize="small" aria-hidden="true" />
                   </Box>
                 }
               >
@@ -536,6 +524,7 @@ export default function PrototypeTesterApplicationPanel() {
                   <Stack direction="row" spacing={1}>
                     <IconButton
                       size="small"
+                      aria-label="Vis søknadsdetaljer"
                       onClick={() => {
                         setSelectedApplication(application);
                         setDetailDialogOpen(true);
@@ -545,6 +534,7 @@ export default function PrototypeTesterApplicationPanel() {
                     </IconButton>
                     <IconButton
                       size="small"
+                      aria-label="Godkjenn søknad"
                       onClick={() => openApproveDialog(application)}
                       disabled={application.status === 'approved' || approveMutation.isPending}
                     >
@@ -552,6 +542,7 @@ export default function PrototypeTesterApplicationPanel() {
                     </IconButton>
                     <IconButton
                       size="small"
+                      aria-label="Avslå søknad"
                       onClick={() => openRejectDialog(application)}
                       disabled={application.status === 'rejected' || rejectMutation.isPending}
                     >
@@ -565,7 +556,7 @@ export default function PrototypeTesterApplicationPanel() {
                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                       <Typography variant="subtitle2">{application.name}</Typography>
                       <Chip size="small" label={application.profession} variant="outlined" />
-                      <Chip size="small" label={application.status} color={statusColor(application.status)} />
+                      <StatusChip status={application.status} />
                     </Stack>
                   }
                   secondary={
@@ -573,7 +564,7 @@ export default function PrototypeTesterApplicationPanel() {
                       <Typography variant="caption">{application.email}</Typography>
                       <Typography variant="caption">{application.company ?? 'Ingen selskap'}</Typography>
                       <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
-                        <Schedule sx={{ fontSize: 13 }} />
+                        <Schedule sx={{ fontSize: 13 }} aria-hidden="true" />
                         {new Date(application.createdAt).toLocaleString()}
                       </Typography>
                     </Stack>
@@ -585,7 +576,7 @@ export default function PrototypeTesterApplicationPanel() {
         </Paper>
       )}
 
-      <Dialog open={detailDialogOpen} onClose={() => setDetailDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={detailDialogOpen} onClose={() => setDetailDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Application details</DialogTitle>
         <DialogContent>
           {selectedApplication ? (
@@ -616,11 +607,11 @@ export default function PrototypeTesterApplicationPanel() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDetailDialogOpen(false)}>Lukk</Button>
+          <AdminButton tone="ghost" onClick={() => setDetailDialogOpen(false)}>Lukk</AdminButton>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={actionDialogOpen} onClose={() => setActionDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={actionDialogOpen} onClose={() => setActionDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>{actionType === 'approve' ? 'Approve application' : 'Reject application'}</DialogTitle>
         <DialogContent>
           {selectedApplication && (
@@ -643,10 +634,10 @@ export default function PrototypeTesterApplicationPanel() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setActionDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
-            color={actionType === 'approve' ? 'success' : 'error'}
+          <AdminButton tone="ghost" onClick={() => setActionDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone={actionType === 'approve' ? 'primary' : 'danger'}
+            loading={approveMutation.isPending || rejectMutation.isPending}
             onClick={confirmAction}
             disabled={
               approveMutation.isPending ||
@@ -655,7 +646,7 @@ export default function PrototypeTesterApplicationPanel() {
             }
           >
             {actionType === 'approve' ? 'Approve' : 'Reject'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

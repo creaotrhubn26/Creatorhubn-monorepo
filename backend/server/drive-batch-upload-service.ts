@@ -189,7 +189,7 @@ export async function fetchBatch(
      FROM drive_upload_batch WHERE id = $1 AND user_id = $2`,
     [batchId, userId],
   );
-  if (batchRow.rowCount === 0) return null;
+  if (!batchRow.rows.length) return null;
   const itemRows = await pool.query(
     `SELECT id, batch_id, local_id, local_path, drive_name, target_folder_id,
             mime_type, size_bytes, checksum_sha256, state, drive_file_id,

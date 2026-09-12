@@ -207,7 +207,7 @@ const MentorDashboard: React.FC<MentorDashboardProps> = ({
                 cursor: 'pointer',
                 '&:hover': {
                   bgcolor: 'rgba(255,255,255,0.05)',
-                  borderColor: 'rgba(245, 166, 35, 0.24)',
+                  borderColor: 'rgba(255, 140, 0, 0.24)',
                 },
               }}
               onClick={() => {

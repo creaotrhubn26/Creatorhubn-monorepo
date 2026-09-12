@@ -6,10 +6,16 @@ const AUTH_STORAGE_KEYS = [
   'creatorhub_auth_user',
   'userId',
   'userEmail',
+  'role_room_auth_token',
+  'role_room_auth_session',
   'token',
+  'authToken',
+  'creatorhub-auth-token',
+  'creatorhub-session-token',
+  'role-room-auth-session',
 ] as const;
 
-function clearClientAuthState() {
+export function clearClientAuthState(): void {
   if (typeof window === 'undefined') {
     return;
   }
@@ -19,15 +25,16 @@ function clearClientAuthState() {
       window.localStorage.removeItem(key);
     }
     window.dispatchEvent(new Event('auth-changed'));
+    window.dispatchEvent(new Event('auth-session-updated'));
   } catch {
     // Ignore storage cleanup errors.
   }
 }
 
-function buildApiUrl(url: string): string {
+export function buildApiUrl(url: string): string {
   const normalizedUrl = normalizeRequestUrl(url);
-  const apiBaseUrl = import.meta.env.VITE_API_URL?.trim() || '';
-  const isDevelopment = import.meta.env.DEV || window.location.hostname === 'localhost';
+  const apiBaseUrl = import.meta.env?.VITE_API_URL?.trim() || '';
+  const isDevelopment = import.meta.env?.DEV || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
 
   if (normalizedUrl.startsWith('http')) {
     return normalizedUrl;
@@ -90,20 +97,55 @@ async function hydrateStoredUserFromToken(token: string): Promise<Record<string,
 /**
  * Get authorization header for API requests
  */
+// Mange eldre komponenter sendte `Authorization: Bearer ${user.id}` — en
+// bruker-ID er ikke et session-token, så backend resolvet dem til "guest".
+// Denne gir det faktiske lagrede tokenet (sync, til raw fetch-kall).
+export function getStoredAuthToken(): string {
+  try {
+    const creatorHubToken = (localStorage.getItem('creatorhub_auth_token') || '').trim();
+    let roleRoomToken = (localStorage.getItem('role_room_auth_token') || '').trim();
+
+    if (!roleRoomToken) {
+      try {
+        const storedSession = JSON.parse(
+          localStorage.getItem('role_room_auth_session') || 'null',
+        ) as { sessionToken?: unknown } | null;
+        roleRoomToken = typeof storedSession?.sessionToken === 'string'
+          ? storedSession.sessionToken.trim()
+          : '';
+      } catch {
+        // A malformed legacy session must not prevent the other token fallbacks.
+      }
+    }
+
+    const hostname = typeof window !== 'undefined'
+      ? window.location?.hostname?.trim().toLowerCase() || ''
+      : '';
+    const pathname = typeof window !== 'undefined'
+      ? window.location?.pathname?.trim().toLowerCase() || ''
+      : '';
+    const isRoleRoomSurface =
+      /(^|\.)theroleroom\.com$/.test(hostname)
+      || hostname.endsWith('.netlify.app')
+      || /^\/(?:theroleroom|casting(?:\.html)?)(?:\/|$)/.test(pathname);
+
+    return (
+      (isRoleRoomSurface ? roleRoomToken || creatorHubToken : creatorHubToken || roleRoomToken) ||
+      localStorage.getItem('token') ||
+      localStorage.getItem('authToken') ||
+      ''
+    ).trim();
+  } catch {
+    return '';
+  }
+}
+
 export async function getAuthHeader(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
 
   try {
-    // Role Room logger inn via Google Workspace og lagrer tokenet i
-    // role_room_auth_token (TOKEN_STORAGE_KEY i authSessionService).
-    // Uten denne fallback-en sender apiRequest fetch UTEN Bearer-token
-    // når brukeren kom inn via Role Room-flowen → 401-flom på alle
-    // /api/casting/projects + /api/settings-kall.
-    const token =
-      localStorage.getItem('creatorhub_auth_token') ||
-      localStorage.getItem('role_room_auth_token') ||
-      localStorage.getItem('token') ||
-      '';
+    // Hold token-oppslaget identisk for React Query, raw fetch og Admin Room.
+    const token = getStoredAuthToken();
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
@@ -153,7 +195,11 @@ export async function getAuthHeader(): Promise<Record<string, string>> {
 }
 
 // Prefer same-origin /api on CreatorHub unless an explicit backend URL is configured.
-const API_BASE_URL = import.meta.env.VITE_API_URL?.trim() || '';
+// NB: `import.meta.env?.` (ikke `.env.`) — denne modulen importeres transitivt
+// av backend (index.ts → memory-card-database → ClientServicePricingService →
+// queryClient), og i Node er `import.meta.env` undefined. Uten `?.` krasjer
+// backend-bootstrap (TypeError: reading 'VITE_API_URL'). Ufarlig i nettleser.
+const API_BASE_URL = import.meta.env?.VITE_API_URL?.trim() || '';
 
 // These admin/analytics feeds are not deployed on the current production backend yet.
 // Guarding them client-side avoids noisy 404 spam and lets the UI render stable placeholders.
@@ -211,13 +257,40 @@ function isSerializableBody(
   );
 }
 
+/**
+ * Like apiRequest, but returns the raw Response instead of parsing JSON —
+ * for endpoints that stream binary (e.g. the RAW→JPEG preview). Reuses the
+ * same base-URL resolution and auth headers so it works in prod (where the
+ * API lives on a different origin) exactly like apiRequest.
+ */
+export async function apiFetch(url: string, options?: ApiRequestOptions): Promise<Response> {
+  const authHeaders = await getAuthHeader();
+  const fullUrl = buildApiUrl(url);
+  const { body, headers: callerHeaders, ...restOptions } = options ?? {};
+  const isFormData = body instanceof FormData;
+  const requestOptions: RequestInit = {
+    ...restOptions,
+    headers: {
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...authHeaders,
+      ...callerHeaders,
+    },
+  };
+  if (isSerializableBody(body)) {
+    requestOptions.body = JSON.stringify(body);
+  } else if (body !== undefined) {
+    requestOptions.body = body as BodyInit;
+  }
+  return fetch(fullUrl, requestOptions);
+}
+
 export async function apiRequest(url: string, options?: ApiRequestOptions) {
   // Get auth headers from EnhancedMasterIntegrationProvider
   const authHeaders = await getAuthHeader();
   const normalizedUrl = normalizeRequestUrl(url);
 
   // In development, use relative URLs (Vite proxy). In production, use full Render backend URL.
-  const isDevelopment = import.meta.env.DEV || window.location.hostname === 'localhost';
+  const isDevelopment = import.meta.env?.DEV || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
   const fullUrl = normalizedUrl.startsWith('http')
     ? normalizedUrl
     : isDevelopment || !API_BASE_URL

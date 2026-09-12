@@ -375,15 +375,16 @@ export function setupShowcaseImageOpsRoutes(
   });
 
   app.post("/api/showcase/archive-images", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const imageIds = readStringArray(req.body?.imageIds);
       await pool.query(
         `UPDATE showcase_items
             SET is_active = false,
                 updated_at = NOW()
-          WHERE id = ANY($1)`,
-        [imageIds],
+          WHERE id = ANY($1) AND user_id = $2`,
+        [imageIds, session.userId],
       );
       res.json({ success: true, archivedIds: imageIds });
     } catch (error) {
@@ -393,10 +394,14 @@ export function setupShowcaseImageOpsRoutes(
   });
 
   app.delete("/api/showcase/delete-images", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const imageIds = readStringArray(req.body?.imageIds);
-      await pool.query(`DELETE FROM showcase_items WHERE id = ANY($1)`, [imageIds]);
+      await pool.query(
+        `DELETE FROM showcase_items WHERE id = ANY($1) AND user_id = $2`,
+        [imageIds, session.userId],
+      );
       res.json({ success: true, deletedIds: imageIds });
     } catch (error) {
       console.error("Error deleting showcase images:", error);

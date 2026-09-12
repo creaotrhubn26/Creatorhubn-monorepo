@@ -19,7 +19,7 @@ import {
 
 /**
  * Plattform-status-kort — én sentral oversikt over alle eksterne tjenester
- * (Render, Neon, Vercel, Stripe, Anthropic) + aktive innloggede Role Room-
+ * (Render, Neon, Netlify, Stripe, Anthropic) + aktive innloggede Role Room-
  * brukere. Refresher hvert 30. sekund. Hver leverandør har klikk-til-dashboard.
  */
 
@@ -85,7 +85,7 @@ export function PlatformStatusCard() {
             Plattform-status — alt på ett sted
           </Typography>
           <Typography sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.78rem' }}>
-            Sanntid fra Render, Neon, Vercel, Stripe, Anthropic + aktive Role Room-brukere.
+            Sanntid fra Render, Neon, Netlify, Stripe, Anthropic + aktive Role Room-brukere.
             {data?.checkedAt ? ` Oppdatert ${new Date(data.checkedAt).toLocaleTimeString('nb-NO')}.` : ''}
           </Typography>
         </Box>
@@ -112,7 +112,7 @@ export function PlatformStatusCard() {
               mb: 2,
             }}
           >
-            {data.providers.map((p) => (
+            {(Array.isArray(data.providers) ? data.providers : []).map((p) => (
               <Box
                 key={p.provider}
                 component="a"
@@ -190,9 +190,9 @@ export function PlatformStatusCard() {
                 sx={{ bgcolor: 'rgba(34,197,94,0.15)', color: '#bbf7d0', fontSize: '0.68rem', fontWeight: 600 }}
               />
             </Stack>
-            {data.presence.recentUsers.length > 0 ? (
+            {(Array.isArray(data.presence?.recentUsers) ? data.presence.recentUsers : []).length > 0 ? (
               <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', rowGap: 0.75 }}>
-                {data.presence.recentUsers.map((user) => {
+                {(Array.isArray(data.presence?.recentUsers) ? data.presence.recentUsers : []).map((user) => {
                   const initials = (user.name || user.email || '?')
                     .split(/\s+/)
                     .slice(0, 2)

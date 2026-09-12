@@ -207,6 +207,12 @@ export default function ProducerMeetingWorkspace({
   const decisionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const followUpRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
+  // Autosave: enhver endring i møteflaten debounce-lagres så Stig aldri mister
+  // notater/beslutninger underveis i et møte (i stedet for å huske «Lagre»).
+  const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'editing' | 'saving' | 'saved' | 'error'>('idle');
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const meetingDirtyRef = useRef(false);
+
   const latestMeetArtifact = useMemo(() => (
     [...googleArtifacts]
       .filter((artifact) => hasText(artifact.meetUrl))
@@ -369,7 +375,115 @@ export default function ProducerMeetingWorkspace({
         updatedAt: new Date().toISOString(),
       },
     }));
-  }, [onPlanningChange]);
+    // Marker som endret + vis status. Selve debounce-lagringen kjøres i en
+    // effekt under, så onSavePlanning aldri er en stale closure (den lukker
+    // over det FRISKE planningDraft fra forelderen).
+    if (!readOnly) {
+      meetingDirtyRef.current = true;
+      setAutosaveStatus('editing');
+    }
+  }, [onPlanningChange, readOnly]);
+
+  // Hold alltid den ferskeste onSavePlanning (forelderen lager en ny closure
+  // med oppdatert planningDraft ved hver render) i en ref, så autosave-timeren
+  // lagrer det siste innholdet — ikke det som fantes da tasten ble trykket.
+  const onSavePlanningRef = useRef(onSavePlanning);
+  useEffect(() => {
+    onSavePlanningRef.current = onSavePlanning;
+  }, [onSavePlanning]);
+
+  // Debounce-autosave: re-kjøres når møteflaten faktisk endres (meetingWorkspace-
+  // referansen bytter), og fyrer 1,5 sek etter siste endring.
+  useEffect(() => {
+    if (!meetingDirtyRef.current || readOnly) {
+      return undefined;
+    }
+    const timer = window.setTimeout(async () => {
+      setAutosaveStatus('saving');
+      try {
+        await onSavePlanningRef.current();
+        meetingDirtyRef.current = false;
+        setLastSavedAt(new Date());
+        setAutosaveStatus('saved');
+      } catch {
+        setAutosaveStatus('error');
+      }
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [meetingWorkspace, readOnly]);
+
+  // Ett-klikks møtereferat: samler agenda + beslutninger + oppfølginger +
+  // notater til ren tekst Stig kan lime inn / sende klienten rett etter møtet.
+  const buildMeetingSummary = useCallback((): string => {
+    const ws = meetingWorkspace;
+    const fmtDate = (value?: string | null): string => {
+      if (!value) return '';
+      try {
+        return new Date(value).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' });
+      } catch {
+        return value;
+      }
+    };
+    const lines: string[] = [];
+    lines.push(`# ${(ws.sessionLabel && ws.sessionLabel.trim()) || 'Møtereferat'}`);
+    lines.push(`Dato: ${new Date(ws.updatedAt ?? new Date().toISOString()).toLocaleString('nb-NO')}`);
+    const participantNames = (ws.participants ?? [])
+      .map((p) => (p?.name && p.name.trim()) || (p?.email && p.email.trim()) || '')
+      .filter((value) => value.length > 0);
+    if (participantNames.length > 0) {
+      lines.push(`Deltakere: ${participantNames.join(', ')}`);
+    }
+    lines.push('');
+    if ((ws.agenda ?? []).length > 0) {
+      lines.push('## Agenda');
+      ws.agenda.forEach((item) => {
+        lines.push(`- ${item.completed ? '[x]' : '[ ]'} ${item.title}${item.detail ? ` — ${item.detail}` : ''}`);
+      });
+      lines.push('');
+    }
+    if ((ws.decisions ?? []).length > 0) {
+      lines.push('## Beslutninger');
+      ws.decisions.forEach((decision) => {
+        const meta = [
+          decision.owner ? `ansvarlig: ${decision.owner}` : '',
+          decision.dueAt ? `frist ${fmtDate(decision.dueAt)}` : '',
+          decision.clientVisible ? 'delt med klient' : '',
+        ].filter(Boolean).join(' · ');
+        lines.push(`- ${decision.title}${meta ? ` (${meta})` : ''}${decision.notes ? `\n  ${decision.notes.trim()}` : ''}`);
+      });
+      lines.push('');
+    }
+    if ((ws.followUps ?? []).length > 0) {
+      lines.push('## Oppfølginger');
+      ws.followUps.forEach((followUp) => {
+        const meta = [
+          followUp.owner ? `ansvarlig: ${followUp.owner}` : '',
+          followUp.dueAt ? `frist ${fmtDate(followUp.dueAt)}` : '',
+        ].filter(Boolean).join(' · ');
+        lines.push(`- ${followUp.title}${meta ? ` (${meta})` : ''}`);
+      });
+      lines.push('');
+    }
+    if (ws.liveNotes && ws.liveNotes.trim()) {
+      lines.push('## Notater');
+      lines.push(ws.liveNotes.trim());
+    }
+    return lines.join('\n').trim();
+  }, [meetingWorkspace]);
+
+  const handleCopyMeetingSummary = useCallback(async () => {
+    const summary = buildMeetingSummary();
+    if (!summary) {
+      enqueueSnackbar('Det er ingenting å lage referat av ennå.', { variant: 'info' });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(summary);
+      enqueueSnackbar('Møtereferat kopiert — klart til å lime inn eller sende klienten.', { variant: 'success' });
+    } catch {
+      enqueueSnackbar('Kunne ikke kopiere møtereferatet.', { variant: 'error' });
+    }
+  }, [buildMeetingSummary, enqueueSnackbar]);
 
   const appendAgendaSuggestion = useCallback((suggestion: MeetingSuggestion) => {
     updateMeetingWorkspace((previous) => ({
@@ -1493,17 +1607,46 @@ export default function ProducerMeetingWorkspace({
             ? `Siste Meet-lenke er tilgjengelig. Oppdatert ${formatDateTime(latestMeetArtifact?.updatedAt ?? latestMeetArtifact?.createdAt)}.`
             : 'Opprett en Meet-sesjon når agendaen er klar, og hold resten av møtet i samme arbeidsflate.'} Lagring synker beslutninger og oppfølging til klientsamarbeid og tidslinje.
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<SaveOutlinedIcon />}
-          onClick={() => {
-            void handleSave();
-          }}
-          disabled={!canEdit || saving}
-          sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#f97316', '&:hover': { bgcolor: '#ea580c' } }}
-        >
-          {saving ? 'Lagrer møteflate...' : 'Lagre møteflate'}
-        </Button>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+          <Typography
+            sx={{
+              fontSize: '0.74rem',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+              color: autosaveStatus === 'error' ? '#fca5a5' : 'rgba(148,163,184,0.85)',
+            }}
+          >
+            {autosaveStatus === 'saving'
+              ? 'Lagrer automatisk…'
+              : autosaveStatus === 'saved' && lastSavedAt
+                ? `Autolagret ${lastSavedAt.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}`
+                : autosaveStatus === 'editing'
+                  ? 'Endringer lagres automatisk…'
+                  : autosaveStatus === 'error'
+                    ? 'Kunne ikke autolagre — bruk «Lagre møteflate»'
+                    : 'Autolagring på'}
+          </Typography>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              void handleCopyMeetingSummary();
+            }}
+            sx={{ textTransform: 'none', fontWeight: 700, color: '#e2e8f0', borderColor: 'rgba(148,163,184,0.4)' }}
+          >
+            Kopier møtereferat
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<SaveOutlinedIcon />}
+            onClick={() => {
+              void handleSave();
+            }}
+            disabled={!canEdit || saving}
+            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#f97316', '&:hover': { bgcolor: '#ea580c' } }}
+          >
+            {saving ? 'Lagrer møteflate...' : 'Lagre møteflate'}
+          </Button>
+        </Stack>
       </Stack>
     </Box>
   );

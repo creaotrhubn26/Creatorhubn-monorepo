@@ -136,6 +136,23 @@ actor CameraSession {
             case .raw:     .rawReady
             }
             try? await store.transitionAssetState(id: assetId, to: newState)
+            // EXIF (opptakstid + blits) skrives FØR previewKey settes, så
+            // «Sync forrige»-policyen (som trigges av previewKey) ser blitsen når
+            // den anvendes. Kun preview leser EXIF (full/raw re-skriver ikke).
+            if kind == .preview {
+                // P1: EKTE opptakstid (descriptoren fikk en nedlastings-Date()-
+                // fallback) → korrekt rekkefølge for cull/burst/«forrige bilde».
+                if let shot = ExifInfo.captureDate(fromPath: fileURL.path) {
+                    try? await store.updateCaptureTime(id: assetId, captureTime: shot)
+                }
+                // Blits fra EXIF (produsent-uavhengig) → «Lys endret»-badge, Sync-
+                // forrige-vern, Kvalitetssjekk. Kun når blits-info faktisk finnes.
+                if let exif = ExifInfo.read(fromPath: fileURL.path), exif.flashFired != nil {
+                    try? await store.updateFlash(id: assetId, fired: exif.flashFired,
+                                                 returnDetected: exif.flashReturnDetected,
+                                                 compensation: exif.flashCompensation)
+                }
+            }
             try? await store.attachStorageKey(
                 id: assetId,
                 kind: kind,

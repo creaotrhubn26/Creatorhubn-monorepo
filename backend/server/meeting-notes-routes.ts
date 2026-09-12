@@ -206,7 +206,6 @@ export function setupMeetingNotesRoutes(
       const meetingId = readString(req.query.meetingId);
       const creatorId =
         readString(req.query.creatorId) ||
-        getUserIdFromAuth(req) ||
         compatResolveUserId(req);
 
       if (meetingId) {
@@ -258,7 +257,7 @@ export function setupMeetingNotesRoutes(
     if (!requireUserSession(req, res)) return;
     try {
       await ensureMeetingNotesCompatibilitySchema();
-      const creatorId = getUserIdFromAuth(req) || compatResolveUserId(req);
+      const creatorId = compatResolveUserId(req);
       const payload = await normalizeMeetingNotesPayload(
         req.body || {},
         creatorId,
@@ -364,7 +363,7 @@ export function setupMeetingNotesRoutes(
     if (!requireUserSession(req, res)) return;
     try {
       await ensureMeetingNotesCompatibilitySchema();
-      const creatorId = getUserIdFromAuth(req) || compatResolveUserId(req);
+      const creatorId = compatResolveUserId(req);
       const existingResult = await pool.query(
         `SELECT * FROM meeting_notes WHERE meeting_id = $1 OR id::text = $1 ORDER BY updated_at DESC LIMIT 1`,
         [req.params.meetingId],
@@ -374,6 +373,9 @@ export function setupMeetingNotesRoutes(
       }
 
       const existing = existingResult.rows[0];
+      if (existing.creator_id && existing.creator_id !== creatorId) {
+        return res.status(403).json({ error: "forbidden" });
+      }
       const payload = await normalizeMeetingNotesPayload(
         {
           ...existing,
@@ -485,7 +487,7 @@ export function setupMeetingNotesRoutes(
     if (!requireUserSession(req, res)) return;
     try {
       await ensureMeetingNotesCompatibilitySchema();
-      const creatorId = getUserIdFromAuth(req) || compatResolveUserId(req);
+      const creatorId = compatResolveUserId(req);
       const meetingId = readString(req.body?.meetingId);
       if (!meetingId) {
         return res.status(400).json({ error: "meetingId is required" });

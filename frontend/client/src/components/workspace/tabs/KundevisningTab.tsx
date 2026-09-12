@@ -1,0 +1,281 @@
+// @ts-nocheck
+/**
+ * KundevisningTab — KUNDEPORTAL «Kundevisning», dark CreatorHub.
+ *
+ * Produsentens vindu inn til SHOWCASEN klienten ser — ingen nytt system.
+ * Gjenbruker prosjektets klient-galleri (photographer_client_galleries via
+ * GET /api/projects/:id/galleries) og åpner det klienten faktisk ser
+ * (/client/gallery/<token>). Dette er målet for «Client view»-knappene ellers.
+ */
+import React, { useState, useEffect } from 'react';
+import { Box, Stack, Typography, Button } from '@mui/material';
+import Visibility from '@mui/icons-material/Visibility';
+import Collections from '@mui/icons-material/Collections';
+import ContentCopy from '@mui/icons-material/ContentCopy';
+import OpenInNew from '@mui/icons-material/OpenInNew';
+import AccessTime from '@mui/icons-material/AccessTime';
+import CloudDownloadOutlined from '@mui/icons-material/CloudDownloadOutlined';
+import ChatBubbleOutline from '@mui/icons-material/ChatBubbleOutline';
+import EditOutlined from '@mui/icons-material/EditOutlined';
+import CheckCircleOutline from '@mui/icons-material/CheckCircleOutline';
+import { apiRequest } from '@/lib/queryClient';
+import { ws } from '../workspaceTheme';
+import { wsIcon } from '../crewIcons';
+import { WsCard, WsSectionTitle, WsTag, WsImg, wsAlert, wsPrompt } from '../ui';
+import { useWsLocale, makeT, type WsDict } from '../wsLocale';
+
+// Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
+const T: WsDict = {
+  title: { no: 'Kundevisning', en: 'Client view' },
+  subtitle: { no: 'Slik ser klienten prosjektet — showcasen/klient-galleriet. Del lenken eller forhåndsvis selv.', en: 'This is how the client sees the project — the showcase/client gallery. Share the link or preview it yourself.' },
+  infoBefore: { no: '«Kundevisning» er den samme ', en: '"Client view" is the same ' },
+  infoBold: { no: 'showcasen', en: 'showcase' },
+  infoAfter: { no: ' klienten får tilsendt — ikke en egen kopi. Alt du publiserer til galleriet vises her.', en: ' the client receives — not a separate copy. Everything you publish to the gallery appears here.' },
+  activity: { no: 'Klient-aktivitet', en: 'Client activity' },
+  activitySub: { no: 'Sanntid fra showcasen — også nedlastinger', en: 'Real-time from the showcase — including downloads' },
+  tagDownload: { no: 'Nedlasting', en: 'Download' },
+  tagChange: { no: 'Endring', en: 'Change' },
+  promptReply: { no: 'Svar til klienten:', en: 'Reply to the client:' },
+  replyFailed: { no: 'Kunne ikke svare', en: 'Could not send the reply' },
+  feedback: { no: 'Klient-tilbakemeldinger', en: 'Client feedback' },
+  selected: { no: 'valgt', en: 'selected' },
+  submitted: { no: ' (innsendt)', en: ' (submitted)' },
+  replyLabel: { no: 'Svar:', en: 'Reply:' },
+  reply: { no: 'Svar', en: 'Reply' },
+  weddingTimeline: { no: 'Bryllups-tidslinje (kundevisning)', en: 'Wedding timeline (client view)' },
+  weddingTimelineSub: { no: 'Klienten ser og kan justere dagens program (first look, vielse, taler …) i sin egen visning.', en: 'The client can see and adjust the day’s schedule (first look, ceremony, speeches …) in their own view.' },
+  copyLink: { no: 'Kopier lenke', en: 'Copy link' },
+  openTimeline: { no: 'Åpne tidslinje', en: 'Open timeline' },
+  emptyTitle: { no: 'Ingen kundevisning publisert ennå', en: 'No client view published yet' },
+  emptySub: { no: 'Opprett et klient-galleri (showcase) for prosjektet — så blir det kundens visning her, og du kan dele lenken.', en: 'Create a client gallery (showcase) for the project — it becomes the client’s view here, and you can share the link.' },
+  delivered: { no: 'Levert', en: 'Delivered' },
+  active: { no: 'Aktiv', en: 'Active' },
+  openClientView: { no: 'Åpne kundevisning', en: 'Open client view' },
+  minAgo: { no: 'min siden', en: 'min ago' },
+  hoursAgo: { no: 't siden', en: 'h ago' },
+  daysAgo: { no: 'd siden', en: 'd ago' },
+};
+
+const ACT_META: Record<string, [any, string]> = {
+  download: [CloudDownloadOutlined, 'green'],
+  comment: [ChatBubbleOutline, 'blue'],
+  change: [EditOutlined, 'amber'],
+  selection: [CheckCircleOutline, 'blue'],
+};
+const actTimeAgo = (iso: string | undefined, t: (k: string) => string) => {
+  if (!iso) return '';
+  const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 3600) return `${Math.floor(s / 60)} ${t('minAgo')}`;
+  if (s < 86400) return `${Math.floor(s / 3600)} ${t('hoursAgo')}`;
+  return `${Math.floor(s / 86400)} ${t('daysAgo')}`;
+};
+
+const SAMPLE = [
+  { id: 'd1', title: 'Sara & Amir — Galleri', clientName: 'Sara & Amir', status: 'active', sharePath: '/client/gallery/demo' },
+];
+
+const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
+  // Utenlandske partner-vendors får engelsk UI — locale fra WsLocaleProvider.
+  const locale = useWsLocale();
+  const t = makeT(T, locale);
+  const isReal = projectId && projectId !== 'sample';
+  const [galleries, setGalleries] = useState<any[]>([]);
+  const [timelineToken, setTimelineToken] = useState<string | null>(null);
+  const [reviews, setReviews] = useState<any | null>(null);
+  const [activity, setActivity] = useState<any[]>([]);
+  const loadReviews = () => { if (!isReal) return; apiRequest(`/api/projects/${encodeURIComponent(projectId)}/client-reviews`).then((r: any) => setReviews(r || null)).catch(() => {}); };
+
+  useEffect(() => {
+    if (!isReal) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/galleries`)
+      .then((r: any) => setGalleries(Array.isArray(r?.galleries) ? r.galleries : []))
+      .catch(() => {});
+    // Wedding timeline-kundevisning (run-of-day klienten ser/justerer).
+    apiRequest(`/api/wedding/timeline/project/${encodeURIComponent(projectId)}`)
+      .then((r: any) => { const t = r?.clientAccessToken; if (t) setTimelineToken(t); })
+      .catch(() => {});
+    loadReviews();
+    // Klient-aktivitet (nedlasting/utvalg/kommentar) + tøm badgen (marker sett).
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/client-activity`)
+      .then((r: any) => setActivity(Array.isArray(r?.items) ? r.items : []))
+      .catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/client-activity/seen`, { method: 'POST', body: {} }).catch(() => {});
+  }, [projectId, isReal]);
+
+  const respondToReview = async (commentId: string) => {
+    const response = await wsPrompt(t('promptReply')); if (!response) return;
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/client-reviews/${commentId}/respond`, { method: 'POST', body: { response: response.trim() } }); loadReviews(); }
+    catch (e: any) { wsAlert(e?.message || t('replyFailed')); }
+  };
+  const reviewIcon = (type: string) => type === 'heart' || type === 'love' || type === 'favorite' ? 'Favorite' : type === 'change' || type === 'change-request' || type === 'revision' ? 'EditOutlined' : type === 'approval' || type === 'approve' ? 'CheckCircleOutline' : 'ChatBubbleOutline';
+
+  const timelinePath = (isReal && timelineToken) ? `/wedding/timeline/${timelineToken}` : (!isReal ? '/wedding/timeline/demo' : null);
+
+  const list = isReal ? galleries : SAMPLE;
+
+  const openClientView = (sharePath: string) => {
+    if (!sharePath) return;
+    window.open(`${window.location.origin}${sharePath}`, '_blank');
+  };
+  const copyLink = (sharePath: string) => {
+    if (!sharePath) return;
+    try { navigator.clipboard?.writeText(`${window.location.origin}${sharePath}`); } catch { /* ignore */ }
+  };
+
+  return (
+    <Box sx={{ maxWidth: 1000 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
+        <Box>
+          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{t('title')}</Typography>
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subtitle')}</Typography>
+        </Box>
+      </Stack>
+
+      <WsCard sx={{ mb: 2, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Visibility sx={{ color: ws.accent }} />
+          <Typography sx={{ fontSize: 13, color: ws.text }}>
+            {t('infoBefore')}<b>{t('infoBold')}</b>{t('infoAfter')}
+          </Typography>
+        </Stack>
+      </WsCard>
+
+      {/* Klient-aktivitet — nedlastinger + utvalg + kommentarer (in-app, ikke kun e-post) */}
+      {isReal && activity.length > 0 && (
+        <WsCard sx={{ mb: 2 }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
+            <CloudDownloadOutlined sx={{ fontSize: 18, color: ws.green }} />
+            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>{t('activity')}</Typography>
+            <Box sx={{ flex: 1 }} />
+            <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{t('activitySub')}</Typography>
+          </Stack>
+          <Stack spacing={0.75}>
+            {activity.slice(0, 12).map((a: any) => {
+              const [Icon, tone] = ACT_META[a.type] || [Visibility, 'neutral'];
+              return (
+                <Stack key={a.id} direction="row" spacing={1.25} alignItems="center" sx={{ p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                  <Box sx={{ width: 30, height: 30, borderRadius: 1, bgcolor: ws.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Icon sx={{ fontSize: 16, color: ws.accent }} />
+                  </Box>
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                      <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>{a.title}</Typography>
+                      {a.type === 'download' && <WsTag label={t('tagDownload')} tone="green" />}
+                      {a.type === 'change' && <WsTag label={t('tagChange')} tone="amber" />}
+                    </Stack>
+                    <Typography noWrap sx={{ fontSize: 11.5, color: ws.textDim }}>{a.who}{a.note ? ` · «${a.note}»` : ''}</Typography>
+                  </Box>
+                  <Typography sx={{ fontSize: 10.5, color: ws.textFaint, flexShrink: 0 }}>{actTimeAgo(a.at, t)}</Typography>
+                </Stack>
+              );
+            })}
+          </Stack>
+        </WsCard>
+      )}
+
+      {/* Klient-review — hjerter/kommentarer/endringer fra showcasen */}
+      {(isReal ? reviews?.hasGallery : true) && (() => {
+        const r = isReal ? reviews : { counts: { heart: 24, comment: 7, change: 2 }, selections: { selected: 38, submitted: 1 }, comments: [
+          { id: 'c1', clientName: 'Sara', type: 'heart', comment: 'Elsker denne!', thumbUrl: null, at: new Date().toISOString(), photographerResponse: null },
+          { id: 'c2', clientName: 'Amir', type: 'change', comment: 'Kan vi få denne litt lysere?', thumbUrl: null, at: new Date().toISOString(), photographerResponse: null },
+        ] };
+        const c = r?.counts || {}; const sel = r?.selections || {}; const comments = r?.comments || [];
+        const totalC = Object.values(c).reduce((a: any, b: any) => a + (b || 0), 0);
+        if (isReal && totalC === 0 && (sel.selected || 0) === 0) return null;
+        return (
+          <WsCard sx={{ mb: 2 }}>
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
+              {wsIcon('ChatBubbleOutline', { fontSize: 15, color: ws.textDim })}
+              <Typography sx={{ fontSize: 14, fontWeight: 700 }}>{t('feedback')}</Typography>
+              <Box sx={{ flex: 1 }} />
+              <Stack direction="row" spacing={1}>
+                {(c.heart || c.love || c.favorite) ? <Typography sx={{ fontSize: 12, color: ws.textDim, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('Favorite', { fontSize: 13 })}{(c.heart || 0) + (c.love || 0) + (c.favorite || 0)}</Typography> : null}
+                {(c.comment) ? <Typography sx={{ fontSize: 12, color: ws.textDim, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('ChatBubbleOutline', { fontSize: 13 })}{c.comment}</Typography> : null}
+                {(c.change || c['change-request'] || c.revision) ? <Typography sx={{ fontSize: 12, color: ws.amber, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('EditOutlined', { fontSize: 13 })}{(c.change || 0) + (c['change-request'] || 0) + (c.revision || 0)}</Typography> : null}
+                {(sel.selected) ? <Typography sx={{ fontSize: 12, color: ws.green }}>✓ {sel.selected} {t('selected')}{sel.submitted ? t('submitted') : ''}</Typography> : null}
+              </Stack>
+            </Stack>
+            <Stack spacing={1}>
+              {comments.slice(0, 8).map((cm: any) => (
+                <Stack key={cm.id} direction="row" spacing={1.25} alignItems="flex-start" sx={{ p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                  {cm.thumbUrl
+                    ? <Box sx={{ width: 38, height: 38, borderRadius: 1, background: `center/cover no-repeat url(${cm.thumbUrl})`, flexShrink: 0 }} />
+                    : <Box sx={{ width: 38, height: 38, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{wsIcon(reviewIcon(cm.type), { fontSize: 18, color: ws.textDim })}</Box>}
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>{cm.clientName}</Typography>
+                      {wsIcon(reviewIcon(cm.type), { fontSize: 15, color: ws.textDim })}
+                    </Stack>
+                    {cm.comment && <Typography sx={{ fontSize: 12.5, color: ws.text, mt: 0.25 }}>«{cm.comment}»</Typography>}
+                    {cm.photographerResponse
+                      ? <Box sx={{ mt: 0.75, pl: 1, borderLeft: `2px solid ${ws.accentBorder}` }}><Typography sx={{ fontSize: 11.5, color: ws.textDim }}><b>{t('replyLabel')}</b> {cm.photographerResponse}</Typography></Box>
+                      : isReal && <Button size="small" onClick={() => respondToReview(cm.id)} sx={{ mt: 0.5, color: ws.accent, textTransform: 'none', fontSize: 11.5, p: 0, minWidth: 0 }}>{t('reply')}</Button>}
+                  </Box>
+                </Stack>
+              ))}
+            </Stack>
+          </WsCard>
+        );
+      })()}
+
+      {/* Wedding timeline — kundevisning (run-of-day) */}
+      {timelinePath && (
+        <WsCard sx={{ mb: 2 }}>
+          <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" gap={1.5}>
+            <Box sx={{ width: 44, height: 44, borderRadius: 2, bgcolor: ws.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <AccessTime sx={{ color: ws.accent }} />
+            </Box>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ fontSize: 15, fontWeight: 700 }}>{t('weddingTimeline')}</Typography>
+              <Typography sx={{ fontSize: 12, color: ws.textDim }}>{t('weddingTimelineSub')}</Typography>
+            </Box>
+            <Stack direction="row" spacing={1}>
+              <Button size="small" startIcon={<ContentCopy sx={{ fontSize: 15 }} />} onClick={() => { try { navigator.clipboard?.writeText(`${window.location.origin}${timelinePath}`); } catch { /* */ } }} sx={{ color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>{t('copyLink')}</Button>
+              <Button size="small" variant="contained" startIcon={<OpenInNew sx={{ fontSize: 15 }} />} onClick={() => window.open(`${window.location.origin}${timelinePath}`, '_blank')}
+                sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('openTimeline')}</Button>
+            </Stack>
+          </Stack>
+        </WsCard>
+      )}
+
+      {list.length === 0 ? (
+        <WsCard>
+          <Stack alignItems="center" sx={{ py: 5, color: ws.textDim }}>
+            <Collections sx={{ fontSize: 36, mb: 1.5 }} />
+            <Typography sx={{ fontSize: 15, fontWeight: 700, color: ws.text }}>{t('emptyTitle')}</Typography>
+            <Typography sx={{ fontSize: 12.5, mt: 0.5, textAlign: 'center', maxWidth: 360 }}>
+              {t('emptySub')}
+            </Typography>
+          </Stack>
+        </WsCard>
+      ) : (
+        <Stack spacing={1.5}>
+          {list.map((g) => (
+            <WsCard key={g.id}>
+              <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" gap={1.5}>
+                <WsImg sx={{ width: 96, height: 64, aspectRatio: 'auto' }} />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography sx={{ fontSize: 15, fontWeight: 700 }}>{g.title}</Typography>
+                    <WsTag label={g.status === 'completed' ? t('delivered') : t('active')} tone={g.status === 'completed' ? 'green' : 'blue'} />
+                  </Stack>
+                  <Typography sx={{ fontSize: 12, color: ws.textDim }}>{g.clientName || g.clientEmail || ''}</Typography>
+                  {g.sharePath && <Typography noWrap sx={{ fontSize: 11, color: ws.textFaint, mt: 0.25 }}>{window.location.origin}{g.sharePath}</Typography>}
+                </Box>
+                {g.sharePath && (
+                  <Stack direction="row" spacing={1}>
+                    <Button size="small" startIcon={<ContentCopy sx={{ fontSize: 15 }} />} onClick={() => copyLink(g.sharePath)} sx={{ color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>{t('copyLink')}</Button>
+                    <Button size="small" variant="contained" startIcon={<OpenInNew sx={{ fontSize: 15 }} />} onClick={() => openClientView(g.sharePath)}
+                      sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('openClientView')}</Button>
+                  </Stack>
+                )}
+              </Stack>
+            </WsCard>
+          ))}
+        </Stack>
+      )}
+    </Box>
+  );
+};
+
+export default KundevisningTab;

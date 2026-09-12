@@ -31,6 +31,18 @@ import {
   listClientPortalSessionsForProject,
   revokeClientPortalSession,
 } from "./role-room-client-portal.js";
+import { sendTransactionalEmail } from "./transactional-email-service.js";
+import { composeEmail } from "./email-design-system.js";
+import { syncClientConversionActions } from "./client-ads-google-oauth.js";
+import { canAccessProjectAds } from "./role-room-project-access.js";
+import {
+  PLATFORM_LABELS,
+  PLATFORM_ORDER,
+  DEFAULT_HIDDEN_PLATFORMS,
+  loadClientPortalHiddenPlatforms,
+  setClientPortalHiddenPlatforms,
+  type PlatformKey,
+} from "./client-portal-connected-platforms.js";
 
 interface AdminSession {
   userId: string;
@@ -87,8 +99,41 @@ export function setupRoleRoomClientPortalRoutes(
       || process.env.ROLE_ROOM_FRONTEND_ORIGIN
       || "https://theroleroom.com";
     const magicLinkUrl = `${base.replace(/\/$/, "")}/client/portal/${encodeURIComponent(invite.sessionToken)}`;
+
+    // Send invitasjons-e-post med magic-link til klienten. Best-effort:
+    // invitasjonen er allerede opprettet, så e-post-feil skal ikke feile kallet.
+    // (Tidligere ble KUN lenken returnert — ingen e-post ble faktisk sendt.)
+    let emailed = false;
+    try {
+      const greetingName = (clientName || clientEmail.split("@")[0] || "der").trim();
+      const composed = composeEmail({
+        category: "welcome",
+        subject: "Du er invitert til å se prosjektet i The Role Room",
+        preheader: "Åpne klient-lenken for å se og godkjenne prosjektet.",
+        headline: "Du er invitert til prosjektet",
+        subhead: `Hei ${greetingName} — du har fått tilgang til å se og godkjenne et prosjekt i The Role Room. Trykk under for å åpne din private klient-lenke. Lenken er personlig og utløper ${invite.expiresAt.toLocaleDateString("nb-NO")}.`,
+        cta: { label: "Åpne prosjektet", href: magicLinkUrl },
+        footer: {
+          reason: "Du får denne e-posten fordi en produsent inviterte deg til et prosjekt i The Role Room.",
+        },
+      });
+      await sendTransactionalEmail({
+        to: clientEmail,
+        subject: "Du er invitert til å se prosjektet i The Role Room",
+        kind: "client_invite",
+        fromLabel: "The Role Room",
+        pool,
+        text: composed.text,
+        html: composed.html,
+      });
+      emailed = true;
+    } catch (err) {
+      console.warn("[client-portal] invite-e-post feilet", err);
+    }
+
     return res.json({
       success: true,
+      emailed,
       invite: {
         id: invite.id,
         clientEmail: invite.clientEmail,
@@ -137,5 +182,69 @@ export function setupRoleRoomClientPortalRoutes(
       return res.status(404).json({ success: false, error: "Fant ingen aktiv invitasjon å revokere." });
     }
     return res.json({ success: true });
+  });
+
+  // ── Plattform-synlighet i klientportalen (produsent-styrt) ──────────────
+  // Produsenten velger hvilke «Koblede kontoer» klienten ser/kan koble.
+  // Lagrer SKJULTE plattformer; Google Workspace skjult som standard.
+  app.get("/api/role-room/client-portal/platform-prefs/:projectId", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const projectId = String(req.params.projectId || "").trim();
+    if (!projectId) {
+      return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    }
+    const hidden = await loadClientPortalHiddenPlatforms(pool, projectId);
+    return res.json({
+      success: true,
+      hiddenPlatforms: Array.from(hidden),
+      defaultHidden: DEFAULT_HIDDEN_PLATFORMS,
+      // Alle plattformer produsenten kan vise/skjule, med visningsnavn.
+      available: PLATFORM_ORDER
+        .filter((key) => key !== "facebook") // FB avledes av Instagram — ikke egen toggle
+        .map((key) => ({ key, label: PLATFORM_LABELS[key] })),
+    });
+  });
+
+  app.put("/api/role-room/client-portal/platform-prefs/:projectId", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const projectId = String(req.params.projectId || "").trim();
+    if (!projectId) {
+      return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    }
+    const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+    const raw = Array.isArray(body.hiddenPlatforms) ? body.hiddenPlatforms : [];
+    const hidden = raw.filter(
+      (p): p is PlatformKey => typeof p === "string" && p in PLATFORM_LABELS,
+    );
+    await setClientPortalHiddenPlatforms(pool, projectId, hidden, session.userId);
+    return res.json({ success: true, hiddenPlatforms: hidden });
+  });
+
+  // ── Produsent-trigger: opprett standard-konverteringer i klientens Google Ads
+  // Kjøres som klienten (klient-token-stien) mot klientens egen konto. Krever at
+  // klienten har koblet Google Ads + at vi har customer-id.
+  app.post("/api/role-room/client-portal/ads/sync-conversions/:projectId", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const projectId = String(req.params.projectId || "").trim();
+    if (!projectId) {
+      return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    }
+    if (!(await canAccessProjectAds(pool, projectId, { userId: session.userId, email: session.email }))) {
+      return res.status(403).json({ success: false, error: "Ingen tilgang til prosjektet." });
+    }
+    const result = await syncClientConversionActions(pool, {
+      producerUserId: session.userId,
+      projectId,
+    });
+    if (!result.ok && result.error === "client_google_ads_not_connected") {
+      return res.status(409).json({
+        success: false,
+        error: "Klienten har ikke koblet Google Ads ennå (eller customer-id mangler).",
+      });
+    }
+    return res.json({ success: result.ok, ...result });
   });
 }

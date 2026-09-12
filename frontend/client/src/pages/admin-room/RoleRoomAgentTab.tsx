@@ -27,6 +27,8 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import IgDmInbox from '../../components/crm/IgDmInbox';
+import AgentAdsPanel from '../../components/role-room/components/producer/AgentAdsPanel';
+import WelcomeWizard from '../../components/role-room/onboarding/WelcomeWizard';
 
 interface ProfileRecommendations {
   platforms: {
@@ -131,6 +133,7 @@ function PlatformPanel({
   const apiPushable = platform === 'facebook';
   const fieldName = platform === 'facebook' ? 'about' : 'bio';
   const isBusy = busy === `${platform}:${fieldName}`;
+  const safeHashtags = Array.isArray(hashtags) ? hashtags : [];
   return (
     <Card sx={PANEL_SX} data-testid={`panel-${platform}`}>
       <CardContent sx={{ p: 2 }}>
@@ -165,17 +168,17 @@ function PlatformPanel({
           </Stack>
         </Box>
 
-        {hashtags.length > 0 && (
+        {safeHashtags.length > 0 && (
           <Box sx={{ mb: 1.5 }}>
             <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.6)', display: 'block', mb: 0.5 }}>
-              Hashtags ({hashtags.length})
+              Hashtags ({safeHashtags.length})
             </Typography>
             <Stack direction="row" flexWrap="wrap" gap={0.5}>
-              {hashtags.map((h) => (
+              {safeHashtags.map((h) => (
                 <Chip key={h} label={h} size="small"
                   sx={{ background: 'rgba(168,85,247,0.15)', color: '#c4b5fd', fontSize: '0.7rem', height: 18 }} />
               ))}
-              <CopyButton value={hashtags.join(' ')} testid={`${platform}-hashtags-copy`} />
+              <CopyButton value={safeHashtags.join(' ')} testid={`${platform}-hashtags-copy`} />
             </Stack>
           </Box>
         )}
@@ -225,7 +228,7 @@ export default function RoleRoomAgentTab() {
       const r = await fetch('/api/role-room/agent/profile-publish-log?brandKey=theroleroom&limit=20', { credentials: 'include' });
       if (r.ok) {
         const d = await r.json();
-        if (d.ok) setPublishLog(d.entries || []);
+        if (d.ok) setPublishLog(Array.isArray(d.entries) ? d.entries : []);
       }
     } catch { /* ignore */ }
   }, []);
@@ -312,6 +315,10 @@ export default function RoleRoomAgentTab() {
 
   return (
     <Stack spacing={2} data-testid="role-room-agent-root">
+      {/* Velkomst-guide (7-stegs onboarding) — scoped til Role Room Agent.
+          Var tidligere mountet globalt i App.tsx og lekket inn på alle
+          CreatorHub-sider (bl.a. UniversalDashboard). */}
+      <WelcomeWizard />
       <IgDmInbox open={showIgInbox} onClose={() => setShowIgInbox(false)} brandColor="#a855f7" />
       <Stack direction="row" alignItems="center" spacing={2}>
         <Typography variant="h6" sx={{ color: '#e2e8f0' }}>🤖 Role Room Agent — Bio + Profil-pakke</Typography>
@@ -458,7 +465,7 @@ export default function RoleRoomAgentTab() {
                 <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid rgba(148,163,184,0.12)' }}>
                   <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.6)' }}>Link-in-bio</Typography>
                   <Stack spacing={0.3} sx={{ mt: 0.3 }}>
-                    {recs.platforms.instagram.linkInBio.map((l) => (
+                    {(Array.isArray(recs.platforms.instagram.linkInBio) ? recs.platforms.instagram.linkInBio : []).map((l) => (
                       <Typography key={l.url} variant="caption" sx={{ color: '#7dd3fc', display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         <strong style={{ color: '#cbd5e1' }}>{l.label}</strong> → {l.url}
                         <CopyButton value={l.url} />
@@ -544,6 +551,13 @@ export default function RoleRoomAgentTab() {
           )}
         </>
       )}
+
+      {/* Ads & conversion-tracking (B0-B6 multi-tenant) — for klient-oppsett */}
+      <Divider sx={{ borderColor: 'rgba(168,85,247,0.18)', my: 1.4 }} />
+      <AgentAdsPanel
+        clientProjectId={undefined}
+        defaultClientName=""
+      />
     </Stack>
   );
 }

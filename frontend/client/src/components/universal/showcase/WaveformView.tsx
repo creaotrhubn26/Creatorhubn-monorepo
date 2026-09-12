@@ -45,6 +45,7 @@ import {
   Share,
   Bookmark,
   MusicNote,
+  SmartToy as SmartToyIcon,
 } from '@mui/icons-material';
 
 interface AudioTrack {
@@ -270,15 +271,11 @@ export const WaveformView: React.FC<WaveformViewProps> = ({
           ctx.arc(commentX, 10, 6, 0, Math.PI * 2);
           ctx.fill();
           
-          // Draw comment text background
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-          ctx.fillRect(commentX - 50, 0, 100, 20);
-          
-          // Draw comment text
+          // Inner dot marker (replaces emoji to avoid font fallback issues)
           ctx.fillStyle = '#FFFFFF';
-          ctx.font = '10px Arial';
-          ctx.textAlign = 'center';
-          ctx.fillText('💬', commentX, 15);
+          ctx.beginPath();
+          ctx.arc(commentX, 10, 2.5, 0, Math.PI * 2);
+          ctx.fill();
         }
       });
     }
@@ -477,11 +474,14 @@ export const WaveformView: React.FC<WaveformViewProps> = ({
           justifyContent: 'center',
           zIndex: 100}}>
           <CircularProgress size={60} sx={{ color: accentColor, mb: 2 }} />
-          <Typography variant="h6" sx={{ color: accentColor }}>
-            🎵 Analyzing Audio Waveform...
-          </Typography>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'center' }}>
+            <MusicNote sx={{ color: accentColor }} />
+            <Typography variant="h6" sx={{ color: accentColor }}>
+              Analyserer lydbølge…
+            </Typography>
+          </Stack>
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', mt: 1 }}>
-            Generating real-time visualization
+            Genererer sanntidsvisualisering
           </Typography>
         </Box>
       )}
@@ -719,9 +719,12 @@ export const WaveformView: React.FC<WaveformViewProps> = ({
             border: `1px solid ${accentColor}40`,
             borderRadius: 2
           }}>
-            <Typography variant="subtitle2" sx={{ color: accentColor, mb: 2 }}>
-              🤖 Analyzing audio...
-            </Typography>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
+              <SmartToyIcon sx={{ color: accentColor, fontSize: 18 }} />
+              <Typography variant="subtitle2" sx={{ color: accentColor }}>
+                Analyserer lyd…
+              </Typography>
+            </Stack>
             <LinearProgress sx={{ bgcolor: 'rgba(255,255,255,0.1)', '& .MuiLinearProgress-bar': { bgcolor: accentColor } }} />
           </Paper>
         ) : analyzedData ? (
@@ -731,9 +734,12 @@ export const WaveformView: React.FC<WaveformViewProps> = ({
             border: `1px solid ${accentColor}40`,
             borderRadius: 2
           }}>
-            <Typography variant="subtitle2" sx={{ color: accentColor, mb: 2, fontWeight: 600}}>
-              🎵 AI Analysis Results
-            </Typography>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
+              <MusicNote sx={{ color: accentColor, fontSize: 18 }} />
+              <Typography variant="subtitle2" sx={{ color: accentColor, fontWeight: 600 }}>
+                AI-analyse-resultater
+              </Typography>
+            </Stack>
             <Grid container spacing={2}>
               <Grid item xs={6} sm={3}>
                 <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 2 }}>

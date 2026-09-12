@@ -19,7 +19,7 @@
 import type { Pool } from "pg";
 import {
   loadFeedPlan,
-  saveFeedPlan,
+  mutateFeedPlanLocked,
   listFeedPlansAwaitingClient,
   SUPPORTED_FEED_PLATFORMS,
   type RoleRoomFeedApprovalState,
@@ -211,31 +211,34 @@ export async function submitPostsForReview(
   requestedBy: string,
   options: { days?: number; now?: Date } = {},
 ): Promise<{ submitted: number; deadline: string | null }> {
-  const plan = await loadFeedPlan(pool, projectId, platform);
-  if (!plan) return { submitted: 0, deadline: null };
   const ids = new Set(postIds);
   const now = (options.now ?? new Date()).toISOString();
   const deadline = computeReviewDeadlineIso(now, options.days ?? reviewBusinessDays());
 
   let submitted = 0;
-  const nextPosts = plan.posts.map((p) => {
-    if (!ids.has(p.id)) return p;
-    submitted += 1;
-    return {
-      ...p,
-      approvalState: "awaiting_client" as RoleRoomFeedApprovalState,
-      approvalChangedAt: now,
-      approvalChangedBy: requestedBy,
-      reviewRequestedAt: now,
-      reviewRequestedBy: requestedBy,
-      reviewDeadline: deadline,
-    };
+  // Row-locked read-modify-write so a concurrent /approve or content-save
+  // can't clobber the review fields we set here.
+  await mutateFeedPlanLocked(pool, projectId, platform, (current) => {
+    if (!current) return null;
+    let localSubmitted = 0;
+    const nextPosts = current.posts.map((p) => {
+      if (!ids.has(p.id)) return p;
+      localSubmitted += 1;
+      return {
+        ...p,
+        approvalState: "awaiting_client" as RoleRoomFeedApprovalState,
+        approvalChangedAt: now,
+        approvalChangedBy: requestedBy,
+        reviewRequestedAt: now,
+        reviewRequestedBy: requestedBy,
+        reviewDeadline: deadline,
+      };
+    });
+    submitted = localSubmitted;
+    if (localSubmitted === 0) return null;
+    return { posts: nextPosts, brandSnapshot: current.brandSnapshot, updatedBy: requestedBy };
   });
   if (submitted === 0) return { submitted: 0, deadline: null };
-  await saveFeedPlan(pool, projectId, platform, nextPosts, {
-    brandSnapshot: plan.brandSnapshot,
-    updatedBy: requestedBy,
-  });
   return { submitted, deadline };
 }
 
@@ -261,23 +264,28 @@ export async function runMaterialAutoApproveSweep(
 
   for (const plan of plans) {
     let changed = 0;
-    const nextPosts = plan.posts.map((p) => {
-      if (!shouldAutoApprove(p, now)) return p;
-      changed += 1;
-      return {
-        ...p,
-        approvalState: "approved" as RoleRoomFeedApprovalState,
-        approvalChangedAt: nowIso,
-        approvalChangedBy: "system:auto-approval",
-        approvalNote:
-          "Auto-godkjent: kunden svarte ikke innen fristen (MedInnova-avtalen §5.2).",
-      };
-    });
-    if (changed === 0) continue;
     try {
-      await saveFeedPlan(pool, plan.projectId, plan.platform, nextPosts, {
-        brandSnapshot: plan.brandSnapshot,
-        updatedBy: "system:auto-approval",
+      // Re-evaluate against the freshly-locked row: the deadline check must
+      // run on current state, not the (possibly stale) list-scan snapshot, so
+      // a post the client just acted on isn't auto-approved out from under them.
+      await mutateFeedPlanLocked(pool, plan.projectId, plan.platform, (current) => {
+        if (!current) return null;
+        let localChanged = 0;
+        const nextPosts = current.posts.map((p) => {
+          if (!shouldAutoApprove(p, now)) return p;
+          localChanged += 1;
+          return {
+            ...p,
+            approvalState: "approved" as RoleRoomFeedApprovalState,
+            approvalChangedAt: nowIso,
+            approvalChangedBy: "system:auto-approval",
+            approvalNote:
+              "Auto-godkjent: kunden svarte ikke innen fristen (MedInnova-avtalen §5.2).",
+          };
+        });
+        changed = localChanged;
+        if (localChanged === 0) return null;
+        return { posts: nextPosts, brandSnapshot: current.brandSnapshot, updatedBy: "system:auto-approval" };
       });
       summary.postsAutoApproved += changed;
     } catch (error) {

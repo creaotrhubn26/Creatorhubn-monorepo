@@ -61,7 +61,7 @@ export function useKanbanRealtime(
     if (!projectId || !mountedRef.current) return;
     if (givenUpRef.current) return;
 
-    // WebSockets can't go through Vercel's rewrite layer (HTTP-only),
+    // WebSockets can't go through the Netlify HTTP proxy,
     // so in production we dial the Render backend directly. In dev
     // the Vite dev server proxies /ws to the local backend, so the
     // same-origin path keeps working.

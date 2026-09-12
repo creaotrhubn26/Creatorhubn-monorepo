@@ -37,6 +37,9 @@ import {
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
 import { withUniversalIntegration } from "@/integration/UniversalIntegrationHOC";
 import { withVisualEditor } from "@/components/admin/visual-editor/withVisualEditor";
+import BlockRenderer from "@/components/role-room/cms/BlockRenderer";
+import { useCmsBlocks } from "@/components/role-room/cms/useCmsBlocks";
+import { DEFAULT_LOCALE } from "@/components/role-room/cms/blockSchema";
 import { useAcademyLocale } from "./academyLocale";
 import AcademyLocaleSwitcher from "./AcademyLocaleSwitcher";
 import AcademyBrandMark from "./AcademyBrandMark";
@@ -339,6 +342,10 @@ function AcademyLandingPage() {
   } = useAcademyContext();
   const { analytics, auth } = useEnhancedMasterIntegration();
   const { tt } = useAcademyLocale();
+  // Optional CMS-editable hero banner shown above the live hero/dashboard —
+  // admins can add copy for this via AdminRoom (slug 'academy') without
+  // touching the dynamic course/lesson data or functionality below it.
+  const cmsHeroBlocks = useCmsBlocks("academy");
 
   const [search, setSearch] = useState("");
   const [loginOpen, setLoginOpen] = useState(false);
@@ -644,6 +651,12 @@ function AcademyLandingPage() {
             )}
           </Stack>
         </Box>
+
+        {cmsHeroBlocks && cmsHeroBlocks.length > 0 ? (
+          <Box sx={{ mt: 3 }}>
+            <BlockRenderer blocks={cmsHeroBlocks} locale={DEFAULT_LOCALE} />
+          </Box>
+        ) : null}
 
         <Box
           sx={{

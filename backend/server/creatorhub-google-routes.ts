@@ -7,11 +7,22 @@ import {
   persistAuthSession,
 } from './auth-session-store.js';
 import {
+  consumeOauthState,
+  consumeOauthTransfer,
+  deleteOauthTransfer,
+  loadOauthTransfer,
+  persistOauthState,
+  persistOauthTransfer,
+} from './role-room-oauth-store.js';
+import {
   getGoogleWorkspaceOauthConfig,
   resolveGoogleWorkspaceRequestOrigin,
   type GoogleWorkspaceOauthApp,
 } from './google-workspace-oauth.js';
 import { ensureGoogleWorkspaceConnectionsSchema } from './google-workspace-connections-schema.js';
+import { getAuthorizedWorkspaceClient, listMeetArtifactsForMeeting } from './google-meet.js';
+import { attachDeliverableAutomationScript } from './apps-script-service.js';
+import { isTrustedWebOrigin, safeReturnPath } from './web-origin-allowlist.js';
 
 type ActiveSessionData = {
   userId: string;
@@ -60,10 +71,12 @@ type CreatorHubGoogleOauthState = {
   mode: CreatorHubGoogleOauthMode;
   returnPath: string;
   browserOrigin?: string | null;
+  redirectUri?: string | null;
   createdByUserId?: string | null;
   createdByEmail?: string | null;
   targetConnectionUserId?: string | null;
   targetConnectionEmail?: string | null;
+  youtube?: boolean;
   createdAt: number;
 };
 
@@ -86,6 +99,7 @@ type CreatorHubGoogleTransferPayload = {
   };
   googleEmail: string;
   googleSubject: string;
+  youtube?: boolean;
   profile: Record<string, unknown>;
   tokenBundle?: {
     accessToken?: string | null;
@@ -114,9 +128,18 @@ const CREATORHUB_GOOGLE_SCOPES = [
   'email',
   'profile',
   'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/drive.file',
+  // drive.file er utelatt: Google avviser drive.file + youtube i samme request
+  // («scopes that cannot be requested together», 400 invalid_request), og full
+  // `drive` er uansett et superset.
   'https://www.googleapis.com/auth/drive.readonly',
+  // Meet-opptak-import: lese Meet-genererte Drive-filer (opptak/transkript).
+  'https://www.googleapis.com/auth/drive.meet.readonly',
+  'https://www.googleapis.com/auth/meetings.space.readonly',
+  // Apps Script-automatisering: opprette/skrive container-bundne skript.
+  'https://www.googleapis.com/auth/drive.scripts',
+  'https://www.googleapis.com/auth/script.projects',
   'https://www.googleapis.com/auth/documents',
+  'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/calendar',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/contacts',
@@ -132,14 +155,30 @@ const CREATORHUB_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/chat.spaces.create',
   'https://www.googleapis.com/auth/chat.memberships.readonly',
   'https://www.googleapis.com/auth/chat.messages.reactions.create',
+  // MERK: `youtube` er FJERNET fra bunten (2026-08-24). Google avviser nå hele
+  // autorisasjonsforespørselen med «Something went wrong» (unknownerror) når
+  // youtube-scopet kombineres med denne Workspace-bunten — verifisert empirisk:
+  // identisk liste uten youtube går rett til samtykkeskjermen. YouTube må bes
+  // om i egen, inkrementell consent (samme mønster som
+  // ROLE_ROOM_GOOGLE_YOUTUBE_ANALYTICS_SCOPES i role-room-routes.ts).
+] as const;
+
+// Egen inkrementell YouTube-consent (kan ikke kombineres med bunten over —
+// Google avviser hele requesten). Lagres som egen credential
+// (oauth_app='creatorhub_youtube') med eget refresh-token.
+const CREATORHUB_YOUTUBE_SCOPES = [
+  'openid',
+  'email',
+  'profile',
   'https://www.googleapis.com/auth/youtube',
-  'https://www.googleapis.com/auth/youtube.upload',
 ] as const;
 
 // Slice 9X.80 — bump fra 15 → 60 min så brukere som blir avbrutt
 // (telefon, tab-switch, nettverk-glitch) ikke får "utløpt"-feil.
 const CREATORHUB_GOOGLE_STATE_TTL_MS = 60 * 60 * 1000;
+const CREATORHUB_GOOGLE_TRANSFER_TTL_MS = 10 * 60 * 1000;
 const CREATORHUB_GOOGLE_OAUTH_APP: GoogleWorkspaceOauthApp = 'creatorhub';
+const CREATORHUB_ADMIN_ROLES = new Set(['admin', 'super_admin', 'academy_admin']);
 
 const creatorHubGoogleOauthStateStore = new Map<string, CreatorHubGoogleOauthState>();
 const creatorHubGoogleTransferStore = new Map<string, CreatorHubGoogleTransferPayload>();
@@ -225,13 +264,16 @@ function sanitizeReturnPath(value: unknown): string {
     return '/dashboard';
   }
 
-  if (candidate.startsWith('/') && !candidate.startsWith('//')) {
-    return candidate;
+  if (candidate.startsWith('/')) {
+    return safeReturnPath(candidate, '/dashboard');
   }
 
   try {
     const parsed = new URL(candidate);
-    return `${parsed.pathname}${parsed.search}${parsed.hash}` || '/dashboard';
+    return safeReturnPath(
+      `${parsed.pathname}${parsed.search}${parsed.hash}`,
+      '/dashboard',
+    );
   } catch {
     return '/dashboard';
   }
@@ -245,7 +287,10 @@ function sanitizeBrowserOrigin(value: unknown): string | null {
 
   try {
     const parsed = new URL(candidate);
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+    if (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+      && isTrustedWebOrigin(parsed.origin)
+    ) {
       return parsed.origin;
     }
   } catch {
@@ -256,7 +301,12 @@ function sanitizeBrowserOrigin(value: unknown): string | null {
 }
 
 function resolveRequestOrigin(req: Request, explicitOrigin?: string | null): string | null {
-  return resolveGoogleWorkspaceRequestOrigin('creatorhub', req, sanitizeBrowserOrigin(explicitOrigin));
+  const resolved = resolveGoogleWorkspaceRequestOrigin(
+    'creatorhub',
+    req,
+    sanitizeBrowserOrigin(explicitOrigin),
+  );
+  return resolved && isTrustedWebOrigin(resolved) ? resolved : null;
 }
 
 function buildCreatorHubGoogleReturnUrl(
@@ -280,18 +330,24 @@ function buildCreatorHubGoogleReturnUrl(
 }
 
 function pruneExpiredCreatorHubGoogleState(): void {
-  const expiresBefore = Date.now() - CREATORHUB_GOOGLE_STATE_TTL_MS;
+  const now = Date.now();
+  const stateExpiresBefore = now - CREATORHUB_GOOGLE_STATE_TTL_MS;
+  const transferExpiresBefore = now - CREATORHUB_GOOGLE_TRANSFER_TTL_MS;
   for (const [key, value] of creatorHubGoogleOauthStateStore.entries()) {
-    if (value.createdAt < expiresBefore) {
+    if (value.createdAt < stateExpiresBefore) {
       creatorHubGoogleOauthStateStore.delete(key);
     }
   }
 
   for (const [key, value] of creatorHubGoogleTransferStore.entries()) {
-    if (value.createdAt < expiresBefore) {
+    if (value.createdAt < transferExpiresBefore) {
       creatorHubGoogleTransferStore.delete(key);
     }
   }
+}
+
+function canManageAnotherGoogleConnection(role: string | null | undefined): boolean {
+  return CREATORHUB_ADMIN_ROLES.has(String(role ?? '').trim().toLowerCase());
 }
 
 async function resolveSessionFromBearer(
@@ -423,10 +479,18 @@ async function resolveCreatorHubGoogleLoginUser(
   if (role === 'super_admin') {
     role = 'admin';
   }
-  if (coupleCheck.rows.length > 0) {
-    role = 'couple';
-  } else if (vendorCheck.rows.length > 0) {
-    role = 'vendor';
+  // An admin who ALSO has a couple/vendor profile (e.g. a test wedding, or a
+  // vendor listing they own) must KEEP their admin role — otherwise the
+  // marketplace profile silently demotes the Google session to 'couple'/
+  // 'vendor' and locks them out of /admin. Only apply the marketplace role to
+  // non-admin accounts.
+  const isPrivilegedRole = role === 'admin' || role === 'super_admin';
+  if (!isPrivilegedRole) {
+    if (coupleCheck.rows.length > 0) {
+      role = 'couple';
+    } else if (vendorCheck.rows.length > 0) {
+      role = 'vendor';
+    }
   }
 
   const baseName =
@@ -627,6 +691,148 @@ export function createCreatorHubGoogleRouter(
     }
   });
 
+  // Reuse an already authenticated Workspace session when opening a trusted
+  // satellite product. The bearer token never enters the browser URL: only a
+  // short-lived, single-use transfer id crosses the origin boundary.
+  router.post('/oauth/satellite-transfer', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredCreatorHubGoogleState();
+      const sessionToken = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim() ?? '';
+      const session = await resolveSessionFromBearer(pool, activeSessions, sessionToken);
+      if (!session || !sessionToken) {
+        res.status(401).json({ error: 'Du må være logget inn i CreatorHub Workspace.' });
+        return;
+      }
+
+      const requestedOrigin = sanitizeBrowserOrigin(req.body?.browserOrigin);
+      let easeVerseOrigin = 'https://easeverse.netlify.app';
+      try {
+        easeVerseOrigin = new URL(
+          process.env.EASEVERSE_API_URL?.trim() || easeVerseOrigin,
+        ).origin;
+      } catch {
+        // Keep the fixed production origin if the optional environment value is invalid.
+      }
+      if (!requestedOrigin || requestedOrigin !== easeVerseOrigin) {
+        res.status(400).json({ error: 'Ugyldig mottaker for CreatorHub-innlogging.' });
+        return;
+      }
+
+      const name = session.displayName || session.name || session.email;
+      const transferId = crypto.randomUUID();
+      const transferPayload: CreatorHubGoogleTransferPayload = {
+        mode: 'login',
+        createdAt: Date.now(),
+        createdByUserId: session.userId,
+        createdByEmail: session.email,
+        sessionToken,
+        user: {
+          id: session.userId,
+          email: session.email,
+          role: session.role,
+          name,
+          display_name: name,
+          picture: session.picture,
+          verified_email: session.verified_email === true,
+        },
+        googleEmail: session.email,
+        googleSubject: `workspace-session:${session.userId}`,
+        profile: {
+          email: session.email,
+          name,
+          picture: session.picture ?? null,
+          verified_email: session.verified_email === true,
+          auth_source: 'workspace_session',
+        },
+      };
+      const persisted = await persistOauthTransfer(
+        pool,
+        transferId,
+        transferPayload,
+        new Date(transferPayload.createdAt + CREATORHUB_GOOGLE_TRANSFER_TTL_MS),
+      );
+      if (!persisted) {
+        res.status(503).json({ error: 'Kunne ikke opprette sikker EaseVerse-overføring.' });
+        return;
+      }
+      creatorHubGoogleTransferStore.set(transferId, transferPayload);
+      res.status(201).json({
+        transferId,
+        browserOrigin: easeVerseOrigin,
+        expiresInSeconds: Math.floor(CREATORHUB_GOOGLE_TRANSFER_TTL_MS / 1000),
+      });
+    } catch (error) {
+      console.error('CreatorHub satellite session transfer error:', error);
+      res.status(503).json({ error: 'CreatorHub-innlogging kan ikke overføres akkurat nå.' });
+    }
+  });
+
+  // Meet-opptak-import: henter opptak + transkripsjoner for et Google Meet-møte
+  // og fester dem til Drive-filene (Meet REST API + drive.meet.readonly).
+  router.post('/meet/import-artifacts', async (req: Request, res: Response) => {
+    try {
+      const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
+      const preferredUserId =
+        requestUser?.userId
+        ?? readOptionalHeaderValue(req, 'x-user-id')
+        ?? readStringValue(req.body?.userId);
+      if (!preferredUserId) {
+        return res.status(400).json({
+          error: 'Krever en innlogget, koblet Google Workspace-bruker.',
+        });
+      }
+      const result = await listMeetArtifactsForMeeting(
+        pool,
+        {
+          meetingCode: readStringValue(req.body?.meetingCode),
+          meetLink: readStringValue(req.body?.meetLink),
+          startTime: readStringValue(req.body?.startTime),
+        },
+        preferredUserId,
+      );
+      res.json(result);
+    } catch (error) {
+      console.error('CreatorHub Meet import error:', error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Kunne ikke hente Meet-opptak',
+      });
+    }
+  });
+
+  // Apps Script-automatisering: fester et container-bundet skript (CreatorHub-meny
+  // + leveranse-makroer) på en Drive-fil (Apps Script API + drive.scripts).
+  router.post('/apps-script/attach', async (req: Request, res: Response) => {
+    try {
+      const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
+      const preferredUserId =
+        requestUser?.userId
+        ?? readOptionalHeaderValue(req, 'x-user-id')
+        ?? readStringValue(req.body?.userId);
+      if (!preferredUserId) {
+        return res.status(400).json({
+          error: 'Krever en innlogget, koblet Google Workspace-bruker.',
+        });
+      }
+      const parentFileId =
+        readStringValue(req.body?.parentFileId) ?? readStringValue(req.body?.fileId);
+      if (!parentFileId) {
+        return res.status(400).json({
+          error: 'Mangler parentFileId (Drive-fila skriptet skal festes på).',
+        });
+      }
+      const oauthClient = await getAuthorizedWorkspaceClient(pool, preferredUserId);
+      const result = await attachDeliverableAutomationScript(oauthClient, parentFileId, {
+        title: readStringValue(req.body?.title) ?? undefined,
+      });
+      res.json(result);
+    } catch (error) {
+      console.error('CreatorHub Apps Script attach error:', error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Kunne ikke feste Apps Script-automatisering',
+      });
+    }
+  });
+
   router.post('/oauth/start', async (req: Request, res: Response) => {
     try {
       pruneExpiredCreatorHubGoogleState();
@@ -640,30 +846,70 @@ export function createCreatorHubGoogleRouter(
       }
 
       const mode = readStringValue(req.body?.mode) === 'link' ? 'link' : 'login';
+      // YouTube-consent er en EGEN bunt/credential (Google avviser youtube +
+      // Workspace-bunten i samme request) — kun gyldig i link-modus.
+      const wantsYoutube = mode === 'link' && req.body?.youtube === true;
       const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
-      const targetConnectionUserId = readStringValue(req.body?.targetConnectionUserId)
-        ?? requestUser?.userId
-        ?? null;
-      const targetConnectionEmail = readStringValue(req.body?.targetConnectionEmail)
-        ?? requestUser?.email
-        ?? null;
-
-      if (mode === 'link' && !targetConnectionUserId) {
+      if (mode === 'link' && !requestUser) {
         res.status(401).json({ error: 'Du må være logget inn for å koble Google Workspace.' });
         return;
       }
 
+      const requestedTargetUserId = readStringValue(req.body?.targetConnectionUserId);
+      const canManageAnotherUser = canManageAnotherGoogleConnection(requestUser?.role);
+      if (
+        mode === 'link'
+        && requestedTargetUserId
+        && requestedTargetUserId !== requestUser?.userId
+        && !canManageAnotherUser
+      ) {
+        res.status(403).json({ error: 'Du kan bare koble Google Workspace til din egen bruker.' });
+        return;
+      }
+
+      const targetConnectionUserId = mode === 'link'
+        ? (canManageAnotherUser ? requestedTargetUserId : null) ?? requestUser!.userId
+        : null;
+      const targetConnectionEmail = mode === 'link'
+        ? (
+            canManageAnotherUser
+              ? readStringValue(req.body?.targetConnectionEmail) ?? requestUser!.email
+              : requestUser!.email
+          )
+        : null;
+
       const stateId = `chg_${crypto.randomUUID()}`;
-      creatorHubGoogleOauthStateStore.set(stateId, {
+      const oauthState: CreatorHubGoogleOauthState = {
         mode,
         returnPath: sanitizeReturnPath(req.body?.returnPath),
-        browserOrigin: sanitizeBrowserOrigin(req.body?.browserOrigin) ?? resolveRequestOrigin(req),
+        browserOrigin:
+          sanitizeBrowserOrigin(req.body?.browserOrigin)
+          ?? resolveRequestOrigin(req)
+          ?? 'https://creatorhubn.com',
+        // Keep Google's registered callback separate from the final browser
+        // destination. Satellite apps such as EaseVerse finish on their own
+        // trusted origin, while Google still returns to CreatorHub.
+        redirectUri: config.redirectUri,
         createdByUserId: requestUser?.userId ?? null,
         createdByEmail: requestUser?.email ?? null,
         targetConnectionUserId,
         targetConnectionEmail,
+        youtube: wantsYoutube,
         createdAt: Date.now(),
-      });
+      };
+      const statePersisted = await persistOauthState(
+        pool,
+        stateId,
+        oauthState,
+        new Date(oauthState.createdAt + CREATORHUB_GOOGLE_STATE_TTL_MS),
+      );
+      if (!statePersisted) {
+        res.status(503).json({
+          error: 'Google-innlogging er midlertidig utilgjengelig. Prøv igjen om litt.',
+        });
+        return;
+      }
+      creatorHubGoogleOauthStateStore.set(stateId, oauthState);
 
       const oauthClient = new google.auth.OAuth2(
         config.clientId!,
@@ -673,8 +919,13 @@ export function createCreatorHubGoogleRouter(
       const loginHint = targetConnectionEmail ?? requestUser?.email ?? readStringValue(req.body?.email);
       const authorizationUrl = oauthClient.generateAuthUrl({
         access_type: 'offline',
-        scope: [...CREATORHUB_GOOGLE_SCOPES],
-        include_granted_scopes: true,
+        scope: wantsYoutube ? [...CREATORHUB_YOUTUBE_SCOPES] : [...CREATORHUB_GOOGLE_SCOPES],
+        // ALDRI true: Google fletter da kontoens TIDLIGERE grants (f.eks. gamle
+        // youtube.upload/yt-analytics-grants fra før scope-oppryddingen) inn i
+        // requesten og avviser hele innloggingen med «scopes that cannot be
+        // requested together» (400 invalid_request). Bunten over er komplett,
+        // så flagget tilfører ingenting.
+        include_granted_scopes: false,
         prompt: 'consent',
         state: stateId,
         ...(loginHint ? { login_hint: loginHint } : {}),
@@ -718,28 +969,23 @@ export function createCreatorHubGoogleRouter(
 
     const stateId = readStringValue(req.query.state);
     const code = readStringValue(req.query.code);
-    const oauthState = stateId ? creatorHubGoogleOauthStateStore.get(stateId) : null;
+    const oauthState = stateId
+      ? await consumeOauthState<CreatorHubGoogleOauthState>(pool, stateId)
+      : null;
+    if (stateId) {
+      creatorHubGoogleOauthStateStore.delete(stateId);
+    }
     if (!oauthState || !code) {
       redirectWithError(oauthState?.returnPath ?? fallbackReturnPath, 'Ugyldig CreatorHub Google-forespørsel', oauthState?.browserOrigin);
       return;
     }
 
-    creatorHubGoogleOauthStateStore.delete(stateId!);
-
     try {
-      // Slice 9X.61 — Bygg redirect_uri fra oauthState.browserOrigin (lagret
-      // ved /oauth/start) i stedet for config.redirectUri (som er request-
-      // derived). Token exchange MÅ bruke SAMME redirect_uri som ble sendt
-      // til Google ved auth-start, ellers svarer Google redirect_uri_mismatch.
-      //
-      // Bug-en oppsto fordi callback-en kommer fra Google (Referer =
-      // accounts.google.com), så resolveGoogleWorkspaceRequestOrigin
-      // returnerte 'https://accounts.google.com' — som ble brukt som
-      // redirect_uri i token-exchange. Mismatch med originalen
-      // (https://creatorhubn.com/...) → Google avviste.
-      const tokenExchangeRedirectUri = oauthState.browserOrigin
-        ? `${oauthState.browserOrigin}/api/creatorhub/google/oauth/callback`
-        : config.redirectUri!;
+      // Always use the callback URI that was registered when this OAuth state
+      // was created. The final browser destination may be another trusted
+      // CreatorHub product (for example EaseVerse), but it is not Google's
+      // redirect_uri and must never influence the token exchange.
+      const tokenExchangeRedirectUri = oauthState.redirectUri ?? config.redirectUri!;
       const oauthClient = new google.auth.OAuth2(
         config.clientId!,
         config.clientSecret!,
@@ -801,7 +1047,7 @@ export function createCreatorHubGoogleRouter(
         await persistAuthSession(pool, sessionToken, sessionData);
 
         const transferId = crypto.randomUUID();
-        creatorHubGoogleTransferStore.set(transferId, {
+        const transferPayload: CreatorHubGoogleTransferPayload = {
           mode: 'login',
           createdAt: Date.now(),
           createdByUserId: resolvedUser.userId,
@@ -819,7 +1065,22 @@ export function createCreatorHubGoogleRouter(
           googleEmail,
           googleSubject,
           profile: googleProfile,
-        });
+        };
+        const transferPersisted = await persistOauthTransfer(
+          pool,
+          transferId,
+          transferPayload,
+          new Date(transferPayload.createdAt + CREATORHUB_GOOGLE_TRANSFER_TTL_MS),
+        );
+        if (!transferPersisted) {
+          redirectWithError(
+            oauthState.returnPath,
+            'Kunne ikke fullføre Google-innloggingen. Prøv igjen.',
+            oauthState.browserOrigin,
+          );
+          return;
+        }
+        creatorHubGoogleTransferStore.set(transferId, transferPayload);
 
         res.redirect(
           buildCreatorHubGoogleReturnUrl(
@@ -842,10 +1103,13 @@ export function createCreatorHubGoogleRouter(
         return;
       }
 
+      const linkOauthApp: GoogleWorkspaceOauthApp = oauthState.youtube
+        ? 'creatorhub_youtube'
+        : CREATORHUB_GOOGLE_OAUTH_APP;
       const existingSubjectConnection = await getGoogleConnectionBySubject(
         pool,
         googleSubject,
-        CREATORHUB_GOOGLE_OAUTH_APP,
+        linkOauthApp,
       );
       if (existingSubjectConnection && existingSubjectConnection.user_id !== linkTargetUserId) {
         redirectWithError(
@@ -857,7 +1121,7 @@ export function createCreatorHubGoogleRouter(
       }
 
       const transferId = crypto.randomUUID();
-      creatorHubGoogleTransferStore.set(transferId, {
+      const transferPayload: CreatorHubGoogleTransferPayload = {
         mode: 'link',
         createdAt: Date.now(),
         createdByUserId: oauthState.createdByUserId ?? null,
@@ -866,9 +1130,25 @@ export function createCreatorHubGoogleRouter(
         targetConnectionEmail: linkTargetEmail,
         googleEmail,
         googleSubject,
+        youtube: oauthState.youtube === true,
         profile: googleProfile,
         tokenBundle,
-      });
+      };
+      const transferPersisted = await persistOauthTransfer(
+        pool,
+        transferId,
+        transferPayload,
+        new Date(transferPayload.createdAt + CREATORHUB_GOOGLE_TRANSFER_TTL_MS),
+      );
+      if (!transferPersisted) {
+        redirectWithError(
+          oauthState.returnPath,
+          'Kunne ikke fullføre Google-tilkoblingen. Prøv igjen.',
+          oauthState.browserOrigin,
+        );
+        return;
+      }
+      creatorHubGoogleTransferStore.set(transferId, transferPayload);
 
       res.redirect(
         buildCreatorHubGoogleReturnUrl(
@@ -929,7 +1209,12 @@ export function createCreatorHubGoogleRouter(
         return;
       }
 
-      const payload = creatorHubGoogleTransferStore.get(transferId);
+      const cachedPayload = creatorHubGoogleTransferStore.get(transferId);
+      let payload = cachedPayload
+        ?? await loadOauthTransfer<CreatorHubGoogleTransferPayload>(pool, transferId);
+      if (payload?.mode === 'login') {
+        payload = await consumeOauthTransfer<CreatorHubGoogleTransferPayload>(pool, transferId);
+      }
       if (!payload) {
         res.status(404).json({ error: 'Google-overføringen er utløpt eller brukt' });
         return;
@@ -937,6 +1222,19 @@ export function createCreatorHubGoogleRouter(
 
       if (payload.mode === 'login') {
         creatorHubGoogleTransferStore.delete(transferId);
+      } else {
+        const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
+        if (!requestUser) {
+          res.status(401).json({ error: 'Du må være logget inn for å hente Google-koblingen.' });
+          return;
+        }
+        if (!payload.createdByUserId || payload.createdByUserId !== requestUser.userId) {
+          res.status(403).json({ error: 'Google-koblingen tilhører en annen innlogget bruker.' });
+          return;
+        }
+        if (!cachedPayload) {
+          creatorHubGoogleTransferStore.set(transferId, payload);
+        }
       }
 
       res.json({
@@ -959,16 +1257,33 @@ export function createCreatorHubGoogleRouter(
 
   router.post('/link', async (req: Request, res: Response) => {
     try {
+      pruneExpiredCreatorHubGoogleState();
       const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
+      if (!requestUser) {
+        res.status(401).json({ error: 'Du må være logget inn for å fullføre Google-koblingen.' });
+        return;
+      }
+
       const transferId = readStringValue(req.body?.transferId);
       if (!transferId) {
         res.status(400).json({ error: 'transferId er påkrevd' });
         return;
       }
 
-      const payload = creatorHubGoogleTransferStore.get(transferId);
+      let payload = creatorHubGoogleTransferStore.get(transferId);
+      if (!payload) {
+        payload = await loadOauthTransfer<CreatorHubGoogleTransferPayload>(pool, transferId) ?? undefined;
+        if (payload) {
+          creatorHubGoogleTransferStore.set(transferId, payload);
+        }
+      }
       if (!payload || payload.mode !== 'link' || !payload.tokenBundle) {
         res.status(404).json({ error: 'Fant ikke en gyldig CreatorHub Google-kobling å fullføre' });
+        return;
+      }
+
+      if (!payload.createdByUserId || payload.createdByUserId !== requestUser.userId) {
+        res.status(403).json({ error: 'Google-koblingen tilhører en annen innlogget bruker.' });
         return;
       }
 
@@ -976,6 +1291,13 @@ export function createCreatorHubGoogleRouter(
       const roleRoomEmail = payload.targetConnectionEmail ?? requestUser?.email ?? null;
       if (!userId) {
         res.status(401).json({ error: 'Fant ikke brukeren som skal kobles til Google Workspace' });
+        return;
+      }
+      if (
+        userId !== requestUser.userId
+        && !canManageAnotherGoogleConnection(requestUser.role)
+      ) {
+        res.status(403).json({ error: 'Du kan bare koble Google Workspace til din egen bruker.' });
         return;
       }
 
@@ -986,10 +1308,11 @@ export function createCreatorHubGoogleRouter(
         googleSubject: payload.googleSubject,
         googleProfile: payload.profile,
         tokenBundle: payload.tokenBundle,
-        oauthApp: CREATORHUB_GOOGLE_OAUTH_APP,
+        oauthApp: payload.youtube ? 'creatorhub_youtube' : CREATORHUB_GOOGLE_OAUTH_APP,
       });
 
       creatorHubGoogleTransferStore.delete(transferId);
+      await deleteOauthTransfer(pool, transferId);
 
       res.json({
         success: true,

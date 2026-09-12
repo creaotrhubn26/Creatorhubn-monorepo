@@ -20,6 +20,9 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { canEditProject } from "./project-team-routes.js";
+import { isSupportedPlatform } from "./role-room-feed-plan.js";
+import { applyFeedPostImageLocked } from "./role-room-feed-post-image.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -44,23 +47,6 @@ function getUserIdFromRequest(
   return null;
 }
 
-async function viewerCanEditProject(
-  pool: Pool,
-  projectId: string,
-  viewerId: string,
-): Promise<boolean> {
-  const { rows } = await pool.query<{ owns: boolean; member: boolean }>(
-    `SELECT
-       EXISTS(SELECT 1 FROM casting_projects
-               WHERE id = $1 AND created_by = $2) AS owns,
-       EXISTS(SELECT 1 FROM casting_user_roles
-               WHERE project_id = $1 AND user_id = $2
-                 AND deactivated_at IS NULL) AS member`,
-    [projectId, viewerId],
-  );
-  return rows[0]?.owns === true || rows[0]?.member === true;
-}
-
 export function registerRoleRoomFeedPlanThumbnailRoutes(
   app: Express, deps: Deps,
 ): void {
@@ -75,7 +61,7 @@ export function registerRoleRoomFeedPlanThumbnailRoutes(
       }
 
       const { projectId, platform, postId } = req.params;
-      if (!projectId || !platform || !postId) {
+      if (!projectId || !isSupportedPlatform(platform) || !postId) {
         res.status(400).json({ error: "mangler_parametere" }); return;
       }
 
@@ -103,51 +89,34 @@ export function registerRoleRoomFeedPlanThumbnailRoutes(
         ? body.fileName.slice(0, MAX_FILE_NAME_LENGTH) : null;
 
       try {
-        const allowed = await viewerCanEditProject(pool, projectId, viewerId);
+        const allowed = await canEditProject(pool, viewerId, projectId);
         if (!allowed) {
           res.status(403).json({ error: "ingen_tilgang" }); return;
         }
 
-        const { rows } = await pool.query(
-          `SELECT posts FROM role_room_feed_plans
-            WHERE project_id = $1 AND platform = $2
-            LIMIT 1`,
-          [projectId, platform],
-        );
-        if (rows.length === 0) {
-          res.status(404).json({ error: "feed_plan_ikke_funnet" }); return;
+        const customImageName = fileName ?? `thumbnail-${postId.slice(0, 8)}.png`;
+        const applied = await applyFeedPostImageLocked(pool, {
+          workspaceProjectId: projectId,
+          platform,
+          feedPostId: postId,
+          imageDataUrl: dataUrl,
+          imageName: customImageName,
+          updatedBy: viewerId,
+        });
+        if (!applied.ok) {
+          const error = applied.reason === "feed_plan_not_found"
+            ? "feed_plan_ikke_funnet"
+            : "post_ikke_funnet_i_plan";
+          res.status(404).json({ error }); return;
         }
-
-        const posts = Array.isArray(rows[0].posts)
-          ? (rows[0].posts as Array<Record<string, unknown>>) : [];
-        const idx = posts.findIndex(p => String(p.id) === postId);
-        if (idx === -1) {
-          res.status(404).json({ error: "post_ikke_funnet_i_plan" }); return;
-        }
-
-        // Oppdater kun customImageUrl + customImageName på den ene posten.
-        // Vi beholder all annen state (approval, hashtags, schedule, etc).
-        posts[idx] = {
-          ...posts[idx],
-          customImageUrl: dataUrl,
-          customImageName: fileName ?? `thumbnail-${postId.slice(0, 8)}.png`,
-        };
-
-        await pool.query(
-          `UPDATE role_room_feed_plans
-              SET posts = $1::jsonb,
-                  updated_by = $2,
-                  updated_at = now()
-            WHERE project_id = $3 AND platform = $4`,
-          [JSON.stringify(posts), viewerId, projectId, platform],
-        );
 
         res.json({
           ok: true,
           postId,
           projectId,
           platform,
-          customImageName: posts[idx].customImageName,
+          customImageName,
+          changed: applied.changed,
           sourceLayout: typeof body?.sourceLayout === "string"
             ? body.sourceLayout : null,
           sourceFrameSec: typeof body?.sourceFrameSec === "number"

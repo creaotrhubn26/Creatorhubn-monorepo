@@ -87,7 +87,7 @@ function LandingHeroImpl({ introShowing }: LandingHeroProps) {
     display: 'inline-block',
     width: '2px',
     height: '0.85em',
-    bgcolor: '#8b5cf6',
+    bgcolor: 'var(--role-violet, #8b5cf6)',
     ml: '2px',
     verticalAlign: 'middle',
     transition: 'opacity 0.15s',

@@ -27,6 +27,7 @@ import {
   Typography,
 } from '@mui/material';
 import { Construction as ConstructionIcon } from '@mui/icons-material';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import useBrandingSettings from '../hooks/useBrandingSettings';
 import {
   getActiveProfessionMode,
@@ -613,6 +614,17 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
     return tabs[0]?.id ?? 'dashboard';
   });
 
+  // Alle fane-bytter MÅ gå gjennom en transition. Flere faner er lazy-lastet
+  // (Formations/Analyse/Choreography/Video via React.lazy) — å bytte til dem
+  // suspenderer chunken. Skjer det som svar på synkron input (klikk i nav-rail,
+  // ⌘K, swipe) mens forrige fane er synlig, kaster React #426 ('suspended
+  // while responding to synchronous input') — nøyaktig samme klasse som
+  // workspace-picker→prosjekt-buggen. startTransition lar React holde forrige
+  // fane synlig til chunken er klar i stedet for å kaste.
+  const selectTab = React.useCallback((id: string) => {
+    React.startTransition(() => setActiveTabId(id));
+  }, []);
+
   // Sync ?tab=<id> til URL ved bytte — uten å trigge full nav.
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -628,7 +640,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
     const onSetTab = (e: Event): void => {
       const detail = (e as CustomEvent<{ tabId?: string }>).detail;
       if (detail && typeof detail.tabId === 'string') {
-        setActiveTabId(detail.tabId);
+        selectTab(detail.tabId);
       }
     };
     window.addEventListener('dance:set-tab', onSetTab as EventListener);
@@ -770,7 +782,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
     if (idx < 0) return;
     const nextIdx = dx < 0 ? idx + 1 : idx - 1;
     if (nextIdx < 0 || nextIdx >= visibleTabs.length) return;
-    setActiveTabId(visibleTabs[nextIdx].id);
+    selectTab(visibleTabs[nextIdx].id);
   };
 
   const renderTabBody = (tab: TabConfig): React.ReactElement => {
@@ -997,7 +1009,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
         </Box>
         <Tabs
           value={activeTab.id}
-          onChange={(_, value) => setActiveTabId(value)}
+          onChange={(_, value) => selectTab(value)}
           variant="scrollable"
           scrollButtons="auto"
           allowScrollButtonsMobile
@@ -1046,7 +1058,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
               feature: t.feature,
             }))}
             activeId={activeTab.id}
-            onSelect={setActiveTabId}
+            onSelect={selectTab}
           />
         </Box>
         <Box
@@ -1055,6 +1067,40 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
           onTouchEnd={onTouchEnd}
           sx={{ flex: 1, minHeight: 0, minWidth: 0 }}
         >
+          {/* MODUL-boundary per fane. Keyet på activeTab.id så et krasj er
+              isolert til den ene fanen — nav-rail, header og de andre fanene
+              overlever, og å bytte fane nullstiller boundaryen (recovery uten
+              full reload). Sammen med startTransition-fiksen betyr det at dans
+              hverken kaster #426 NÅ eller kan svartelegge appen SENERE. */}
+          <ErrorBoundary
+            key={activeTab.id}
+            componentName={`dance-tab:${activeTab.id}`}
+            context={{ tab: activeTab.id }}
+            fallback={
+              <Box
+                data-testid="dance-tab-error"
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 1,
+                  py: 6,
+                  px: 3,
+                  textAlign: 'center',
+                  color: danceFlowColors.lavender,
+                }}
+              >
+                <Typography sx={{ fontSize: 13, fontWeight: 700 }}>
+                  Denne fanen kunne ikke vises
+                </Typography>
+                <Typography sx={{ fontSize: 12, opacity: 0.7 }}>
+                  Feilen er isolert til dette panelet — resten av arbeidsflaten
+                  virker. Bytt fane og prøv igjen.
+                </Typography>
+              </Box>
+            }
+          >
           <React.Suspense
             fallback={
               <Box
@@ -1076,6 +1122,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
           >
             {renderTabBody(activeTab)}
           </React.Suspense>
+          </ErrorBoundary>
         </Box>
       </Box>
 
@@ -1090,7 +1137,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
               description: t.descriptionToken ? labels[t.descriptionToken] : undefined,
               category: 'Hopp til' as const,
               keywords: [t.id, tabLabel.toLowerCase()],
-              onSelect: () => setActiveTabId(t.id),
+              onSelect: () => selectTab(t.id),
             };
           }),
           // Audit D1: formation-actions tilgjengelig fra ⌘K palette.
@@ -1102,7 +1149,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
             category: 'Kreativt' as const,
             keywords: ['ny', 'opprett', 'create', 'formasjon'],
             onSelect: () => {
-              setActiveTabId('formations');
+              selectTab('formations');
               // Dispatchen leses av FormationView's create-listener.
               // Bruker 0 hvis ingen video — bedre enn å gjøre ingenting.
               const vTime = (window as Window & { __dancePlayhead?: number }).__dancePlayhead ?? 0;
@@ -1118,7 +1165,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
             category: 'Handling' as const,
             keywords: ['pdf', 'print', 'stage', 'plot', 'export'],
             onSelect: () => {
-              setActiveTabId('formations');
+              selectTab('formations');
               window.dispatchEvent(
                 new CustomEvent('dance:export-formation', { detail: { format: 'pdf' } }),
               );
@@ -1131,7 +1178,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
             category: 'Handling' as const,
             keywords: ['png', 'bilde', 'snapshot', 'export'],
             onSelect: () => {
-              setActiveTabId('formations');
+              selectTab('formations');
               window.dispatchEvent(
                 new CustomEvent('dance:export-formation', { detail: { format: 'png' } }),
               );
@@ -1144,7 +1191,7 @@ const DanceWorkspaceInner: React.FC<DanceWorkspaceProps> = ({ modeOverride, proj
             category: 'Handling' as const,
             keywords: ['json', 'backup', 'export'],
             onSelect: () => {
-              setActiveTabId('formations');
+              selectTab('formations');
               window.dispatchEvent(
                 new CustomEvent('dance:export-formation', { detail: { format: 'json' } }),
               );

@@ -37,7 +37,7 @@ const REVIEW_TYPE_LABELS: Record<string, string> = {
   framework_alignment: 'Retning / idé / aktivering',
   phase_checkpoint: 'Fasepunkt',
   content_delivery: 'Innholdsleveranse',
-  account_access: 'Kontotilgang',
+  account_access: 'Hvem har tilgang',
   scene_notes: 'Scenenotater',
   location_plan: 'Lokasjonsplan',
   equipment_plan: 'Utstyrsplan',
@@ -51,13 +51,13 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   shot: 'Shot',
   economy: 'Økonomi',
   project_agreement: 'Prosjektavtale',
-  client_review: 'Klientreview',
-  client_intake: 'Klientbrief',
+  client_review: 'Kundegjennomgang',
+  client_intake: 'Brief fra kunden',
   planning_framework: 'Retning / idé / aktivering',
   phase_plan: 'Faseplan',
-  content_calendar: 'Content-kalender',
-  account_access: 'Kontotilgang',
-  client_material: 'Klientmateriale',
+  content_calendar: 'Innholdskalender',
+  account_access: 'Hvem har tilgang',
+  client_material: 'Materiale fra kunden',
   meeting_decision: 'Møtebeslutning',
   meeting_follow_up: 'Møteoppfølging',
   meeting_workspace: 'Møteplan',
@@ -73,7 +73,7 @@ const REVIEW_STATUS_LABELS: Record<string, string> = {
 const TIMELINE_STATUS_LABELS: Record<string, string> = {
   planned: 'Planlagt',
   in_progress: 'Pågår',
-  blocked: 'Blokkert',
+  blocked: 'Mangler',
   completed: 'Fullført',
 };
 
@@ -81,7 +81,7 @@ const ECONOMY_STATUS_LABELS: Record<string, string> = {
   draft: 'Utkast',
   pending_approval: 'Venter på godkjenning',
   approved: 'Godkjent',
-  blocked: 'Blokkert',
+  blocked: 'Mangler',
   completed: 'Fullført',
 };
 

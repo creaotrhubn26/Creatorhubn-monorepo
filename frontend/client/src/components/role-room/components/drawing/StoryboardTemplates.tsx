@@ -796,7 +796,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
       width: safeCustomWidth,
       height: safeCustomHeight,
       description: `Custom ${safeCustomWidth}:${safeCustomHeight}`,
-      color: '#8b5cf6',
+      color: 'var(--role-violet, #8b5cf6)',
     };
     
     const template = createTemplateFromPreset(customPreset, canvasWidth, canvasHeight);
@@ -867,7 +867,7 @@ export const StoryboardTemplates: React.FC<StoryboardTemplatesProps> = ({
               <IconButton
                 size="small"
                 onClick={() => setShowCustomDialog(true)}
-                sx={{ color: '#8b5cf6' }}
+                sx={{ color: 'var(--role-violet, #8b5cf6)' }}
               >
                 <Add />
               </IconButton>

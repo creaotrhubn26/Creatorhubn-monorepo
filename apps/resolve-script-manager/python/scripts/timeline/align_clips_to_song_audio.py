@@ -375,6 +375,8 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         sys.exit(1)
 
     usable = [s for s in segments if not s.get("error") and not s.get("skip")]
+    for segment in usable:
+        segment["clipName"] = os.path.basename(segment.get("clipPath") or "")
     bridge.log(
         f"Matched {len(usable)}/{len(segments)} clips above confidence ≥ {min_confidence}"
     )
@@ -425,6 +427,11 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         "audioExtracted": len(clip_audio),
         "matched": len(usable),
         "skipped": len(segments) - len(usable),
+        "averageMatchConfidence": round(
+            sum(float(segment.get("matchConfidence") or 0) for segment in usable) / max(1, len(usable)),
+            3,
+        ),
+        "segments": usable,
         "samples": usable[:10],
     })
 

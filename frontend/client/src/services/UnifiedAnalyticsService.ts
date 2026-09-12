@@ -4,6 +4,7 @@
 
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useCallback } from 'react';
+import { apiRequest } from '@/lib/queryClient';
 
 export type AnalyticsEventType =
   | 'navigation'
@@ -72,16 +73,15 @@ export const useUnifiedAnalytics = () => {
         events.splice(0, events.length - 1000);
       }
 
-      fetch('/api/user/kv', {
-        method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ key: 'analytics-events', value: events })
+      apiRequest('/api/user/kv', {
+        method: 'POST',
+        body: JSON.stringify({ key: 'analytics-events', value: events }),
       }).catch(() => {});
       localStorage.setItem('analytics-events', JSON.stringify(events));
 
       // Send to server (best-effort)
-      fetch('/api/analytics/track', {
+      apiRequest('/api/analytics/track', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify({ eventType: `${type}:${action}`, eventData: event, userId: undefined }),
       }).catch(() => {});
 
@@ -154,10 +154,11 @@ export const useUnifiedAnalytics = () => {
   const getAnalyticsSummary = useCallback(() => {
     // Server-first synchronous fetch not possible here; use local with best-effort async refresh
     const events: AnalyticsEvent[] = JSON.parse(localStorage.getItem('analytics-events') || '[]');
-    fetch('/api/user/kv/analytics-events', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        const v = j && typeof j === 'object' && 'value' in j ? j.value : j;
+    apiRequest('/api/user/kv/analytics-events')
+      .then((j: unknown) => {
+        const v = j && typeof j === 'object' && 'value' in (j as Record<string, unknown>)
+          ? (j as Record<string, unknown>).value
+          : j;
         if (Array.isArray(v)) {
           localStorage.setItem('analytics-events', JSON.stringify(v));
         }

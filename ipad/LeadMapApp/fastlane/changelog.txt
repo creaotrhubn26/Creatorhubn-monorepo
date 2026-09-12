@@ -1,0 +1,14 @@
+Leadgrid 2.2
+
+• Ny prosjekt- og rolleavgrenset produktguide viser veien fra prosjektvalg og Discovery til godkjente leads og oppfølging.
+• De 13 hovedområdene er samlet i tydelige grupper, Agent er synlig uten scrolling, og skjermtittelen beholdes på iPad mini og i Split View.
+• Ny enkel Discovery-flyt med tre tydelige steg, og avansertmodus for alle detaljer.
+• Opprett eller gjenbruk et kundeprosjekt ved å skrive inn domenet, med forslag til komplett Discovery-profil.
+• Dentum har fått sju e-postmaler for tannklinikker, automatisk tilpasset valgt lead, kontaktperson, område og status.
+• E-post kan finjusteres i Leadgrid før den åpnes i brukerens valgte e-postapp.
+• Ny personvernkontroll for e-post: verifiserte fellesadresser, dokumentert samtykke/kundeforhold og en organisasjonsomfattende «nei takk»-sperre.
+• Strengere prosjektisolasjon holder Dentum og andre kunder adskilt, også for Pondus-maler, økter og statistikk.
+• Leadbook, Møter, Pondus, Kvalitet og Anbud er forbedret for iPad mini og kompakte visninger.
+• Aktivt prosjekt vises nå i alle hovedfaner, og Anbud-headeren er rettet på iPad mini.
+• Bedre navigasjon og støtte for store tekststørrelser på iPhone og iPad.
+• Kandidater må fortsatt godkjennes før de blir leads.

@@ -80,7 +80,7 @@ interface DitBackupJob {
 
 const DEST_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   original: { label: 'Original', color: '#94a3b8' },
-  primary: { label: 'Primary', color: '#22d3ee' },
+  primary: { label: 'Primary', color: 'var(--role-cyan, #22d3ee)' },
   secondary: { label: 'Secondary', color: '#a78bfa' },
   offsite: { label: 'Offsite', color: '#f59e0b' },
   archive: { label: 'Archive', color: '#10b981' },
@@ -115,7 +115,8 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
   const [tokens, setTokens] = useState<DitHelperToken[]>([]);
   const [jobs, setJobs] = useState<DitBackupJob[]>([]);
   const [loading, setLoading] = useState(false);
-  const [newToken, setNewToken] = useState<{ token: string; expires_at: string } | null>(null);
+  const [newToken, setNewToken] = useState<{ token: string; expires_at: string; connection_url?: string } | null>(null);
+  const [copyMode, setCopyMode] = useState<'connection' | 'token'>('connection');
   const [copyConfirm, setCopyConfirm] = useState(false);
   const [addDestOpen, setAddDestOpen] = useState(false);
   const [destDraft, setDestDraft] = useState({
@@ -169,7 +170,11 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
-      setNewToken({ token: data.token, expires_at: data.expires_at });
+      setNewToken({
+        token: data.token,
+        expires_at: data.expires_at,
+        connection_url: typeof data.connection_url === 'string' ? data.connection_url : undefined,
+      });
       loadAll();
     } catch (err) {
       window.alert(`Kunne ikke generere token: ${(err as Error).message}`);
@@ -238,12 +243,15 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
 
   const copyTokenToClipboard = async () => {
     if (!newToken) return;
+    const valueToCopy = copyMode === 'connection' && newToken.connection_url
+      ? newToken.connection_url
+      : newToken.token;
     try {
-      await navigator.clipboard.writeText(newToken.token);
+      await navigator.clipboard.writeText(valueToCopy);
       setCopyConfirm(true);
       setTimeout(() => setCopyConfirm(false), 1500);
     } catch {
-      window.prompt('Kopiér manuelt:', newToken.token);
+      window.prompt('Kopiér manuelt:', valueToCopy);
     }
   };
 
@@ -280,7 +288,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
           borderBottom: '1px solid rgba(148,163,184,0.16)',
           '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, color: 'rgba(226,232,240,0.78)', minHeight: 40, fontSize: '0.84rem' },
           '& .Mui-selected': { color: '#f8fafc' },
-          '& .MuiTabs-indicator': { backgroundColor: '#22d3ee' },
+          '& .MuiTabs-indicator': { backgroundColor: 'var(--role-cyan, #22d3ee)' },
         }}
       >
         <Tab value="jobs" label={`Jobs (${jobs.length})`} />
@@ -377,7 +385,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                 size="small"
                 startIcon={<AddIcon />}
                 onClick={() => setAddDestOpen(true)}
-                sx={{ color: '#22d3ee', textTransform: 'none' }}
+                sx={{ color: 'var(--role-cyan, #22d3ee)', textTransform: 'none' }}
               >
                 Ny destinasjon
               </Button>
@@ -421,7 +429,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
               <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.82rem' }}>
                 Helper-tokens lar CLI-en på DIT-station rapportere status. Token vises kun EN gang ved generering.
               </Typography>
-              <Button size="small" startIcon={<AddIcon />} onClick={generateToken} sx={{ color: '#22d3ee', textTransform: 'none', flexShrink: 0 }}>
+              <Button size="small" startIcon={<AddIcon />} onClick={generateToken} sx={{ color: 'var(--role-cyan, #22d3ee)', textTransform: 'none', flexShrink: 0 }}>
                 Generér
               </Button>
             </Stack>
@@ -431,6 +439,45 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                 <Typography sx={{ color: '#fcd34d', fontWeight: 700, fontSize: '0.82rem', mb: 1 }}>
                   ⚠ Kopiér nå — vises ikke igjen
                 </Typography>
+
+                {/* Toggle mellom connection-URL (anbefalt for One Desk-appen,
+                    inneholder både prosjekt-ID og token i én streng) og rå
+                    token (for CLI / scripts). */}
+                {newToken.connection_url && (
+                  <Stack direction="row" spacing={0.5} sx={{ mb: 1 }}>
+                    <Button
+                      size="small"
+                      onClick={() => setCopyMode('connection')}
+                      sx={{
+                        textTransform: 'none',
+                        fontSize: '0.7rem',
+                        px: 1,
+                        py: 0.25,
+                        bgcolor: copyMode === 'connection' ? 'rgba(251,191,36,0.18)' : 'transparent',
+                        color: copyMode === 'connection' ? '#fcd34d' : 'rgba(203,213,225,0.6)',
+                        borderRadius: 0.75,
+                      }}
+                    >
+                      Connection-URL (for One Desk-app)
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => setCopyMode('token')}
+                      sx={{
+                        textTransform: 'none',
+                        fontSize: '0.7rem',
+                        px: 1,
+                        py: 0.25,
+                        bgcolor: copyMode === 'token' ? 'rgba(251,191,36,0.18)' : 'transparent',
+                        color: copyMode === 'token' ? '#fcd34d' : 'rgba(203,213,225,0.6)',
+                        borderRadius: 0.75,
+                      }}
+                    >
+                      Rå token (CLI)
+                    </Button>
+                  </Stack>
+                )}
+
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Typography sx={{
                     flex: 1,
@@ -443,7 +490,9 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                     overflow: 'auto',
                     whiteSpace: 'nowrap',
                   }}>
-                    {newToken.token}
+                    {copyMode === 'connection' && newToken.connection_url
+                      ? newToken.connection_url
+                      : newToken.token}
                   </Typography>
                   <Button
                     size="small"
@@ -456,6 +505,9 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
                 </Stack>
                 <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.74rem', mt: 1 }}>
                   Utløper: {new Date(newToken.expires_at).toLocaleString('nb-NO')}
+                  {newToken.connection_url && copyMode === 'connection' && (
+                    <> · Lim inn direkte i Creatorhub One Desk-appen.</>
+                  )}
                 </Typography>
                 <Button size="small" onClick={() => setNewToken(null)} sx={{ mt: 1, color: 'rgba(203,213,225,0.7)', textTransform: 'none' }}>
                   Lukk
@@ -510,7 +562,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
       <Box sx={{ p: 1.5, borderTop: '1px solid rgba(148,163,184,0.16)', bgcolor: 'rgba(0,0,0,0.32)' }}>
         <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.74rem', textAlign: 'center' }}>
           Native CLI-helper:{' '}
-          <Box component="span" sx={{ fontFamily: 'monospace', color: '#22d3ee' }}>
+          <Box component="span" sx={{ fontFamily: 'monospace', color: 'var(--role-cyan, #22d3ee)' }}>
             npx @theroleroom/dit-helper init
           </Box>
         </Typography>
@@ -587,7 +639,7 @@ export default function LiveSetDitPanel({ open, onClose, projectId }: LiveSetDit
             variant="contained"
             disabled={!destDraft.label.trim() || savingDest}
             onClick={saveDestination}
-            sx={{ bgcolor: '#22d3ee', color: '#0b1120', '&:hover': { bgcolor: '#67e8f9' } }}
+            sx={{ bgcolor: 'var(--role-cyan, #22d3ee)', color: '#0b1120', '&:hover': { bgcolor: '#67e8f9' } }}
           >
             {savingDest ? 'Lagrer…' : 'Opprett'}
           </Button>

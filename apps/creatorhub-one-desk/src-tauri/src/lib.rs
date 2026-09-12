@@ -10,12 +10,15 @@ mod capture_mirror;
 mod capture_subscriber;
 mod copy_engine;
 mod copy_session;
+mod desk_identity;
 mod device_auth;
 mod dit_reporter;
 mod helper_client;
 mod ipad_pairing;
 mod mount_watcher;
+mod prefs;
 mod projects;
+mod session_log;
 
 use std::sync::Arc;
 
@@ -273,6 +276,140 @@ fn rescan_mounts(state: tauri::State<MountWatcherState>) -> Vec<DetectedMount> {
     mount_watcher::rescan(&state)
 }
 
+/// Eject et volum trygt via macOS' `diskutil eject`. Brukes etter
+/// vellykket backup når Fredrik har enabled "auto-eject"-preferansen.
+/// Validerer at path peker til /Volumes/* så vi ikke kan trigge eject
+/// på vilkårlig disk via UI-injection.
+#[tauri::command]
+async fn eject_volume(mount_path: String) -> Result<(), String> {
+    use std::path::Path;
+    let path = Path::new(&mount_path);
+    if !path.starts_with("/Volumes/") {
+        return Err(format!(
+            "Tryggetssjekk: kun /Volumes/* tillates, fikk {}",
+            mount_path
+        ));
+    }
+    let segments: Vec<&std::ffi::OsStr> = path.iter().collect();
+    if segments.len() != 3 {
+        return Err(format!("Forventet /Volumes/<navn>, fikk {}", mount_path));
+    }
+    let output = tokio::process::Command::new("/usr/sbin/diskutil")
+        .args(["eject", &mount_path])
+        .output()
+        .await
+        .map_err(|e| format!("Kjøre diskutil: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "diskutil eject feilet (exit {}): {}{}",
+            output.status.code().unwrap_or(-1),
+            stderr,
+            stdout
+        ));
+    }
+    Ok(())
+}
+
+/// macOS-native notification via osascript. Validerer streng-input for
+/// å hindre AppleScript-injection: double-quotes og backslashes escapes.
+#[tauri::command]
+async fn macos_notification(title: String, body: String) -> Result<(), String> {
+    let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
+    let script = format!(
+        "display notification \"{}\" with title \"{}\" sound name \"Glass\"",
+        esc(&body),
+        esc(&title)
+    );
+    let output = tokio::process::Command::new("/usr/bin/osascript")
+        .arg("-e")
+        .arg(&script)
+        .output()
+        .await
+        .map_err(|e| format!("osascript: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "osascript feilet (exit {}): {}",
+            output.status.code().unwrap_or(-1),
+            stderr
+        ));
+    }
+    Ok(())
+}
+
+/// Returnerer auto_eject-preferansen fra ~/.creatorhub-one-desk/prefs.json.
+/// Hvis fila eller feltet ikke fins, returnerer false (opt-in).
+#[tauri::command]
+fn get_auto_eject_pref() -> Result<bool, String> {
+    prefs::load().map(|p| p.auto_eject)
+}
+
+#[tauri::command]
+fn set_auto_eject_pref(auto_eject: bool) -> Result<(), String> {
+    let mut p = prefs::load().unwrap_or_default();
+    p.auto_eject = auto_eject;
+    prefs::save(&p)
+}
+
+/// Pre-flight kapasitets-sjekk: gitt dest-paths + bytes som skal skrives,
+/// returner status per dest. Brukes av BackupDialog FØR start_copy_session.
+#[derive(serde::Serialize)]
+struct DestCapacity {
+    path: String,
+    total_bytes: Option<u64>,
+    free_bytes: Option<u64>,
+    needed_bytes: u64,
+    sufficient: bool,
+    safe_margin: bool,
+}
+
+#[tauri::command]
+fn check_destinations_capacity(
+    dest_paths: Vec<String>,
+    bytes_needed: u64,
+) -> Vec<DestCapacity> {
+    dest_paths
+        .into_iter()
+        .map(|path| {
+            let stats = mount_watcher::capacity_for_path(std::path::Path::new(&path));
+            let (total, free) = match stats {
+                Some((t, f)) => (Some(t), Some(f)),
+                None => (None, None),
+            };
+            let sufficient = match free {
+                Some(f) => f >= bytes_needed,
+                None => true,
+            };
+            let safe_margin = match free {
+                Some(f) => (bytes_needed as f64) <= (f as f64) * 0.95,
+                None => true,
+            };
+            DestCapacity {
+                path,
+                total_bytes: total,
+                free_bytes: free,
+                needed_bytes: bytes_needed,
+                sufficient,
+                safe_margin,
+            }
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn get_prefs() -> Result<prefs::Prefs, String> {
+    prefs::load()
+}
+
+#[tauri::command]
+fn save_default_dest_ids(dest_ids: Vec<String>) -> Result<(), String> {
+    let mut p = prefs::load().unwrap_or_default();
+    p.default_dest_ids = dest_ids;
+    prefs::save(&p)
+}
+
 #[tauri::command]
 async fn start_copy_session(
     app: tauri::AppHandle,
@@ -300,6 +437,33 @@ fn cancel_copy_session(
 #[tauri::command]
 fn list_copy_sessions(state: tauri::State<Arc<CopySessionState>>) -> Vec<SessionStatus> {
     state.list()
+}
+
+// ── Crash-recovery (session_log) ─────────────────────────────────────
+// Tre Tauri-commands som lar UI vise interrupted-sessions ved app-
+// startup, og enten resume eller forkaste dem.
+
+#[tauri::command]
+fn list_interrupted_sessions() -> Result<Vec<session_log::InterruptedSession>, String> {
+    // Best-effort cleanup samtidig — sletter logger >30d gamle slik at
+    // sessions-mappen ikke vokser over tid. Kjøres lazy så vi ikke
+    // blokker app-startup på filsystem-IO.
+    session_log::cleanup_old_logs();
+    session_log::list_interrupted_sessions()
+}
+
+#[tauri::command]
+async fn resume_interrupted_session(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<CopySessionState>>,
+    session_id: String,
+) -> Result<String, String> {
+    copy_session::resume_session(app, state.inner().clone(), session_id).await
+}
+
+#[tauri::command]
+fn discard_interrupted_session(session_id: String) -> Result<(), String> {
+    session_log::discard_session(&session_id)
 }
 
 #[tauri::command]
@@ -331,13 +495,97 @@ fn current_pairing_pin(state: tauri::State<Arc<IpadPairingState>>) -> Option<Pen
     state.current_pin()
 }
 
+/// Henter Desk's egen stabile identitet. Genereres ved første kall.
+/// Brukt av UI for å vise "denne Desk-en heter X" + av paring-flowen
+/// så iPad-en kan kjenne igjen oss på tvers av token-rotering.
+#[tauri::command]
+fn current_desk_identity() -> Result<desk_identity::DeskIdentity, String> {
+    desk_identity::load_or_create()
+}
+
+#[derive(serde::Serialize, Clone)]
+struct PairResultEvent {
+    fullname: String,
+    success: bool,
+    ipad_device_id: Option<String>,
+    error: Option<String>,
+}
+
 #[tauri::command]
 fn generate_pairing_pin(
+    app: tauri::AppHandle,
     state: tauri::State<Arc<IpadPairingState>>,
     fullname: String,
     device_name: String,
-) -> PendingPin {
-    state.generate_pin(&fullname, &device_name)
+) -> Result<PendingPin, String> {
+    let pin = state.generate_pin(&fullname, &device_name);
+
+    // Slå opp iPad's adresser/port for å kunne sende TCP PAIR-request
+    let target = state.list_discovered().into_iter().find(|d| d.fullname == fullname);
+    let Some(target) = target else {
+        return Err(format!("iPad ikke i discovered-state: {}", fullname));
+    };
+    let identity = desk_identity::load_or_create()?;
+    let app_clone = app.clone();
+    let state_clone: Arc<IpadPairingState> = state.inner().clone();
+    let pin_value = pin.pin.clone();
+    let target_name = target.device_name.clone();
+    let target_addresses = target.addresses.clone();
+    let target_port = target.port;
+    let fullname_clone = fullname.clone();
+
+    // Spawn auto-send. Når iPad svarer OK: confirm_pair_ipad-logikken
+    // kjøres inline + pair-result-event emit'es. Frontend trenger ikke
+    // gjøre noe annet enn å lytte på event-et.
+    tokio::spawn(async move {
+        let response = ipad_pairing::send_pair_request(
+            &target_addresses,
+            target_port,
+            &identity.desk_id,
+            &identity.desk_name,
+            &pin_value,
+        )
+        .await;
+        match response {
+            ipad_pairing::PairResponse::Ok { ipad_device_id } => {
+                // Upsert in paired.json
+                let mut list = ipad_pairing::load_paired();
+                if !list.iter().any(|p| p.device_id == ipad_device_id) {
+                    list.push(PairedIpad {
+                        device_id: ipad_device_id.clone(),
+                        device_name: target_name,
+                        paired_at_iso: chrono_now_iso(),
+                    });
+                    if let Err(err) = ipad_pairing::save_paired(&list) {
+                        eprintln!("[pair] save_paired failed: {}", err);
+                    }
+                }
+                state_clone.clear_pin();
+                let _ = app_clone.emit(
+                    "pair-result",
+                    PairResultEvent {
+                        fullname: fullname_clone,
+                        success: true,
+                        ipad_device_id: Some(ipad_device_id),
+                        error: None,
+                    },
+                );
+            }
+            ipad_pairing::PairResponse::Err(err) => {
+                let _ = app_clone.emit(
+                    "pair-result",
+                    PairResultEvent {
+                        fullname: fullname_clone,
+                        success: false,
+                        ipad_device_id: None,
+                        error: Some(err),
+                    },
+                );
+            }
+        }
+    });
+
+    Ok(pin)
 }
 
 #[tauri::command]
@@ -465,6 +713,69 @@ fn chrono_now_iso() -> String {
     )
 }
 
+// ── Menu bar mini-tray ────────────────────────────────────────────
+// Bruker Tauri 2's TrayIconBuilder. Tooltip oppdateres via
+// set_tray_status-command som frontend kaller når backup-økter
+// endrer state (start/progress/done).
+//
+// Click på tray = focus hovedvindu (eller åpne hvis lukket).
+const TRAY_ICON_ID: &str = "main-tray";
+
+fn setup_tray(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::TrayIconBuilder;
+
+    let show_main = MenuItem::with_id(handle, "show-main", "Vis Creatorhub One Desk", true, None::<&str>)?;
+    let quit = MenuItem::with_id(handle, "quit", "Avslutt", true, None::<&str>)?;
+    let menu = Menu::with_items(handle, &[&show_main, &quit])?;
+
+    TrayIconBuilder::with_id(TRAY_ICON_ID)
+        .tooltip("Creatorhub One Desk")
+        .icon(handle.default_window_icon().unwrap().clone())
+        .menu(&menu)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show-main" => {
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                }
+            }
+            "quit" => {
+                app.exit(0);
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            // Click på selve ikonet (utenom menu) → focus hovedvindu.
+            if let tauri::tray::TrayIconEvent::Click { button, button_state, .. } = event {
+                if matches!(button, tauri::tray::MouseButton::Left)
+                    && matches!(button_state, tauri::tray::MouseButtonState::Up)
+                {
+                    let app = tray.app_handle();
+                    if let Some(win) = app.get_webview_window("main") {
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                    }
+                }
+            }
+        })
+        .build(handle)?;
+    Ok(())
+}
+
+/// Oppdater tray-tooltip dynamisk fra frontend. Kalles av
+/// CopyProgressView når sesjoner endrer state, så Fredrik kan se
+/// "2 aktive · 87 av 240 filer" uten å åpne hovedvinduet.
+#[tauri::command]
+fn set_tray_status(app: tauri::AppHandle, tooltip: String) -> Result<(), String> {
+    use tauri::tray::TrayIcon;
+    if let Some(tray) = app.tray_by_id(TRAY_ICON_ID) {
+        TrayIcon::set_tooltip(&tray, Some(tooltip))
+            .map_err(|e| format!("set_tooltip: {}", e))?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -476,7 +787,7 @@ pub fn run() {
         .manage(Arc::new(CopySessionState::default()))
         .manage(Arc::new(IpadPairingState::default()))
         .manage(Arc::new(CaptureSubscriberState::default()))
-        .manage(Arc::new(MirrorState::default()))
+        .manage(Arc::new(MirrorState::new_loaded()))
         .manage(Arc::new(projects::ProjectStore::default()))
         .setup(|app| {
             let handle = app.handle().clone();
@@ -530,6 +841,13 @@ pub fn run() {
                 }
             });
 
+            // Menu bar / status bar mini-tray. Vises kun på macOS som
+            // en liten ikon i status-baren ved siden av batterien.
+            // Tooltip oppdateres dynamisk fra frontend via
+            // set_tray_status-command når backup-økter starter/stopper.
+            if let Err(err) = setup_tray(&handle) {
+                eprintln!("Tray-icon kunne ikke starte: {err}");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -553,10 +871,20 @@ pub fn run() {
             test_b2_connection,
             fetch_bucket_usage,
             list_detected_mounts,
+            get_prefs,
+            save_default_dest_ids,
             rescan_mounts,
+            eject_volume,
+            get_auto_eject_pref,
+            set_auto_eject_pref,
+            check_destinations_capacity,
+            macos_notification,
             start_copy_session,
             cancel_copy_session,
             list_copy_sessions,
+            list_interrupted_sessions,
+            resume_interrupted_session,
+            discard_interrupted_session,
             list_discovered_ipads,
             add_manual_ipad,
             list_paired_ipads,
@@ -564,6 +892,7 @@ pub fn run() {
             generate_pairing_pin,
             cancel_pairing_pin,
             confirm_pair_ipad,
+            current_desk_identity,
             unpair_ipad,
             list_capture_sessions,
             start_capture_subscription,
@@ -572,6 +901,7 @@ pub fn run() {
             enable_mirror_for_session,
             disable_mirror_for_session,
             enabled_mirror_sessions,
+            set_tray_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Creatorhub One Desk");

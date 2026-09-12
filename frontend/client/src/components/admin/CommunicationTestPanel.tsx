@@ -48,6 +48,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useCommunicationStatus } from '../../contexts/CommunicationStatusContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
+import { adminTokens } from './design-system';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -556,7 +557,8 @@ export default function CommunicationTestPanel({
     const testWebSocket = () => {
       try {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        const wsToken = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token') || '';
+        const wsUrl = `${protocol}//${window.location.host}/ws${wsToken ? `?token=${encodeURIComponent(wsToken)}` : ''}`;
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
@@ -662,7 +664,7 @@ export default function CommunicationTestPanel({
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <Paper elevation={2} sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
-        <Box display="flex" alignItems="center" justifyContent="space-between">
+        <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap">
           <Box>
             <Box display="flex" alignItems="center" gap={1}>
               <ChatIcon color={getStatusColor() as any} />
@@ -716,6 +718,7 @@ export default function CommunicationTestPanel({
         <Tabs
           value={activeTab}
           onChange={(_, newValue) => setActiveTab(newValue)}
+          aria-label="Kommunikasjonstest-faner"
           sx={{ borderBottom: 1, borderColor: 'divider' }}
         >
           <Tab label="System Health" icon={<CheckCircleIcon />} />
@@ -767,14 +770,15 @@ export default function CommunicationTestPanel({
                     </Typography>
                     <Box display="flex" alignItems="center" gap={1} mb={1}>
                       <Box
+                        aria-hidden="true"
                         sx={{
                           width: 8,
                           height: 8,
                           borderRadius: '50%',
                           backgroundColor:
                             communicationStatus.googleChatStatus === 'connected'
-                              ? '#4caf50'
-                              : '#f44336'}}
+                              ? adminTokens.color.success
+                              : adminTokens.color.error}}
                       />
                       <Typography variant="body2">
                         {communicationStatus.googleChatStatus === 'connected'
@@ -1078,7 +1082,7 @@ export default function CommunicationTestPanel({
                     Message Testing
                   </Typography>
 
-                  <Box display="flex" gap={1} mb={2}>
+                  <Box display="flex" gap={1} mb={2} flexWrap="wrap">
                     <TextField
                       fullWidth
                       label="Test Message"

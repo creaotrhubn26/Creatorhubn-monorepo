@@ -1,0 +1,306 @@
+/**
+ * Shared ownership guard for casting sub-resources.
+ *
+ * Casting projects live in the `legacy_compat_store` compat table under the
+ * key `casting:project:<id>`, with the owner in the project JSON's
+ * `created_by`. Only `GET /api/casting/projects/:id` enforced this; every
+ * child resource (props, production days, audition videos, calendar events,
+ * offers, contracts, manuscripts) queried purely by caller-supplied id with
+ * no owner check — an authenticated cross-tenant IDOR. This module centralises
+ * the check so every route resolves ownership the same way.
+ *
+ * Fail-closed: any read failure (missing table, DB down, missing/`demo-user`/
+ * null `created_by`) resolves to "not owner", matching the project-level GET
+ * which already treats those as inaccessible.
+ */
+
+const LEGACY_COMPAT_TABLE_NAME = "legacy_compat_store";
+
+interface QueryablePool {
+  query: (
+    text: string,
+    params?: unknown[],
+  ) => Promise<{ rows: Array<Record<string, unknown>> }>;
+}
+
+/**
+ * True when the user can open a canonical Role Room project, either as its
+ * creator or through an explicit project-role membership. Storyboard Room
+ * reads manuscripts from the legacy casting surface, but its project browser
+ * reads the canonical `casting_projects` table. Keeping this check here makes
+ * those two API surfaces share the same tenant boundary.
+ *
+ * Legacy projects that have not been mirrored to `casting_projects` still use
+ * the strict compat-store owner check as a fallback.
+ */
+export async function userCanAccessCastingProject(
+  pool: QueryablePool,
+  projectId: string,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  if (!projectId || !userId) return false;
+  try {
+    const result = await pool.query(
+      `SELECT
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+            WHERE cp.id = $1
+         ) AS project_exists,
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+            WHERE cp.id = $1
+              AND (
+                cp.created_by = $2
+                OR EXISTS (
+                  SELECT 1
+                    FROM casting_user_roles cur
+                   WHERE cur.project_id = cp.id
+                     AND cur.user_id = $2
+                     AND cur.deactivated_at IS NULL
+                     AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
+                )
+              )
+         ) AS can_access`,
+      [projectId, userId],
+    );
+    const status = result.rows[0];
+    if (status?.project_exists === true) {
+      return status.can_access === true;
+    }
+  } catch {
+    // A legacy-only install may not have the canonical tables yet. The
+    // compat-store check below remains fail-closed and owner-only.
+  }
+  return userOwnsCastingProject(pool, projectId, userId);
+}
+
+/**
+ * True when the user may mutate production-day data for a canonical project.
+ *
+ * Project membership alone is deliberately not enough: the member must either
+ * have an explicit `canEditProduction` grant or one of the production-owner
+ * roles whose default contract includes that grant. Expired/deactivated rows
+ * are ignored. Legacy-only projects remain owner-only.
+ */
+export async function userCanEditCastingProduction(
+  pool: QueryablePool,
+  projectId: string,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  if (!projectId || !userId) return false;
+  try {
+    const result = await pool.query(
+      `SELECT
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+            WHERE cp.id = $1
+         ) AS project_exists,
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+             LEFT JOIN casting_user_roles cur
+               ON cur.project_id = cp.id
+              AND cur.user_id = $2
+              AND cur.deactivated_at IS NULL
+              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
+            WHERE cp.id = $1
+              AND (
+                cp.created_by = $2
+                OR (
+                  cur.user_id IS NOT NULL
+                  AND (
+                    cur.role IN (
+                      'director',
+                      'producer',
+                      'production_manager',
+                      'content_producer',
+                      'first_ad',
+                      'first_assistant_director',
+                      '1st_ad',
+                      'second_ad',
+                      'second_assistant_director',
+                      '2nd_ad'
+                    )
+                    OR cur.permissions -> 'canEditProduction' = 'true'::jsonb
+                  )
+                )
+              )
+         ) AS can_edit_production`,
+      [projectId, userId],
+    );
+    const status = result.rows[0];
+    if (status?.project_exists === true) {
+      return status.can_edit_production === true;
+    }
+  } catch {
+    // Legacy-only installs fall back to the strict owner check below.
+  }
+  return userOwnsCastingProject(pool, projectId, userId);
+}
+
+/**
+ * True when the user owns the operational production-management lane.
+ * AD roles may edit the shared production day, but must not be able to alter
+ * the production manager's approvals, cost deviations or audit trail.
+ */
+export async function userCanManageCastingProduction(
+  pool: QueryablePool,
+  projectId: string,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  if (!projectId || !userId) return false;
+  try {
+    const result = await pool.query(
+      `SELECT
+         EXISTS (
+           SELECT 1 FROM casting_projects cp WHERE cp.id = $1
+         ) AS project_exists,
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+             LEFT JOIN casting_user_roles cur
+               ON cur.project_id = cp.id
+              AND cur.user_id = $2
+              AND cur.deactivated_at IS NULL
+              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
+            WHERE cp.id = $1
+              AND (
+                cp.created_by = $2
+                OR (
+                  cur.user_id IS NOT NULL
+                  AND (
+                    cur.role IN ('producer', 'production_manager')
+                    OR cur.permissions -> 'canManageProduction' = 'true'::jsonb
+                  )
+                )
+              )
+         ) AS can_manage_production`,
+      [projectId, userId],
+    );
+    const status = result.rows[0];
+    if (status?.project_exists === true) {
+      return status.can_manage_production === true;
+    }
+  } catch {
+    // Legacy-only installs remain owner-only.
+  }
+  return userOwnsCastingProject(pool, projectId, userId);
+}
+
+/**
+ * True when the user may update the production-coordination lane. This is
+ * deliberately separate from production management: coordinators can prepare
+ * and follow up the day, but cannot alter approvals, costs or PM audit data.
+ */
+export async function userCanCoordinateCastingProduction(
+  pool: QueryablePool,
+  projectId: string,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  if (!projectId || !userId) return false;
+  try {
+    const result = await pool.query(
+      `SELECT
+         EXISTS (
+           SELECT 1 FROM casting_projects cp WHERE cp.id = $1
+         ) AS project_exists,
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+             LEFT JOIN casting_user_roles cur
+               ON cur.project_id = cp.id
+              AND cur.user_id = $2
+              AND cur.deactivated_at IS NULL
+              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
+            WHERE cp.id = $1
+              AND (
+                cp.created_by = $2
+                OR (
+                  cur.user_id IS NOT NULL
+                  AND (
+                    cur.role IN ('producer', 'production_manager', 'production_coordinator')
+                    OR cur.permissions -> 'canCoordinateProduction' = 'true'::jsonb
+                  )
+                )
+              )
+         ) AS can_coordinate_production`,
+      [projectId, userId],
+    );
+    const status = result.rows[0];
+    if (status?.project_exists === true) {
+      return status.can_coordinate_production === true;
+    }
+  } catch {
+    // Legacy-only installs remain owner-only.
+  }
+  return userOwnsCastingProject(pool, projectId, userId);
+}
+
+/** Returns the owning user id for a casting project, or null if unknown. */
+export async function getCastingProjectOwner(
+  pool: QueryablePool,
+  projectId: string,
+): Promise<string | null> {
+  if (!projectId) return null;
+  try {
+    const result = await pool.query(
+      `SELECT store_value FROM ${LEGACY_COMPAT_TABLE_NAME} WHERE store_key = $1 LIMIT 1`,
+      [`casting:project:${projectId}`],
+    );
+    const value = result.rows?.[0]?.store_value as
+      | Record<string, unknown>
+      | undefined;
+    const createdBy =
+      value && typeof value === "object" ? value.created_by : null;
+    return typeof createdBy === "string" ? createdBy : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when `userId` owns `projectId`. Placeholder/demo owners never match.
+ * Use as the authorization gate before reading or mutating a project's
+ * sub-resources.
+ */
+export async function userOwnsCastingProject(
+  pool: QueryablePool,
+  projectId: string,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  if (!userId) return false;
+  const owner = await getCastingProjectOwner(pool, projectId);
+  return Boolean(owner) && owner !== "demo-user" && owner === userId;
+}
+
+type CompatStoreGet = <T>(storeKey: string) => Promise<T | null>;
+
+/**
+ * Same ownership gate for route modules that receive the injected
+ * `compatStoreGet` accessor instead of a raw pool. Resolves the project the
+ * same way (`casting:project:<id>` → `created_by`) and is equally fail-closed.
+ */
+export async function userOwnsCastingProjectViaStore(
+  compatStoreGet: CompatStoreGet,
+  projectId: string | null | undefined,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  if (!userId || !projectId) return false;
+  try {
+    const project = await compatStoreGet<{ created_by?: unknown }>(
+      `casting:project:${projectId}`,
+    );
+    const createdBy =
+      project && typeof project === "object" ? project.created_by : null;
+    return (
+      typeof createdBy === "string" &&
+      createdBy !== "demo-user" &&
+      createdBy === userId
+    );
+  } catch {
+    return false;
+  }
+}

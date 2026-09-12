@@ -190,7 +190,7 @@ export function RoleRoomEconomyTab() {
           </Typography>
           <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.88rem' }}>
             Full P&L for theroleroom.com: revenue fra Stripe, AI-tokens fra Claude, hosting og
-            allokert andel av plattform-kostnader (Vercel, Render, Claude Pro Max, etc.).
+            allokert andel av plattform-kostnader (Netlify, Render, Claude Pro Max, etc.).
           </Typography>
         </Box>
         <Button variant="outlined" onClick={refresh} disabled={loading} sx={{ textTransform: 'none', fontWeight: 700 }}>
@@ -266,7 +266,7 @@ export function RoleRoomEconomyTab() {
               Plattform-kostnader
             </Typography>
             <Typography sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.78rem' }}>
-              Faste månedlige kostnader for verktøy CreatorHub bruker (Claude Pro Max, Vercel, Render, etc).
+              Faste månedlige kostnader for verktøy CreatorHub bruker (Claude Pro Max, Netlify, Render, etc).
               Allokert andel trekkes fra Role Room-margin.
             </Typography>
           </Box>
@@ -298,19 +298,6 @@ export function RoleRoomEconomyTab() {
               >
                 Neon
               </Button>
-              <Button
-                startIcon={<SyncIcon fontSize="small" />}
-                onClick={async () => {
-                  try {
-                    const r = await platformFixedCostsApi.refreshVercel();
-                    setSnackbar(`Vercel: ${r.created} nye, ${r.updated} oppdatert (${r.total} prosjekter)`);
-                    await refresh();
-                  } catch (err) { setError((err as Error).message); }
-                }}
-                sx={{ textTransform: 'none', fontWeight: 700 }}
-              >
-                Vercel
-              </Button>
             </ButtonGroup>
             <Button
               size="small"
@@ -318,7 +305,7 @@ export function RoleRoomEconomyTab() {
               onClick={async () => {
                 const presets: PlatformFixedCostInput[] = [
                   { name: 'Claude Max 20x', vendor: 'Anthropic', category: 'ai', amountUsdMonthly: 200, allocationMethod: 'total_platform', roleRoomSharePct: 25, billingInterval: 'monthly', active: true, notes: 'Daniels personlige Claude Max 20x ($200/mnd per Anthropic-prisliste 2026). Justér share-% basert på hvor mye Claude-tid som brukes mot Role Room vs. andre produkter.' },
-                  { name: 'Vercel Pro', vendor: 'Vercel', category: 'hosting', amountUsdMonthly: 20, allocationMethod: 'total_platform', roleRoomSharePct: 30, billingInterval: 'monthly', active: true, notes: 'Frontend hosting (creatorhub-frontend). Pro starter på $20/seat/mnd + usage-overage — sjekk faktisk faktura på vercel.com/account/billing.' },
+                  { name: 'Netlify — creatorhub-frontend-mig', vendor: 'Netlify', category: 'hosting', amountUsdMonthly: 0, allocationMethod: 'total_platform', roleRoomSharePct: 30, billingInterval: 'monthly', active: true, notes: 'Frontend hosting for creatorhubn.com. Oppgi faktisk månedsbeløp fra Netlify-fakturaen manuelt; den offentlige deploy-feeden inneholder ikke fakturadata.' },
                   { name: 'Render — backend (Standard)', vendor: 'Render', category: 'hosting', amountUsdMonthly: 25, allocationMethod: 'total_platform', roleRoomSharePct: 40, billingInterval: 'monthly', active: true, notes: 'Web service srv-d47s5lur433s739mr9j0 — Standard plan ($25/mnd). Deler backend mellom RR / CreatorHub / Post Agent.' },
                   { name: 'Render — creatorhub-backend (Starter)', vendor: 'Render', category: 'hosting', amountUsdMonthly: 7, allocationMethod: 'total_platform', roleRoomSharePct: 30, billingInterval: 'monthly', active: true, notes: 'Web service — Starter plan ($7/mnd).' },
                   { name: 'Render — gfpgan-runner (Standard)', vendor: 'Render', category: 'hosting', amountUsdMonthly: 25, allocationMethod: 'total_platform', roleRoomSharePct: 5, billingInterval: 'monthly', active: true, notes: 'AI image-processing runner — Standard plan ($25/mnd). Hovedsakelig CreatorHub Photo Enhancer, lav RR-share.' },
@@ -330,7 +317,7 @@ export function RoleRoomEconomyTab() {
                   { name: 'Stripe (per-transaksjon)', vendor: 'Stripe', category: 'other', amountUsdMonthly: 0, allocationMethod: 'role_room_only', roleRoomSharePct: 100, billingInterval: 'monthly', active: false, notes: '1.4% + 1.80 kr per Stripe-betaling fra EU-kort. Variabel — la stå aktiv=AV til du har faktisk MRR å multiplisere med.' },
                   { name: 'Cloudflare', vendor: 'Cloudflare', category: 'cdn', amountUsdMonthly: 0, allocationMethod: 'total_platform', roleRoomSharePct: 30, billingInterval: 'monthly', active: false, notes: 'DNS/WAF/edge. Aktiver hvis du har Pro/Business-plan ($20-200/mnd).' },
                 ];
-                if (!window.confirm(`Legge til ${presets.length} standard-rader basert på faktisk infrastruktur (Claude $200, Vercel, 6× Render-tjenester, Neon, Google Workspace, Stripe, Cloudflare)? Du editerer priser/share% etterpå.`)) return;
+                if (!window.confirm(`Legge til ${presets.length} standard-rader basert på faktisk infrastruktur (Claude $200, Netlify manuelt, 6× Render-tjenester, Neon, Google Workspace, Stripe, Cloudflare)? Du editerer priser/share% etterpå.`)) return;
                 try {
                   for (const preset of presets) {
                     await platformFixedCostsApi.create(preset);
@@ -375,7 +362,7 @@ export function RoleRoomEconomyTab() {
             </TableHead>
             <TableBody>
               {fixedCosts.length === 0 ? (
-                <TableRow><TableCell colSpan={6} sx={{ color: 'rgba(203,213,225,0.55)', textAlign: 'center', py: 3 }}>Ingen plattform-kostnader registrert. Legg til Claude Pro Max, Vercel Pro, Render osv.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} sx={{ color: 'rgba(203,213,225,0.55)', textAlign: 'center', py: 3 }}>Ingen plattform-kostnader registrert. Legg til Claude Pro Max, Netlify, Render osv.</TableCell></TableRow>
               ) : fixedCosts.map((cost) => (
                 <TableRow key={cost.id} hover>
                   <TableCell sx={{ color: '#fff' }}>
@@ -751,7 +738,7 @@ function PlatformCostDialog({ open, initial, onClose, onSaved }: { open: boolean
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           {error ? <Alert severity="error">{error}</Alert> : null}
-          <TextField label='Tjeneste (f.eks. "Claude Pro Max", "Vercel Pro")' size="small" fullWidth value={form.name ?? ''} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
+          <TextField label='Tjeneste (f.eks. "Claude Pro Max", "Netlify")' size="small" fullWidth value={form.name ?? ''} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
             <TextField label="Leverandør" size="small" sx={{ flex: 1 }} value={form.vendor ?? ''} onChange={(e) => setForm((p) => ({ ...p, vendor: e.target.value }))} />
             <FormControl size="small" sx={{ flex: 1 }}>

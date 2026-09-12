@@ -217,10 +217,10 @@ export function FacebookVideoPublisher() {
               display: 'flex',
               alignItems: 'center',
               gap: 1.5,
-              '&:hover': { borderColor: '#22d3ee' },
+              '&:hover': { borderColor: 'var(--role-cyan, #22d3ee)' },
             }}
           >
-            <CloudUploadIcon sx={{ color: '#22d3ee' }} />
+            <CloudUploadIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
             <Box sx={{ flex: 1 }}>
               <Typography sx={{ fontWeight: 700 }}>
                 {videoFileName ?? 'Select video file…'}

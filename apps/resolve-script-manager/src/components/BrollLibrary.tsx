@@ -277,7 +277,7 @@ export function BrollLibrary({ open, onClose, projectId, agentContext }: Props) 
     <div onClick={onClose}
          style={{
            position: "fixed", inset: 0, zIndex: 5800,
-           background: "rgba(8,4,20,0.92)", backdropFilter: "blur(10px)",
+           background: "rgba(8,4,20,0.92)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
            display: "flex", flexDirection: "column",
            color: ROLE_ROOM_BRAND.textPrimary,
          }}>
@@ -635,7 +635,7 @@ function ClipDetailPanel({ clip, onClose, onReanalyze, onUpdateTags }: {
     <div onClick={onClose}
          style={{
            position: "fixed", inset: 0, zIndex: 5900,
-           background: "rgba(8,4,20,0.85)", backdropFilter: "blur(10px)",
+           background: "rgba(8,4,20,0.85)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
            display: "flex", alignItems: "center", justifyContent: "center",
          }}>
       <div onClick={e => e.stopPropagation()}

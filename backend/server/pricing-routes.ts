@@ -299,7 +299,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
   // GET /api/pricing/packages — returns ALL packages (used by PriceAdministration without userId)
   app.get("/api/pricing/packages", async (req, res) => {
     try {
-      const userId = req.query.userId || getPricingUserId(req);
+      const userId = getPricingUserId(req);
       let result;
       if (userId) {
         result = await pool.query(
@@ -453,9 +453,11 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
         [req.params.id],
       );
       if (result.rowCount === 0) {
+        const intId = parseInt(req.params.id, 10);
+        if (!Number.isInteger(intId)) return res.status(400).json({ error: "Ugyldig id" });
         result = await pool.query(
           "DELETE FROM packages WHERE id = $1 RETURNING id",
-          [parseInt(req.params.id) || 0],
+          [intId],
         );
       }
       if (result.rowCount === 0)

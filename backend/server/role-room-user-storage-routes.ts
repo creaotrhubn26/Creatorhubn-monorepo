@@ -1,0 +1,500 @@
+/**
+ * role-room-user-storage-routes.ts
+ *
+ * L3a-/L3c-endepunkter for per-bruker storage på admin-B2.
+ *
+ *   GET    /api/role-room/storage/stats              → { tier, usedBytes, quotaBytes, percentageUsed, fileCount }
+ *   GET    /api/role-room/storage/files              → { files: [...] }
+ *   POST   /api/role-room/storage/upload             → multipart, returnerer { file }
+ *   GET    /api/role-room/storage/files/:id/download → 302 til signed B2-URL
+ *   DELETE /api/role-room/storage/files/:id          → soft-delete (worker rydder B2)
+ *
+ * Auth: RR_BEARER_TOKEN via activeSessions.
+ * Quota: 1 GiB free-tier per bruker. Quota-overskridelse returnerer HTTP 507.
+ */
+
+import crypto from "crypto";
+import type { Express, Request, Response } from "express";
+import type { Pool } from "pg";
+import multer from "multer";
+import {
+  ensureUserBucket,
+  getUserFileDownloadUrl,
+  getUserFilesPerProject,
+  getUserStorageStats,
+  listFilesForEntity,
+  listUserFiles,
+  softDeleteUserFile,
+  uploadUserFile,
+} from "./role-room-user-storage-service.js";
+import {
+  migrateAllStoryboardImagesForUser,
+  moveStoryboardImageToB2,
+} from "./role-room-storage-integrations.js";
+import { cleanupSoftDeletedFiles } from "./role-room-storage-cleanup-worker.js";
+
+type SessionData = { userId: string; role?: string; email?: string };
+
+interface Deps {
+  pool: Pool;
+  activeSessions: Map<string, SessionData>;
+}
+
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per fil (hard cap separat fra kvote)
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    // Explicit allowlist — image/* prefix intentionally excluded to block
+    // image/svg+xml (SVG can contain <script> → stored XSS when served inline).
+    const ALLOWED_MIME = new Set([
+      "image/jpeg", "image/png", "image/webp", "image/gif",
+      "image/heic", "image/heif", "image/avif",
+      "video/mp4", "video/webm", "video/quicktime", "video/x-msvideo",
+      "video/mpeg", "video/ogg",
+      "audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav",
+      "audio/webm", "audio/aac", "audio/x-m4a", "audio/m4a",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "text/plain",
+    ]);
+    if (ALLOWED_MIME.has(file.mimetype)) cb(null, true);
+    else cb(new Error("Filtype ikke tillatt") as any, false);
+  },
+});
+
+function getUserIdFromRequest(
+  req: Request,
+  activeSessions: Map<string, SessionData>,
+): string | null {
+  const auth = req.headers.authorization;
+  if (auth?.startsWith("Bearer ")) {
+    const token = auth.slice(7).trim();
+    const session = activeSessions.get(token);
+    if (session?.userId) return session.userId;
+  }
+  // Fallback: ?token= for browser-redirect-flows (window.location.href
+  // til /download kan ikke sette Authorization-header)
+  const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+  if (queryToken) {
+    const session = activeSessions.get(queryToken);
+    if (session?.userId) return session.userId;
+  }
+  return null;
+}
+
+export function registerRoleRoomUserStorageRoutes(
+  app: Express,
+  deps: Deps,
+): void {
+  const { pool, activeSessions } = deps;
+
+  // ──────────────────────────────────────────────────────────────────
+  // GET /api/role-room/storage/stats
+  // ──────────────────────────────────────────────────────────────────
+  app.get("/api/role-room/storage/stats", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+
+    try {
+      const stats = await getUserStorageStats(pool, viewerId);
+      res.json(stats);
+    } catch (err) {
+      console.error("[storage/stats]", err);
+      res.status(500).json({ error: "stats_failed", detail: "internal_error" });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // GET /api/role-room/storage/files
+  //   ?limit=20&sourceModule=selftape&projectId=X&entityType=Y&entityId=Z
+  // ──────────────────────────────────────────────────────────────────
+  app.get("/api/role-room/storage/files", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const sourceModule = typeof req.query.sourceModule === 'string' && req.query.sourceModule
+      ? req.query.sourceModule : undefined;
+    const projectId = typeof req.query.projectId === 'string' && req.query.projectId
+      ? req.query.projectId : undefined;
+    const entityType = typeof req.query.entityType === 'string' && req.query.entityType
+      ? req.query.entityType : undefined;
+    const entityId = typeof req.query.entityId === 'string' && req.query.entityId
+      ? req.query.entityId : undefined;
+
+    try {
+      const files = await listUserFiles(pool, {
+        userId: viewerId, limit, sourceModule, projectId, entityType, entityId,
+      });
+      res.json({ files });
+    } catch (err) {
+      console.error("[storage/files]", err);
+      res.status(500).json({ error: "list_failed", detail: "internal_error" });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // GET /api/role-room/storage/per-project
+  // Sammendrag — { projectId, projectName, fileCount, totalBytes }[]
+  // ──────────────────────────────────────────────────────────────────
+  app.get("/api/role-room/storage/per-project", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+
+    try {
+      const projects = await getUserFilesPerProject(pool, viewerId);
+      res.json({ projects });
+    } catch (err) {
+      console.error("[storage/per-project]", err);
+      res.status(500).json({ error: "per_project_failed", detail: "internal_error" });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // GET /api/role-room/storage/entity-files
+  //   ?entityType=storyboard&entityId=<uuid>
+  // Brukes av storyboard-/role-/research-views for å vise vedlegg inline.
+  // ──────────────────────────────────────────────────────────────────
+  app.get("/api/role-room/storage/entity-files", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+
+    const entityType = typeof req.query.entityType === 'string' ? req.query.entityType : '';
+    const entityId = typeof req.query.entityId === 'string' ? req.query.entityId : '';
+    if (!entityType || !entityId) {
+      res.status(400).json({ error: "mangler_entity_type_id" });
+      return;
+    }
+
+    try {
+      const files = await listFilesForEntity(pool, { userId: viewerId, entityType, entityId });
+      res.json({ files });
+    } catch (err) {
+      console.error("[storage/entity-files]", err);
+      res.status(500).json({ error: "entity_files_failed", detail: "internal_error" });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // POST /api/role-room/storage/upload  (multipart/form-data)
+  //   fields: file (required), sourceModule (optional), metadata (optional, JSON-string)
+  // ──────────────────────────────────────────────────────────────────
+  app.post("/api/role-room/storage/upload", upload.single('file'), async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+
+    // Sørg for bucket-rad opprettet før upload
+    await ensureUserBucket(pool, viewerId).catch(() => {});
+
+    const file = (req as Request & { file?: Express.Multer.File }).file;
+    if (!file || !file.buffer || file.buffer.length === 0) {
+      res.status(400).json({ error: 'mangler_fil' });
+      return;
+    }
+
+    const body = (req.body ?? {}) as {
+      sourceModule?: string;
+      metadata?: string;
+      projectId?: string;
+      sceneId?: string;
+      attachedToEntityType?: string;
+      attachedToEntityId?: string;
+      attachmentNote?: string;
+    };
+    const sourceModule = typeof body.sourceModule === 'string' && body.sourceModule
+      ? body.sourceModule.slice(0, 64) : undefined;
+    let metadata: Record<string, unknown> = {};
+    if (typeof body.metadata === 'string' && body.metadata) {
+      try { metadata = JSON.parse(body.metadata); } catch { metadata = {}; }
+    }
+    const context = {
+      projectId: typeof body.projectId === 'string' && body.projectId ? body.projectId.slice(0, 255) : undefined,
+      sceneId: typeof body.sceneId === 'string' && body.sceneId ? body.sceneId.slice(0, 255) : undefined,
+      attachedToEntityType: typeof body.attachedToEntityType === 'string' && body.attachedToEntityType ? body.attachedToEntityType.slice(0, 64) : undefined,
+      attachedToEntityId: typeof body.attachedToEntityId === 'string' && body.attachedToEntityId ? body.attachedToEntityId.slice(0, 255) : undefined,
+      attachmentNote: typeof body.attachmentNote === 'string' && body.attachmentNote ? body.attachmentNote.slice(0, 500) : undefined,
+    };
+
+    try {
+      const result = await uploadUserFile(pool, {
+        userId: viewerId,
+        displayName: file.originalname || 'upload.bin',
+        body: file.buffer,
+        contentType: file.mimetype || 'application/octet-stream',
+        sourceModule,
+        metadata,
+        context,
+      });
+
+      if (!result.ok) {
+        if (result.reason === 'quota_exceeded') {
+          res.status(507).json({
+            error: 'kvote_overskredet',
+            detail: 'Du har brukt opp 1 GB-grensen. Slett filer eller oppgrader.',
+            stats: result.stats,
+          });
+          return;
+        }
+        if (result.reason === 'b2_not_configured') {
+          res.status(503).json({ error: 'lagring_ikke_konfigurert' });
+          return;
+        }
+        res.status(502).json({ error: 'opplasting_feilet', detail: result.detail });
+        return;
+      }
+
+      res.json({ file: result.file });
+    } catch (err) {
+      console.error("[storage/upload]", err);
+      res.status(500).json({ error: "upload_failed", detail: "internal_error" });
+    }
+  });
+
+  // Omdøp fil (kort-menyens «…» → Rename)
+  app.patch("/api/role-room/storage/files/:id", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    const displayName = typeof req.body?.displayName === 'string'
+      ? req.body.displayName.trim().slice(0, 255) : "";
+    if (!displayName) { res.status(400).json({ error: "mangler_navn" }); return; }
+    try {
+      const r = await pool.query(
+        `UPDATE role_room_user_files SET display_name = $1
+         WHERE id = $2::uuid AND user_id = $3 AND deleted_at IS NULL`,
+        [displayName, req.params.id, viewerId],
+      );
+      if (r.rowCount === 0) { res.status(404).json({ error: "fil_ikke_funnet" }); return; }
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[storage/rename]", err);
+      res.status(500).json({ error: "rename_failed" });
+    }
+  });
+
+  // Papirkurv: liste over soft-slettede filer
+  app.get("/api/role-room/storage/trash", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    try {
+      const r = await pool.query(
+        `SELECT id, display_name, size_bytes, content_type, uploaded_at, deleted_at,
+                attached_to_entity_type
+         FROM role_room_user_files
+         WHERE user_id = $1 AND deleted_at IS NOT NULL
+         ORDER BY deleted_at DESC LIMIT 100`,
+        [viewerId],
+      );
+      res.json({ files: r.rows.map((row) => ({
+        id: row.id,
+        displayName: row.display_name,
+        sizeBytes: Number(row.size_bytes),
+        contentType: row.content_type,
+        uploadedAt: row.uploaded_at,
+        deletedAt: row.deleted_at,
+        attachedToEntityType: row.attached_to_entity_type,
+      })) });
+    } catch (err) {
+      console.error("[storage/trash]", err);
+      res.status(500).json({ error: "trash_failed" });
+    }
+  });
+
+  // Gjenopprett fra papirkurven (reserverer kvoten igjen)
+  app.post("/api/role-room/storage/files/:id/restore", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const r = await client.query<{ size_bytes: string }>(
+        `UPDATE role_room_user_files SET deleted_at = NULL
+         WHERE id = $1::uuid AND user_id = $2 AND deleted_at IS NOT NULL
+         RETURNING size_bytes`,
+        [req.params.id, viewerId],
+      );
+      if (r.rowCount === 0) {
+        await client.query("ROLLBACK");
+        res.status(404).json({ error: "fil_ikke_funnet" });
+        return;
+      }
+      await client.query(
+        `UPDATE role_room_user_storage_consumption
+         SET used_bytes = used_bytes + $1, file_count = file_count + 1
+         WHERE user_id = $2`,
+        [Number(r.rows[0].size_bytes), viewerId],
+      );
+      await client.query("COMMIT");
+      res.json({ ok: true });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("[storage/restore]", err);
+      res.status(500).json({ error: "restore_failed" });
+    } finally {
+      client.release();
+    }
+  });
+
+  // Soft delete (papirkurv-semantikk): eier-sjekken ligger i SQL-
+  // funksjonen (userId + fileId må matche); frigjør kvote.
+  app.delete("/api/role-room/storage/files/:id", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    try {
+      const result = await softDeleteUserFile(pool, {
+        userId: viewerId, fileId: req.params.id,
+      });
+      if (!result.ok) {
+        res.status(404).json({ error: "fil_ikke_funnet" });
+        return;
+      }
+      res.json({ ok: true, freedBytes: result.freedBytes });
+    } catch (err) {
+      console.error("[storage/delete]", err);
+      res.status(500).json({ error: "delete_failed" });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // GET /api/role-room/storage/files/:id/download → 302 til signed URL
+  // ──────────────────────────────────────────────────────────────────
+  app.get("/api/role-room/storage/files/:id/download", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+
+    const fileId = String(req.params.id ?? "").trim();
+    if (!fileId) { res.status(400).json({ error: "mangler_id" }); return; }
+
+    try {
+      const r = await getUserFileDownloadUrl(pool, { userId: viewerId, fileId, expiresInSeconds: 300 });
+      if (!r.ok) {
+        res.status(r.reason === 'not_found' ? 404 : 503).json({ error: r.reason });
+        return;
+      }
+      res.redirect(302, r.url);
+    } catch (err) {
+      console.error("[storage/download]", err);
+      res.status(500).json({ error: "download_failed", detail: "internal_error" });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // POST /api/role-room/storage/admin/run-storage-migrations
+  // Permanently retired: production DDL and ledger changes must use the
+  // canonical release runner under the dedicated migration identity.
+  // ──────────────────────────────────────────────────────────────────
+  app.post(
+    "/api/role-room/storage/admin/run-storage-migrations",
+    (_req: Request, res: Response) => {
+      res.set("Cache-Control", "no-store");
+      res.status(410).json({ error: "migration_endpoint_retired" });
+    },
+  );
+
+  // ──────────────────────────────────────────────────────────────────
+  // POST /api/role-room/storage/admin/cleanup-soft-deleted
+  // Dual-auth: admin-sesjon ELLER x-cron-trigger-token header.
+  // Rydder opptil 100 soft-deleted filer fra B2 per kall.
+  // ──────────────────────────────────────────────────────────────────
+  app.post("/api/role-room/storage/admin/cleanup-soft-deleted", async (req: Request, res: Response) => {
+    const cronToken = req.headers['x-cron-trigger-token'] as string | undefined;
+    const expectedToken = process.env.ROLE_ROOM_STORAGE_CLEANUP_TOKEN
+      || process.env.CRON_TRIGGER_TOKEN;
+
+    const tokenValid = !!expectedToken && !!cronToken
+      && Buffer.byteLength(cronToken) === Buffer.byteLength(expectedToken)
+      && crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(expectedToken));
+    if (!tokenValid) {
+      const viewerId = getUserIdFromRequest(req, activeSessions);
+      if (!viewerId) {
+        res.status(401).json({ error: "krever_innlogging_eller_cron_token" });
+        return;
+      }
+      // Sjekk at brukeren har admin-role
+      const session = activeSessions.get(req.headers.authorization?.slice(7).trim() ?? '');
+      if (session?.role !== 'admin') {
+        res.status(403).json({ error: "krever_admin" });
+        return;
+      }
+    }
+
+    const dryRun = req.query.dryRun === 'true';
+    const batchSize = Math.min(500, Math.max(1, Number(req.query.batchSize) || 100));
+
+    try {
+      const result = await cleanupSoftDeletedFiles(pool, { batchSize, dryRun });
+      res.json(result);
+    } catch (err) {
+      console.error("[storage/cleanup]", err);
+      res.status(500).json({ error: "cleanup_failed", detail: "internal_error" });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // POST /api/role-room/storage/storyboards/:id/move-to-b2
+  // Migrer én storyboard-skisse fra PG image_data → B2 m/ kontekst.
+  // ──────────────────────────────────────────────────────────────────
+  app.post("/api/role-room/storage/storyboards/:id/move-to-b2", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+
+    const storyboardId = String(req.params.id ?? "").trim();
+    if (!storyboardId) { res.status(400).json({ error: "mangler_id" }); return; }
+
+    try {
+      const r = await moveStoryboardImageToB2(pool, { userId: viewerId, storyboardId });
+      if (!r.ok) {
+        res.status(r.reason === 'not_found' ? 404 : 400).json(r);
+        return;
+      }
+      res.json(r);
+    } catch (err) {
+      console.error("[storage/storyboards/move-to-b2]", err);
+      res.status(500).json({ error: "move_failed", detail: "internal_error" });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // POST /api/role-room/storage/storyboards/migrate-all
+  // Batch — migrer ALLE storyboards for innlogget bruker.
+  // ──────────────────────────────────────────────────────────────────
+  app.post("/api/role-room/storage/storyboards/migrate-all", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+
+    const limit = Math.min(500, Math.max(1, Number(req.body?.limit) || 200));
+    try {
+      const summary = await migrateAllStoryboardImagesForUser(pool, viewerId, { limit });
+      res.json(summary);
+    } catch (err) {
+      console.error("[storage/storyboards/migrate-all]", err);
+      res.status(500).json({ error: "migrate_all_failed", detail: "internal_error" });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // DELETE /api/role-room/storage/files/:id  (soft-delete)
+  // ──────────────────────────────────────────────────────────────────
+  app.delete("/api/role-room/storage/files/:id", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+
+    const fileId = String(req.params.id ?? "").trim();
+    if (!fileId) { res.status(400).json({ error: "mangler_id" }); return; }
+
+    try {
+      const r = await softDeleteUserFile(pool, { userId: viewerId, fileId });
+      if (!r.ok) { res.status(404).json({ error: "ikke_funnet" }); return; }
+      res.json({ ok: true, freedBytes: r.freedBytes });
+    } catch (err) {
+      console.error("[storage/delete]", err);
+      res.status(500).json({ error: "delete_failed", detail: "internal_error" });
+    }
+  });
+}

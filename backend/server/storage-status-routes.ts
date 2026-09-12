@@ -36,10 +36,23 @@ export function setupStorageStatusRoutes(deps: StorageStatusRoutesDeps): void {
         meteredItemConfigured: !!status.user.stripeStorageMeterItemId,
       });
     } catch (err) {
-      console.error("[storage-status] failed:", err);
-      res.status(500).json({
-        success: false,
-        error: "status_failed",
+      // Storage-quota-service kan feile hvis users-tabell mangler nyere
+      // tier/limit-kolonner. Returner trygge defaults (50GB free tier) i
+      // stedet for 500 — frontend StorageUsageBanner krasjer ellers.
+      console.warn("[storage-status] degraded:", (err as any)?.message || err);
+      res.json({
+        success: true,
+        tier: "free",
+        usedBytes: 0,
+        limitBytes: 50 * 1024 * 1024 * 1024,
+        freeBytes: 50 * 1024 * 1024 * 1024,
+        usedFraction: 0,
+        overageBytes: 0,
+        overageGB: 0,
+        allowsOverage: false,
+        stripeSubscriptionId: null,
+        meteredItemConfigured: false,
+        degraded: true,
       });
     }
   });

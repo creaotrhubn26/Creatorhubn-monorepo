@@ -1,10 +1,15 @@
 node_modules/
 dist/
 build/
+frontend/client/dist-geo/
+netlify/edge-functions/host-routes.ts
 # Rust/Tauri build artifacts (Resolve Script Manager + Live Set Publisher)
 apps/*/src-tauri/target/
 tools/*/src-tauri/target/
 .env
+.env.vercel*
+.env.netlify*
+.env.production.local
 .env.whatsapp.demo.local
 .env.oembed.demo.local
 .env.pages-cta.demo.local
@@ -18,6 +23,8 @@ tools/*/src-tauri/target/
 .role-room-demo-state.json
 .whatsapp-web-state.json
 .meta-business-state.json
+# Render env-var backups (encrypted, but never commit)
+.backups/
 *.log
 .DS_Store
 uploads/
@@ -53,8 +60,10 @@ weights/
 *.sqlite
 backups/
 backups_temp/
-workspace/
+/workspace/
 plugins/
+# …men rot-/plugins/ er Claude Code-plugin-kilder (creatorhub-engineering) og skal versjoneres
+!/plugins/
 blender/
 python_ml_service/venv/
 venv-sync/
@@ -70,17 +79,46 @@ scratch/
 docker/
 *.md
 !README.md
+!CONTRIBUTING.md
+!docs/creatorhub-workspace-tasklist.md
+!docs/prototype-tester-legal-release-checklist.md
 !ipad/CaptureApp/TESTFLIGHT.md
+!ipad/CaptureApp/CAPTURE_NATIVE_ROADMAP.md
+!backend/gfpgan-runner/GPU_DEPLOY.md
 !apps/resolve-script-manager/RELEASE.md
+!apps/resolve-script-manager/docs/POST_AGENT_RESOLVE_MCP_TASKS.md
+# Claude Code-plugin-kilder (skills/commands er markdown)
+!/plugins/**/*.md
+# THE-ROLE-ROOM-strategi-dokumenter (produktdok, BankID, ENHETSOKONOMI, DPA, VERIFISERING)
+# Whitelistet 2026-06-07 — disse er kilden til sannhet for produkt-positionering og
+# må følges med i versjonkontroll for å holde landing-/pitch-/blog-arbeid i sync.
+!THE-ROLE-ROOM-*.md
 docs/
 !docs/
 !docs/role-room/
 !docs/role-room/mobile-ipad-ux-500-improvements.md
+# Documentation Intelligence — ukentlig impact-vurderingsrapport (docs/impact-reports/*.md)
+!docs/impact-reports/*.md
+!CLAUDE.md
+!docs/role-room/tiktok-setup.md
 !docs/PRICING.md
+!docs/ARKITEKTUR-OVERSIKT.md
+!docs/AGENCY_GO_TO_MARKET.md
 !docs/security/
 !docs/security/*.md
+!docs/cto-audit/
+!docs/cto-audit/*.md
+!docs/frontend-typecheck-rapport.md
+!docs/integration-audit/
+!docs/integration-audit/*.md
+!docs/integration-audit/geo-baselines/
+!docs/integration-audit/geo-baselines/*.md
 !docs/post-agent/
 !docs/post-agent/*.md
+!docs/leadgrid/
+!docs/leadgrid/*.md
+!docs/leadgrid/manual/
+!docs/leadgrid/manual/*.md
 !docs/dance/
 !docs/dance/*.md
 !docs/specs/
@@ -131,6 +169,9 @@ recordings/
 !.claude/agents/
 .claude/agents/*
 !.claude/agents/*.md
+# Deploy-rutingen (hvilken gren treffer hvilket merke) er delt prosjektdata,
+# ikke lokale innstillinger — den skal følge repoet.
+!.claude/deploy-targets.json
 backend/*.traineddata
 output_*.png
 .tmp-*
@@ -186,3 +227,19 @@ decks/screenshots/
 
 # Design mockup screenshots (regenerable via scripts/capture-design-mockups.mjs)
 mockups/*.png
+out-videos/
+apps/resolve-script-manager/src/components/demo-studio/_pixelcheck/
+scripts/.lead-map-admin-state.json
+
+# XcodeGen-generated (regenereres fra project.yml)
+ipad/LeadMapApp/LeadMapApp.xcodeproj
+ipad/LeadMapApp/LeadMapApp/Generated
+ipad/LeadMapApp/LeadMapWidget/Generated
+
+# Local-only RAW fixtures for Redigering testing (not committed)
+ipad/CaptureApp/CaptureApp/Resources/_MG_9300.CR2
+ipad/CaptureApp/CaptureAppTests/Resources/_MG_9300.CR2
+ipad/LeadMapApp/qa-galleri/
+!.claude/skills/
+!.claude/skills/**
+ipad/StoryboardStudio/StoryboardStudio.xcodeproj

@@ -12,10 +12,8 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Chip,
   Button,
   IconButton,
@@ -53,6 +51,13 @@ import {
   Settings,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import {
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+  AdminLoading,
+  useIsMobile,
+} from './design-system';
 
 interface TrialFeature {
   id: string;
@@ -140,6 +145,7 @@ export default function TrialManagementPanel({
   const [clientFilter, setClientFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -152,6 +158,7 @@ export default function TrialManagementPanel({
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/trial-features', { headers });
     },
+    select: (d) => (Array.isArray(d) ? d : []),
 });
 
   // Fetch trial statuses
@@ -161,6 +168,7 @@ export default function TrialManagementPanel({
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/trial-statuses', { headers });
     },
+    select: (d) => (Array.isArray(d) ? d : []),
 });
 
   // Fetch trial analytics
@@ -170,6 +178,7 @@ export default function TrialManagementPanel({
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/trials/analytics/overview', { headers });
     },
+    select: (d) => (Array.isArray(d) ? d : []),
 });
 
   // Toggle feature mutation
@@ -284,7 +293,7 @@ export default function TrialManagementPanel({
   const renderFeaturesTab = () => (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary }}>Trial-funksjoner</Typography>
+        <Typography variant="h5" component="h2" sx={{ color: theming.colors.primary }}>Trial-funksjoner</Typography>
         {selectedProject && (
           <Chip 
             label={`Prosjekt: ${selectedProject.title || selectedProject.name}`} 
@@ -293,7 +302,7 @@ export default function TrialManagementPanel({
             sx={{ mr: 2 }}
           />
         )}
-        <Button variant="contained"
+        <AdminButton tone="primary"
           startIcon={theming.getThemedIcon('add')}
           onClick={() => {
             setShowFeatureDialog(true);
@@ -308,7 +317,7 @@ export default function TrialManagementPanel({
           }}
         >
           Legg til funksjon
-        </Button>
+        </AdminButton>
       </Box>
 
       <Grid container spacing={3}>
@@ -400,8 +409,8 @@ export default function TrialManagementPanel({
     return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary }}>Aktive Prøveperioder</Typography>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+        <Typography variant="h5" component="h2" sx={{ color: theming.colors.primary }}>Aktive Prøveperioder</Typography>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Client Filter */}
           <TextField
             size="small"
@@ -486,7 +495,7 @@ export default function TrialManagementPanel({
         </Box>
       )}
 
-      <TableContainer component={Paper}>
+      <AdminTableContainer ariaLabel="Aktive prøveperioder">
         <Table>
           <TableHead>
             <TableRow>
@@ -531,6 +540,7 @@ export default function TrialManagementPanel({
                           <IconButton
                             size="small"
                             color="error"
+                            aria-label="Avslutt prøveperiode"
                             onClick={() => handleEndTrial(trial.id)}
                           >
                             <Stop />
@@ -540,6 +550,7 @@ export default function TrialManagementPanel({
                         <Tooltip title="Vis detaljer">
                           <IconButton
                             size="small"
+                            aria-label="Vis detaljer"
                             onClick={() => {
                               // Integration: Create worklog when viewing trial details
                               if (onWorklogCreate) {
@@ -559,6 +570,7 @@ export default function TrialManagementPanel({
                         <Tooltip title="Innstillinger">
                           <IconButton
                             size="small"
+                            aria-label="Innstillinger"
                             onClick={() => {
                               if (onSettingsUpdate) {
                                 onSettingsUpdate({
@@ -580,6 +592,7 @@ export default function TrialManagementPanel({
                         <IconButton
                           size="small"
                           color="error"
+                          aria-label="Slett prøveperiode"
                           onClick={() => {
                             // Integration: File upload for trial archive
                             if (onFileUpload) {
@@ -601,14 +614,14 @@ export default function TrialManagementPanel({
             ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
     </Box>
     );
   };
 
   const renderAnalyticsTab = () => (
     <Box>
-      <Typography variant="h5" sx={{  mb:  3  }}>
+      <Typography variant="h5" component="h2" sx={{  mb:  3  }}>
         Trial Analytics
       </Typography>
 
@@ -667,7 +680,7 @@ export default function TrialManagementPanel({
   );
 
   if (featuresLoading || statusesLoading || analyticsLoading) {
-    return <LinearProgress />;
+    return <AdminLoading />;
 }
 
   return (
@@ -682,6 +695,7 @@ export default function TrialManagementPanel({
               <Tooltip title="Download trial report">
                 <IconButton
                   size="small"
+                  aria-label="Last ned prøveperiode-rapport"
                   onClick={() => {
                     if (onFileDownload) {
                       onFileDownload({
@@ -700,6 +714,7 @@ export default function TrialManagementPanel({
                 <IconButton
                   size="small"
                   color="primary"
+                  aria-label="Planlegg gjennomgangsmøte for prøveperiode"
                   onClick={() => {
                     if (onMeetingCreate) {
                       onMeetingCreate({
@@ -718,6 +733,7 @@ export default function TrialManagementPanel({
               <Tooltip title="Update project with trial data">
                 <IconButton
                   size="small"
+                  aria-label="Oppdater prosjekt med prøveperiode-data"
                   onClick={() => {
                     if (onProjectUpdate && onProjectSelect) {
                       const projectTrials = trialStatuses.filter((t: TrialStatus) => 
@@ -742,6 +758,7 @@ export default function TrialManagementPanel({
               <IconButton
                 size="small"
                 color="secondary"
+                aria-label="Oppdater klientens prøveperiode-status"
                 onClick={() => {
                   if (onClientUpdate) {
                     const clientTrials = trialStatuses.filter((t: TrialStatus) => 
@@ -782,7 +799,7 @@ export default function TrialManagementPanel({
       {activeTab === 2 && renderAnalyticsTab()}
 
       {/* Feature Dialog */}
-      <Dialog open={showFeatureDialog} onClose={() => setShowFeatureDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={showFeatureDialog} onClose={() => setShowFeatureDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Add />
@@ -850,7 +867,7 @@ export default function TrialManagementPanel({
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
+          <AdminButton tone="ghost" onClick={() => {
             setShowFeatureDialog(false);
             setFeatureName('');
             setFeatureDescription('');
@@ -859,10 +876,9 @@ export default function TrialManagementPanel({
             setUpgradeRequired(false);
           }}>
             Avbryt
-          </Button>
-          <Button 
-            variant="contained" 
-            sx={theming.getThemedButtonSx()}
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => {
               // Integration: Create showcase when feature is created
               if (onShowcaseCreate && featureCategory === 'showcase') {
@@ -888,12 +904,12 @@ export default function TrialManagementPanel({
           >
             <Add sx={{ mr: 1 }} />
             Lagre
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Analytics Dialog */}
-      <Dialog open={showAnalyticsDialog} onClose={() => setShowAnalyticsDialog(false)} maxWidth="lg" fullWidth>
+      <Dialog open={showAnalyticsDialog} onClose={() => setShowAnalyticsDialog(false)} maxWidth="lg" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <TrendingUp />
@@ -1013,14 +1029,14 @@ export default function TrialManagementPanel({
       </Dialog>
 
       {/* End Trial Confirmation Dialog */}
-      <Dialog open={!!endTrialConfirmId} onClose={() => setEndTrialConfirmId(null)}>
+      <Dialog open={!!endTrialConfirmId} onClose={() => setEndTrialConfirmId(null)} fullScreen={isMobile}>
         <DialogTitle>Avslutt prøveperiode</DialogTitle>
         <DialogContent>
           <Typography>Er du sikker på at du vil avslutte denne prøveperioden?</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEndTrialConfirmId(null)}>Avbryt</Button>
-          <Button variant="contained" color="error" onClick={executeEndTrial}>Avslutt</Button>
+          <AdminButton tone="ghost" onClick={() => setEndTrialConfirmId(null)}>Avbryt</AdminButton>
+          <AdminButton tone="danger" loading={endTrialMutation.isPending} onClick={executeEndTrial}>Avslutt</AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

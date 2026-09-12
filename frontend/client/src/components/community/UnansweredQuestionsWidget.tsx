@@ -81,14 +81,14 @@ export default function UnansweredQuestionsWidget({
       'linear-gradient(180deg, rgba(13, 18, 27, 0.94), rgba(8, 12, 18, 0.94))',
     border: '1px solid rgba(255,255,255,0.08)',
     boxShadow: '0 24px 60px rgba(0, 0, 0, 0.36)',
-    color: 'rgba(248, 241, 231, 0.92)',
+    color: 'rgba(255, 255, 255, 0.92)',
   } as const;
 
   const titleSx = {
     display: 'flex',
     alignItems: 'center',
     gap: 1,
-    color: 'rgba(248, 241, 231, 0.92)',
+    color: 'rgba(255, 255, 255, 0.92)',
     fontWeight: 700,
   } as const;
 
@@ -96,11 +96,11 @@ export default function UnansweredQuestionsWidget({
     return (
       <Paper sx={panelSx}>
         <Typography variant="subtitle2" gutterBottom sx={titleSx}>
-          <HelpOutline fontSize="small" sx={{ color: '#f5a623' }} />
+          <HelpOutline fontSize="small" sx={{ color: '#ff8c00' }} />
           Spørsmål som trenger hjelp
         </Typography>
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress size={30} sx={{ color: '#f5a623' }} />
+          <CircularProgress size={30} sx={{ color: '#ff8c00' }} />
         </Box>
       </Paper>
     );
@@ -110,7 +110,7 @@ export default function UnansweredQuestionsWidget({
     return (
       <Paper sx={panelSx}>
         <Typography variant="subtitle2" gutterBottom sx={titleSx}>
-          <HelpOutline fontSize="small" sx={{ color: '#f5a623' }} />
+          <HelpOutline fontSize="small" sx={{ color: '#ff8c00' }} />
           Spørsmål som trenger hjelp
         </Typography>
         <Alert
@@ -135,12 +135,12 @@ export default function UnansweredQuestionsWidget({
   return (
     <Paper sx={panelSx}>
       <Typography variant="subtitle2" gutterBottom sx={titleSx}>
-        <HelpOutline fontSize="small" sx={{ color: '#f5a623' }} />
+        <HelpOutline fontSize="small" sx={{ color: '#ff8c00' }} />
         Spørsmål som trenger hjelp ({questions.length})
       </Typography>
       <Typography
         variant="caption"
-        sx={{ mb: 2, display: 'block', color: 'rgba(248, 241, 231, 0.64)' }}
+        sx={{ mb: 2, display: 'block', color: 'rgba(255, 255, 255, 0.64)' }}
       >
         Hjelp andre medlemmer ved å svare på deres spørsmål
       </Typography>
@@ -167,9 +167,9 @@ export default function UnansweredQuestionsWidget({
                   sx={{
                     width: 32,
                     height: 32,
-                    bgcolor: 'rgba(245, 166, 35, 0.18)',
-                    color: '#f5a623',
-                    border: '1px solid rgba(245, 166, 35, 0.18)',
+                    bgcolor: 'rgba(255, 140, 0, 0.18)',
+                    color: '#ff8c00',
+                    border: '1px solid rgba(255, 140, 0, 0.18)',
                   }}
                 >
                   {question.user_name?.[0]}
@@ -177,13 +177,13 @@ export default function UnansweredQuestionsWidget({
               </ListItemAvatar>
               <ListItemText
                 primary={
-                  <Typography variant="body2" noWrap sx={{ color: 'rgba(248, 241, 231, 0.9)' }}>
+                  <Typography variant="body2" noWrap sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
                     {question.content.substring(0, 60)}...
                   </Typography>
                 }
                 secondary={
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                    <Typography variant="caption" sx={{ color: 'rgba(248, 241, 231, 0.6)' }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
                       {question.user_name} • #{question.channel_name}
                     </Typography>
                     <Chip

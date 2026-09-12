@@ -121,7 +121,10 @@ const GalleryFeedbackDialog: React.FC<Props> = ({
       fullWidth
       PaperProps={{
         sx: {
-          bgcolor: '#fdfaf5',
+          bgcolor: 'rgba(15,23,42,0.96)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          color: '#fff',
           borderRadius: 0,
         },
       }}
@@ -135,9 +138,9 @@ const GalleryFeedbackDialog: React.FC<Props> = ({
             top: 8,
             right: 8,
             zIndex: 2,
-            color: '#5a4f42',
-            bgcolor: 'rgba(253, 250, 245, 0.9)',
-            '&:hover': { color: '#1a1612', bgcolor: '#fdfaf5' },
+            color: 'rgba(255,255,255,0.85)',
+            bgcolor: 'rgba(15,23,42,0.6)',
+            '&:hover': { color: '#fff', bgcolor: 'rgba(15,23,42,0.85)' },
           }}
         >
           <CloseIcon />
@@ -155,12 +158,12 @@ const GalleryFeedbackDialog: React.FC<Props> = ({
                   fontFamily: '"Cormorant Garamond", Georgia, serif',
                   fontSize: '1.4rem',
                   fontStyle: 'italic',
-                  color: '#5a4f42',
+                  color: 'rgba(255,255,255,0.85)',
                 }}
               >
                 Ingen tilbakemelding ennå
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+              <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'rgba(255,255,255,0.6)' }}>
                 Klienten har ikke sendt kommentarer på dette galleriet ennå.
               </Typography>
             </Box>

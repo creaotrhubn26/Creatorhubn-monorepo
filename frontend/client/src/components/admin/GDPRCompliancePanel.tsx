@@ -39,7 +39,9 @@ import {
   Link,
   MenuItem,
   Snackbar,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Security,
   Policy,
@@ -63,6 +65,7 @@ import {
   DATATILSYNET_CONTACT,
   GDPR_COMPLIANCE_CHECKLIST
 } from '@shared/datatilsynet-gdpr-reference';
+import { AdminButton, StatusChip, adminTokens, useIsMobile } from './design-system';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -109,7 +112,10 @@ export function GDPRCompliancePanel() {
   );
 
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const theming = useTheming('photographer');
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const { auth } = useEnhancedMasterIntegration();
 
   // Calculate real-time compliance score based on Datatilsynet requirements
@@ -220,10 +226,11 @@ export function GDPRCompliancePanel() {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       {/* Header with Datatilsynet Reference */}
       <Box sx={{ mb: 3 }}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 600, mb: 2 }}>
+        <Typography variant="h5" sx={{ color: themeColors.primary, fontWeight: 600, mb: 2 }}>
           🛡️ GDPR Compliance & Personvern
         </Typography>
         
@@ -268,12 +275,21 @@ export function GDPRCompliancePanel() {
           
           <Grid item xs={12} sm={6} md={3}>
             <Tooltip title="GDPR Dataeksport - Art. 15 & 20">
-              <Card 
-                sx={{ 
+              <Card
+                role="button"
+                tabIndex={0}
+                aria-label="Åpne GDPR dataeksport"
+                sx={{
                   ...theming.getThemedCardSx(),
                   cursor: 'pointer', '&:hover': { transform: 'translateY(-2px)', boxShadow: 4 }
                 }}
                 onClick={() => setDataExportDialog(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setDataExportDialog(true);
+                  }
+                }}
               >
                 <CardContent sx={{ textAlign: 'center', py: 2 }}>
                   <Typography variant="h4" sx={{ color: 'success.main', fontWeight: 700}}>
@@ -292,21 +308,30 @@ export function GDPRCompliancePanel() {
           
           <Grid item xs={12} sm={6} md={3}>
             <Tooltip title="Klikk for å se Datatilsynet kontaktinfo">
-              <Card 
-                sx={{ 
-                  ...theming.getThemedCardSx(), 
+              <Card
+                role="button"
+                tabIndex={0}
+                aria-label="Klikk for å se Datatilsynet kontaktinfo"
+                sx={{
+                  ...theming.getThemedCardSx(),
                   cursor: 'pointer','&:hover': { transform: 'translateY(-2px)', boxShadow: 4 }
                 }}
                 onClick={() => setDatatilsynetDialog(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setDatatilsynetDialog(true);
+                  }
+                }}
               >
                 <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                  <Typography variant="h4" sx={{ color: '#ff8c00', fontWeight: 700}}>
+                  <Typography variant="h4" sx={{ color: adminTokens.color.brand, fontWeight: 700}}>
                     <Gavel sx={{ fontSize: 40 }} />
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Datatilsynet
                   </Typography>
-                  <Typography variant="caption" sx={{ display: 'block', mt: 1, color: '#ff8c00' }}>
+                  <Typography variant="caption" sx={{ display: 'block', mt: 1, color: adminTokens.color.brand }}>
                     Klikk for kontakt
                   </Typography>
                 </CardContent>
@@ -371,7 +396,7 @@ export function GDPRCompliancePanel() {
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
               <Box>
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ color: themeColors.primary }}>
                   Personvernerklæring
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -451,7 +476,7 @@ export function GDPRCompliancePanel() {
                 <Grid item xs={12} md={3}>
                   <Card sx={theming.getThemedCardSx()}>
                     <CardContent>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                      <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                         Versjonshåndtering
                       </Typography>
                       <TextField
@@ -487,7 +512,7 @@ export function GDPRCompliancePanel() {
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
               <Box>
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ color: themeColors.primary }}>
                   Vilkår og Betingelser
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -567,7 +592,7 @@ export function GDPRCompliancePanel() {
                 <Grid item xs={12} md={3}>
                   <Card sx={theming.getThemedCardSx()}>
                     <CardContent>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                      <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                         Versjonshåndtering
                       </Typography>
                       <TextField
@@ -602,7 +627,7 @@ export function GDPRCompliancePanel() {
         <TabPanel value={tabValue} index={2}>
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" sx={{ color: themeColors.primary }}>
                 Datatilsynet GDPR-krav
               </Typography>
               <Button
@@ -628,10 +653,10 @@ export function GDPRCompliancePanel() {
                   <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                       <Box>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" sx={{ color: themeColors.primary }}>
                           {DATATILSYNET_REQUIREMENTS.rightToAccess.name}
                         </Typography>
-                        <Chip label="Frist: 30 dager" size="small" color="warning" sx={{ mt: 1 }} />
+                        <StatusChip tone="warning" label="Frist: 30 dager" sx={{ mt: 1 }} />
                       </Box>
                       <Tooltip title="Se Datatilsynets veiledning">
                         <Button
@@ -668,10 +693,10 @@ export function GDPRCompliancePanel() {
                   <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                       <Box>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" sx={{ color: themeColors.primary }}>
                           {DATATILSYNET_REQUIREMENTS.rightToErasure.name}
                         </Typography>
-                        <Chip label="Uten ugrunnet opphold" size="small" color="error" sx={{ mt: 1 }} />
+                        <StatusChip tone="error" label="Uten ugrunnet opphold" sx={{ mt: 1 }} />
                       </Box>
                       <Button
                         size="small"
@@ -713,7 +738,7 @@ export function GDPRCompliancePanel() {
                         <Typography variant="h6" sx={{ color: 'error.main' }}>
                           {DATATILSYNET_REQUIREMENTS.breachNotification.name}
                         </Typography>
-                        <Chip label="KRITISK: 72 timer" size="small" color="error" sx={{ mt: 1 }} />
+                        <StatusChip tone="error" label="KRITISK: 72 timer" sx={{ mt: 1 }} />
                       </Box>
                       <Button
                         size="small"
@@ -733,15 +758,14 @@ export function GDPRCompliancePanel() {
                       <Typography variant="body2" sx={{ mb: 1 }}>
                         E-post: {DATATILSYNET_REQUIREMENTS.breachNotification.notificationEmail}
                       </Typography>
-                      <Button
+                      <AdminButton
                         size="small"
-                        variant="contained"
-                        color="error"
+                        tone="danger"
                         startIcon={<OpenInNew />}
                         onClick={() => window.open(DATATILSYNET_REQUIREMENTS.breachNotification.reportingPortal, '_blank')}
                       >
                         Rapporteringsportal
-                      </Button>
+                      </AdminButton>
                     </Paper>
                   </CardContent>
                 </Card>
@@ -753,10 +777,10 @@ export function GDPRCompliancePanel() {
                   <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                       <Box>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" sx={{ color: themeColors.primary }}>
                           {DATATILSYNET_REQUIREMENTS.rightToPortability.name}
                         </Typography>
-                        <Chip label="Frist: 30 dager" size="small" color="info" sx={{ mt: 1 }} />
+                        <StatusChip tone="info" label="Frist: 30 dager" sx={{ mt: 1 }} />
                       </Box>
                       <Button
                         size="small"
@@ -790,10 +814,10 @@ export function GDPRCompliancePanel() {
                   <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                       <Box>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" sx={{ color: themeColors.primary }}>
                           {DATATILSYNET_REQUIREMENTS.securityOfProcessing.name}
                         </Typography>
-                        <Chip label="KRITISK KRAV" size="small" color="error" sx={{ mt: 1 }} />
+                        <StatusChip tone="error" label="KRITISK KRAV" sx={{ mt: 1 }} />
                       </Box>
                       <Button
                         size="small"
@@ -846,7 +870,7 @@ export function GDPRCompliancePanel() {
 
         {/* Tab 3: Consent & Cookies */}
         <TabPanel value={tabValue} index={3}>
-          <Typography variant="h6" sx={{ mb: 3, color: theming.colors.primary }}>
+          <Typography variant="h6" sx={{ mb: 3, color: themeColors.primary }}>
             Samtykke og Cookie-håndtering
           </Typography>
 
@@ -868,7 +892,7 @@ export function GDPRCompliancePanel() {
             <Grid item xs={12} md={6}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                     Samtykke-statistikk
                   </Typography>
                   <Box sx={{ mt: 2 }}>
@@ -894,7 +918,7 @@ export function GDPRCompliancePanel() {
             <Grid item xs={12} md={6}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                     Cookie-krav fra Datatilsynet
                   </Typography>
                   <List dense>
@@ -927,7 +951,7 @@ export function GDPRCompliancePanel() {
 
         {/* Tab 4: Data Retention */}
         <TabPanel value={tabValue} index={4}>
-          <Typography variant="h6" sx={{ mb: 3, color: theming.colors.primary }}>
+          <Typography variant="h6" sx={{ mb: 3, color: themeColors.primary }}>
             Dataoppbevaring og Sletting
           </Typography>
 
@@ -955,7 +979,7 @@ export function GDPRCompliancePanel() {
           
           <Accordion defaultExpanded>
             <AccordionSummary expandIcon={<ExpandMore />}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" sx={{ color: themeColors.primary }}>
                 Dataoppbevaringspolicyer (Norsk standard)
               </Typography>
             </AccordionSummary>
@@ -992,7 +1016,7 @@ export function GDPRCompliancePanel() {
 
           <Accordion sx={{ mt: 2 }}>
             <AccordionSummary expandIcon={<ExpandMore />}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" sx={{ color: themeColors.primary }}>
                 GDPR-rettigheter for brukere
               </Typography>
             </AccordionSummary>
@@ -1036,7 +1060,7 @@ export function GDPRCompliancePanel() {
 
         {/* Tab 5: Compliance Checklist */}
         <TabPanel value={tabValue} index={5}>
-          <Typography variant="h6" sx={{ mb: 3, color: theming.colors.primary }}>
+          <Typography variant="h6" sx={{ mb: 3, color: themeColors.primary }}>
             GDPR Compliance Sjekkliste
           </Typography>
 
@@ -1071,7 +1095,7 @@ export function GDPRCompliancePanel() {
                           ) : (
                             <Warning color="error" />
                           )}
-                          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                          <Typography variant="h6" sx={{ color: themeColors.primary }}>
                             {item.category}
                           </Typography>
                           <Chip 
@@ -1079,10 +1103,9 @@ export function GDPRCompliancePanel() {
                             size="small" 
                             variant="outlined"
                           />
-                          <Chip 
-                            label={item.priority === 'critical' ? 'KRITISK' : 'VIKTIG'} 
-                            size="small" 
-                            color={item.priority === 'critical' ? 'error' : 'warning'}
+                          <StatusChip
+                            label={item.priority === 'critical' ? 'KRITISK' : 'VIKTIG'}
+                            tone={item.priority === 'critical' ? 'error' : 'warning'}
                           />
                         </Box>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -1115,7 +1138,7 @@ export function GDPRCompliancePanel() {
         <TabPanel value={tabValue} index={6}>
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" sx={{ color: themeColors.primary }}>
                 GDPR Innstillinger
               </Typography>
               {!editingSettings ? (
@@ -1174,7 +1197,7 @@ export function GDPRCompliancePanel() {
               <Grid item xs={12} md={6}>
                 <Card sx={theming.getThemedCardSx()}>
                   <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                    <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                       Personvernombud Kontakt
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -1202,7 +1225,7 @@ export function GDPRCompliancePanel() {
               <Grid item xs={12} md={6}>
                 <Card sx={theming.getThemedCardSx()}>
                   <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                    <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                       Community Personverntekst
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -1231,22 +1254,22 @@ export function GDPRCompliancePanel() {
               <Grid item xs={12}>
                 <Card sx={theming.getThemedCardSx()}>
                   <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                    <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                       Forhåndsvisning av GDPR-banner
                     </Typography>
                     <Divider sx={{ my: 2 }} />
                     <Paper sx={{ p: 3, bgcolor: 'rgba(255,255,255,0.04)' }}>
-                      <Typography variant="subtitle2" gutterBottom sx={{ color: '#ff8c00' }}>
-                        <Info sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
+                      <Typography variant="subtitle2" gutterBottom sx={{ color: adminTokens.color.brand }}>
+                        <Info aria-hidden sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
                         Community Datalagring
                       </Typography>
-                      <Typography variant="body2" sx={{ color: '#374151', lineHeight: 1.6 }}>
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', lineHeight: 1.6 }}>
                         {communityPrivacyText}
                       </Typography>
                       <Divider sx={{ my: 2 }} />
-                      <Typography variant="caption" sx={{ color: '#9ca3af' }}>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
                         Behandlingsansvarlig: Creatorhub AS • Personvernombud:{', '}
-                        <Link href={`mailto:${personvernombudEmail}`} sx={{ color: '#ff8c00' }}>
+                        <Link href={`mailto:${personvernombudEmail}`} sx={{ color: adminTokens.color.brand }}>
                           {personvernombudEmail}
                         </Link>
                       </Typography>
@@ -1265,10 +1288,11 @@ export function GDPRCompliancePanel() {
         onClose={() => setDatatilsynetDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Gavel sx={{ fontSize: 32, color: '#ff8c00' }} />
+            <Gavel sx={{ fontSize: 32, color: adminTokens.color.brand }} />
             Datatilsynet Kontaktinformasjon
           </Box>
         </DialogTitle>
@@ -1282,7 +1306,7 @@ export function GDPRCompliancePanel() {
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
               <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
-                <Typography variant="subtitle2" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="subtitle2" gutterBottom sx={{ color: themeColors.primary }}>
                   📧 Generell kontakt
                 </Typography>
                 <Typography variant="body2">E-post: {DATATILSYNET_CONTACT.email}</Typography>
@@ -1295,7 +1319,7 @@ export function GDPRCompliancePanel() {
 
             <Grid item xs={12} md={6}>
               <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
-                <Typography variant="subtitle2" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="subtitle2" gutterBottom sx={{ color: themeColors.primary }}>
                   📍 Postadresse
                 </Typography>
                 <Typography variant="body2">{DATATILSYNET_CONTACT.address.street}</Typography>
@@ -1314,19 +1338,18 @@ export function GDPRCompliancePanel() {
                 <Typography variant="body2" sx={{ mb: 2 }}>
                   Ved personopplysningsbrudd MÅ Datatilsynet varsles innen 72 timer.
                 </Typography>
-                <Button
-                  variant="contained"
-                  color="error"
+                <AdminButton
+                  tone="danger"
                   startIcon={<OpenInNew />}
                   onClick={() => window.open('https://melde.datatilsynet.no/','_blank')}
                 >
                   Gå til rapporteringsportal
-                </Button>
+                </AdminButton>
               </Paper>
             </Grid>
 
             <Grid item xs={12}>
-              <Typography variant="subtitle2" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="subtitle2" gutterBottom sx={{ color: themeColors.primary }}>
                 Nyttige lenker:
               </Typography>
               <Stack spacing={1}>
@@ -1375,9 +1398,9 @@ export function GDPRCompliancePanel() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDatatilsynetDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setDatatilsynetDialog(false)}>
             Lukk
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -1387,10 +1410,11 @@ export function GDPRCompliancePanel() {
         onClose={() => setDataExportDialog(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Assignment sx={{ fontSize: 32, color: '#ff8c00' }} />
+            <Assignment sx={{ fontSize: 32, color: adminTokens.color.brand }} />
             GDPR Dataeksport
           </Box>
         </DialogTitle>
@@ -1446,7 +1470,7 @@ export function GDPRCompliancePanel() {
             </MenuItem>
           </TextField>
 
-          <Paper sx={{ p: 2, bgcolor:'#e8f5e9', mt: 2 }}>
+          <Paper sx={{ p: 2, bgcolor:'rgba(76,175,80,0.15)', mt: 2 }}>
             <Typography variant="subtitle2" gutterBottom color="success.main">
               ✅ Inkludert i eksporten:
             </Typography>
@@ -1480,18 +1504,17 @@ export function GDPRCompliancePanel() {
           </Alert>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDataExportDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setDataExportDialog(false)}>
             Avbryt
-          </Button>
-          <Button 
-            variant="contained" 
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleDataExport}
             disabled={!exportUserId}
-            sx={theming.getThemedButtonSx()}
             startIcon={<Assignment />}
           >
             Eksporter Data
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -1511,6 +1534,7 @@ export function GDPRCompliancePanel() {
         </Alert>
       </Snackbar>
     </Box>
+    </ThemeProvider>
   );
 }
 

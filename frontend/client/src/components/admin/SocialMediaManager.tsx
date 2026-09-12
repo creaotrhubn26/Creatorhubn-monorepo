@@ -3,7 +3,7 @@
  * Manage and publish content across Instagram, Facebook, Snapchat, YouTube, and TikTok
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
@@ -38,6 +38,7 @@ import {
   DialogContent,
   DialogActions,
   Snackbar,
+  InputAdornment,
 } from '@mui/material';
 import {
   Instagram as InstagramIcon,
@@ -56,8 +57,10 @@ import {
   Visibility as PreviewIcon,
   CalendarMonth as CalendarIcon,
   Campaign as _CampaignIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface SocialPost {
   id?: string;
@@ -153,11 +156,13 @@ export default function SocialMediaManager() {
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [errorSnackbar, setErrorSnackbar] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
   const [autoPublish, setAutoPublish] = useState(false);
+  const [search, setSearch] = useState('');
+  const isMobile = useIsMobile();
 
   const queryClient = useQueryClient();
 
   // Fetch social media posts
-  const { data: posts = [], isLoading: _isLoading } = useQuery({
+  const { data: postsData = [], isLoading: _isLoading } = useQuery({
     queryKey: ['/api/social-media/posts, '],
     queryFn: async () => {
       const response = await fetch('/api/social-media/posts');
@@ -165,6 +170,17 @@ export default function SocialMediaManager() {
       return response.json();
     },
   });
+  const posts: SocialPost[] = Array.isArray(postsData) ? postsData : [];
+
+  // Derived post lists (memoized to avoid re-filtering on every render)
+  const scheduledPosts = useMemo(
+    () => posts.filter((post: SocialPost) => post.status === 'scheduled'),
+    [posts]
+  );
+  const publishedPosts = useMemo(
+    () => posts.filter((post: SocialPost) => post.status === 'published'),
+    [posts]
+  );
 
   // Upload media mutation (YouTube, Instagram, etc.)
   const uploadMediaMutation = useMutation({
@@ -397,7 +413,7 @@ export default function SocialMediaManager() {
       {/* Header */}
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 600, mb: 1 }}>
             Sosiale Medier
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -409,7 +425,7 @@ export default function SocialMediaManager() {
       {/* Platform Selection */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h6" component="h3" gutterBottom>
             Velg Plattformer
           </Typography>
           <Box display="flex" gap={2} flexWrap="wrap">
@@ -467,7 +483,7 @@ export default function SocialMediaManager() {
           <Grid item xs={12} md={8}>
             <Card>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant="h6" component="h3" gutterBottom>
                   Opprett Innlegg
                 </Typography>
 
@@ -619,15 +635,15 @@ export default function SocialMediaManager() {
                   >
                     Planlegg
                   </Button>
-                  <Button
+                  <AdminButton
+                    tone="primary"
                     startIcon={<SendIcon />}
-                    variant="contained"
                     onClick={handlePublish}
+                    loading={createPostMutation.isPending}
                     disabled={!postForm.content || selectedPlatforms.length === 0 || createPostMutation.isPending}
-                    sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
                   >
                     Publiser Nå
-                  </Button>
+                  </AdminButton>
                 </Box>
               </CardContent>
             </Card>
@@ -637,7 +653,7 @@ export default function SocialMediaManager() {
           <Grid item xs={12} md={4}>
             <Card>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant="h6" component="h3" gutterBottom>
                   Forhåndsvisning
                 </Typography>
                 <Box
@@ -652,6 +668,7 @@ export default function SocialMediaManager() {
                     <Box
                       component="img"
                       src={uploadedMediaUrl}
+                      alt="Forhåndsvisning av opplastet media"
                       sx={{
                         width: '100%',
                         height: 200,
@@ -683,12 +700,11 @@ export default function SocialMediaManager() {
       {activeTab === 1 && (
         <Card>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               Planlagte Innlegg
             </Typography>
             <List>
-              {posts
-                .filter((post: SocialPost) => post.status === 'scheduled')
+              {scheduledPosts
                 .map((post: SocialPost) => (
                   <ListItem key={post.id}>
                     <ListItemIcon>
@@ -701,13 +717,13 @@ export default function SocialMediaManager() {
                       ).toLocaleString('no-NO')}`}
                     />
                     <ListItemSecondaryAction>
-                      <IconButton edge="end">
+                      <IconButton edge="end" aria-label="Slett planlagt innlegg">
                         <DeleteIcon />
                       </IconButton>
                     </ListItemSecondaryAction>
                   </ListItem>
                 ))}
-              {posts.filter((post: SocialPost) => post.status === 'scheduled').length === 0 && (
+              {scheduledPosts.length === 0 && (
                 <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
                   Ingen planlagte innlegg
                 </Typography>
@@ -720,12 +736,31 @@ export default function SocialMediaManager() {
       {activeTab === 2 && (
         <Card>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               Publiserte Innlegg
             </Typography>
+            <TextField
+              size="small"
+              placeholder="Søk i publiserte innlegg …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ mb: 2, maxWidth: 360 }}
+              fullWidth
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
             <Grid container spacing={2}>
-              {posts
-                .filter((post: SocialPost) => post.status ==='published')
+              {publishedPosts
+                .filter((post: SocialPost) =>
+                  `${post.content} ${platformConfig[post.platform as keyof typeof platformConfig]?.name ?? ''}`
+                    .toLowerCase()
+                    .includes(search.toLowerCase())
+                )
                 .map((post: SocialPost) => {
                   const Icon = platformConfig[post.platform as keyof typeof platformConfig].icon;
                   const config = platformConfig[post.platform as keyof typeof platformConfig];
@@ -762,7 +797,7 @@ export default function SocialMediaManager() {
       {activeTab === 3 && (
         <Card>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               Engasjement Analyse
             </Typography>
             
@@ -897,7 +932,7 @@ export default function SocialMediaManager() {
       )}
 
       {/* Preview Dialog */}
-      <Dialog open={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Forhåndsvisning av Innlegg</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
@@ -925,7 +960,7 @@ export default function SocialMediaManager() {
                       <Box sx={{ mt: 2, borderRadius: 1, overflow: 'hidden' }}>
                         <img
                           src={uploadedMediaUrl}
-                          alt="Preview"
+                          alt="Forhåndsvisning av opplastet media"
                           style={{ width: '100%', maxHeight: 300, objectFit: 'cover' }}
                         />
                       </Box>
@@ -945,85 +980,21 @@ export default function SocialMediaManager() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPreviewDialogOpen(false)}>Lukk</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setPreviewDialogOpen(false)}>Lukk</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => {
               setPreviewDialogOpen(false);
               // Could trigger publish or schedule from here
             }}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
           >
             Fortsett til Publisering
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Preview Dialog */}
-      <Dialog open={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Forhåndsvisning av Innlegg</DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2 }}>
-            {selectedPlatforms.map((platform) => {
-              const config = platformConfig[platform as keyof typeof platformConfig];
-              const Icon = config.icon;
-              return (
-                <Box key={platform} sx={{ mb: 3 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                    <Avatar sx={{ bgcolor: config.color }}>
-                      <Icon />
-                    </Avatar>
-                    <Typography variant="h6">{config.name}</Typography>
-                  </Box>
-                  <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
-                    <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', mb: 2 }}>
-                      {postForm.content || 'Ingen innhold enda...'}
-                    </Typography>
-                    {postForm.hashtags && (
-                      <Typography variant="body2" color="primary">
-                        {postForm.hashtags}
-                      </Typography>
-                    )}
-                    {uploadedMediaUrl && (
-                      <Box sx={{ mt: 2, borderRadius: 1, overflow: 'hidden' }}>
-                        <img
-                          src={uploadedMediaUrl}
-                          alt="Preview"
-                          style={{ width: '100%', maxHeight: 300, objectFit: 'cover' }}
-                        />
-                      </Box>
-                    )}
-                    {postForm.mediaUrl && !uploadedMediaUrl && (
-                      <Box sx={{ mt: 2 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          Media: {postForm.mediaUrl}
-                        </Typography>
-                      </Box>
-                    )}
-                  </Paper>
-                  <Divider sx={{ mt: 2 }} />
-                </Box>
-              );
-            })}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPreviewDialogOpen(false)}>Lukk</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              setPreviewDialogOpen(false);
-              // Could trigger publish or schedule from here
-            }}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
-          >
-            Fortsett til Publisering
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Schedule Dialog */}
-      <Dialog open={scheduleDialogOpen} onClose={() => setScheduleDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={scheduleDialogOpen} onClose={() => setScheduleDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Planlegg Innlegg</DialogTitle>
         <DialogContent>
           <TextField
@@ -1036,15 +1007,15 @@ export default function SocialMediaManager() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setScheduleDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setScheduleDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => {
               // Handle schedule logic
             }}
           >
             Planlegg
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

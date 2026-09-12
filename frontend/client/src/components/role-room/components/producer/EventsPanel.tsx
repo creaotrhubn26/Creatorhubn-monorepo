@@ -10,6 +10,7 @@ import {
 } from '@mui/material';
 import { EventOutlined as EventIcon, DeleteOutline as DeleteIcon } from '@mui/icons-material';
 import ConnectionPicker from './ConnectionPicker';
+import { LoadingSkeleton, PanelHeader } from './ui';
 
 interface IgConnection { id: string; igUsername: string | null; facebookPageName: string | null }
 interface IgEvent {
@@ -35,7 +36,7 @@ export default function EventsPanel() {
 
   const { data: connData, isLoading: connLoading } = useQuery<{ connections: IgConnection[] }>({
     queryKey: ['events-connections'],
-    queryFn: () => apiRequest('/api/role-room/instagram/messaging/connections'),
+    queryFn: () => apiRequest('/api/role-room/instagram/connections'),
   });
   const connections = connData?.connections || [];
   useEffect(() => {
@@ -67,16 +68,12 @@ export default function EventsPanel() {
 
   return (
     <Stack spacing={1.6} sx={{ p: { xs: 1, md: 2 } }}>
-      <Stack direction="row" spacing={1} alignItems="center">
-        <EventIcon sx={{ color: '#22d3ee' }} />
-        <Box sx={{ flex: 1 }}>
-          <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem' }}>Arrangement</Typography>
-          <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.84rem' }}>
-            Lag Instagram-arrangement (åpen dag, gratis konsultasjon, webinar) som følgere kan melde seg på — en kilde til nye leads.
-          </Typography>
-        </Box>
-        <ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg konto" />
-      </Stack>
+      <PanelHeader
+        icon={<EventIcon />}
+        title="Arrangement"
+        subtitle="Lag Instagram-arrangement (åpen dag, gratis konsultasjon, webinar) som følgere kan melde seg på — en kilde til nye leads."
+        actions={<ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg konto" />}
+      />
 
       {connLoading ? (
         <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
@@ -113,7 +110,7 @@ export default function EventsPanel() {
 
           <Divider>Kommende arrangement</Divider>
           {isLoading ? (
-            <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} /></Box>
+            <LoadingSkeleton variant="list" count={3} />
           ) : events.length === 0 ? (
             <Typography sx={{ p: 2, color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>Ingen kommende arrangement ennå.</Typography>
           ) : (
@@ -122,7 +119,7 @@ export default function EventsPanel() {
                 <Box key={ev.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.2, display: 'flex', alignItems: 'flex-start', gap: 1 }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.9rem' }}>{ev.title || '(uten tittel)'}</Typography>
-                    <Typography sx={{ color: '#7dd3fc', fontSize: '0.78rem', mt: 0.2 }}>{fmt(ev.startTime)}{ev.endTime ? ` – ${fmt(ev.endTime)}` : ''}</Typography>
+                    <Typography sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: '0.78rem', mt: 0.2 }}>{fmt(ev.startTime)}{ev.endTime ? ` – ${fmt(ev.endTime)}` : ''}</Typography>
                     {ev.venue ? <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.78rem' }}>{ev.venue}</Typography> : null}
                     {ev.description ? <Typography sx={{ color: '#e2e8f0', fontSize: '0.82rem', mt: 0.4, whiteSpace: 'pre-wrap' }}>{ev.description}</Typography> : null}
                   </Box>

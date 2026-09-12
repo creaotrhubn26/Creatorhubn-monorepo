@@ -37,7 +37,19 @@ import { RoleRoomSignInDialog } from "./components/RoleRoomSignInDialog";
 import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
+import { DemoStudioShell } from "./components/demo-studio/DemoStudioShell";
+import { InfographicStudioView } from "./components/demo-studio/InfographicStudioView";
+import { MockupStudioShell } from "./components/mockup-studio/MockupStudioShell";
+import { UnusedClipsStudio } from "./components/UnusedClipsStudio";
+import { ModuleGate } from "./components/ModuleGate";
+import {
+  getEntitledModules,
+  onEntitlementsChanged,
+  refreshEntitlements,
+  type PostAgentModule,
+} from "./entitlements";
 import { StoryTestHarness } from "./components/story/StoryTestHarness";
+import { DemoTestHarness } from "./components/demo-studio/DemoTestHarness";
 import { AgentEditorView } from "./components/AgentEditorView";
 import MUSIC_VIDEO_AGENT_CONFIG from "./agents/music_video";
 import CORPORATE_AGENT_CONFIG from "./agents/corporate";
@@ -46,6 +58,7 @@ import EVENT_AGENT_CONFIG from "./agents/event";
 import DOCUMENTARY_AGENT_CONFIG from "./agents/documentary";
 import PODCAST_AGENT_CONFIG from "./agents/podcast";
 import SHORT_FILM_AGENT_CONFIG from "./agents/short_film";
+import AD_FILM_AGENT_CONFIG from "./agents/ad_film";
 import type { AgentConfig } from "./agents/types";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { NewProjectModal } from "./components/NewProjectModal";
@@ -81,6 +94,9 @@ import { updateAppSettings } from "./api";
 import { useProjectTemplate } from "./hooks/useProjectTemplate";
 
 const MAX_LOG_EVENTS = 500;
+// Interne hjelpe-skript som kjører ofte i bakgrunnen — vis dem ALDRI i det
+// flytende «kjører»-panelet og ikke som varsler (ellers spam).
+const INTERNAL_SCRIPTS = new Set(["health_check", "get_media_pool_state", "check_dependencies"]);
 
 /**
  * Test-bypass: når URL har `?test=story`, eksporter vi en harness som
@@ -93,9 +109,25 @@ function isStoryTestMode(): boolean {
   return new URLSearchParams(window.location.search).get("test") === "story";
 }
 
+function isDemoTestMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("test") === "demo";
+}
+
+function isMockupProjectDeepLink(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).has("mockupProjectId");
+}
+
+// Browser-test-modus (satt av browserTauriShim når Tauri mangler). Umulig i native/prod.
+const IS_BROWSER_TEST = typeof window !== "undefined" && !!(window as unknown as { __BROWSER_TEST__?: boolean }).__BROWSER_TEST__;
+
 export default function App() {
   if (isStoryTestMode()) {
     return <StoryTestHarness />;
+  }
+  if (isDemoTestMode()) {
+    return <DemoTestHarness />;
   }
 
   const [registry, setRegistry] = useState<Registry | null>(null);
@@ -107,7 +139,11 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [pendingDialog, setPendingDialog] = useState<{ script: ScriptMeta; dryRun: boolean } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color">("pipeline");
+  const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color" | "demo" | "infographic" | "mockup">(IS_BROWSER_TEST ? "mockup" : "pipeline");
+  const [requestedMockupProjectId, setRequestedMockupProjectId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("mockupProjectId");
+  });
   const [showSetup, setShowSetup] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [runningScripts, setRunningScripts] = useState<Record<string, RunningScript>>({});
@@ -119,6 +155,9 @@ export default function App() {
   const [showLearning, setShowLearning] = useState(false);
   const [highlightReviewPath, setHighlightReviewPath] = useState<string | null>(null);
   const [creativeEditorPath, setCreativeEditorPath] = useState<string | null>(null);
+  // Bryllups-studio (ubrukt materiale): modal med egen backdrop — wiret
+  // etter iPad-linje-mergen 2026-08-02 (komponenten kom inn uwiret).
+  const [showUnusedClipsStudio, setShowUnusedClipsStudio] = useState(false);
   // Auto-updater dialog-state. Set når sjekk finner ny versjon; null mens
   // ingen oppdatering venter eller mens vi laster ned. Selve download +
   // install kalles via onDownload-prop på UpdaterDialog.
@@ -129,8 +168,19 @@ export default function App() {
       onProgress: (fraction: number, status: "downloading" | "finished") => void,
     ) => Promise<void>;
   } | null>(null);
+  // Synlig updater-status (aldri stille feil): «checking» / feilmelding /
+  // «ingen oppdatering» — vises som et lite banner + logges i hendelses-strømmen.
+  const [updateStatus, setUpdateStatus] = useState<{ kind: "checking" | "none" | "error"; message?: string } | null>(null);
   const [agentEditorConfig, setAgentEditorConfig] = useState<AgentConfig | null>(null);
   const [agentSourcePath, setAgentSourcePath] = useState<string>("");
+  // Ekte app-versjon fra Tauri (ikke hardkodet) — vises i footer + innstillinger.
+  const [appVersion, setAppVersion] = useState<string>("");
+  useEffect(() => {
+    void import("@tauri-apps/api/app")
+      .then(({ getVersion }) => getVersion())
+      .then((v) => setAppVersion(v))
+      .catch(() => { /* web/dev — ingen Tauri */ });
+  }, []);
 
   const openAgent = useCallback(async (config: AgentConfig) => {
     try {
@@ -160,7 +210,9 @@ export default function App() {
     window.addEventListener("trrpa:open-dependencies", handler);
     return () => window.removeEventListener("trrpa:open-dependencies", handler);
   }, []);
-  const [showFirstRun, setShowFirstRun] = useState(() => shouldShowFirstRun());
+  const [showFirstRun, setShowFirstRun] = useState(
+    () => !isMockupProjectDeepLink() && shouldShowFirstRun(),
+  );
   const [showWatch, setShowWatch] = useState(false);
   const [showPhotoshopBridge, setShowPhotoshopBridge] = useState(false);
   const [showFireflyPrompt, setShowFireflyPrompt] = useState(false);
@@ -170,7 +222,7 @@ export default function App() {
   const [showPsdGallery, setShowPsdGallery] = useState(false);
   const [showPhotoshopHealth, setShowPhotoshopHealth] = useState(false);
   const [showPhotoshopTour, setShowPhotoshopTour] = useState(
-    () => !hasCompletedPhotoshopTour(),
+    () => !isMockupProjectDeepLink() && !hasCompletedPhotoshopTour(),
   );
   const [showFeedback, setShowFeedback] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -300,29 +352,47 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Holder alltid siste «kjør forrige»-logikk (fersk runs/scriptsById/runScript).
+  // Menu-lytteren har [] deps, så den kan ikke lese state direkte uten stale closure.
+  const rerunLastRef = useRef<() => void | Promise<void>>(() => {});
+
   // Subscribe to native-menu events (#186 + #187 + #129)
   useEffect(() => {
     const unlisteners: Array<() => void> = [];
     let cancelled = false;
     void import("@tauri-apps/api/event").then(({ listen }) => {
       if (cancelled) return;
-      listen("menu://rerun-last", async () => {
-        const all = Object.values(runs ?? {}).filter((r): r is RunRecord => !!r);
-        if (all.length === 0) {
-          setEvents((prev) => [
-            ...prev,
-            { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "No previous run to re-execute" },
-          ]);
-          return;
+      const handleDeepLinks = (payload: unknown) => {
+        const urls = Array.isArray(payload) ? payload : [payload];
+        for (const raw of urls) {
+          if (typeof raw !== "string") continue;
+          try {
+            const url = new URL(raw);
+            if (url.protocol !== "postagent:" || url.hostname !== "mockup") continue;
+            const projectId = url.searchParams.get("projectId")?.trim();
+            if (!projectId) continue;
+            setRequestedMockupProjectId(projectId);
+            setView("mockup");
+            break;
+          } catch {
+            // Ignore malformed external URLs.
+          }
         }
-        const last = all.sort((a, b) => Number(b.startedAt ?? 0) - Number(a.startedAt ?? 0))[0];
-        const script = scriptsById[last.scriptId];
-        if (!script) return;
-        // Params aren't persisted on RunRecord — re-run with empty params,
-        // which makes the runner use defaults or prompt where required.
-        await runScript(script, {}, false);
-      }).then((u) => unlisteners.push(u));
+      };
+      // Denne effekten har [] deps → closuren ville fanget INITIELL (tom) runs/
+      // scriptsById → «Kjør forrige» så alltid ingen kjøringer. Rut via en ref som
+      // holdes fersk (rerunLastRef) i stedet.
+      listen("menu://rerun-last", () => { void rerunLastRef.current(); }).then((u) => unlisteners.push(u));
       listen("menu://new-workflow", () => setView("pipeline")).then((u) => unlisteners.push(u));
+      listen<unknown>("deep-link://received", (event) => {
+        handleDeepLinks(event.payload);
+      }).then((u) => unlisteners.push(u));
+      // A cold-start deep link can reach Rust before React has subscribed.
+      // Drain the native buffer once so that exact project is still opened.
+      void import("@tauri-apps/api/core")
+        .then(({ invoke }) => invoke<string[]>("take_pending_deep_links"))
+        .then(handleDeepLinks)
+        .catch(() => undefined);
       // Updater-handler: brukes både av menu://check-updates og av
       // auto-check ved oppstart. Sjekker etter ny versjon; hvis funnet
       // setter vi updateInfo som rendrer UpdaterDialog. Selve nedlastings-
@@ -331,22 +401,25 @@ export default function App() {
       // dialogens progress-bar. notifyNone=true betyr "menu trigget,
       // si fra hvis det ikke er noe nytt"; auto-check skipper det.
       const runUpdateCheck = async (notifyNone: boolean) => {
+        setUpdateStatus({ kind: "checking" });
         try {
           const updater = await import("@tauri-apps/plugin-updater");
           const update = await updater.check();
           if (!update) {
+            setUpdateStatus(notifyNone ? { kind: "none" } : null);
             if (notifyNone) {
               setEvents((prev) => [
                 ...prev,
-                { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "No updates available" },
+                { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "Ingen oppdatering — du har nyeste versjon." },
               ]);
             }
             return;
           }
+          setUpdateStatus(null);
           setEvents((prev) => [
             ...prev,
             { type: "log", ts: Date.now() / 1000, runId: "n/a",
-              message: `Update available: v${update.version}` },
+              message: `Oppdatering tilgjengelig: v${update.version}` },
           ]);
           // Hold update-objektet i closure til brukeren klikker "Last ned".
           // downloadAndInstall tar en progress-callback med events:
@@ -373,8 +446,15 @@ export default function App() {
             },
           });
         } catch (e) {
-          // Updater not configured (no endpoint/pubkey) — silent i dev
-          console.warn("[updater] not available:", e);
+          // ALDRI stille: vis den faktiske feilen (banner + hendelseslogg) så
+          // updater-problemer er synlige og diagnostiserbare.
+          const message = e instanceof Error ? e.message : String(e);
+          console.warn("[updater] check failed:", e);
+          setUpdateStatus({ kind: "error", message });
+          setEvents((prev) => [
+            ...prev,
+            { type: "log", ts: Date.now() / 1000, runId: "n/a", message: `Oppdaterings-sjekk feilet: ${message}` },
+          ]);
         }
       };
       listen("menu://check-updates", () => void runUpdateCheck(true))
@@ -397,8 +477,9 @@ export default function App() {
         const next = [...prev, event];
         return next.length > MAX_LOG_EVENTS ? next.slice(-MAX_LOG_EVENTS) : next;
       });
-      // Track running scripts for the progress panel
-      if (event.type === "started" && event.runId) {
+      // Track running scripts for the progress panel — men IKKE interne
+      // hjelpe-skript (health_check etc.); de skal ikke poppe opp panelet.
+      if (event.type === "started" && event.runId && !INTERNAL_SCRIPTS.has(event.scriptId ?? "")) {
         setRunningScripts((prev) => ({
           ...prev,
           [event.runId]: {
@@ -435,10 +516,7 @@ export default function App() {
         // #286 / #287 — surface completion as a native notification.
         // Don't notify on health_check / get_media_pool_state etc. — internal
         // helpers that run frequently would create notification spam.
-        const internalScripts = new Set([
-          "health_check", "get_media_pool_state", "check_dependencies",
-        ]);
-        if (event.scriptId && !internalScripts.has(event.scriptId)) {
+        if (event.scriptId && !INTERNAL_SCRIPTS.has(event.scriptId)) {
           const succeeded = !!event.succeeded;
           void fireNotification(
             succeeded ? "Script ferdig" : "Script feilet",
@@ -521,6 +599,13 @@ export default function App() {
     profileImageUrl: string | null;
     professions: string[];
   } | null>(null);
+  // À la carte-moduler brukeren har låst opp (synket fra entitlements-cache
+  // via 'trrpa:entitlements-changed'). Demo Studio m.fl. gates på disse.
+  const [entitledModules, setEntitledModules] = useState<PostAgentModule[]>(getEntitledModules());
+  useEffect(() => {
+    const sync = () => setEntitledModules(getEntitledModules());
+    return onEntitlementsChanged(sync);
+  }, []);
 
   const silentAuthCheck = useCallback(async () => {
     const s = loadSettings();
@@ -528,18 +613,25 @@ export default function App() {
     if (!token) {
       setAuthStatus("none");
       setAuthUserEmail(null);
+      void refreshEntitlements(); // tømmer modul-cache når utlogget
       return;
     }
     try {
-      const base = (s.RR_POST_AGENT_BASE_URL || "https://creatorhubn.com/api/post-agent").replace(/\/$/, "");
+      const base = (s.RR_POST_AGENT_BASE_URL || "https://www.creatorhubn.com/api/post-agent").replace(/\/$/, "");
       const res = await fetch(`${base}/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        const me = await res.json() as { email?: string; name?: string };
-        if (me?.email) {
+        // Et 200-svar fra /me betyr at token-et er gyldig → brukeren ER
+        // innlogget. Tidligere krevde vi `me.email`, men enkelte kontoer
+        // (OAuth/migrert) mangler email i users-raden → 200-uten-email ble
+        // feilaktig tolket som «Token utløpt». Nå: 200 = innlogget, email er
+        // bare til visning.
+        const me = await res.json().catch(() => ({})) as { email?: string; name?: string };
+        {
           setAuthStatus("ok");
-          setAuthUserEmail(me.email);
+          setAuthUserEmail(me?.email ?? null);
+          void refreshEntitlements(); // hent hvilke moduler brukeren eier
 
           // Hent Role Room-medlemsprofil (avatar + navn + profesjon) i bakgrunnen.
           // Origin: strip /api/post-agent fra base for å nå sibling-endpoint
@@ -564,10 +656,6 @@ export default function App() {
           } catch {
             // Profil-fetch er best-effort — status er allerede satt ok
           }
-        } else {
-          setAuthStatus("expired");
-          setAuthUserEmail(null);
-          setAuthMemberProfile(null);
         }
       } else if (res.status === 401 || res.status === 403) {
         setAuthStatus("expired");
@@ -601,14 +689,15 @@ export default function App() {
     const onAuthChange = () => { silentAuthCheck(); };
     window.addEventListener("focus", onFocus);
     window.addEventListener("trrpa:auth-changed", onAuthChange);
-    const interval = setInterval(() => {
-      silentHealthCheck();
-      silentAuthCheck();
-    }, 30_000);
+    // Auth-pillen sjekkes ofte (lett); health-check er en spawn → sjeldent
+    // (hver 30. min). Begge kjøres også ved fokus. Manuell via menyen når ønsket.
+    const authInterval = setInterval(() => { silentAuthCheck(); }, 30_000);
+    const healthInterval = setInterval(() => { silentHealthCheck(); }, 1_800_000);
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("trrpa:auth-changed", onAuthChange);
-      clearInterval(interval);
+      clearInterval(authInterval);
+      clearInterval(healthInterval);
     };
   }, [silentHealthCheck, silentAuthCheck]);
 
@@ -656,6 +745,22 @@ export default function App() {
     },
     [recordRun],
   );
+
+  // Hold «kjør forrige»-handleren fersk (leses av menu-lytteren via ref). Billig
+  // ref-oppdatering — ingen re-subscribe av menu-lytterne.
+  useEffect(() => {
+    rerunLastRef.current = async () => {
+      const all = Object.values(runs ?? {}).filter((r): r is RunRecord => !!r);
+      if (all.length === 0) {
+        setEvents((prev) => [...prev, { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "Ingen tidligere kjøring å re-kjøre" }]);
+        return;
+      }
+      const last = all.sort((a, b) => Number(b.startedAt ?? 0) - Number(a.startedAt ?? 0))[0];
+      const script = scriptsById[last.scriptId];
+      if (!script) return;
+      await runScript(script, {}, false);
+    };
+  }, [runs, scriptsById, runScript]);
 
   const selectedWorkflow = selectedWorkflowId ? workflows[selectedWorkflowId] : null;
 
@@ -741,6 +846,10 @@ export default function App() {
           onOpenDocumentaryAgent={() => void openAgent(DOCUMENTARY_AGENT_CONFIG)}
           onOpenPodcastAgent={() => void openAgent(PODCAST_AGENT_CONFIG)}
           onOpenShortFilmAgent={() => void openAgent(SHORT_FILM_AGENT_CONFIG)}
+          onOpenAdFilmAgent={() => void openAgent(AD_FILM_AGENT_CONFIG)}
+          onOpenDemoStudio={() => setView("demo")}
+          onOpenInfographicStudio={() => setView("infographic")}
+          onOpenMockupStudio={() => setView("mockup")}
           onOpenQcVideo={() => setShowQcVideo(true)}
           onOpenSavedProject={(picksPath) => setCreativeEditorPath(picksPath)}
           signedIn={authStatus === "ok"}
@@ -755,9 +864,78 @@ export default function App() {
         />
       )}
 
-      {view === "cull" && <CullView activeTemplate={activeTemplate} />}
-      {view === "audio" && <AudioView />}
-      {view === "color" && <ColorView activeTemplate={activeTemplate} />}
+      {/* #6 à la carte-gating: culling = Capture-modul, audio/color (Fairlight/
+          grading) = Resolve-modul. Admin/eier bypasser (entitlements gir alle). */}
+      {view === "cull" && (
+        authStatus === "ok" && entitledModules.includes("capture")
+          ? <CullView activeTemplate={activeTemplate} />
+          : <ModuleGate module="capture" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
+      )}
+      {view === "audio" && (
+        authStatus === "ok" && entitledModules.includes("resolve")
+          ? <AudioView />
+          : <ModuleGate module="resolve" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
+      )}
+      {view === "color" && (
+        authStatus === "ok" && entitledModules.includes("resolve")
+          ? <ColorView activeTemplate={activeTemplate} />
+          : <ModuleGate module="resolve" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
+      )}
+      {view === "demo" &&
+        (authStatus === "ok" && entitledModules.includes("demo_studio") ? (
+          // min-height:0 + overflow:hidden: uten dette har grid-cellen (1fr-raden i
+          // .app) default min-height:auto, så Demo Studio / Infographic Studios høye
+          // innhold (518-mal-lista) BLÅSER OPP raden forbi 100vh og skyver bunnen
+          // (tidslinje + filmstrip) UT AV vinduet. Med denne klemmes studioet til
+          // rad-høyden og de indre panelene scroller/krymper som de skal.
+          <div style={{ minHeight: 0, overflow: "hidden", display: "flex" }}>
+            <DemoStudioShell onClose={() => setView("pipeline")} />
+          </div>
+        ) : (
+          <ModuleGate
+            module="demo_studio"
+            signedIn={authStatus === "ok"}
+            onClose={() => setView("pipeline")}
+            onSignIn={() => setShowSignIn(true)}
+          />
+        ))}
+
+      {/* Infographic Studio — egen løsning på Home (samme demo_studio-modul).
+          Komponenten har innebygd standalone-modus («Egen løsning»-badge +
+          Tilbake-til-Home). onNav → hjem; onOpenDemoStudio → Demo Studio. */}
+      {view === "infographic" &&
+        (authStatus === "ok" && entitledModules.includes("demo_studio") ? (
+          <div style={{ minHeight: 0, overflow: "hidden", display: "flex" }}>
+            <InfographicStudioView
+              standalone
+              onNav={() => setView("pipeline")}
+              onOpenDemoStudio={() => setView("demo")}
+            />
+          </div>
+        ) : (
+          <ModuleGate
+            module="demo_studio"
+            signedIn={authStatus === "ok"}
+            onClose={() => setView("pipeline")}
+            onSignIn={() => setShowSignIn(true)}
+          />
+        ))}
+
+      {/* Mockup Studio — produkt-one-pagere med device-mockups (samme
+          demo_studio-modul som Demo/Infographic). Egen editor-chrome. */}
+      {view === "mockup" &&
+        ((IS_BROWSER_TEST || (authStatus === "ok" && entitledModules.includes("demo_studio"))) ? (
+          <div style={{ minHeight: 0, overflow: "hidden", display: "flex" }}>
+            <MockupStudioShell onClose={() => setView("pipeline")} initialProjectId={requestedMockupProjectId} />
+          </div>
+        ) : (
+          <ModuleGate
+            module="demo_studio"
+            signedIn={authStatus === "ok"}
+            onClose={() => setView("pipeline")}
+            onSignIn={() => setShowSignIn(true)}
+          />
+        ))}
 
       {advancedMode && view === "pipeline" && (
       <div className="body">
@@ -840,7 +1018,14 @@ export default function App() {
           >
             {showMediaPool ? <IconChevronRight /> : <IconChevronLeft />}
           </button>
-          <span className="footer-version">v0.1.0</span>
+          <button
+            className="footer-version"
+            onClick={() => void import("@tauri-apps/api/event").then(({ emit }) => emit("menu://check-updates"))}
+            title="Se etter oppdateringer"
+            style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "inherit", cursor: "pointer" }}
+          >
+            {appVersion ? `v${appVersion} ↻` : "Se etter oppdateringer"}
+          </button>
         </span>
       </footer>
 
@@ -886,8 +1071,16 @@ export default function App() {
             handler: () => setCreativeEditorPath(
               "/Users/danielqazi/Library/Application Support/no.creatorhubn.roleroom-post-agent/last_highlight_picks.json"
             ) },
+          { id: "unused_clips_studio", title: "Bryllup: Ubrukt materiale-studio",
+            subtitle: "kategoriser ubrukte klipp, AI-anbefalinger og posisjonert innsetting",
+            handler: () => setShowUnusedClipsStudio(true) },
         ]}
       />
+
+      {/* Bryllups-studio: komponenten rendrer sin egen modal-backdrop. */}
+      {showUnusedClipsStudio && (
+        <UnusedClipsStudio onClose={() => setShowUnusedClipsStudio(false)} />
+      )}
 
       {pendingDialog && (
         <ParamDialog
@@ -999,9 +1192,9 @@ export default function App() {
       {showWeddingWizard && (
         <GuidedWeddingWizard
           onClose={() => setShowWeddingWizard(false)}
-          onComplete={() => {
+          onComplete={(picksPath) => {
             setShowWeddingWizard(false);
-            // TODO: chain into ekte extract når alle steg er bygget
+            setCreativeEditorPath(picksPath);
           }}
         />
       )}
@@ -1081,11 +1274,33 @@ export default function App() {
         <FeedbackDialog onClose={() => setShowFeedback(false)} />
       )}
 
+      {updateStatus && (
+        <div style={{ position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 9999, maxWidth: 620,
+          display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", borderRadius: 10, fontSize: 13,
+          background: updateStatus.kind === "error" ? "#3a1518" : "#141b2b",
+          border: `1px solid ${updateStatus.kind === "error" ? "#7a2b30" : "#2a3350"}`,
+          color: updateStatus.kind === "error" ? "#f0a89f" : "#c4d0e4", boxShadow: "0 8px 24px rgba(0,0,0,.45)" }}>
+          {updateStatus.kind === "checking" && <span>Ser etter oppdatering…</span>}
+          {updateStatus.kind === "none" && <span>✓ Du har nyeste versjon.</span>}
+          {updateStatus.kind === "error" && (<>
+            <span style={{ flex: 1 }}>⚠ Oppdaterings-sjekk feilet: {updateStatus.message}</span>
+            <button onClick={() => { setUpdateStatus(null); void import("@tauri-apps/api/event").then(({ emit }) => emit("menu://check-updates")); }}
+              style={{ padding: "3px 10px", borderRadius: 7, border: "1px solid #7a2b30", background: "transparent", color: "#f0a89f", cursor: "pointer", fontWeight: 600 }}>Prøv igjen</button>
+          </>)}
+          <button onClick={() => setUpdateStatus(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16, opacity: 0.6, lineHeight: 1 }}>×</button>
+        </div>
+      )}
       {updateInfo && (
         <UpdaterDialog
           version={updateInfo.version}
           notes={updateInfo.notes}
           onDownload={updateInfo.runDownload}
+          onRelaunch={async () => {
+            // Krever tauri-plugin-process (registrert i lib.rs) + process-
+            // tillatelse i capabilities. relaunch() avslutter og starter appen.
+            const { relaunch } = await import("@tauri-apps/plugin-process");
+            await relaunch();
+          }}
           onDismiss={() => setUpdateInfo(null)}
         />
       )}
@@ -1098,12 +1313,9 @@ export default function App() {
         />
       )}
 
-      {showSignIn && (
-        <RoleRoomSignInDialog
-          onClose={() => setShowSignIn(false)}
-          onSignedIn={() => { setShowSignIn(false); void silentAuthCheck(); }}
-        />
-      )}
+      {/* (Innloggings-dialogen rendres ÉN gang lenger opp, gated på !showFirstRun &&
+          showSignIn. En duplikat-render her ga to modaler oppå hverandre + to
+          pairing-forespørsler/-faner — fjernet.) */}
     </div>
   );
 }

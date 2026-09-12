@@ -1,0 +1,5819 @@
+// APIClient.swift
+//
+// Tynn URLSession-wrapper for /api/admin-room/lead-map/* endepunkter.
+// Alle metoder er async throws — caller bestemmer error-handling.
+//
+// Release-URL bygges inn via LeadMapAPIBaseURL i Info.plist. DEBUG-testene
+// kan overstyre med LEADGRID_API_BASE_URL for ekte staging-E2E.
+
+import Foundation
+import CoreLocation
+
+enum LeadgridScoutScopeError: LocalizedError, Equatable {
+    case invalidLeadID
+    case missingProjectID
+    case invalidIdempotencyKey
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidLeadID:
+            return "Scout krever en persistert Leadgrid CRM-ID."
+        case .missingProjectID:
+            return "Velg et Leadgrid-kundeprosjekt før du bruker Scout."
+        case .invalidIdempotencyKey:
+            return "Scout-forespørselen mangler en stabil retry-nøkkel."
+        }
+    }
+}
+
+private func requiredScoutLeadID(_ rawValue: String) throws -> String {
+    let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard UUID(uuidString: value) != nil else {
+        throw LeadgridScoutScopeError.invalidLeadID
+    }
+    return value.lowercased()
+}
+
+private func requiredScoutProjectID(_ rawValue: String) throws -> String {
+    let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !value.isEmpty, value.count <= 255 else {
+        throw LeadgridScoutScopeError.missingProjectID
+    }
+    return value
+}
+
+private func requiredScoutIdempotencyKey(_ rawValue: String) throws -> String {
+    let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard (8...200).contains(value.count) else {
+        throw LeadgridScoutScopeError.invalidIdempotencyKey
+    }
+    return value
+}
+
+enum LeadgridCollaborationScopeError: LocalizedError, Equatable {
+    case missingProjectID
+
+    var errorDescription: String? {
+        "Velg et Leadgrid-prosjekt før du åpner eller endrer samarbeidsdata."
+    }
+}
+
+private func requiredCollaborationProjectID(_ rawValue: String) throws -> String {
+    let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !value.isEmpty, value.count <= 255 else {
+        throw LeadgridCollaborationScopeError.missingProjectID
+    }
+    return value
+}
+
+enum LeadgridAssignmentScopeError: LocalizedError, Equatable {
+    case invalidRole
+    case invalidCRMLeadID
+    case missingProjectID
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidRole:
+            return "Ugyldig tildelingsrolle."
+        case .invalidCRMLeadID:
+            return "Tildeling krever en persistert Leadgrid CRM-ID."
+        case .missingProjectID:
+            return "Velg et Leadgrid-prosjekt før tildeling."
+        }
+    }
+}
+
+enum LeadgridAssignmentScope {
+    static func assignableUsersPath(
+        role: String,
+        customerId: String,
+        projectId: String
+    ) throws -> String {
+        let role = role.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ["team_leader", "rep", "all"].contains(role) else {
+            throw LeadgridAssignmentScopeError.invalidRole
+        }
+        let customerId = customerId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard UUID(uuidString: customerId) != nil else {
+            throw LeadgridAssignmentScopeError.invalidCRMLeadID
+        }
+        let projectId = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !projectId.isEmpty, projectId.count <= 255 else {
+            throw LeadgridAssignmentScopeError.missingProjectID
+        }
+
+        var components = URLComponents()
+        components.path = "/api/leadgrid/assignable-users"
+        components.queryItems = [
+            URLQueryItem(name: "role", value: role),
+            URLQueryItem(name: "leadId", value: customerId),
+            URLQueryItem(name: "projectId", value: projectId),
+        ]
+        guard let path = components.string else {
+            throw URLError(.badURL)
+        }
+        return path
+    }
+}
+
+actor APIClient {
+    private static let productionBaseURL = "https://creatorhub-backend-rtbl.onrender.com"
+
+    /// Statisk base-URL for kall som ikke trenger token (Google OAuth).
+    static let baseURL: String = {
+        #if DEBUG
+        if let override = ProcessInfo.processInfo.environment["LEADGRID_API_BASE_URL"],
+           validatedBaseURL(override) != nil {
+            return override.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        #endif
+        if let configured = Bundle.main.object(
+            forInfoDictionaryKey: "LeadMapAPIBaseURL"
+        ) as? String,
+           validatedBaseURL(configured) != nil {
+            return configured.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return productionBaseURL
+    }()
+
+    static var isNonProduction: Bool { baseURL != productionBaseURL }
+
+    private let token: String
+    private let baseURL: URL
+    private let session: URLSession
+    /// Request-local tenant context. Sent on every authenticated Leadgrid call
+    /// so legacy endpoint families resolve the same workspace as the UI.
+    private var activeOrganizationId: String?
+    /// Stable `/api/auth/user` identity used to bind durable offline writes.
+    private var authenticatedActorUserId: String?
+
+    init(
+        token: String,
+        baseURL: URL = URL(string: APIClient.baseURL)!,
+        actorUserId: String? = nil
+    ) {
+        self.token = token
+        self.baseURL = baseURL
+        let actor = actorUserId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.authenticatedActorUserId = actor?.isEmpty == false ? actor : nil
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 20
+        config.waitsForConnectivity = true
+        self.session = URLSession(configuration: config)
+    }
+
+    func setActiveOrganizationId(_ organizationId: String?) {
+        let value = organizationId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        activeOrganizationId = value?.isEmpty == false ? value : nil
+    }
+
+    func setAuthenticatedActorUserId(_ userId: String?) {
+        let value = userId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        authenticatedActorUserId = value?.isEmpty == false ? value : nil
+    }
+
+    func offlineActorUserId() -> String? { authenticatedActorUserId }
+
+    private static func validatedBaseURL(_ rawValue: String) -> URL? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              let host = url.host,
+              scheme == "https" ||
+                (scheme == "http" && ["127.0.0.1", "localhost"].contains(host))
+        else { return nil }
+        return url
+    }
+
+    // MARK: - GET-endepunkter
+
+    /// Felles workspace-/prosjektscope for alle Leadgrid-leseflyter.
+    private func scopeQuery(projectId: String?, organizationId: String?) -> String {
+        var components = URLComponents()
+        var items: [URLQueryItem] = []
+        if let projectId, !projectId.isEmpty {
+            items.append(URLQueryItem(name: "projectId", value: projectId))
+        }
+        if let organizationId, !organizationId.isEmpty {
+            items.append(URLQueryItem(name: "organization_id", value: organizationId))
+        }
+        components.queryItems = items.isEmpty ? nil : items
+        guard let query = components.percentEncodedQuery, !query.isEmpty else { return "" }
+        return "?\(query)"
+    }
+
+    func fetchLeads(projectId: String? = nil, organizationId: String? = nil) async throws -> [LeadModel] {
+        let resp: LeadsResponse = try await get("/api/admin-room/lead-map/leads\(scopeQuery(projectId: projectId, organizationId: organizationId))")
+        return resp.leads
+    }
+
+    func fetchLead(id: String, organizationId: String? = nil) async throws -> LeadModel {
+        try await get("/api/admin-room/lead-map/leads/\(id)\(scopeQuery(projectId: nil, organizationId: organizationId))")
+    }
+
+    func fetchCompetitors(projectId: String? = nil, organizationId: String? = nil) async throws -> [CompetitorModel] {
+        let resp: CompetitorsResponse = try await get("/api/admin-room/lead-map/competitors\(scopeQuery(projectId: projectId, organizationId: organizationId))")
+        return resp.competitors
+    }
+
+    func fetchMetrics(projectId: String? = nil, organizationId: String? = nil) async throws -> MetricsModel {
+        try await get("/api/admin-room/lead-map/metrics\(scopeQuery(projectId: projectId, organizationId: organizationId))")
+    }
+
+    func fetchCalendar(projectId: String? = nil, organizationId: String? = nil) async throws -> [CalendarEvent] {
+        let resp: CalendarResponse = try await get("/api/admin-room/lead-map/calendar\(scopeQuery(projectId: projectId, organizationId: organizationId))")
+        return resp.events
+    }
+
+    func fetchReminders(projectId: String? = nil, organizationId: String? = nil) async throws -> RemindersResponse {
+        try await get("/api/admin-room/lead-map/reminders\(scopeQuery(projectId: projectId, organizationId: organizationId))")
+    }
+
+    /// Leadgrid-uavhengighet: opprett prosjekt UTEN Role Room.
+    func createLeadMapProject(
+        name: String,
+        description: String? = nil,
+        organizationId: String
+    ) async throws -> ProjectListItem {
+        struct Resp: Codable { let project: ProjectListItem }
+        let body: [String: Any] = [
+            "name": name,
+            "description": description ?? "",
+            "organization_id": organizationId,
+        ]
+        let resp: Resp = try await post(
+            "/api/admin-room/lead-map/projects",
+            body: body)
+        return resp.project
+    }
+
+    func fetchProjects(organizationId: String?) async throws -> [ProjectListItem] {
+        guard let organizationId, !organizationId.isEmpty else { return [] }
+        let encoded = organizationId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+            ?? organizationId
+        let resp: ProjectsResponse = try await get(
+            "/api/admin-room/lead-map/projects?organization_id=\(encoded)")
+        return resp.projects
+    }
+
+    func fetchProjectSummary(id: String) async throws -> ProjectSummary {
+        try await get("/api/admin-room/lead-map/projects/\(id)/summary")
+    }
+
+    func fetchEnrichment(
+        leadId: String,
+        projectId: String?,
+        organizationId: String?
+    ) async throws -> EnrichmentModel? {
+        let resp: EnrichmentEnvelope = try await get(
+            "/api/admin-room/lead-map/leads/\(leadId)/enrichment\(scopeQuery(projectId: projectId, organizationId: organizationId))"
+        )
+        return resp.enrichment
+    }
+
+    func fetchDemographics(
+        leadId: String,
+        projectId: String?,
+        organizationId: String?
+    ) async throws -> DemographicsModel? {
+        let resp: DemographicsEnvelope = try await get(
+            "/api/admin-room/lead-map/leads/\(leadId)/demographics\(scopeQuery(projectId: projectId, organizationId: organizationId))"
+        )
+        return resp.demographics
+    }
+
+    func fetchLeadNotes(
+        leadId: String,
+        projectId rawProjectId: String,
+        organizationId: String?
+    ) async throws -> [LeadNoteModel] {
+        let projectId = try requiredCollaborationProjectID(rawProjectId)
+        let response: LeadNotesResponse = try await get(
+            "/api/admin-room/lead-map/leads/\(leadId)/notes\(scopeQuery(projectId: projectId, organizationId: organizationId))"
+        )
+        return response.notes
+    }
+
+    func fetchLeadFiles(leadId: String, organizationId: String?) async throws -> [LeadStoredFileModel] {
+        let response: LeadFilesResponse = try await get(
+            "/api/admin-room/lead-map/leads/\(leadId)/files\(scopeQuery(projectId: nil, organizationId: organizationId))"
+        )
+        return response.files
+    }
+
+    func createLeadNote(
+        leadId: String,
+        body: String,
+        pinned: Bool,
+        projectId rawProjectId: String,
+        organizationId: String?
+    ) async throws -> LeadNoteModel {
+        let projectId = try requiredCollaborationProjectID(rawProjectId)
+        var payload: [String: Any] = [
+            "body": body,
+            "pinned": pinned,
+            "projectId": projectId,
+        ]
+        if let organizationId, !organizationId.isEmpty { payload["organization_id"] = organizationId }
+        let response: LeadNoteResponse = try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/notes", body: payload
+        )
+        return response.note
+    }
+
+    func setLeadFavorite(
+        leadId: String,
+        favorite: Bool,
+        projectId rawProjectId: String,
+        organizationId: String?
+    ) async throws -> Bool {
+        let projectId = try requiredCollaborationProjectID(rawProjectId)
+        var payload: [String: Any] = [
+            "favorite": favorite,
+            "projectId": projectId,
+        ]
+        if let organizationId, !organizationId.isEmpty { payload["organization_id"] = organizationId }
+        let response: LeadFavoriteResponse = try await put(
+            "/api/admin-room/lead-map/leads/\(leadId)/favorite", body: payload
+        )
+        return response.favorite
+    }
+
+    // MARK: - PATCH/POST
+
+    func updateStatus(leadId: String, status: String, organizationId: String? = nil) async throws {
+        var body: [String: Any] = ["status": status]
+        if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
+        try await patch(
+            "/api/admin-room/lead-map/leads/\(leadId)/status",
+            body: body
+        )
+    }
+
+    /// Workflow-QA 2026-07-05: temperatur var kun settbar ved opprettelse
+    /// — nå PATCH-bar, og backend fyrer lead.temperature_changed-workflows.
+    func updateTemperature(leadId: String, temperature: String, organizationId: String? = nil) async throws {
+        var body: [String: Any] = ["temperature": temperature]
+        if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
+        try await patch(
+            "/api/admin-room/lead-map/leads/\(leadId)/temperature",
+            body: body
+        )
+    }
+
+    func logVisit(leadId: String, body: [String: Any], organizationId: String? = nil) async throws {
+        var scopedBody = body
+        if let organizationId, !organizationId.isEmpty { scopedBody["organization_id"] = organizationId }
+        try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/visits",
+            body: scopedBody
+        )
+    }
+
+    /// Sendable-vennlig variant — body er ferdig JSON-serialisert til Data.
+    func logVisitRaw(leadId: String, jsonBody: Data) async throws {
+        var req = makeRequest("/api/admin-room/lead-map/leads/\(leadId)/visits", method: "POST")
+        req.httpBody = jsonBody
+        let (_, response) = try await session.data(for: req)
+        try Self.validate(response)
+    }
+
+    func generateStrategy(
+        leadId: String,
+        projectId: String?,
+        organizationId: String?
+    ) async throws -> StrategyModel {
+        var body: [String: Any] = [:]
+        if let projectId, !projectId.isEmpty { body["projectId"] = projectId }
+        if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
+        let resp: StrategyEnvelope = try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/strategy", body: body
+        )
+        return resp.strategy
+    }
+
+    func triggerEnrichment(
+        leadId: String,
+        projectId: String?,
+        organizationId: String?
+    ) async throws -> EnrichmentModel? {
+        var body: [String: Any] = [:]
+        if let projectId, !projectId.isEmpty { body["projectId"] = projectId }
+        if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
+        let resp: EnrichmentEnvelope = try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/enrich", body: body
+        )
+        return resp.enrichment
+    }
+
+    func triggerEnrichment(
+        leadId: String,
+        forceRefresh: Bool,
+        projectId: String,
+        organizationId: String
+    ) async throws -> EnrichmentModel? {
+        struct Body: Encodable {
+            let force: Bool
+            let projectId: String
+            let organizationId: String
+
+            enum CodingKeys: String, CodingKey {
+                case force, projectId
+                case organizationId = "organization_id"
+            }
+        }
+        let resp: EnrichmentEnvelope = try await _post(
+            "/api/admin-room/lead-map/leads/\(leadId)/enrich",
+            body: Body(
+                force: forceRefresh,
+                projectId: projectId,
+                organizationId: organizationId
+            )
+        )
+        return resp.enrichment
+    }
+
+    // MARK: - Min dag (PR #616)
+
+    func fetchWorkload(
+        organizationId: String,
+        projectId: String,
+        location: CLLocation? = nil
+    ) async throws -> WorkloadResponse {
+        var qs: [String] = [
+            "organization_id=\(organizationId)",
+            "project_id=\(projectId)"
+        ]
+        if let loc = location {
+            qs.append("lat=\(loc.coordinate.latitude)")
+            qs.append("lng=\(loc.coordinate.longitude)")
+        }
+        let q = qs.isEmpty ? "" : "?\(qs.joined(separator: "&"))"
+        return try await get("/api/admin-room/lead-map/me/workload\(q)")
+    }
+
+    func fetchQuota(organizationId: String) async throws -> QuotaProgress {
+        try await get("/api/admin-room/lead-map/me/quota?organization_id=\(organizationId)")
+    }
+
+    // MARK: - Organisasjoner (PR #611+#612)
+
+    func fetchOrganizations() async throws -> [OrganizationSummary] {
+        let resp: OrgsResponse = try await get("/api/admin-room/lead-map/organizations")
+        return resp.organizations
+    }
+
+    func fetchOrgProfile(_ organizationId: String) async throws -> OrgProfileEnvelope {
+        try await get("/api/admin-room/lead-map/organizations/\(organizationId)/profile")
+    }
+
+    func fetchOrgMembers(_ organizationId: String) async throws -> [MemberProfile] {
+        let resp: OrgProfilesResponse = try await get(
+            "/api/admin-room/lead-map/organizations/\(organizationId)/profiles"
+        )
+        return resp.profiles
+    }
+
+    func fetchSalesTeams(_ organizationId: String) async throws -> [SalesTeam] {
+        let resp: TeamsResponse = try await get(
+            "/api/admin-room/lead-map/organizations/\(organizationId)/teams"
+        )
+        return resp.teams
+    }
+
+    func fetchMemberLocations(_ organizationId: String) async throws -> [MemberLocation] {
+        let resp: MemberLocationsResponse = try await get(
+            "/api/admin-room/lead-map/organizations/\(organizationId)/member-locations"
+        )
+        return resp.locations
+    }
+
+    // MARK: - RBAC (PR #615)
+
+    func fetchPermissions(organizationId: String?) async throws -> PermissionsResponse {
+        let q = organizationId.map { "?organization_id=\($0)" } ?? ""
+        return try await get("/api/admin-room/lead-map/me/permissions\(q)")
+    }
+
+    // MARK: - Heartbeat + posisjons-deling (PR #612)
+
+    func sendHeartbeat(
+        organizationId: String,
+        location: CLLocation? = nil,
+        activity: String = "idle"
+    ) async throws {
+        var body: [String: Any] = ["organization_id": organizationId]
+        if let loc = location {
+            body["lat"] = loc.coordinate.latitude
+            body["lng"] = loc.coordinate.longitude
+            body["accuracy_m"] = loc.horizontalAccuracy
+            body["activity"] = activity
+        }
+        try await post("/api/admin-room/lead-map/heartbeat", body: body)
+    }
+
+    func setLocationConsent(_ organizationId: String, consent: Bool) async throws {
+        if consent {
+            try await post(
+                "/api/admin-room/lead-map/organizations/\(organizationId)/location/consent",
+                body: [:]
+            )
+        } else {
+            try await delete(
+                "/api/admin-room/lead-map/organizations/\(organizationId)/location/consent"
+            )
+        }
+    }
+
+    func fetchLocationConsent(_ organizationId: String) async throws -> Bool {
+        let resp: ConsentResponse = try await get(
+            "/api/admin-room/lead-map/organizations/\(organizationId)/location/consent"
+        )
+        return resp.consented
+    }
+
+    // MARK: - Team-leaderboard (PR #620)
+
+    func fetchLeaderboard(
+        organizationId: String,
+        projectId: String,
+        period: String = "this_month",
+        teamId: String? = nil,
+        sort: String = "progress"
+    ) async throws -> LeaderboardResponse {
+        var components = URLComponents()
+        components.path = "/api/admin-room/lead-map/organizations/\(organizationId)/leaderboard"
+        components.queryItems = [
+            URLQueryItem(name: "projectId", value: projectId),
+            URLQueryItem(name: "period", value: period),
+            URLQueryItem(name: "sort", value: sort)
+        ]
+        if let tid = teamId, !tid.isEmpty {
+            components.queryItems?.append(URLQueryItem(name: "team_id", value: tid))
+        }
+        guard let path = components.string else {
+            throw URLError(.badURL)
+        }
+        return try await get(path)
+    }
+
+    func fetchLeaderboardSummary(
+        organizationId: String,
+        projectId: String,
+        period: String = "this_month",
+        teamId: String? = nil
+    ) async throws -> LeaderboardSummary {
+        var components = URLComponents()
+        components.path = "/api/admin-room/lead-map/organizations/\(organizationId)/leaderboard-summary"
+        components.queryItems = [
+            URLQueryItem(name: "projectId", value: projectId),
+            URLQueryItem(name: "period", value: period)
+        ]
+        if let tid = teamId, !tid.isEmpty {
+            components.queryItems?.append(URLQueryItem(name: "team_id", value: tid))
+        }
+        guard let path = components.string else {
+            throw URLError(.badURL)
+        }
+        return try await get(path)
+    }
+
+    // MARK: - Kart-annotasjoner (PR #629)
+
+    func fetchAnnotations(
+        organizationId: String,
+        assignedToMeOnly: Bool = false
+    ) async throws -> AnnotationsResponse {
+        let qs = assignedToMeOnly ? "?assigned_to_me_only=true" : ""
+        return try await get(
+            "/api/admin-room/lead-map/organizations/\(organizationId)/annotations\(qs)"
+        )
+    }
+
+    /// Opprett ny annotasjon. Returnerer ID.
+    func createAnnotation(
+        organizationId: String,
+        payload: AnnotationCreatePayload
+    ) async throws -> String {
+        let resp: CreateAnnotationResponse = try await post(
+            "/api/admin-room/lead-map/organizations/\(organizationId)/annotations",
+            body: payload.jsonBody
+        )
+        return resp.id
+    }
+
+    func archiveAnnotation(_ id: String) async throws {
+        try await post(
+            "/api/admin-room/lead-map/annotations/\(id)/archive",
+            body: [:]
+        )
+    }
+
+    // MARK: - Territorie-grids (LeadGrid territory enforcement)
+
+    /// Kun den innloggede selgerens egne grids (for on-device geofence).
+    func fetchMyTerritories(organizationId: String) async throws -> [Territory] {
+        let resp: TerritoriesResponse = try await get(
+            "/api/leadgrid/territories/mine?organization_id=\(organizationId)"
+        )
+        return resp.territories
+    }
+
+    /// Alle aktive grids i org-en (manager — for dekningskart).
+    func fetchOrgTerritories(organizationId: String) async throws -> [Territory] {
+        let resp: TerritoriesResponse = try await get(
+            "/api/leadgrid/territories?organization_id=\(organizationId)")
+        return resp.territories
+    }
+
+    /// Territorie-dekning for org-en (foreldreløse, overlapp, leads per grid).
+    func fetchCoverage(organizationId: String) async throws -> CoverageResult? {
+        let resp: CoverageResponse = try await get(
+            "/api/leadgrid/territories/coverage?organization_id=\(organizationId)")
+        return resp.coverage
+    }
+
+    /// Leder-dashboard: sone-ytelse per selger.
+    func fetchTerritoryDashboard(
+        organizationId: String, period: String = "last_30d"
+    ) async throws -> TerritoryDashboardResponse {
+        try await get(
+            "/api/leadgrid/territories/dashboard?organization_id=\(organizationId)&period=\(period)")
+    }
+
+    /// Opprett en grid fra et tegnet polygon (Apple Pencil på iPad).
+    /// Koordinatene lukkes til en GeoJSON-ring ([lng,lat]).
+    func createTerritory(
+        organizationId: String,
+        name: String,
+        assignedUserId: String?,
+        polygon coords: [CLLocationCoordinate2D]
+    ) async throws -> String {
+        var ring = coords.map { [$0.longitude, $0.latitude] }
+        if let first = ring.first, let last = ring.last,
+           first[0] != last[0] || first[1] != last[1] {
+            ring.append(first)
+        }
+        var body: [String: Any] = [
+            "organization_id": organizationId,
+            "name": name,
+            "geometry": ["type": "Polygon", "coordinates": [ring]],
+        ]
+        if let u = assignedUserId { body["assigned_user_id"] = u }
+        let resp: CreateTerritoryResponse = try await post(
+            "/api/leadgrid/territories", body: body)
+        return resp.id
+    }
+
+    // MARK: - Leadbook Eksempler (org-egne salgssamtaler, 2026-07-17)
+
+    /// pg serialiserer BIGINT/NUMERIC som streng — decode begge deler.
+    private static func lenientInt(
+        _ c: KeyedDecodingContainer<LeadbookExampleDTO.CodingKeys>,
+        _ key: LeadbookExampleDTO.CodingKeys
+    ) -> Int? {
+        if let n = try? c.decodeIfPresent(Int.self, forKey: key) { return n }
+        if let s = try? c.decodeIfPresent(String.self, forKey: key) { return Int(s) }
+        return nil
+    }
+
+    /// Svar i tråden under en tilbakemelding (dialog-utvidelsen 2026-07-17).
+    struct LeadbookFeedbackReplyDTO: Codable, Identifiable, Hashable {
+        let id: String
+        let authorName: String
+        let authorRole: String       // selger | admin | salgssjef | teamleder | kvalitet
+        let body: String
+        let createdAt: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, body
+            case authorName = "author_name"
+            case authorRole = "author_role"
+            case createdAt = "created_at"
+        }
+    }
+
+    struct LeadbookExampleFeedbackDTO: Codable, Identifiable, Hashable {
+        let id: String
+        let authorName: String
+        let authorRole: String
+        let dimension: String?
+        let body: String
+        let createdAt: String?
+        /// Valgfritt anker: replikk-indeks i transkriptet + evt. sekunder.
+        var transcriptIndex: Int? = nil
+        var atSec: Int? = nil
+        /// Lest-kvittering: satt når eksempelets selger har sett den.
+        var readAt: String? = nil
+        var replies: [LeadbookFeedbackReplyDTO] = []
+        /// Kun satt i «Mine tilbakemeldinger»-responsen.
+        var exampleTitle: String? = nil
+        var exampleId: String? = nil
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case authorName = "author_name"
+            case authorRole = "author_role"
+            case dimension, body, replies
+            case createdAt = "created_at"
+            case transcriptIndex = "transcript_index"
+            case atSec = "at_sec"
+            case readAt = "read_at"
+            case exampleTitle = "example_title"
+            case exampleId = "example_id"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            authorName = (try? c.decode(String.self, forKey: .authorName)) ?? ""
+            authorRole = (try? c.decode(String.self, forKey: .authorRole)) ?? ""
+            dimension = try? c.decodeIfPresent(String.self, forKey: .dimension)
+            body = (try? c.decode(String.self, forKey: .body)) ?? ""
+            createdAt = try? c.decodeIfPresent(String.self, forKey: .createdAt)
+            transcriptIndex = (try? c.decodeIfPresent(Int.self, forKey: .transcriptIndex)) ?? nil
+            atSec = (try? c.decodeIfPresent(Int.self, forKey: .atSec)) ?? nil
+            readAt = try? c.decodeIfPresent(String.self, forKey: .readAt)
+            replies = (try? c.decode([LeadbookFeedbackReplyDTO].self, forKey: .replies)) ?? []
+            exampleTitle = try? c.decodeIfPresent(String.self, forKey: .exampleTitle)
+            exampleId = try? c.decodeIfPresent(String.self, forKey: .exampleId)
+        }
+    }
+
+    struct LeadbookTranscriptLineDTO: Codable, Hashable {
+        let speaker: String
+        let text: String
+        let atSec: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case speaker, text
+            case atSec = "at_sec"
+        }
+    }
+
+    struct LeadbookExampleDTO: Codable, Identifiable, Hashable {
+        let id: String
+        let status: String              // draft | published
+        let title: String
+        let customerLabel: String
+        let industry: String
+        let outcome: String             // won | lost | ongoing
+        let channel: String
+        let durationSec: Int?
+        let sellerName: String
+        let pondusScore: Int?
+        let featuredDimension: String?
+        let dimensionScores: [String: Int]
+        let keyLearnings: [String]
+        let alternativePhrasings: [String]
+        let transcript: [LeadbookTranscriptLineDTO]
+        let dealValueNok: Int?
+        let summary: String
+        let createdByName: String
+        var feedback: [LeadbookExampleFeedbackDTO]
+        /// Visningstall (kun i responsen for ledere — «hva brukes faktisk»).
+        var viewsTotal: Int? = nil
+        var viewersCount: Int? = nil
+        var canRequestDeletion: Bool = false
+
+        enum CodingKeys: String, CodingKey {
+            case id, status, title, industry, outcome, channel, summary
+            case customerLabel = "customer_label"
+            case durationSec = "duration_sec"
+            case sellerName = "seller_name"
+            case pondusScore = "pondus_score"
+            case featuredDimension = "featured_dimension"
+            case dimensionScores = "dimension_scores"
+            case keyLearnings = "key_learnings"
+            case alternativePhrasings = "alternative_phrasings"
+            case transcript
+            case dealValueNok = "deal_value_nok"
+            case createdByName = "created_by_name"
+            case feedback
+            case viewsTotal = "views_total"
+            case viewersCount = "viewers_count"
+            case canRequestDeletion = "can_request_deletion"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            status = (try? c.decode(String.self, forKey: .status)) ?? "draft"
+            title = (try? c.decode(String.self, forKey: .title)) ?? ""
+            customerLabel = (try? c.decode(String.self, forKey: .customerLabel)) ?? ""
+            industry = (try? c.decode(String.self, forKey: .industry)) ?? ""
+            outcome = (try? c.decode(String.self, forKey: .outcome)) ?? "won"
+            channel = (try? c.decode(String.self, forKey: .channel)) ?? "telephone"
+            durationSec = APIClient.lenientInt(c, .durationSec)
+            sellerName = (try? c.decode(String.self, forKey: .sellerName)) ?? ""
+            pondusScore = APIClient.lenientInt(c, .pondusScore)
+            featuredDimension = try? c.decodeIfPresent(String.self, forKey: .featuredDimension)
+            dimensionScores = (try? c.decode([String: Int].self, forKey: .dimensionScores)) ?? [:]
+            keyLearnings = (try? c.decode([String].self, forKey: .keyLearnings)) ?? []
+            alternativePhrasings = (try? c.decode([String].self, forKey: .alternativePhrasings)) ?? []
+            transcript = (try? c.decode([LeadbookTranscriptLineDTO].self, forKey: .transcript)) ?? []
+            dealValueNok = APIClient.lenientInt(c, .dealValueNok)
+            summary = (try? c.decode(String.self, forKey: .summary)) ?? ""
+            createdByName = (try? c.decode(String.self, forKey: .createdByName)) ?? ""
+            feedback = (try? c.decode([LeadbookExampleFeedbackDTO].self, forKey: .feedback)) ?? []
+            viewsTotal = APIClient.lenientInt(c, .viewsTotal)
+            viewersCount = APIClient.lenientInt(c, .viewersCount)
+            canRequestDeletion = (try? c.decode(Bool.self, forKey: .canRequestDeletion)) ?? false
+        }
+    }
+
+    struct LeadbookExamplesResponse: Codable {
+        let projectId: String
+        let examples: [LeadbookExampleDTO]
+        let canEdit: Bool
+        let canGiveFeedback: Bool
+        let nextCursor: String?
+        let canCreateDraft: Bool?
+    }
+
+    func fetchLeadbookExamples(
+        projectId: String,
+        limit: Int = 30,
+        cursor: String? = nil
+    ) async throws -> LeadbookExamplesResponse {
+        let scope = scopeQuery(projectId: projectId, organizationId: nil)
+        var path = "/api/leadgrid/leadbook/examples\(scope)&limit=\(max(1, min(limit, 50)))"
+        if let cursor,
+           let encoded = cursor.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            path += "&cursor=\(encoded)"
+        }
+        return try await get(path)
+    }
+
+    struct LeadbookExampleDetailResponse: Codable {
+        let projectId: String
+        let example: LeadbookExampleDTO
+        let canEdit: Bool
+        let canGiveFeedback: Bool
+        let canCreateDraft: Bool?
+    }
+
+    func fetchLeadbookExample(id: String, projectId: String) async throws -> LeadbookExampleDetailResponse {
+        try await get(
+            "/api/leadgrid/leadbook/examples/\(id)\(scopeQuery(projectId: projectId, organizationId: nil))"
+        )
+    }
+
+    /// Opprett eksempel (leder). `transcript` = [{speaker, text, at_sec}].
+    func createLeadbookExample(_ body: [String: Any], projectId: String) async throws -> String {
+        struct Resp: Codable { let id: String }
+        let r: Resp = try await post(
+            "/api/leadgrid/leadbook/examples\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: body
+        )
+        return r.id
+    }
+
+    func updateLeadbookExample(id: String, projectId: String, _ fields: [String: Any]) async throws {
+        try await patch(
+            "/api/leadgrid/leadbook/examples/\(id)\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: fields
+        )
+    }
+
+    /// `transcriptIndex`/`atSec` ankrer tilbakemeldingen til en konkret
+    /// replikk/tidspunkt (valgfritt). Backend varsler selgeren (in-app +
+    /// push) via notification-pipelinen.
+    func addLeadbookExampleFeedback(
+        exampleId: String, projectId: String, body text: String, dimension: String?,
+        transcriptIndex: Int? = nil, atSec: Int? = nil
+    ) async throws {
+        struct Resp: Codable { let id: String }
+        var payload: [String: Any] = ["body": text]
+        if let d = dimension { payload["dimension"] = d }
+        if let i = transcriptIndex { payload["transcript_index"] = i }
+        if let s = atSec { payload["at_sec"] = s }
+        let _: Resp = try await post(
+            "/api/leadgrid/leadbook/examples/\(exampleId)/feedback\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: payload)
+    }
+
+    // Dialog-utvidelsen (2026-07-17): lest-kvittering + svar + samleflate.
+
+    struct MyLeadbookFeedbackResponse: Codable {
+        let projectId: String
+        let feedback: [LeadbookExampleFeedbackDTO]
+        let unread: Int
+    }
+
+    /// «Mine tilbakemeldinger» — all tilbakemelding på innlogget selgers
+    /// eksempler, m/ eksempel-kontekst, svar-tråd og ulest-teller.
+    func fetchMyLeadbookFeedback(projectId: String) async throws -> MyLeadbookFeedbackResponse {
+        try await get(
+            "/api/leadgrid/leadbook/feedback/mine\(scopeQuery(projectId: projectId, organizationId: nil))"
+        )
+    }
+
+    /// Lest-kvittering — kun eksempelets selger (backend håndhever).
+    func markLeadbookFeedbackRead(feedbackId: String, projectId: String) async throws {
+        struct Resp: Codable { let ok: Bool? }
+        let _: Resp = try await post(
+            "/api/leadgrid/leadbook/feedback/\(feedbackId)/read\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: [:])
+    }
+
+    /// Svar i tråden (selger eller leder). Motparten varsles av backend.
+    func replyToLeadbookFeedback(feedbackId: String, projectId: String, body text: String) async throws {
+        struct Resp: Codable { let id: String }
+        let _: Resp = try await post(
+            "/api/leadgrid/leadbook/feedback/\(feedbackId)/replies\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: ["body": text])
+    }
+
+    /// LLM-strukturering (2026-07-17): rå notater → forslag til eksempel-
+    /// felter. Kun forslag — lederen redigerer før lagring.
+    struct StructuredExampleDTO: Codable {
+        let title: String?
+        let summary: String?
+        let outcome: String?
+        let transcript: [LeadbookTranscriptLineDTO]?
+        let keyLearnings: [String]?
+        let alternativePhrasings: [String]?
+        let dimensionScores: [String: Int]?
+        let featuredDimension: String?
+        let pondusScore: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case title, summary, outcome, transcript
+            case keyLearnings = "key_learnings"
+            case alternativePhrasings = "alternative_phrasings"
+            case dimensionScores = "dimension_scores"
+            case featuredDimension = "featured_dimension"
+            case pondusScore = "pondus_score"
+        }
+    }
+
+    func structureLeadbookExample(projectId: String, rawText: String) async throws -> StructuredExampleDTO {
+        struct Resp: Codable { let structured: StructuredExampleDTO }
+        let r: Resp = try await post(
+            "/api/leadgrid/leadbook/examples/structure\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: ["raw_text": rawText])
+        return r.structured
+    }
+
+    /// Ekte Innsikt-aggregering (2026-08-02): org-ens publiserte eksempler
+    /// + tilbakemeldinger for perioden, med forrige periode som baseline.
+    struct LeadbookInnsiktDTO: Codable {
+        let projectId: String
+        struct Totals: Codable {
+            let examples: Int
+            let won: Int
+            let lost: Int
+            let ongoing: Int
+            let avgPondus: Int?
+            let feedback: Int?
+
+            enum CodingKeys: String, CodingKey {
+                case examples, won, lost, ongoing, feedback
+                case avgPondus = "avg_pondus"
+            }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                examples = (try? c.decode(Int.self, forKey: .examples)) ?? 0
+                won = (try? c.decode(Int.self, forKey: .won)) ?? 0
+                lost = (try? c.decode(Int.self, forKey: .lost)) ?? 0
+                ongoing = (try? c.decode(Int.self, forKey: .ongoing)) ?? 0
+                avgPondus = try? c.decodeIfPresent(Int.self, forKey: .avgPondus)
+                feedback = try? c.decodeIfPresent(Int.self, forKey: .feedback)
+            }
+
+            var winRate: Double? {
+                let decided = won + lost
+                guard decided > 0 else { return nil }
+                return Double(won) / Double(decided)
+            }
+        }
+
+        struct TrendPoint: Codable, Identifiable {
+            let day: String
+            let count: Int
+            let avgPondus: Int?
+            var id: String { day }
+
+            enum CodingKeys: String, CodingKey {
+                case day, count
+                case avgPondus = "avg_pondus"
+            }
+        }
+
+        struct SellerRow: Codable, Identifiable {
+            let name: String
+            let count: Int
+            let avgPondus: Int?
+            let won: Int
+            let lost: Int
+            var id: String { name }
+
+            enum CodingKeys: String, CodingKey {
+                case name, count, won, lost
+                case avgPondus = "avg_pondus"
+            }
+
+            var winRate: Double? {
+                let decided = won + lost
+                guard decided > 0 else { return nil }
+                return Double(won) / Double(decided)
+            }
+        }
+
+        struct DimensionRow: Codable, Identifiable {
+            let dimension: String
+            let count: Int
+            let avgPondus: Int?
+            var id: String { dimension }
+
+            enum CodingKeys: String, CodingKey {
+                case dimension, count
+                case avgPondus = "avg_pondus"
+            }
+        }
+
+        struct ChannelRow: Codable, Identifiable {
+            let channel: String
+            let count: Int
+            let won: Int
+            let lost: Int
+            var id: String { channel }
+        }
+
+        struct CaseRow: Codable {
+            let id: String
+            let title: String
+            let summary: String?
+            let outcome: String?
+            let pondusScore: Int?
+
+            enum CodingKeys: String, CodingKey {
+                case id, title, summary, outcome
+                case pondusScore = "pondus_score"
+            }
+        }
+
+        let period: String
+        let totals: Totals
+        let previous: Totals
+        let trend: [TrendPoint]
+        let bySeller: [SellerRow]
+        let byDimension: [DimensionRow]
+        let byChannel: [ChannelRow]
+        let topExample: CaseRow?
+        let bottomExample: CaseRow?
+
+        enum CodingKeys: String, CodingKey {
+            case projectId, period, totals, previous, trend
+            case bySeller = "by_seller"
+            case byDimension = "by_dimension"
+            case byChannel = "by_channel"
+            case topExample = "top_example"
+            case bottomExample = "bottom_example"
+        }
+    }
+
+    func fetchLeadbookInnsikt(projectId: String, period: String) async throws -> LeadbookInnsiktDTO {
+        let scope = scopeQuery(projectId: projectId, organizationId: nil)
+        return try await get("/api/leadgrid/leadbook/innsikt\(scope)&period=\(period)")
+    }
+
+    /// Ekte AI bak «AI-foreslå sterkere» i mal-editoren (2026-08-02).
+    /// Samme gating som structure: leder + leadbookAiStruktur-entitlement.
+    func strengthenLeadbookPhrase(projectId: String, text: String, maxChars: Int?) async throws -> String {
+        struct Resp: Codable { let suggestion: String }
+        var body: [String: Any] = ["text": text]
+        if let maxChars { body["max_chars"] = maxChars }
+        let r: Resp = try await post(
+            "/api/leadgrid/leadbook/templates/strengthen\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: body)
+        return r.suggestion
+    }
+
+    /// Ekte AI bak Leadbook «AI-foreslå»-knappen i innvending-editoren
+    /// (2026-08-17). Samme gating som strengthen: leder + AI-entitlement.
+    func suggestObjectionResponse(projectId: String, objection: String, category: String?) async throws -> String {
+        struct Resp: Codable { let suggestion: String }
+        var body: [String: Any] = ["objection": objection]
+        if let category, !category.isEmpty { body["category"] = category }
+        let r: Resp = try await post(
+            "/api/leadgrid/leadbook/objections/ai-suggest\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: body)
+        return r.suggestion
+    }
+
+    /// AI-kostnadsoversikt (kun ledere). cost_usd kommer som streng fra
+    /// pg NUMERIC — lenient decoding.
+    struct AIUsageBucketDTO: Codable {
+        let calls: Int
+        let costUsd: Double
+
+        enum CodingKeys: String, CodingKey {
+            case calls
+            case costUsd = "cost_usd"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            calls = (try? c.decode(Int.self, forKey: .calls)) ?? 0
+            if let d = try? c.decode(Double.self, forKey: .costUsd) {
+                costUsd = d
+            } else if let s = try? c.decode(String.self, forKey: .costUsd) {
+                costUsd = Double(s) ?? 0
+            } else {
+                costUsd = 0
+            }
+        }
+    }
+
+    struct AIUsageUserDTO: Codable, Identifiable {
+        let userName: String
+        let calls: Int
+        let costUsd: Double
+        var id: String { userName }
+
+        enum CodingKeys: String, CodingKey {
+            case userName = "user_name"
+            case calls
+            case costUsd = "cost_usd"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            userName = (try? c.decode(String.self, forKey: .userName)) ?? ""
+            calls = (try? c.decode(Int.self, forKey: .calls)) ?? 0
+            if let d = try? c.decode(Double.self, forKey: .costUsd) {
+                costUsd = d
+            } else if let s = try? c.decode(String.self, forKey: .costUsd) {
+                costUsd = Double(s) ?? 0
+            } else {
+                costUsd = 0
+            }
+        }
+    }
+
+    struct AIUsageFeatureDTO: Codable, Identifiable {
+        let feature: String
+        let calls: Int
+        let costUsd: Double
+
+        var id: String { feature }
+
+        enum CodingKeys: String, CodingKey {
+            case feature, calls
+            case costUsd = "cost_usd"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            feature = try c.decode(String.self, forKey: .feature)
+            calls = try c.decode(Int.self, forKey: .calls)
+            if let d = try? c.decode(Double.self, forKey: .costUsd) {
+                costUsd = d
+            } else if let s = try? c.decode(String.self, forKey: .costUsd) {
+                costUsd = Double(s) ?? 0
+            } else {
+                costUsd = 0
+            }
+        }
+    }
+
+    struct AIUsageResponse: Codable {
+        let projectId: String
+        let total: AIUsageBucketDTO
+        let thisMonth: AIUsageBucketDTO
+        let byUser: [AIUsageUserDTO]
+        /// Per FUNKSJON: hva betaler kunden faktisk for?
+        var byFeature: [AIUsageFeatureDTO]? = nil
+
+        enum CodingKeys: String, CodingKey {
+            case projectId, total
+            case thisMonth = "this_month"
+            case byUser = "by_user"
+            case byFeature = "by_feature"
+        }
+    }
+
+    func fetchLeadbookAIUsage(projectId: String) async throws -> AIUsageResponse {
+        try await get(
+            "/api/leadgrid/leadbook/examples/ai-usage\(scopeQuery(projectId: projectId, organizationId: nil))"
+        )
+    }
+
+    /// Visnings-registrering («Ukens samtale»-distribusjonen) — kalles når
+    /// detail-sheeten åpnes i ekte modus. Fire-and-forget-vennlig.
+    func recordLeadbookExampleView(exampleId: String, projectId: String) async throws {
+        struct Resp: Codable { let ok: Bool? }
+        let _: Resp = try await post(
+            "/api/leadgrid/leadbook/examples/\(exampleId)/view\(scopeQuery(projectId: projectId, organizationId: nil))",
+            body: [:])
+    }
+
+    // MARK: - Krasjrapportering (MetricKit, 2026-07-18)
+
+    /// Batch-post av bufrede MetricKit-diagnostikker. Tar pre-enkodet
+    /// JSON (`Data` er Sendable — [[String: Any]] er det ikke, og ville
+    /// sprengt task-isolasjonen hos calleren); dekodes her, innenfor
+    /// samme isolasjonsregion som post-kallet. Returnerer antall lagret.
+    func submitCrashReports(encoded: [Data]) async throws -> Int {
+        let reports = encoded.compactMap {
+            (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any]
+        }
+        struct Resp: Codable { let stored: Int }
+        let r: Resp = try await post(
+            "/api/leadgrid/crash-reports", body: ["reports": reports])
+        return r.stored
+    }
+
+    // MARK: - Utstyrsregister (2026-07-17)
+
+    struct EquipmentDTO: Codable, Identifiable, Hashable {
+        let id: String
+        let kind: String            // nettbrett|telefon|laptop|klaer|id_kort|annet
+        let label: String
+        let serialNumber: String?
+        let size: String?
+        let status: String          // tilgjengelig|utlevert|tapt|defekt|kassert
+        let assignedUserId: String?
+        let assignedUserName: String
+        let assignedAt: String?
+        let note: String
+        /// «Sist aktiv i Leadgrid» (2026-07-18): innehaverens siste app-
+        /// innsjekk — serienr → innehaver → posisjon (appen kan ikke lese
+        /// serienummer; koblingen går via tildelingen).
+        var lastSeenAt: String? = nil
+        var lastLat: Double? = nil
+        var lastLng: Double? = nil
+        var lastDeviceModel: String? = nil
+
+        enum CodingKeys: String, CodingKey {
+            case id, kind, label, size, status, note
+            case serialNumber = "serial_number"
+            case assignedUserId = "assigned_user_id"
+            case assignedUserName = "assigned_user_name"
+            case assignedAt = "assigned_at"
+            case lastSeenAt = "last_seen_at"
+            case lastLat = "last_lat"
+            case lastLng = "last_lng"
+            case lastDeviceModel = "last_device_model"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            kind = (try? c.decode(String.self, forKey: .kind)) ?? "annet"
+            label = (try? c.decode(String.self, forKey: .label)) ?? ""
+            serialNumber = try? c.decodeIfPresent(String.self, forKey: .serialNumber)
+            size = try? c.decodeIfPresent(String.self, forKey: .size)
+            status = (try? c.decode(String.self, forKey: .status)) ?? "tilgjengelig"
+            assignedUserId = try? c.decodeIfPresent(String.self, forKey: .assignedUserId)
+            assignedUserName = (try? c.decode(String.self, forKey: .assignedUserName)) ?? ""
+            assignedAt = try? c.decodeIfPresent(String.self, forKey: .assignedAt)
+            note = (try? c.decode(String.self, forKey: .note)) ?? ""
+            lastSeenAt = try? c.decodeIfPresent(String.self, forKey: .lastSeenAt)
+            lastLat = try? c.decodeIfPresent(Double.self, forKey: .lastLat)
+            lastLng = try? c.decodeIfPresent(Double.self, forKey: .lastLng)
+            lastDeviceModel = try? c.decodeIfPresent(String.self, forKey: .lastDeviceModel)
+        }
+    }
+
+    struct EquipmentEventDTO: Codable, Identifiable, Hashable {
+        let id: String
+        let event: String
+        let subjectUserName: String
+        let actorName: String
+        let note: String
+        let createdAt: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, event, note
+            case subjectUserName = "subject_user_name"
+            case actorName = "actor_name"
+            case createdAt = "created_at"
+        }
+    }
+
+    private struct EquipmentListResponse: Codable { let equipment: [EquipmentDTO] }
+    private struct EquipmentEventsResponse: Codable { let events: [EquipmentEventDTO] }
+    private struct EquipmentAck: Codable { let ok: Bool?; let id: String? }
+
+    /// Hele registeret (kun ledere — backend håndhever).
+    func fetchEquipment() async throws -> [EquipmentDTO] {
+        let r: EquipmentListResponse = try await get("/api/leadgrid/equipment")
+        return r.equipment
+    }
+
+    /// «Mitt utstyr» — det som er utlevert til innlogget bruker.
+    func fetchMyEquipment() async throws -> [EquipmentDTO] {
+        let r: EquipmentListResponse = try await get("/api/leadgrid/equipment/mine")
+        return r.equipment
+    }
+
+    func createEquipment(
+        kind: String, label: String, serialNumber: String?,
+        size: String?, note: String
+    ) async throws -> String {
+        var body: [String: Any] = ["kind": kind, "label": label, "note": note]
+        if let s = serialNumber, !s.isEmpty { body["serial_number"] = s }
+        if let s = size, !s.isEmpty { body["size"] = s }
+        let r: EquipmentAck = try await post("/api/leadgrid/equipment", body: body)
+        guard let id = r.id else { throw APIError.invalidResponse }
+        return id
+    }
+
+    /// Status-endring (tapt/defekt/tilgjengelig/kassert) el. felt-redigering.
+    func updateEquipment(id: String, _ fields: [String: Any]) async throws {
+        try await patch("/api/leadgrid/equipment/\(id)", body: fields)
+    }
+
+    /// Utlever til medlem — mottakeren varsles (in-app + push) av backend.
+    func assignEquipment(id: String, userId: String, userName: String) async throws {
+        let _: EquipmentAck = try await post(
+            "/api/leadgrid/equipment/\(id)/assign",
+            body: ["user_id": userId, "user_name": userName])
+    }
+
+    /// Innlever — lov for leder ELLER innehaveren selv.
+    func returnEquipment(id: String) async throws {
+        let _: EquipmentAck = try await post(
+            "/api/leadgrid/equipment/\(id)/return", body: [:])
+    }
+
+    func fetchEquipmentEvents(id: String) async throws -> [EquipmentEventDTO] {
+        let r: EquipmentEventsResponse = try await get("/api/leadgrid/equipment/\(id)/events")
+        return r.events
+    }
+
+    /// «Sist aktiv»-puls — kalles ved app-aktivering i ekte modus.
+    /// Posisjon sendes kun når appen alt har den (ingen ny tillatelse).
+    func presenceCheckin(
+        lat: Double?, lng: Double?, deviceModel: String, appVersion: String
+    ) async throws {
+        struct Resp: Codable { let ok: Bool? }
+        var body: [String: Any] = [
+            "device_model": deviceModel,
+            "app_version": appVersion,
+        ]
+        if let lat, let lng { body["lat"] = lat; body["lng"] = lng }
+        let _: Resp = try await post("/api/leadgrid/presence/checkin", body: body)
+    }
+
+    // MARK: - Tettsteder (SSB tettbygde strøk, 2026-07-17)
+
+    /// Geometrien er alltid MultiPolygon fra backend ([lng,lat],
+    /// Douglas-Peucker-forenklet server-side).
+    struct TettstedGeometry: Codable, Hashable {
+        let type: String
+        let coordinates: [[[[Double]]]]
+    }
+
+    struct TettstedDTO: Codable, Identifiable, Hashable {
+        let tettNr: String
+        let navn: String
+        let befolkning: Int?
+        let befolkningstetthet: Double?
+        let centerLat: Double
+        let centerLng: Double
+        let geometry: TettstedGeometry
+        var id: String { tettNr }
+
+        enum CodingKeys: String, CodingKey {
+            case tettNr = "tett_nr"
+            case navn, befolkning, befolkningstetthet
+            case centerLat = "center_lat"
+            case centerLng = "center_lng"
+            case geometry
+        }
+    }
+
+    private struct TettstederResponse: Codable {
+        let tettsteder: [TettstedDTO]
+    }
+
+    /// SSB-tettsteder innenfor en kommune (leder-katalog for tildeling).
+    /// Backend krever territories.manage + omradeTildeling-entitlement.
+    func fetchTettsteder(kommunenummer: String) async throws -> [TettstedDTO] {
+        let resp: TettstederResponse = try await get(
+            "/api/leadgrid/territories/tettsteder?kommune=\(kommunenummer)")
+        return resp.tettsteder
+    }
+
+    /// Tildel et tettsted til en selger: oppretter en lead_territories-rad
+    /// med tettstedets polygon. Bevisst UTEN municipalities — det ville
+    /// utvidet matchingen til hele kommunen (admin-enhet-matching er OR).
+    func createTettstedTerritory(
+        organizationId: String,
+        tettsted: TettstedDTO,
+        assignedUserId: String
+    ) async throws -> String {
+        let body: [String: Any] = [
+            "organization_id": organizationId,
+            "name": "Tettsted: \(tettsted.navn)",
+            "assigned_user_id": assignedUserId,
+            "geometry": [
+                "type": "MultiPolygon",
+                "coordinates": tettsted.geometry.coordinates,
+            ] as [String: Any],
+        ]
+        let resp: CreateTerritoryResponse = try await post(
+            "/api/leadgrid/territories", body: body)
+        return resp.id
+    }
+
+    // MARK: - Smart dagsrute
+
+    /// Planlegg dagens rute blant selgerens in-grid leads.
+    func planDayRoute(
+        organizationId: String, startLat: Double, startLng: Double
+    ) async throws -> DayRoutePlanResponse {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        return try await post("/api/leadgrid/routes/plan", body: [
+            "organization_id": organizationId,
+            "start_lat": startLat,
+            "start_lng": startLng,
+            "planned_date": df.string(from: Date()),
+        ])
+    }
+
+    /// Oppdater status på et rute-stopp (innsjekk i felt).
+    func updateRouteStop(
+        routeId: String, stopId: String, status: String,
+        organizationId: String,
+        outcome: String? = nil, notes: String? = nil
+    ) async throws {
+        var body: [String: Any] = ["status": status, "organization_id": organizationId]
+        if let o = outcome { body["outcome"] = o }
+        if let n = notes { body["notes"] = n }
+        try await patch("/api/leadgrid/routes/\(routeId)/stops/\(stopId)", body: body)
+    }
+
+    // MARK: - Smart-transkript (PR #642 — Claude analyserer dikterings-notater)
+
+    func analyzeTranscript(leadId: String, transcript: String) async throws -> TranscriptAnalysis {
+        try await post(
+            "/api/admin-room/lead-map/visits/parse-transcript",
+            body: ["lead_id": leadId, "transcript": transcript]
+        )
+    }
+
+    // MARK: - Meeting-brief (PR #642 — Claude forbereder selger til besøk)
+
+    func fetchMeetingBrief(leadId: String) async throws -> MeetingBrief {
+        try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/meeting-brief",
+            body: [:]
+        )
+    }
+
+    // MARK: - Visittkort-skanner (PR #642)
+
+    /// BRREG-koblingen backend gjorde i skann-øyeblikket (PR #1564):
+    /// «linked» = org.nr sikkert koblet (berikelse kjører i bakgrunnen),
+    /// «suggestion» = vagt navnetreff — lagt som forslag i notes.
+    struct FromCardBrregLink: Decodable {
+        let status: String
+        let orgNr: String
+        let matchedName: String?
+        let via: String?
+    }
+
+    struct FromCardResponse: Decodable {
+        let ok: Bool
+        let id: String
+        let brreg: FromCardBrregLink?
+        let replayed: Bool?
+    }
+
+    @discardableResult
+    func createLeadFromCard(
+        extracted: ExtractedBusinessCard,
+        organizationId: String?,
+        idempotencyKey: UUID
+    ) async throws -> FromCardResponse {
+        var body: [String: Any] = ["name": extracted.name]
+        if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
+        if !extracted.company.isEmpty { body["company"] = extracted.company }
+        if !extracted.title.isEmpty { body["title"] = extracted.title }
+        if !extracted.email.isEmpty { body["email"] = extracted.email }
+        if !extracted.phone.isEmpty { body["phone"] = extracted.phone }
+        if !extracted.website.isEmpty { body["website"] = extracted.website }
+        if !extracted.raw.isEmpty { body["raw_text"] = extracted.raw }
+        return try await post(
+            "/api/admin-room/lead-map/leads/from-card",
+            body: body,
+            headers: ["Idempotency-Key": idempotencyKey.uuidString.lowercased()]
+        )
+    }
+
+    // MARK: - Company lookup for «Legg til lead» (2026-08-16)
+
+    struct CompanyLookupResult: Decodable {
+        struct Company: Decodable {
+            let name: String
+            let orgNr: String
+            let naceDescription: String?
+            let employees: Int?
+            let address: String?
+            let postalCode: String?
+            let city: String?
+            let website: String?
+            let isBankrupt: Bool
+            let latitude: Double?
+            let longitude: Double?
+        }
+        let found: Bool
+        let company: Company?
+    }
+
+    /// Ekte BRREG-oppslag — org.nr (9 siffer), bedriftsnavn, eller nettside
+    /// (best-effort domenegjetning, BRREG støtter ikke hjemmeside-søk).
+    func lookupCompany(query: String) async throws -> CompanyLookupResult {
+        guard let enc = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            return CompanyLookupResult(found: false, company: nil)
+        }
+        return try await get("/api/admin-room/lead-map/company-lookup?q=\(enc)")
+    }
+
+    // MARK: - Strukturert lead-opprettelse
+
+    struct CreateLeadAtPinRequest: Sendable {
+        let companyName: String
+        let latitude: Double
+        let longitude: Double
+        let contactName: String?
+        let contactRole: String?
+        let organizationNumber: String?
+        let websiteURL: String?
+        let googlePlaceID: String?
+        let phone: String?
+        let email: String?
+        let industryID: String?
+        let industryLabel: String?
+        let employeeCountEstimate: Int?
+        let annualRevenueNokEstimate: Double?
+        let notes: String?
+        let leadTemperature: String
+        let leadStatus: String
+        let nextFollowUpAt: Date?
+        let nextAction: String?
+        let address: String?
+        let postalCode: String?
+        let city: String?
+        let locationConfidence: String
+        let leadSource: String
+        let projectID: String
+        let idempotencyKey: UUID
+
+        init(
+            companyName: String,
+            latitude: Double,
+            longitude: Double,
+            contactName: String? = nil,
+            contactRole: String? = nil,
+            organizationNumber: String? = nil,
+            websiteURL: String? = nil,
+            googlePlaceID: String? = nil,
+            phone: String? = nil,
+            email: String? = nil,
+            industryID: String? = nil,
+            industryLabel: String? = nil,
+            employeeCountEstimate: Int? = nil,
+            annualRevenueNokEstimate: Double? = nil,
+            notes: String? = nil,
+            leadTemperature: String = "warm",
+            leadStatus: String = "unvisited",
+            nextFollowUpAt: Date? = nil,
+            nextAction: String? = nil,
+            address: String? = nil,
+            postalCode: String? = nil,
+            city: String? = nil,
+            locationConfidence: String = "exact",
+            leadSource: String = "manual_pin_drop",
+            projectID: String,
+            idempotencyKey: UUID = UUID()
+        ) {
+            self.companyName = companyName
+            self.latitude = latitude
+            self.longitude = longitude
+            self.contactName = contactName
+            self.contactRole = contactRole
+            self.organizationNumber = organizationNumber
+            self.websiteURL = websiteURL
+            self.googlePlaceID = googlePlaceID
+            self.phone = phone
+            self.email = email
+            self.industryID = industryID
+            self.industryLabel = industryLabel
+            self.employeeCountEstimate = employeeCountEstimate
+            self.annualRevenueNokEstimate = annualRevenueNokEstimate
+            self.notes = notes
+            self.leadTemperature = leadTemperature
+            self.leadStatus = leadStatus
+            self.nextFollowUpAt = nextFollowUpAt
+            self.nextAction = nextAction
+            self.address = address
+            self.postalCode = postalCode
+            self.city = city
+            self.locationConfidence = locationConfidence
+            self.leadSource = leadSource
+            self.projectID = projectID
+            self.idempotencyKey = idempotencyKey
+        }
+
+        func makeBody() -> [String: Any] {
+            var body: [String: Any] = [
+                "name": companyName,
+                "company": companyName,
+                "latitude": latitude,
+                "longitude": longitude,
+                "lead_temperature": leadTemperature,
+                "lead_status": leadStatus,
+                "location_confidence": locationConfidence,
+                "lead_source": leadSource,
+            ]
+            func put(_ key: String, _ value: String?) {
+                guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !value.isEmpty else { return }
+                body[key] = value
+            }
+            put("contact_name", contactName)
+            put("contact_role", contactRole)
+            put("organization_number", organizationNumber)
+            put("website_url", websiteURL)
+            put("google_place_id", googlePlaceID)
+            put("phone", phone)
+            put("email", email)
+            put("industry_id", industryID)
+            put("industry_label", industryLabel)
+            put("notes", notes)
+            put("next_action", nextAction)
+            put("address", address)
+            put("postal_code", postalCode)
+            put("city", city)
+            put("project_id", projectID)
+            if let employeeCountEstimate {
+                body["employee_count_estimate"] = employeeCountEstimate
+            }
+            if let annualRevenueNokEstimate {
+                body["annual_revenue_nok_estimate"] = annualRevenueNokEstimate
+            }
+            if let nextFollowUpAt {
+                body["next_follow_up_at"] = ISO8601DateFormatter().string(from: nextFollowUpAt)
+            }
+            return body
+        }
+    }
+
+    /// Fullfelt-kontrakt for manuell, BRREG-beriket og kartbasert lead.
+    func createLeadAtPin(_ request: CreateLeadAtPinRequest, organizationId: String? = nil) async throws -> String {
+        struct CreateResponse: Decodable, Sendable {
+            let ok: Bool
+            let id: String
+        }
+        var body = request.makeBody()
+        if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
+        let response: CreateResponse = try await post(
+            "/api/admin-room/lead-map/leads/from-pin",
+            body: body,
+            headers: ["Idempotency-Key": request.idempotencyKey.uuidString.lowercased()]
+        )
+        return response.id
+    }
+
+
+    // MARK: - Canonical lead creation
+
+    /// Tapsfri opprettelse brukt av kart, leadliste og visittkort.
+    /// Samme UUID sendes i body og idempotency-headeren, også ved retry.
+    @discardableResult
+    func createLead(_ draft: LeadDraft) async throws -> LeadCreationResponse {
+        struct ErrorEnvelope: Decodable {
+            let error: String
+            let candidates: [LeadDuplicateCandidate]?
+        }
+
+        do {
+            let encoder = JSONEncoder()
+            encoder.keyEncodingStrategy = .convertToSnakeCase
+            var request = makeRequest("/api/admin-room/lead-map/leads", method: "POST")
+            request.setValue(
+                draft.creationId.uuidString.lowercased(),
+                forHTTPHeaderField: "Idempotency-Key"
+            )
+            request.setValue(draft.organizationId, forHTTPHeaderField: "X-Organization-Id")
+            request.httpBody = try encoder.encode(draft)
+
+            let (data, response) = try await session.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode == 409 {
+                if let envelope = try? Self.decoder.decode(ErrorEnvelope.self, from: data) {
+                    if envelope.error == "duplicate_conflict" {
+                        throw LeadCreationSubmissionError.duplicate(envelope.candidates ?? [])
+                    }
+                    if envelope.error == "idempotency_payload_conflict" {
+                        throw LeadCreationSubmissionError.idempotencyConflict
+                    }
+                }
+                throw APIError.statusCode(409)
+            }
+
+            try Self.validate(response, data: data)
+            return try Self.decoder.decode(LeadCreationResponse.self, from: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
+    }
+
+
+    // MARK: - Varsler (PR #622)
+
+    func fetchNotifications(unreadOnly: Bool = false, limit: Int = 50) async throws -> NotificationFeedResponse {
+        let qs = "?unread_only=\(unreadOnly)&limit=\(limit)"
+        return try await get("/api/admin-room/lead-map/me/notifications\(qs)")
+    }
+
+    func markNotificationRead(_ id: String) async throws {
+        try await post("/api/admin-room/lead-map/me/notifications/\(id)/read", body: [:])
+    }
+
+    func markAllNotificationsRead() async throws {
+        try await post("/api/admin-room/lead-map/me/notifications/read-all", body: [:])
+    }
+
+    func registerDeviceToken(
+        token: String,
+        platform: String = "apns",
+        deviceName: String? = nil,
+        appVersion: String? = nil
+    ) async throws {
+        var body: [String: Any] = [
+            "platform": platform,
+            "token": token,
+        ]
+        if let dn = deviceName { body["device_name"] = dn }
+        if let av = appVersion { body["app_version"] = av }
+        try await post("/api/admin-room/lead-map/me/notifications/device-token", body: body)
+    }
+
+    /// Trigger fra CLCircularRegion didEnterRegion. Backend håndterer
+    /// 4-timers throttle + tildelt-sjekk. Returnerer void; server-side
+    /// suppressed-flagg er kun til logg.
+    func notifyApproachingLead(leadId: String, distanceM: Double? = nil) async throws {
+        var body: [String: Any] = ["lead_id": leadId]
+        if let d = distanceM { body["distance_m"] = d }
+        try await post("/api/admin-room/lead-map/me/approaching-lead", body: body)
+    }
+
+    // MARK: - Lead-tildeling (PR #616)
+
+    func assignLead(_ leadId: String, toUserId: String, reason: String = "manual") async throws {
+        try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/assign",
+            body: ["user_id": toUserId, "reason": reason]
+        )
+    }
+
+    func releaseLead(_ leadId: String) async throws {
+        try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/release",
+            body: [:]
+        )
+    }
+
+    // MARK: - Min profil (PR #761+)
+
+    /// Hent min egen profil (de 4 påkrevde feltene: avatar/e-post/telefon/profesjon).
+    func fetchMyProfile() async throws -> MyProfileResponse {
+        try await get("/api/admin-room/lead-map/me/profile")
+    }
+
+    /// Oppdaterer bare de server-tillatte profilfeltene. E-post er en
+    /// innloggingsidentitet og profilbilde håndteres av eget upload-endepunkt.
+    func patchMyProfile(_ update: ProfileUpdateRequest) async throws -> MyProfileResponse {
+        let payload = try Self._sharedEncoder.encode(update)
+        let data = try await _request(
+            "/api/admin-room/lead-map/me/profile",
+            method: "PATCH",
+            body: payload
+        )
+        return try Self._sharedDecoder.decode(MyProfileResponse.self, from: data)
+    }
+
+    /// Laster opp et ferdig nedskalert JPEG-bilde. Backend validerer både
+    /// MIME-type, faktisk filsignatur, størrelse og autentisert bruker.
+    func uploadMyProfileImage(jpegData: Data) async throws -> MyProfileResponse {
+        let boundary = "LeadgridProfile-\(UUID().uuidString)"
+        let newline = "\r\n"
+        var body = Data()
+        body.append("--\(boundary)\(newline)".data(using: .utf8)!)
+        body.append(
+            "Content-Disposition: form-data; name=\"image\"; filename=\"profile.jpg\"\(newline)"
+                .data(using: .utf8)!
+        )
+        body.append("Content-Type: image/jpeg\(newline)\(newline)".data(using: .utf8)!)
+        body.append(jpegData)
+        body.append("\(newline)--\(boundary)--\(newline)".data(using: .utf8)!)
+
+        let data = try await _request(
+            "/api/admin-room/lead-map/me/profile/image",
+            method: "POST",
+            body: body,
+            contentType: "multipart/form-data; boundary=\(boundary)"
+        )
+        return try Self._sharedDecoder.decode(MyProfileResponse.self, from: data)
+    }
+
+    func deleteMyProfileImage() async throws -> MyProfileResponse {
+        let data = try await _request(
+            "/api/admin-room/lead-map/me/profile/image",
+            method: "DELETE"
+        )
+        return try Self._sharedDecoder.decode(MyProfileResponse.self, from: data)
+    }
+
+    // MARK: - Pitch Deck Studio
+
+    /// Lett-vekts sjekk for prosjekt-kort: har org et klart deck?
+    /// Returnerer { available: false } hvis ingen ready-deck finnes.
+    /// 403 hvis kaller mangler pitch_deck.access.
+    func fetchPitchDeckAvailability(orgId: String) async throws -> PitchDeckAvailability {
+        return try await get(
+            "/api/admin-room/lead-map/pitch-deck/availability?organization_id=\(orgId)"
+        )
+    }
+
+    func listPitchDecks(orgId: String) async throws -> PitchDecksResponse {
+        return try await get(
+            "/api/admin-room/lead-map/pitch-deck/decks?organization_id=\(orgId)"
+        )
+    }
+
+    func loadPitchDeck(deckId: String) async throws -> PitchDeckBundle {
+        return try await get(
+            "/api/admin-room/lead-map/pitch-deck/decks/\(deckId)"
+        )
+    }
+
+    func onboardPitchDeck(payload: PitchOnboardingPayload) async throws -> PitchDeckBundle {
+        var body: [String: Any] = [
+            "organization_id": payload.organizationId,
+            "name": payload.name,
+            "industry": payload.industry,
+            "one_liner": payload.oneLiner,
+            "target_customer": payload.targetCustomer,
+            "pains": payload.pains,
+            "differentiators": payload.differentiators,
+            "proof_points": payload.proofPoints,
+            "locale": payload.locale,
+            "format": payload.format,
+        ]
+        if let url = payload.websiteUrl, !url.isEmpty {
+            body["website_url"] = url
+        }
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/decks/onboard",
+            body: body
+        )
+    }
+
+    // MARK: Brief + Value + Finalize
+
+    func fetchPitchBrief(deckId: String, leadId: String) async throws -> PitchBriefResponse {
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/presentations/brief",
+            body: ["deck_id": deckId, "lead_id": leadId]
+        )
+    }
+
+    func generateValueForLead(
+        deckId: String, leadId: String, presentationId: String?
+    ) async throws -> PitchValueOverrideResponse {
+        var body: [String: Any] = ["lead_id": leadId]
+        if let p = presentationId { body["presentation_id"] = p }
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/decks/\(deckId)/value-slide/for-lead",
+            body: body
+        )
+    }
+
+    func finalizePitchPresentation(id: String) async throws -> PitchFinalizeResponse {
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/presentations/\(id)/finalize",
+            body: [:]
+        )
+    }
+
+    // MARK: Mockup-upload
+
+    /// Last opp et bilde til en slide. Backend lagrer det under
+    /// pitch-decks/{org_id}/{deck_id}/{slide_id}/{uuid}.{ext} på B2.
+    /// data skal være JPEG eller PNG, maks 6 MB ferdig komprimert.
+    func uploadPitchMockup(
+        slideId: String, mimeType: String, data: Data
+    ) async throws -> PitchAssetUploadResponse {
+        let body: [String: Any] = [
+            "mime": mimeType,
+            "data_base64": data.base64EncodedString(),
+            "asset_type": "mockup",
+        ]
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)/mockup",
+            body: body
+        )
+    }
+
+    func deletePitchMockup(slideId: String, assetId: String) async throws {
+        try await delete(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)/mockups/\(assetId)"
+        )
+    }
+
+    /// Returnerer fresh signed URLs for alle assets i decket. iPad-en
+    /// erstatter `asset://<id>` i slide.mockup_urls m/ disse URL-ene
+    /// før AsyncImage tegner.
+    func fetchPitchAssetUrls(deckId: String) async throws -> PitchAssetUrlsResponse {
+        return try await get(
+            "/api/admin-room/lead-map/pitch-deck/decks/\(deckId)/asset-urls"
+        )
+    }
+
+    // MARK: - Lead Research (gated på lead_research.run)
+
+    func fetchLeadResearchStatus(researchId: String) async throws -> LeadResearchStatusResponse {
+        return try await get(
+            "/api/admin-room/lead-map/research/\(researchId)"
+        )
+    }
+
+    // MARK: - Lead Scout (needs/signals/scores)
+
+    func fetchLeadNeedsOverview(
+        leadId rawLeadId: String,
+        projectId rawProjectId: String
+    ) async throws -> LeadNeedsOverviewResponse {
+        let leadId = try requiredScoutLeadID(rawLeadId)
+        let projectId = try requiredScoutProjectID(rawProjectId)
+        return try await get(
+            "/api/admin-room/lead-map/leads/\(leadId)/needs-overview\(scopeQuery(projectId: projectId, organizationId: nil))"
+        )
+    }
+
+    func runScoutForLead(
+        leadId rawLeadId: String,
+        projectId rawProjectId: String,
+        idempotencyKey rawIdempotencyKey: String
+    ) async throws -> LeadScoutResult {
+        let leadId = try requiredScoutLeadID(rawLeadId)
+        let projectId = try requiredScoutProjectID(rawProjectId)
+        let idempotencyKey = try requiredScoutIdempotencyKey(rawIdempotencyKey)
+        return try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/scout",
+            body: ["project_id": projectId],
+            headers: ["Idempotency-Key": idempotencyKey]
+        )
+    }
+
+    // MARK: - Portefølje
+
+    func fetchPortfolio(orgId: String, sort: String) async throws -> PortfolioResponse {
+        return try await get(
+            "/api/admin-room/lead-map/organizations/\(orgId)/portfolio?sort=\(sort)"
+        )
+    }
+
+    // MARK: - Selv-onboarding + Focus requests + Playbooks
+
+    func autoOnboardCustomer(
+        websiteUrl: String, contactEmail: String,
+        contactName: String?, contactPhone: String?,
+        projectId: String, presetId: String?,
+        idempotencyKey: String
+    ) async throws -> AutoOnboardResponse {
+        var body: [String: Any] = [
+            "website_url": websiteUrl,
+            "contact_email": contactEmail,
+            "project_id": projectId,
+        ]
+        if let n = contactName  { body["contact_name"] = n }
+        if let p = contactPhone { body["contact_phone"] = p }
+        if let id = presetId    { body["preset_id"] = id }
+        return try await post(
+            "/api/admin-room/lead-map/customers/auto-onboard",
+            body: body,
+            headers: ["Idempotency-Key": idempotencyKey]
+        )
+    }
+
+    func fetchAutoOnboardStatus(
+        auditId: String,
+        projectId: String
+    ) async throws -> AutoOnboardStatusResponse {
+        let encodedProjectId = projectId.addingPercentEncoding(
+            withAllowedCharacters: .urlQueryAllowed
+        ) ?? projectId
+        return try await get(
+            "/api/admin-room/lead-map/customers/auto-onboard/\(auditId)?project_id=\(encodedProjectId)"
+        )
+    }
+
+    func fetchFocusRequests(
+        projectId: String,
+        status: String?
+    ) async throws -> FocusRequestsResponse {
+        let encodedProjectId = projectId.addingPercentEncoding(
+            withAllowedCharacters: .urlQueryAllowed
+        ) ?? projectId
+        var path = "/api/admin-room/lead-map/focus-requests?project_id=\(encodedProjectId)"
+        if let s = status { path += "&status=\(s)" }
+        return try await get(path)
+    }
+
+    func startDeliveryFromFocusRequest(
+        focusRequestId: String,
+        projectId: String
+    ) async throws -> StartDeliveryResponse {
+        return try await post(
+            "/api/admin-room/lead-map/focus-requests/\(focusRequestId)/start-delivery",
+            body: ["project_id": projectId]
+        )
+    }
+
+    func fetchDeliverable(
+        deliverableId: String,
+        projectId: String
+    ) async throws -> DeliverableResponse {
+        let encodedProjectId = projectId.addingPercentEncoding(
+            withAllowedCharacters: .urlQueryAllowed
+        ) ?? projectId
+        return try await get(
+            "/api/admin-room/lead-map/deliverables/\(deliverableId)?project_id=\(encodedProjectId)"
+        )
+    }
+
+    func updateDeliverableStep(
+        deliverableId: String, projectId: String,
+        stepNumber: Int, status: String, notes: String?
+    ) async throws -> DeliverableResponse {
+        var body: [String: Any] = [
+            "project_id": projectId,
+            "step_number": stepNumber,
+            "status": status,
+        ]
+        if let n = notes { body["notes"] = n }
+        return try await patchReturning(
+            "/api/admin-room/lead-map/deliverables/\(deliverableId)/step",
+            body: body
+        )
+    }
+
+    func toggleDeliverableRequirement(
+        deliverableId: String, projectId: String,
+        requirementIndex: Int, received: Bool
+    ) async throws -> DeliverableResponse {
+        return try await patchReturning(
+            "/api/admin-room/lead-map/deliverables/\(deliverableId)/step",
+            body: [
+                "project_id": projectId,
+                "requirement_index": requirementIndex,
+                "received": received,
+            ]
+        )
+    }
+
+    func updatePitchSlide(slideId: String, titleMd: String?, bodyMd: String?) async throws -> PitchSlideResponse {
+        var body: [String: Any] = [:]
+        if let t = titleMd { body["title_md"] = t }
+        if let b = bodyMd  { body["body_md"]  = b }
+        return try await patchReturning(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)",
+            body: body
+        )
+    }
+
+    func regeneratePitchSlide(slideId: String, instructions: String?) async throws -> PitchSlideResponse {
+        let body: [String: Any] = ["instructions": instructions ?? ""]
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)/regenerate",
+            body: body
+        )
+    }
+
+    func lockPitchSlide(slideId: String, locked: Bool) async throws {
+        try await post(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)/lock",
+            body: ["locked": locked]
+        )
+    }
+
+    /// Org-styrt visibility-toggle. Sliden bevares i decket men
+    /// filtreres ut av PresentView + brief-anbefalinger.
+    func setPitchSlideInclusion(slideId: String, included: Bool) async throws -> PitchSlideResponse {
+        return try await patchReturning(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)",
+            body: ["is_included": included]
+        )
+    }
+
+    /// SOFT-DELETE. Sliden bevares i pitch_slides m/ deleted_at = now().
+    /// UI viser angre-snackbar i 5 sek + "Slettede slides"-fane.
+    func softDeletePitchSlide(slideId: String) async throws {
+        try await delete(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)"
+        )
+    }
+
+    func restorePitchSlide(slideId: String) async throws -> PitchSlideResponse {
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/slides/\(slideId)/restore",
+            body: [:]
+        )
+    }
+
+    func fetchPitchTrash(deckId: String) async throws -> PitchTrashResponse {
+        return try await get(
+            "/api/admin-room/lead-map/pitch-deck/decks/\(deckId)/trash"
+        )
+    }
+
+    func startPitchPresentation(deckId: String, leadId: String?) async throws -> PitchPresentationResponse {
+        var body: [String: Any] = ["deck_id": deckId]
+        if let l = leadId { body["lead_id"] = l }
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/presentations",
+            body: body
+        )
+    }
+
+    func updatePitchPresentation(
+        id: String,
+        slidesShown: [String]? = nil,
+        annotations: [String: Any]? = nil,
+        outcome: PitchOutcome? = nil,
+        outcomeNote: String? = nil,
+        end: Bool = false
+    ) async throws {
+        var body: [String: Any] = [:]
+        if let s = slidesShown   { body["slides_shown"] = s }
+        if let a = annotations   { body["annotations"]  = a }
+        if let o = outcome       { body["outcome"]      = o.rawValue }
+        if let n = outcomeNote   { body["outcome_note"] = n }
+        if end                   { body["end"] = true }
+        try await patch(
+            "/api/admin-room/lead-map/pitch-deck/presentations/\(id)",
+            body: body
+        )
+    }
+
+    /// Eksport — gated på pitch_deck.export. 403 om mangler.
+    func exportPitchDeck(deckId: String, leadId: String?) async throws -> PitchExportResponse {
+        var body: [String: Any] = ["deck_id": deckId]
+        if let l = leadId { body["lead_id"] = l }
+        return try await post(
+            "/api/admin-room/lead-map/pitch-deck/exports",
+            body: body
+        )
+    }
+
+    // ============================================================
+    // MARK: - Leadgrid v2 (web Leadgrid-paritet)
+    //
+    // Disse går mot /api/leadgrid/* endepunkter, som er det nyere
+    // Leadgrid-system m/ hierarkisk tildeling, won/lost m/ detaljer,
+    // sett-tracking, scheduled reports og notification-prefs.
+    // ============================================================
+
+    // -- Status-flow ----------------------------------------------
+
+    /// Endre status. For won må man sende beløp; for lost må man sende reason.
+    func updateLeadgridStatus(
+        customerId: String, toStatus: String, note: String? = nil,
+        wonAmountOere: Int? = nil, wonRecurringOere: Int? = nil, wonNote: String? = nil,
+        lostReason: String? = nil, lostReasonDetail: String? = nil
+    ) async throws {
+        var body: [String: Any] = ["to_status": toStatus]
+        if let n = note { body["note"] = n }
+        if let v = wonAmountOere { body["won_amount_oere"] = v }
+        if let v = wonRecurringOere { body["won_recurring_oere"] = v }
+        if let v = wonNote { body["won_note"] = v }
+        if let v = lostReason { body["lost_reason"] = v }
+        if let v = lostReasonDetail { body["lost_reason_detail"] = v }
+        try await put("/api/leadgrid/customers/\(customerId)/status", body: body)
+    }
+
+    func fetchLeadgridStatusHistory(customerId: String) async throws -> StatusHistoryResponse {
+        try await get("/api/leadgrid/customers/\(customerId)/status-history")
+    }
+
+    // -- Hierarkisk tildeling -------------------------------------
+
+    /// Henter tildelbare brukere med workload-info. Både den persisterte CRM-
+    /// lead-ID-en og prosjekt-ID-en sendes, slik at backend kan verifisere at
+    /// klientens aktive kontekst matcher leadets autoritative scope.
+    func fetchAssignableUsers(
+        role: String = "all",
+        customerId: String,
+        projectId: String
+    ) async throws -> AssignableUsersResponse {
+        let path = try LeadgridAssignmentScope.assignableUsersPath(
+            role: role,
+            customerId: customerId,
+            projectId: projectId
+        )
+        return try await get(path)
+    }
+
+    func assignTeamLeader(
+        customerId: String, teamLeaderUserId: String, note: String? = nil
+    ) async throws {
+        var body: [String: Any] = ["team_leader_user_id": teamLeaderUserId]
+        if let n = note { body["note"] = n }
+        try await post("/api/leadgrid/customers/\(customerId)/assign-team-leader", body: body)
+    }
+
+    func assignRep(
+        customerId: String, repUserId: String, note: String? = nil
+    ) async throws {
+        var body: [String: Any] = ["rep_user_id": repUserId]
+        if let n = note { body["note"] = n }
+        try await post("/api/leadgrid/customers/\(customerId)/assign-rep", body: body)
+    }
+
+    func unassign(customerId: String, unassignType: String = "rep") async throws {
+        try await post("/api/leadgrid/customers/\(customerId)/unassign",
+                        body: ["unassign_type": unassignType])
+    }
+
+    // -- Sett-tracking --------------------------------------------
+
+    /// Marker en lead som sett (kalles automatisk når selger åpner LeadDetailView).
+    func markLeadSeen(customerId: String, organizationId: String) async throws {
+        try await post(
+            "/api/leadgrid/customers/\(customerId)/mark-seen?organization_id=\(organizationId)",
+            body: [:]
+        )
+    }
+
+    func fetchAssignmentStatus(customerId: String) async throws -> AssignmentStatusResponse {
+        try await get("/api/leadgrid/customers/\(customerId)/assignment-status")
+    }
+
+    // -- Mine tildelinger -----------------------------------------
+
+    func fetchMyAssignments(
+        organizationId: String
+    ) async throws -> MyAssignmentsResponse {
+        try await get(
+            "/api/leadgrid/my-assignments?organization_id=\(organizationId)"
+        )
+    }
+
+    // -- Lead-detail ----------------------------------------------
+
+    func fetchLeadgridCustomer(customerId: String) async throws -> LeadgridCustomerDetail {
+        try await get("/api/leadgrid/customers/\(customerId)")
+    }
+
+    // -- Won/Lost-stats -------------------------------------------
+
+    /// period: "7d" | "30d" | "90d"
+    func fetchWonLostStats(
+        period: String = "30d",
+        projectId: String
+    ) async throws -> WonLostStatsResponse {
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "period", value: period),
+            URLQueryItem(name: "projectId", value: projectId),
+        ]
+        let query = components.percentEncodedQuery ?? ""
+        return try await get("/api/leadgrid/won-lost-stats?\(query)")
+    }
+
+    // -- Notification-prefs (intern) ------------------------------
+
+    func fetchMyLeadgridNotificationPrefs() async throws -> LeadgridNotificationPrefs {
+        try await get("/api/leadgrid/my-notification-prefs")
+    }
+
+    func updateMyLeadgridNotificationPrefs(_ prefs: [String: Any]) async throws {
+        try await put("/api/leadgrid/my-notification-prefs", body: prefs)
+    }
+
+    // -- In-app notifications -------------------------------------
+
+    func fetchMyLeadgridNotifications() async throws -> LeadgridNotificationsResponse {
+        try await get("/api/leadgrid/my-notifications")
+    }
+
+    func markLeadgridNotificationsRead(ids: [String] = []) async throws {
+        try await post("/api/leadgrid/my-notifications/mark-read",
+                        body: ["ids": ids])
+    }
+
+    // -- Schedulerte rapporter ------------------------------------
+
+    func fetchScheduledReports(
+        organizationId: String
+    ) async throws -> ScheduledReportsResponse {
+        try await get(
+            "/api/leadgrid/scheduled-reports?organization_id=\(organizationId)"
+        )
+    }
+
+    func createScheduledReport(
+        organizationId: String,
+        projectId: String,
+        payload: [String: Any]
+    ) async throws {
+        var scopedPayload = payload
+        scopedPayload["organization_id"] = organizationId
+        scopedPayload["project_id"] = projectId
+        try await post("/api/leadgrid/scheduled-reports", body: scopedPayload)
+    }
+
+    func updateScheduledReport(
+        id: String,
+        organizationId: String,
+        payload: [String: Any]
+    ) async throws {
+        var scopedPayload = payload
+        scopedPayload["organization_id"] = organizationId
+        try await put("/api/leadgrid/scheduled-reports/\(id)", body: scopedPayload)
+    }
+
+    func deleteScheduledReport(id: String, organizationId: String) async throws {
+        try await delete(
+            "/api/leadgrid/scheduled-reports/\(id)?organization_id=\(organizationId)"
+        )
+    }
+
+    func sendScheduledReportNow(
+        id: String,
+        organizationId: String
+    ) async throws {
+        try await post(
+            "/api/leadgrid/scheduled-reports/\(id)/send-now",
+            body: ["organization_id": organizationId]
+        )
+    }
+
+    func autoCreateReportsPerPerson(
+        organizationId: String,
+        projectId: String
+    ) async throws -> AutoCreateReportsResponse {
+        return try await post(
+            "/api/leadgrid/scheduled-reports/auto-create-for-team",
+            body: ["organization_id": organizationId,
+                    "project_id": projectId,
+                    "frequency": "weekly", "day_of_week": 1, "time_of_day": "08:00",
+                    "period_days": 7, "report_type": "summary",
+                    "include_reps": true, "include_team_leaders": true]
+        )
+    }
+
+    // -- Klient-onboarding for varslings-kanaler (PR #737) --------
+
+    func fetchOnboardingChannelState() async throws -> ChannelOnboardingStateResponse {
+        try await get("/api/leadgrid/onboarding/channels/state")
+    }
+
+    func selectOnboardingModel(_ model: String) async throws {
+        try await put("/api/leadgrid/onboarding/channels/model",
+                       body: ["model": model])
+    }
+
+    func advanceOnboardingStep(fromStep: String) async throws -> AdvanceOnboardingResponse {
+        try await post("/api/leadgrid/onboarding/channels/advance",
+                        body: ["from_step": fromStep])
+    }
+
+    /// Send test-melding (e-post + WA) til en gitt mottaker via notifyClient.
+    func sendOnboardingTest(
+        phone: String?, email: String?, name: String?
+    ) async throws -> OnboardingTestResponse {
+        var body: [String: Any] = [:]
+        if let phone { body["phone"] = phone }
+        if let email { body["email"] = email }
+        if let name { body["name"] = name }
+        return try await post("/api/leadgrid/onboarding/channels/test-send",
+                                body: body)
+    }
+
+    func activateOnboarding() async throws {
+        try await post("/api/leadgrid/onboarding/channels/activate", body: [:])
+    }
+
+    // -- CSV-eksport (returnerer rådata) ---------------------------
+
+    /// Returnerer CSV-data klar for å vises i UIActivityViewController/iOS Share.
+    func exportLeadsCsv(
+        period: String = "30d",
+        status: String = "all",
+        projectId: String? = nil
+    ) async throws -> Data {
+        let req = makeRequest(
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/leads/export",
+                queryItems: [
+                    .init(name: "format", value: "csv"),
+                    .init(name: "period", value: period),
+                    .init(name: "status", value: status),
+                ],
+                projectId: projectId),
+            method: "GET",
+        )
+        let (data, response) = try await session.data(for: req)
+        try Self.validate(response)
+        return data
+    }
+
+    /// KPI-summary for export-knapp (antall + period). Brukes for å vise
+    /// "Eksporterer 142 leads fra siste 30 dager" før shareSheet.
+    func fetchLeadsExportSummary(
+        period: String = "30d",
+        status: String = "all",
+        projectId: String? = nil
+    ) async throws -> LeadsExportSummary {
+        try await get(LeadgridAnalyticsRequestPath.make(
+            "/api/leadgrid/leads/export-summary",
+            queryItems: [
+                .init(name: "period", value: period),
+                .init(name: "status", value: status),
+            ],
+            projectId: projectId))
+    }
+
+    // -- Plan-quota (Fase 16: PlanUsageBar i HubView) ---------------
+
+    /// Henter plan-summary for org-en: nåværende plan + grace + limits +
+    /// usage (customers_active, auto_onboards_this_month) + pct (0-100).
+    /// Brukes for å vise plan-bar øverst i HubView.
+    func fetchLeadgridPlanSummary(orgId: String) async throws -> LeadgridPlanSummary {
+        let encoded = orgId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? orgId
+        return try await get("/api/leadgrid/plan/summary?orgId=\(encoded)")
+    }
+
+    // -- Assignment-historikk (Fase 16: vis hvem som har eid leaden) -
+
+    /// Liste over tildelinger på en lead: hvem tildelte hvem, når, hvorfor.
+    /// Brukes i CustomerDetail som tilleggsfane ved siden av status-history.
+    func fetchAssignmentHistory(customerId: String) async throws -> AssignmentHistoryResponse {
+        try await get("/api/leadgrid/customers/\(customerId)/assignment-history")
+    }
+
+    // -- Product onboarding (bruker + org + prosjekt + rolle) --------
+
+    /// Hent guide-status for det eksakte, server-verifiserte kundeprosjektet.
+    func fetchOnboardingState(
+        projectId: String
+    ) async throws -> LeadgridOnboardingStateResponse {
+        let encoded = projectId.addingPercentEncoding(
+            withAllowedCharacters: .urlQueryAllowed
+        ) ?? projectId
+        return try await get("/api/leadgrid/onboarding/state?projectId=\(encoded)")
+    }
+
+    /// Avanser bare hvis klientens steg fortsatt er serverens aktive steg.
+    /// `fromStep` er bevisst camelCase: dette er produktguidens kontrakt,
+    /// ikke den separate kanal-onboardingen som bruker `from_step`.
+    func advanceOnboarding(
+        fromStep: String,
+        projectId: String
+    ) async throws -> LeadgridOnboardingAdvanceResponse {
+        try await post(
+            "/api/leadgrid/onboarding/advance",
+            body: ["fromStep": fromStep, "projectId": projectId]
+        )
+    }
+
+    /// Avslutt guiden bare i aktivt kundeprosjekt og aktiv rolle.
+    func skipOnboarding(projectId: String) async throws {
+        try await post(
+            "/api/leadgrid/onboarding/skip",
+            body: ["projectId": projectId]
+        )
+    }
+
+    // -- Billing (Fase 16: faktura-historikk + Stripe portal) --------
+
+    /// Liste over fakturaer for aktiv organisasjon. Kun org-admin får data.
+    func fetchLeadgridBillingInvoices(
+        organizationId: String? = nil
+    ) async throws -> LeadgridBillingInvoicesResponse {
+        guard let orgId = organizationId ?? activeOrganizationId else {
+            throw APIError.serverError(400, "Velg en organisasjon før fakturaer hentes")
+        }
+        let encoded = orgId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? orgId
+        return try await get("/api/leadgrid/billing/invoices?orgId=\(encoded)")
+    }
+
+    /// Generer Stripe billing-portal-session for aktiv organisasjon.
+    /// Backend autoriserer org-admin og bruker orgId som eksplisitt tenant-scope.
+    func createBillingPortalSession(
+        organizationId: String? = nil
+    ) async throws -> BillingPortalSessionResponse {
+        guard let orgId = organizationId ?? activeOrganizationId else {
+            throw APIError.serverError(400, "Velg en organisasjon før betaling administreres")
+        }
+        return try await post(
+            "/api/leadgrid/billing/portal-session",
+            body: ["orgId": orgId]
+        )
+    }
+
+    // -- Partners (Fase 16: Partner-program landing-strip) -----------
+
+    /// Liste over godkjente partnere (offentlig endepunkt). Brukes for å
+    /// vise "Powered by"-strip + Partners-fane.
+    func fetchLeadgridPartners(type: String? = nil) async throws -> LeadgridPartnersResponse {
+        let qs = type.map { "?type=\($0)" } ?? ""
+        return try await get("/api/leadgrid/partners\(qs)")
+    }
+
+    // -- Klient-portal-varsler (Fase 17: klient-side notif-prefs) ----
+
+    /// Klient-portal notification-prefs (per portalToken, ikke session).
+    func fetchClientPortalNotificationPrefs(portalToken: String) async throws -> ClientPortalNotificationPrefs {
+        try await get("/api/leadgrid/portal/\(portalToken)/notification-prefs")
+    }
+
+    /// Oppdater klient-portal notification-prefs.
+    func updateClientPortalNotificationPrefs(
+        portalToken: String,
+        payload: [String: Any],
+    ) async throws {
+        try await patch("/api/leadgrid/portal/\(portalToken)/notification-prefs", body: payload)
+    }
+
+    // ============================================================
+    // MARK: - Leadgrid Market Scan (PR #851)
+    //
+    // Native markedssjef-lead-discovery via Claude + BRREG + Places.
+    // Backend gjenbruker market-scan-service.ts under panseret og
+    // auto-oppretter crm_customers med lat/lng = pin på Kart-tab.
+    // RBAC: leadgrid.market_scan.run.
+    //
+    // NB: Funksjons- og type-navnene er prefikset `Leadgrid…` for å
+    // unngå kollisjon med eksisterende `fetchMarketScans()` /
+    // `MarketScan*` for det eldre /api/market-scans-endepunktet (brukt
+    // av SuperAdminFase22Views).
+    // ============================================================
+
+    /// Historikk over alle scans innlogget bruker har kjørt
+    /// (sortert nyeste først, maks 30).
+    func fetchLeadgridMarketScans() async throws -> [LeadgridMarketScan] {
+        let resp: LeadgridMarketScanListResponse = try await get(
+            "/api/leadgrid/market-scan"
+        )
+        return resp.scans
+    }
+
+    /// Hent én scan med tilhørende konkurrenter + muligheter.
+    /// Backend har separate endepunkter, så vi henter alt parallelt
+    /// og pakker det inn i et LeadgridMarketScanDetail.
+    func fetchLeadgridMarketScan(id: String) async throws -> LeadgridMarketScanDetail {
+        async let scan: LeadgridMarketScanProgressResponse = get(
+            "/api/leadgrid/market-scan/\(id)"
+        )
+        async let competitors: LeadgridMarketScanCompetitorsResponse = get(
+            "/api/leadgrid/market-scan/\(id)/competitors"
+        )
+        async let opportunities: LeadgridMarketScanOpportunitiesResponse = get(
+            "/api/leadgrid/market-scan/\(id)/opportunities"
+        )
+        let (s, c, o) = try await (scan, competitors, opportunities)
+        return LeadgridMarketScanDetail(
+            scan: s.scan,
+            competitors: c.competitors,
+            opportunities: o.opportunities,
+        )
+    }
+
+    /// Letvekts status-poll for detail-view (henter kun scan-progress —
+    /// competitors/opportunities oppdateres separat når status=completed).
+    func fetchLeadgridMarketScanProgress(id: String) async throws -> LeadgridMarketScan {
+        let resp: LeadgridMarketScanProgressResponse = try await get(
+            "/api/leadgrid/market-scan/\(id)"
+        )
+        return resp.scan
+    }
+
+    // MARK: - Leadgrid Forecasting (PR #885, mig 323)
+    //
+    // Predikert revenue for konfigurert horisont (default 90d) m/
+    // p10/p50/p90-bånd + Claude-reasoning + contributing factors.
+    // Brukes av Forecasting-kortet på Min dag (iPad).
+    // ============================================================
+
+    /// Hent siste cached forecast (eller fresh hvis cache er kald).
+    func fetchPipelineForecast(
+        projectId: String,
+        horizon: Int = 90
+    ) async throws -> LeadgridForecast {
+        let scope = scopeQuery(projectId: projectId, organizationId: nil)
+        let resp: LeadgridForecastResponse = try await get(
+            "/api/leadgrid/forecasting/pipeline\(scope)&horizon=\(horizon)"
+        )
+        return resp.forecast
+    }
+
+    /// Tving fresh recompute (Claude-kall + DB-skriv).
+    func refreshPipelineForecast(
+        projectId: String,
+        horizon: Int = 90
+    ) async throws -> LeadgridForecast {
+        let resp: LeadgridForecastResponse = try await post(
+            "/api/leadgrid/forecasting/pipeline/refresh",
+            body: [
+                "projectId": projectId,
+                "horizon": horizon,
+            ] as [String: Any],
+        )
+        return resp.forecast
+    }
+
+    func uploadLeadFile(
+        leadId: String,
+        organizationId: String?,
+        data: Data,
+        fileName: String,
+        mimeType: String,
+        displayName: String,
+        description: String,
+        tags: [String]
+    ) async throws -> LeadStoredFileModel {
+        let boundary = "Leadgrid-\(UUID().uuidString)"
+        let path = "/api/admin-room/lead-map/leads/\(leadId)/files\(scopeQuery(projectId: nil, organizationId: organizationId))"
+        var request = makeRequest(path, method: "POST")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        let newline = "\r\n"
+        func appendField(_ name: String, _ value: String) {
+            body.append("--\(boundary)\(newline)".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\(newline)\(newline)".data(using: .utf8)!)
+            body.append(value.data(using: .utf8)!)
+            body.append(newline.data(using: .utf8)!)
+        }
+        appendField("displayName", displayName)
+        appendField("description", description)
+        appendField("tags", tags.joined(separator: ","))
+        let safeName = fileName.replacingOccurrences(of: "\"", with: "")
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+        body.append("--\(boundary)\(newline)".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(safeName)\"\(newline)".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\(newline)\(newline)".data(using: .utf8)!)
+        body.append(data)
+        body.append("\(newline)--\(boundary)--\(newline)".data(using: .utf8)!)
+        let (responseData, response) = try await session.upload(for: request, from: body)
+        try Self.validate(response, data: responseData)
+        return try Self.decoder.decode(LeadFileUploadResponse.self, from: responseData).file
+    }
+
+    // MARK: - Leadgrid Import (CSV/Excel + URL) — mig 328
+
+    /// Last opp en CSV- eller XLSX-fil og få tilbake preview-data
+    /// (file_token, columns, rows). Bruker multipart/form-data.
+    func uploadImportFile(
+        projectId: String,
+        data: Data,
+        fileName: String,
+        mimeType: String
+    ) async throws -> LeadgridImportPreview {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        let encodedProjectId = projectId.addingPercentEncoding(
+            withAllowedCharacters: .urlQueryAllowed
+        ) ?? projectId
+        var req = makeRequest(
+            "/api/leadgrid/import/csv/preview?projectId=\(encodedProjectId)",
+            method: "POST"
+        )
+        req.setValue(
+            "multipart/form-data; boundary=\(boundary)",
+            forHTTPHeaderField: "Content-Type"
+        )
+
+        var body = Data()
+        let crlf = "\r\n"
+        body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
+        body.append(
+            "Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\(crlf)"
+                .data(using: .utf8)!
+        )
+        body.append("Content-Type: \(mimeType)\(crlf)\(crlf)".data(using: .utf8)!)
+        body.append(data)
+        body.append("\(crlf)--\(boundary)--\(crlf)".data(using: .utf8)!)
+        req.httpBody = body
+
+        let (respData, response) = try await session.upload(for: req, from: body)
+        try Self.validate(response)
+        return try Self.decoder.decode(LeadgridImportPreview.self, from: respData)
+    }
+
+    /// Commit en preview-batch m/ valgt mapping + dedupe.
+    func commitImportCsv(
+        projectId: String,
+        fileToken: String,
+        mapping: [String: String],
+        dedupeStrategy: String
+    ) async throws -> LeadgridImportCommit {
+        let body: [String: Any] = [
+            "file_token": fileToken,
+            "mapping": mapping,
+            "dedupe_strategy": dedupeStrategy,
+            "project_id": projectId,
+        ]
+        var req = makeRequest("/api/leadgrid/import/csv/commit", method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: req)
+        try Self.validate(response)
+        return try Self.decoder.decode(LeadgridImportCommit.self, from: data)
+    }
+
+    // MARK: - Historical URL Research reads
+    // Mutating URL Research endpoints were retired in favor of Discovery V2,
+    // which requires an explicit project, profile, review and Places attestation.
+
+    /// Hent preview-state for en draft-lead (brukes når UI re-monteres).
+    func fetchUrlResearchPreview(
+        draftLeadId: String,
+    ) async throws -> UrlResearchPreviewResponse {
+        return try await get("/api/leadgrid/url-research/preview/\(draftLeadId)")
+    }
+
+    /// Historical read-only progress for batches created by older builds.
+    func pollBulkUrlResearchProgress(batchId: String) async throws -> BulkUrlBatchProgress {
+        return try await get("/api/leadgrid/url-research/batches/\(batchId)/poll")
+    }
+
+    /// Full batch + per-item-detaljer. Kall når batchen er ferdig (status != active)
+    /// eller når sheet re-monteres.
+    func fetchBulkUrlResearchBatch(batchId: String) async throws -> BulkUrlBatchDetail {
+        return try await get("/api/leadgrid/url-research/batches/\(batchId)")
+    }
+
+    // MARK: - Historical per-URL detail
+
+    /// Hent full detail for én URL i en batch (m/ retry_count + sist-prøvd-tid +
+    /// error-melding). Brukes av "Prøv på nytt"-sheet.
+    func fetchBulkUrlItemDetail(
+        batchId: String,
+        itemId: String,
+    ) async throws -> BulkUrlItemDetail {
+        return try await get(
+            "/api/leadgrid/url-research/batches/\(batchId)/items/\(itemId)",
+        )
+    }
+
+    /// Historical read-only result for a discovery batch created by old builds.
+    func fetchLeadDiscoveryResult(
+        projectId: String,
+        batchId: String,
+    ) async throws -> LeadDiscoveryResultResponse {
+        return try await get(
+            "/api/leadgrid/projects/\(projectId)/discover-leads/\(batchId)/result"
+        )
+    }
+
+    // MARK: - Internal
+
+    private func makeRequest(_ path: String, method: String = "GET") -> URLRequest {
+        // Samme fix som `_request` (2026-07-02): `appendingPathComponent`
+        // percent-koder `?`/`&` i path → "/leads?projectId=…" ble
+        // "/leads%3FprojectId=…" → Express 404. QA 2026-07-04: dette slo ut
+        // HELE refreshAll (leads/competitors/metrics/calendar/reminders) så
+        // snart et prosjekt var valgt — appen viste «Ingen leads enda» tross
+        // 121 leads i API-et. Bygg URL via string-konkat så query overlever.
+        let baseString = baseURL.absoluteString.hasSuffix("/")
+            ? String(baseURL.absoluteString.dropLast())
+            : baseURL.absoluteString
+        let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+        let url = URL(string: baseString + normalizedPath) ?? baseURL.appendingPathComponent(path)
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let activeOrganizationId {
+            req.setValue(activeOrganizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+        }
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        return req
+    }
+
+    private func get<T: Decodable>(_ path: String) async throws -> T {
+        do {
+            let req = makeRequest(path)
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+            return try Self.decoder.decode(T.self, from: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
+    }
+
+    private func patch(_ path: String, body: [String: Any]) async throws {
+        do {
+            var req = makeRequest(path, method: "PATCH")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
+    }
+
+    private func patchReturning<T: Decodable>(_ path: String, body: [String: Any]) async throws -> T {
+        do {
+            var req = makeRequest(path, method: "PATCH")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+            return try Self.decoder.decode(T.self, from: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
+    }
+
+    private func post<T: Decodable>(
+        _ path: String,
+        body: [String: Any]? = nil,
+        headers: [String: String] = [:]
+    ) async throws -> T {
+        do {
+            var req = makeRequest(path, method: "POST")
+            for (name, value) in headers {
+                req.setValue(value, forHTTPHeaderField: name)
+            }
+            if let body {
+                req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            }
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+            return try Self.decoder.decode(T.self, from: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
+    }
+
+    private func post(_ path: String, body: [String: Any]) async throws {
+        do {
+            var req = makeRequest(path, method: "POST")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
+    }
+
+    private func delete(_ path: String) async throws {
+        do {
+            let req = makeRequest(path, method: "DELETE")
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
+    }
+
+    private func put(_ path: String, body: [String: Any]) async throws {
+        do {
+            var req = makeRequest(path, method: "PUT")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
+    }
+
+    private func put<T: Decodable>(_ path: String, body: [String: Any]) async throws -> T {
+        do {
+            var req = makeRequest(path, method: "PUT")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+            return try Self.decoder.decode(T.self, from: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
+    }
+
+    /// Map HTTP-status til spesifikke APIError-cases så caller
+    /// (og `error.localizedDescription`) får konkrete meldinger:
+    /// 401 → `.unauthorized`, 403 → `.forbidden`, 429 → `.tooManyRequests`,
+    /// 5xx → `.serverError(code, detail)`. Andre 4xx → `.statusCode(code)`.
+    private static func validate(_ response: URLResponse, data: Data = Data()) throws {
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        switch http.statusCode {
+        case 200..<300:
+            return
+        case 400, 413, 415, 422:
+            if let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let fields = payload["fields"] as? [String: String], !fields.isEmpty {
+                    throw APIError.validation(fields)
+                }
+                switch payload["error"] as? String {
+                case "image_too_large":
+                    throw APIError.validation(["profile_image": "Bildet er for stort. Velg et bilde under 4 MB."])
+                case "unsupported_image_type":
+                    throw APIError.validation(["profile_image": "Velg et JPEG-, PNG- eller WebP-bilde."])
+                case "missing_image":
+                    throw APIError.validation(["profile_image": "Velg et bilde før du laster opp."])
+                default:
+                    break
+                }
+            }
+            throw APIError.statusCode(http.statusCode)
+        case 401:
+            throw APIError.unauthorized
+        case 403:
+            throw APIError.forbidden
+        case 409:
+            if let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errorCode = payload["error"] as? String {
+                if errorCode == "duplicate_lead" {
+                    let fields = payload["matched_fields"] as? [String] ?? []
+                    throw APIError.duplicateLead(fields)
+                }
+                if errorCode == "idempotency_key_conflict" {
+                    throw APIError.idempotencyConflict
+                }
+            }
+            throw APIError.statusCode(409)
+        case 429:
+            throw APIError.tooManyRequests
+        case 500..<600:
+            let raw = String(data: data, encoding: .utf8) ?? ""
+            let detail = String(raw.prefix(200))
+            throw APIError.serverError(http.statusCode, detail)
+        default:
+            throw APIError.statusCode(http.statusCode)
+        }
+    }
+
+    /// Internal helper som mapper `URLError` → `APIError.networkFailure`.
+    /// Brukes som siste catch i alle generic fetchers så vi aldri lekker
+    /// rå URLError til UI (den gir kryptisk localizedDescription).
+    private static func mapNetworkError(_ error: Error) -> Error {
+        if let apiError = error as? APIError {
+            return apiError
+        }
+        if let urlError = error as? URLError {
+            return APIError.networkFailure(urlError)
+        }
+        if let decodingError = error as? DecodingError {
+            return APIError.decodingFailure(decodingError)
+        }
+        return error
+    }
+
+    private static let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+
+    // MARK: - Offline-resilient execute (robusthet-pakke 3)
+    //
+    // Raw write som OfflineActionQueue bruker når den drainer pending
+    // actions. Returnerer body (kan være tom) ved 2xx, throws ellers.
+
+    /// Raw execute for OfflineActionQueue. Returnerer Data ved 2xx, throws ellers.
+    func executeRaw(
+        method: String,
+        path: String,
+        body: Data?,
+        headers: [String: String] = [:],
+        idempotencyKey: String? = nil,
+        organizationId: String? = nil
+    ) async throws -> Data {
+        do {
+            // String-konkat i stedet for appendingPathComponent — se makeRequest.
+            let baseString = baseURL.absoluteString.hasSuffix("/")
+                ? String(baseURL.absoluteString.dropLast())
+                : baseURL.absoluteString
+            let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+            let url = URL(string: baseString + normalizedPath) ?? baseURL.appendingPathComponent(path)
+            var req = URLRequest(url: url)
+            req.httpMethod = method
+            req.timeoutInterval = 30
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            let requestOrganizationId = organizationId ?? activeOrganizationId
+            if let requestOrganizationId,
+               !requestOrganizationId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                req.setValue(requestOrganizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+            }
+            for (name, value) in headers {
+                req.setValue(value, forHTTPHeaderField: name)
+            }
+            if let idempotencyKey {
+                req.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+            }
+            if let body = body {
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = body
+            }
+            let (data, resp) = try await session.data(for: req)
+            guard let http = resp as? HTTPURLResponse else {
+                throw APIError.invalidResponse
+            }
+            switch http.statusCode {
+            case 200..<300:
+                return data
+            case 401:
+                throw APIError.unauthorized
+            case 403:
+                throw APIError.forbidden
+            case 429:
+                throw APIError.tooManyRequests
+            default:
+                if let envelope = try? Self.decoder.decode(DiscoveryV2APIErrorBody.self, from: data) {
+                    throw DiscoveryV2ServiceError(
+                        code: envelope.error.code,
+                        message: envelope.error.message,
+                        retryable: envelope.error.retryable,
+                        field: envelope.error.field,
+                        statusCode: http.statusCode
+                    )
+                }
+                throw APIError.serverError(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+            }
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
+    }
+}
+
+// MARK: - Fase 18: Super-admin endpoints
+
+extension APIClient {
+    func fetchAgentAIConsent(projectId: String) async throws -> AgentAIConsent? {
+        let response: AgentAIConsentEnvelope = try await _get(
+            "/api/role-room/projects/\(projectId)/ai-consent?processor=anthropic"
+        )
+        return response.consent
+    }
+
+    func grantAgentAIConsent(projectId: String) async throws -> AgentAIConsent {
+        struct Body: Encodable {
+            let scope: String
+            let processor: String
+            let note: String
+        }
+        let response: AgentAIConsentEnvelope = try await _post(
+            "/api/role-room/projects/\(projectId)/ai-consent",
+            body: Body(
+                scope: "full_context",
+                processor: "anthropic",
+                note: "Leadgrid iPad-agent: eksplisitt samtykke fra agentflaten."
+            )
+        )
+        guard let consent = response.consent else { throw APIError.invalidResponse }
+        return consent
+    }
+
+    func findLeadDuplicates(_ draft: LeadDraft) async throws -> [LeadDuplicateCandidate] {
+        struct Envelope: Decodable { let candidates: [LeadDuplicateCandidate] }
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let data = try await executeRaw(
+            method: "POST",
+            path: "/api/admin-room/lead-map/leads/duplicate-check",
+            body: try encoder.encode(draft),
+            organizationId: draft.organizationId
+        )
+        return try Self._sharedDecoder.decode(Envelope.self, from: data).candidates
+    }
+
+
+    // -- /api/auth/user (rolle-deteksjon) ---------------------------
+
+    /// Hent innlogget bruker m/ role + permissions. Brukes ved app-start
+    /// for å detektere super_admin og låse opp SuperAdminHub.
+    func fetchAuthUser() async throws -> AuthUserResponse {
+        try await get("/api/auth/user")
+    }
+
+    // -- Agency-leads (B2B Leadgrid-pipeline) -----------------------
+
+    /// Liste markedssjef-leads (prospekter for Leadgrid). Filter på status.
+    func fetchAgencyLeads(status: String? = nil) async throws -> AgencyLeadsResponse {
+        let qs = status.map { "?status=\($0)" } ?? ""
+        return try await get("/api/admin-room/agency-leads\(qs)")
+    }
+
+    /// Hent enkel agency-lead detalj.
+    func fetchAgencyLead(id: String) async throws -> AgencyLead {
+        try await get("/api/admin-room/agency-leads/\(id)")
+    }
+
+    /// Oppdater status / interne notater / assignment.
+    func updateAgencyLead(id: String, payload: [String: Any]) async throws {
+        try await patch("/api/admin-room/agency-leads/\(id)", body: payload)
+    }
+
+    /// Konverter lead til kunde — sender selvbetjent onboarding-lenke
+    /// til kontakten.
+    func convertAgencyLeadToCustomer(
+        id: String, persona: String, sendEmail: Bool,
+    ) async throws -> AgencyLeadConvertResponse {
+        try await post(
+            "/api/admin-room/agency-leads/\(id)/convert-to-customer",
+            body: ["persona": persona, "sendEmail": sendEmail],
+        )
+    }
+
+    // -- WhatsApp templates -----------------------------------------
+
+    func fetchWaTemplates(orgKey: String? = nil) async throws -> WaTemplatesResponse {
+        let qs = orgKey.map { "?org_key=\($0)" } ?? ""
+        return try await get("/api/superadmin/wa-templates\(qs)")
+    }
+
+    func deleteWaTemplate(name: String, orgKey: String? = nil) async throws {
+        let qs = orgKey.map { "?org_key=\($0)" } ?? ""
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+        try await delete("/api/superadmin/wa-templates/\(encoded)\(qs)")
+    }
+
+    func sendWaTemplateTest(name: String, phone: String, params: [String]?) async throws {
+        var body: [String: Any] = ["phone": phone]
+        if let params { body["params"] = params }
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+        try await post("/api/superadmin/wa-templates/\(encoded)/send-test", body: body)
+    }
+
+    func fetchWaTemplateAnalytics() async throws -> WaTemplateAnalyticsResponse {
+        try await get("/api/superadmin/wa-templates/analytics")
+    }
+
+    func syncWaTemplatesFromMeta() async throws {
+        try await post("/api/superadmin/wa-templates/sync-from-meta", body: [:])
+    }
+
+    func syncWaTemplatesToLeadgrid() async throws {
+        try await post("/api/superadmin/wa-templates/sync-leadgrid", body: [:])
+    }
+
+    // -- WhatsApp Org configs ---------------------------------------
+
+    func fetchWaOrgConfigs() async throws -> WaOrgConfigsResponse {
+        try await get("/api/superadmin/wa-org-configs")
+    }
+
+    func updateWaOrgConfig(orgKey: String, payload: [String: Any]) async throws {
+        let encoded = orgKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? orgKey
+        try await patch("/api/superadmin/wa-org-configs/\(encoded)", body: payload)
+    }
+
+    func deleteWaOrgConfig(orgKey: String) async throws {
+        let encoded = orgKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? orgKey
+        try await delete("/api/superadmin/wa-org-configs/\(encoded)")
+    }
+
+    // -- Partners + applications ------------------------------------
+
+    func fetchSuperAdminPartners() async throws -> SuperAdminPartnersResponse {
+        try await get("/api/superadmin/partners")
+    }
+
+    func revokePartner(id: String) async throws {
+        try await post("/api/superadmin/partners/\(id)/revoke", body: [:])
+    }
+
+    func fetchPartnerApplications(status: String = "pending") async throws -> PartnerApplicationsResponse {
+        try await get("/api/superadmin/partner-applications?status=\(status)")
+    }
+
+    func approvePartnerApplication(id: String, notes: String?) async throws {
+        var body: [String: Any] = [:]
+        if let notes { body["notes"] = notes }
+        try await post("/api/superadmin/partner-applications/\(id)/approve", body: body)
+    }
+
+    func rejectPartnerApplication(id: String, reason: String?) async throws {
+        var body: [String: Any] = [:]
+        if let reason { body["reason"] = reason }
+        try await post("/api/superadmin/partner-applications/\(id)/reject", body: body)
+    }
+
+    // -- Email branding (per org) -----------------------------------
+
+    func fetchEmailBrandingConfigs() async throws -> EmailBrandingResponse {
+        try await get("/api/superadmin/email-branding")
+    }
+
+    func updateEmailBranding(orgKey: String, payload: [String: Any]) async throws {
+        let encoded = orgKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? orgKey
+        try await patch("/api/superadmin/email-branding/\(encoded)", body: payload)
+    }
+
+    // -- API keys + webhooks ----------------------------------------
+
+    func fetchSuperAdminApiKeys() async throws -> LeadgridApiKeysResponse {
+        try await get("/api/superadmin/api-keys")
+    }
+
+    func revokeApiKey(id: String) async throws {
+        try await post("/api/superadmin/api-keys/\(id)/revoke", body: [:])
+    }
+
+    func fetchWebhookEndpoints() async throws -> WebhookEndpointsResponse {
+        try await get("/api/superadmin/webhook-endpoints")
+    }
+
+    func testWebhookEndpoint(id: String) async throws {
+        try await post("/api/superadmin/webhook-endpoints/\(id)/test", body: [:])
+    }
+
+    func deleteWebhookEndpoint(id: String) async throws {
+        try await delete("/api/superadmin/webhook-endpoints/\(id)")
+    }
+
+    func fetchWebhookDeliveries(endpointId: String? = nil) async throws -> WebhookDeliveriesResponse {
+        let qs = endpointId.map { "?endpoint_id=\($0)" } ?? ""
+        return try await get("/api/superadmin/webhook-deliveries\(qs)")
+    }
+
+    // -- TestFlight testers -----------------------------------------
+
+    func fetchTestflightTesters() async throws -> TestflightTestersResponse {
+        try await get("/api/superadmin/testflight-testers")
+    }
+
+    func syncTestflightTestersFromAsc() async throws {
+        try await post("/api/superadmin/testflight-testers/sync-asc", body: [:])
+    }
+
+    func graduateTestflightTester(id: String) async throws {
+        try await post("/api/superadmin/testflight-testers/\(id)/graduate", body: [:])
+    }
+
+    func removeTestflightTester(id: String) async throws {
+        try await post("/api/superadmin/testflight-testers/\(id)/remove", body: [:])
+    }
+
+    func fetchAscHealth() async throws -> AscHealthResponse {
+        try await get("/api/superadmin/testflight-testers/asc-health")
+    }
+
+    // -- Notification log + onboarding-funnel + payments + overage --
+
+    func fetchSuperAdminNotificationLog(limit: Int = 100) async throws -> NotificationLogResponse {
+        try await get("/api/superadmin/notification-log?limit=\(limit)")
+    }
+
+    func fetchOnboardingFunnel() async throws -> OnboardingFunnelResponse {
+        try await get("/api/superadmin/onboarding-funnel")
+    }
+
+    func fetchPaymentsOverview() async throws -> PaymentOverviewResponse {
+        try await get("/api/superadmin/payments-overview")
+    }
+
+    func fetchOverageStats() async throws -> OverageStatsResponse {
+        try await get("/api/superadmin/overage-stats")
+    }
+}
+
+// MARK: - Fase 19: Resterende admin-room paritet
+
+extension APIClient {
+
+    // -- RBAC permissions-matrise (per org) -----------------------
+
+    /// Liste over alle role-keys + default permissions + medlemmer per rolle.
+    /// Brukes i SuperAdminPermissionsMatrixView for å vise full RBAC-grid.
+    func fetchPermissionsMatrix(orgId: String) async throws -> PermissionsMatrixResponse {
+        try await get("/api/admin-room/lead-map/organizations/\(orgId)/role-defaults")
+    }
+
+    // -- Promote-medlem (sales-hierarki) --------------------------
+
+    /// Forhåndsvis hva som skjer hvis vi forfremmer member til toRole.
+    func previewPromotion(orgId: String, userId: String, toRole: String) async throws -> PromotionPreview {
+        try await get(
+            "/api/admin-room/lead-map/organizations/\(orgId)/members/\(userId)/promotion-preview?to_role=\(toRole)"
+        )
+    }
+
+    /// Bekreft forfremmelse til ny rolle.
+    func promoteMember(orgId: String, userId: String, toRole: String, reason: String?) async throws {
+        var body: [String: Any] = ["to_role": toRole]
+        if let reason { body["reason"] = reason }
+        try await post(
+            "/api/admin-room/lead-map/organizations/\(orgId)/members/\(userId)/promote",
+            body: body,
+        )
+    }
+
+    /// Liste alle medlemmer i org for promote-flyten.
+    func fetchOrgMembersForPromote(orgId: String) async throws -> OrgMembersResponse {
+        try await get("/api/admin-room/lead-map/organizations/\(orgId)/members")
+    }
+
+    // -- Customer Success ----------------------------------------
+
+    func fetchCustomerSuccessDashboard() async throws -> CSDashboardSummary {
+        try await get("/api/admin-room/customer-success/dashboard")
+    }
+
+    func fetchCSRenewals(daysAhead: Int = 90, status: String? = nil) async throws -> CSRenewalsResponse {
+        var qs = "?days=\(daysAhead)"
+        if let status { qs += "&status=\(status)" }
+        return try await get("/api/admin-room/customer-success/renewals\(qs)")
+    }
+
+    func updateRenewalStatus(id: String, payload: [String: Any]) async throws {
+        try await patch("/api/admin-room/customer-success/renewals/\(id)", body: payload)
+    }
+
+    // -- B2B Cockpit (Daniel's egen B2B-funnel) -------------------
+
+    func fetchB2BFunnel(arpuMonthlyNok: Double? = nil) async throws -> B2BFunnelResponse {
+        let qs = arpuMonthlyNok.map { "?arpuMonthlyNok=\($0)" } ?? ""
+        return try await get("/api/admin-room/cockpit/b2b/funnel\(qs)")
+    }
+
+    // -- LinkedIn Cockpit ----------------------------------------
+
+    func fetchLinkedInCapiStatus() async throws -> LinkedInCapiStatus {
+        try await get("/api/admin-room/cockpit/linkedin/capi/status")
+    }
+
+    func fetchLinkedInLeadSyncStatus() async throws -> LinkedInLeadSyncStatus {
+        try await get("/api/admin-room/cockpit/linkedin/leadsync/status")
+    }
+
+    func triggerLinkedInCapiSendDue() async throws {
+        try await post("/api/admin-room/cockpit/linkedin/capi/send-due", body: [:])
+    }
+
+    func triggerLinkedInLeadSyncPoll() async throws {
+        try await post("/api/admin-room/cockpit/linkedin/leadsync/poll-now", body: [:])
+    }
+
+    func fetchLinkedInCockpitOrgs() async throws -> LinkedInCockpitOrgsResponse {
+        try await get("/api/admin-room/cockpit/linkedin/orgs")
+    }
+
+    func setLinkedInCockpitDefaultOrg(id: String) async throws {
+        try await post("/api/admin-room/cockpit/linkedin/orgs/\(id)/default", body: [:])
+    }
+
+    // -- Case Studies --------------------------------------------
+
+    func fetchCaseStudies() async throws -> CaseStudiesResponse {
+        try await get("/api/admin-room/cockpit/case-studies")
+    }
+
+    func generateCaseStudy(customerId: String) async throws {
+        try await post("/api/admin-room/cockpit/case-studies/generate",
+                        body: ["customerId": customerId])
+    }
+
+    // -- Role Nav Config -----------------------------------------
+
+    func fetchRoleNavConfigs() async throws -> RoleNavConfigsResponse {
+        try await get("/api/admin-room/role-nav-config")
+    }
+
+    func updateRoleNavConfig(role: String, payload: [String: Any]) async throws {
+        try await patch("/api/admin-room/role-nav-config/\(role)", body: payload)
+    }
+}
+
+// MARK: - Fase 20: Platform-status + integrations + API-endpoints-health
+
+extension APIClient {
+
+    /// Aggregert plattform-helse: Render + Neon + Netlify + Stripe + Anthropic + bruker-presence.
+    func fetchPlatformStatus() async throws -> PlatformStatusResponse {
+        try await get("/api/admin-room/platform-status")
+    }
+
+    /// Daniel's integrations-oversikt: totalt antall, aktive, ødelagte, per kategori.
+    func fetchIntegrationsOverview() async throws -> IntegrationsOverview {
+        try await get("/api/admin/integrations/overview")
+    }
+
+    /// Alle integrasjons-keys (Stripe/Meta/LinkedIn/AI-providers/osv).
+    func fetchIntegrationKeys() async throws -> IntegrationKeysResponse {
+        try await get("/api/admin/integrations/keys")
+    }
+
+    /// Webhook-endepunkter på tvers av integrations (annet enn superadmin-webhooks).
+    func fetchIntegrationWebhooks() async throws -> IntegrationWebhooksResponse {
+        try await get("/api/admin/integrations/webhooks")
+    }
+
+    /// API-endepunkt-helse — feil/warning/info-tellere per source siste 24t.
+    func fetchApiEndpointsHealth() async throws -> ApiEndpointsHealthResponse {
+        try await get("/api/admin/api-endpoints/health")
+    }
+}
+
+// MARK: - Fase 21: Resterende admin-room-paritet
+
+extension APIClient {
+
+    // -- Leads growth (B2B + per-org månedlig vekst) ---------------
+
+    func fetchLeadsGrowth(period: String = "12m", scope: String = "b2b") async throws -> LeadsGrowthResponse {
+        try await get("/api/admin-room/leads-growth?period=\(period)&scope=\(scope)")
+    }
+
+    // -- Social connections status ---------------------------------
+
+    func fetchSocialConnectionsStatus(orgId: String? = nil) async throws -> SocialConnectionsStatusResponse {
+        let qs = orgId.map { "?orgId=\($0)" } ?? ""
+        return try await get("/api/admin-room/social-connections/status\(qs)")
+    }
+
+    // -- Competitor report (Claude SWOT per konkurrent) ------------
+
+    func fetchCompetitorReport(competitorId: String) async throws -> CompetitorReportResponse {
+        try await get("/api/admin-room/lead-map/leads/\(competitorId)/competitor-report")
+    }
+
+    // -- Resend status ---------------------------------------------
+
+    func fetchResendStatus() async throws -> ResendStatusResponse {
+        try await get("/api/admin-room/resend/status")
+    }
+
+    // -- Post drafts (eksisterende endpoint) -----------------------
+
+    func fetchPostDrafts(status: String? = nil, platform: String? = nil) async throws -> MarketingPostDraftsResponse {
+        var qs: [String] = []
+        if let status { qs.append("status=\(status)") }
+        if let platform { qs.append("platform=\(platform)") }
+        let q = qs.isEmpty ? "" : "?" + qs.joined(separator: "&")
+        return try await get("/api/role-room/agent/post-drafts\(q)")
+    }
+
+    func deletePostDraft(id: String) async throws {
+        try await delete("/api/role-room/agent/post-drafts/\(id)")
+    }
+
+    func publishPostDraft(id: String) async throws {
+        try await post("/api/role-room/agent/post-drafts/\(id)/publish", body: [:])
+    }
+
+    // -- Content calendar (eksisterende endpoint) ------------------
+
+    func fetchContentCalendar(brandKey: String? = nil) async throws -> ContentCalendarResponse {
+        let qs = brandKey.map { "?brandKey=\($0)" } ?? ""
+        return try await get("/api/role-room/marketing-cockpit/content-calendar\(qs)")
+    }
+
+    // -- What's new (eksisterende endpoint) ------------------------
+
+    func fetchWhatsNew() async throws -> WhatsNewResponse {
+        try await get("/api/admin-room/whats-new")
+    }
+
+    func fetchPublicWhatsNew() async throws -> WhatsNewResponse {
+        try await get("/api/whats-new")
+    }
+
+    // -- B2 Archive (eksisterende endpoint) ------------------------
+
+    func fetchB2ArchiveUsage(roleRoom: Bool = false) async throws -> B2ArchiveUsage {
+        let path = roleRoom ? "/api/role-room/admin/b2-archive/usage" : "/api/admin/b2-archive/usage"
+        return try await get(path)
+    }
+
+    func fetchB2ArchiveFiles(roleRoom: Bool = false) async throws -> B2ArchiveFilesResponse {
+        let path = roleRoom ? "/api/role-room/admin/b2-archive/files" : "/api/admin/b2-archive/files"
+        return try await get(path)
+    }
+
+    // -- Migrations status (eksisterende endpoint) -----------------
+
+    func fetchMigrationsStatus() async throws -> MigrationsStatus {
+        try await get("/api/admin-room/migrations/status")
+    }
+
+    func runMigrations() async throws {
+        try await post("/api/admin-room/migrations/run", body: [:])
+    }
+}
+
+// MARK: - Fase 22: 5 siste super-admin-views (alle endepunkter eksisterer)
+
+extension APIClient {
+
+    // -- Errors / Observability ------------------------------------
+
+    func fetchAdminErrors(level: String? = nil, limit: Int = 50) async throws -> AdminErrorsResponse {
+        var qs = "?limit=\(limit)"
+        if let level { qs += "&level=\(level)" }
+        return try await get("/api/admin-room/errors\(qs)")
+    }
+
+    func fetchAdminErrorsStats() async throws -> AdminErrorsStatsResponse {
+        try await get("/api/admin-room/errors/stats")
+    }
+
+    func resolveAdminError(id: String) async throws {
+        try await post("/api/admin-room/errors/\(id)/resolve", body: [:])
+    }
+
+    func reopenAdminError(id: String) async throws {
+        try await post("/api/admin-room/errors/\(id)/reopen", body: [:])
+    }
+
+    // -- Market Intelligence ---------------------------------------
+
+    func fetchMarketScans() async throws -> MarketScansResponse {
+        try await get("/api/market-scans")
+    }
+
+    func fetchMarketScanCompetitors(scanId: String) async throws -> MarketScanCompetitorsResponse {
+        try await get("/api/market-scans/\(scanId)/competitors")
+    }
+
+    func fetchMarketScanOpportunities(scanId: String) async throws -> MarketScanOpportunitiesResponse {
+        try await get("/api/market-scans/\(scanId)/opportunities")
+    }
+
+    // -- Brand Kit (per prosjekt) ----------------------------------
+
+    func fetchBrandKit(projectId: String) async throws -> BrandKitResponse {
+        try await get("/api/role-room/brand-kit/\(projectId)")
+    }
+
+    func scanBrandKit(projectId: String) async throws -> BrandKitResponse {
+        try await post("/api/role-room/brand-kit/\(projectId)/scan", body: [:])
+    }
+
+    // -- Lead Map Campaigns ----------------------------------------
+
+    func fetchLeadMapCampaigns() async throws -> LeadMapCampaignsResponse {
+        try await get("/api/lead-map/campaigns")
+    }
+
+    func fetchCategoryConversion() async throws -> CategoryConversionResponse {
+        try await get("/api/lead-map/analytics/category-conversion")
+    }
+
+    // -- Org switcher (impersonation) ------------------------------
+
+    func fetchSuperAdminOrgs() async throws -> SuperAdminOrgsResponse {
+        try await get("/api/superadmin/organizations")
+    }
+
+    // -- Feature-entitlements (tilgangs-matrisen, mig 0370) ---------
+
+    func fetchOrgEntitlements(_ orgId: String) async throws -> OrgEntitlementsEnvelope {
+        try await get("/api/superadmin/organizations/\(orgId)/entitlements")
+    }
+
+    /// Full erstatning — matrisen sender alltid hele katalogen.
+    func saveOrgEntitlements(_ orgId: String, entitlements: [Entitlement]) async throws {
+        let rows: [[String: Any]] = entitlements.map { ent in
+            var row: [String: Any] = [
+                "feature_key": ent.feature.key,
+                "state": ent.state.apiValue,
+            ]
+            if let l = ent.monthlyLimit { row["monthly_limit"] = l }
+            if let p = ent.addOnPriceMonthly { row["addon_price_monthly"] = p }
+            return row
+        }
+        try await put(
+            "/api/superadmin/organizations/\(orgId)/entitlements",
+            body: ["entitlements": rows]
+        )
+    }
+
+    /// GDPR: last ned mine data (rå JSON-streng). Session-scopet.
+    func fetchMyDataExport() async throws -> String {
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/leadgrid/me/export"))
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let activeOrganizationId {
+            req.setValue(activeOrganizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard http.statusCode == 200 else { throw APIError.statusCode(http.statusCode) }
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    /// Egen orgs entitlements (kunde-siden av løkka — leses ved bootstrap
+    /// og ved org-bytte). `organizationId` scoper til AKTIV org for
+    /// multi-org-brukere (ellers server-resolvet primær-org).
+    func fetchMyEntitlements(organizationId: String? = nil) async throws -> OrgEntitlementsEnvelope {
+        var path = "/api/leadgrid/me/entitlements"
+        if let organizationId, !organizationId.isEmpty {
+            path += "?organization_id=\(organizationId)"
+        }
+        return try await get(path)
+    }
+
+    /// Audit-hendelser for én org (OrgDetailSheet > Audit-logg).
+    func fetchSuperAdminAuditLog(orgId: String, limit: Int = 50) async throws -> SuperAdminAuditLogResponse {
+        try await get("/api/superadmin/audit-log?organization_id=\(orgId)&limit=\(limit)")
+    }
+
+    /// Global audit-logg på tvers av alle orgs (dashboard-menyen).
+    func fetchSuperAdminAuditLog(limit: Int = 100) async throws -> SuperAdminAuditLogResponse {
+        try await get("/api/superadmin/audit-log?limit=\(limit)")
+    }
+
+    /// Suspender/reaktiver org (POST set-status; reason påkrevd ved ikke-active).
+    func setOrgStatus(_ orgId: String, status: String, reason: String?) async throws {
+        var body: [String: Any] = ["status": status]
+        if let reason, !reason.isEmpty { body["reason"] = reason }
+        try await post("/api/superadmin/organizations/\(orgId)/set-status", body: body)
+    }
+
+    /// Start impersonation / org-kontekst-bytte (POST switch-context).
+    /// Serveren logger i superadmin_audit_log + setter aktiv-org-sesjon.
+    func switchOrgContext(_ orgId: String, reason: String?) async throws {
+        var body: [String: Any] = ["orgId": orgId]
+        if let reason, !reason.isEmpty { body["reason"] = reason }
+        try await post("/api/superadmin/switch-context", body: body)
+    }
+
+    func fetchActiveImpersonation() async throws -> ImpersonationStatus {
+        try await get("/api/superadmin/active-impersonation")
+    }
+
+    func endImpersonation() async throws {
+        try await post("/api/superadmin/end-impersonation", body: [:])
+    }
+}
+
+// MARK: - Fase 23: Drips + Marketplace + Partner/Developer-application + cron-triggers
+
+extension APIClient {
+
+    // -- Drips (e-post-serier) — super-admin manuell-trigger -------
+
+    /// Trigge drip-cron manuelt (kjør alle pending steps NÅ).
+    func runDripsCron() async throws -> DripRunResult {
+        try await post("/api/leadgrid/drips/run", body: [:])
+    }
+
+    /// Marker en lead som konvertert i drip-systemet (stopper serien).
+    func markDripConverted(leadId: String, conversionType: String) async throws {
+        try await post("/api/leadgrid/drips/converted",
+                        body: ["lead_id": leadId, "conversion_type": conversionType])
+    }
+
+    // -- Scheduled reports manuell-cron-trigger --------------------
+
+    /// Kjør alle pending scheduled-reports NÅ (super-admin override).
+    func runScheduledReportsCron() async throws {
+        try await post("/api/leadgrid/scheduled-reports/run", body: [:])
+    }
+
+    // -- Marketplace -----------------------------------------------
+
+    /// Liste public marketplace-partnere m/ filter på type + tier.
+    func fetchLeadgridMarketplace(type: String? = nil, tier: String? = nil) async throws -> LeadgridMarketplaceResponse {
+        var qs: [String] = []
+        if let type { qs.append("type=\(type)") }
+        if let tier { qs.append("tier=\(tier)") }
+        let q = qs.isEmpty ? "" : "?" + qs.joined(separator: "&")
+        return try await get("/api/leadgrid/marketplace\(q)")
+    }
+
+    // -- Partner-application (selv-tjeneste) ------------------------
+
+    /// Hent min organisasjons partner-søknad (hvis innsendt).
+    func fetchMyPartnerApplication() async throws -> LeadgridMyPartnerApplicationResponse {
+        try await get("/api/leadgrid/partner-application/my")
+    }
+
+    /// Send inn partner-søknad for en organisasjon.
+    func submitPartnerApplication(
+        organizationId: String, partnerType: String,
+        proposedTagline: String?, reason: String?,
+        proposedLogoUrl: String?, termsVersion: String, agreedToTerms: Bool,
+    ) async throws {
+        var body: [String: Any] = [
+            "organizationId": organizationId,
+            "partnerType": partnerType,
+            "termsVersion": termsVersion,
+            "agreedToTerms": agreedToTerms,
+        ]
+        if let proposedTagline { body["proposedTagline"] = proposedTagline }
+        if let reason { body["reason"] = reason }
+        if let proposedLogoUrl { body["proposedLogoUrl"] = proposedLogoUrl }
+        try await post("/api/leadgrid/partner-applications", body: body)
+    }
+
+    /// Hent gjeldende partner-terms (versjon + tekst).
+    func fetchLeadgridPartnerTerms() async throws -> LeadgridPartnerTerms {
+        try await get("/api/leadgrid/partner-terms")
+    }
+
+    // -- Developer-application -------------------------------------
+
+    /// Send inn developer-søknad (utvikler-program for Leadgrid API).
+    func submitDeveloperApplication(payload: LeadgridDeveloperApplication, agreedToTerms: Bool) async throws {
+        var body: [String: Any] = [
+            "email": payload.email,
+            "agreedToTerms": agreedToTerms,
+        ]
+        if let n = payload.fullName { body["fullName"] = n }
+        if let o = payload.organizationName { body["organizationName"] = o }
+        if let w = payload.website { body["website"] = w }
+        if let u = payload.useCase { body["useCase"] = u }
+        if let d = payload.integrationDescription { body["integrationDescription"] = d }
+        if let c = payload.expectedMonthlyApiCalls { body["expectedMonthlyApiCalls"] = c }
+        try await post("/api/leadgrid/developer-application", body: body)
+    }
+}
+
+// MARK: - Fase 24: Newsletter + RR-økonomi + Outreach
+
+extension APIClient {
+
+    // -- Newsletter (RR-Newsletter CMS) ----------------------------
+
+    func fetchNewsletterIssues() async throws -> NewsletterIssuesResponse {
+        try await get("/api/admin-room/newsletter/role-room/issues")
+    }
+
+    func fetchNewsletterStats() async throws -> NewsletterStatsResponse {
+        try await get("/api/admin-room/newsletter/role-room/stats")
+    }
+
+    func fetchNewsletterSignups(limit: Int = 50) async throws -> NewsletterSignupsResponse {
+        try await get("/api/admin-room/newsletter/role-room/signups?limit=\(limit)")
+    }
+
+    func sendNewsletterTest(issueId: String, recipient: String) async throws {
+        try await post(
+            "/api/admin-room/newsletter/role-room/issues/\(issueId)/send-test",
+            body: ["recipient": recipient],
+        )
+    }
+
+    func sendNewsletter(issueId: String) async throws {
+        try await post(
+            "/api/admin-room/newsletter/role-room/issues/\(issueId)/send", body: [:])
+    }
+
+    func unpublishNewsletter(issueId: String) async throws {
+        try await post(
+            "/api/admin-room/newsletter/role-room/issues/\(issueId)/unpublish", body: [:])
+    }
+
+    // -- RR-Økonomi ------------------------------------------------
+
+    func fetchRoleRoomEconomyAggregate() async throws -> RoleRoomEconomyAggregate {
+        try await get("/api/admin-room/role-room/economy/aggregate")
+    }
+
+    func fetchRoleRoomEconomySubscribers(status: String? = nil) async throws -> RoleRoomEconomySubscribersResponse {
+        let qs = status.map { "?status=\($0)" } ?? ""
+        return try await get("/api/admin-room/role-room/economy/subscribers\(qs)")
+    }
+
+    func fetchRoleRoomEconomyTimeseries(months: Int = 12) async throws -> RoleRoomEconomyTimeseriesResponse {
+        try await get("/api/admin-room/role-room/economy/timeseries?months=\(months)")
+    }
+
+    func cancelRoleRoomSubscription(subscriptionId: String) async throws {
+        try await post(
+            "/api/admin-room/role-room/subscription/\(subscriptionId)/cancel", body: [:])
+    }
+
+    // -- Outreach-templates ----------------------------------------
+    //
+    // Multi-produkt-paritet (PR #827): alle endepunkter under
+    // /api/admin-room/business-plan, /api/admin-room/outreach-templates og
+    // /api/admin-room/industry-targets godtar `?product=role_room|leadgrid`.
+    // Default `.leadgrid` siden iPad-en primært er et Leadgrid-verktøy.
+
+    func fetchOutreachTemplates(
+        product: AdminProductKey = .leadgrid,
+        segment: String? = nil,
+        language: String? = nil,
+    ) async throws -> OutreachTemplatesResponse {
+        var qs: [String] = ["product=\(product.rawValue)"]
+        if let segment { qs.append("segment=\(segment)") }
+        if let language { qs.append("language=\(language)") }
+        let q = "?" + qs.joined(separator: "&")
+        return try await get("/api/admin-room/outreach-templates\(q)")
+    }
+
+    func personalizeOutreachTemplate(
+        templateId: String,
+        leadId: String,
+        product: AdminProductKey = .leadgrid,
+    ) async throws -> [String: String] {
+        try await post(
+            "/api/admin-room/outreach-templates/personalize",
+            body: [
+                "template_id": templateId,
+                "lead_id": leadId,
+                "product": product.rawValue,
+            ],
+        )
+    }
+
+    // -- Business-plan (les-only på iPad) --------------------------
+    //
+    // Editor lever på web; iPad LESER kun for å vise siste-oppdatert-chip
+    // + sammendrag i super-admin-flate. PATCH/POST /generate er bevisst
+    // ikke wired (kommer i senere PR med native rich-text-editor).
+
+    func fetchBusinessPlan(
+        product: AdminProductKey = .leadgrid,
+    ) async throws -> BusinessPlanResponse {
+        try await get(
+            "/api/admin-room/business-plan?product=\(product.rawValue)",
+        )
+    }
+
+    // -- Industry-targets (les-only på iPad) -----------------------
+    //
+    // Speiler outreach-targets-katalogen. Per PR #827 har
+    // role_room_industry_targets fått product_key + indeks så vi kan
+    // filtrere per produkt. Backend GET-endepunktet godtar
+    // `?product=role_room|leadgrid`.
+
+    func fetchIndustryTargets(
+        product: AdminProductKey = .leadgrid,
+    ) async throws -> IndustryTargetsResponse {
+        try await get(
+            "/api/admin-room/industry-targets?product=\(product.rawValue)",
+        )
+    }
+}
+
+// MARK: - Multi-produkt admin-room response-modeller (PR #827)
+
+/// Forretningsplan-respons fra GET /api/admin-room/business-plan.
+/// `plan` er null hvis ingen rad finnes for (user_id, product_key).
+struct BusinessPlanResponse: Codable, Sendable {
+    /// Full plan-rad — vi dekoder ikke alle 35 tekstfeltene her siden
+    /// iPad bare leser. Hvis vi senere trenger detaljer, utvid med
+    /// eksplisitte felt eller bruk en `[String: AnyCodable]`-mapper.
+    let plan: BusinessPlanSummary?
+    let productKey: String?
+}
+
+/// Tynn summary av admin_business_plan-raden — bare det iPad bruker.
+struct BusinessPlanSummary: Codable, Sendable {
+    let id: String?
+    let userId: String?
+    let productKey: String?
+    let execSummary: String?
+    let updatedAt: String?
+    let updatedBy: String?
+}
+
+/// Industry-targets-respons fra GET /api/admin-room/industry-targets.
+struct IndustryTargetsResponse: Codable, Sendable {
+    let items: [IndustryTarget]?
+    let targets: [IndustryTarget]?
+
+    /// Backend kan returnere enten `items` eller `targets`; gi caller én
+    /// samlet liste å iterere over.
+    var allTargets: [IndustryTarget] {
+        items ?? targets ?? []
+    }
+}
+
+struct IndustryTarget: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    let fullName: String?
+    let roleTitle: String?
+    let company: String?
+    let segment: String?
+    let city: String?
+    let notes: String?
+    let productKey: String?
+}
+
+// MARK: - Fase 25: Ad-tech-stack (Google/Meta/LinkedIn/TikTok + GTM/GA4/GSC)
+
+extension APIClient {
+
+    // -- Configs CRUD ---------------------------------------------
+
+    func fetchAdsConfigs() async throws -> AdsConfigsResponse {
+        try await get("/api/admin-room/agent/ads/configs")
+    }
+
+    func fetchAdsConfig(id: String) async throws -> AdsConfigDetailResponse {
+        try await get("/api/admin-room/agent/ads/configs/\(id)")
+    }
+
+    // -- Approval-flyt --------------------------------------------
+
+    /// Producer ber klient godkjenne Agent-anbefalinger.
+    func requestAdsConfigApproval(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/request-approval", body: [:])
+    }
+
+    /// Liste pending approvals klient skal godkjenne.
+    func fetchPendingAdsApprovals() async throws -> AdsApprovalsResponse {
+        try await get("/api/role-room/ads-approvals/pending")
+    }
+
+    /// Klient godkjenner ads-config.
+    func approveAdsConfig(configId: String) async throws {
+        try await post("/api/role-room/ads-approvals/\(configId)/approve", body: [:])
+    }
+
+    /// Klient avslår ads-config.
+    func rejectAdsConfig(configId: String, reason: String?) async throws {
+        var body: [String: Any] = [:]
+        if let reason { body["reason"] = reason }
+        try await post("/api/role-room/ads-approvals/\(configId)/reject", body: body)
+    }
+
+    // -- Setup diagnose + insights --------------------------------
+
+    func diagnoseAdsConfigSetup(id: String) async throws -> AdsSetupDiagnoseResponse {
+        try await get("/api/admin-room/agent/ads/configs/\(id)/setup/diagnose")
+    }
+
+    func fetchAdsConfigInsights(id: String) async throws -> AdsInsightsResponse {
+        try await get("/api/admin-room/agent/ads/configs/\(id)/insights")
+    }
+
+    // -- Google Search Console ------------------------------------
+
+    func verifyGsc(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/gsc/verify", body: [:])
+    }
+
+    func submitGscSitemap(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/gsc/sitemap", body: [:])
+    }
+
+    func diagnoseGsc(id: String) async throws -> AdsSetupDiagnoseResponse {
+        try await get("/api/admin-room/agent/ads/configs/\(id)/gsc/diagnose")
+    }
+
+    // -- GA4 + GTM provisjon --------------------------------------
+
+    func provisionGa4(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/ga4/provision", body: [:])
+    }
+
+    func provisionGtm(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/gtm/provision", body: [:])
+    }
+
+    func importGtmTags(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/gtm/import-tags", body: [:])
+    }
+
+    // -- Meta-platform actions ------------------------------------
+
+    func provisionMetaPixel(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/meta/provision-pixel", body: [:])
+    }
+
+    func syncMetaConversions(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/meta/sync-conversions", body: [:])
+    }
+
+    func createMetaAudience(id: String, name: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/meta/create-audience",
+            body: ["name": name],
+        )
+    }
+
+    // -- Google Ads actions ---------------------------------------
+
+    func syncAdsConfigToGoogle(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/sync-to-google", body: [:])
+    }
+
+    func createGoogleAdsAudience(id: String, name: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/google/create-audience",
+            body: ["name": name],
+        )
+    }
+
+    // -- LinkedIn actions -----------------------------------------
+
+    func provisionLinkedInInsightTag(id: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/linkedin/provision-insight-tag", body: [:])
+    }
+
+    func syncLinkedInConversions(id: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/linkedin/sync-conversions", body: [:])
+    }
+
+    func createLinkedInAudience(id: String, name: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/linkedin/create-audience",
+            body: ["name": name],
+        )
+    }
+
+    // -- TikTok actions -------------------------------------------
+
+    func provisionTiktokPixel(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/tiktok/provision-pixel", body: [:])
+    }
+
+    func syncTiktokEvents(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/tiktok/sync-events", body: [:])
+    }
+
+    func syncTiktokLeads(id: String) async throws {
+        try await post("/api/admin-room/agent/ads/configs/\(id)/tiktok/sync-leads", body: [:])
+    }
+
+    func createTiktokAudience(id: String, name: String) async throws {
+        try await post(
+            "/api/admin-room/agent/ads/configs/\(id)/tiktok/create-audience",
+            body: ["name": name],
+        )
+    }
+
+    // -- Account-lookups (OAuth-account-listing per platform) -----
+
+    func fetchGa4Accounts() async throws -> OAuthAccountsResponse {
+        try await get("/api/admin-room/agent/ads/ga4/accounts")
+    }
+
+    func fetchMetaAccounts() async throws -> OAuthAccountsResponse {
+        try await get("/api/admin-room/agent/ads/meta/accounts")
+    }
+
+    func fetchLinkedInAccounts() async throws -> OAuthAccountsResponse {
+        try await get("/api/admin-room/agent/ads/linkedin/accounts")
+    }
+}
+
+// MARK: - Fase 26: Cockpit-sub + Lead-map-detalj + Decks/funding + Error-detail
+
+extension APIClient {
+
+    // -- Cockpit: PR / Journalists --------------------------------
+
+    func fetchPRJournalists() async throws -> PRJournalistsResponse {
+        try await get("/api/admin-room/cockpit/pr/journalists")
+    }
+
+    func fetchPRReleases() async throws -> PRReleasesResponse {
+        try await get("/api/admin-room/cockpit/pr/releases")
+    }
+
+    func generatePRRelease(prompt: String) async throws -> PRRelease {
+        try await post(
+            "/api/admin-room/cockpit/pr/releases/generate",
+            body: ["prompt": prompt],
+        )
+    }
+
+    func distributePRRelease(id: String) async throws {
+        try await post("/api/admin-room/cockpit/pr/releases/\(id)/distribute", body: [:])
+    }
+
+    // -- Cockpit: Webinars ----------------------------------------
+
+    func fetchCockpitWebinars() async throws -> CockpitWebinarsResponse {
+        try await get("/api/admin-room/cockpit/webinars")
+    }
+
+    // -- Cockpit: Referrals + nurture-cron ------------------------
+
+    func fetchCockpitReferrals() async throws -> CockpitReferralsResponse {
+        try await get("/api/admin-room/cockpit/referrals")
+    }
+
+    func runNurtureCron() async throws -> NurtureRunResult {
+        try await post("/api/admin-room/cockpit/nurture/run-due", body: [:])
+    }
+
+    // -- Lead Map detalj-sub --------------------------------------
+
+    /// Generer Claude AI-pitch for en gitt lead.
+    func generateLeadPitch(leadId: String) async throws -> LeadMapPitch {
+        try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/generate-pitch", body: [:])
+    }
+
+    /// Hent geo-data for en lead (lat/lng/distance fra meg).
+    func fetchLeadGeo(leadId: String) async throws -> [String: AnyCodableShim] {
+        try await get("/api/admin-room/lead-map/leads/\(leadId)/geo")
+    }
+
+    // -- Admin Decks (business decks) -----------------------------
+
+    func fetchAdminDecks() async throws -> AdminDecksResponse {
+        try await get("/api/admin-room/decks")
+    }
+
+    func fetchAdminDeckSlides(deckId: String) async throws -> AdminDeckSlidesResponse {
+        try await get("/api/admin-room/decks/\(deckId)/slides")
+    }
+
+    func generateDeckSlide(deckId: String, slideId: String, prompt: String) async throws {
+        try await post(
+            "/api/admin-room/decks/\(deckId)/slides/\(slideId)/generate",
+            body: ["prompt": prompt],
+        )
+    }
+
+    // -- Funding Apps ---------------------------------------------
+
+    func fetchFundingApps() async throws -> FundingAppsResponse {
+        try await get("/api/admin-room/funding-apps")
+    }
+
+    func generateFundingApp(id: String, prompt: String) async throws {
+        try await post(
+            "/api/admin-room/funding-apps/\(id)/generate",
+            body: ["prompt": prompt],
+        )
+    }
+
+    // -- CS Snapshot-all -------------------------------------------
+
+    /// Lag snapshot av alle kunder NÅ (cron-trigger fra iPad).
+    func runCSSnapshotAll() async throws -> CSSnapshotAllResult {
+        try await post("/api/admin-room/customer-success/snapshot-all", body: [:])
+    }
+
+    // -- Error detail ---------------------------------------------
+
+    func fetchAdminErrorDetail(id: String) async throws -> AdminErrorDetailResponse {
+        try await get("/api/admin-room/errors/\(id)")
+    }
+
+    // -- Leadgrid Research (Claude + BRREG + website-analyse) ------
+    //
+    // Native iPad-view for "Research med AI" per kunde. Backend ligger
+    // i backend/server/leadgrid-research-routes.ts.
+
+    /// Hent cached research hvis < 30 dager gammel. Returner nil ved 404
+    /// (ingen research kjørt enda, eller stale).
+    func fetchLeadgridResearch(leadId: String) async throws -> LeadgridResearch? {
+        do {
+            let env: LeadgridResearchEnvelope = try await get(
+                "/api/leadgrid/leads/\(leadId)/research"
+            )
+            return env.research
+        } catch APIError.statusCode(404) {
+            return nil
+        }
+    }
+
+    /// Kjør hele research-pipeline nå — BRREG → website → Claude. Tar
+    /// 10-30 sek. Returnerer ny research-blob.
+    func runLeadgridResearch(leadId: String) async throws -> LeadgridResearch {
+        let env: LeadgridResearchEnvelope = try await post(
+            "/api/leadgrid/leads/\(leadId)/research"
+        )
+        return env.research
+    }
+}
+
+/// Liten shim for å dekode arbitrary JSON-verdier (string/number/bool/null).
+struct AnyCodableShim: Codable, Hashable {
+    let value: String
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let s = try? c.decode(String.self) { value = s }
+        else if let n = try? c.decode(Double.self) { value = "\(n)" }
+        else if let b = try? c.decode(Bool.self) { value = "\(b)" }
+        else { value = "" }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        try c.encode(value)
+    }
+}
+
+/// Strukturerte API-feil for LeadMap iPad-appen.
+///
+/// Conformer til `LocalizedError` så `error.localizedDescription` gir
+/// konkrete norske brukermeldinger — ikke "APIError error 0".
+/// ErrorProjectCard + andre error-bannere bruker disse automatisk.
+///
+/// Bakvert-kompatibel: de fire opprinnelige casene (`invalidResponse`,
+/// `statusCode`, `invalidURL`, `serverError`) er beholdt. De fem nye
+/// (`networkFailure`, `decodingFailure`, `unauthorized`, `forbidden`,
+/// `tooManyRequests`) lar oss skille reagerbare feil fra retry-bare.
+enum APIError: Error, LocalizedError {
+    case invalidResponse
+    case statusCode(Int)
+    case invalidURL
+    case serverError(Int, String)
+    /// Connection-timeout, DNS, TLS-feil. Wrapper underliggende URLError
+    /// så vi kan branche på `.notConnectedToInternet`, `.timedOut`, etc.
+    case networkFailure(URLError)
+    /// JSON-decode-feil — typisk når backend endrer schema og iPad er stale.
+    case decodingFailure(DecodingError)
+    /// HTTP 401 — session utløpt / token ugyldig. UI bør trigge re-login.
+    case unauthorized
+    /// HTTP 403 — RBAC-mangel. Bruker mangler permission for endepunktet.
+    case forbidden
+    /// En annen lead i samme workspace har samme virksomhetsidentitet.
+    case duplicateLead([String])
+    /// Samme skjemasesjon ble gjenbrukt med et endret payload.
+    case idempotencyConflict
+    /// Feltspesifikke 4xx-feil. Nøklene følger backend-kontrakten.
+    case validation([String: String])
+    /// HTTP 429 — rate-limit. Bruker bør vente og prøve igjen.
+    case tooManyRequests
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse:
+            return "Uventet svar fra tjeneren"
+        case .statusCode(let code):
+            return "Tjeneren returnerte HTTP \(code)"
+        case .invalidURL:
+            return "Ugyldig URL"
+        case .serverError(let code, let detail):
+            if detail.isEmpty {
+                return "Tjeneren returnerte feil (HTTP \(code))"
+            }
+            return "Tjeneren returnerte feil (HTTP \(code))\n\(detail)"
+        case .networkFailure(let urlError):
+            switch urlError.code {
+            case .notConnectedToInternet:
+                return "Ingen internett-forbindelse"
+            case .timedOut:
+                return "Tjeneren svarte ikke i tide"
+            case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+                return "Kunne ikke nå tjeneren"
+            case .secureConnectionFailed, .serverCertificateUntrusted,
+                 .serverCertificateHasBadDate, .serverCertificateNotYetValid,
+                 .serverCertificateHasUnknownRoot:
+                return "Sikker tilkobling feilet"
+            case .networkConnectionLost:
+                return "Mistet nettverk-tilkoblingen — prøv igjen"
+            default:
+                return "Nettverk-feil: \(urlError.localizedDescription)"
+            }
+        case .decodingFailure(let err):
+            return "Klarte ikke å lese tjener-respons: \(String(describing: err))"
+        case .unauthorized:
+            return "Din økt er utløpt — logg inn på nytt"
+        case .forbidden:
+            return "Du har ikke tilgang til denne ressursen"
+        case .duplicateLead(let fields):
+            let labels = fields.compactMap { field -> String? in
+                switch field {
+                case "organization_number": return "organisasjonsnummer"
+                case "google_place_id": return "Google-sted"
+                case "website_domain": return "nettsidedomene"
+                default: return nil
+                }
+            }
+            let reason = labels.isEmpty
+                ? ""
+                : " (samme " + labels.joined(separator: ", ") + ")"
+            return "Leaden finnes allerede i dette arbeidsområdet\(reason)."
+        case .idempotencyConflict:
+            return "Skjemaet ble endret etter første lagringsforsøk. Avbryt og åpne et nytt skjema før du lagrer igjen."
+        case .validation(let fields):
+            return fields["form"] ?? fields.values.first ?? "Kontroller feltene og prøv igjen."
+        case .tooManyRequests:
+            return "Du gjør for mange forespørsler — vent litt og prøv igjen"
+        }
+    }
+
+    /// True hvis brukeren bør prøve igjen automatisk (vs. trenger handling
+    /// som re-login eller manglende permission). ErrorProjectCard bruker
+    /// dette for å velge mellom "Prøv igjen" og "Logg inn på nytt"-CTA.
+    var isRetryable: Bool {
+        switch self {
+        case .networkFailure, .tooManyRequests, .invalidResponse:
+            return true
+        case .statusCode(let code), .serverError(let code, _):
+            return code == 429 || code >= 500
+        case .unauthorized, .forbidden, .invalidURL, .decodingFailure,
+             .duplicateLead, .idempotencyConflict, .validation:
+            return false
+        }
+    }
+
+    /// True hvis feilen krever at brukeren logger inn på nytt.
+    /// AppState observer dette og setter `sessionExpired = true`.
+    var requiresReauth: Bool {
+        if case .unauthorized = self { return true }
+        return false
+    }
+
+    /// True hvis feilen er HTTP 404 — typisk en stale ID som peker på
+    /// et arkivert/slettet prosjekt eller organisasjon. AppState bruker
+    /// dette for å auto-clear `rr.lead_map.active_project`-/`active_org`-
+    /// UserDefaults og fallback til første aktive entry, slik at appen
+    /// ikke hardlocker på "Tjeneren returnerte HTTP 404" ved app-start.
+    ///
+    /// Inkluderer både `.statusCode(404)` (typisk 4xx-mapping) og
+    /// `.serverError(404, _)` (defensiv — backend kunne i prinsippet ha
+    /// rapportert 404 i 5xx-banen ved en feilkonfigurasjon).
+    var isNotFound: Bool {
+        switch self {
+        case .statusCode(404), .serverError(404, _):
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+// MARK: - Response envelopes
+
+private struct LeadsResponse: Decodable { let leads: [LeadModel] }
+private struct LeadNotesResponse: Decodable { let notes: [LeadNoteModel] }
+private struct LeadFilesResponse: Decodable { let files: [LeadStoredFileModel] }
+private struct LeadFileUploadResponse: Decodable { let file: LeadStoredFileModel }
+private struct LeadNoteResponse: Decodable { let note: LeadNoteModel }
+private struct LeadFavoriteResponse: Decodable { let favorite: Bool }
+private struct ProjectsResponse: Decodable { let projects: [ProjectListItem] }
+private struct CompetitorsResponse: Decodable { let competitors: [CompetitorModel] }
+private struct CalendarResponse: Decodable { let events: [CalendarEvent] }
+private struct EnrichmentEnvelope: Decodable { let enrichment: EnrichmentModel? }
+private struct DemographicsEnvelope: Decodable { let demographics: DemographicsModel? }
+private struct StrategyEnvelope: Decodable { let strategy: StrategyModel }
+private struct OrgsResponse: Decodable { let organizations: [OrganizationSummary] }
+private struct OrgProfilesResponse: Decodable { let profiles: [MemberProfile] }
+private struct TeamsResponse: Decodable { let teams: [SalesTeam] }
+private struct MemberLocationsResponse: Decodable { let locations: [MemberLocation] }
+private struct ConsentResponse: Decodable { let consented: Bool }
+private struct CreateAnnotationResponse: Decodable { let id: String }
+
+struct OrgProfileEnvelope: Decodable {
+    let profile: OrganizationProfile
+    let canEdit: Bool
+    let isOwner: Bool
+    let ownerOnlyFields: [String]
+}
+
+// MARK: - Leadgrid Intelligence (PR #855)
+
+enum LeadgridNBARequestPath {
+    static func make(projectId: String, priority: String?, limit: Int) -> String {
+        var queryItems = [URLQueryItem(name: "limit", value: String(min(200, max(1, limit))))]
+        if let priority = priority?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !priority.isEmpty {
+            queryItems.append(.init(name: "priority", value: priority))
+        }
+        return LeadgridAnalyticsRequestPath.make(
+            "/api/leadgrid/intelligence/recommendations",
+            queryItems: queryItems,
+            projectId: projectId)
+    }
+
+    static func mutation(id: String, action: String, projectId: String) -> String {
+        let encodedId = LeadgridPathSegment.encode(id)
+        return LeadgridAnalyticsRequestPath.makePercentEncoded(
+            "/api/leadgrid/intelligence/recommendations/\(encodedId)/\(action)",
+            projectId: projectId)
+    }
+
+    static func followUpQueue(projectId: String) -> String {
+        LeadgridAnalyticsRequestPath.make(
+            "/api/leadgrid/intelligence/follow-up-queue",
+            projectId: projectId)
+    }
+}
+
+enum LeadgridPipelineRequestPath {
+    static func update(leadId: String, projectId: String) -> String {
+        let encodedLeadId = LeadgridPathSegment.encode(leadId)
+        return LeadgridAnalyticsRequestPath.makePercentEncoded(
+            "/api/leadgrid/intelligence/leads/\(encodedLeadId)/pipeline-stage",
+            projectId: projectId)
+    }
+}
+
+enum LeadgridIntelligenceRequestPath {
+    static func lead(
+        _ leadId: String,
+        action: String? = nil,
+        projectId: String
+    ) -> String {
+        let encodedLeadId = LeadgridPathSegment.encode(leadId)
+        let suffix = action.map { "/\($0)" } ?? ""
+        return LeadgridAnalyticsRequestPath.makePercentEncoded(
+            "/api/leadgrid/intelligence/leads/\(encodedLeadId)\(suffix)",
+            projectId: projectId)
+    }
+}
+
+private enum LeadgridPathSegment {
+    static func encode(_ value: String) -> String {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/?#")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+    }
+}
+
+extension APIClient {
+
+    func fetchLeadIntelligence(
+        leadId: String,
+        projectId: String
+    ) async throws -> LeadgridIntelligenceForLead {
+        try await get(LeadgridIntelligenceRequestPath.lead(
+            leadId, projectId: projectId))
+    }
+
+    func recomputeLeadIntelligence(
+        leadId: String,
+        projectId: String
+    ) async throws -> LeadgridIntelligenceForLead {
+        try await post(
+            LeadgridIntelligenceRequestPath.lead(
+                leadId, action: "recompute", projectId: projectId),
+            body: nil)
+    }
+
+    func fetchNBARecommendations(
+        projectId: String,
+        priority: String? = nil,
+        limit: Int = 50
+    ) async throws -> [LeadgridNBARecommendation] {
+        let resp: NBARecommendationsResponse = try await get(
+            LeadgridNBARequestPath.make(
+                projectId: projectId,
+                priority: priority,
+                limit: limit))
+        return resp.recommendations
+    }
+
+    func acceptRecommendation(
+        _ id: String,
+        projectId: String
+    ) async throws -> LeadgridNBAMutationResult {
+        try await post(
+            LeadgridNBARequestPath.mutation(id: id, action: "accept", projectId: projectId),
+            body: nil)
+    }
+
+    func executeRecommendation(
+        _ id: String,
+        projectId: String,
+        outcome: LeadgridNBAOutcome,
+        notes: String?
+    ) async throws -> LeadgridNBAExecutionResult {
+        var body: [String: Any] = ["outcome": outcome.rawValue]
+        if let n = notes { body["outcome_notes"] = n }
+        return try await post(
+            LeadgridNBARequestPath.mutation(id: id, action: "execute", projectId: projectId),
+            body: body)
+    }
+
+    func dismissRecommendation(
+        _ id: String,
+        projectId: String
+    ) async throws -> LeadgridNBAMutationResult {
+        try await post(
+            LeadgridNBARequestPath.mutation(id: id, action: "dismiss", projectId: projectId),
+            body: nil)
+    }
+
+    /// Snooze en NBA-anbefaling i N timer (1-168).
+    /// Backend: POST /api/leadgrid/intelligence/recommendations/:id/snooze (PR #882).
+    /// Emiter `recommendation.snoozed`-webhook server-side.
+    @discardableResult
+    func snoozeRecommendation(
+        _ id: String,
+        projectId: String,
+        hours: Int
+    ) async throws -> SnoozeResult {
+        try await post(
+            LeadgridNBARequestPath.mutation(id: id, action: "snooze", projectId: projectId),
+            body: ["hours": hours]
+        )
+    }
+
+    func fetchFollowUpQueue(projectId: String) async throws -> [LeadgridFollowUpItem] {
+        let resp: FollowUpQueueResponse = try await get(
+            LeadgridNBARequestPath.followUpQueue(projectId: projectId))
+        return resp.items
+    }
+
+    func fetchLeadScoreHistory(
+        leadId: String,
+        projectId: String
+    ) async throws -> [LeadgridScoreHistoryEntry] {
+        let resp: ScoreHistoryResponse = try await get(
+            LeadgridIntelligenceRequestPath.lead(
+                leadId, action: "history", projectId: projectId))
+        return resp.history
+    }
+
+    func overrideLeadScore(
+        leadId: String,
+        projectId: String,
+        score: Int,
+        reason: String
+    ) async throws -> LeadgridScoreOverrideResult {
+        try await post(
+            LeadgridIntelligenceRequestPath.lead(
+                leadId, action: "score-override", projectId: projectId),
+            body: ["lead_score": score, "reason": reason])
+    }
+
+    // PR #882 — drag-and-drop pipeline stage. Backend trigger Intelligence
+    // rescore + emit lead.pipeline_stage_changed webhook.
+    @discardableResult
+    func updateLeadPipelineStage(
+        leadId: String,
+        projectId: String,
+        stage: String
+    ) async throws -> PipelineStageUpdateResult {
+        try await patchReturning(
+            LeadgridPipelineRequestPath.update(leadId: leadId, projectId: projectId),
+            body: ["pipeline_stage": stage]
+        )
+    }
+}
+
+struct PipelineStageUpdateResult: Decodable {
+    let ok: Bool
+    let leadId: String?
+    let oldStage: String?
+    let newStage: String?
+}
+
+struct LeadgridScoreOverrideResult: Decodable {
+    let ok: Bool
+    let leadId: String
+    let leadScore: Int
+}
+
+private struct NBARecommendationsResponse: Decodable { let recommendations: [LeadgridNBARecommendation] }
+private struct FollowUpQueueResponse: Decodable { let items: [LeadgridFollowUpItem] }
+private struct ScoreHistoryResponse: Decodable { let history: [LeadgridScoreHistoryEntry] }
+
+/// Resultatet av en snooze-operasjon på en NBA-anbefaling.
+/// `snoozed_until` er ISO8601-tidspunkt; `hours` er antall timer den ble snoozet.
+struct SnoozeResult: Decodable {
+    let ok: Bool
+    let snoozedUntil: String?
+    let hours: Int?
+}
+
+// MARK: - Leadgrid Route Planner (PR #856 + #870)
+//
+// Bygger ovenpå eksisterende `planDayRoute`/`updateRouteStop` (smart dagsrute).
+// Disse nye metodene gir Route Planner-UI-et (auto in-grid + nærmeste-nabo)
+// modeller med expected_route_value + matrix_source, og henter detaljert
+// rute-detalj for innsjekk i felt.
+
+extension APIClient {
+    /// Planlegg dagsrute uten å trenge organizationId — backend velger basert
+    /// på selgerens in-grid leads. Returnerer nil hvis ingen aktuelle leads.
+    func planRoute(
+        organizationId: String,
+        startLat: Double,
+        startLng: Double,
+        limit: Int = 12,
+        plannedDate: String? = nil
+    ) async throws -> LeadgridRouteDetail? {
+        var body: [String: Any] = [
+            "organization_id": organizationId,
+            "start_lat": startLat,
+            "start_lng": startLng,
+            "limit": limit,
+        ]
+        if let plannedDate { body["planned_date"] = plannedDate }
+        let resp: LeadgridRoutePlanResponse = try await post(
+            "/api/leadgrid/routes/plan", body: body
+        )
+        return resp.route
+    }
+
+    /// Hent en lagret rute med oppdaterte stopp-statuser (for innsjekk-flyt).
+    func fetchRoute(_ id: String, organizationId: String) async throws -> LeadgridRouteFullResponse {
+        let org = organizationId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? organizationId
+        return try await get("/api/leadgrid/routes/\(id)?organization_id=\(org)")
+    }
+
+    /// 2026-08-19: flerdagers "Dagsrute" — planlegger `days` dager i strekk,
+    /// geografisk kjedet (dag N+1 starter der dag N sluttet). Samme
+    /// in-grid-utvelgelse som planRoute(), bare loopet med ekskludering av
+    /// tidligere dagers leads server-side.
+    func planRouteTrip(
+        organizationId: String,
+        startDate: String,
+        days: Int,
+        startLat: Double,
+        startLng: Double,
+        perDayLimit: Int = 12
+    ) async throws -> LeadgridRouteTripPlanResponse {
+        try await post(
+            "/api/leadgrid/routes/plan-trip",
+            body: [
+                "organization_id": organizationId,
+                "start_date": startDate,
+                "days": days,
+                "start_lat": startLat,
+                "start_lng": startLng,
+                "per_day_limit": perDayLimit,
+            ]
+        )
+    }
+}
+
+// MARK: - Leadgrid Meeting Notes (Voice Memo → Whisper → Claude action items)
+
+/// Resultatet av en voice-memo opplasting.
+/// Backend prosesserer asynkront (Whisper → Claude); poll `fetchMeetingNote` for status.
+struct MeetingNoteUploadResult: Decodable {
+    let meetingNoteId: String
+    let status: String
+}
+
+struct MeetingNote: Decodable, Identifiable {
+    let id: String
+    let source: String?
+    let transcript: String?
+    let summary: String?
+    let actionItems: [MeetingActionItem]?
+    let decisions: [MeetingDecision]?
+    let nextSteps: [MeetingNextStep]?
+    let topics: [MeetingTopic]?
+    let confidence: Double?
+    let processingStatus: String
+    let errorMessage: String?
+    let createdAt: String?
+    let processedAt: String?
+}
+
+struct MeetingActionItem: Decodable, Hashable {
+    let title: String
+    let dueDate: String?
+    let priority: String?
+    let assignee: String?
+}
+
+struct MeetingDecision: Decodable, Hashable {
+    let decision: String
+    let owner: String?
+}
+
+struct MeetingNextStep: Decodable, Hashable {
+    let step: String
+    let owner: String?
+    let deadline: String?
+}
+
+struct MeetingTopic: Decodable, Hashable {
+    let topic: String
+    let sentiment: String?
+}
+
+private struct MeetingNoteResponse: Decodable { let note: MeetingNote }
+private struct MeetingNotesListResponse: Decodable { let notes: [MeetingNote] }
+
+extension APIClient {
+    /// Last opp voice-memo for et lead. Backend transkriberer m/ Whisper og
+    /// ekstraherer action items m/ Claude (async — poll `fetchMeetingNote`).
+    func uploadVoiceMemo(
+        leadId: String,
+        audioData: Data,
+        durationSeconds: Int,
+        language: String = "no"
+    ) async throws -> MeetingNoteUploadResult {
+        let base64 = audioData.base64EncodedString()
+        let body: [String: Any] = [
+            "audio_base64": base64,
+            "duration_seconds": durationSeconds,
+            "language": language,
+        ]
+        return try await post("/api/leadgrid/leads/\(leadId)/meeting-notes/upload-audio", body: body)
+    }
+
+    /// Hent én meeting-note m/ status + (ved completed) transcript + action items.
+    func fetchMeetingNote(_ id: String) async throws -> MeetingNote {
+        let resp: MeetingNoteResponse = try await get("/api/leadgrid/meeting-notes/\(id)")
+        return resp.note
+    }
+
+    /// Liste alle meeting-notes for et lead.
+    func fetchMeetingNotes(leadId: String) async throws -> [MeetingNote] {
+        let resp: MeetingNotesListResponse = try await get("/api/leadgrid/leads/\(leadId)/meeting-notes")
+        return resp.notes
+    }
+}
+
+// MARK: - Leadgrid Momentum (Daniels Momentum Engine)
+
+extension APIClient {
+    private func requiredMomentumProjectID(_ rawProjectId: String) throws -> String {
+        let projectId = rawProjectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !projectId.isEmpty, projectId.count <= 255 else {
+            throw LeadgridMomentumScopeError.missingProjectID
+        }
+        return projectId
+    }
+
+    private func momentumPath(
+        _ endpoint: String,
+        projectId: String,
+        queryItems: [URLQueryItem] = []
+    ) throws -> String {
+        var components = URLComponents()
+        components.path = "/api/leadgrid/momentum/\(endpoint)"
+        components.queryItems = [
+            URLQueryItem(name: "projectId", value: projectId)
+        ] + queryItems
+        guard let path = components.string else {
+            throw URLError(.badURL)
+        }
+        return path
+    }
+
+    func fetchMomentumToday(projectId rawProjectId: String) async throws -> LeadgridMomentum {
+        let projectId = try requiredMomentumProjectID(rawProjectId)
+        let path = try momentumPath("today", projectId: projectId)
+        let resp: LeadgridMomentumResponse = try await get(path)
+        guard resp.projectId == projectId, resp.momentum.projectId == projectId else {
+            throw LeadgridMomentumScopeError.responseProjectMismatch
+        }
+        return resp.momentum
+    }
+
+    func fetchSalesGoal(projectId rawProjectId: String) async throws -> LeadgridSalesGoal {
+        let projectId = try requiredMomentumProjectID(rawProjectId)
+        let path = try momentumPath("goal", projectId: projectId)
+        let resp: LeadgridSalesGoalResponse = try await get(path)
+        guard resp.projectId == projectId, resp.goal.projectId == projectId else {
+            throw LeadgridMomentumScopeError.responseProjectMismatch
+        }
+        return resp.goal
+    }
+
+    func saveSalesGoal(
+        projectId rawProjectId: String,
+        revenueTarget: Double?,
+        dealsTarget: Int?,
+        meetingsTarget: Int?,
+        dailyContactsTarget: Int,
+        dailyFollowupsTarget: Int,
+        dailyMeetingsTarget: Int,
+        dailyPipelineMovesTarget: Int
+    ) async throws -> LeadgridSalesGoal {
+        let projectId = try requiredMomentumProjectID(rawProjectId)
+        var body: [String: Any] = [
+            "projectId": projectId,
+            "daily_contacts_target": dailyContactsTarget,
+            "daily_followups_target": dailyFollowupsTarget,
+            "daily_meetings_target": dailyMeetingsTarget,
+            "daily_pipeline_moves_target": dailyPipelineMovesTarget,
+        ]
+        if let r = revenueTarget { body["revenue_target"] = r }
+        if let d = dealsTarget { body["deals_target"] = d }
+        if let m = meetingsTarget { body["meetings_target"] = m }
+        let resp: LeadgridSalesGoalResponse = try await post("/api/leadgrid/momentum/goal", body: body)
+        guard resp.projectId == projectId, resp.goal.projectId == projectId else {
+            throw LeadgridMomentumScopeError.responseProjectMismatch
+        }
+        return resp.goal
+    }
+
+    /// Henter momentum-trend siste N dager (clamp 7-180).
+    func fetchMomentumTrend(
+        projectId rawProjectId: String,
+        days: Int = 30
+    ) async throws -> LeadgridMomentumTrend {
+        let projectId = try requiredMomentumProjectID(rawProjectId)
+        let clamped = max(7, min(180, days))
+        let path = try momentumPath(
+            "trend",
+            projectId: projectId,
+            queryItems: [URLQueryItem(name: "days", value: String(clamped))]
+        )
+        let resp: LeadgridMomentumTrendResponse = try await get(path)
+        guard resp.trend.projectId == projectId else {
+            throw LeadgridMomentumScopeError.responseProjectMismatch
+        }
+        return resp.trend
+    }
+}
+
+// MARK: - Leadgrid Analytics (PR #858 backend)
+//
+// Endepunkter (alle gated på analytics.view_* permission, scopet org):
+//   - GET /api/leadgrid/analytics/overview?sinceDays=N
+//   - GET /api/leadgrid/analytics/channels?sinceDays=N
+//   - GET /api/leadgrid/analytics/sources
+//   - GET /api/leadgrid/analytics/segments?by=category|city|pipeline_stage
+//   - GET /api/leadgrid/analytics/territories
+//   - GET /api/leadgrid/analytics/velocity-history?days=N
+//   - GET /api/leadgrid/analytics/conversion-funnel
+//
+// Brukes av LeadgridAnalyticsDashboardView (5 SwiftUI Charts-seksjoner).
+
+enum LeadgridAnalyticsRequestPath {
+    static func make(
+        _ path: String,
+        queryItems: [URLQueryItem] = [],
+        projectId: String? = nil
+    ) -> String {
+        var components = URLComponents()
+        components.path = path
+        var items = queryItems
+        if let projectId = projectId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !projectId.isEmpty {
+            items.append(.init(name: "projectId", value: projectId))
+        }
+        components.queryItems = items.isEmpty ? nil : items
+        return components.string ?? path
+    }
+
+    static func makePercentEncoded(
+        _ percentEncodedPath: String,
+        queryItems: [URLQueryItem] = [],
+        projectId: String? = nil
+    ) -> String {
+        var components = URLComponents()
+        components.percentEncodedPath = percentEncodedPath
+        var items = queryItems
+        if let projectId = projectId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !projectId.isEmpty {
+            items.append(.init(name: "projectId", value: projectId))
+        }
+        components.queryItems = items.isEmpty ? nil : items
+        return components.string ?? percentEncodedPath
+    }
+}
+
+extension APIClient {
+
+    func fetchAnalyticsOverview(
+        sinceDays: Int = 90,
+        projectId: String? = nil
+    ) async throws -> LeadgridAnalyticsOverview {
+        let resp: AnalyticsOverviewResponse = try await get(
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/overview",
+                queryItems: [.init(name: "sinceDays", value: String(sinceDays))],
+                projectId: projectId)
+        )
+        return resp.overview
+    }
+
+    func fetchAnalyticsChannels(
+        sinceDays: Int = 90,
+        projectId: String? = nil
+    ) async throws -> [LeadgridChannelPerf] {
+        let resp: AnalyticsChannelsResponse = try await get(
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/channels",
+                queryItems: [.init(name: "sinceDays", value: String(sinceDays))],
+                projectId: projectId)
+        )
+        return resp.channels
+    }
+
+    func fetchAnalyticsSources(projectId: String? = nil) async throws -> [LeadgridSourcePerf] {
+        let resp: AnalyticsSourcesResponse = try await get(
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/sources",
+                projectId: projectId))
+        return resp.sources
+    }
+
+    /// `by` accepts "category", "city", or "pipeline_stage".
+    func fetchAnalyticsSegments(
+        by: String = "category",
+        projectId: String? = nil
+    ) async throws -> [LeadgridSegmentPerf] {
+        let resp: AnalyticsSegmentsResponse = try await get(
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/segments",
+                queryItems: [.init(name: "by", value: by)],
+                projectId: projectId)
+        )
+        return resp.segments
+    }
+
+    func fetchAnalyticsTerritories(projectId: String? = nil) async throws -> [LeadgridTerritoryPerf] {
+        let resp: AnalyticsTerritoriesResponse = try await get(
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/territories",
+                projectId: projectId))
+        return resp.territories
+    }
+
+    func fetchAnalyticsVelocity(
+        days: Int = 90,
+        projectId: String? = nil
+    ) async throws -> [LeadgridVelocityPoint] {
+        let resp: AnalyticsVelocityResponse = try await get(
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/velocity-history",
+                queryItems: [.init(name: "days", value: String(days))],
+                projectId: projectId)
+        )
+        return resp.history
+    }
+
+    func fetchAnalyticsFunnel(projectId: String? = nil) async throws -> [LeadgridFunnelStage] {
+        let resp: AnalyticsFunnelResponse = try await get(
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/conversion-funnel",
+                projectId: projectId))
+        return resp.funnel
+    }
+
+    func fetchAnalyticsOutcomeReport(
+        sinceDays: Int = 90,
+        projectId: String? = nil
+    ) async throws -> AnalyticsOutcomesResponse {
+        try await get(
+            LeadgridAnalyticsRequestPath.make(
+                "/api/leadgrid/analytics/outcomes",
+                queryItems: [.init(name: "sinceDays", value: String(sinceDays))],
+                projectId: projectId)
+        )
+    }
+
+    func fetchAnalyticsOutcomes(
+        sinceDays: Int = 90,
+        projectId: String? = nil
+    ) async throws -> [LeadgridOutcomePerformance] {
+        try await fetchAnalyticsOutcomeReport(
+            sinceDays: sinceDays,
+            projectId: projectId
+        ).outcomes
+    }
+}
+
+// MARK: - Leadgrid Full Intelligence Report (PR #859)
+//
+// Role Room Agent Bridge — orkestrerer 7 moduler parallelt og cacher 24h:
+//   brreg + website + competitors + merch + threat + swot + outreach
+//
+// Brukes av LeadgridFullIntelligenceSheet (trigget fra
+// LeadgridIntelligencePanel via "Full rapport"-knappen).
+
+extension APIClient {
+
+    /// Generer (eller returner cachet hvis < 24h) full 7-modulers rapport.
+    /// Backend bruker queue + parallell-fanout. Returnerer ferdig rapport
+    /// når orkestreringen er ferdig.
+    func generateFullIntelligence(
+        leadId: String,
+        modules: [String]? = nil
+    ) async throws -> LeadgridFullIntelligence? {
+        var body: [String: Any] = [:]
+        if let m = modules { body["modules"] = m }
+        let resp: FullIntelligenceResponse = try await post(
+            "/api/leadgrid/leads/\(leadId)/full-intelligence",
+            body: body
+        )
+        return resp.report
+    }
+
+    /// Henter cachet rapport. Returnerer nil hvis ingen er generert ennå.
+    func fetchFullIntelligence(leadId: String) async throws -> LeadgridFullIntelligence? {
+        let resp: FullIntelligenceResponse = try await get(
+            "/api/leadgrid/leads/\(leadId)/full-intelligence"
+        )
+        return resp.report
+    }
+
+    /// Tving re-generering (overstyrer 24h-cache).
+    func refreshFullIntelligence(leadId: String) async throws -> LeadgridFullIntelligence? {
+        let resp: FullIntelligenceResponse = try await post(
+            "/api/leadgrid/leads/\(leadId)/full-intelligence/refresh",
+            body: nil
+        )
+        return resp.report
+    }
+}
+
+// MARK: - Leadgrid AI Usage (PR #871)
+//
+// Eksponerer valgt workspaces AI-kost over tid. Backend krever eksplisitt
+// workspace-scope og org-admin/superadmin.
+
+extension APIClient {
+
+    /// Aggregert per-provider-bruk siste N dager.
+    func fetchAIUsageSummary(
+        organizationId: String,
+        sinceDays: Int = 30
+    ) async throws -> LeadgridAIUsageSummary {
+        try await get("/api/leadgrid/ai-usage/summary?organization_id=\(organizationId)&sinceDays=\(sinceDays)")
+    }
+
+    /// Daglig kost-historikk per provider for siste N dager
+    /// (bruker bar-stack i UI).
+    func fetchAIUsageHistory(
+        organizationId: String,
+        days: Int = 30
+    ) async throws -> LeadgridAIUsageHistory {
+        try await get("/api/leadgrid/ai-usage/history?organization_id=\(organizationId)&days=\(days)")
+    }
+}
+
+// MARK: - Leadgrid Industries (mig 329)
+//
+// 3-lags bransje-system: industries-katalog (global + custom),
+// crm_customers.industry_id, og organization_member_industries.
+// Brukes av IndustryManagementView, MapScreen-filter og
+// OversiktView-bransje-kolonne.
+
+extension APIClient {
+
+    /// Hent alle aktive bransjer (global + min orgs custom).
+    func fetchIndustries() async throws -> [Industry] {
+        let resp: IndustriesResponse = try await get("/api/leadgrid/industries")
+        return resp.industries
+    }
+
+    /// Hent én bransje (sjeldent brukt — liste-endpointet dekker UI).
+    func fetchIndustry(id: String) async throws -> Industry {
+        let resp: IndustryResponse = try await get("/api/leadgrid/industries/\(id)")
+        return resp.industry
+    }
+
+    /// Opprett custom bransje for min org. Krever industries.manage.
+    func createCustomIndustry(
+        code: String,
+        nameNo: String,
+        nameEn: String? = nil,
+        parentId: String? = nil,
+        icon: String? = nil,
+        colorHex: String? = nil
+    ) async throws -> Industry {
+        var body: [String: Any] = [
+            "code": code,
+            "nameNo": nameNo,
+        ]
+        if let nameEn { body["nameEn"] = nameEn }
+        if let parentId { body["parentId"] = parentId }
+        if let icon { body["icon"] = icon }
+        if let colorHex { body["colorHex"] = colorHex }
+        let resp: IndustryResponse = try await post("/api/leadgrid/industries", body: body)
+        return resp.industry
+    }
+
+    /// Oppdater custom bransje. Krever industries.manage + være eier.
+    func updateCustomIndustry(
+        id: String,
+        nameNo: String? = nil,
+        icon: String? = nil,
+        colorHex: String? = nil
+    ) async throws -> Industry {
+        var body: [String: Any] = [:]
+        if let nameNo { body["nameNo"] = nameNo }
+        if let icon { body["icon"] = icon }
+        if let colorHex { body["colorHex"] = colorHex }
+        let resp: IndustryResponse = try await patchReturning("/api/leadgrid/industries/\(id)", body: body)
+        return resp.industry
+    }
+
+    /// Soft-delete custom bransje.
+    func deleteCustomIndustry(id: String) async throws {
+        try await delete("/api/leadgrid/industries/\(id)")
+    }
+
+    /// Mine spesialiseringer.
+    func fetchMyIndustries() async throws -> [MemberIndustry] {
+        let resp: MemberIndustriesResponse = try await get("/api/leadgrid/members/me/industries")
+        return resp.memberIndustries
+    }
+
+    /// Replace-all: skriv hele mine spesialiseringer.
+    /// Hver assignment: { industryId, expertiseLevel, isPrimary, notes }.
+    func updateMyIndustries(_ assignments: [IndustryAssignmentPayload]) async throws -> [MemberIndustry] {
+        let body: [String: Any] = [
+            "industries": assignments.map { $0.toDict() }
+        ]
+        let resp: MemberIndustriesResponse = try await put("/api/leadgrid/members/me/industries", body: body)
+        return resp.memberIndustries
+    }
+
+    /// Admin: andres spesialiseringer.
+    func fetchMemberIndustries(userId: String) async throws -> [MemberIndustry] {
+        let resp: MemberIndustriesResponse = try await get("/api/leadgrid/members/\(userId)/industries")
+        return resp.memberIndustries
+    }
+
+    /// Admin: replace-all for et annet medlem (krever industries.assign).
+    func updateMemberIndustries(
+        userId: String,
+        assignments: [IndustryAssignmentPayload]
+    ) async throws -> [MemberIndustry] {
+        let body: [String: Any] = [
+            "industries": assignments.map { $0.toDict() }
+        ]
+        let resp: MemberIndustriesResponse = try await put("/api/leadgrid/members/\(userId)/industries", body: body)
+        return resp.memberIndustries
+    }
+}
+
+/// Payload-helper for PUT-replace-all-endepunktene (JSONSerialization
+/// kan ikke serialisere Codable direkte, så vi mapper til [String: Any]).
+struct IndustryAssignmentPayload {
+    let industryId: String
+    let expertiseLevel: ExpertiseLevel
+    let isPrimary: Bool
+    let notes: String?
+
+    func toDict() -> [String: Any] {
+        var d: [String: Any] = [
+            "industryId": industryId,
+            "expertiseLevel": expertiseLevel.rawValue,
+            "isPrimary": isPrimary,
+        ]
+        if let notes { d["notes"] = notes }
+        return d
+    }
+}
+
+// MARK: - Leadgrid Deal Management (#154/#155, mig 0349)
+
+extension APIClient {
+    /// Hent weighted pipeline-forecast for ett tilgjengelig kundeprosjekt.
+    func fetchDealForecast(
+        projectId: String,
+        horizonDays: Int = 365
+    ) async throws -> LeadgridDealForecast {
+        let scope = scopeQuery(projectId: projectId, organizationId: nil)
+        let resp: LeadgridDealForecastResponse = try await get(
+            "/api/leadgrid/deals/forecast\(scope)&horizon=\(horizonDays)"
+        )
+        return resp.forecast
+    }
+
+    /// Hent månedlig weighted-forecast.
+    func fetchDealsByMonth(
+        projectId: String,
+        horizonDays: Int = 365
+    ) async throws -> [LeadgridDealPeriodBucket] {
+        let scope = scopeQuery(projectId: projectId, organizationId: nil)
+        let resp: LeadgridDealByMonthResponse = try await get(
+            "/api/leadgrid/deals/by-month\(scope)&horizon=\(horizonDays)"
+        )
+        return resp.byMonth
+    }
+
+    /// Hent deals som er overdue (expected_close < idag, pipeline != won/lost).
+    func fetchDealsAtRisk(
+        projectId: String,
+        limit: Int = 20
+    ) async throws -> [LeadgridDealAtRisk] {
+        let scope = scopeQuery(projectId: projectId, organizationId: nil)
+        let resp: LeadgridDealsAtRiskResponse = try await get(
+            "/api/leadgrid/deals/at-risk\(scope)&limit=\(limit)"
+        )
+        return resp.deals
+    }
+
+    /// Hent deal-info for én lead.
+    func fetchLeadDeal(_ leadId: String) async throws -> LeadgridDeal {
+        let resp: LeadgridDealResponse = try await get(
+            "/api/leadgrid/leads/\(leadId)/deal"
+        )
+        return resp.deal
+    }
+
+    /// Oppdater deal-felt for én lead. Nil-overstyring sletter feltet.
+    func updateLeadDeal(
+        _ leadId: String,
+        probability: Int? = nil,
+        expectedClose: String? = nil,
+        amount: Double? = nil,
+        currency: String? = nil,
+    ) async throws -> LeadgridDeal {
+        var body: [String: Any] = [:]
+        if let probability { body["deal_probability"] = probability }
+        if let expectedClose { body["expected_close_date"] = expectedClose }
+        if let amount { body["deal_amount"] = amount }
+        if let currency { body["deal_currency"] = currency }
+        let resp: LeadgridDealResponse = try await patchReturning(
+            "/api/leadgrid/leads/\(leadId)/deal",
+            body: body,
+        )
+        return resp.deal
+    }
+
+    /// Hent stage-historikk for én lead.
+    func fetchDealStageHistory(_ leadId: String, limit: Int = 50)
+        async throws -> [LeadgridDealStageChange]
+    {
+        let resp: LeadgridDealHistoryResponse = try await get(
+            "/api/leadgrid/leads/\(leadId)/deal-history?limit=\(limit)"
+        )
+        return resp.history
+    }
+}
+
+// MARK: - Leadgrid Workflows (#203, mig 0349)
+
+enum LeadgridWorkflowScopeError: LocalizedError, Equatable {
+    case missingProjectID
+    case invalidWorkflowID
+
+    var errorDescription: String? {
+        switch self {
+        case .missingProjectID:
+            return "Velg et Leadgrid-kundeprosjekt før du bruker workflows."
+        case .invalidWorkflowID:
+            return "Workflow-ID-en er ugyldig."
+        }
+    }
+}
+
+/// Central path builder for the workflow API. A non-empty project is required
+/// at compile-time and validated again here so no caller can silently fall
+/// back to organization-wide workflow data.
+enum LeadgridWorkflowRequestPath {
+    static func make(
+        _ path: String,
+        projectId: String,
+        queryItems: [URLQueryItem] = []
+    ) throws -> String {
+        let projectId = try validatedProjectID(projectId)
+        var components = URLComponents()
+        components.path = path
+        components.queryItems = queryItems + [
+            URLQueryItem(name: "projectId", value: projectId)
+        ]
+        guard let scopedPath = components.string else {
+            throw URLError(.badURL)
+        }
+        return scopedPath
+    }
+
+    static func workflow(
+        _ id: String,
+        suffix: String = "",
+        projectId: String,
+        queryItems: [URLQueryItem] = []
+    ) throws -> String {
+        let id = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty else {
+            throw LeadgridWorkflowScopeError.invalidWorkflowID
+        }
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/?#")
+        guard let encodedID = id.addingPercentEncoding(withAllowedCharacters: allowed) else {
+            throw LeadgridWorkflowScopeError.invalidWorkflowID
+        }
+
+        let projectId = try validatedProjectID(projectId)
+        var components = URLComponents()
+        components.percentEncodedPath = "/api/leadgrid/workflows/\(encodedID)\(suffix)"
+        components.queryItems = queryItems + [
+            URLQueryItem(name: "projectId", value: projectId)
+        ]
+        guard let scopedPath = components.string else {
+            throw URLError(.badURL)
+        }
+        return scopedPath
+    }
+
+    private static func validatedProjectID(_ rawValue: String) throws -> String {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, value.count <= 255 else {
+            throw LeadgridWorkflowScopeError.missingProjectID
+        }
+        return value
+    }
+}
+
+extension APIClient {
+    /// Liste workflows for ett eksplisitt Leadgrid-kundeprosjekt.
+    func fetchWorkflows(
+        projectId: String,
+        activeOnly: Bool = false
+    ) async throws -> [LeadgridWorkflow] {
+        let resp: LeadgridWorkflowsResponse = try await get(
+            try LeadgridWorkflowRequestPath.make(
+                "/api/leadgrid/workflows",
+                projectId: projectId,
+                queryItems: activeOnly ? [.init(name: "active", value: "true")] : []
+            )
+        )
+        return resp.workflows
+    }
+
+    /// Detalj på én workflow.
+    func fetchWorkflow(_ id: String, projectId: String) async throws -> LeadgridWorkflow {
+        let resp: LeadgridWorkflowDetailResponse = try await get(
+            try LeadgridWorkflowRequestPath.workflow(id, projectId: projectId)
+        )
+        return resp.workflow
+    }
+
+    /// Liste forhåndsbygde templates.
+    func fetchWorkflowTemplates(projectId: String) async throws -> [LeadgridWorkflowTemplate] {
+        let resp: LeadgridWorkflowTemplatesResponse = try await get(
+            try LeadgridWorkflowRequestPath.make(
+                "/api/leadgrid/workflows/templates",
+                projectId: projectId
+            )
+        )
+        return resp.templates
+    }
+
+    /// Opprett ny workflow fra template-key (overstyr name/beskrivelse hvis ønskelig).
+    func createWorkflowFromTemplate(
+        templateKey: String,
+        projectId: String,
+        name: String? = nil,
+        description: String? = nil,
+    ) async throws -> String {
+        var body: [String: Any] = ["template_key": templateKey]
+        if let name { body["name"] = name }
+        if let description { body["description"] = description }
+        let resp: LeadgridWorkflowCreatedResponse = try await post(
+            try LeadgridWorkflowRequestPath.make(
+                "/api/leadgrid/workflows",
+                projectId: projectId
+            ),
+            body: body,
+        )
+        return resp.id
+    }
+
+    /// Opprett ny workflow med full payload, pre-serialisert til JSON Data.
+    /// Caller bygger payload-objektet og JSON-serialiserer på MainActor.
+    /// Dette unngår Swift 6 sendability-issues på `[[String: Any]]`.
+    func createWorkflow(projectId: String, jsonBody: Data) async throws -> String {
+        let data = try await executeRaw(
+            method: "POST",
+            path: try LeadgridWorkflowRequestPath.make(
+                "/api/leadgrid/workflows",
+                projectId: projectId
+            ),
+            body: jsonBody,
+        )
+        let resp = try Self.workflowDecoder.decode(
+            LeadgridWorkflowCreatedResponse.self, from: data,
+        )
+        return resp.id
+    }
+
+    /// Decoder for workflow-modeller (samme regler som main decoder).
+    private static let workflowDecoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+
+    /// Aktiver/deaktiver workflow.
+    func setWorkflowActive(
+        _ id: String,
+        active: Bool,
+        projectId: String
+    ) async throws {
+        try await patch(
+            try LeadgridWorkflowRequestPath.workflow(id, projectId: projectId),
+            body: ["is_active": active],
+        )
+    }
+
+    /// Soft-delete (is_active = false).
+    func deleteWorkflow(_ id: String, projectId: String) async throws {
+        try await delete(
+            try LeadgridWorkflowRequestPath.workflow(id, projectId: projectId)
+        )
+    }
+
+    /// Dry-run mot evt. test-lead.
+    func testWorkflow(
+        _ id: String,
+        projectId: String,
+        leadId: String? = nil
+    )
+        async throws -> LeadgridWorkflowExecution
+    {
+        var body: [String: Any] = [:]
+        if let leadId { body["lead_id"] = leadId }
+        struct R: Decodable { let result: LeadgridWorkflowExecution }
+        let resp: R = try await post(
+            try LeadgridWorkflowRequestPath.workflow(
+                id,
+                suffix: "/test",
+                projectId: projectId
+            ),
+            body: body,
+        )
+        return resp.result
+    }
+
+    /// Manuelt trigge workflow mot lead.
+    func executeWorkflow(
+        _ id: String,
+        projectId: String,
+        leadId: String?
+    ) async throws {
+        var body: [String: Any] = [:]
+        if let leadId { body["lead_id"] = leadId }
+        try await post(
+            try LeadgridWorkflowRequestPath.workflow(
+                id,
+                suffix: "/execute",
+                projectId: projectId
+            ),
+            body: body,
+        )
+    }
+
+    /// Manuelt trigge workflow mot 1 eller flere leads (bulk-utvidelse).
+    /// Returnerer execution_id + count så UI kan vise progress og hente
+    /// per-eksekverings-status via `fetchWorkflowExecutions(_:)`.
+    @discardableResult
+    func executeWorkflowBulk(
+        _ id: String,
+        projectId: String,
+        leadIds: [String],
+    ) async throws -> LeadgridWorkflowExecuteResponse {
+        let body: [String: Any] = [
+            "lead_ids": leadIds,
+        ]
+        let resp: LeadgridWorkflowExecuteResponse = try await post(
+            try LeadgridWorkflowRequestPath.workflow(
+                id,
+                suffix: "/execute",
+                projectId: projectId
+            ),
+            body: body,
+        )
+        return resp
+    }
+
+    /// Hent eksekverings-historikk.
+    func fetchWorkflowExecutions(
+        _ id: String,
+        projectId: String,
+        limit: Int = 50
+    )
+        async throws -> [LeadgridWorkflowExecution]
+    {
+        let resp: LeadgridWorkflowExecutionsResponse = try await get(
+            try LeadgridWorkflowRequestPath.workflow(
+                id,
+                suffix: "/executions",
+                projectId: projectId,
+                queryItems: [
+                    .init(name: "limit", value: String(max(1, min(200, limit))))
+                ]
+            )
+        )
+        return resp.executions
+    }
+}
+
+// MARK: - Role Room Agent threads (chat-flate)
+// HTTP-wrapping av backend/server/role-room-agent-threads-routes.ts.
+// Streaming returnerer en AsyncThrowingStream<AgentStreamEvent, Error>.
+
+extension APIClient {
+    /// Liste threads for et prosjekt.
+    func fetchAgentThreads(
+        projectId: String,
+        includeArchived: Bool = false,
+        limit: Int = 20,
+    ) async throws -> [AgentThread] {
+        var path = "/api/role-room/agent/threads?project_id=\(projectId)&limit=\(limit)"
+        if includeArchived { path += "&include_archived=true" }
+        let resp: AgentThreadsListResponse = try await get(path)
+        return resp.threads
+    }
+
+    /// Opprett ny thread.
+    func createAgentThread(
+        projectId: String,
+        title: String? = nil,
+    ) async throws -> AgentThread {
+        var body: [String: Any] = ["project_id": projectId]
+        if let title { body["title"] = title }
+        let resp: AgentThreadCreateResponse = try await post(
+            "/api/role-room/agent/threads",
+            body: body,
+        )
+        return resp.thread
+    }
+
+    /// Full thread + meldinger.
+    func fetchAgentThread(_ id: String) async throws -> AgentThreadDetailResponse {
+        try await get("/api/role-room/agent/threads/\(id)")
+    }
+
+    /// Soft-delete (archive).
+    func archiveAgentThread(_ id: String) async throws {
+        try await delete("/api/role-room/agent/threads/\(id)")
+    }
+
+    /// Endre tittel.
+    func renameAgentThread(_ id: String, title: String) async throws {
+        try await patch(
+            "/api/role-room/agent/threads/\(id)",
+            body: ["title": title],
+        )
+    }
+
+    /// Stream-meldinger fra Claude via SSE. Backend POSTer
+    /// /threads/:id/messages og holder forbindelsen åpen til Claude
+    /// er ferdig. Vi parser SSE-rammene linje-for-linje.
+    ///
+    /// Stream-events leveres som AgentStreamEvent. Stream avsluttes
+    /// rent på `.done` eller `.error` — caller kan også cancel'e via
+    /// AsyncThrowingStream.Continuation.onTermination.
+    func streamAgentMessage(
+        threadId: String,
+        content: String,
+        requiredScope: String? = nil,
+        organizationId: String? = nil,
+        leads: [AgentLeadContext] = [],
+    ) -> AsyncThrowingStream<AgentStreamEvent, Error> {
+        let token = self.token
+        let base = self.baseURL
+        let organizationId = self.activeOrganizationId
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let url = base.appendingPathComponent(
+                        "/api/role-room/agent/threads/\(threadId)/messages"
+                    )
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "POST"
+                    req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                    if let organizationId {
+                        req.setValue(organizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+                    }
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    struct Context: Encodable, Sendable { let leads: [AgentLeadContext] }
+                    struct Body: Encodable, Sendable {
+                        let content: String
+                        let requiredScope: String?
+                        let surface: String
+                        let organizationId: String?
+                        let context: Context
+                    }
+                    req.httpBody = try JSONEncoder().encode(Body(
+                        content: content,
+                        requiredScope: requiredScope,
+                        surface: "leadgrid_ipad",
+                        organizationId: organizationId,
+                        context: Context(leads: Array(leads.prefix(100)))
+                    ))
+                    req.timeoutInterval = 120
+
+                    let (bytes, response) = try await URLSession.shared.bytes(for: req)
+                    if let http = response as? HTTPURLResponse,
+                       !(200...299).contains(http.statusCode) {
+                        // Les én linje for å få med error-body.
+                        var preview = ""
+                        for try await line in bytes.lines {
+                            preview += line
+                            if preview.count > 600 { break }
+                        }
+                        if http.statusCode == 401 {
+                            throw APIError.unauthorized
+                        } else if http.statusCode == 403 {
+                            throw APIError.forbidden
+                        } else if http.statusCode == 429 {
+                            throw APIError.tooManyRequests
+                        }
+                        throw APIError.serverError(http.statusCode, preview)
+                    }
+
+                    var currentEvent: String = "message"
+                    var dataBuffer: String = ""
+
+                    for try await rawLine in bytes.lines {
+                        if Task.isCancelled { break }
+                        if rawLine.isEmpty {
+                            // SSE: tom linje = "fyr av eventet vi har samlet"
+                            if !dataBuffer.isEmpty {
+                                let evt = Self.parseSSE(
+                                    eventName: currentEvent,
+                                    data: dataBuffer,
+                                )
+                                continuation.yield(evt)
+                                switch evt {
+                                case .done, .error:
+                                    continuation.finish()
+                                    return
+                                default:
+                                    break
+                                }
+                            }
+                            currentEvent = "message"
+                            dataBuffer = ""
+                            continue
+                        }
+                        if rawLine.hasPrefix(":") { continue } // SSE comment
+                        if rawLine.hasPrefix("event:") {
+                            currentEvent = String(
+                                rawLine.dropFirst("event:".count)
+                            ).trimmingCharacters(in: .whitespaces)
+                        } else if rawLine.hasPrefix("data:") {
+                            let chunk = String(
+                                rawLine.dropFirst("data:".count)
+                            ).trimmingCharacters(in: .whitespaces)
+                            if dataBuffer.isEmpty {
+                                dataBuffer = chunk
+                            } else {
+                                dataBuffer += "\n" + chunk
+                            }
+                        }
+                    }
+                    // Flush any trailing event (defensive; backend ends m/ \n\n)
+                    if !dataBuffer.isEmpty {
+                        let evt = Self.parseSSE(
+                            eventName: currentEvent,
+                            data: dataBuffer,
+                        )
+                        continuation.yield(evt)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+    }
+
+    private static func parseSSE(eventName: String, data: String) -> AgentStreamEvent {
+        let bytes = Data(data.utf8)
+        let json = (try? JSONSerialization.jsonObject(with: bytes)) as? [String: Any] ?? [:]
+        switch eventName {
+        case "start":
+            return .start(
+                model: json["model"] as? String,
+                threadId: json["threadId"] as? String,
+            )
+        case "delta":
+            return .delta(text: (json["text"] as? String) ?? "")
+        case "tool_use":
+            let inputObj = json["input"] ?? [String: Any]()
+            let inputData = (try? JSONSerialization.data(
+                withJSONObject: inputObj,
+                options: [.sortedKeys, .prettyPrinted],
+            )) ?? Data()
+            return .toolUse(
+                id: (json["id"] as? String) ?? "",
+                name: (json["name"] as? String) ?? "",
+                inputJSON: String(data: inputData, encoding: .utf8) ?? "{}",
+            )
+        case "done":
+            var usage: AgentUsage?
+            if let u = json["usage"] as? [String: Any] {
+                let i = (u["inputTokens"] as? Int) ?? (u["input_tokens"] as? Int) ?? 0
+                let o = (u["outputTokens"] as? Int) ?? (u["output_tokens"] as? Int) ?? 0
+                usage = AgentUsage(inputTokens: i, outputTokens: o)
+            }
+            return .done(
+                threadId: json["threadId"] as? String,
+                usage: usage,
+            )
+        case "error":
+            return .error(message: (json["message"] as? String) ?? "Ukjent feil")
+        default:
+            return .unknown(name: eventName, raw: data)
+        }
+    }
+}
+
+// ============================================================
+// MARK: - Internal helpers for Codable-baserte extensions
+// ============================================================
+//
+// `private` helpers ovenfor (get/post/patch/delete med [String:Any]-body)
+// er file-scoped og ikke synlige fra extensions i andre filer. Codable-
+// baserte extensions (APIClient+SalesLeadership.swift, fremtidige sales-
+// suite-utvidelser) trenger _internal_ ekvivalenter som tar Encodable
+// body og dekoder Decodable response. Disse bruker samme session/token/
+// validate som de private originalene — bare med Codable-encoding.
+
+extension APIClient {
+    static let _sharedDecoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+
+    static let _sharedEncoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.keyEncodingStrategy = .convertToSnakeCase
+        e.dateEncodingStrategy = .iso8601
+        return e
+    }()
+
+    func _request(
+        _ path: String,
+        method: String = "GET",
+        body: Data? = nil,
+        contentType: String = "application/json",
+        headers: [String: String] = [:]
+    ) async throws -> Data {
+        do {
+            // Fix (2026-07-02): `baseURL.appendingPathComponent(path)` percent-koder
+            // `?` og `&` i path (behandler hele strengen som én path-segment) — så
+            // "/routes/team-nearby?lat=..." ble til "/routes/team-nearby%3Flat=..."
+            // og Express parset det som `id="team-nearby?lat=..."` → UUID-cast-500.
+            // Nå bygger vi URL-en via string-konkatenering slik at query-delen
+            // beholdes intakt.
+            let baseString = baseURL.absoluteString.hasSuffix("/")
+                ? String(baseURL.absoluteString.dropLast())
+                : baseURL.absoluteString
+            let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+            guard let url = URL(string: baseString + normalizedPath) else {
+                throw APIError.invalidURL
+            }
+            var req = URLRequest(url: url)
+            req.httpMethod = method
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            if let activeOrganizationId {
+                req.setValue(activeOrganizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+            }
+            req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+            for (name, value) in headers {
+                req.setValue(value, forHTTPHeaderField: name)
+            }
+            req.httpBody = body
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+            return data
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
+    }
+
+    /// Rå Data-fetch for eksterne response-format (GeoJSON, PDF, blobs).
+    /// Bruker samme URL-bygg + auth-header som `_get`, men returnerer
+    /// bytes-en uten Decodable-dekoding.
+    func _raw(_ path: String) async throws -> Data {
+        try await _request(path, method: "GET")
+    }
+
+    func _get<R: Decodable>(_ path: String) async throws -> R {
+        let data = try await _request(path, method: "GET")
+        return try Self._sharedDecoder.decode(R.self, from: data)
+    }
+
+    func _post<B: Encodable, R: Decodable>(
+        _ path: String, body: B, headers: [String: String] = [:]
+    ) async throws -> R {
+        let payload = try Self._sharedEncoder.encode(body)
+        let data = try await _request(path, method: "POST", body: payload, headers: headers)
+        return try Self._sharedDecoder.decode(R.self, from: data)
+    }
+
+    func _post<B: Encodable>(_ path: String, body: B) async throws {
+        let payload = try Self._sharedEncoder.encode(body)
+        _ = try await _request(path, method: "POST", body: payload)
+    }
+
+    func _postEmpty<R: Decodable>(_ path: String) async throws -> R {
+        let data = try await _request(path, method: "POST")
+        return try Self._sharedDecoder.decode(R.self, from: data)
+    }
+
+    func _patch<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
+        let payload = try Self._sharedEncoder.encode(body)
+        let data = try await _request(path, method: "PATCH", body: payload)
+        return try Self._sharedDecoder.decode(R.self, from: data)
+    }
+
+    func _patch<B: Encodable>(_ path: String, body: B) async throws {
+        let payload = try Self._sharedEncoder.encode(body)
+        _ = try await _request(path, method: "PATCH", body: payload)
+    }
+
+    func _put<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
+        let payload = try Self._sharedEncoder.encode(body)
+        let data = try await _request(path, method: "PUT", body: payload)
+        return try Self._sharedDecoder.decode(R.self, from: data)
+    }
+
+    func _put<B: Encodable>(_ path: String, body: B) async throws {
+        let payload = try Self._sharedEncoder.encode(body)
+        _ = try await _request(path, method: "PUT", body: payload)
+    }
+
+    func _delete(_ path: String) async throws {
+        _ = try await _request(path, method: "DELETE")
+    }
+}

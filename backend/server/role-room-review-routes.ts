@@ -19,6 +19,12 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "node:crypto";
+import { buildInfographicUrl, ogImageTags } from "./infographic-share.js";
+
+// Backend-base for absolutte OG-URL-er (crawlere trenger absolutt).
+const BACKEND_BASE = (process.env.BACKEND_BASE_URL || "https://creatorhub-backend-rtbl.onrender.com").replace(/\/+$/, "");
+// Role Room-lilla → cover-bildet matcher merkevaren.
+const ROLE_ROOM_ACCENT = "#a030c0";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -76,7 +82,7 @@ function escHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function buildReviewHtml(data: {
+export function buildReviewHtml(data: {
   session: { id: string; sessionTitle: string | null;
     clientName: string | null; status: string;
     visibilitySettings: Record<string, boolean> };
@@ -92,6 +98,31 @@ function buildReviewHtml(data: {
   token: string;
 }): string {
   const title = data.session.sessionTitle || "Klient-review";
+  // Rik lenke-preview: delt review-link → merkevaret cover-kort (render.png, offentlig + cachet).
+  const cutCount = data.cuts.length;
+  const ogImageUrl = buildInfographicUrl({
+    base: BACKEND_BASE,
+    tpl: "/embed/templates/deck-cover.html",
+    data: {
+      title,
+      org: data.session.clientName || "Klient-review",
+      meta: `${cutCount} klipp til gjennomgang`,
+      brand: "Role Room",
+      accent: ROLE_ROOM_ACCENT,
+    },
+    w: 1200, h: 630,
+  });
+  const ogDesc = data.session.clientName
+    ? `${data.session.clientName} · Klient-review · Role Room`
+    : "Klient-review · Role Room";
+  const ogTags = [
+    `<meta property="og:type" content="website" />`,
+    `<meta property="og:title" content="${escHtml(title)}" />`,
+    `<meta property="og:description" content="${escHtml(ogDesc)}" />`,
+    `<meta name="twitter:title" content="${escHtml(title)}" />`,
+    `<meta name="twitter:description" content="${escHtml(ogDesc)}" />`,
+    ogImageTags(ogImageUrl, { alt: title }),
+  ].join("\n");
   const v = { ...DEFAULT_VISIBILITY, ...(data.session.visibilitySettings || {}) };
   const cutsHtml = data.cuts.map(c => {
     const cutComments = data.comments.filter(cm => cm.cutId === c.id);
@@ -141,6 +172,7 @@ function buildReviewHtml(data: {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escHtml(title)} — Role Room</title>
+  ${ogTags}
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {

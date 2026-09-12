@@ -102,6 +102,10 @@ export function decryptInstagramToken(value: string | null | undefined): string 
 interface StateClaims {
   userId: string;
   projectId?: string | null;
+  // Valgfri retursti for klient-initierte koblinger: callbacken redirecter
+  // klienten tilbake hit (f.eks. /client/portal/<token>) i stedet for å vise
+  // en generisk success-side. Server-satt — aldri fra brukerinput.
+  returnPath?: string | null;
   nonce: string;
   iat: number;
 }
@@ -147,7 +151,9 @@ export function verifyOauthState(state: string | undefined | null): StateClaims 
   try {
     const json = Buffer.from(payloadPart, 'base64url').toString('utf8');
     const expectedSig = crypto.createHmac('sha256', secret).update(json).digest('base64url');
-    if (expectedSig !== sig) return null;
+    const a = Buffer.from(expectedSig);
+    const b = Buffer.from(sig);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
     const claims = JSON.parse(json) as StateClaims;
     // Reject states older than 10 minutes — prevents replay attacks.
     if (Math.floor(Date.now() / 1000) - claims.iat > 600) return null;

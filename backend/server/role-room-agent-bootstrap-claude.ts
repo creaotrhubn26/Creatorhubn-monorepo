@@ -16,6 +16,18 @@
  */
 
 import { logAIUsage } from './ai-usage-tracker.js';
+import {
+  BOOTSTRAP_CONSTRAINTS,
+  BOOTSTRAP_OUTPUT_SCHEMA_HINTS,
+  BOOTSTRAP_SYSTEM_PROMPT,
+} from './role-room-agent-bootstrap-constraints.js';
+import {
+  BOOTSTRAP_SYNTH_MAX_TOKENS,
+  BOOTSTRAP_SYNTH_TIMEOUT_MS,
+  extractJsonFromText,
+  makeStructuredLogger,
+  withTimeout,
+} from './role-room-agent-llm-util.js';
 import type {
   RoleRoomAgentAgreementSuggestion,
   RoleRoomAgentBrregCompany,
@@ -27,72 +39,6 @@ import type {
   RoleRoomAgentRetrievalMeta,
   RoleRoomAgentWebsiteInsights,
 } from './role-room-agent.js';
-
-const BOOTSTRAP_SYSTEM_PROMPT =
-  'Du er The Role Room Agent for The Role Room. Lag norske JSON-utkast for innholdsproduksjon. Returner kun gyldig JSON med feltene companyProfile, intakeDraft, planningDraft, storyLogicDraft og nextRecommendedSteps. Svar kun med JSON. Vær konkret, kommersiell og nyttig for en innholdsprodusent som bygger brief, story logikk og produksjonsgrunnlag for en kunde. Bruk Brreg-data som juridisk kilde når den finnes, og ikke finn på organisasjonsnummer eller selskapsstatus.';
-
-const BOOTSTRAP_CONSTRAINTS: string[] = [
-  'Vær konkret og bruk forretningsspråk som passer norsk produksjonsarbeid.',
-  'Ikke finn på kontaktinfo som ikke finnes.',
-  'Hvis informasjon mangler, marker det forsiktig i forslagene uten å være vag.',
-  'Story logic skal passe innholdsproduksjon og kunde-brief, ikke filmmanus for kinofilm.',
-  'Klassifiser alltid hvilken bransje innholdet lages for, underbransje, om kunden er B2B eller B2C, hvilken innholdskategori som passer, og hvilket produksjonsgrep som anbefales.',
-  'Unngå generiske B2B-målgrupper dersom nettstedet tydelig viser en B2C-virksomhet som restaurant, retail eller lokal tjeneste.',
-  'For restaurant og matkonsepter skal story logic handle om meny, fristelse, bestilling, lokasjon og konvertering, ikke generell bedriftsprofil.',
-  'Legg inn en contentStoryLogic-del som er lett for klienten å fylle ut og godkjenne i et innholdsproduksjonsprosjekt.',
-  'Hvis businessSignals finnes, bruk reviews, rating, lokasjon og tjenestesignalene aktivt i brief, bevispunkter, CTA og story logic.',
-  'Hvis brregCompany.lookupStatus er verified, bruk juridisk navn, organisasjonsnummer, bransjekode, adresse, MVA-status og alder i kundeprofilen.',
-  'Hvis agreementSuggestions finnes, bruk dem som avtalerisiko og praktiske anbefalinger, men formuler det som produksjonsråd, ikke juridisk rådgivning.',
-  'Hvis socialProfileCandidates finnes, bruk kun kontoer med verified eller likely som kanalinnsikt, og marker kontoer som må bekreftes av produsent eller kunde før publisering.',
-  'Hvis competitorAnalysis finnes, bruk kun konkurrenter med verified eller likely som markedsføringsinnsikt. Ikke påstå at en kandidat er konkurrent uten manuell bekreftelse fra kunden.',
-  'Bruk konkurrentanalysen til posisjonering, content gaps, CTA og kanalprioritering, men ikke finn på annonsetall, markedsandeler eller private konkurrentdata.',
-  'Hvis localPresencePlan finnes, bruk den til lokale eventforslag basert på bransje, adresse, nærliggende partnere og radius. Ikke påstå at partnere er kontaktet eller bekreftet.',
-  'For restaurant/servering skal lokale forslag prioritere skole/klassekasse, idrettslag, arbeidsplasser, hotell, kulturarena og nabolag når slike finnes.',
-];
-
-const BOOTSTRAP_OUTPUT_SCHEMA_HINTS = {
-  companyProfile: [
-    'companyName',
-    'websiteUrl',
-    'organizationNumber',
-    'summary',
-    'offerings',
-    'targetAudience',
-    'toneAndBrandSignals',
-    'industry',
-    'subIndustry',
-    'businessModel',
-    'contentCategory',
-    'productionApproach',
-    'probableLocationAddress',
-    'logoUrl',
-  ],
-  planningDraft: {
-    contentLogic: [
-      'objective',
-      'audience',
-      'hook',
-      'coreMessage',
-      'industry',
-      'subIndustry',
-      'businessModel',
-      'contentCategory',
-      'productionApproach',
-      'proofPoints',
-      'callToAction',
-      'distributionPlan',
-      'successSignals',
-    ],
-  },
-  storyLogicDraft: [
-    'classification',
-    'contentStoryLogic',
-    'storyLogicType',
-    'coreNarrative',
-    'logicFlow',
-    'messageHierarchy',
-  ],
-};
 
 let cachedAnthropicClient: unknown = null;
 
@@ -108,29 +54,13 @@ async function getAnthropicClient(): Promise<any> {
   return cachedAnthropicClient;
 }
 
-function extractJsonFromText(text: string): unknown | null {
-  if (!text) return null;
-  // Claude sometimes wraps JSON in markdown despite instructions; strip common fences.
-  const trimmed = text.trim();
-  const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  const raw = fenceMatch ? fenceMatch[1] : trimmed;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    // As a last resort, try to locate the first { ... } block and parse it.
-    const firstBrace = raw.indexOf('{');
-    const lastBrace = raw.lastIndexOf('}');
-    if (firstBrace >= 0 && lastBrace > firstBrace) {
-      const slice = raw.slice(firstBrace, lastBrace + 1);
-      try {
-        return JSON.parse(slice);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  }
-}
+/**
+ * Single-line structured diagnostics, matching the orchestrator/synthesis
+ * loggers. Until now this path swallowed every failure (no client, API
+ * error, truncation, parse failure) and silently returned null. Grep
+ * `role-room-agent:claude-bootstrap`.
+ */
+const logClaudeBootstrap = makeStructuredLogger('[role-room-agent:claude-bootstrap]');
 
 // When a website provides a hero image via og:image / twitter:image we can
 // feed it to Claude vision alongside the structured text signals. This
@@ -170,9 +100,15 @@ export async function requestClaudeBootstrap(
   competitorAnalysis: RoleRoomAgentCompetitorAnalysis,
   localPresencePlan: RoleRoomAgentLocalPresencePlan,
   retrievalMeta: RoleRoomAgentRetrievalMeta | null,
+  marketingSetup: unknown = null,
 ): Promise<unknown | null> {
   const client = await getAnthropicClient();
-  if (!client) return null;
+  if (!client) {
+    logClaudeBootstrap('anthropic_client_unavailable', {
+      hasApiKey: Boolean(process.env.ANTHROPIC_API_KEY),
+    });
+    return null;
+  }
 
   const model = process.env.ROLE_ROOM_BOOTSTRAP_CLAUDE_MODEL || 'claude-sonnet-4-5';
   const visionEnabled = process.env.ROLE_ROOM_BOOTSTRAP_VISION !== 'false';
@@ -195,6 +131,7 @@ export async function requestClaudeBootstrap(
     socialProfileCandidates: websiteInsights.socialProfileCandidates ?? [],
     competitorAnalysis,
     localPresencePlan,
+    marketingSetup,
     retrievalMeta,
   };
 
@@ -225,10 +162,12 @@ export async function requestClaudeBootstrap(
     });
 
     const bootstrapStartedAt = Date.now();
-    const response = await Promise.race([
+    const response = await withTimeout(
       client.messages.create({
         model,
-        max_tokens: 4096,
+        // 4096 truncated the large synthesis JSON, failing extractJsonFromText
+        // → null → silent deterministic fallback. 8192 lets it complete.
+        max_tokens: BOOTSTRAP_SYNTH_MAX_TOKENS,
         // Keep the large constraints block in the cached system prefix; the
         // per-call user message is just the project data.
         system: [
@@ -245,16 +184,19 @@ export async function requestClaudeBootstrap(
           },
         ],
       }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('claude_bootstrap_timeout')), 60_000),
-      ),
-    ]);
+      BOOTSTRAP_SYNTH_TIMEOUT_MS,
+      'claude_bootstrap_timeout',
+    );
 
     // Slice 9X.71 — cost-tracking (fire-and-forget)
     logAIUsage(response as any, {
       feature: 'role-room-bootstrap',
       durationMs: Date.now() - bootstrapStartedAt,
     }).catch(() => undefined);
+
+    if ((response as any)?.stop_reason === 'max_tokens') {
+      logClaudeBootstrap('response_truncated_max_tokens', { model });
+    }
 
     const blocks = (response as any)?.content ?? [];
     let text = '';
@@ -263,8 +205,20 @@ export async function requestClaudeBootstrap(
         text += block.text;
       }
     }
-    return extractJsonFromText(text);
-  } catch {
+    const parsed = extractJsonFromText(text);
+    if (!parsed) {
+      logClaudeBootstrap('synthesis_parse_failed', {
+        model,
+        textLength: text.length,
+        stopReason: (response as any)?.stop_reason ?? null,
+      });
+    }
+    return parsed;
+  } catch (err) {
+    logClaudeBootstrap('request_threw', {
+      model,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

@@ -23,7 +23,6 @@ import {
   ListItemIcon,
   Paper,
   Stack,
-  CircularProgress,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -41,6 +40,7 @@ import { creatorHubSEOFixService } from '@/services/CreatorHubSEOFixService';
 import type { TrendsInsight } from '@/services/GoogleTrendsService';
 import { googleTrendsService } from '@/services/GoogleTrendsService';
 import { googleAnalyticsService } from '@/services/GoogleAnalyticsService';
+import { AdminButton, AdminLoading, AdminEmpty } from './design-system';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -221,9 +221,7 @@ export default function SEOTrendsDashboard() {
       <TabPanel value={activeTab} index={0}>
         {/* Trending Keywords */}
         {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
-            <CircularProgress />
-          </Box>
+          <AdminLoading />
         ) : trendsInsights ? (
           <Grid container spacing={3}>
             <Grid item >
@@ -270,30 +268,28 @@ export default function SEOTrendsDashboard() {
             ))}
           </Grid>
         ) : (
-          <Alert severity="info">No trending data available</Alert>
+          <AdminEmpty title="No trending data available" />
         )}
       </TabPanel>
 
       <TabPanel value={activeTab} index={1}>
         {/* SEO Suggestions */}
         {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
-            <CircularProgress />
-          </Box>
+          <AdminLoading />
         ) : (
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>
                 🎯 SEO Suggestions with Google Trends Data
               </Typography>
-              <Button variant="contained"
+              <AdminButton tone="primary"
                 startIcon={<AutoFixHigh />}
                 onClick={handleApplyAllFixes}
+                loading={isApplyingFixes}
                 disabled={isApplyingFixes}
-                color="success"
                sx={theming.getThemedButtonSx()}>
                 {isApplyingFixes ? 'Applying...' : 'Apply All High-Priority Fixes'}
-              </Button>
+              </AdminButton>
             </Box>
 
             {suggestions.map((suggestion, index) => (
@@ -379,9 +375,7 @@ export default function SEOTrendsDashboard() {
       <TabPanel value={activeTab} index={2}>
         {/* Regional Insights */}
         {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
-            <CircularProgress />
-          </Box>
+          <AdminLoading />
         ) : trendsInsights ? (
           <Grid container spacing={3}>
             {trendsInsights.regionalInsights.map((regionData, index) => (
@@ -411,16 +405,14 @@ export default function SEOTrendsDashboard() {
             ))}
           </Grid>
         ) : (
-          <Alert severity="info">No regional data available</Alert>
+          <AdminEmpty title="No regional data available" />
         )}
       </TabPanel>
 
       <TabPanel value={activeTab} index={3}>
         {/* Seasonal Opportunities */}
         {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
-            <CircularProgress />
-          </Box>
+          <AdminLoading />
         ) : trendsInsights ? (
           <Box>
             <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -456,7 +448,7 @@ export default function SEOTrendsDashboard() {
             </Grid>
           </Box>
         ) : (
-          <Alert severity="info">No seasonal data available</Alert>
+          <AdminEmpty title="No seasonal data available" />
         )}
       </TabPanel>
 

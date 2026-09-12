@@ -67,7 +67,12 @@ select, input[type="text"] {
 }
 select:focus, input:focus { outline: none; border-color: var(--accent); }
 
-.app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+/* grid-template-columns: uten dette blir den implisitte kolonnen innholds-
+   bredde (auto) → grid-items som ikke selv setter width (Demo Studio-fanenes
+   flex-rot: display:flex, height:100%, ingen width) fyller ikke → mørk .app-bg
+   vises på høyre side. minmax(0,1fr) tvinger full container-bredde + hindrer
+   overflow-utblåsning. */
+.app { display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); height: 100vh; }
 
 .header {
   display: flex;
@@ -229,6 +234,9 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   border-radius: 10px; padding: 20px;
   width: 460px; max-width: 90vw; max-height: 80vh;
   display: flex; flex-direction: column;
+  /* max-height uten overflow lot høyt innhold flomme forbi kortets bunn (body er
+     overflow:hidden → primærknapper som Save/Close ble uklikkbare). Scroll internt. */
+  overflow-y: auto;
 }
 .modal h2 { margin: 0 0 6px; font-size: 14px; }
 .modal .desc { color: var(--text-dim); font-size: 12px; margin-bottom: 16px; }
@@ -1445,6 +1453,10 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* ~26 knapper ≈ 1000px høy meny + body overflow:hidden gjorde nederste elementer
+     (Connect/Refresh/Health Check/Magic Cut/Creative Editor) uklikkbare. Tak + scroll. */
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
 }
 .header-menu button {
   background: transparent;
@@ -1636,3 +1648,16 @@ select:focus, input:focus { outline: none; border-color: var(--accent); }
 .user-profile-menu-item:hover { background: var(--bg-3); }
 .user-profile-menu-item.danger { color: var(--danger); }
 .user-profile-menu-item.danger:hover { background: rgba(239, 79, 111, 0.1); }
+
+/* Global prefers-reduced-motion-reset. !important overstyrer også INLINE animation-
+   shorthands (f.eks. trrPulse/trrRipple i SceneInteractionOverlay, mpShimmer i
+   MarketingPanel) som media-queries ellers ikke når. Respekterer brukerens system-
+   innstilling app-vidt. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

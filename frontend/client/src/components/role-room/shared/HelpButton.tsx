@@ -15,6 +15,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { apiRequest } from '@/lib/queryClient';
 import {
   Badge, Box, IconButton, Popover, List, ListItemButton, ListItemIcon, ListItemText,
   Divider, Typography, Stack, Chip, Dialog, DialogTitle, DialogContent,
@@ -130,11 +131,9 @@ export const HelpButton: React.FC<HelpButtonProps> = ({
     (async () => {
       try {
         const modeParam = mode === 'global' ? 'global' : `${mode},global`;
-        const res = await fetch(`/api/whats-new?mode=${encodeURIComponent(modeParam)}`, {
-          credentials: 'include',
-        });
-        if (!res.ok) return;
-        const body = (await res.json()) as { items?: RemoteWhatsNewEntry[] };
+        const body = await apiRequest(
+          `/api/whats-new?mode=${encodeURIComponent(modeParam)}`,
+        ) as { items?: RemoteWhatsNewEntry[] };
         if (cancelled) return;
         const items: WhatsNewItem[] = (body.items ?? []).map((e) => ({
           date: e.date ?? undefined,

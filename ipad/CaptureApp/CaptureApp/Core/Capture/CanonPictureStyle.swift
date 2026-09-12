@@ -115,7 +115,7 @@ enum CanonPictureStyle: String, Sendable, Equatable {
             "PictureStyle",
             "PictureControl",
             "PictureMode",
-            "PictureStyleData",
+            "PictureStyleData"
         ]
         for key in candidateKeys {
             if let raw = dict[key] as? String,
@@ -136,16 +136,16 @@ enum CanonPictureStyle: String, Sendable, Equatable {
 
     private static func match(name raw: String) -> CanonPictureStyle? {
         let lowered = raw.lowercased()
-        if lowered.contains("standard")  { return .standard }
-        if lowered.contains("portrait")  { return .portrait }
+        if lowered.contains("standard") { return .standard }
+        if lowered.contains("portrait") { return .portrait }
         if lowered.contains("landscape") { return .landscape }
-        if lowered.contains("neutral")   { return .neutral }
-        if lowered.contains("faithful")  { return .faithful }
+        if lowered.contains("neutral") { return .neutral }
+        if lowered.contains("faithful") { return .faithful }
         if lowered.contains("monochrome") || lowered.contains("b&w") || lowered.contains("bw") {
             return .monochrome
         }
-        if lowered.contains("auto")      { return .auto }
-        if lowered.contains("user")      { return .custom }
+        if lowered.contains("auto") { return .auto }
+        if lowered.contains("user") { return .custom }
         return nil
     }
 
@@ -232,6 +232,15 @@ extension MagicRecipe {
             eyeSharpen: clampUnit(eyeSharpen + baseline.eyeSharpen),
             eyeCatchlight: clampUnit(eyeCatchlight + baseline.eyeCatchlight),
             autoStraighten: autoStraighten || baseline.autoStraighten,
+            // 🔑 autoEnhance/skinGuard/filmGrain MÅ videreføres — utelot man dem
+            // her (memberwise-init-ens defaults true/0/0 tok over), ble de STILLE
+            // nullstilt ved HVER render (merging kalles ubetinget), så f.eks.
+            // Bryllup-presetets `autoEnhance:false` + skinGuard + filmGrain forsvant
+            // i hele pipelinen. autoEnhance: recipens «false» vinner (unngå
+            // dobbel-prosessering); skinGuard/filmGrain additivt som andre akser.
+            autoEnhance: autoEnhance && baseline.autoEnhance,
+            skinGuard: clampUnit(skinGuard + baseline.skinGuard),
+            filmGrain: clampUnit(filmGrain + baseline.filmGrain),
             straightenAngle: max(-AutoStraightenFilter.maxAngle,
                                  min(AutoStraightenFilter.maxAngle,
                                      straightenAngle + baseline.straightenAngle)),

@@ -1,4 +1,5 @@
 import { useTheming } from '../../utils/theming-helper';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import React, { useState, useCallback } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
@@ -312,6 +313,7 @@ export default function ProfessionAdapter({
         // Academy tab only for mentors/instructors
         const AcademyDashboard = React.lazy(() => import('../academy/AcademyDashboardCinematic'));
         return (
+          <ErrorBoundary componentName="profession-adapter-academy">
           <React.Suspense fallback={
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
               <CircularProgress />
@@ -319,6 +321,7 @@ export default function ProfessionAdapter({
           }>
             <AcademyDashboard />
           </React.Suspense>
+          </ErrorBoundary>
         );
       }
 
@@ -428,6 +431,7 @@ export default function ProfessionAdapter({
               <Star sx={{ mr: 2, fontSize: 32}} />
               {profession === 'music_producer' ? 'Musikk Showcase' : profession === 'vendor' ? 'Produkt Showcase' : 'Showcase'}
             </Typography>
+            <ErrorBoundary componentName="profession-adapter-showcase">
             <React.Suspense fallback={<CircularProgress />}>
               <UniversalShowcase
                 profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'}
@@ -436,6 +440,7 @@ export default function ProfessionAdapter({
                 onItemSelect={(item: Record<string, unknown>) => handleShowcaseCreate(item)}
               />
             </React.Suspense>
+            </ErrorBoundary>
           </Box>
         );
         
@@ -625,6 +630,7 @@ export default function ProfessionAdapter({
                         </Box>
 
                         {Component ? (
+                          <ErrorBoundary componentName="profession-adapter-component" key={refreshKey}>
                           <React.Suspense fallback={
                             <Box sx={{
                               flex: 1,
@@ -658,6 +664,7 @@ export default function ProfessionAdapter({
                               )}
                             </Box>
                           </React.Suspense>
+                          </ErrorBoundary>
                         ) : (
                           <Box sx={{
                             flex: 1,

@@ -74,7 +74,7 @@ const professionCategories = [
     description: 'Film og videoproduksjon',
     logo: '/role-video.png',
     icon: VideocamIcon,
-    color: '#8b5cf6',
+    color: 'var(--role-violet, #8b5cf6)',
     gradient: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%)',
     glowColor: 'rgba(139, 92, 246, 0.4)',
     roles: [

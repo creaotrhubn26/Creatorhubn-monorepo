@@ -7,7 +7,6 @@ import {
   Card,
   CardContent,
   Typography,
-  Button,
   Alert,
   Chip,
   LinearProgress,
@@ -22,7 +21,10 @@ import {
   IconButton,
   Tooltip,
   Collapse,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
+import { AdminButton, AdminError } from './design-system';
 import {
   CheckCircle,
   Error,
@@ -139,16 +141,11 @@ export default function OAuthScopeChecker() {
   if (error) {
     return (
       <Box sx={{ p: 3 }}>
-        <Card>
-          <CardContent>
-            <Alert severity="error" sx={{ mb: 2 }}>
-              Failed to check OAuth scopes: {error instanceof Error ? error.message : 'Unknown error'}
-            </Alert>
-            <Button variant="contained" startIcon={<Refresh />} onClick={handleRefresh}>
-              Try Again
-            </Button>
-          </CardContent>
-        </Card>
+        <AdminError
+          title="Failed to check OAuth scopes"
+          message={error instanceof Error ? error.message : 'Unknown error'}
+          onRetry={handleRefresh}
+        />
       </Box>
     );
   }
@@ -161,9 +158,9 @@ export default function OAuthScopeChecker() {
             <Alert severity="warning" sx={{ mb: 2 }}>
               {scopeData?.error || 'Failed to retrieve scope validation data'}
             </Alert>
-            <Button variant="contained" startIcon={<Refresh />} onClick={handleRefresh}>
+            <AdminButton tone="primary" startIcon={<Refresh />} onClick={handleRefresh}>
               Retry Check
-            </Button>
+            </AdminButton>
           </CardContent>
         </Card>
       </Box>
@@ -171,13 +168,15 @@ export default function OAuthScopeChecker() {
   }
 
   const { report, documentation, checkedAt } = scopeData;
+  const scopes = Array.isArray(report?.scopes) ? report.scopes : [];
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box>
-          <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="h5" component="h2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Security color="primary" />
             OAuth Scope Validator
           </Typography>
@@ -185,14 +184,14 @@ export default function OAuthScopeChecker() {
             Validate Google OAuth 2.0 scopes for 2025 compliance
           </Typography>
         </Box>
-        <Button
-          variant="outlined"
+        <AdminButton
+          tone="secondary"
           startIcon={<Refresh />}
           onClick={handleRefresh}
           disabled={isLoading}
         >
           Refresh
-        </Button>
+        </AdminButton>
       </Box>
 
       {/* Overall Status */}
@@ -220,22 +219,22 @@ export default function OAuthScopeChecker() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                 <Chip
                   icon={<CheckCircle />}
-                  label={`${report.scopes.filter((s) => s.valid && !s.note).length} Valid`}
+                  label={`${scopes.filter((s) => s.valid && !s.note).length} Valid`}
                   color="success"
                   size="small"
                 />
-                {report.scopes.filter((s) => s.note).length > 0 && (
+                {scopes.filter((s) => s.note).length > 0 && (
                   <Chip
                     icon={<Warning />}
-                    label={`${report.scopes.filter((s) => s.note).length} Needs Review`}
+                    label={`${scopes.filter((s) => s.note).length} Needs Review`}
                     color="warning"
                     size="small"
                   />
                 )}
-                {report.scopes.filter((s) => !s.valid).length > 0 && (
+                {scopes.filter((s) => !s.valid).length > 0 && (
                   <Chip
                     icon={<Error />}
-                    label={`${report.scopes.filter((s) => !s.valid).length} Invalid`}
+                    label={`${scopes.filter((s) => !s.valid).length} Invalid`}
                     color="error"
                     size="small"
                   />
@@ -249,12 +248,12 @@ export default function OAuthScopeChecker() {
       {/* Scope List */}
       <Card>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
             <Info color="primary" />
             Scope Validation Results
           </Typography>
           <List>
-            {report.scopes.map((scopeResult, index) => (
+            {scopes.map((scopeResult, index) => (
               <React.Fragment key={scopeResult.scope}>
                 <ListItem
                   sx={{
@@ -299,6 +298,7 @@ export default function OAuthScopeChecker() {
                     size="small"
                     onClick={() => toggleScopeDetails(scopeResult.scope)}
                     sx={{ ml: 1 }}
+                    aria-label={expandedScopes[scopeResult.scope] ? 'Skjul detaljer' : 'Vis detaljer'}
                   >
                     {expandedScopes[scopeResult.scope] ? <ExpandLess /> : <ExpandMore />}
                   </IconButton>
@@ -330,7 +330,7 @@ export default function OAuthScopeChecker() {
                     </Paper>
                   </Box>
                 </Collapse>
-                {index < report.scopes.length - 1 && <Divider />}
+                {index < scopes.length - 1 && <Divider />}
               </React.Fragment>
             ))}
           </List>
@@ -340,7 +340,7 @@ export default function OAuthScopeChecker() {
       {/* Documentation & Recommendations */}
       <Card sx={{ mt: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <LinkIcon color="primary" />
             Resources & Documentation
           </Typography>
@@ -353,15 +353,15 @@ export default function OAuthScopeChecker() {
                 primary="Google OAuth 2.0 Scopes Documentation"
                 secondary={documentation}
               />
-              <Button
+              <AdminButton
+                tone="secondary"
                 size="small"
-                variant="outlined"
                 href={documentation}
                 target="_blank"
                 rel="noopener noreferrer"
               >
                 Open
-              </Button>
+              </AdminButton>
             </ListItem>
             <ListItem>
               <ListItemIcon>
@@ -396,6 +396,7 @@ export default function OAuthScopeChecker() {
         </CardContent>
       </Card>
     </Box>
+    </ThemeProvider>
   );
 }
 

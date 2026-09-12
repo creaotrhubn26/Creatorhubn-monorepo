@@ -100,7 +100,7 @@ export function BrollSuggestionModal({
     <div onClick={onClose}
          style={{
            position: "fixed", inset: 0, zIndex: 5900,
-           background: "rgba(8,4,20,0.92)", backdropFilter: "blur(10px)",
+           background: "rgba(8,4,20,0.92)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
            display: "flex", alignItems: "center", justifyContent: "center",
          }}>
       <div onClick={e => e.stopPropagation()}
@@ -312,6 +312,7 @@ function SuggestionCard({ suggestion, onApprove, onReject }: {
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           <button onClick={onApprove}
+                  title="Marker dette forslaget som bra — trener B-roll-forslagene. (Selve klippet legges inn i redigeringen manuelt.)"
                   style={{
                     flex: 1, background: "rgba(74,212,138,0.18)",
                     border: "1px solid rgba(74,212,138,0.45)",
@@ -321,7 +322,9 @@ function SuggestionCard({ suggestion, onApprove, onReject }: {
                     display: "inline-flex", alignItems: "center",
                     justifyContent: "center", gap: 4,
                   }}>
-            <CheckIcon sx={{ fontSize: 13 }} /> Bruk
+            {/* «Bruk» lovet at klippet ble lagt i redigeringen; handleren sender bare
+                godkjennings-feedback. Relabel til «Godkjenn» så etiketten matcher handlingen. */}
+            <CheckIcon sx={{ fontSize: 13 }} /> Godkjenn
           </button>
           <button onClick={onReject}
                   style={{

@@ -1,7 +1,39 @@
 import settingsService from './settingsService';
 import { authSessionService } from './authSessionService';
+import { roleRoomMediaToDataUrl } from "../utils/protectedMedia";
 
 const AGENT_SNAPSHOT_NAMESPACE = 'role-room-agent-snapshot';
+
+export interface BestTimeSlotRecommendation {
+  dayOfWeek: number;
+  hour: number;
+  optimalPostTime: string;
+  sampleSize: number;
+  meanEngagement: number;
+  liftVsAverage: number;
+  label: string;
+}
+
+export interface BestTimeResult {
+  platform: string;
+  totalPosts: number;
+  confident: boolean;
+  recommendations: BestTimeSlotRecommendation[];
+  overallMeanEngagement: number;
+  reason: string;
+}
+
+export interface ClientUpdateDigest {
+  headline: string;
+  publishedCount: number;
+  scheduledCount: number;
+  daysRemaining: number | null;
+  topPost: { platform: string; hook: string; engagement: number } | null;
+  bestTimeTip: string | null;
+  highlights: Array<{ key: string; label: string; value: string }>;
+  producerNote: string | null;
+  isEmpty: boolean;
+}
 
 export interface RoleRoomAgentAccess {
   success: boolean;
@@ -15,6 +47,8 @@ export interface RoleRoomAgentAccess {
   providerConfigured?: boolean;
   defaultModel?: string;
   googlePlacesConfigured?: boolean;
+  webSearchConfigured?: boolean;
+  webSearchProvider?: 'google_cse' | 'anthropic_openai' | 'anthropic' | 'openai' | null;
   cohereConfigured?: boolean;
   cohereRerankModel?: string;
   brregConfigured?: boolean;
@@ -137,18 +171,25 @@ export interface RoleRoomAgentSocialProfileCandidate {
 export interface RoleRoomAgentCompetitorEvidence {
   type:
     | 'google_places_result'
+    | 'web_search_result'
+    | 'specialized_product_match'
+    | 'norwegian_market'
     | 'same_category'
     | 'location_overlap'
     | 'website_available'
     | 'review_signal'
-    | 'manual_review_needed';
+    | 'manual_review_needed'
+    | 'same_nace_code'
+    | 'same_municipality';
   label: string;
   weight: number;
 }
 
 export interface RoleRoomAgentCompetitorCandidate {
-  source: 'google_places';
+  source: 'google_places' | 'web_search' | 'brreg_nace';
   placeId?: string | null;
+  naceCode?: string | null;
+  organizationNumber?: string | null;
   name: string;
   websiteUrl?: string | null;
   googleMapsUri?: string | null;
@@ -172,7 +213,7 @@ export interface RoleRoomAgentCompetitorCandidate {
 
 export interface RoleRoomAgentCompetitorAnalysis {
   status: 'ready' | 'limited' | 'unavailable';
-  source: 'google_places' | 'fallback';
+  source: 'google_places' | 'web_search' | 'brreg_nace' | 'combined' | 'fallback';
   generatedAt: string;
   marketContext: string;
   competitors: RoleRoomAgentCompetitorCandidate[];
@@ -275,6 +316,31 @@ export interface RoleRoomAgentMerchSupplierEvidence {
   weight: number;
 }
 
+export type RoleRoomAgentMerchProductId =
+  | 'tshirt'
+  | 'hoodie'
+  | 'polo'
+  | 'cap'
+  | 'totebag'
+  | 'mug';
+
+export interface RoleRoomAgentMerchRecommendation {
+  productId: RoleRoomAgentMerchProductId;
+  productLabel: string;
+  productCategory: RoleRoomAgentMerchProductCategory;
+  priority: 'primary' | 'secondary' | 'experimental';
+  purpose: string;
+  rationale: string;
+  recommendedTechnique: RoleRoomAgentMerchTechnique;
+  supplierMatch?: {
+    name: string;
+    organizationNumber?: string | null;
+    placeId?: string | null;
+    confidence: number;
+  } | null;
+  requiresManualConfirmation: true;
+}
+
 export interface RoleRoomAgentMerchSupplier {
   source: 'brreg_nace' | 'google_places';
   naceCode?: string | null;
@@ -293,6 +359,9 @@ export interface RoleRoomAgentMerchSupplier {
   offerings?: string[];
   /** True when the supplier's website was scraped for richer signals. */
   websiteSignalsEnriched?: boolean;
+  /** Signals explicitly found on the supplier's own website. */
+  websiteConfirmedTechniques?: RoleRoomAgentMerchTechnique[];
+  websiteConfirmedProductCategories?: RoleRoomAgentMerchProductCategory[];
   /** Contact info scraped from the supplier's homepage and/or
    *  /kontakt subpage. All fields nullable. */
   contact?: {
@@ -317,8 +386,11 @@ export interface RoleRoomAgentMerchSuppliers {
   verifiedSupplierCount: number;
   techniqueCounts: Record<RoleRoomAgentMerchTechnique, number>;
   productCounts: Record<RoleRoomAgentMerchProductCategory, number>;
+  recommendations?: RoleRoomAgentMerchRecommendation[];
   cooperationAngles: string[];
   outreachChecklist: string[];
+  partial?: boolean;
+  timedOutSourceCount?: number;
   limitations: string[];
 }
 
@@ -327,6 +399,7 @@ export interface RoleRoomAgentServiceLatencies {
   website?: number;
   googlePlacesBusiness?: number;
   googlePlacesCompetitors?: number;
+  webCompetitors?: number;
   googlePlacesLocal?: number;
   competitorAnalysis?: number;
   localPresence?: number;
@@ -336,6 +409,35 @@ export interface RoleRoomAgentServiceLatencies {
   claudeSynthesis?: number;
   openaiSynthesis?: number;
   totalMs?: number;
+}
+
+export type RoleRoomAgentResearchSkillStatus = 'ready' | 'limited' | 'failed';
+
+export interface RoleRoomAgentResearchSkillCheck {
+  id: string;
+  passed: boolean;
+  severity: 'critical' | 'warning';
+  detail: string;
+}
+
+export interface RoleRoomAgentResearchSkillRun {
+  id:
+    | 'resolve_company_identity'
+    | 'discover_product_competitors'
+    | 'verify_market_and_location'
+    | 'extract_brand_system'
+    | 'recommend_merch_and_suppliers'
+    | 'audit_research_dataflow';
+  version: string;
+  status: RoleRoomAgentResearchSkillStatus;
+  executionKey: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  evidenceCount: number;
+  sourceKinds: string[];
+  limitations: string[];
+  checks?: RoleRoomAgentResearchSkillCheck[];
 }
 
 export interface RoleRoomAgentProducerBootstrapResult {
@@ -358,6 +460,8 @@ export interface RoleRoomAgentProducerBootstrapResult {
    *  surfaces these as warnings ("Cohere skipped — no API key",
    *  "Brreg timeout — using cached data"). Empty = clean happy path. */
   fallbacksUsed?: string[];
+  /** Deterministic skill ledger and final dataflow audit for this run. */
+  researchSkills?: RoleRoomAgentResearchSkillRun[];
   /** Per-field provenance from the synthesis model itself (item #6
    *  proper-fix). When present, the provenance panel reads confidence
    *  and rationale from here instead of computing them heuristically.
@@ -369,6 +473,7 @@ export interface RoleRoomAgentProducerBootstrapResult {
       | 'brreg'
       | 'website'
       | 'google_places'
+      | 'web_search'
       | 'claude_synthesis'
       | 'openai_synthesis'
       | 'fallback_rules'
@@ -398,6 +503,36 @@ export interface RoleRoomAgentProducerBootstrapResult {
   socialProfileCandidates: RoleRoomAgentSocialProfileCandidate[];
   competitorAnalysis: RoleRoomAgentCompetitorAnalysis;
   localPresencePlan: RoleRoomAgentLocalPresencePlan;
+  /** Deterministic marketing-setup (F9): recommended channels / content
+   *  pillars / CTA / ad-tech from the verified NACE business model + geo.
+   *  Forwarded to marketing-plan generation as grounding. */
+  marketingSetup?: {
+    businessModel?: string | null;
+    geoScope?: 'local' | 'national' | string | null;
+    channels?: Array<{ name: string; priority: string; reason?: string }> | null;
+    contentPillars?: string[] | null;
+    primaryCta?: string | null;
+    secondaryCtas?: string[] | null;
+    adTech?: string[] | null;
+    kpis?: string[] | null;
+    rationale?: string | null;
+  } | null;
+  /** Site-audit (doc 14 F1): hva kundens nettsted allerede har av
+   *  analytics/GEO — observasjonene adTech-grunnfestingen bygget på.
+   *  «unknown» betyr ikke observerbart utenfra, ikke fraværende. */
+  siteSetupAudit?: {
+    url: string;
+    fetchedAt: string;
+    techStack?: { key: string; label: string; category: string; evidence: string[] } | null;
+    capabilities: Array<{
+      key: string;
+      label: string;
+      status: 'implemented' | 'partial' | 'missing' | 'unknown';
+      details: string;
+      recommendation: string | null;
+    }>;
+    limitations: string[];
+  } | null;
   merchSuppliers?: RoleRoomAgentMerchSuppliers | null;
   retrievalMeta?: {
     cohereRerankUsed: boolean;
@@ -691,11 +826,15 @@ export interface RoleRoomPendingApproval {
 
 export type RoleRoomFeedApprovalState =
   | 'draft'
+  | "awaiting_client"
   | 'approved'
   | 'scheduled'
   | 'published'
   | 'rejected'
   | 'needs_changes';
+
+/** Beskjæringsformat for hvordan posten vises i feed-grid/portfolio. */
+export type RoleRoomFeedGridAspect = '1:1' | '4:5' | '16:9';
 
 export interface RoleRoomFeedPost {
   id: string;
@@ -714,6 +853,13 @@ export interface RoleRoomFeedPost {
   locked: boolean;
   customImageUrl?: string | null;
   customImageName?: string | null;
+  /** Hvordan ruten beskjæres i feed-grid/portfolio. Mangler → '4:5'. */
+  gridAspect?: RoleRoomFeedGridAspect | null;
+  /** Egendefinert cover/thumbnail (enhetsopplastet eller fra Drive) som
+   *  vises i grid, deling og link-preview. Overstyrer customImageUrl i
+   *  grid-visningen — nyttig som poster-frame for reels/video. */
+  coverImageUrl?: string | null;
+  coverImageName?: string | null;
   /** 2-10 images for carousel posts. Parallel to customImageUrl;
    *  when mediaType='carousel' this is the authoritative source. */
   customImageUrls?: string[] | null;
@@ -733,6 +879,56 @@ export interface RoleRoomFeedPost {
    *  personlig profil. Format: 'urn:li:organization:12345'. Null =
    *  publiser som @bruker. */
   linkedInOrganizationUrn?: string | null;
+}
+
+export interface RoleRoomMockupProjectSummary {
+  id: string;
+  name: string;
+  status: string;
+  template: string;
+  workspaceProjectId: string | null;
+  revision: number;
+  projectUpdatedAt: number;
+  updatedAt: string;
+  accessRole: 'owner' | 'editor' | 'commenter' | 'approver' | 'viewer';
+}
+
+export interface RoleRoomFeedMockupLink {
+  id: string;
+  workspaceProjectId: string;
+  platform: Exclude<RoleRoomFeedPlatform, 'youtube'>;
+  feedPostId: string;
+  feedPostTitle: string | null;
+  feedPostCaption: string | null;
+  mockupProjectId: string;
+  mockupName: string;
+  mockupRevision: number;
+  lastAppliedRevision: number | null;
+  lastAppliedSha256: string | null;
+  lastAppliedAt: string | null;
+  stale: boolean;
+  variantId: string;
+  variantLabel: string;
+  qualityStatus?: "ready" | "limited" | "failed";
+  skillRuns?: Array<{
+    id: string;
+    version: string;
+    status: "ready" | "limited" | "failed";
+    executionKey: string;
+    evidence: string[];
+    limitations: string[];
+  }>;
+  mediaType: "image" | "carousel" | "reel";
+  variantActive: boolean;
+  outputPosition: number;
+  syncStatus: "building" | "not_sent" | "synced" | "stale" | "error";
+  lastError: string | null;
+  outputUrl: string | null;
+  outputMimeType: string | null;
+  readyOutputCount: number;
+  expectedOutputCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface RoleRoomFeedBrandSocialProfile {
@@ -1338,10 +1534,63 @@ export const roleRoomAgentService = {
     return normalizedResult;
   },
 
+  /**
+   * Capture the producer's accept/edit feedback per field (Lag 0 of the
+   * learning loop). Best-effort and fire-and-forget — a failure here must
+   * never block the apply flow. Only non-personal classification fields are
+   * sent (backend enforces the same allowlist).
+   */
+  async captureFieldFeedback(input: {
+    projectId: string;
+    researchId: string;
+    edits: unknown[];
+  }): Promise<void> {
+    if (!input.projectId || !input.researchId || !Array.isArray(input.edits) || input.edits.length === 0) {
+      return;
+    }
+    try {
+      await fetch('/api/role-room/agent/field-feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...readRoleRoomAgentHeaders(),
+        },
+        body: JSON.stringify(input),
+      });
+    } catch {
+      // best-effort: never surface to the producer or block the apply.
+    }
+  },
+
   async getSnapshot(projectId: string): Promise<RoleRoomAgentProducerBootstrapResult | null> {
-    return settingsService.getSetting<RoleRoomAgentProducerBootstrapResult>(AGENT_SNAPSHOT_NAMESPACE, {
+    const snapshot = await settingsService.getSetting<RoleRoomAgentProducerBootstrapResult>(AGENT_SNAPSHOT_NAMESPACE, {
       projectId,
     });
+    if (snapshot) return snapshot;
+
+    // Older streaming clients persisted the immutable research version but
+    // skipped the active settings snapshot. Restore that exact version rather
+    // than generating a duplicate research run.
+    try {
+      const params = new URLSearchParams({ projectId });
+      const response = await fetch(`/api/role-room/agent/research/latest?${params.toString()}`, {
+        cache: 'no-store',
+        headers: readRoleRoomAgentHeaders(),
+      });
+      const payload = await response.json().catch(() => null) as {
+        success?: boolean;
+        result?: RoleRoomAgentProducerBootstrapResult;
+      } | null;
+      if (!response.ok || !payload?.success || !payload.result) return null;
+      await settingsService.setSetting<RoleRoomAgentProducerBootstrapResult>(
+        AGENT_SNAPSHOT_NAMESPACE,
+        payload.result,
+        { projectId },
+      );
+      return payload.result;
+    } catch {
+      return null;
+    }
   },
 
   async saveSnapshot(
@@ -1371,6 +1620,113 @@ export const roleRoomAgentService = {
       return null;
     }
     return payload.plan ?? null;
+  },
+
+  async listMockupProjects(): Promise<RoleRoomMockupProjectSummary[]> {
+    const response = await fetch('/api/role-room/mockup-projects', {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    const payload = await response.json().catch(() => null) as {
+      projects?: RoleRoomMockupProjectSummary[];
+      error?: string;
+    } | null;
+    if (!response.ok) throw new Error(payload?.error || 'Kunne ikke hente Mockup Studio-prosjekter.');
+    return Array.isArray(payload?.projects) ? payload.projects : [];
+  },
+
+  async listFeedMockupLinks(input: {
+    workspaceProjectId?: string;
+    mockupProjectId?: string;
+  }): Promise<RoleRoomFeedMockupLink[]> {
+    const params = new URLSearchParams();
+    if (input.workspaceProjectId) params.set('workspaceProjectId', input.workspaceProjectId);
+    if (input.mockupProjectId) params.set('mockupProjectId', input.mockupProjectId);
+    const response = await fetch(`/api/role-room/feed-mockup-links?${params.toString()}`,
+      {
+        headers: readRoleRoomAgentHeaders(),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as {
+      links?: RoleRoomFeedMockupLink[];
+      error?: string;
+    } | null;
+    if (!response.ok)
+      throw new Error(payload?.error || "Kunne ikke hente feed-koblinger.");
+    return Array.isArray(payload?.links) ? payload.links : [];
+  },
+
+  async createFeedMockupLink(input: {
+    workspaceProjectId: string;
+    platform: Exclude<RoleRoomFeedPlatform, "youtube">;
+    feedPostId: string;
+    mockupProjectId: string;
+  }): Promise<RoleRoomFeedMockupLink> {
+    const response = await fetch("/api/role-room/feed-mockup-links", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...readRoleRoomAgentHeaders(),
+      },
+      body: JSON.stringify(input),
+    });
+    const payload = (await response.json().catch(() => null)) as {
+      link?: RoleRoomFeedMockupLink;
+      error?: string;
+    } | null;
+    if (!response.ok || !payload?.link)
+      throw new Error(payload?.error || "Kunne ikke koble mockupen.");
+    return payload.link;
+  },
+
+  async createFeedMockupProject(input: {
+    workspaceProjectId: string;
+    platform: Exclude<RoleRoomFeedPlatform, "youtube">;
+    feedPostId: string;
+    mediaType: "image" | "carousel" | "reel";
+    slideCount?: number;
+    label?: string;
+  }): Promise<{
+    variantId: string;
+    mockupProjectId: string;
+    links: RoleRoomFeedMockupLink[];
+  }> {
+    const response = await fetch(
+      "/api/role-room/feed-mockup-links/create-project",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...readRoleRoomAgentHeaders(),
+        },
+        body: JSON.stringify(input),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as {
+      variantId?: string;
+      mockupProjectId?: string;
+      links?: RoleRoomFeedMockupLink[];
+      error?: string;
+    } | null;
+    if (!response.ok || !payload?.variantId || !payload.mockupProjectId) {
+      throw new Error(
+        payload?.error || "Kunne ikke opprette Mockup Studio-prosjekt.",
+      );
+    }
+    return {
+      variantId: payload.variantId,
+      mockupProjectId: payload.mockupProjectId,
+      links: Array.isArray(payload.links) ? payload.links : [],
+    };
+  },
+
+  async deleteFeedMockupLink(linkId: string): Promise<void> {
+    const response = await fetch(
+      `/api/role-room/feed-mockup-links/${encodeURIComponent(linkId)}`, {
+      method: 'DELETE',
+      headers: readRoleRoomAgentHeaders(),
+    });
+    const payload = await response.json().catch(() => null) as { error?: string } | null;
+    if (!response.ok) throw new Error(payload?.error || 'Kunne ikke fjerne koblingen.');
   },
 
   async saveFeedPlan(
@@ -1877,13 +2233,54 @@ export const roleRoomAgentService = {
     }
   },
 
+  /**
+   * Draft an on-brand reply to ONE inbox event (Phase 2b). Privacy: only that
+   * single comment's text is sent to the agent — user-initiated, per-element.
+   * Returns the draft text, or an error string the caller can surface.
+   */
+  async draftInboxReply(
+    eventId: string,
+    options: { brandVoice?: string; instructions?: string } = {},
+  ): Promise<{ draft?: string; model?: string; error?: string }> {
+    try {
+      const response = await fetch(
+        `/api/role-room/social/inbox/${encodeURIComponent(eventId)}/draft-reply`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...readRoleRoomAgentHeaders(),
+          },
+          body: JSON.stringify({
+            brandVoice: options.brandVoice,
+            instructions: options.instructions,
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (
+        !response.ok ||
+        !payload?.success ||
+        typeof payload.draft !== "string"
+      ) {
+        if (response.status === 429) {
+          return { error: "For mange forespørsler. Vent litt og prøv igjen." };
+        }
+        return { error: payload?.error || "Kunne ikke generere svarforslag." };
+      }
+      return { draft: payload.draft, model: payload.model };
+    } catch (err) {
+      return { error: (err as Error).message };
+    }
+  },
+
   async listLinkedInCompanies(): Promise<{
     companies: RoleRoomLinkedInCompany[];
     scopeMissing: boolean;
     error?: string;
   }> {
     try {
-      const response = await fetch('/api/role-room/linkedin/companies', {
+      const response = await fetch("/api/role-room/linkedin/companies", {
         headers: readRoleRoomAgentHeaders(),
       });
       const payload = await response.json().catch(() => null);
@@ -1891,7 +2288,7 @@ export const roleRoomAgentService = {
         return {
           companies: [],
           scopeMissing: false,
-          error: payload?.error || 'Kunne ikke hente LinkedIn-bedrifter.',
+          error: payload?.error || "Kunne ikke hente LinkedIn-bedrifter.",
         };
       }
       return {
@@ -1899,7 +2296,11 @@ export const roleRoomAgentService = {
         scopeMissing: Boolean(payload.scopeMissing),
       };
     } catch (err) {
-      return { companies: [], scopeMissing: false, error: (err as Error).message };
+      return {
+        companies: [],
+        scopeMissing: false,
+        error: (err as Error).message,
+      };
     }
   },
 
@@ -1911,7 +2312,7 @@ export const roleRoomAgentService = {
     profilePictureUrl?: string | null;
   }> {
     try {
-      const response = await fetch('/api/role-room/linkedin/profile', {
+      const response = await fetch("/api/role-room/linkedin/profile", {
         headers: readRoleRoomAgentHeaders(),
       });
       const payload = await response.json().catch(() => null);
@@ -1937,7 +2338,7 @@ export const roleRoomAgentService = {
     error?: string;
   }> {
     try {
-      const response = await fetch('/api/role-room/youtube/channels', {
+      const response = await fetch("/api/role-room/youtube/channels", {
         headers: readRoleRoomAgentHeaders(),
       });
       const payload = await response.json().catch(() => null);
@@ -1946,7 +2347,7 @@ export const roleRoomAgentService = {
           channels: [],
           scopeMissing: false,
           noConnection: false,
-          error: payload?.error || 'Kunne ikke hente YouTube-kanaler.',
+          error: payload?.error || "Kunne ikke hente YouTube-kanaler.",
         };
       }
       return {
@@ -1966,7 +2367,7 @@ export const roleRoomAgentService = {
 
   async fetchTikTokConnection(): Promise<RoleRoomTikTokConnection> {
     try {
-      const response = await fetch('/api/role-room/tiktok/connection', {
+      const response = await fetch("/api/role-room/tiktok/connection", {
         headers: readRoleRoomAgentHeaders(),
       });
       const payload = await response.json().catch(() => null);
@@ -2007,9 +2408,12 @@ export const roleRoomAgentService = {
     projectId: string;
   }): Promise<{ authorizationUrl: string | null; error?: string }> {
     try {
-      const response = await fetch('/api/role-room/tiktok/oauth/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+      const response = await fetch("/api/role-room/tiktok/oauth/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...readRoleRoomAgentHeaders(),
+        },
         body: JSON.stringify({
           projectId: input.projectId,
           returnPath: window.location.pathname + window.location.search,
@@ -2020,7 +2424,7 @@ export const roleRoomAgentService = {
       if (!response.ok || !payload?.success) {
         return {
           authorizationUrl: null,
-          error: payload?.error || 'Kunne ikke starte TikTok OAuth.',
+          error: payload?.error || "Kunne ikke starte TikTok OAuth.",
         };
       }
       return { authorizationUrl: payload.authorizationUrl };
@@ -2031,8 +2435,8 @@ export const roleRoomAgentService = {
 
   async disconnectTikTok(): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch('/api/role-room/tiktok/disconnect', {
-        method: 'POST',
+      const response = await fetch("/api/role-room/tiktok/disconnect", {
+        method: "POST",
         headers: readRoleRoomAgentHeaders(),
       });
       const payload = await response.json().catch(() => null);
@@ -2052,9 +2456,12 @@ export const roleRoomAgentService = {
     recipientEmail?: string | null;
   }): Promise<{ request: RoleRoomSocialAccessRequest | null; error?: string }> {
     try {
-      const response = await fetch('/api/role-room/social/access-request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+      const response = await fetch("/api/role-room/social/access-request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...readRoleRoomAgentHeaders(),
+        },
         body: JSON.stringify({
           projectId: input.projectId,
           platform: input.platform,
@@ -2064,9 +2471,14 @@ export const roleRoomAgentService = {
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
-        return { request: null, error: payload?.error || 'Kunne ikke lage e-post-utkast.' };
+        return {
+          request: null,
+          error: payload?.error || "Kunne ikke lage e-post-utkast.",
+        };
       }
-      return { request: (payload.request as RoleRoomSocialAccessRequest) ?? null };
+      return {
+        request: (payload.request as RoleRoomSocialAccessRequest) ?? null,
+      };
     } catch (err) {
       return { request: null, error: (err as Error).message };
     }
@@ -2076,14 +2488,20 @@ export const roleRoomAgentService = {
     projectId: string;
   }): Promise<{ plan: RoleRoomYouTubeChannelPlan | null; error?: string }> {
     try {
-      const response = await fetch('/api/role-room/youtube/channel-plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+      const response = await fetch("/api/role-room/youtube/channel-plan", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...readRoleRoomAgentHeaders(),
+        },
         body: JSON.stringify({ projectId: input.projectId }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
-        return { plan: null, error: payload?.error || 'Kunne ikke generere kanal-plan.' };
+        return {
+          plan: null,
+          error: payload?.error || "Kunne ikke generere kanal-plan.",
+        };
       }
       return { plan: (payload.plan as RoleRoomYouTubeChannelPlan) ?? null };
     } catch (err) {
@@ -2097,15 +2515,20 @@ export const roleRoomAgentService = {
     error?: string;
   }> {
     try {
-      const response = await fetch('/api/role-room/agent/feed-plan/approvals/pending', {
-        headers: readRoleRoomAgentHeaders(),
-      });
+      const response = await fetch(
+        "/api/role-room/agent/feed-plan/approvals/pending",
+        {
+          headers: readRoleRoomAgentHeaders(),
+        },
+      );
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
         return {
           pending: [],
           totalPending: 0,
-          error: payload?.error || 'Kunne ikke hente posts som venter på godkjenning.',
+          error:
+            payload?.error ||
+            "Kunne ikke hente posts som venter på godkjenning.",
         };
       }
       return {
@@ -2121,15 +2544,18 @@ export const roleRoomAgentService = {
     projectId: string;
     platform: string;
     postIds: string[];
-    approvalState: 'draft' | 'approved' | 'scheduled' | 'published' | 'rejected' | 'needs_changes';
+    approvalState: RoleRoomFeedApprovalState;
     approvalNote?: string | null;
   }): Promise<{ success: boolean; touched?: number; error?: string }> {
     try {
       const response = await fetch(
         `/api/role-room/agent/feed-plan/${encodeURIComponent(input.projectId)}/${encodeURIComponent(input.platform)}/approve`,
         {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...readRoleRoomAgentHeaders(),
+          },
           body: JSON.stringify({
             postIds: input.postIds,
             approvalState: input.approvalState,
@@ -2139,7 +2565,10 @@ export const roleRoomAgentService = {
       );
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
-        return { success: false, error: payload?.error || 'Kunne ikke oppdatere approval-status.' };
+        return {
+          success: false,
+          error: payload?.error || "Kunne ikke oppdatere approval-status.",
+        };
       }
       return { success: true, touched: Number(payload.touched ?? 0) };
     } catch (err) {
@@ -2152,7 +2581,7 @@ export const roleRoomAgentService = {
     error?: string;
   }> {
     try {
-      const response = await fetch('/api/role-room/social/agent-insights', {
+      const response = await fetch("/api/role-room/social/agent-insights", {
         headers: readRoleRoomAgentHeaders(),
       });
       const payload = await response.json().catch(() => null);
@@ -2176,12 +2605,12 @@ export const roleRoomAgentService = {
     error?: string;
   }> {
     try {
-      const response = await fetch('/api/role-room/social/analytics', {
+      const response = await fetch("/api/role-room/social/analytics", {
         headers: readRoleRoomAgentHeaders(),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
-        return { error: payload?.error || 'Kunne ikke hente analytics.' };
+        return { error: payload?.error || "Kunne ikke hente analytics." };
       }
       return {
         summary: payload.summary,
@@ -2201,7 +2630,7 @@ export const roleRoomAgentService = {
     connectionId: string;
     projectId: string;
     feedPlanPostId: string;
-    mediaType: 'image' | 'reel' | 'carousel';
+    mediaType: "image" | "reel" | "carousel";
     caption: string;
     /** Single image — used for mediaType='image'. */
     imageDataUrl?: string;
@@ -2209,12 +2638,36 @@ export const roleRoomAgentService = {
     imageDataUrls?: string[];
     /** Single video/mp4 or video/quicktime data URL — used for mediaType='reel'. */
     videoDataUrl?: string;
+    /** Egendefinert cover/thumbnail (image/* data URL) for reels → cover_url. */
+    coverDataUrl?: string;
     scheduledFor?: string | null;
   }): Promise<RoleRoomInstagramPublishResult> {
-    const response = await fetch('/api/role-room/instagram/publish', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
-      body: JSON.stringify(input),
+    const [imageDataUrl, imageDataUrls, videoDataUrl, coverDataUrl] =
+      await Promise.all([
+        roleRoomMediaToDataUrl(input.imageDataUrl),
+        input.imageDataUrls
+          ? Promise.all(
+              input.imageDataUrls.map((value) => roleRoomMediaToDataUrl(value)),
+            ).then((values) =>
+              values.filter((value): value is string => Boolean(value)),
+            )
+          : Promise.resolve(undefined),
+        roleRoomMediaToDataUrl(input.videoDataUrl),
+        roleRoomMediaToDataUrl(input.coverDataUrl),
+      ]);
+    const response = await fetch("/api/role-room/instagram/publish", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...readRoleRoomAgentHeaders(),
+      },
+      body: JSON.stringify({
+        ...input,
+        imageDataUrl,
+        imageDataUrls,
+        videoDataUrl,
+        coverDataUrl,
+      }),
     });
     const payload = (await response.json().catch(() => null)) as {
       success?: boolean;
@@ -2226,12 +2679,12 @@ export const roleRoomAgentService = {
     } | null;
     if (response.status === 402) {
       throw new RoleRoomFeedEntitlementError(
-        payload?.error || 'IG-publisering krever Showrunner-pakken.',
+        payload?.error || "IG-publisering krever Showrunner-pakken.",
         payload?.entitlement as never,
       );
     }
     if (!response.ok || !payload?.success || !payload.job) {
-      throw new Error(payload?.error || 'Publisering feilet.');
+      throw new Error(payload?.error || "Publisering feilet.");
     }
     return {
       job: payload.job,
@@ -2240,8 +2693,11 @@ export const roleRoomAgentService = {
     };
   },
 
-  async listInstagramJobs(projectId: string): Promise<RoleRoomInstagramPublishJob[]> {
-    const response = await fetch(`/api/role-room/instagram/jobs/${encodeURIComponent(projectId)}`, {
+  async listInstagramJobs(
+    projectId: string,
+  ): Promise<RoleRoomInstagramPublishJob[]> {
+    const response = await fetch(
+      `/api/role-room/instagram/jobs/${encodeURIComponent(projectId)}`, {
       headers: readRoleRoomAgentHeaders(),
     });
     if (!response.ok) return [];
@@ -2439,6 +2895,63 @@ export const roleRoomAgentService = {
       | { success?: boolean; plan?: MarketingPlan | null }
       | null;
     return payload?.plan ?? null;
+  },
+
+  /**
+   * Data-driven best time to post — ranked weekday×hour slots per platform,
+   * computed from the project's own historical engagement.
+   */
+  async getBestTimesToPost(projectId: string): Promise<BestTimeResult[]> {
+    const response = await fetch(
+      `/api/role-room/best-time-to-post?projectId=${encodeURIComponent(projectId)}`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    const payload = (await response.json().catch(() => null)) as { bestTimes?: BestTimeResult[] } | null;
+    return payload?.bestTimes ?? [];
+  },
+
+  /**
+   * Proactive client update — send the client a data-driven summary (published
+   * + scheduled + best-time insight + optional note) via email + portal.
+   */
+  async sendClientUpdate(
+    planId: string,
+    producerNote?: string,
+  ): Promise<{ ok: boolean; sent: number; total: number; digest?: ClientUpdateDigest }> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/${encodeURIComponent(planId)}/client-update`,
+      {
+        method: 'POST',
+        headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ producerNote: producerNote ?? '' }),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { ok?: boolean; sent?: number; total?: number; digest?: ClientUpdateDigest; error?: string }
+      | null;
+    if (!response.ok || !payload) {
+      throw new Error(payload?.error ?? 'client_update_failed');
+    }
+    return { ok: !!payload.ok, sent: payload.sent ?? 0, total: payload.total ?? 0, digest: payload.digest };
+  },
+
+  /**
+   * #3 — Channel scorecard: recommended marketing-setup channels vs measured
+   * per-channel/pillar performance. Powers the cockpit "command center" card.
+   */
+  async getMarketingScorecard(
+    projectId: string,
+    sinceDays?: number,
+  ): Promise<MarketingChannelScorecardResponse | null> {
+    const u = new URL(
+      `/api/role-room/marketing-plan/${encodeURIComponent(projectId)}/scorecard`,
+      window.location.origin,
+    );
+    if (sinceDays && sinceDays > 0) u.searchParams.set('sinceDays', String(sinceDays));
+    const response = await fetch(u.pathname + u.search, { headers: readRoleRoomAgentHeaders() });
+    const payload = (await response.json().catch(() => null)) as MarketingChannelScorecardResponse | null;
+    if (!response.ok || !payload?.success) return null;
+    return payload;
   },
 
   async listMarketingPlanPosts(planId: string): Promise<MarketingPlanPost[]> {
@@ -3239,6 +3752,28 @@ export const roleRoomAgentService = {
     return payload.post;
   },
 
+  /** Bulk-endre primary_platform for flere poster i én request. */
+  async bulkUpdateMarketingPlanPostPlatform(input: {
+    projectId: string;
+    postIds: string[];
+    primaryPlatform: NonNullable<MarketingPlanPost['primaryPlatform']>;
+  }): Promise<number> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/posts/platform`,
+      {
+        method: 'PATCH',
+        headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { success?: boolean; updated?: number; error?: string } | null;
+    if (!response.ok || !payload?.success) {
+      throw new Error(payload?.error || `Kunne ikke endre plattform (HTTP ${response.status})`);
+    }
+    return payload.updated ?? 0;
+  },
+
   // ── Versjonering: research/intake ────────────────────────────────
   async listIntakeVersions(projectId: string): Promise<IntakeVersion[]> {
     const response = await fetch(
@@ -3421,6 +3956,38 @@ export interface MarketingPlanPillar {
   isCustom?: boolean;
 }
 
+// #3 — Channel scorecard response (recommended setup vs measured performance).
+export interface ScorecardChannelEntry {
+  channel: string;
+  recommendedPriority: string | null;
+  status: 'active' | 'no_data';
+  postCount: number;
+  snapshotCount: number;
+  metrics: Record<string, number>;
+}
+export interface ScorecardUnexpectedEntry {
+  platform: string;
+  label: string;
+  postCount: number;
+  snapshotCount: number;
+  metrics: Record<string, number>;
+}
+export interface MarketingChannelScorecardResponse {
+  success: boolean;
+  projectId: string;
+  sinceDays: number;
+  planStatus: { id: string; status: string; generatedAt: string | null; startDate: string | null } | null;
+  setup: { businessModel: string | null; geoScope: string | null; primaryCta: string | null; adTech: string[] } | null;
+  channelScorecard: {
+    channels: ScorecardChannelEntry[];
+    unexpected: ScorecardUnexpectedEntry[];
+    recommendedWithData: number;
+    recommendedWithoutData: number;
+    hasAnyData: boolean;
+  };
+  pillarPerformance: Array<{ key: string; label: string; postCount: number; snapshotCount: number; avgByMetric: Record<string, number> }>;
+}
+
 export interface MarketingPlan {
   id: string;
   projectId: string;
@@ -3475,6 +4042,13 @@ export interface MarketingPlanPost {
    *  farget badge i Markedsplan-dashboardet så det er klart hvem
    *  som endret. */
   lastEditedByKind?: 'team' | 'client' | null;
+  /** Preview-content (Cloudflare Stream primær, R2 fallback). Sendes allerede
+   *  av backend — brukes til å vise små thumbnails i kalender/tabell når innhold
+   *  er produsert. */
+  previewStreamThumbnailUrl?: string | null;
+  previewStreamPlaybackUrl?: string | null;
+  previewStreamReady?: boolean;
+  previewVideoR2Url?: string | null;
 }
 
 export default roleRoomAgentService;

@@ -25,6 +25,7 @@ import {
   recordStorageUsage,
   pushStorageUsageToStripe,
 } from "./storage-quota-service.js";
+import { mirrorUploadToUserB2 } from "./user-b2-mirror-worker.js";
 
 export interface UploadsRoutesDeps {
   app: express.Application;
@@ -43,6 +44,10 @@ const upload = multer({
   limits: {
     fileSize: SMALL_UPLOAD_MAX,
     files: 1,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (/^(image\/|video\/|audio\/|application\/pdf|text\/plain|text\/csv)/.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Filtype ikke tillatt") as any, false);
   },
 });
 
@@ -135,6 +140,22 @@ export function setupUploadsRoutes(deps: UploadsRoutesDeps): void {
         void pushStorageUsageToStripe(pool, userId).catch((err) => {
           console.error("[uploads] Stripe usage push failed:", err);
         });
+
+        // Fire-and-forget mirror til brukerens egen B2 (hvis konfigurert).
+        // Vi har buffer'en i minnet her — gi den direkte til worker'en
+        // sånn at vi slipper en ekstra round-trip mot R2/Stream for å hente
+        // bytes igjen. Primær upload-respons blokkeres ikke.
+        mirrorUploadToUserB2(
+          { pool },
+          {
+            userId,
+            source: "single-upload",
+            sourceId: fileId,
+            fileName: safeName,
+            contentType: req.file.mimetype || null,
+            buffer: req.file.buffer,
+          },
+        );
 
         res.json({
           success: true,

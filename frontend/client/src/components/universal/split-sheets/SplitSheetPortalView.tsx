@@ -213,7 +213,7 @@ export default function SplitSheetPortalView({
       // If download PDF is requested, trigger download
       if (downloadPdf && response.success) {
         try {
-          const pdfResponse = await fetch(`/api/split-sheets/${splitSheetId}/pdf?signed=true`, {
+          const pdfResponse = await fetch(`/api/split-sheets/${splitSheetId}/pdf?signed=true&access_code=${encodeURIComponent(accessCode)}`, {
             method: 'GET',
             headers: {
               'Authorization': `Bearer ${localStorage.getItem('token') || ','}`,

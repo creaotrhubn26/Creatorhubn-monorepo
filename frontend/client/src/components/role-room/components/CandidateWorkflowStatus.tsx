@@ -40,7 +40,7 @@ const WORKFLOW_STEPS: { status: WorkflowStatus; label: string; icon: ReactNode; 
   { status: 'auditioned', label: 'Audition', icon: <TheatersIcon />, color: '#f59e0b' },
   { status: 'selected', label: 'Valgt', icon: <CheckCircleIcon />, color: '#10b981' },
   { status: 'offer_sent', label: 'Tilbud sendt', icon: <LocalOfferIcon />, color: '#3b82f6' },
-  { status: 'confirmed', label: 'Bekreftet', icon: <HandshakeIcon />, color: '#8b5cf6' },
+  { status: 'confirmed', label: 'Bekreftet', icon: <HandshakeIcon />, color: 'var(--role-violet, #8b5cf6)' },
   { status: 'contracted', label: 'Kontrakt', icon: <DescriptionIcon />, color: '#06b6d4' },
   { status: 'production', label: 'Produksjon', icon: <MovieIcon />, color: '#ec4899' },
 ];

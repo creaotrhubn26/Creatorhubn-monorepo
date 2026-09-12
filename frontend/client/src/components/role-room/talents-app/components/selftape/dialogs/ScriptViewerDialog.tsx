@@ -5,6 +5,7 @@
  */
 import {
   Box, Dialog, DialogContent, DialogTitle, IconButton, Stack, Typography,
+  useMediaQuery, useTheme,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -38,6 +39,8 @@ function parseScript(md: string | null): ScriptLine[] {
 export default function ScriptViewerDialog({
   open, project, onClose, variant = 'script',
 }: Props) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   if (!project) return null;
   const lines = parseScript(project.sides_content);
   const title = variant === 'brief'
@@ -50,12 +53,13 @@ export default function ScriptViewerDialog({
       onClose={onClose}
       fullWidth
       maxWidth="md"
+      fullScreen={isMobile}
       PaperProps={{
         sx: {
           bgcolor: palette.bgShell,
           color: palette.textPrimary,
-          border: `1px solid ${palette.border}`,
-          borderRadius: radius.lg,
+          border: isMobile ? 'none' : `1px solid ${palette.border}`,
+          borderRadius: isMobile ? 0 : radius.lg,
         },
       }}
     >

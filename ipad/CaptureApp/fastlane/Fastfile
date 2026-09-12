@@ -24,14 +24,49 @@ APP_IDENTIFIER = "com.creatorhubn.capture"
 SCHEME         = "CaptureApp"
 PROJECT        = "CaptureApp.xcodeproj"
 
+# xcargs for the archive. Locally `-allowProvisioningUpdates` uses the Xcode-
+# signed-in Apple ID. On a headless CI runner there's no account, so we also
+# pass the App Store Connect API key to xcodebuild (-authenticationKey*) so it
+# can create/download the distribution cert + profile. The key file path comes
+# from ASC_KEY_PATH (the CI workflow writes the .p8 there).
+def provisioning_xcargs
+  args = ["-allowProvisioningUpdates"]
+  if ENV["ASC_KEY_PATH"] && ENV["APP_STORE_CONNECT_API_KEY_ID"] && ENV["APP_STORE_CONNECT_API_ISSUER_ID"]
+    args << "-authenticationKeyPath #{ENV['ASC_KEY_PATH']}"
+    args << "-authenticationKeyID #{ENV['APP_STORE_CONNECT_API_KEY_ID']}"
+    args << "-authenticationKeyIssuerID #{ENV['APP_STORE_CONNECT_API_ISSUER_ID']}"
+  end
+  args.join(" ")
+end
+
 platform :ios do
   before_all do
-    ensure_xcode_version(version: "16.4")
+    # Locally we want 26.5; CI sets XCODE_VERSION to whatever the runner
+    # selected so the assertion is portable across GitHub-hosted images.
+    ensure_xcode_version(version: ENV.fetch("XCODE_VERSION", "26.5"))
   end
 
-  desc "Bump CFBundleVersion by 1"
+  desc "Set CFBundleVersion to epoch seconds (unique + strictly increasing)"
   lane :bump_build do
-    increment_build_number(xcodeproj: PROJECT)
+    # xcodegen regenerates project.pbxproj from project.yml on every run,
+    # resetting CURRENT_PROJECT_VERSION to "1" — so a plain +1 always produced
+    # "2", which collides with / is lower than the existing date-based builds
+    # (20260622, …) and Apple silently rejects it in processing. Epoch seconds
+    # is monotonic, unique per upload, and < UINT32_MAX (Apple's per-component
+    # cap) until ~2106.
+    increment_build_number(build_number: Time.now.to_i.to_s, xcodeproj: PROJECT)
+  end
+
+  # Last ned de manuelle App Store-profilene (opprettet via ASC API
+  # 2026-07-28) til runneren så manual signing i ExportOptions.plist finner
+  # dem. force: true regenererer mot cert-en vi importerte til keychainen.
+  private_lane :download_app_store_profiles do
+    [
+      { bundle: "com.creatorhubn.capture",         name: "CreatorHub Capture AppStore" },
+      { bundle: "com.creatorhubn.capture.widgets", name: "CreatorHub Widgets AppStore" },
+    ].each do |cfg|
+      sigh(app_identifier: cfg[:bundle], provisioning_name: cfg[:name], force: true, platform: "ios")
+    end
   end
 
   desc "Archive + upload to TestFlight"
@@ -42,16 +77,35 @@ platform :ios do
     # upload must have a strictly-higher CFBundleVersion).
     bump_build
 
+    # Manuell signering: sørg for at profilene ligger på runneren.
+    download_app_store_profiles
+
     build_app(
       project: PROJECT,
       scheme: SCHEME,
       configuration: "Release",
       export_method: "app-store",
-      export_options: "../ExportOptions.plist",
+      export_options: "ExportOptions.plist",
       clean: true,
       output_directory: "build/",
       output_name: "CreatorHubOne.ipa",
+      # La Xcode kontakte Apple for å auto-generere/registrere provisioning-
+      # profiler (kreves for automatic signing i headless archive).
+      xcargs: provisioning_xcargs,
+      export_xcargs: "-allowProvisioningUpdates",
     )
+
+    # Sanity check FØR upload: bruk gyms faktiske output-sti
+    # (lane_context), ikke en hardkodet relativ sti. Den gamle
+    # ``sh "ls -lh build/CreatorHubOne.ipa"`` kjørte ETTER upload og
+    # feilet (exit 1 → "fastlane finished with errors") selv om
+    # opplastingen lyktes, fordi cwd/sti ikke matchet. Nå feiler vi
+    # lanen lokalt FØR upload hvis IPA-en mangler eller er for stor.
+    ipa_path = lane_context[SharedValues::IPA_OUTPUT_PATH]
+    UI.user_error!("Fant ingen IPA etter build_app") unless ipa_path && File.exist?(ipa_path)
+    ipa_mb = (File.size(ipa_path) / 1_000_000.0).round(1)
+    UI.message("IPA klar for upload: #{ipa_path} (#{ipa_mb} MB)")
+    UI.user_error!("IPA er #{ipa_mb} MB (> 200 MB) — Apple avviser") if ipa_mb > 200
 
     upload_to_testflight(
       skip_waiting_for_build_processing: true,
@@ -59,11 +113,6 @@ platform :ios do
       # present; otherwise Apple shows "No changes provided".
       changelog: File.exist?("changelog.txt") ? File.read("changelog.txt") : nil,
     )
-
-    # Sanity check: fail the lane if the IPA is missing the icon
-    # or is bigger than 200 MB (both are Apple-side rejection
-    # causes we can catch locally).
-    sh "ls -lh build/CreatorHubOne.ipa"
   end
 
   desc "Archive + submit for App Store Review"
@@ -76,10 +125,12 @@ platform :ios do
       scheme: SCHEME,
       configuration: "Release",
       export_method: "app-store",
-      export_options: "../ExportOptions.plist",
+      export_options: "ExportOptions.plist",
       clean: true,
       output_directory: "build/",
       output_name: "CreatorHubOne.ipa",
+      xcargs: provisioning_xcargs,
+      export_xcargs: "-allowProvisioningUpdates",
     )
 
     upload_to_app_store(

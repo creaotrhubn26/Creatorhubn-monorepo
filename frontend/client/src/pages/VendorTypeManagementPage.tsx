@@ -12,8 +12,9 @@ import {
   CardContent,
   Button,
   Alert,
+  Stack,
 } from '@mui/material';
-import { Category, Dashboard } from '@mui/icons-material';
+import { Category, Dashboard, RocketLaunch, BarChart, Settings } from '@mui/icons-material';
 import VendorTypeManager from '@/components/vendor/VendorTypeManager';
 import UniversalVendorDashboard from '@/components/vendor/UniversalVendorDashboard';
 import { useQuery } from '@tanstack/react-query';
@@ -58,9 +59,12 @@ const VendorTypeManagementPage: React.FC = () => {
           ...theming.getThemedCardSx(),
         }}
       >
-        <Typography variant="h3" sx={{ fontWeight: 700, mb: 2 }}>
-          🚀 Skalerbar Vendor Type System
-        </Typography>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 2 }}>
+          <RocketLaunch sx={{ fontSize: 36 }} />
+          <Typography variant="h3" sx={{ fontWeight: 700 }}>
+            Skalerbar Vendor Type System
+          </Typography>
+        </Stack>
         <Typography variant="h6" sx={{ opacity: 0.7, mb: 2 }}>
           Dynamisk ekspansjon av vendor kategorier for ubegrenset vekst
         </Typography>
@@ -151,9 +155,12 @@ const VendorTypeManagementPage: React.FC = () => {
 
       <TabPanel value={tabValue} index={2}>
         <Paper sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
-          <Typography variant="h5" sx={{  mb:  3, fontWeight: 600}}>
-            📊 Vendor Type Analytics
-          </Typography>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 3 }}>
+            <BarChart />
+            <Typography variant="h5" sx={{ fontWeight: 600 }}>
+              Vendor Type Analytics
+            </Typography>
+          </Stack>
 
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -201,9 +208,12 @@ const VendorTypeManagementPage: React.FC = () => {
 
       <TabPanel value={tabValue} index={3}>
         <Paper sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
-          <Typography variant="h5" sx={{  mb:  3, fontWeight: 600}}>
-            ⚙️ Vendor Type System Innstillinger
-          </Typography>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 3 }}>
+            <Settings />
+            <Typography variant="h5" sx={{ fontWeight: 600 }}>
+              Vendor Type System Innstillinger
+            </Typography>
+          </Stack>
 
           <Alert severity="warning" sx={{ mb:  3 }}>
             <Typography variant="body2">

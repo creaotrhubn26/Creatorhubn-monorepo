@@ -46,6 +46,15 @@ import {
   Link as LinkIcon,
   Settings,
   Send,
+  PhotoCamera as PhotoCameraIcon,
+  Person as PersonIcon,
+  Assignment as AssignmentIcon,
+  BarChart as BarChartIcon,
+  EmojiEvents as EmojiEventsIcon,
+  TrendingUp as TrendingUpIcon,
+  Save as SaveIcon,
+  LocalOffer as LocalOfferIcon,
+  StarBorder as StarBorderIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -186,8 +195,12 @@ export default function PhotoDeliveryGalleryManager() {
           mb:  3}}
       >
         <Box>
-          <Typography variant="h4" sx={{  fontWeight: 600, color: 'primary.main'  }}>
-            📸 Galleristyring & Leveranse
+          <Typography
+            variant="h4"
+            sx={{ fontWeight: 600, color: 'primary.main', display: 'inline-flex', alignItems: 'center', gap: 1 }}
+          >
+            <PhotoCameraIcon />
+            Galleristyring & Leveranse
           </Typography>
           <Typography variant="subtitle1" color="text.secondary">
             Administrer klientgallerier og levering av fotografier
@@ -348,12 +361,22 @@ export default function PhotoDeliveryGalleryManager() {
                         />
                       </Box>
 
-                      <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
-                        👤 Klient: {gallery.clientName}
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ mb: 1, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
+                      >
+                        <PersonIcon sx={{ fontSize: 14 }} />
+                        Klient: {gallery.clientName}
                       </Typography>
 
-                      <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                        📋 Type: {gallery.projectType}
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ mb: 2, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
+                      >
+                        <AssignmentIcon sx={{ fontSize: 14 }} />
+                        Type: {gallery.projectType}
                       </Typography>
 
                       {/* Gallery Stats */}
@@ -459,15 +482,23 @@ export default function PhotoDeliveryGalleryManager() {
       {/* Analytics Tab */}
       {activeTab === 4 && (
         <Box>
-          <Typography variant="h5" sx={{  mb:  3, fontWeight: 600}}>
-            📊 Galleri Analytics & Statistikk
+          <Typography
+            variant="h5"
+            sx={{ mb: 3, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 1 }}
+          >
+            <BarChartIcon />
+            Galleri Analytics & Statistikk
           </Typography>
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
               <Card sx={{ borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
                 <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
-                    🏆 Mest populære gallerier
+                  <Typography
+                    variant="h6"
+                    sx={{ mb: 2, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 1 }}
+                  >
+                    <EmojiEventsIcon />
+                    Mest populære gallerier
                   </Typography>
                   {analytics?.popularGalleries?.map((gallery: any, index: number) => (
                     <Box
@@ -495,22 +526,28 @@ export default function PhotoDeliveryGalleryManager() {
             <Grid item xs={12} md={6}>
               <Card sx={{ borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
                 <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
-                    📈 Månedsstatistikk
+                  <Typography
+                    variant="h6"
+                    sx={{ mb: 2, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 1 }}
+                  >
+                    <TrendingUpIcon />
+                    Månedsstatistikk
                   </Typography>
-                  <Typography variant="body2" sx={{ mb:  1 }}>
-                    📈 Visninger denne måneden: <strong>{analytics?.monthlyViews || 0}</strong>
+                  <Typography variant="body2" sx={{ mb: 1, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                    <TrendingUpIcon sx={{ fontSize: 14 }} />
+                    Visninger denne måneden: <strong>{analytics?.monthlyViews || 0}</strong>
                   </Typography>
-                  <Typography variant="body2" sx={{ mb:  1 }}>
-                    💾 Nedlastinger denne måneden: {''}
-                    <strong>{analytics?.monthlyDownloads || 0}</strong>
+                  <Typography variant="body2" sx={{ mb: 1, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                    <SaveIcon sx={{ fontSize: 14 }} />
+                    Nedlastinger denne måneden: <strong>{analytics?.monthlyDownloads || 0}</strong>
                   </Typography>
-                  <Typography variant="body2" sx={{ mb:  1 }}>
-                    👥 Nye klienter denne måneden: {', '}
-                    <strong>{analytics?.newClientsThisMonth || 0}</strong>
+                  <Typography variant="body2" sx={{ mb: 1, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                    <Group sx={{ fontSize: 14 }} />
+                    Nye klienter denne måneden: <strong>{analytics?.newClientsThisMonth || 0}</strong>
                   </Typography>
-                  <Typography variant="body2">
-                    ⭐ Gjennomsnittlig rating: <strong>{analytics?.averageRating || 'N/'}</strong>
+                  <Typography variant="body2" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                    <Star sx={{ fontSize: 14 }} />
+                    Gjennomsnittlig rating: <strong>{analytics?.averageRating || 'N/A'}</strong>
                   </Typography>
                 </CardContent>
               </Card>
@@ -526,8 +563,18 @@ export default function PhotoDeliveryGalleryManager() {
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white' }}>
-          📸 Opprett nytt klientgalleri
+        <DialogTitle
+          sx={{
+            bgcolor: '#06080d',
+            color: '#edf0f7',
+            borderBottom: '1px solid rgba(245,166,35,0.22)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+          }}
+        >
+          <PhotoCameraIcon />
+          Opprett nytt klientgalleri
         </DialogTitle>
         <DialogContent sx={{ mt:  2 }}>
           <Box
@@ -585,20 +632,39 @@ export default function PhotoDeliveryGalleryManager() {
                 <FormControl fullWidth>
                   <InputLabel>Synlighet</InputLabel>
                   <Select name="visibility" label="Synlighet" defaultValue="client_only">
-                    <MenuItem value="public">🌐 Offentlig</MenuItem>
-                    <MenuItem value="client_only">👥 Kun klient</MenuItem>
-                    <MenuItem value="private">🔒 Privat</MenuItem>
+                    <MenuItem value="public">
+                      <Public sx={{ fontSize: 16, mr: 1, verticalAlign: 'middle' }} />
+                      Offentlig
+                    </MenuItem>
+                    <MenuItem value="client_only">
+                      <Group sx={{ fontSize: 16, mr: 1, verticalAlign: 'middle' }} />
+                      Kun klient
+                    </MenuItem>
+                    <MenuItem value="private">
+                      <Lock sx={{ fontSize: 16, mr: 1, verticalAlign: 'middle' }} />
+                      Privat
+                    </MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
               <Grid item xs={12}>
                 <FormControlLabel
                   control={<Switch name="downloadEnabled" defaultChecked />}
-                  label="💾 Tillat nedlasting for klient"
+                  label={
+                    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                      <SaveIcon sx={{ fontSize: 16 }} />
+                      Tillat nedlasting for klient
+                    </Box>
+                  }
                 />
                 <FormControlLabel
                   control={<Switch name="watermarkEnabled" defaultChecked />}
-                  label="🏷️ Vannmerke på bilder"
+                  label={
+                    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                      <LocalOfferIcon sx={{ fontSize: 16 }} />
+                      Vannmerke på bilder
+                    </Box>
+                  }
                 />
               </Grid>
               <Grid item xs={12}>

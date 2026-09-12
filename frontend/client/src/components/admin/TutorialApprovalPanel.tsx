@@ -4,10 +4,8 @@ import {
   Avatar,
   Badge,
   Box,
-  Button,
   Card,
   CardContent,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -21,6 +19,7 @@ import {
   TextField,
   Tooltip,
   Typography,
+  Chip,
 } from '@mui/material';
 import {
   AdminPanelSettings,
@@ -34,6 +33,7 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton, useIsMobile } from './design-system';
 
 type TutorialStatus = 'pending' | 'approved' | 'rejected';
 type TutorialType = 'video' | 'mixed';
@@ -191,6 +191,7 @@ function dateString(value: string): string {
 
 export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: TutorialApprovalPanelProps): JSX.Element {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   const [tabValue, setTabValue] = useState(0);
   const [items, setItems] = useState<TutorialSubmission[]>([]);
@@ -280,9 +281,9 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
     },
   });
 
-  const pendingCount = items.filter((item) => item.status === 'pending').length;
-  const approvedCount = items.filter((item) => item.status === 'approved').length;
-  const rejectedCount = items.filter((item) => item.status === 'rejected').length;
+  const pendingCount = useMemo(() => items.filter((item) => item.status === 'pending').length, [items]);
+  const approvedCount = useMemo(() => items.filter((item) => item.status === 'approved').length, [items]);
+  const rejectedCount = useMemo(() => items.filter((item) => item.status === 'rejected').length, [items]);
 
   const filteredItems = useMemo(() => {
     if (tabValue === 0) {
@@ -323,7 +324,7 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
 
   if (!isAdmin) {
     return (
-      <Dialog open={open} onClose={onClose}>
+      <Dialog open={open} onClose={onClose} fullScreen={isMobile}>
         <DialogContent>
           <Alert severity="error">Only admins can access tutorial approval.</Alert>
         </DialogContent>
@@ -333,7 +334,7 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
+      <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <AdminPanelSettings color="primary" />
@@ -344,7 +345,7 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
               <Chip size="small" label="Pending" color="warning" />
             </Badge>
           </Box>
-          <IconButton onClick={onClose}>
+          <IconButton onClick={onClose} aria-label="Lukk">
             <Close />
           </IconButton>
         </DialogTitle>
@@ -433,31 +434,29 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                       {submission.status === 'pending' ? (
                         <>
-                          <Button
+                          <AdminButton
                             size="small"
-                            variant="contained"
-                            color="success"
+                            tone="primary"
                             startIcon={<ThumbUp />}
                             onClick={() => openReview(submission, 'approve')}
                           >
                             Approve
-                          </Button>
-                          <Button
+                          </AdminButton>
+                          <AdminButton
                             size="small"
-                            variant="contained"
-                            color="error"
+                            tone="danger"
                             startIcon={<ThumbDown />}
                             onClick={() => openReview(submission, 'reject')}
                           >
                             Reject
-                          </Button>
+                          </AdminButton>
                         </>
                       ) : null}
 
                       <Tooltip title="Open tutorial URL">
-                        <Button
+                        <AdminButton
                           size="small"
-                          variant="outlined"
+                          tone="secondary"
                           startIcon={<Visibility />}
                           onClick={() => {
                             if (submission.targetUrl) {
@@ -467,7 +466,7 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
                           disabled={submission.targetUrl.length === 0}
                         >
                           View URL
-                        </Button>
+                        </AdminButton>
                       </Tooltip>
                     </Box>
                   </CardContent>
@@ -484,7 +483,7 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
         </DialogContent>
       </Dialog>
 
-      <Dialog open={reviewDialogOpen} onClose={() => setReviewDialogOpen(false)} fullWidth maxWidth="sm">
+      <Dialog open={reviewDialogOpen} onClose={() => setReviewDialogOpen(false)} fullWidth maxWidth="sm" fullScreen={isMobile}>
         <DialogTitle>{reviewAction === 'approve' ? 'Approve tutorial' : 'Reject tutorial'}</DialogTitle>
         <DialogContent>
           {selected ? (
@@ -508,15 +507,15 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setReviewDialogOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            color={reviewAction === 'approve' ? 'success' : 'error'}
+          <AdminButton tone="ghost" onClick={() => setReviewDialogOpen(false)}>Cancel</AdminButton>
+          <AdminButton
+            tone={reviewAction === 'approve' ? 'primary' : 'danger'}
+            loading={reviewMutation.isPending}
             onClick={submitReview}
             disabled={reviewMutation.isPending || (reviewAction === 'reject' && reviewNotes.trim().length === 0)}
           >
             {reviewAction === 'approve' ? 'Approve' : 'Reject'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

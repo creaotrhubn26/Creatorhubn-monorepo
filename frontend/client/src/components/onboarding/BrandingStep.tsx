@@ -274,7 +274,7 @@ const BrandingStep: React.FC<BrandingStepProps> = ({
                   label="Firmanavn / Merkenavn"
                   value={businessName}
                   onChange={(e) => setBusinessName(e.target.value)}
-                  placeholder="F.eks. CreatorHub Norge AS"
+                  placeholder="F.eks. Creatorhub AS"
                   required
                 />
                 

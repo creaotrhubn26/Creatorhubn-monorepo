@@ -7,14 +7,12 @@ import {
   CardActions,
   CardContent,
   Chip,
-  CircularProgress,
   FormControlLabel,
   Grid,
   List,
   ListItem,
   ListItemIcon,
   ListItemText,
-  Paper,
   Switch,
   Tab,
   Tabs,
@@ -43,6 +41,7 @@ import {
 } from '../../data/video-camera-discovery';
 import type { PhotoCamera as PhotoCameraType } from '../../data/photo-camera-database';
 import type { Camera as VideoCameraType } from '../../data/video-camera-database';
+import { AdminCard, AdminButton, StatusChip, AdminEmpty } from './design-system';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -172,10 +171,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
     if (results.length === 0) return null;
 
     return (
-      <Paper sx={{ p: 3, mb: 3 }} component="div">
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-          {title}
-        </Typography>
+      <AdminCard title={title} sx={{ mb: 3 }}>
         <List>
           {results.map((result, index) => (
             <ListItem key={`${result.source}-${result.timestamp}-${index}`}>
@@ -190,15 +186,14 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
                     : `Feil: ${result.error ?? 'Ukjent feil'}`
                 }
               />
-              <Chip
-                size="small"
-                color={result.success ? 'success' : 'error'}
+              <StatusChip
+                tone={result.success ? 'success' : 'error'}
                 label={result.success ? 'Synk fullført' : 'Synk feilet'}
               />
             </ListItem>
           ))}
         </List>
-      </Paper>
+      </AdminCard>
     );
   };
 
@@ -257,7 +252,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+      <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
         Combined Camera Discovery Manager
       </Typography>
 
@@ -265,7 +260,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
         <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary }}>
                 Total Cameras
               </Typography>
               <Typography variant="h4" sx={{ color: theming.colors.primary }}>
@@ -277,7 +272,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
         <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary }}>
                 Inserted
               </Typography>
               <Typography variant="h4" sx={{ color: theming.colors.primary }}>
@@ -289,7 +284,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
         <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary }}>
                 Updated
               </Typography>
               <Typography variant="h4" sx={{ color: theming.colors.primary }}>
@@ -301,7 +296,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
         <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary }}>
                 Rejected/Conflicts
               </Typography>
               <Typography variant="h4" sx={{ color: theming.colors.primary }}>
@@ -312,28 +307,28 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
         </Grid>
       </Grid>
 
-      <Paper sx={{ p: 3, mb: 3 }} component="div">
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-            Discovery Controls (Admin)
-          </Typography>
-          <Box>
+      <AdminCard
+        title="Discovery Controls (Admin)"
+        action={
+          <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
             <FormControlLabel
               control={<Switch checked={showNewOnly} onChange={(event) => setShowNewOnly(event.target.checked)} />}
               label="Only New/Updated"
             />
-            <Button
-              variant="contained"
-              startIcon={isDiscovering ? <CircularProgress size={20} /> : <Refresh />}
+            <AdminButton
+              tone="primary"
+              loading={isDiscovering}
+              startIcon={<Refresh />}
               onClick={handleTriggerDiscovery}
               disabled={isDiscovering}
               sx={{ ml: 2 }}
             >
               {isDiscovering ? 'Syncing...' : 'Run Discovery Sync'}
-            </Button>
+            </AdminButton>
           </Box>
-        </Box>
-
+        }
+        sx={{ mb: 3 }}
+      >
         <Grid container spacing={2}>
           <Grid item xs={12} md={6}>
             <Typography variant="body2" color="text.secondary">
@@ -346,7 +341,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
             </Typography>
           </Grid>
         </Grid>
-      </Paper>
+      </AdminCard>
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={activeTab} onChange={(_, value: number) => setActiveTab(value)}>
@@ -374,10 +369,10 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
       <TabPanel value={activeTab} index={0}>
         {renderDiscoveryResults(videoResults, 'Latest Video Discovery Result')}
         {filteredVideoCameras.length === 0 ? (
-          <Paper sx={{ p: 3, textAlign: 'center' }} component="div">
-            <Videocam sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
-            <Typography color="text.secondary">Ingen videokamera-data tilgjengelig.</Typography>
-          </Paper>
+          <AdminEmpty
+            icon={<Videocam sx={{ fontSize: 48 }} />}
+            title="Ingen videokamera-data tilgjengelig."
+          />
         ) : (
           <Grid container spacing={2}>
             {filteredVideoCameras.map((camera) => renderCameraCard(camera, true))}
@@ -388,10 +383,10 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
       <TabPanel value={activeTab} index={1}>
         {renderDiscoveryResults(photoResults, 'Latest Photo Discovery Result')}
         {filteredPhotoCameras.length === 0 ? (
-          <Paper sx={{ p: 3, textAlign: 'center' }} component="div">
-            <PhotoCamera sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
-            <Typography color="text.secondary">Ingen fotokamera-data tilgjengelig.</Typography>
-          </Paper>
+          <AdminEmpty
+            icon={<PhotoCamera sx={{ fontSize: 48 }} />}
+            title="Ingen fotokamera-data tilgjengelig."
+          />
         ) : (
           <Grid container spacing={2}>
             {filteredPhotoCameras.map((camera) => renderCameraCard(camera, false))}

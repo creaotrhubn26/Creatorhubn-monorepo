@@ -15,6 +15,7 @@ import {
   ThumbUpOutlined as LikeIcon, ChatBubbleOutline as CommentIcon,
 } from '@mui/icons-material';
 import ConnectionPicker from './ConnectionPicker';
+import { LoadingSkeleton, PanelHeader } from './ui';
 
 type Mode = 'hashtag' | 'ig-profile' | 'fb-page' | 'embed';
 const MODES: { key: Mode; label: string; icon: React.ReactNode; placeholder: string; hint: string }[] = [
@@ -43,7 +44,7 @@ export default function DiscoveryPanel() {
 
   const { data: connData, isLoading: connLoading } = useQuery<{ connections: IgConnection[] }>({
     queryKey: ['discovery-connections'],
-    queryFn: () => apiRequest('/api/role-room/instagram/messaging/connections'),
+    queryFn: () => apiRequest('/api/role-room/instagram/connections'),
   });
   const connections = connData?.connections || [];
   useEffect(() => {
@@ -74,19 +75,15 @@ export default function DiscoveryPanel() {
 
   return (
     <Stack spacing={1.6} sx={{ p: { xs: 1, md: 2 } }}>
-      <Stack direction="row" spacing={1} alignItems="center">
-        <DiscoveryIcon sx={{ color: '#22d3ee' }} />
-        <Box sx={{ flex: 1 }}>
-          <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem' }}>Oppdag</Typography>
-          <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.84rem' }}>
-            Research på konkurrenter, samarbeidspartnere og innholdsidéer i kundens nisje.
-          </Typography>
-        </Box>
-        <ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg konto" />
-      </Stack>
+      <PanelHeader
+        icon={<DiscoveryIcon />}
+        title="Oppdag"
+        subtitle="Research på konkurrenter, samarbeidspartnere og innholdsidéer i kundens nisje."
+        actions={<ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg konto" />}
+      />
 
       {connLoading ? (
-        <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
+        <LoadingSkeleton variant="lines" />
       ) : connections.length === 0 ? (
         <Alert severity="info">Koble til kundens Facebook-/Instagram-konto først (under Feed-planner) for å bruke Oppdag.</Alert>
       ) : (
@@ -98,7 +95,7 @@ export default function DiscoveryPanel() {
                 key={m.key} clickable icon={m.icon as any} label={m.label}
                 onClick={() => { setMode(m.key); setInput(''); setQuery(''); }}
                 variant={mode === m.key ? 'filled' : 'outlined'}
-                sx={{ fontWeight: 700, bgcolor: mode === m.key ? 'rgba(34,211,238,0.18)' : 'transparent', color: mode === m.key ? '#22d3ee' : 'rgba(226,232,240,0.7)' }}
+                sx={{ fontWeight: 700, bgcolor: mode === m.key ? 'rgba(34,211,238,0.18)' : 'transparent', color: mode === m.key ? 'var(--role-cyan, #22d3ee)' : 'rgba(226,232,240,0.7)' }}
               />
             ))}
           </Stack>
@@ -179,7 +176,7 @@ export default function DiscoveryPanel() {
               <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
                 <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>{data.page.name || data.page.id}</Typography>
                 {data.page.verified === 'blue_verified' || data.page.verified === 'gray_verified' ? (
-                  <Chip size="small" label="Verifisert" sx={{ height: 18, fontSize: '0.66rem', bgcolor: 'rgba(56,189,248,0.2)', color: '#7dd3fc' }} />
+                  <Chip size="small" label="Verifisert" sx={{ height: 18, fontSize: '0.66rem', bgcolor: 'rgba(56,189,248,0.2)', color: 'var(--role-cyan, #7dd3fc)' }} />
                 ) : null}
               </Stack>
               <Stack direction="row" spacing={1.5} sx={{ mb: 0.6 }} flexWrap="wrap" useFlexGap>

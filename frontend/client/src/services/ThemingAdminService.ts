@@ -6,6 +6,7 @@
 
 import type { ProfessionBranding } from '../utils/theming-helper';
 import { PROFESSION_BRANDING as DEFAULT_BRANDING } from '../utils/theming-helper';
+import { apiRequest } from '@/lib/queryClient';
 
 export class ThemingAdminService {
   private customBranding: Record<string, Partial<ProfessionBranding>> = {};
@@ -114,9 +115,9 @@ export class ThemingAdminService {
   private saveToStorage(): void {
     try {
       // Mirror to server KV
-      fetch('/api/user/kv', {
-        method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ key: 'branding_customizations', value: this.customBranding })
+      apiRequest('/api/user/kv', {
+        method: 'POST',
+        body: JSON.stringify({ key: 'branding_customizations', value: this.customBranding }),
       }).catch(() => {});
       localStorage.setItem(this.storageKey, JSON.stringify(this.customBranding));
     } catch (error) {
@@ -129,9 +130,8 @@ export class ThemingAdminService {
    */
   private loadFromStorage(): void {
     // Try server first
-    fetch('/api/user/kv/branding_customizations', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
+    apiRequest('/api/user/kv/branding_customizations')
+      .then((j: { data?: Record<string, Partial<ProfessionBranding>> } | null) => {
         if (j?.data && typeof j.data === 'object') {
           this.customBranding = j.data;
           return;

@@ -12,10 +12,7 @@ import {
   Typography,
   Grid,
   Alert,
-  CircularProgress,
-  Chip,
   Divider,
-  Button,
   TextField,
   MenuItem,
   IconButton,
@@ -32,6 +29,7 @@ import {
   FilterList,
   Refresh,
 } from '@mui/icons-material';
+import { AdminButton, StatusChip, AdminLoading } from './design-system';
 
 interface BillingAnalyticsProps {
   compact?: boolean;
@@ -56,6 +54,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
     queryKey: ['/api/admin/analytics/cancellations', { dateRange }],
     queryFn: () => apiRequest(`/api/admin/analytics/cancellations?dateRange=${dateRange}`),
     refetchInterval: 30000, // Refresh every 30 seconds
+    staleTime: 15000, // unngå refetch-storm ved remount/segmentbytte
   });
 
   // Fetch refund analytics
@@ -63,6 +62,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
     queryKey: ['/api/admin/analytics/refunds', { dateRange, statusFilter }],
     queryFn: () => apiRequest(`/api/admin/analytics/refunds?dateRange=${dateRange}&status=${statusFilter}`),
     refetchInterval: 30000,
+    staleTime: 15000,
   });
 
   // Fetch revenue trends
@@ -70,6 +70,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
     queryKey: ['/api/admin/analytics/revenue-trends', { dateRange }],
     queryFn: () => apiRequest(`/api/admin/analytics/revenue-trends?dateRange=${dateRange}`),
     refetchInterval: 60000, // Refresh every minute
+    staleTime: 30000,
   });
 
   // Fetch churn rate
@@ -77,6 +78,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
     queryKey: ['/api/admin/analytics/churn-rate', { dateRange }],
     queryFn: () => apiRequest(`/api/admin/analytics/churn-rate?dateRange=${dateRange}`),
     refetchInterval: 60000,
+    staleTime: 30000,
   });
 
   // Refresh all analytics
@@ -110,7 +112,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
       [],
       ['Cancellation Reasons'],
       ['Reason','Count'],
-      ...(cancellationData?.data?.cancellationReasons || []).map((r: any) => [r.reason || 'No reason', r.count]),
+      ...(Array.isArray(cancellationData?.data?.cancellationReasons) ? cancellationData.data.cancellationReasons : []).map((r: any) => [r.reason || 'No reason', r.count]),
       [],
       ['=== REFUND STATISTICS ==='],
       ['Total Requests', refundData?.data?.totalRequests || 0],
@@ -122,7 +124,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
       [],
       ['=== REVENUE TRENDS ==='],
       ['Date','Revenue (NOK)','Subscriptions'],
-      ...(revenueData?.data?.trends || []).slice(0, 30).map((t: any) => [
+      ...(Array.isArray(revenueData?.data?.trends) ? revenueData.data.trends : []).slice(0, 30).map((t: any) => [
         new Date(t.date).toLocaleDateString('nb-NO'),
         t.revenue,
         t.subscriptionCount
@@ -238,7 +240,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
       doc.text('Cancellation Statistics', 14, yPosition);
       yPosition += 8;
 
-      const cancellationReasons = cancellationData?.data?.cancellationReasons || [];
+      const cancellationReasons = Array.isArray(cancellationData?.data?.cancellationReasons) ? cancellationData.data.cancellationReasons : [];
       if (cancellationReasons.length > 0) {
         autoTable(doc, {
           startY: yPosition,
@@ -375,16 +377,12 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
 
   // Keep hook order stable across loading and loaded renders.
   const revenueTrendsData = useMemo(() => {
-    if (!revenueData?.data?.trends) return [];
+    if (!Array.isArray(revenueData?.data?.trends)) return [];
     return revenueData.data.trends.slice().reverse(); // Reverse to show oldest first
   }, [revenueData]);
 
   if (loadingCancellations || loadingRefunds || loadingRevenue || loadingChurn) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <AdminLoading />;
   }
 
   // Revenue trends line chart with REAL DATA
@@ -485,7 +483,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
   };
 
   // Prepare cancellation reasons pie chart
-  const cancellationReasons = cancellationData?.data?.reasonBreakdown || [];
+  const cancellationReasons = Array.isArray(cancellationData?.data?.reasonBreakdown) ? cancellationData.data.reasonBreakdown : [];
   const cancellationPieOption = {
     title: {
       text: 'Kanselleringsårsaker',
@@ -522,7 +520,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
   };
 
   // Prepare plan breakdown bar chart
-  const planBreakdown = cancellationData?.data?.planBreakdown || [];
+  const planBreakdown = Array.isArray(cancellationData?.data?.planBreakdown) ? cancellationData.data.planBreakdown : [];
   const planBarOption = {
     title: {
       text: 'Kanselleringer per Plan',
@@ -594,37 +592,37 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
       {/* Toolbar with filters and export */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Stack direction="row" spacing={2} alignItems="center">
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="ghost"
             startIcon={<FilterList />}
             onClick={() => setShowFilters(!showFilters)}
           >
             Filtre
-          </Button>
+          </AdminButton>
           <Tooltip title="Oppdater data">
-            <IconButton onClick={handleRefresh} color="primary">
+            <IconButton onClick={handleRefresh} color="primary" aria-label="Oppdater data">
               <Refresh />
             </IconButton>
           </Tooltip>
         </Stack>
 
         <Stack direction="row" spacing={1}>
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
             startIcon={<FileDownload />}
             onClick={exportToCSV}
             size="small"
           >
             Eksporter CSV
-          </Button>
-          <Button
-            variant="outlined"
+          </AdminButton>
+          <AdminButton
+            tone="ghost"
             startIcon={<FileDownload />}
             onClick={exportToPDF}
             size="small"
           >
             Eksporter PDF
-          </Button>
+          </AdminButton>
         </Stack>
       </Box>
 
@@ -674,7 +672,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <Cancel color="error" />
+                <Cancel color="error" aria-hidden="true" />
                 <Typography variant="subtitle2" color="text.secondary">
                   Totale Kanselleringer
                 </Typography>
@@ -690,7 +688,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <MoneyOff color="warning" />
+                <MoneyOff color="warning" aria-hidden="true" />
                 <Typography variant="subtitle2" color="text.secondary">
                   Refunderingsforespørsler
                 </Typography>
@@ -698,9 +696,9 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
               <Typography variant="h5" sx={{ fontWeight: 700, color: '#ff9800' }}>
                 {refundStats.totalRequests || 0}
               </Typography>
-              <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                <Chip label={`${refundStats.pending || 0} ventende`} size="small" color="warning" />
-                <Chip label={`${refundStats.approved || 0} godkjent`} size="small" color="success" />
+              <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                <StatusChip label={`${refundStats.pending || 0} ventende`} tone="warning" />
+                <StatusChip label={`${refundStats.approved || 0} godkjent`} tone="success" />
               </Box>
             </CardContent>
           </Card>
@@ -710,7 +708,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <TrendingDown color="error" />
+                <TrendingDown color="error" aria-hidden="true" />
                 <Typography variant="subtitle2" color="text.secondary">
                   Totalt Refundert
                 </Typography>
@@ -726,7 +724,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <TrendingUp color="info" />
+                <TrendingUp color="info" aria-hidden="true" />
                 <Typography variant="subtitle2" color="text.secondary">
                   Gjennomsnittlig Refundering
                 </Typography>
@@ -743,7 +741,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           <Card sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <TrendingUp sx={{ color: 'white' }} />
+                <TrendingUp sx={{ color: 'white' }} aria-hidden="true" />
                 <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
                   Månedlig Tilbakevendende Inntekt (MRR)
                 </Typography>
@@ -762,7 +760,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           <Card sx={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <TrendingDown sx={{ color: 'white' }} />
+                <TrendingDown sx={{ color: 'white' }} aria-hidden="true" />
                 <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
                   Churn Rate
                 </Typography>
@@ -781,7 +779,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           <Card sx={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <TrendingUp sx={{ color: 'white' }} />
+                <TrendingUp sx={{ color: 'white' }} aria-hidden="true" />
                 <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
                   Customer Lifetime Value (CLV)
                 </Typography>
@@ -878,30 +876,27 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                       <Typography variant="body2" color="text.secondary">
                         Godkjent
                       </Typography>
-                      <Chip
-                        label={refundStats.approved || 0}
-                        size="small"
-                        color="success"
+                      <StatusChip
+                        label={`${refundStats.approved || 0}`}
+                        tone="success"
                       />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Typography variant="body2" color="text.secondary">
                         Ventende
                       </Typography>
-                      <Chip
-                        label={refundStats.pending || 0}
-                        size="small"
-                        color="warning"
+                      <StatusChip
+                        label={`${refundStats.pending || 0}`}
+                        tone="warning"
                       />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Typography variant="body2" color="text.secondary">
                         Avvist
                       </Typography>
-                      <Chip
-                        label={refundStats.rejected || 0}
-                        size="small"
-                        color="error"
+                      <StatusChip
+                        label={`${refundStats.rejected || 0}`}
+                        tone="error"
                       />
                     </Box>
                     <Divider />

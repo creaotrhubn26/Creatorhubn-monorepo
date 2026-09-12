@@ -19,7 +19,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   ToggleButtonGroup,
@@ -29,7 +28,11 @@ import {
   Tooltip,
   Badge,
   Grid,
+  ThemeProvider,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   EmojiEvents,
   Star,
@@ -40,11 +43,13 @@ import {
   Assignment,
   Timer,
   LocalFireDepartment,
+  Search,
 } from '@mui/icons-material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useTheming } from '@/utils/theming-helper';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { AdminCard, AdminTableContainer, AdminEmpty } from './design-system';
 
 interface LeaderboardEntry {
   rank: number;
@@ -65,9 +70,11 @@ interface LeaderboardEntry {
 export default function TestingLeaderboard() {
   const queryClient = useQueryClient();
   const theming = useTheming('prototype_tester');
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const { auth } = useEnhancedMasterIntegration();
 
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('week');
+  const [search, setSearch] = useState("");
 
   // Fetch leaderboard
   const { data: leaderboard = [], isLoading } = useQuery({
@@ -76,6 +83,7 @@ export default function TestingLeaderboard() {
       const headers = await auth.getAuthHeader();
       return apiRequest(`/api/admin/testing-leaderboard?range=${timeRange}`, { headers });
     },
+    select: (data) => (Array.isArray(data) ? data : []),
     staleTime: 2 * 60 * 1000,
   });
 
@@ -94,12 +102,13 @@ export default function TestingLeaderboard() {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
         <Stack direction="row" spacing={2} alignItems="center">
-          <EmojiEvents sx={{ fontSize: 32, color: '#ffd700' }} />
+          <EmojiEvents aria-hidden sx={{ fontSize: 32, color: '#ffd700' }} />
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 600}}>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 600}}>
               Testing Leaderboard
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -120,7 +129,7 @@ export default function TestingLeaderboard() {
             <ToggleButton value="all">All Time</ToggleButton>
           </ToggleButtonGroup>
           
-          <IconButton onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/admin/testing-leaderboard'] })}>
+          <IconButton aria-label="Oppdater ledertavle" onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/admin/testing-leaderboard'] })}>
             <Refresh />
           </IconButton>
         </Stack>
@@ -227,13 +236,24 @@ export default function TestingLeaderboard() {
       )}
 
       {/* Full Leaderboard Table */}
-      <Card>
-        <CardContent>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600}}>
-            Full Rankings
-          </Typography>
-          
-          <TableContainer>
+      <AdminCard title="Full Rankings" disablePadding>
+          <Box sx={{ p: 2, pb: 0 }}>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Søk etter navn eller profesjon …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
+          <AdminTableContainer ariaLabel="Full Rankings">
             <Table>
               <TableHead>
                 <TableRow>
@@ -248,7 +268,9 @@ export default function TestingLeaderboard() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {leaderboard.map((tester: LeaderboardEntry) => (
+                {leaderboard.filter((tester: LeaderboardEntry) =>
+                  `${tester.name ?? ''} ${tester.assignedProfession ?? ''} ${tester.profession ?? ''}`.toLowerCase().includes(search.toLowerCase())
+                ).map((tester: LeaderboardEntry) => (
                   <TableRow 
                     key={tester.testerId}
                     sx={{
@@ -268,8 +290,8 @@ export default function TestingLeaderboard() {
                     </TableCell>
                     <TableCell>
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Avatar sx={{ width: 32, height: 32, bgcolor: theming.colors.primary }}>
-                          <Science sx={{ fontSize: 18 }} />
+                        <Avatar sx={{ width: 32, height: 32, bgcolor: themeColors.primary }}>
+                          <Science aria-hidden sx={{ fontSize: 18 }} />
                         </Avatar>
                         <Box>
                           <Typography variant="body2" sx={{ fontWeight: 600}}>
@@ -277,7 +299,7 @@ export default function TestingLeaderboard() {
                           </Typography>
                           {tester.streak > 0 && (
                             <Typography variant="caption" color="error.main">
-                              <LocalFireDepartment sx={{ fontSize: 12, verticalAlign: 'middle' }} />
+                              <LocalFireDepartment aria-hidden sx={{ fontSize: 12, verticalAlign: 'middle' }} />
                               {tester.streak} day streak
                             </Typography>
                           )}
@@ -288,7 +310,7 @@ export default function TestingLeaderboard() {
                       <Chip label={tester.assignedProfession} size="small" />
                     </TableCell>
                     <TableCell align="right">
-                      <Typography variant="body2" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+                      <Typography variant="body2" sx={{ fontWeight: 'bold', color: themeColors.primary }}>
                         {tester.totalScore.toLocaleString()}
                       </Typography>
                     </TableCell>
@@ -297,7 +319,7 @@ export default function TestingLeaderboard() {
                     <TableCell align="right">{tester.testingHours}h</TableCell>
                     <TableCell>
                       <Stack direction="row" spacing={0.5}>
-                        {tester.achievements.slice(0, 3).map((achievement, index) => (
+                        {(Array.isArray(tester.achievements) ? tester.achievements : []).slice(0, 3).map((achievement, index) => (
                           <Tooltip key={index} title={achievement}>
                             <Star sx={{ fontSize: 16, color: '#ffc107' }} />
                           </Tooltip>
@@ -313,16 +335,14 @@ export default function TestingLeaderboard() {
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
-          
+          </AdminTableContainer>
+
           {leaderboard.length === 0 && (
-            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-              No testers in leaderboard yet
-            </Typography>
+            <AdminEmpty title="No testers in leaderboard yet" />
           )}
-        </CardContent>
-      </Card>
+      </AdminCard>
     </Box>
+    </ThemeProvider>
   );
 }
 

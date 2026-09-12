@@ -31,11 +31,18 @@ import {
   runClaudeAgent,
   type RunClaudeAgentResult,
 } from './role-room-agent-claude.js';
+import { buildTikTokMcpConfig } from './role-room-tiktok-mcp.js';
+import { buildMetaMcpConfig } from './role-room-meta-mcp.js';
+import { buildGoogleMcpConfig } from './role-room-google-mcp.js';
+import { mergeAgentMcpConfigs } from './role-room-agent-mcp.js';
+import { resolveAdsAccessToken } from './role-room-ads-oauth.js';
 import {
   ROLE_ROOM_AGENT_SYSTEM_PROMPT,
   ROLE_ROOM_AGENT_TOOLS,
   ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS,
 } from './role-room-agent-definition.js';
+import { buildWorkspaceContextBlock } from './role-room-agent-workspace-context.js';
+import { buildMarketingContextBlock } from './role-room-agent-marketing-context.js';
 import {
   buildBackendPseudonymMap,
   countScrubbed,
@@ -316,7 +323,7 @@ export async function invokeRoleRoomAgent(
       threadId: resolvedThreadId,
       role: 'user',
       text: input.userMessage,
-    });
+    }).catch((e: unknown) => console.error("[agent-runner] appendMessage failed:", e));
   }
 
   const cacheEnabled = process.env.ROLE_ROOM_AGENT_CACHE !== 'off';
@@ -360,7 +367,7 @@ export async function invokeRoleRoomAgent(
           role: 'assistant',
           text: cachedResponse.text,
           response: cachedResponse,
-        });
+        }).catch((e: unknown) => console.error("[agent-runner] appendMessage failed:", e));
       }
       return cachedResponse;
     }
@@ -369,13 +376,60 @@ export async function invokeRoleRoomAgent(
   const modelTier = pickModelForMessage(input.userMessage);
   const modelId = modelIdForTier(modelTier);
 
+  // Aggregate, PII-free cross-tab status so the agent can answer operational
+  // questions (Inbox/Leads/Analytics/Feed) without the producer pasting numbers.
+  // Best-effort: a null block simply omits it.
+  const workspaceBlock = await buildWorkspaceContextBlock(pool, { userId, projectId });
+  // Markedsførings-/merkevare-bevissthet (Business DNA, katalog, segmenter+ROAS,
+  // GEO) — gjør agenten kjent med alt vi har bygd. Best-effort, null utelates.
+  const marketingBlock = await buildMarketingContextBlock(pool, { userId, projectId });
+  const freshSystemBlock =
+    [workspaceBlock, marketingBlock].filter(Boolean).join('\n\n') || undefined;
+
+  // Spor B: attach ad-platform MCP connectors when enabled AND the producer has
+  // a connected account. Read-only by default (reporting/get tools) — writes are
+  // opt-in behind a future confirmation UX. Each platform is flag-gated so
+  // production is unaffected until explicitly turned on.
+  let tiktokMcp = null;
+  if (process.env.ROLE_ROOM_TIKTOK_MCP_ENABLED === 'true') {
+    const tiktokToken = await resolveAdsAccessToken(pool, 'tiktok', userId).catch(() => null);
+    tiktokMcp = buildTikTokMcpConfig({ authorizationToken: tiktokToken });
+  }
+  let metaMcp = null;
+  if (process.env.ROLE_ROOM_META_MCP_ENABLED === 'true') {
+    // Meta MCP uses the project's Meta Business token (the existing IG/Meta
+    // connection), not the ads-oauth table.
+    const metaToken = await pool
+      .query<{ access_token: string | null }>(
+        `SELECT access_token FROM role_room_instagram_connections
+          WHERE project_id = $1 ORDER BY connected_at DESC LIMIT 1`,
+        [projectId],
+      )
+      .then((r) => (typeof r.rows[0]?.access_token === 'string' ? r.rows[0].access_token : null))
+      .catch(() => null);
+    metaMcp = buildMetaMcpConfig({ authorizationToken: metaToken });
+  }
+  let googleMcp = null;
+  if (process.env.ROLE_ROOM_GOOGLE_MCP_ENABLED === 'true') {
+    // Google's Ads MCP is self-hosted (Cloud Run) — the URL + optional bearer
+    // come from env; the server itself holds the Google Ads credentials.
+    googleMcp = buildGoogleMcpConfig({
+      serverUrl: process.env.GOOGLE_ADS_MCP_URL,
+      authorizationToken: process.env.GOOGLE_ADS_MCP_TOKEN,
+    });
+  }
+  const mcpConfig = mergeAgentMcpConfigs([tiktokMcp, metaMcp, googleMcp]);
+
   try {
     const raw = await runClaudeAgent({
       cachedSystem,
+      freshSystem: freshSystemBlock,
       userMessage: pseudonymizedUserMessage,
       tools: ROLE_ROOM_AGENT_TOOLS,
       maxTokens: ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS,
       model: modelId,
+      userId,
+      mcpConfig,
     });
 
     // De-pseudonymize text so the UI renders real names to the user (who
@@ -446,7 +500,7 @@ export async function invokeRoleRoomAgent(
         role: 'assistant',
         text: depseudonymized,
         response,
-      });
+      }).catch((e: unknown) => console.error("[agent-runner] appendMessage failed:", e));
     }
 
     return response;

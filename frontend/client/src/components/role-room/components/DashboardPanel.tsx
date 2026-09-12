@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useId, useMemo, useState, useEffect, memo, lazy, Suspense } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import {
   Box,
   Typography,
@@ -214,9 +215,9 @@ function DashboardPanelInner({
     }, {});
     return [
       { status: 'confirmed', color: '#10b981', label: 'Bekreftet' },
-      { status: 'selected', color: '#8b5cf6', label: 'Valgt' },
+      { status: 'selected', color: 'var(--role-violet, #8b5cf6)', label: 'Valgt' },
       { status: 'shortlist', color: '#ffb800', label: 'Shortlist' },
-      { status: 'requested', color: '#00d4ff', label: 'Forespurt' },
+      { status: 'requested', color: 'var(--role-cyan, #00d4ff)', label: 'Forespurt' },
       { status: 'pending', color: '#6b7280', label: 'Venter' },
       { status: 'rejected', color: '#ef4444', label: 'Avvist' },
     ].map(s => ({ ...s, count: counts[s.status] || 0 }))
@@ -232,9 +233,9 @@ function DashboardPanelInner({
     }, {});
     return [
       { status: 'pending',   label: 'Ingen status', color: '#6b7280', tabIndex: 3 },
-      { status: 'requested', label: 'Forespurt',    color: '#00d4ff', tabIndex: 3 },
+      { status: 'requested', label: 'Forespurt',    color: 'var(--role-cyan, #00d4ff)', tabIndex: 3 },
       { status: 'shortlist', label: 'Vurderes',     color: '#ffb800', tabIndex: 3 },
-      { status: 'selected',  label: 'Valgt',        color: '#8b5cf6', tabIndex: 3 },
+      { status: 'selected',  label: 'Valgt',        color: 'var(--role-violet, #8b5cf6)', tabIndex: 3 },
       { status: 'confirmed', label: 'Bekreftet',    color: '#10b981', tabIndex: 3 },
       { status: 'rejected',  label: 'Avvist',       color: '#ef4444', tabIndex: 3 },
     ].map(s => ({ ...s, count: counts[s.status] || 0 }));
@@ -265,7 +266,7 @@ function DashboardPanelInner({
   ];
 
   const _quickLinks = [
-    { title: 'Team', description: 'Administrer crew', color: '#00d4ff', icon: TeamIcon, tabIndex: 7 },
+    { title: 'Team', description: 'Administrer crew', color: 'var(--role-cyan, #00d4ff)', icon: TeamIcon, tabIndex: 7 },
     { title: 'Lokasjoner', description: 'Lokasjoner', color: '#4caf50', icon: LocationIcon, tabIndex: 5 },
     { title: 'Utstyr', description: 'Rekvisitter', color: '#9333ea', icon: PropsIcon, tabIndex: 8 },
     { title: 'Kamera', description: 'Shot lists', color: '#e91e63', icon: ShotListIcon, tabIndex: 9 },
@@ -292,7 +293,7 @@ function DashboardPanelInner({
               justifyContent: 'center',
             }}
           >
-            <DashboardIcon sx={{ fontSize: { xs: 24, sm: 28, md: 26, lg: 30, xl: 36 }, color: '#8b5cf6' }} />
+            <DashboardIcon sx={{ fontSize: { xs: 24, sm: 28, md: 26, lg: 30, xl: 36 }, color: 'var(--role-violet, #8b5cf6)' }} />
           </Box>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             {isEditingTitle ? (
@@ -322,7 +323,7 @@ function DashboardPanelInner({
                         borderColor: 'rgba(255,255,255,0.5)',
                       },
                       '&.Mui-focused fieldset': {
-                        borderColor: '#00d4ff',
+                        borderColor: 'var(--role-cyan, #00d4ff)',
                         borderWidth: 2,
                       },
                     },
@@ -333,7 +334,7 @@ function DashboardPanelInner({
                   size="small"
                   disabled={isSavingTitle}
                   sx={{
-                    color: '#00d4ff',
+                    color: 'var(--role-cyan, #00d4ff)',
                     minWidth: TOUCH_TARGET_SIZE,
                     minHeight: TOUCH_TARGET_SIZE,
                     '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
@@ -341,7 +342,7 @@ function DashboardPanelInner({
                   }}
                   aria-label="Lagre tittel"
                 >
-                  {isSavingTitle ? <CircularProgress size={20} sx={{ color: '#00d4ff' }} /> : <SaveIcon />}
+                  {isSavingTitle ? <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #00d4ff)' }} /> : <SaveIcon />}
                 </IconButton>
                 <IconButton
                   onClick={handleCancelEdit}
@@ -378,7 +379,7 @@ function DashboardPanelInner({
                         minWidth: TOUCH_TARGET_SIZE,
                         minHeight: TOUCH_TARGET_SIZE,
                         '&:hover': { 
-                          color: '#00d4ff',
+                          color: 'var(--role-cyan, #00d4ff)',
                           bgcolor: 'rgba(0,212,255,0.1)' 
                         },
                         ...focusVisibleStyles,
@@ -421,7 +422,7 @@ function DashboardPanelInner({
                         borderColor: 'rgba(255,255,255,0.3)',
                       },
                       '&.Mui-focused fieldset': {
-                        borderColor: '#00d4ff',
+                        borderColor: 'var(--role-cyan, #00d4ff)',
                         borderWidth: 1,
                       },
                     },
@@ -432,7 +433,7 @@ function DashboardPanelInner({
                   size="small"
                   disabled={isSavingDescription}
                   sx={{
-                    color: '#00d4ff',
+                    color: 'var(--role-cyan, #00d4ff)',
                     minWidth: TOUCH_TARGET_SIZE,
                     minHeight: TOUCH_TARGET_SIZE,
                     '&:hover': { bgcolor: 'rgba(0,212,255,0.1)' },
@@ -440,7 +441,7 @@ function DashboardPanelInner({
                   }}
                   aria-label="Lagre beskrivelse"
                 >
-                  {isSavingDescription ? <CircularProgress size={20} sx={{ color: '#00d4ff' }} /> : <SaveIcon />}
+                  {isSavingDescription ? <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #00d4ff)' }} /> : <SaveIcon />}
                 </IconButton>
                 <IconButton
                   onClick={handleCancelEditDescription}
@@ -472,7 +473,7 @@ function DashboardPanelInner({
                         minWidth: TOUCH_TARGET_SIZE,
                         minHeight: TOUCH_TARGET_SIZE,
                         '&:hover': { 
-                          color: '#00d4ff',
+                          color: 'var(--role-cyan, #00d4ff)',
                           bgcolor: 'rgba(0,212,255,0.1)' 
                         },
                         ...focusVisibleStyles,
@@ -499,7 +500,7 @@ function DashboardPanelInner({
               p: 0.75,
               minWidth: TOUCH_TARGET_SIZE,
               minHeight: TOUCH_TARGET_SIZE,
-              '&:hover': { color: '#8b5cf6', borderColor: '#8b5cf6', bgcolor: 'rgba(139,92,246,0.1)' },
+              '&:hover': { color: 'var(--role-violet, #8b5cf6)', borderColor: 'var(--role-violet, #8b5cf6)', bgcolor: 'rgba(139,92,246,0.1)' },
               ...focusVisibleStyles,
             }}
             aria-label="Åpne guide"
@@ -519,7 +520,7 @@ function DashboardPanelInner({
               minHeight: TOUCH_TARGET_SIZE,
               px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
               py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-              '&:hover': { borderColor: '#8b5cf6', bgcolor: 'rgba(139,92,246,0.1)' },
+              '&:hover': { borderColor: 'var(--role-violet, #8b5cf6)', bgcolor: 'rgba(139,92,246,0.1)' },
               ...focusVisibleStyles,
             }}
           >
@@ -827,7 +828,7 @@ function DashboardPanelInner({
               }}
             >
               <BoltIcon
-                sx={{ color: '#8b5cf6', fontSize: { xs: 20, sm: 24 } }}
+                sx={{ color: 'var(--role-violet, #8b5cf6)', fontSize: { xs: 20, sm: 24 } }}
               />
             </Box>
             <Typography
@@ -848,7 +849,7 @@ function DashboardPanelInner({
                 size="small"
                 sx={{
                   bgcolor: 'rgba(139,92,246,0.2)',
-                  color: '#8b5cf6',
+                  color: 'var(--role-violet, #8b5cf6)',
                   height: { xs: 22, sm: 26 },
                   fontSize: { xs: '0.7rem', sm: '0.8rem' },
                   fontWeight: 600,
@@ -1070,6 +1071,7 @@ function DashboardPanelInner({
       {/* Kanban Board */}
       <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(132,204,22,0.2)', mt: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 } }}>
         <CardContent sx={{ p: 0 }}>
+          <ErrorBoundary componentName="dashboard-kanban-panel">
           <Suspense fallback={<CircularProgress sx={{ color: '#84cc16', display: 'block', mx: 'auto', my: 4 }} />}>
             <KanbanPanelLazy
               project={project}
@@ -1081,6 +1083,7 @@ function DashboardPanelInner({
               onNavigateToTab={onNavigateToTab}
             />
           </Suspense>
+          </ErrorBoundary>
         </CardContent>
       </Card>
     </Box>

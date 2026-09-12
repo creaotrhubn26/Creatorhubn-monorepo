@@ -44,7 +44,6 @@ import {
 import { useSnackbar } from 'notistack';
 import {
   calendarEventsApi,
-  crewConflictsApi,
   crewNotificationsApi,
   candidatesApi,
   crewApi,
@@ -66,7 +65,9 @@ import { alpha } from '@mui/material/styles';
 import { MonthGridView } from './calendar/MonthGridView';
 import { CalendarMonthHeader } from './calendar/CalendarMonthHeader';
 import { CalendarStatsBar } from './calendar/CalendarStatsBar';
-import { CrewCalendarView, type CrewCalendarMember } from './calendar/CrewCalendarView';
+import { CrewCalendarView, type CrewCalendarMember, type CrewDayAvailability } from './calendar/CrewCalendarView';
+import { useProjectMemberAvailability } from '../hooks/useProjectMemberAvailability';
+import { computeCrewConflictsFromAvailability } from '../utils/crewAvailabilitySync';
 
 interface Candidate {
   id: string;
@@ -77,6 +78,8 @@ interface Crew {
   id: string;
   name: string;
   role?: string;
+  /** Brukes til å matche crew-raden mot medlemmets egen tilgjengelighets-kalender. */
+  email?: string;
 }
 
 interface Location {
@@ -105,9 +108,9 @@ interface ProductionCalendarPanelProps {
 
 const EVENT_TYPES = [
   { value: 'audition', label: 'Audition', icon: <TheatersIcon />, color: '#f59e0b' },
-  { value: 'selection', label: 'Utvelgelse', icon: <HowToRegIcon />, color: '#22d3ee' },
+  { value: 'selection', label: 'Utvelgelse', icon: <HowToRegIcon />, color: 'var(--role-cyan, #22d3ee)' },
   { value: 'fitting', label: 'Kostyme/Fitting', icon: <CheckroomIcon />, color: '#ec4899' },
-  { value: 'rehearsal', label: 'Prøve', icon: <GroupsIcon />, color: '#8b5cf6' },
+  { value: 'rehearsal', label: 'Prøve', icon: <GroupsIcon />, color: 'var(--role-violet, #8b5cf6)' },
   { value: 'shooting', label: 'Opptak', icon: <MovieIcon />, color: '#10b981' },
   { value: 'general', label: 'Generelt', icon: <EventIcon />, color: '#6b7280' },
 ];
@@ -287,6 +290,31 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   const [equipmentConflicts, setEquipmentConflicts] = useState<Map<string, EquipmentConflict[]>>(new Map());
   const reopenSignalRef = useRef(0);
 
+  // Tilgjengelighet fra crew-medlemmenes egne kalendere (samme delte kilde som
+  // Crew Management) — toner Gantt-cellene så produsenten ser hvem som er ledig.
+  const { availabilityByUser, emailToUser } = useProjectMemberAvailability(projectId);
+  // crewId → { 'YYYY-MM-DD': status } bygget ved å matche crew-e-post mot medlem.
+  const crewAvailabilityByDay = useMemo(() => {
+    const out = new Map<string, Record<string, CrewDayAvailability>>();
+    if (emailToUser.size === 0) return out;
+    for (const member of crew) {
+      const em = (member.email || '').toLowerCase().trim();
+      if (!em) continue;
+      const userId = emailToUser.get(em);
+      if (!userId) continue;
+      const overlay = availabilityByUser.get(userId);
+      if (!overlay || overlay.cells.length === 0) continue;
+      const byDay: Record<string, CrewDayAvailability> = {};
+      for (const c of overlay.cells) {
+        if (c.availability === 'available' || c.availability === 'unavailable' || c.availability === 'hold') {
+          byDay[c.date] = c.availability;
+        }
+      }
+      out.set(member.id, byDay);
+    }
+    return out;
+  }, [crew, availabilityByUser, emailToUser]);
+
   const mentionCandidates = useMemo(
     () => [
       ...candidates.map((candidate) => candidate.name),
@@ -421,6 +449,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
             id: member.id,
             name: member.name,
             role: resolveCrewRole(member),
+            email: (member as { contactInfo?: { email?: string } }).contactInfo?.email,
           }))
         : [];
     const apiLocations =
@@ -492,19 +521,19 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
     return { conflicts, conflictingIds };
   };
 
-  const fetchCrewConflicts = async (crewIds: string[], start: string, end: string) => {
-    const conflicts = new Map<string, CrewConflict[]>();
-    for (const crewId of crewIds) {
-      try {
-        const result = await crewConflictsApi.check(crewId, start.split('T')[0], end.split('T')[0]);
-        if (result.hasConflicts) {
-          conflicts.set(crewId, result.conflicts);
-        }
-      } catch (error) {
-        console.error('Failed to check conflicts for crew:', crewId, error);
-      }
-    }
-    return conflicts;
+  const fetchCrewConflicts = (crewIds: string[], start: string, end: string): Map<string, CrewConflict[]> => {
+    // Konflikter beregnes fra ALLEREDE-lastet medlems-tilgjengelighet
+    // (useProjectMemberAvailability) i stedet for det aldri-bygde
+    // `/crew/:id/conflicts`-endepunktet (som ga 404 → konflikt-varsler viste
+    // aldri). Crew mappes til medlem via e-post.
+    return computeCrewConflictsFromAvailability(crewIds, start.split('T')[0], end.split('T')[0], {
+      crew: crew.map((member) => ({
+        id: member.id,
+        email: (member as { contactInfo?: { email?: string } }).contactInfo?.email ?? null,
+      })),
+      availabilityByUser,
+      emailToUser,
+    });
   };
 
   useEffect(() => {
@@ -1038,13 +1067,14 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                 : (m as { status?: string }).status === 'pending' ? '#f59e0b'
                 : (m as { status?: string }).status === 'invited' ? '#60a5fa'
                 : null,
+              availabilityByDay: crewAvailabilityByDay.get(m.id),
             }))}
             events={events}
             eventTypeConfig={{
               audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
-              selection: { label: 'Utvelgelse', color: '#22d3ee', icon: <HowToRegIcon /> },
+              selection: { label: 'Utvelgelse', color: 'var(--role-cyan, #22d3ee)', icon: <HowToRegIcon /> },
               fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
-              rehearsal: { label: 'Prøve', color: '#8b5cf6', icon: <GroupsIcon /> },
+              rehearsal: { label: 'Prøve', color: 'var(--role-violet, #8b5cf6)', icon: <GroupsIcon /> },
               shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },
               general: { label: 'Generelt', color: '#6b7280', icon: <EventIcon /> },
             }}
@@ -1063,9 +1093,9 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
           events={events}
           eventTypeConfig={{
             audition: { label: 'Audition', color: '#f59e0b', icon: <TheatersIcon /> },
-            selection: { label: 'Utvelgelse', color: '#22d3ee', icon: <HowToRegIcon /> },
+            selection: { label: 'Utvelgelse', color: 'var(--role-cyan, #22d3ee)', icon: <HowToRegIcon /> },
             fitting: { label: 'Kostyme/Fitting', color: '#ec4899', icon: <CheckroomIcon /> },
-            rehearsal: { label: 'Prøve', color: '#8b5cf6', icon: <GroupsIcon /> },
+            rehearsal: { label: 'Prøve', color: 'var(--role-violet, #8b5cf6)', icon: <GroupsIcon /> },
             shooting: { label: 'Opptak', color: '#10b981', icon: <MovieIcon /> },
             general: { label: 'Generelt', color: '#6b7280', icon: <EventIcon /> },
           }}
@@ -1189,7 +1219,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
 
                         {eventCandidates.length > 0 && (
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <PersonIcon sx={{ fontSize: 14, color: '#8b5cf6' }} />
+                            <PersonIcon sx={{ fontSize: 14, color: 'var(--role-violet, #8b5cf6)' }} />
                             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
                               {eventCandidates.map(c => c.name).join(', ')}
                             </Typography>

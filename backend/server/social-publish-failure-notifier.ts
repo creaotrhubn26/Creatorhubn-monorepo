@@ -29,7 +29,7 @@ interface NotifyInput {
 async function lookupUserEmail(pool: Pool, userId: string): Promise<string | null> {
   try {
     const result = await pool.query<{ email: string | null }>(
-      `SELECT email FROM creatorhub_users WHERE id = $1 LIMIT 1`,
+      `SELECT email FROM users WHERE id = $1 LIMIT 1`,
       [userId],
     );
     const email = result.rows[0]?.email;

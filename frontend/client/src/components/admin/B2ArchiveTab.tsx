@@ -14,13 +14,11 @@ import {
   Alert,
   Box,
   Breadcrumbs,
-  Button,
   Chip,
-  CircularProgress,
   IconButton,
+  InputAdornment,
   LinearProgress,
   Link,
-  Paper,
   Stack,
   Table,
   TableBody,
@@ -33,14 +31,19 @@ import {
   Typography,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import SearchIcon from '@mui/icons-material/Search';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import DownloadIcon from '@mui/icons-material/Download';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { apiRequest } from '@/lib/queryClient';
 import { formatBytes } from '@/lib/utils';
+import {
+  AdminCard,
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+} from './design-system';
 
 interface HealthResponse {
   connected: boolean;
@@ -93,6 +96,7 @@ export default function B2ArchiveTab(): JSX.Element {
   const [continuationToken, setContinuationToken] = useState<string | undefined>();
   const [truncated, setTruncated] = useState(false);
   const [prefix, setPrefix] = useState('');
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshingUsage, setRefreshingUsage] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -136,7 +140,8 @@ export default function B2ArchiveTab(): JSX.Element {
         const data: FilesResponse = await apiRequest(
           `/api/admin/b2-archive/files?${params.toString()}`,
         );
-        setFiles((prev) => (resetPagination ? data.files : [...prev, ...data.files]));
+        const nextFiles = Array.isArray(data.files) ? data.files : [];
+        setFiles((prev) => (resetPagination ? nextFiles : [...prev, ...nextFiles]));
         setTruncated(data.truncated);
         setContinuationToken(data.nextContinuationToken);
       } catch (e: any) {
@@ -231,6 +236,12 @@ export default function B2ArchiveTab(): JSX.Element {
     [prefix, loadFiles, loadUsage],
   );
 
+  const filteredFiles = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return files;
+    return files.filter((file) => file.key.toLowerCase().includes(q));
+  }, [files, search]);
+
   const prefixCrumbs = useMemo(() => {
     if (!prefix) return [];
     const parts = prefix.replace(/\/$/, '').split('/');
@@ -243,7 +254,7 @@ export default function B2ArchiveTab(): JSX.Element {
   return (
     <Box sx={{ p: { xs: 1.5, sm: 2.5 } }}>
       <Box sx={{ mb: 2 }}>
-        <Typography variant="h5" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography variant="h5" component="h2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
           B2-arkiv (Creatorhub AS)
         </Typography>
         <Typography variant="body2" color="text.secondary">
@@ -264,20 +275,15 @@ export default function B2ArchiveTab(): JSX.Element {
           </Alert>
         )}
 
-        <Paper sx={{ p: 2 }}>
+        <AdminCard>
           <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
             <Stack direction="row" alignItems="center" spacing={1.5}>
               {health?.connected ? (
-                <Chip size="small" color="success" icon={<CheckCircleOutlineIcon />} label="Tilkoblet" />
+                <StatusChip tone="success" label="Tilkoblet" />
               ) : health?.configured ? (
-                <Chip
-                  size="small"
-                  color="warning"
-                  icon={<ErrorOutlineIcon />}
-                  label="Konfigurert, ikke tilkoblet"
-                />
+                <StatusChip tone="warning" label="Konfigurert, ikke tilkoblet" />
               ) : (
-                <Chip size="small" color="error" icon={<ErrorOutlineIcon />} label="Ikke konfigurert" />
+                <StatusChip tone="error" label="Ikke konfigurert" />
               )}
               <Box>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -288,20 +294,20 @@ export default function B2ArchiveTab(): JSX.Element {
                 </Typography>
               </Box>
             </Stack>
-            <IconButton onClick={() => void loadHealth()} size="small">
+            <IconButton onClick={() => void loadHealth()} size="small" aria-label="Oppdater tilkoblingsstatus">
               <RefreshIcon fontSize="small" />
             </IconButton>
           </Stack>
-        </Paper>
+        </AdminCard>
 
-        <Paper sx={{ p: 2 }}>
+        <AdminCard>
           <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
             <Box>
               <Typography variant="caption" color="text.secondary">
                 Bruk
               </Typography>
               {refreshingUsage ? (
-                <LinearProgress sx={{ mt: 1, width: 200 }} />
+                <LinearProgress sx={{ mt: 1, width: 200, maxWidth: '100%' }} />
               ) : (
                 <Stack direction="row" spacing={3} alignItems="baseline" sx={{ mt: 0.5 }}>
                   <Typography variant="h5" sx={{ fontWeight: 700 }}>
@@ -314,16 +320,17 @@ export default function B2ArchiveTab(): JSX.Element {
                 </Stack>
               )}
             </Box>
-            <Button
+            <AdminButton
+              tone="ghost"
               size="small"
               startIcon={<RefreshIcon />}
               onClick={() => void loadUsage(true)}
               disabled={refreshingUsage}
             >
               Beregn på nytt
-            </Button>
+            </AdminButton>
           </Stack>
-        </Paper>
+        </AdminCard>
 
         <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexWrap: 'wrap' }}>
           <TextField
@@ -335,19 +342,20 @@ export default function B2ArchiveTab(): JSX.Element {
             onKeyDown={(e) => e.key === 'Enter' && handleSearchPrefix()}
             sx={{ minWidth: 280 }}
           />
-          <Button variant="outlined" onClick={handleSearchPrefix} disabled={loading}>
+          <AdminButton tone="secondary" onClick={handleSearchPrefix} disabled={loading}>
             Vis
-          </Button>
+          </AdminButton>
           <Box sx={{ flex: 1 }} />
           <input ref={fileInputRef} type="file" hidden onChange={handleFileSelected} />
-          <Button
-            variant="contained"
-            startIcon={uploading ? <CircularProgress size={16} /> : <CloudUploadIcon />}
+          <AdminButton
+            tone="primary"
+            loading={uploading}
+            startIcon={<CloudUploadIcon />}
             onClick={handleUploadClick}
             disabled={uploading || !health?.connected}
           >
             {uploading ? 'Laster opp…' : 'Last opp fil'}
-          </Button>
+          </AdminButton>
         </Stack>
 
         {prefixCrumbs.length > 0 && (
@@ -380,9 +388,24 @@ export default function B2ArchiveTab(): JSX.Element {
           </Breadcrumbs>
         )}
 
-        <Paper>
+        <TextField
+          size="small"
+          placeholder="Søk i filsti …"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ maxWidth: 360 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        <AdminCard disablePadding>
           {loading && <LinearProgress />}
-          <TableContainer>
+          <AdminTableContainer ariaLabel="B2-arkivfiler">
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -409,7 +432,7 @@ export default function B2ArchiveTab(): JSX.Element {
                     </TableCell>
                   </TableRow>
                 )}
-                {files.map((file) => (
+                {filteredFiles.map((file) => (
                   <TableRow key={file.key}>
                     <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
                       {file.key}
@@ -418,12 +441,12 @@ export default function B2ArchiveTab(): JSX.Element {
                     <TableCell>{formatDate(file.lastModified)}</TableCell>
                     <TableCell align="right">
                       <Tooltip title="Last ned">
-                        <IconButton size="small" onClick={() => void handleDownload(file.key)}>
+                        <IconButton size="small" onClick={() => void handleDownload(file.key)} aria-label="Last ned">
                           <DownloadIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Slett">
-                        <IconButton size="small" onClick={() => void handleDelete(file.key)} color="error">
+                        <IconButton size="small" onClick={() => void handleDelete(file.key)} color="error" aria-label="Slett">
                           <DeleteOutlineIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -432,15 +455,15 @@ export default function B2ArchiveTab(): JSX.Element {
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
           {truncated && (
             <Box sx={{ p: 2, textAlign: 'center' }}>
-              <Button variant="outlined" onClick={() => void loadFiles(false)} disabled={loading} size="small">
+              <AdminButton tone="secondary" onClick={() => void loadFiles(false)} disabled={loading} size="small">
                 Last neste 100 →
-              </Button>
+              </AdminButton>
             </Box>
           )}
-        </Paper>
+        </AdminCard>
       </Stack>
     </Box>
   );

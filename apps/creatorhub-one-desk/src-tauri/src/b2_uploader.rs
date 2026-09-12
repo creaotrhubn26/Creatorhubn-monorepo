@@ -703,7 +703,10 @@ pub async fn bucket_usage(
     })
 }
 
-/// b2_delete_file_version — for GDPR right-to-erasure-flow.
+/// b2_delete_file_version — for GDPR right-to-erasure-flow. Ikke koblet
+/// til noen Tauri-command ennå (ingen UI ber om sletting per fil-versjon
+/// i dag) — reservert for når erasure-flyten bygges, ikke død kode.
+#[allow(dead_code)]
 pub async fn delete_file_version(
     auth: &B2Auth,
     file_id: &str,

@@ -9,11 +9,36 @@ const ROLE_ROOM_DEDICATED_HOSTS = new Set([
   '127.0.0.1',
 ]);
 
+// Leadgrid-dedikerte hoster (leadgrid.no koblet 2026-07-10) — bootstrapper
+// casting-main og aliaser rene stier ('/priser' → '/leadgrid/priser').
+const LEADGRID_DEDICATED_HOSTS = new Set([
+  'leadgrid.no',
+  'www.leadgrid.no',
+  'leadgrid.theroleroom.com',
+]);
+
+export function isLeadgridDedicatedHost(hostname: string | null | undefined): boolean {
+  if (typeof hostname !== 'string') {
+    return false;
+  }
+  return LEADGRID_DEDICATED_HOSTS.has(hostname.trim().toLowerCase());
+}
+
+// Deploy-preview-domener (Netlify) skal rendre Role Room-appen, slik at migrasjons-
+// og PR-previews viser samme flate som produksjon (theroleroom.com) i stedet for å
+// henge på det statiske «Laster …»-skallet. Produksjon bruker eget domene,
+// mens Netlify branch-/deploy-previews bruker *.netlify.app.
+const ROLE_ROOM_PREVIEW_HOST_SUFFIXES = ['.netlify.app'];
+
 export function isRoleRoomDedicatedHost(hostname: string | null | undefined): boolean {
   if (typeof hostname !== 'string') {
     return false;
   }
-  return ROLE_ROOM_DEDICATED_HOSTS.has(hostname.trim().toLowerCase());
+  const host = hostname.trim().toLowerCase();
+  return (
+    ROLE_ROOM_DEDICATED_HOSTS.has(host)
+    || ROLE_ROOM_PREVIEW_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))
+  );
 }
 
 export function getRoleRoomCanonicalPath(locationLike?: Pick<Location, 'hostname'> | null): string {

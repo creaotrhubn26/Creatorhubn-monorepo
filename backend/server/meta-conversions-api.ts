@@ -208,10 +208,13 @@ export async function sendMetaCapiEvent(
   };
 
   try {
+    // LM-4: 10s timeout (CAPI er tregere enn vanlige APIer). AbortError
+    // mappes til { success:false, error } i kallets eksisterende catch.
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
     });
     const json = (await res.json()) as {
       events_received?: number;
@@ -353,6 +356,43 @@ const VALID_EVENT_NAMES = new Set([
   "Donate", "CustomizeProduct",
 ]);
 
+// Abuse guards for the public (unauthenticated) /meta-capi-event endpoint.
+// In-memory and therefore per-instance — best-effort, not a hard global limit,
+// but enough to stop a single client from firing unbounded Purchase/Lead
+// events with attacker-chosen ids/values. Meta also dedupes by event_id.
+const CAPI_RATE_WINDOW_MS = 60_000;
+const CAPI_RATE_MAX_PER_WINDOW = 60;
+const CAPI_EVENT_ID_TTL_MS = 10 * 60_000;
+const CAPI_MAX_EVENT_VALUE = 1_000_000;
+const capiRateByIp = new Map<string, { count: number; resetAt: number }>();
+const capiSeenEventIds = new Map<string, number>();
+
+/** Returns true if this IP is over the per-minute cap. Prunes lazily. */
+function capiRateLimited(ip: string, now: number): boolean {
+  const key = ip || "unknown";
+  const entry = capiRateByIp.get(key);
+  if (!entry || now >= entry.resetAt) {
+    capiRateByIp.set(key, { count: 1, resetAt: now + CAPI_RATE_WINDOW_MS });
+    if (capiRateByIp.size > 5000) {
+      for (const [k, v] of capiRateByIp) if (now >= v.resetAt) capiRateByIp.delete(k);
+    }
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > CAPI_RATE_MAX_PER_WINDOW;
+}
+
+/** True if this eventId was already accepted recently (replay). Prunes lazily. */
+function capiEventIdSeen(eventId: string, now: number): boolean {
+  const expiry = capiSeenEventIds.get(eventId);
+  if (expiry && now < expiry) return true;
+  capiSeenEventIds.set(eventId, now + CAPI_EVENT_ID_TTL_MS);
+  if (capiSeenEventIds.size > 10_000) {
+    for (const [k, exp] of capiSeenEventIds) if (now >= exp) capiSeenEventIds.delete(k);
+  }
+  return false;
+}
+
 function extractClientIp(req: express.Request): string {
   const cfIp = req.headers["cf-connecting-ip"];
   if (typeof cfIp === "string" && cfIp) return cfIp;
@@ -374,6 +414,33 @@ function readCookie(req: express.Request, name: string): string | undefined {
 export function setupMetaCapiRoutes(deps: MetaCapiDeps): void {
   const { app, getActiveSessionFromRequest } = deps;
 
+  // LM-7: in-memory state for rate-limit + eventId-dedup. Pr-process
+  // (per-replikat) — godt nok mot tilfeldig F5-pålegg og automated
+  // spam, men ikke distributert. For sterkere garantier ville Redis
+  // vært neste steg.
+  const RATE_WINDOW_MS = 60_000;
+  const RATE_LIMIT_PER_IP = 30;
+  const EVENT_ID_TTL_MS = 10 * 60_000;     // 10 min
+  const VALUE_CEILING = 1_000_000;          // NOK 1M sanity-cap
+
+  const ipHits = new Map<string, number[]>();
+  const seenEventIds = new Map<string, number>();   // eventId → expiry-ts
+
+  function pruneExpired(now: number): void {
+    if (ipHits.size > 5000) {
+      for (const [ip, hits] of ipHits) {
+        const fresh = hits.filter((t) => now - t < RATE_WINDOW_MS);
+        if (fresh.length === 0) ipHits.delete(ip);
+        else if (fresh.length < hits.length) ipHits.set(ip, fresh);
+      }
+    }
+    if (seenEventIds.size > 5000) {
+      for (const [id, expiry] of seenEventIds) {
+        if (expiry < now) seenEventIds.delete(id);
+      }
+    }
+  }
+
   app.post("/api/marketing/meta-capi-event", async (req, res) => {
     const body = (req.body ?? {}) as {
       eventName?: string;
@@ -392,6 +459,26 @@ export function setupMetaCapiRoutes(deps: MetaCapiDeps): void {
     }
     if (!eventId || eventId.length < 8 || eventId.length > 128) {
       res.status(400).json({ error: "ugyldig_event_id" });
+      return;
+    }
+
+    const now = Date.now();
+    if (capiRateLimited(extractClientIp(req), now)) {
+      res.status(429).json({ error: "rate_limited" });
+      return;
+    }
+    // Reject absurd conversion values that would pollute reporting.
+    const rawValue = (body.customData as { value?: unknown } | undefined)?.value;
+    if (rawValue !== undefined) {
+      const v = Number(rawValue);
+      if (!Number.isFinite(v) || v < 0 || v > CAPI_MAX_EVENT_VALUE) {
+        res.status(400).json({ error: "ugyldig_value" });
+        return;
+      }
+    }
+    // Drop obvious replays of the same event_id without forwarding to Meta.
+    if (capiEventIdSeen(eventId, now)) {
+      res.json({ success: true, deduped: true });
       return;
     }
 

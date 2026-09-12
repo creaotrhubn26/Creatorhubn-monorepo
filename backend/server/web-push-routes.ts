@@ -75,7 +75,7 @@ export async function sendPushToUser(
     `SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1`,
     [userId],
   );
-  if (r.rowCount === 0) return { sent: 0, failed: 0, removed: 0 };
+  if (!r.rows.length) return { sent: 0, failed: 0, removed: 0 };
 
   const json = JSON.stringify(payload);
   let sent = 0, failed = 0, removed = 0;

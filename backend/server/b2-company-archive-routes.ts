@@ -173,7 +173,7 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
         cached: false,
       });
     } catch (err: any) {
-      return res.status(500).json({ error: err?.message || "Klarte ikke å beregne bucket-bruk" });
+      return res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -208,7 +208,7 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
         keyCount: result.KeyCount,
       });
     } catch (err: any) {
-      return res.status(500).json({ error: err?.message || "Klarte ikke å liste B2-filer" });
+      return res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -233,7 +233,7 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
       usageCache = null;
       return res.json({ uploadUrl: url, key, expiresIn: ttl });
     } catch (err: any) {
-      return res.status(500).json({ error: err?.message || "Klarte ikke å lage upload-URL" });
+      return res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -253,7 +253,7 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
       const url = await getSignedUrl(config.client, command, { expiresIn: ttl });
       return res.json({ downloadUrl: url, key, expiresIn: ttl });
     } catch (err: any) {
-      return res.status(500).json({ error: err?.message || "Klarte ikke å lage download-URL" });
+      return res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -272,7 +272,7 @@ export function registerB2CompanyArchiveRoutes(deps: B2RoutesDeps): void {
       usageCache = null;
       return res.json({ deleted: true, key });
     } catch (err: any) {
-      return res.status(500).json({ error: err?.message || "Klarte ikke å slette" });
+      return res.status(500).json({ error: "internal_error" });
     }
   });
 }

@@ -67,30 +67,36 @@ export interface AudioStorageDevice {
   sourceReferences: AudioStorageReference[];
 }
 
-const categoryValues: AudioStorageDeviceCategory[] = [
-  'field-recorder',
-  'mixer-recorder',
-  'pocket-recorder',
-  'wireless-recorder',
-  'on-camera-recorder',
-  'camera-attached-digital-mic',
-  'desktop-production-console',
-];
+ const categoryValues = [
+   'field-recorder',
+   'mixer-recorder',
+   'pocket-recorder',
+   'wireless-recorder',
+   'on-camera-recorder',
+   'camera-attached-digital-mic',
+   'desktop-production-console',
+ ] as const satisfies readonly [AudioStorageDeviceCategory, ...AudioStorageDeviceCategory[]];
 
-const storageMediumValues: AudioStorageMedium[] = [
-  'internal-flash',
-  'microSD',
+ const storageMediumValues = [
+   'internal-flash',
+   'microSD',
   'microSDHC',
   'microSDXC',
   'SD',
-  'SDHC',
-  'SDXC',
-  'usb-storage',
-  'camera-media',
-];
+   'SDHC',
+   'SDXC',
+   'usb-storage',
+   'camera-media',
+ ] as const satisfies readonly [AudioStorageMedium, ...AudioStorageMedium[]];
 
-const sourceValues: AudioStorageSource[] = ['seed', 'manual', 'api', 'discovery'];
-const precisionValues: DatePrecision[] = ['exact', 'month', 'year', 'first-verified'];
+ const sourceValues = ['seed', 'manual', 'api', 'discovery'] as const satisfies readonly [
+   AudioStorageSource,
+   ...AudioStorageSource[],
+ ];
+ const precisionValues = ['exact', 'month', 'year', 'first-verified'] as const satisfies readonly [
+   DatePrecision,
+   ...DatePrecision[],
+ ];
 
 const referenceSchema = z.object({
   title: z.string().min(1),
@@ -1077,4 +1083,3 @@ export const searchAudioStorageDevices = (params?: {
     return a.model.localeCompare(b.model, 'nb');
   });
 };
-

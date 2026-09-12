@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { useTheming } from '../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
+import { apiRequest } from '@/lib/queryClient';
 import {
   Box,
   Typography,
@@ -77,13 +78,7 @@ const VideoShowcaseYouTube: React.FC<VideoShowcaseYouTubeProps> = ({
   const fetchVideos = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/videos?userId=${userId}&limit=50, `);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-      const data = await response.json();
+      const data = await apiRequest(`/api/videos?userId=${userId}&limit=50`) as Video[];
       setVideos(data);
       if (data.length > 0) {
         setFeaturedVideo(data[0]);

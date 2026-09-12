@@ -14,7 +14,6 @@ import {
   Typography,
   Grid,
   Chip,
-  Button,
   Alert,
   LinearProgress,
   Accordion,
@@ -46,6 +45,7 @@ import {
   AutoAwesome,
   Insights,
 } from '@mui/icons-material';
+import { AdminCard, AdminButton, AdminEmpty } from './design-system';
 
 interface AIInsight {
   type: 'anomaly' | 'trend' | 'prediction' | 'recommendation';
@@ -154,18 +154,22 @@ export default function AIAnalyticsInsights({
     }
   };
 
-  const insights: AIInsight[] = insightsData?.data?.insights || [];
-  const predictions: PredictionData[] = predictionsData?.data?.predictions || [];
+  const insights: AIInsight[] = Array.isArray(insightsData?.data?.insights)
+    ? insightsData.data.insights
+    : [];
+  const predictions: PredictionData[] = Array.isArray(predictionsData?.data?.predictions)
+    ? predictionsData.data.predictions
+    : [];
   const report = reportData?.data?.report;
 
   return (
     <Box sx={{ mb: 4 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <AutoAwesome sx={{ color: '#ff6b35', fontSize: 32 }} />
+          <AutoAwesome aria-hidden="true" sx={{ color: '#ff6b35', fontSize: 32 }} />
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, color: '#ffffff' }}>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 700, color: '#ffffff' }}>
               AI Analytics Insights
             </Typography>
             <Typography variant="body2" sx={{ color: '#ffa726' }}>
@@ -173,17 +177,14 @@ export default function AIAnalyticsInsights({
             </Typography>
           </Box>
         </Box>
-        <Button
-          variant="contained"
+        <AdminButton
+          tone="primary"
           startIcon={<Refresh />}
           onClick={handleRefresh}
-          disabled={insightsLoading}
-          sx={{ 
-            background: 'linear-gradient(135deg, #ff6b35 0%, #ffa726 100%)', '&:hover': { background: '#ff6b35' }
-          }}
+          loading={insightsLoading}
         >
           Refresh AI
-        </Button>
+        </AdminButton>
       </Box>
 
       {/* Summary Cards */}
@@ -241,20 +242,7 @@ export default function AIAnalyticsInsights({
       )}
 
       {/* AI Insights */}
-      <Card sx={{ background: '#2d2d2d', border: '1px solid #404040', mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6" sx={{ 
-            fontWeight: 600, 
-            color: '#ffffff',
-            mb: 3,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1
-          }}>
-            <Insights sx={{ color: '#ff6b35' }} />
-            AI Insights & Recommendations
-          </Typography>
-
+      <AdminCard title="AI Insights & Recommendations" sx={{ mb: 3 }}>
           {insightsLoading ? (
             <Box sx={{ p: 3 }}>
               <LinearProgress sx={{ mb: 2 }} />
@@ -263,9 +251,10 @@ export default function AIAnalyticsInsights({
               </Typography>
             </Box>
           ) : insights.length === 0 ? (
-            <Alert severity="info" sx={{ backgroundColor: '#2d2d2d', color: '#ffffff' }}>
-              No insights generated. Try refreshing or check back later.
-            </Alert>
+            <AdminEmpty
+              title="No insights generated"
+              description="Try refreshing or check back later."
+            />
           ) : (
             <Box>
               {insights.map((insight, index) => (
@@ -363,25 +352,11 @@ export default function AIAnalyticsInsights({
               ))}
             </Box>
           )}
-        </CardContent>
-      </Card>
+      </AdminCard>
 
       {/* AI Predictions */}
       {predictions.length > 0 && (
-        <Card sx={{ background: '#2d2d2d', border: '1px solid #404040', mb: 3 }}>
-          <CardContent>
-            <Typography variant="h6" sx={{ 
-              fontWeight: 600, 
-              color: '#ffffff',
-              mb: 3,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1
-            }}>
-              <Psychology sx={{ color: '#ff6b35' }} />
-              AI Predictions
-            </Typography>
-
+        <AdminCard title="AI Predictions" sx={{ mb: 3 }}>
             <Grid container spacing={2}>
               {predictions.map((prediction, index) => (
                 <Grid item xs={12} sm={6} md={4} key={index}>
@@ -444,26 +419,12 @@ export default function AIAnalyticsInsights({
                 </Grid>
               ))}
             </Grid>
-          </CardContent>
-        </Card>
+        </AdminCard>
       )}
 
       {/* AI Report Summary */}
       {report && (
-        <Card sx={{ background: '#2d2d2d', border: '1px solid #404040' }}>
-          <CardContent>
-            <Typography variant="h6" sx={{ 
-              fontWeight: 600, 
-              color: '#ffffff',
-              mb: 3,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1
-            }}>
-              <Report sx={{ color: '#ff6b35' }} />
-              AI-Generated Report
-            </Typography>
-
+        <AdminCard title="AI-Generated Report">
             <Alert severity="info" sx={{ backgroundColor: '#1a1a1a', color: '#ffffff', mb: 3 }}>
               <Typography variant="body2" sx={{ whiteSpace: 'pre-line', fontFamily: 'monospace' }}>
                 {report.summary}
@@ -501,7 +462,7 @@ export default function AIAnalyticsInsights({
                   Top Recommendations:
                 </Typography>
                 <List dense>
-                  {report.recommendations
+                  {(Array.isArray(report.recommendations) ? report.recommendations : [])
                     .slice(0, 3)
                     .map((recommendation: string, index: number) => (
                     <ListItem key={index} sx={{ py: 0 }}>
@@ -517,8 +478,7 @@ export default function AIAnalyticsInsights({
                 </List>
               </Grid>
             </Grid>
-          </CardContent>
-        </Card>
+        </AdminCard>
       )}
     </Box>
   );

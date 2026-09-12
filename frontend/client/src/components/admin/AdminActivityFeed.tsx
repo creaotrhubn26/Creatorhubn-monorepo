@@ -58,6 +58,7 @@ import { useLocation } from 'wouter';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import { AdminButton, StatusChip, AdminEmpty, AdminError, useIsMobile } from './design-system';
 
 interface ActivityItem {
   id: string;
@@ -93,6 +94,7 @@ export default function AdminActivityFeed({
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
@@ -103,7 +105,7 @@ export default function AdminActivityFeed({
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>(', ');
+  const [endDate, setEndDate] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
@@ -131,7 +133,7 @@ export default function AdminActivityFeed({
     refetchInterval: autoRefresh ? refreshInterval : false,
   });
 
-  const activities = activityData?.activities || [];
+  const activities = Array.isArray(activityData?.activities) ? activityData.activities : [];
 
   // Fetch pending counts
   const { data: pendingCounts } = useQuery({
@@ -177,11 +179,11 @@ export default function AdminActivityFeed({
       case 'account_activated':
         return <AccountCircle sx={{ color: '#4caf50' }} />;
       case 'subscription_created':
-        return <CardMembership sx={{ color: '#9c27b0' }} />;
+        return <CardMembership sx={{ color: '#ce93d8' }} />;
       case 'payment_completed':
         return <Payment sx={{ color: '#2e7d32' }} />;
       case 'user_login':
-        return <Login sx={{ color: '#1976d2' }} />;
+        return <Login sx={{ color: '#60a5fa' }} />;
       case 'feature_enabled':
         return <SettingsIcon sx={{ color: '#ff9800' }} />;
       default:
@@ -280,10 +282,11 @@ export default function AdminActivityFeed({
             
             {isSupported && (
               <Tooltip title="Push-varsler innstillinger">
-                <IconButton 
-                  size="small" 
+                <IconButton
+                  size="small"
                   onClick={() => setPushSettingsOpen(true)}
                   color={pushEnabled ? 'primary' : 'default'}
+                  aria-label="Push-varsler innstillinger"
                 >
                   {pushEnabled ? <NotificationsActive /> : <Notifications />}
                 </IconButton>
@@ -421,27 +424,27 @@ export default function AdminActivityFeed({
                 />
               </Stack>
               <Stack direction="row" spacing={1}>
-                <Button
+                <AdminButton
                   size="small"
-                  variant="outlined"
+                  tone="secondary"
                   onClick={() => {
                     setSearchQuery('');
                     setStartDate('');
-                    setEndDate(', ');
+                    setEndDate('');
                     setCategoryFilter('all');
                   }}
                 >
                   Clear Filters
-                </Button>
-                <Button
+                </AdminButton>
+                <AdminButton
                   size="small"
-                  variant="contained"
+                  tone="primary"
                   onClick={() => {
                     queryClient.invalidateQueries({ queryKey: ['/api/admin/activity-feed'] });
                   }}
                 >
                   Apply Filters
-                </Button>
+                </AdminButton>
               </Stack>
             </Stack>
           </Paper>
@@ -464,18 +467,12 @@ export default function AdminActivityFeed({
             ))}
           </Stack>
         ) : error ? (
-          <Alert 
-            severity="error"
-            action={
-              <Button color="inherit" size="small" onClick={handleRefresh}>
-                Retry
-              </Button>
-            }
-          >
-            Failed to load activity feed. Please try again.
-          </Alert>
+          <AdminError
+            message="Failed to load activity feed. Please try again."
+            onRetry={handleRefresh}
+          />
         ) : activities.length === 0 ? (
-          <Alert severity="info">No recent activity</Alert>
+          <AdminEmpty title="No recent activity" />
         ) : viewMode === 'list' ? (
           <List sx={{ py: 0 }}>
             {activities.map((activity: ActivityItem, index: number) => (
@@ -491,16 +488,14 @@ export default function AdminActivityFeed({
                   secondaryAction={
                     <Stack direction="row" spacing={1} alignItems="center">
                       {activity.status && (
-                        <Chip
+                        <StatusChip
                           label={activity.status}
-                          size="small"
-                          color={
+                          tone={
                             activity.status === 'approved' ? 'success' :
                             activity.status === 'rejected' ? 'error' :
                             activity.status === 'pending' ? 'warning' :
-                            'default'
+                            'neutral'
                           }
-                          sx={{ fontSize: '0.7rem', height: 20 }}
                         />
                       )}
                       <IconButton 
@@ -568,6 +563,9 @@ export default function AdminActivityFeed({
               {activities.map((activity: ActivityItem) => (
                 <Box
                   key={activity.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Vis detaljer for ${activity.title}`}
                   sx={{
                     position: 'relative',
                     cursor: 'pointer', '&: hover': {
@@ -577,6 +575,12 @@ export default function AdminActivityFeed({
                     }
                   }}
                   onClick={() => handleActivityClick(activity)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleActivityClick(activity);
+                    }
+                  }}
                 >
                   {/* Timeline Dot */}
                   <Box
@@ -660,7 +664,7 @@ export default function AdminActivityFeed({
       </CardContent>
 
       {/* Activity Details Dialog */}
-      <Dialog open={!!selectedActivity} onClose={() => setSelectedActivity(null)} maxWidth="sm" fullWidth>
+      <Dialog open={!!selectedActivity} onClose={() => setSelectedActivity(null)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         {selectedActivity && (
           <>
             <DialogTitle>
@@ -695,19 +699,19 @@ export default function AdminActivityFeed({
               )}
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setSelectedActivity(null)}>
+              <AdminButton tone="ghost" onClick={() => setSelectedActivity(null)}>
                 Close
-              </Button>
+              </AdminButton>
               {selectedActivity.actionUrl && (
-                <Button
-                  variant="contained"
+                <AdminButton
+                  tone="primary"
                   onClick={() => {
                     setLocation(selectedActivity.actionUrl!);
                     setSelectedActivity(null);
                   }}
                 >
                   View Details
-                </Button>
+                </AdminButton>
               )}
             </DialogActions>
           </>
@@ -715,7 +719,7 @@ export default function AdminActivityFeed({
       </Dialog>
 
       {/* Filter Dialog */}
-      <Dialog open={showFilterDialog} onClose={() => setShowFilterDialog(false)} maxWidth="xs" fullWidth>
+      <Dialog open={showFilterDialog} onClose={() => setShowFilterDialog(false)} maxWidth="xs" fullWidth fullScreen={isMobile}>
         <DialogTitle>Filter Activity</DialogTitle>
         <DialogContent>
           <Stack spacing={1} sx={{ mt: 1 }}>
@@ -765,13 +769,13 @@ export default function AdminActivityFeed({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowFilterDialog(false)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setShowFilterDialog(false)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Push Notification Settings Dialog */}
       {isSupported && (
-        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
+        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
           <DialogTitle>Push-varsler innstillinger</DialogTitle>
           <DialogContent>
             <Box sx={{ mt: 2 }}>
@@ -779,7 +783,7 @@ export default function AdminActivityFeed({
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+            <AdminButton tone="ghost" onClick={() => setPushSettingsOpen(false)}>Lukk</AdminButton>
           </DialogActions>
         </Dialog>
       )}

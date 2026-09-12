@@ -11,8 +11,6 @@
 import React, { useState, useMemo } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Stack,
   Typography,
   Chip,
@@ -28,7 +26,6 @@ import {
   TableCell,
   TableBody,
   Alert,
-  CircularProgress,
   Avatar,
   IconButton,
   alpha,
@@ -44,6 +41,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminCard, StatusChip, AdminLoading, AdminTableContainer } from './design-system';
 
 interface User {
   id: string;
@@ -123,22 +121,15 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
 
   const selectedUser = users.find((u) => u.id === selectedUserId);
 
+  const installedApps = Array.isArray(data?.installedApps) ? data.installedApps : [];
+  const subscriptions = Array.isArray(data?.subscriptions) ? data.subscriptions : [];
+
   return (
     <Box>
-      <Card>
-        <CardContent>
-          <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }}>
-            <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha('#7c3aed', 0.1), color: '#7c3aed' }}>
-              <AppsIcon />
-            </Box>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>Installasjoner & abonnement</Typography>
-              <Typography variant="caption" color="text.secondary">
-                Se hva en bruker har installert og når Stripe-abonnementet fornyes
-              </Typography>
-            </Box>
-          </Stack>
-
+      <AdminCard
+        title="Installasjoner & abonnement"
+        subtitle="Se hva en bruker har installert og når Stripe-abonnementet fornyes"
+      >
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
             <TextField
               size="small"
@@ -146,11 +137,11 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               InputProps={{
-                startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
+                startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" aria-hidden /></InputAdornment>,
               }}
               sx={{ flex: 1 }}
             />
-            <FormControl size="small" sx={{ minWidth: 320 }}>
+            <FormControl size="small" sx={{ minWidth: { xs: 'auto', sm: 320 } }}>
               <InputLabel>Velg bruker</InputLabel>
               <Select
                 label="Velg bruker"
@@ -166,7 +157,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
               </Select>
             </FormControl>
             {selectedUserId && (
-              <IconButton onClick={() => refetch()} disabled={isFetching}>
+              <IconButton aria-label="Oppdater installasjoner og abonnement" onClick={() => refetch()} disabled={isFetching}>
                 <RefreshIcon />
               </IconButton>
             )}
@@ -177,16 +168,14 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
           )}
 
           {selectedUserId && isLoading && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-              <CircularProgress size={28} />
-            </Box>
+            <AdminLoading />
           )}
 
           {selectedUserId && data && (
             <Stack spacing={2}>
               {/* Bruker-info */}
               <Box sx={{ p: 2, borderRadius: 2, bgcolor: alpha('#7c3aed', 0.05), border: '1px solid', borderColor: alpha('#7c3aed', 0.2) }}>
-                <Stack direction="row" alignItems="center" spacing={2}>
+                <Stack direction="row" alignItems="center" spacing={2} sx={{ flexWrap: 'wrap' }}>
                   <Avatar sx={{ bgcolor: '#7c3aed', width: 48, height: 48 }}>
                     {selectedUser?.firstName?.[0]?.toUpperCase() || '?'}
                   </Avatar>
@@ -205,12 +194,12 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                   </Box>
                   <Stack direction="row" spacing={1}>
                     <Chip
-                      label={`${data.installedApps.length} apper`}
+                      label={`${installedApps.length} apper`}
                       icon={<AppsIcon />}
                       sx={{ bgcolor: alpha('#7c3aed', 0.15) }}
                     />
                     <Chip
-                      label={`${data.subscriptions.length} abonnement`}
+                      label={`${subscriptions.length} abonnement`}
                       icon={<CardIcon />}
                       sx={{ bgcolor: alpha('#10b981', 0.15) }}
                     />
@@ -225,14 +214,15 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
               {/* Installerte apper */}
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                  <AppsIcon fontSize="small" sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
+                  <AppsIcon fontSize="small" aria-hidden sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
                   Installerte apper
                 </Typography>
-                {data.installedApps.length === 0 ? (
+                {installedApps.length === 0 ? (
                   <Typography variant="caption" color="text.secondary">
                     Ingen apper installert ennå.
                   </Typography>
                 ) : (
+                  <AdminTableContainer ariaLabel="Installerte apper">
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -242,35 +232,36 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {data.installedApps.map((app) => (
+                      {installedApps.map((app) => (
                         <TableRow key={app.appId}>
                           <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{app.appId}</TableCell>
                           <TableCell>{fmtDate(app.installedAt)}</TableCell>
                           <TableCell align="center">
-                            <Chip
-                              size="small"
+                            <StatusChip
+                              tone={app.isActive ? 'success' : 'neutral'}
                               label={app.isActive ? 'Aktiv' : 'Avinstallert'}
-                              color={app.isActive ? 'success' : 'default'}
                             />
                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
+                  </AdminTableContainer>
                 )}
               </Box>
 
               {/* Stripe-abonnement */}
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                  <CardIcon fontSize="small" sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
+                  <CardIcon fontSize="small" aria-hidden sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
                   Abonnement & fornyelse
                 </Typography>
-                {data.subscriptions.length === 0 ? (
+                {subscriptions.length === 0 ? (
                   <Typography variant="caption" color="text.secondary">
                     Ingen aktive abonnement registrert i Stripe.
                   </Typography>
                 ) : (
+                  <AdminTableContainer ariaLabel="Abonnement og fornyelse">
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -282,7 +273,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {data.subscriptions.map((sub) => {
+                      {subscriptions.map((sub) => {
                         const status = STATUS_LABEL[sub.status] || { label: sub.status, color: 'default' as const };
                         const days = daysUntil(sub.currentPeriodEnd);
                         const renewalUrgent = days != null && days >= 0 && days <= 7;
@@ -304,7 +295,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                                 : '—'}
                             </TableCell>
                             <TableCell>
-                              <Chip size="small" label={status.label} color={status.color} />
+                              <StatusChip tone={status.color === 'default' ? 'neutral' : status.color} label={status.label} />
                               {sub.cancelAtPeriodEnd && (
                                 <Chip size="small" label="Sies opp" color="warning" sx={{ ml: 0.5 }} icon={<WarningIcon fontSize="small" />} />
                               )}
@@ -332,12 +323,12 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                       })}
                     </TableBody>
                   </Table>
+                  </AdminTableContainer>
                 )}
               </Box>
             </Stack>
           )}
-        </CardContent>
-      </Card>
+      </AdminCard>
     </Box>
   );
 };

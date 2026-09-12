@@ -24,6 +24,27 @@ final class BackendClientTests: XCTestCase {
         BackendClient(baseURL: baseURL, session: session, authHeaders: ["x-user-id": "owner-1"])
     }
 
+    func testRealtimeTicketIdentifiesCaptureBuildWithoutPuttingBearerInURL() async throws {
+        let captured = Box<URLRequest>()
+        MockURLProtocol.handler = { request in
+            captured.value = request
+            return MockURLProtocol.jsonResponse(
+                for: request.url!,
+                body: #"{"ticket":"once","expiresAt":"2026-08-27T10:00:00Z","websocketPath":"/api/ipad/ws/events","protocolVersion":1}"#
+            )
+        }
+
+        let ticket = try await makeClient().createRealtimeTicket()
+
+        XCTAssertEqual(ticket.ticket, "once")
+        XCTAssertEqual(captured.value?.url?.path, "/api/realtime/user-events-ticket")
+        XCTAssertNil(captured.value?.url?.query)
+        XCTAssertEqual(captured.value?.value(forHTTPHeaderField: "X-CreatorHub-Client"), "capture-ios")
+        XCTAssertFalse(
+            try XCTUnwrap(captured.value?.value(forHTTPHeaderField: "X-CreatorHub-Client-Version")).isEmpty
+        )
+    }
+
     // MARK: - Sessions
 
     func testCreateSessionPostsJSONAndDecodesResponse() async throws {

@@ -37,6 +37,8 @@ import {
   Divider,
   CircularProgress,
   Stack,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   Update,
@@ -57,9 +59,11 @@ import {
   Shield,
   AutoFixHigh,
   MonitorHeart,
+  Search,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { getProfessionIcon } from '@/utils/profession-icons';
+import { AdminButton, AdminTableContainer, useIsMobile } from './design-system';
 
 interface DependencyInfo {
   name: string;
@@ -113,10 +117,12 @@ function TabPanel(props: TabPanelProps) {
 
 export function DependenciesManager() {
   const [tabValue, setTabValue] = useState(0);
+  const [search, setSearch] = useState("");
   const [autoScanEnabled, setAutoScanEnabled] = useState(true);
   const [selectedDependency, setSelectedDependency] = useState<DependencyInfo | null>(null);
   const [updateDialog, setUpdateDialog] = useState(false);
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -187,8 +193,8 @@ export function DependenciesManager() {
   }
 });
 
-  const dependencies: DependencyInfo[] = dependenciesData?.dependencies || [];
-  const categories: DependencyCategory[] = dependenciesData?.categories || [];
+  const dependencies: DependencyInfo[] = Array.isArray(dependenciesData?.dependencies) ? dependenciesData.dependencies : [];
+  const categories: DependencyCategory[] = Array.isArray(dependenciesData?.categories) ? dependenciesData.categories : [];
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
@@ -222,7 +228,7 @@ export function DependenciesManager() {
     <Box sx={{ width: '100%' }}>
       {/* Header with global controls */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+        <Typography variant="h4" component="h2" sx={{ color: theming.colors.primary }}>
           Dependencies Manager
         </Typography>
         <Stack direction="row" spacing={2} alignItems="center">
@@ -244,13 +250,12 @@ export function DependenciesManager() {
           >
             {forceScan.isPending ? 'Scanning...' : 'Force Scan'}
           </Button>
-          <Button variant="contained"
+          <AdminButton tone="primary"
             startIcon={<MonitorHeart />}
             onClick={() => refetch()}
-            sx={{ bgcolor: '#ff8c00' }}
           >
             Refresh Status
-          </Button>
+          </AdminButton>
         </Stack>
       </Box>
 
@@ -311,9 +316,9 @@ export function DependenciesManager() {
           <Card sx={{ bgcolor: '#e3f2fd', border: '1px solid #1976d2' }}>
             <CardContent >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Shield sx={{ color: '#1976d2', fontSize: 32 }} />
+                <Shield sx={{ color: '#60a5fa', fontSize: 32 }} />
                 <Box>
-                  <Typography variant="h6" sx={{ color: '#1976d2' }}>
+                  <Typography variant="h6" sx={{ color: '#60a5fa' }}>
                     {dependencies.filter(d => d.isSecurityUpdate).length}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -411,7 +416,21 @@ export function DependenciesManager() {
         {/* Category-specific tabs */}
         {categories.map((category, categoryIndex) => (
           <TabPanel value={tabValue} index={categoryIndex + 1} key={category.name}>
-            <TableContainer component={Paper}>
+            <TextField
+              size="small"
+              placeholder="Søk pakker …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ mb: 2, width: { xs: '100%', sm: 320 } }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <AdminTableContainer ariaLabel={`${category.name} dependencies`}>
               <Table>
                 <TableHead>
                   <TableRow>
@@ -424,7 +443,13 @@ export function DependenciesManager() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {getDependenciesByCategory(category.name).map((dependency) => (
+                  {getDependenciesByCategory(category.name)
+                    .filter((dependency) =>
+                      `${dependency.name} ${dependency.description} ${dependency.component} ${dependency.system}`
+                        .toLowerCase()
+                        .includes(search.toLowerCase())
+                    )
+                    .map((dependency) => (
                     <TableRow key={dependency.name}>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1}}>
@@ -476,8 +501,9 @@ export function DependenciesManager() {
                       <TableCell>
                         <Stack direction="row" spacing={1}>
                           <Tooltip title="View Details">
-                            <IconButton 
+                            <IconButton
                               size="small"
+                              aria-label="Vis detaljer"
                               onClick={() => setSelectedDependency(dependency)}
                             >
                               {theming.getThemedIcon('visibility')}
@@ -485,9 +511,10 @@ export function DependenciesManager() {
                           </Tooltip>
                           {dependency.isOutdated && (
                             <Tooltip title="Update">
-                              <IconButton 
-                                size="small" 
+                              <IconButton
+                                size="small"
                                 color="primary"
+                                aria-label="Oppdater"
                                 onClick={() => {
                                   setSelectedDependency(dependency);
                                   setUpdateDialog(true);
@@ -503,17 +530,18 @@ export function DependenciesManager() {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </TabPanel>
         ))}
       </Paper>
 
       {/* Update Dialog */}
-      <Dialog 
+      <Dialog
         open={updateDialog}
         onClose={() => setUpdateDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           Update Dependency: {selectedDependency?.name}
@@ -562,18 +590,18 @@ export function DependenciesManager() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setUpdateDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setUpdateDialog(false)}>
             Cancel
-          </Button>
-          <Button variant="contained"
+          </AdminButton>
+          <AdminButton tone="primary"
             onClick={() => selectedDependency && updateDependency.mutate({
               name: selectedDependency.name,
               version: selectedDependency.latest
           })}
-            disabled={updateDependency.isPending}
+            loading={updateDependency.isPending}
           >
             {updateDependency.isPending ? 'Updating...' : 'Update'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

@@ -167,6 +167,21 @@ function canUseDevAdminFallback(email: string, password: string): boolean {
   );
 }
 
+// Dev-only: auto-seed local-admin-sesjonen slik at autentiserte API-kall
+// (eier-paneler: Stripe, omtale-moderering, KV) virker i nettleseren uten
+// manuell innlogging. STRENGT gated til dev + localhost, og kun når ingen
+// token finnes fra før — påvirker aldri prod eller en ekte innlogging.
+if (
+  isDev &&
+  typeof window !== 'undefined' &&
+  window.location.hostname === 'localhost' &&
+  !localStorage.getItem(AUTH_TOKEN_KEY)
+) {
+  try {
+    storeAuth('dev-admin-local-session', createDevAdminUser(DEV_ADMIN_DEMO_EMAIL));
+  } catch { /* ignore */ }
+}
+
 export function useAuth() {
   const [authState, setAuthState] = useState<AuthState>(() => {
     if (globalAuthCache.state) {
@@ -238,7 +253,11 @@ export function useAuth() {
       return;
     }
 
-    if (storedToken) {
+    // Slice 9X.61 — Cookie-only fallback. Google-OAuth-flyten setter
+    // backend-session via cookie, men localStorage-tokenet kan mangle hvis
+    // app-bootstrap kjørte før session-callbacken landet. Prøv fetch også
+    // uten storedToken, med credentials: 'include' for å sende cookien.
+    if (storedToken || !storedUser) {
       // Slice 9X.60 — KUN clear stored session ved harde auth-feil (401/403).
       // Et 200 + { authenticated: false } kan komme i kort race-vindu etter
       // login (in-memory cache wiped på Render-restart, DB-fallback enda
@@ -246,13 +265,19 @@ export function useAuth() {
       // /login selv om token egentlig er gyldig.
       let shouldClearStoredSession = false;
       try {
+        const headers: Record<string, string> = {};
+        if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
         const resp = await fetch(authUrl('/api/auth/user'), {
-          headers: { 'Authorization': `Bearer ${storedToken}` }
+          headers,
+          credentials: 'include',
         });
         if (resp.ok) {
           const data = await resp.json();
           if (data.authenticated && data.user) {
-            storeAuth(storedToken, data.user);
+            // Cookie-only flyten har ingen token — sett en placeholder
+            // slik at storeAuth ikke krasjer på en tom token-string.
+            // Backend verifiserer alltid via session-cookie uansett.
+            storeAuth(storedToken ?? 'cookie-session', data.user);
             broadcastState({
               user: data.user,
               isAuthenticated: true,

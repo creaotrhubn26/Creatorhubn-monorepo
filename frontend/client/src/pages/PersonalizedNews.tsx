@@ -23,6 +23,7 @@ import {
 import { Add as AddIcon, Settings as SettingsIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import PersonalizedNewsInterface from '../components/news/PersonalizedNewsInterface';
 import { WORLD_CAMERA_DATABASE } from '../../../shared/camera-database.ts';
+import { apiRequest } from '@/lib/queryClient';
 
 interface UserEquipment {
   brand: string;
@@ -44,9 +45,8 @@ const PersonalizedNews: React.FC = () => {
 
   // Load user equipment (server first, fallback to local)
   useEffect(() => {
-    fetch('/api/user/equipment', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
+    apiRequest('/api/user/equipment')
+      .then((j: { data?: { equipment?: UserEquipment[] } } | null) => {
         const server = j?.data?.equipment;
         if (server && Array.isArray(server)) {
           setUserEquipment(server);
@@ -68,9 +68,9 @@ const PersonalizedNews: React.FC = () => {
   // Save equipment (server + local fallback)
   const saveEquipment = (equipment: UserEquipment[]) => {
     setUserEquipment(equipment);
-    fetch('/api/user/equipment', {
-      method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ equipment })
+    apiRequest('/api/user/equipment', {
+      method: 'POST',
+      body: JSON.stringify({ equipment }),
     }).catch(() => {});
     localStorage.setItem('creatorhub-user-equipment', JSON.stringify(equipment));
 };

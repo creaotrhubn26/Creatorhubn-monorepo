@@ -2065,7 +2065,7 @@ export const StoryLogicPanel: React.FC<StoryLogicPanelProps> = ({
                 onClick={generateLogline}
                 disabled={state.locks.logline}
                 sx={{
-                  borderColor: '#8b5cf6',
+                  borderColor: 'var(--role-violet, #8b5cf6)',
                   color: '#a78bfa',
                   '&:hover': {
                     borderColor: '#a78bfa',

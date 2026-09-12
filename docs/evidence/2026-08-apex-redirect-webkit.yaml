@@ -1,0 +1,26 @@
+claim: >
+  A 301 redirect from apex (creatorhubn.com) to www broke WebKit fetch()
+  calls with the opaque error "Load failed", while other engines tolerated it.
+source_type: secondary
+source: "Empirical: Post Agent dev-login against prod; WebKit fetch error reproduction"
+authority_tier: 2
+vendor: Netlify / WebKit
+product: Hosting redirect chain + WKWebView fetch
+version_scope: "Netlify apex 301→www, WebKit 2026"
+publication_date: "2026-08-08"
+evidence_summary: >
+  fetch() to apex followed the 301 and failed in WebKit ("Load failed",
+  no status). Fix: always call canonical www.creatorhubn.com directly
+  (commit cced70d95).
+interpretation: >
+  Platform edge behavior (redirects) is part of the compatibility surface for
+  embedded clients; error messages can be opaque and misattributed.
+project_impact: Post Agent dev-login; any WKWebView/Swift fetch to apex URLs.
+confidence: strong_evidence
+decision: Canonical host baked into clients; never rely on apex redirects for API calls.
+affected:
+  - apps/resolve-script-manager (Post Agent)
+  - iPad apps calling backend
+lesson: >
+  When a client error is opaque ("Load failed"), suspect the transport chain
+  (redirect/TLS/CORS) before app code. Add redirect behavior to monitor spec.

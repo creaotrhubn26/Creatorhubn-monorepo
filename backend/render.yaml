@@ -4,17 +4,80 @@ services:
     runtime: docker
     dockerfilePath: ../Dockerfile
     dockerContext: ..
-    plan: free
+    plan: standard
     branch: main
-    autoDeploy: true
+    autoDeployTrigger: off
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
         sync: false
+      # The login is switched by a database-bound default role configured by
+      # the one-time ownership bootstrap. Backend boot verifies both values.
+      - key: DATABASE_LOGIN_ROLE
+        value: creatorhub_runtime_login
+      - key: DATABASE_OWNER_ROLE
+        value: creatorhub_schema_owner
+      # Internal URL for the existing Render Key Value instance named "redis"
+      # in the same Production environment and Oregon region. Configure the
+      # value in Render; never commit its connection credentials.
+      - key: REALTIME_REDIS_URL
+        sync: false
+      # Scaling is fail-closed: the backend must not accept traffic without
+      # cross-instance fanout once this guard is enabled.
+      - key: REALTIME_DISTRIBUTED_FANOUT_REQUIRED
+        value: "true"
+      # Set false only after the ticket-capable Capture build is the enforced
+      # minimum supported version.
+      - key: REALTIME_ALLOW_LEGACY_TOKEN
+        value: "true"
       - key: OPENAI_API_KEY
+        sync: false
+      # Deklarasjoner av secrets som allerede er satt i Render-dashboardet
+      # (verifisert 2026-07-10, integrasjonsanalysen) — verdiene lever i
+      # dashboardet (sync: false), deklarasjonen gjør fila til komplett
+      # credential-manifest for tjenesten.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GOOGLE_ADS_DEVELOPER_TOKEN
+        sync: false
+      - key: GOOGLE_ADS_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_ADS_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_ADS_LOGIN_CUSTOMER_ID
+        sync: false
+      - key: TIKTOK_BUSINESS_APP_ID
+        sync: false
+      - key: TIKTOK_BUSINESS_APP_SECRET
+        sync: false
+      - key: LINKEDIN_CLIENT_ID
+        sync: false
+      - key: LINKEDIN_CLIENT_SECRET
+        sync: false
+      # GEO Visibility (docs/integration-audit/08) — cron-token må settes;
+      # PERPLEXITY_API_KEY er valgfri (motoren hoppes over til den finnes)
+      - key: GEO_VISIBILITY_CRON_TOKEN
+        sync: false
+      - key: PERPLEXITY_API_KEY
         sync: false
       - key: ROLE_ROOM_AGENT_MODEL
         value: gpt-5.4-mini
+      - key: ROLE_ROOM_STORAGE_PRICE_EXTRA_100_GIB_MONTHLY
+        value: "price_1UE6FRApjenweKvPVb4iriwW"
+      - key: ROLE_ROOM_STORAGE_PRICE_EXTRA_1_TIB_MONTHLY
+        value: "price_1UE6FSApjenweKvPtozJY97b"
+      - key: ROLE_ROOM_STORAGE_1_TIB_CHECKOUT_ENABLED
+        value: "false"
+      - key: ROLE_ROOM_STORAGE_BILLING_PORTAL_CONFIGURATION_ID
+        value: "bpc_1UE6FSApjenweKvPbpPJLsLl"
+      - key: ROLE_ROOM_STORAGE_PAYMENT_GRACE_DAYS
+        value: "7"
+      - key: ROLE_ROOM_AFFILIATE_PAYOUTS_ENABLED
+        value: "false"
+      - key: ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET
+        generateValue: true
+      - key: ROLE_ROOM_STRIPE_CONNECT_WEBHOOK_SECRET
+        sync: false
       - key: GOOGLE_PLACES_API_KEY
         sync: false
       - key: CLOUDFLARE_R2_ACCOUNT_ID
@@ -37,6 +100,17 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      # Dedicated Leadgrid OAuth. Leave both credentials unset to retain the
+      # shared fallback. Set ID + secret together; partial configuration fails
+      # closed. Set LEADGRID_PUBLIC_URL to https://leadgrid.no at cutover.
+      - key: LEADGRID_GOOGLE_CLIENT_ID
+        sync: false
+      - key: LEADGRID_GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: LEADGRID_PUBLIC_URL
+        sync: false
+      - key: LEADGRID_DISCOVERY_ENABLED
+        value: "true"
       - key: GOOGLE_REDIRECT_URI
         sync: false
       - key: ROLE_ROOM_GOOGLE_CLIENT_ID
@@ -90,6 +164,17 @@ services:
       - key: TOKEN_ENCRYPTION_KEY
         sync: false
       - key: GMAIL_APP_PASSWORD
+        sync: false
+      # CreatorHub project-document delivery is isolated from Role Room mail.
+      - key: CREATORHUB_RESEND_API_KEY
+        sync: false
+      - key: CREATORHUB_RESEND_FROM_EMAIL
+        sync: false
+      - key: WORKSPACE_PARTICIPANT_DOCUMENT_TOKEN_SECRET
+        sync: false
+      - key: CREATORHUB_GMAIL_USER
+        sync: false
+      - key: CREATORHUB_GMAIL_APP_PASSWORD
         sync: false
       - key: ROLE_ROOM_LINKEDIN_CLIENT_ID
         sync: false

@@ -1,0 +1,32 @@
+# GPU image for the GFPGAN runner — for RunPod / Render GPU / Fly GPU machines
+# (the Modal path in modal_app.py defines its image in code instead).
+# CUDA 12.1 base so torch sees the GPU; GFPGANer then runs on cuda automatically.
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+
+ENV PYTHONUNBUFFERED=1 \
+  PIP_NO_CACHE_DIR=1 \
+  DEBIAN_FRONTEND=noninteractive \
+  GFPGAN_CACHE_DIR=/cache/gfpgan \
+  GFPGAN_MAX_INPUT_EDGE=2048 \
+  GFPGAN_UPSCALE=1
+
+WORKDIR /app
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    python3.10 python3-pip ca-certificates curl \
+    libgl1 libglib2.0-0 libgomp1 libsm6 libxext6 \
+  && rm -rf /var/lib/apt/lists/* \
+  && ln -sf /usr/bin/python3.10 /usr/bin/python
+
+COPY requirements-gpu.txt ./
+RUN python -m pip install --upgrade pip setuptools wheel \
+  && python -m pip install -r requirements-gpu.txt
+
+# Copy the app PLUS its sibling modules (same lesson as the CPU Dockerfile —
+# app.py imports cube_lut/lut_library/hsl_retouch/portrait_retouch/
+# subject_retouch/freq_sep_save at load).
+COPY *.py ./
+
+EXPOSE 10000
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "10000", "--workers", "1", "--timeout-keep-alive", "75"]

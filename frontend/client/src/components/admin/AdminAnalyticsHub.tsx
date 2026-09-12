@@ -20,7 +20,6 @@ import {
   CardContent,
   Stack,
   Typography,
-  Chip,
   ToggleButton,
   ToggleButtonGroup,
   Table,
@@ -29,14 +28,13 @@ import {
   TableCell,
   TableBody,
   IconButton,
-  CircularProgress,
   Alert,
   Avatar,
   LinearProgress,
   Divider,
-  Button,
   Link,
   alpha,
+  Button,
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
@@ -65,6 +63,7 @@ import {
 } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminCard, StatusChip, AdminLoading } from './design-system';
 
 const PALETTE = ['#7c3aed', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#22c55e'];
 
@@ -128,7 +127,7 @@ const AdminAnalyticsHub: React.FC = () => {
 
   const funnel = overview?.funnel || {};
   const funnelData = [
-    { stage: '1. Inquiry mottatt', count: funnel.inquiry_received || 0, color: '#7c3aed' },
+    { stage: '1. Inquiry mottatt', count: funnel.inquiry_received || 0, color: '#c084fc' },
     { stage: '2. Inquiry besvart', count: funnel.inquiry_replied || 0, color: '#06b6d4' },
     { stage: '3. Konvertert til prosjekt', count: funnel.inquiry_converted_to_project || 0, color: '#10b981' },
   ];
@@ -142,7 +141,7 @@ const AdminAnalyticsHub: React.FC = () => {
       label: 'Hendelser',
       value: fmtNum(totalEvents),
       sub: `siste ${period}`,
-      color: '#7c3aed',
+      color: '#c084fc',
       icon: <BoltIcon />,
     },
     {
@@ -181,11 +180,11 @@ const AdminAnalyticsHub: React.FC = () => {
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Stack direction="row" alignItems="center" spacing={1.5}>
-            <Avatar sx={{ bgcolor: alpha('#7c3aed', 0.15), color: '#7c3aed' }}>
+            <Avatar aria-hidden sx={{ bgcolor: alpha('#7c3aed', 0.15), color: '#c084fc' }}>
               <InsightsIcon />
             </Avatar>
             <Box>
-              <Typography variant="overline" sx={{ color: '#7c3aed', letterSpacing: '0.16em' }}>
+              <Typography variant="overline" sx={{ color: '#c084fc', letterSpacing: '0.16em' }}>
                 Analytics Hub
               </Typography>
               <Typography variant="h5" sx={{ fontWeight: 700, fontFamily: '"Space Grotesk", sans-serif' }}>
@@ -205,7 +204,7 @@ const AdminAnalyticsHub: React.FC = () => {
             <ToggleButton value="7d">7d</ToggleButton>
             <ToggleButton value="30d">30d</ToggleButton>
           </ToggleButtonGroup>
-          <IconButton onClick={() => { refetchOv(); refetchSt(); }} disabled={ovFetching}>
+          <IconButton aria-label="Oppdater analysedata" onClick={() => { refetchOv(); refetchSt(); }} disabled={ovFetching}>
             <RefreshIcon />
           </IconButton>
           <Button
@@ -234,9 +233,7 @@ const AdminAnalyticsHub: React.FC = () => {
       )}
 
       {isLoading && !overview && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress />
-        </Box>
+        <AdminLoading />
       )}
 
       {/* KPI-kort */}
@@ -256,7 +253,7 @@ const AdminAnalyticsHub: React.FC = () => {
                     {k.sub}
                   </Typography>
                 </Box>
-                <Box sx={{ color: k.color, opacity: 0.6 }}>{k.icon}</Box>
+                <Box aria-hidden sx={{ color: k.color, opacity: 0.6 }}>{k.icon}</Box>
               </Stack>
             </CardContent>
           </Card>
@@ -266,9 +263,7 @@ const AdminAnalyticsHub: React.FC = () => {
       {/* Charts row */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' }, gap: 2, mb: 2 }}>
         {/* Events over tid */}
-        <Card>
-          <CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Hendelser over tid (7 dager)</Typography>
+        <AdminCard title="Hendelser over tid (7 dager)">
             <Box sx={{ height: 240 }}>
               <ResponsiveContainer>
                 <AreaChart data={timeSeries}>
@@ -286,19 +281,16 @@ const AdminAnalyticsHub: React.FC = () => {
                 </AreaChart>
               </ResponsiveContainer>
             </Box>
-          </CardContent>
-        </Card>
+        </AdminCard>
 
         {/* Top event-typer */}
-        <Card>
-          <CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Top events (7d)</Typography>
-            {(overview?.topEvents || []).length === 0 ? (
+        <AdminCard title="Top events (7d)">
+            {(Array.isArray(overview?.topEvents) ? overview.topEvents : []).length === 0 ? (
               <Typography variant="caption" color="text.secondary">Ingen data ennå.</Typography>
             ) : (
               <Box sx={{ height: 240 }}>
                 <ResponsiveContainer>
-                  <BarChart data={(overview?.topEvents || []).slice(0, 8)} layout="vertical" margin={{ left: 0 }}>
+                  <BarChart data={(Array.isArray(overview?.topEvents) ? overview.topEvents : []).slice(0, 8)} layout="vertical" margin={{ left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis type="number" tick={{ fontSize: 11 }} />
                     <YAxis
@@ -310,7 +302,7 @@ const AdminAnalyticsHub: React.FC = () => {
                     />
                     <RTooltip formatter={(v: any) => fmtNum(Number(v))} />
                     <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                      {(overview?.topEvents || []).slice(0, 8).map((_, i) => (
+                      {(Array.isArray(overview?.topEvents) ? overview.topEvents : []).slice(0, 8).map((_, i) => (
                         <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
                       ))}
                     </Bar>
@@ -318,18 +310,13 @@ const AdminAnalyticsHub: React.FC = () => {
                 </ResponsiveContainer>
               </Box>
             )}
-          </CardContent>
-        </Card>
+        </AdminCard>
       </Box>
 
       {/* Funnel + Revenue per app */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
         {/* Inquiry funnel */}
-        <Card>
-          <CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>
-              Inquiry-funnel (30d)
-            </Typography>
+        <AdminCard title="Inquiry-funnel (30d)">
             <Stack spacing={1.5}>
               {funnelData.map((s, idx) => {
                 const pct = funnelData[0].count > 0 ? (s.count / funnelData[0].count) * 100 : 0;
@@ -361,22 +348,16 @@ const AdminAnalyticsHub: React.FC = () => {
             <Divider sx={{ my: 2 }} />
             <Stack direction="row" justifyContent="space-between">
               <Typography variant="caption" color="text.secondary">Konvertering totalt</Typography>
-              <Chip
-                size="small"
+              <StatusChip
+                tone={conversionRate >= 20 ? 'success' : conversionRate >= 10 ? 'warning' : 'neutral'}
                 label={`${conversionRate}%`}
-                color={conversionRate >= 20 ? 'success' : conversionRate >= 10 ? 'warning' : 'default'}
                 sx={{ fontWeight: 700 }}
               />
             </Stack>
-          </CardContent>
-        </Card>
+        </AdminCard>
 
         {/* Stripe events pie */}
-        <Card>
-          <CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-              Stripe-fordeling (siste 25 events)
-            </Typography>
+        <AdminCard title="Stripe-fordeling (siste 25 events)">
             {!stripe?.counts || (stripe.counts.succeeded + stripe.counts.failed + stripe.counts.refunded === 0) ? (
               <Typography variant="caption" color="text.secondary">Ingen Stripe-data tilgjengelig.</Typography>
             ) : (
@@ -402,24 +383,19 @@ const AdminAnalyticsHub: React.FC = () => {
                 </ResponsiveContainer>
               </Box>
             )}
-          </CardContent>
-        </Card>
+        </AdminCard>
       </Box>
 
       {/* Siste hendelser + abonnement-tabell */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
         {/* Recent events */}
-        <Card>
-          <CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-              Siste hendelser
-            </Typography>
-            {(overview?.recentEvents || []).length === 0 ? (
+        <AdminCard title="Siste hendelser">
+            {(Array.isArray(overview?.recentEvents) ? overview.recentEvents : []).length === 0 ? (
               <Typography variant="caption" color="text.secondary">Ingen events registrert ennå.</Typography>
             ) : (
               <Table size="small">
                 <TableBody>
-                  {(overview?.recentEvents || []).slice(0, 10).map((ev: any, idx: number) => (
+                  {(Array.isArray(overview?.recentEvents) ? overview.recentEvents : []).slice(0, 10).map((ev: any, idx: number) => (
                     <TableRow key={idx}>
                       <TableCell sx={{ py: 0.5, borderBottom: idx === 9 ? 0 : undefined }}>
                         <Typography variant="caption" sx={{ fontWeight: 600 }}>
@@ -441,21 +417,16 @@ const AdminAnalyticsHub: React.FC = () => {
                 </TableBody>
               </Table>
             )}
-          </CardContent>
-        </Card>
+        </AdminCard>
 
         {/* Recent Stripe events */}
-        <Card>
-          <CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-              Siste Stripe-hendelser
-            </Typography>
-            {(stripe?.events || []).length === 0 ? (
+        <AdminCard title="Siste Stripe-hendelser">
+            {(Array.isArray(stripe?.events) ? stripe.events : []).length === 0 ? (
               <Typography variant="caption" color="text.secondary">Ingen Stripe-events.</Typography>
             ) : (
               <Table size="small">
                 <TableBody>
-                  {(stripe?.events || []).slice(0, 10).map((ev: any, idx: number) => (
+                  {(Array.isArray(stripe?.events) ? stripe.events : []).slice(0, 10).map((ev: any, idx: number) => (
                     <TableRow key={ev.id}>
                       <TableCell sx={{ py: 0.5, borderBottom: idx === 9 ? 0 : undefined }}>
                         <Typography variant="caption" sx={{ fontWeight: 600 }}>
@@ -477,8 +448,7 @@ const AdminAnalyticsHub: React.FC = () => {
                 </TableBody>
               </Table>
             )}
-          </CardContent>
-        </Card>
+        </AdminCard>
       </Box>
 
       <Box sx={{ mt: 2, textAlign: 'center' }}>

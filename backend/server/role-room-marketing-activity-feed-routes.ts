@@ -179,7 +179,7 @@ export function registerRoleRoomMarketingActivityFeedRoutes(
                   s.client_name AS "clientName"
              FROM role_room_marketing_plan_posts p
              JOIN role_room_marketing_plans mp ON mp.id = p.plan_id
-             LEFT JOIN client_portal_sessions s ON s.id = p.client_review_session_id
+             LEFT JOIN role_room_client_portal_sessions s ON s.id = p.client_review_session_id
             WHERE mp.project_id = $1
               AND p.client_review_status <> 'pending'
               AND p.client_review_at IS NOT NULL

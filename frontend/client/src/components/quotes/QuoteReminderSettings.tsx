@@ -32,6 +32,7 @@ import {
   Mail as MailIcon,
   Notifications as BellIcon,
 } from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
 
 interface ReminderConfig {
   expiryReminders: {
@@ -109,8 +110,8 @@ export default function QuoteReminderSettings({
   const fetchConfig = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/quotes/reminders/config?userId=${encodeURIComponent(userId)}`);
-      const data = (await response.json()) as ReminderConfigResponse;
+      // userId is derived server-side from the session (endpoint is now gated).
+      const data = (await apiRequest('/api/quotes/reminders/config')) as ReminderConfigResponse;
 
       if (data.success && data.config) {
         setConfig(data.config);
@@ -129,8 +130,7 @@ export default function QuoteReminderSettings({
 
   const fetchServiceStatus = async () => {
     try {
-      const response = await fetch('/api/quotes/reminders/status');
-      const data = (await response.json()) as ReminderStatusResponse;
+      const data = (await apiRequest('/api/quotes/reminders/status')) as ReminderStatusResponse;
       if (data.success && data.status) {
         setServiceStatus(data.status);
       }
@@ -142,13 +142,11 @@ export default function QuoteReminderSettings({
   const handleSave = async () => {
     setSaving(true);
     try {
-      const response = await fetch('/api/quotes/reminders/config', {
+      // Owner is derived from the session server-side; no userId in the body.
+      const data = (await apiRequest('/api/quotes/reminders/config', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, config }),
-      });
-
-      const data = (await response.json()) as ReminderConfigResponse;
+        body: JSON.stringify({ config }),
+      })) as ReminderConfigResponse;
 
       if (!data.success) {
         throw new Error(data.error ?? 'Failed to save settings');
@@ -174,11 +172,9 @@ export default function QuoteReminderSettings({
 
   const handleTestReminders = async () => {
     try {
-      const response = await fetch('/api/quotes/reminders/trigger', {
+      const data = (await apiRequest('/api/quotes/reminders/trigger', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = (await response.json()) as { success: boolean };
+      })) as { success: boolean };
 
       if (data.success) {
         setToast({

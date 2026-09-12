@@ -39,10 +39,13 @@ import {
   InputAdornment,
   Snackbar,
   TextField,
+  CircularProgress,
+  Skeleton,
 } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Assessment,
+  MonitorHeart,
   Settings,
   People,
   Dashboard as DashboardIcon,
@@ -50,6 +53,7 @@ import {
   Storage,
   Business,
   AttachMoney,
+  Language,
   TrendingUp,
   History,
   ManageAccounts,
@@ -72,6 +76,7 @@ import {
   Check,
   Close,
   AccountCircle,
+  Payments,
   Campaign,
   Event,
   Search,
@@ -79,34 +84,64 @@ import {
   HowToReg,
   Storefront,
   Palette,
+  AccountBox,
+  CheckCircle,
+  Warning,
+  Block,
+  OpenInNew,
+  ContentCopy,
+  Refresh,
+  Send,
+  Receipt,
+  HourglassEmpty,
+  CloudUpload,
+  CloudDownload,
+  DeleteOutline,
+  Inbox,
+  BugReport,
 } from '@mui/icons-material';
 import AdminStats from './AdminStats';
+import { ThemeProvider as AdminSectionThemeProvider } from '@mui/material/styles';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   apiRequest,
   isApiEndpointMissing,
   isKnownUnavailableApiEndpoint,
+  queryClient,
 } from '@/lib/queryClient';
 import PriceManagementDashboard from './PriceManagementDashboard';
+import LeadgridAdminSection from './LeadgridAdminSection';
 import MarketplaceAppConfigManager from './MarketplaceAppConfigManager';
 import VendorTypeManager from '../vendor/VendorTypeManager';
+import EditingPartnersAdminPanel from './EditingPartnersAdminPanel';
+import WorkspacePreviewPanel from './WorkspacePreviewPanel';
+import DebugToolPanel from './DebugToolPanel';
 import FullscreenChatWidget from '../chat/FullscreenChatWidget';
 import { CommunicationStatusProvider } from '../../contexts/CommunicationStatusContext';
 import AdminCommunicationPanel from './AdminCommunicationPanel';
 import FeatureManagement from './feature-management';
 import FeatureCustomizationPanel from './FeatureCustomizationPanel';
 import UserManagementPanel from './UserManagementPanel';
+import LeadMapEntitlementsAdminPanel from './LeadMapEntitlementsAdminPanel';
+import CustomerSuccessSnapshotCard from './CustomerSuccessSnapshotCard';
+import LeadMapMarketplaceCard from './LeadMapMarketplaceCard';
 import InviteManagementDashboard from './InviteManagementDashboard';
 import AdminNotificationManager from './AdminNotificationManager';
+import EquipmentAdminPage from '@/pages/EquipmentAdminPage';
 import AdminConfigStatusCard from './AdminConfigStatusCard';
 import AdminPaymentStatusCard from './AdminPaymentStatusCard';
 import AdminAnalyticsHub from './AdminAnalyticsHub';
 import AdminAICostDashboard from './AdminAICostDashboard';
+import GenerativeAiAdminPanel from './GenerativeAiAdminPanel';
 import AdminDesignTokensPanel from './AdminDesignTokensPanel';
+import CreatorHubDesignShell from './visual-editor/CreatorHubDesignShell';
 import BillingManagementPanel from './BillingManagementPanel';
 import UserCostOverviewPanel from './UserCostOverviewPanel';
+import InboundAlertsPanel from './InboundAlertsPanel';
 import SecretsRotationPanel from './SecretsRotationPanel';
 import { GDPRCompliancePanel } from './GDPRCompliancePanel';
 import IntegrationsManagementPanel from './IntegrationsManagementPanel';
+import LtiPlatformsPanel from './LtiPlatformsPanel';
 import CreatorhubVisualEditorRefactored from './CreatorhubVisualEditorRefactored';
 import CustomerProjectsPanel from './CustomerProjectsPanel';
 import SystemHealthPanel from './SystemHealthPanel';
@@ -124,8 +159,10 @@ import ProfessionTypeManager from './ProfessionTypeManager';
 import ComprehensiveProtocolManager from './ComprehensiveProtocolManager';
 import PlaceholderTextScanner from '../development/PlaceholderTextScanner';
 import CentralizedMonitoringConsole from './CentralizedMonitoringConsole';
+import ControlCenterPanel from './ControlCenterPanel';
 import AdminDashboardIntegrationTest from './AdminDashboardIntegrationTest';
 import PaymentSystemsIntegrationTest from './PaymentSystemsIntegrationTest';
+import EditingPaymentTestPanel from './EditingPaymentTestPanel';
 import GoogleWalletMembershipManager from './GoogleWalletMembershipManager';
 import GoogleWalletIntegrationTest from './GoogleWalletIntegrationTest';
 import GooglePaymentsConfiguration from './GooglePaymentsConfiguration';
@@ -144,6 +181,8 @@ import CommunityManagementDashboard from './CommunityManagementDashboard';
 import FineTuningMonitoringPanel from './FineTuningMonitoringPanel';
 import OAuthScopeChecker from './OAuthScopeChecker';
 import TidumAccessRequestsPanel from './TidumAccessRequestsPanel';
+import PrototypeTesterAdminPanel from './PrototypeTesterAdminPanel';
+import RoleRoomAffiliateAdminPanel from './RoleRoomAffiliateAdminPanel';
 
 // Integration props for unified workflow connectivity
 interface AdminDashboardProps {
@@ -171,7 +210,8 @@ type PriceManagementSection =
   | 'subscriptions'
   | 'email-templates'
   | 'analytics'
-  | 'enterprise';
+  | 'enterprise'
+  | 'lead-map';
 
 // Error Boundary to prevent child component crashes from killing the whole dashboard
 class AdminErrorBoundary extends React.Component<
@@ -228,6 +268,11 @@ export default function AdminDashboard({
   // All hooks at the top
   const [tabValue, setTabValue] = useState(0);
   const [marketingSubTab, setMarketingSubTab] = useState(0);
+  // Oversikten bruker progressiv visning: et rent sammendrag som standard,
+  // med tung statistikk og aktivitet bak egne segmenter (unngår scroll-overload).
+  const [overviewSection, setOverviewSection] = useState<'summary' | 'stats' | 'activity'>(
+    'summary',
+  );
   const [adminNavQuery, setAdminNavQuery] = useState('');
   const [adminGroupExpansion, setAdminGroupExpansion] = useState<Record<string, boolean>>({
     Oversikt: true,
@@ -265,6 +310,26 @@ export default function AdminDashboard({
   const [maintenanceModeDialog, setMaintenanceModeDialog] = useState(false);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
   const [payoutConfirmDialog, setPayoutConfirmDialog] = useState<{ open: boolean; payout: any | null }>({ open: false, payout: null });
+  const [onboardingLinkDialog, setOnboardingLinkDialog] = useState<{
+    open: boolean;
+    instructorId: string | null;
+    instructorName: string | null;
+    instructorEmail: string | null;
+    onboardingUrl: string | null;
+    expiresAt: string | null;
+  }>({ open: false, instructorId: null, instructorName: null, instructorEmail: null, onboardingUrl: null, expiresAt: null });
+  const [academySection, setAcademySection] = useState<'instructors' | 'payouts' | 'transfers' | 'b2-archive'>('instructors');
+  // Academy B2-arkiv (admin-only): upload-dialog state
+  const [academyB2UploadDialog, setAcademyB2UploadDialog] = useState<{
+    open: boolean;
+    courseId: string;
+    file: File | null;
+    isMaster: boolean;
+    progress: number;
+    isUploading: boolean;
+    error: string | null;
+  }>({ open: false, courseId: '', file: null, isMaster: true, progress: 0, isUploading: false, error: null });
+  const [academyB2DeleteConfirm, setAcademyB2DeleteConfirm] = useState<{ open: boolean; key: string | null }>({ open: false, key: null });
   const [hasSessionToken, setHasSessionToken] = useState<boolean>(() => {
     try {
       return Boolean(localStorage.getItem('creatorhub_auth_token'));
@@ -418,7 +483,7 @@ export default function AdminDashboard({
     automations: !isKnownUnavailableApiEndpoint('/api/admin/automations/status'),
   };
 
-  const { data: dashboardData } = useQuery({
+  const { data: dashboardData, isLoading: dashboardQueryLoading } = useQuery({
     queryKey: ['/api/admin/dashboard'],
     queryFn: () => fetchOptionalAdminData('/api/admin/dashboard', null),
     enabled: overviewFeedAvailability.dashboard && Boolean(currentUser?.isAdmin),
@@ -450,7 +515,7 @@ export default function AdminDashboard({
     retry: false,
   });
 
-  const { data: auditData } = useQuery({
+  const { data: auditData, isLoading: auditLoading } = useQuery({
     queryKey: ['/api/admin/audit/recent'],
     queryFn: () => fetchOptionalAdminData('/api/admin/audit/recent', []),
     enabled: overviewFeedAvailability.audit && Boolean(currentUser?.isAdmin),
@@ -458,7 +523,7 @@ export default function AdminDashboard({
     retry: false,
   });
 
-  const { data: healthData } = useQuery({
+  const { data: healthData, isLoading: healthLoading } = useQuery({
     queryKey: ['/api/admin/system/health'],
     queryFn: () => fetchOptionalAdminData('/api/admin/system/health', null),
     enabled: overviewFeedAvailability.health && Boolean(currentUser?.isAdmin),
@@ -490,8 +555,479 @@ export default function AdminDashboard({
     retry: false,
   });
 
+  // ─── Pending counts for overview "needs attention" ──────────
+  const { data: pendingCountsData, isLoading: pendingCountsLoading } = useQuery({
+    queryKey: ['/api/admin/pending-counts'] as const,
+    queryFn: () => fetchOptionalAdminData<{
+      total?: number;
+      inviteRequests?: number;
+      prototypeFeedback?: number;
+      bugReports?: number;
+    } | null>('/api/admin/pending-counts', null),
+    enabled: Boolean(currentUser?.isAdmin),
+    staleTime: 15000,
+    retry: false,
+  });
+
+  const { data: unreadAlertsData } = useQuery({
+    queryKey: ['/api/admin/inbound-alerts/count'] as const,
+    queryFn: () => fetchOptionalAdminData<{ unread?: number } | null>(
+      '/api/admin/inbound-alerts/count',
+      null,
+    ),
+    enabled: Boolean(currentUser?.isAdmin),
+    staleTime: 15000,
+    retry: false,
+  });
+
+  // ─── Academy: ekte tall + pending payouts ───────────────────
+  // Erstatter den hardkodede mockup-en i renderAcademyPanel.
+  // Endepunkter ligger i backend/server/admin-academy-routes.ts.
+  const academySummaryQueryKey = ['/api/admin/academy/summary'] as const;
+  const academyPayoutsQueryKey = ['/api/admin/academy/payouts', 'pending'] as const;
+  const academyInstructorsQueryKey = ['/api/admin/academy/instructors'] as const;
+  const academyTransfersQueryKey = ['/api/admin/academy/transfers', 50] as const;
+
+  const { data: academySummary, isLoading: academySummaryLoading } = useQuery({
+    queryKey: academySummaryQueryKey,
+    queryFn: () => fetchOptionalAdminData<{
+      totalRevenue?: number;
+      platformShare?: number;
+      instructorShare?: number;
+      activeInstructorCount?: number;
+      payoutsEnabledCount?: number;
+      enrollmentCount?: number;
+      pendingPayoutsCount?: number;
+      pendingPayoutsAmount?: number;
+      paidThisMonth?: number;
+      paidThisMonthCount?: number;
+      stripeConfigured?: boolean;
+    } | null>('/api/admin/academy/summary', null),
+    enabled: Boolean(currentUser?.isAdmin),
+    staleTime: 30000,
+    retry: false,
+  });
+
+  const { data: academyPayoutsData, isLoading: academyPayoutsLoading } = useQuery({
+    queryKey: academyPayoutsQueryKey,
+    queryFn: () => fetchOptionalAdminData<{
+      payouts?: Array<{
+        id: string;
+        instructorId: string;
+        instructorName: string | null;
+        amount: number;
+        status: string;
+        bankAccountLast4: string | null;
+        requestedAt: string | null;
+        notes: string | null;
+      }>;
+      total?: number;
+      tableMissing?: boolean;
+    } | null>('/api/admin/academy/payouts?status=pending', null),
+    enabled: Boolean(currentUser?.isAdmin),
+    staleTime: 30000,
+    retry: false,
+  });
+
+  const invalidateAcademy = () => {
+    queryClient.invalidateQueries({ queryKey: ['/api/admin/academy/payouts'] });
+    queryClient.invalidateQueries({ queryKey: academySummaryQueryKey });
+    queryClient.invalidateQueries({ queryKey: academyInstructorsQueryKey });
+    queryClient.invalidateQueries({ queryKey: academyTransfersQueryKey });
+  };
+
+  type AcademyInstructor = {
+    id: string;
+    name: string | null;
+    email: string | null;
+    stripeAccountId: string | null;
+    onboardingStatus: 'enabled' | 'pending' | 'restricted' | 'not_started';
+    payoutsEnabled: boolean;
+    requirementsCurrentlyDue: string[];
+    activeCourses?: number;
+    pendingPayoutAmount?: number;
+  };
+
+  const { data: academyInstructorsData, isLoading: academyInstructorsLoading } = useQuery({
+    queryKey: academyInstructorsQueryKey,
+    queryFn: () => fetchOptionalAdminData<{
+      instructors?: AcademyInstructor[];
+      stripeConfigured?: boolean;
+    } | null>('/api/admin/academy/instructors', null),
+    enabled: Boolean(currentUser?.isAdmin),
+    staleTime: 30000,
+    retry: false,
+  });
+
+  type AcademyTransfer = {
+    id: string;
+    payoutId: string | null;
+    instructorId: string;
+    instructorName: string | null;
+    amount: number;
+    currency: string;
+    status: 'in_transit' | 'paid' | 'failed' | 'pending' | string;
+    stripeTransferId: string | null;
+    createdAt: string | null;
+    completedAt: string | null;
+    failureReason: string | null;
+  };
+
+  const { data: academyTransfersData, isLoading: academyTransfersLoading } = useQuery({
+    queryKey: academyTransfersQueryKey,
+    queryFn: () => fetchOptionalAdminData<{
+      transfers?: AcademyTransfer[];
+      total?: number;
+      stripeConfigured?: boolean;
+    } | null>('/api/admin/academy/transfers?limit=50', null),
+    enabled: Boolean(currentUser?.isAdmin),
+    staleTime: 30000,
+    retry: false,
+  });
+
+  type AcademyRefund = {
+    id: string;
+    instructorId: string;
+    instructorName: string | null;
+    amount: number;
+    reason: string | null;
+    createdAt: string | null;
+    status: string;
+  };
+
+  const { data: academyRefundsData } = useQuery({
+    queryKey: ['/api/admin/academy/refunds'] as const,
+    queryFn: () => fetchOptionalAdminData<{
+      refunds?: AcademyRefund[];
+    } | null>('/api/admin/academy/refunds?limit=50', null),
+    enabled: Boolean(currentUser?.isAdmin),
+    staleTime: 60000,
+    retry: false,
+  });
+
+  // ─── Academy B2-arkiv (admin-only) ────────────────────────────
+  // Tabbed inn under Academy → "B2-arkiv". Vis filer i academy/-prefixet,
+  // aggregert stats, upload/download/delete.
+  type AcademyB2File = {
+    key: string;
+    sizeBytes: number;
+    lastModified: string | null;
+    isMaster: boolean;
+    courseId: string | null;
+    fileName: string;
+  };
+  type AcademyB2Stats = {
+    totalFiles: number;
+    totalSizeBytes: number;
+    byCourse: Array<{
+      courseId: string;
+      courseName: string | null;
+      fileCount: number;
+      sizeBytes: number;
+    }>;
+    byType: Array<{ ext: string; count: number; sizeBytes: number }>;
+    b2Configured: boolean;
+    bucketName?: string;
+  };
+  type AcademyCourseSummary = {
+    id: string;
+    title: string;
+  };
+
+  const academyB2ListQueryKey = ['/api/admin/academy/b2/list'] as const;
+  const academyB2StatsQueryKey = ['/api/admin/academy/b2/stats'] as const;
+
+  const { data: academyB2ListData, isLoading: academyB2ListLoading } = useQuery({
+    queryKey: academyB2ListQueryKey,
+    queryFn: () =>
+      fetchOptionalAdminData<{
+        files?: AcademyB2File[];
+        total?: number;
+        b2Configured?: boolean;
+        bucketName?: string;
+      } | null>('/api/admin/academy/b2/list?limit=500', null),
+    enabled: Boolean(currentUser?.isAdmin) && academySection === 'b2-archive',
+    staleTime: 30000,
+    retry: false,
+  });
+
+  const { data: academyB2StatsData, isLoading: academyB2StatsLoading } = useQuery({
+    queryKey: academyB2StatsQueryKey,
+    queryFn: () =>
+      fetchOptionalAdminData<AcademyB2Stats | null>(
+        '/api/admin/academy/b2/stats',
+        null,
+      ),
+    enabled: Boolean(currentUser?.isAdmin) && academySection === 'b2-archive',
+    staleTime: 30000,
+    retry: false,
+  });
+
+  // Kurs-dropdown for upload-dialog
+  const { data: academyCoursesData } = useQuery({
+    queryKey: ['/api/admin/academy/courses', 'b2-upload-dropdown'] as const,
+    queryFn: () =>
+      fetchOptionalAdminData<{
+        courses?: AcademyCourseSummary[];
+      } | null>('/api/admin/academy/courses?limit=500', null),
+    enabled: Boolean(currentUser?.isAdmin) && academySection === 'b2-archive',
+    staleTime: 60000,
+    retry: false,
+  });
+
+  const academyB2DeleteMutation = useMutation({
+    mutationFn: async (key: string) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(
+        `/api/admin/academy/b2/object?key=${encodeURIComponent(key)}`,
+        { method: 'DELETE', headers },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: academyB2ListQueryKey });
+      queryClient.invalidateQueries({ queryKey: academyB2StatsQueryKey });
+      setSnackbar({ open: true, message: 'Fil slettet fra B2.', severity: 'success' });
+    },
+    onError: (err) => {
+      console.error('[academy-b2] delete failed:', err);
+      setSnackbar({ open: true, message: 'Kunne ikke slette fil.', severity: 'error' });
+    },
+  });
+
+  const academyB2DownloadMutation = useMutation({
+    mutationFn: async (key: string) => {
+      const headers = await auth.getAuthHeader();
+      const response = (await apiRequest('/api/admin/academy/b2/download-url', {
+        method: 'POST',
+        headers,
+        body: { key },
+      })) as { downloadUrl: string | null; expiresAt: string | null; b2Configured?: boolean };
+      return response;
+    },
+    onSuccess: (data) => {
+      if (data?.downloadUrl) {
+        window.open(data.downloadUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        setSnackbar({
+          open: true,
+          message: 'Kunne ikke generere nedlastings-URL (B2 ikke konfigurert?).',
+          severity: 'warning',
+        });
+      }
+    },
+    onError: (err) => {
+      console.error('[academy-b2] download-url failed:', err);
+      setSnackbar({ open: true, message: 'Kunne ikke generere nedlastings-URL.', severity: 'error' });
+    },
+  });
+
+  const academyB2StartUpload = async () => {
+    const { courseId, file, isMaster } = academyB2UploadDialog;
+    if (!courseId || !file) {
+      setAcademyB2UploadDialog((prev) => ({
+        ...prev,
+        error: 'Velg kurs og fil før opplasting.',
+      }));
+      return;
+    }
+    setAcademyB2UploadDialog((prev) => ({ ...prev, isUploading: true, error: null, progress: 0 }));
+    try {
+      const headers = await auth.getAuthHeader();
+      const presign = (await apiRequest('/api/admin/academy/b2/upload-url', {
+        method: 'POST',
+        headers,
+        body: {
+          courseId,
+          fileName: file.name,
+          contentType: file.type || 'application/octet-stream',
+          isMaster,
+        },
+      })) as { uploadUrl: string | null; key: string | null; expiresAt: string | null; b2Configured?: boolean };
+
+      if (!presign?.uploadUrl) {
+        setAcademyB2UploadDialog((prev) => ({
+          ...prev,
+          isUploading: false,
+          error: 'B2 ikke konfigurert — kan ikke laste opp.',
+        }));
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', presign.uploadUrl as string, true);
+        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            setAcademyB2UploadDialog((prev) => ({ ...prev, progress: pct }));
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(new Error(`B2 PUT feilet med status ${xhr.status}`));
+          }
+        };
+        xhr.onerror = () => reject(new Error('Nettverksfeil under opplasting til B2.'));
+        xhr.send(file);
+      });
+
+      queryClient.invalidateQueries({ queryKey: academyB2ListQueryKey });
+      queryClient.invalidateQueries({ queryKey: academyB2StatsQueryKey });
+      setSnackbar({ open: true, message: 'Fil lastet opp til B2.', severity: 'success' });
+      setAcademyB2UploadDialog({
+        open: false,
+        courseId: '',
+        file: null,
+        isMaster: true,
+        progress: 0,
+        isUploading: false,
+        error: null,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ukjent feil under opplasting.';
+      setAcademyB2UploadDialog((prev) => ({ ...prev, isUploading: false, error: message }));
+    }
+  };
+
+  const generateOnboardingLinkMutation = useMutation({
+    mutationFn: async (instructor: { id: string; name: string | null; email: string | null }) => {
+      const headers = await auth.getAuthHeader();
+      const response = (await apiRequest(
+        `/api/admin/academy/instructors/${instructor.id}/onboarding-link`,
+        {
+          method: 'POST',
+          headers,
+        },
+      )) as { onboardingUrl: string; expiresAt: string };
+      return { ...response, instructor };
+    },
+    onSuccess: (result) => {
+      setOnboardingLinkDialog({
+        open: true,
+        instructorId: result.instructor.id,
+        instructorName: result.instructor.name,
+        instructorEmail: result.instructor.email,
+        onboardingUrl: result.onboardingUrl,
+        expiresAt: result.expiresAt,
+      });
+      queryClient.invalidateQueries({ queryKey: academyInstructorsQueryKey });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error ? err.message : 'Kunne ikke generere onboarding-lenke';
+      setSnackbar({ open: true, message: msg, severity: 'error' });
+    },
+  });
+
+  const syncOnboardingStatusMutation = useMutation({
+    mutationFn: async (instructorId: string) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(
+        `/api/admin/academy/instructors/${instructorId}/onboarding-status`,
+        { headers },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: academyInstructorsQueryKey });
+      queryClient.invalidateQueries({ queryKey: academySummaryQueryKey });
+      setSnackbar({
+        open: true,
+        message: 'Onboarding-status oppdatert fra Stripe.',
+        severity: 'success',
+      });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error ? err.message : 'Kunne ikke synkronisere status';
+      setSnackbar({ open: true, message: msg, severity: 'error' });
+    },
+  });
+
+  const markPaidMutation = useMutation({
+    mutationFn: async (payoutId: string) => {
+      const headers = await auth.getAuthHeader();
+      const result = (await apiRequest(
+        `/api/admin/academy/payouts/${payoutId}/mark-paid`,
+        {
+          method: 'POST',
+          headers,
+        },
+      )) as { transferId?: string; status?: string } | null;
+      return result;
+    },
+    onSuccess: (result) => {
+      invalidateAcademy();
+      const transferLabel = result?.transferId
+        ? ` (transfer ${result.transferId})`
+        : '';
+      setSnackbar({
+        open: true,
+        message: `Utbetaling markert som betalt${transferLabel}.`,
+        severity: 'success',
+      });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error ? err.message : 'Kunne ikke markere som betalt';
+      setSnackbar({ open: true, message: msg, severity: 'error' });
+    },
+  });
+
+  const approvePayoutMutation = useMutation({
+    mutationFn: async (payoutId: string) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/admin/academy/payouts/${payoutId}/approve`, {
+        method: 'POST',
+        headers,
+      });
+    },
+    onSuccess: () => {
+      invalidateAcademy();
+      setSnackbar({
+        open: true,
+        message: 'Utbetaling godkjent — Stripe Connect prosesserer overføringen.',
+        severity: 'success',
+      });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error ? err.message : 'Kunne ikke godkjenne utbetaling';
+      setSnackbar({ open: true, message: msg, severity: 'error' });
+    },
+  });
+
+  const rejectPayoutMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/admin/academy/payouts/${id}/reject`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+    },
+    onSuccess: () => {
+      invalidateAcademy();
+      setSnackbar({
+        open: true,
+        message: 'Utbetaling avvist',
+        severity: 'warning',
+      });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error ? err.message : 'Kunne ikke avvise utbetaling';
+      setSnackbar({ open: true, message: msg, severity: 'error' });
+    },
+  });
+
   const activateTab = (newValue: number) => {
-    setTabValue(newValue);
+    // startTransition: faner med lazy undertrær (bl.a. Innhold & Assets →
+    // visual-editor-chunkene) suspender ved mount. Synkron setState fra klikk
+    // + suspend = React #426 som kaster hele flaten til AdminErrorBoundary.
+    React.startTransition(() => setTabValue(newValue));
 
     // Broadcast tab change to other components
     communication.sendMessage({
@@ -528,33 +1064,34 @@ export default function AdminDashboard({
     setAnchorEl(null);
   };
 
-  // Admin floating action button handlers (✅ corrected indices)
+  // Admin floating action button handlers — id-basert oppslag (tabIndexFor),
+  // aldri hardkodede indekser: de råtner hver gang adminTabs får en ny fane.
   const handleUserManagementOpen = () => {
-    activateTab(1); // Brukere & Roller
+    activateTab(tabIndexFor('brukere-roller'));
   };
 
   const handleSystemHealthOpen = () => {
-    activateTab(17); // Drift
+    activateTab(tabIndexFor('drift-helse'));
   };
 
   const handleAnalyticsOpen = () => {
-    activateTab(0); // Overblikk
+    activateTab(tabIndexFor('overblikk'));
   };
 
   const handleBackupOpen = () => {
-    activateTab(18); // Backup
+    activateTab(tabIndexFor('system-backup'));
   };
 
   const handleSecurityAuditOpen = () => {
-    activateTab(19); // GDPR
+    activateTab(tabIndexFor('gdpr-compliance'));
   };
 
   const handleBillingOpen = () => {
-    activateTab(7); // Økonomi
+    activateTab(tabIndexFor('okonomi'));
   };
 
   const handleAutomationsOpen = () => {
-    activateTab(21); // Automations
+    activateTab(tabIndexFor('automations'));
   };
 
   const handleLogsOpen = () => {
@@ -616,19 +1153,19 @@ export default function AdminDashboard({
   };
 
   const handleSystemSettingsOpen = () => {
-    activateTab(17); // Drift (system settings)
+    activateTab(tabIndexFor('drift-helse')); // system settings
   };
 
   const handleStrategicNotesOpen = () => {
-    activateTab(23); // Stor Notatsløsning (Advanced Notes)
+    activateTab(tabIndexFor('advanced-notes'));
   };
 
   const handleMagicCreatorOpen = () => {
-    activateTab(22); // MagicCreator
+    activateTab(tabIndexFor('creatorhub-notes'));
   };
 
   const handleGoogleWorkspaceResellerOpen = () => {
-    activateTab(22); // MagicCreator (has Google Workspace content)
+    activateTab(tabIndexFor('creatorhub-notes')); // Google Workspace-innhold ligger her
   };
 
   // Admin action handlers with unified workflow integration
@@ -893,23 +1430,33 @@ export default function AdminDashboard({
     { id: 'send-notifications', label: 'Send varslinger', icon: Campaign },
     { id: 'community', label: 'Community', icon: Group },
     { id: 'innhold-assets', label: 'Innhold & Assets', icon: Folder },
+    { id: 'utstyrsdatabase', label: 'Utstyrsdatabase', icon: Storage },
     { id: 'kunder-prosjekter', label: 'Kunder/Prosjekter', icon: Group },
     { id: 'kommunikasjon', label: 'Kommunikasjon', icon: Chat },
+    { id: 'inbound-alerts', label: 'Innkommende', icon: Inbox },
     { id: 'prototype-feedback', label: 'Prototype Feedback', icon: Feedback },
     { id: 'okonomi', label: 'Økonomi', icon: AttachMoney },
+    { id: 'affiliate-payouts', label: 'Affiliate & utbetalinger', icon: Payments },
     { id: 'price-management', label: 'Prisstyring', icon: AttachMoney },
+    { id: 'leadgrid', label: 'Leadgrid', icon: Language },
     { id: 'user-costs', label: 'Bruker-kostnader', icon: AttachMoney },
     { id: 'marketplace-apps', label: 'Marketplace-apper', icon: Storefront },
     { id: 'analytics-hub', label: 'Analytics Hub', icon: Assessment },
     { id: 'ai-cost', label: 'AI-kostnader', icon: Psychology },
+    { id: 'generative-ai', label: 'Generativ AI', icon: Psychology },
     { id: 'design-tokens', label: 'Design-tokens', icon: Palette },
+    { id: 'creatorhub-design', label: 'CreatorHub Design', icon: Palette },
     { id: 'reports', label: 'Rapporter', icon: Assessment },
     { id: 'academy', label: 'Academy', icon: School },
     { id: 'tidum-tilganger', label: 'Tidum', icon: Business },
     { id: 'vendor-types', label: 'Leverandørtyper', icon: Business },
+    { id: 'editing-partners', label: 'Redigeringspartnere', icon: Business },
+    { id: 'workspace-preview', label: 'Workspaces', icon: Business },
+    { id: 'debug-tool', label: 'Debug', icon: Business },
     { id: 'profession-types', label: 'Profesjonstyper', icon: People },
     { id: 'integrasjoner', label: 'Integrasjoner', icon: Link },
     { id: 'feature-management', label: 'Funksjonsflagg', icon: ToggleOn },
+    { id: 'control-center', label: 'Control Center', icon: MonitorHeart },
     { id: 'centralized-monitoring', label: 'Sentralisert Overvåkning', icon: Assessment },
     { id: 'protokollstyring', label: 'Protokollstyring', icon: Security },
     { id: 'secrets-rotation', label: 'Nøkkel-rotering', icon: Security },
@@ -937,25 +1484,27 @@ export default function AdminDashboard({
     { id: 'marketing', label: 'Marketing', icon: Campaign },
     { id: 'feature-customization', label: 'Tilpasning', icon: Settings },
     { id: 'fine-tuning-monitor', label: 'Fine-tuning', icon: Psychology },
-  ];
+  ].filter(
+    (tab) => tab.id !== 'affiliate-payouts' || currentUser?.role === 'super_admin',
+  );
   const currentTab = adminTabs[tabValue] || adminTabs[0];
   const adminShellGroups = [
     {
       label: 'Oversikt',
       items: adminTabs.filter((tab) =>
-        ['overblikk', 'brukere-roller', 'invite-requests', 'send-notifications', 'community', 'innhold-assets', 'kunder-prosjekter', 'kommunikasjon'].includes(tab.id),
+        ['overblikk', 'brukere-roller', 'invite-requests', 'send-notifications', 'community', 'innhold-assets', 'utstyrsdatabase', 'kunder-prosjekter', 'kommunikasjon', 'inbound-alerts'].includes(tab.id),
       ),
     },
     {
       label: 'Forretning',
       items: adminTabs.filter((tab) =>
-        ['okonomi', 'price-management', 'user-costs', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'profession-types'].includes(tab.id),
+        ['okonomi', 'affiliate-payouts', 'price-management', 'user-costs', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'editing-partners', 'workspace-preview', 'debug-tool', 'profession-types'].includes(tab.id),
       ),
     },
     {
       label: 'Plattform',
       items: adminTabs.filter((tab) =>
-        ['integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'secrets-rotation', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
+        ['creatorhub-design', 'control-center', 'integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'secrets-rotation', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
       ),
     },
     {
@@ -976,17 +1525,24 @@ export default function AdminDashboard({
     'innhold-assets': 'Hold kontroll på CreatorHub CMS, assets og publiseringsflyt.',
     'kunder-prosjekter': 'Se kunder, prosjekter og leveranser i samme operative oversikt.',
     kommunikasjon: 'Koordiner meldinger, møter og intern kommunikasjon.',
+    'inbound-alerts': 'Full oversikt over innkommende varsler — søknader, leads og signups som krever oppfølging.',
     'prototype-feedback': 'Samle produktinnsikt, tester og prioritering fra prototyper.',
     okonomi: 'Følg inntekter, utbetalinger og operativ økonomi.',
+    'affiliate-payouts': 'Kontroller The Role Room-affiliates, organisasjonsbrukere, avtaler, Stripe Connect og utbetalingsledger.',
     'price-management': 'Juster prismodeller og kommersielle satser på tvers av tilbud.',
     'user-costs': 'Per-bruker oversikt over lagring, AI-kost, totalkost og margin til CreatorHub.',
     reports: 'Analyser utvikling, rapporter og forretningssignaler.',
     academy: 'Styr Academy-økonomi, instruktører og utbetalingsflyt.',
     'tidum-tilganger': 'Behandle Tidum-forespørsler, knytt dem til virksomheter og hold tilgangssynken samlet i CreatorHub.',
     'vendor-types': 'Vedlikehold leverandørtyper og tilbudsstruktur.',
+    'editing-partners': 'Godkjenn redigerings-søknader; sett prototype-tester (0 % i en periode) vs. vanlig kunde (partner-fee). Filtrer på type.',
+    'workspace-preview': 'Forhåndsvis hver profesjons workspace-grensesnitt (foto/video/produsent/vendor) for å inspisere layout/flyt. «Vis som ekte bruker» kommer i Del 2.',
+    'debug-tool': 'Diagnose-verktøy: sjekk hvorfor en bruker har (eller ikke har) tilgang (identitet/godkjenning/compliance/magic-link/routing) + system-helse (PayPal/Stripe/e-post/DB/migrasjoner).',
     'profession-types': 'Administrer profesjoner, roller og kapasitet i CreatorHub.',
+    'creatorhub-design': 'Administrer produkt-flatene som data — merkevare, navigasjon, tekst, maler og konnektorer per workspace (CreatorHub / The Role Room / Leadgrid).',
     integrasjoner: 'Konfigurer API-er, OAuth og eksterne systemkoblinger.',
     'feature-management': 'Kontroller funksjonsflagg og plattformtilgang.',
+    'control-center': 'Drift-cockpit: feilrate, aktive hendelser (Sentry + backend) med kvitter/tildel/lukk, og logg — samlet på ett sted.',
     'centralized-monitoring': 'Se overvåkning, alarmer og kritiske hendelser samlet.',
     protokollstyring: 'Styr interne protokoller, rutiner og push-konfigurasjon.',
     'secrets-rotation': 'Spor når Stripe-/Cloudflare-/Render-nøkler ble rotert sist; varsel ved forfall.',
@@ -1061,45 +1617,185 @@ export default function AdminDashboard({
     {
       label: 'Brukere & roller',
       description: 'Tilganger, roller og adminoversikt',
+      icon: People,
       action: () => activateTab(tabIndexFor('brukere-roller')),
     },
     {
       label: 'Abonnementer',
       description: 'Planer, priser og offentlig visning',
+      icon: CardMembership,
       action: () => openPriceManagementSection('subscriptions'),
     },
     {
       label: 'E-postmaler',
       description: 'Billing, velkomst og systemvarsler',
+      icon: Email,
       action: () => openPriceManagementSection('email-templates'),
     },
     {
       label: 'Drift',
       description: 'Helse, backup og operativ status',
+      icon: Storage,
       action: () => activateTab(tabIndexFor('drift-helse')),
     },
   ];
+
+  // KPI-tall hentes fra /api/admin/dashboard (quickStats). Feeden er optional,
+  // så vi degraderer pent til «—» når backend ikke svarer ennå.
+  const dashboardQuickStats = (dashboardData as any)?.dashboard?.quickStats ?? null;
+  const formatKpiNumber = (value: unknown): string =>
+    typeof value === 'number' && Number.isFinite(value)
+      ? value.toLocaleString('nb-NO')
+      : '—';
+  const formatKpiCurrency = (value: unknown): string =>
+    typeof value === 'number' && Number.isFinite(value)
+      ? `${value.toLocaleString('nb-NO')} kr`
+      : '—';
+  const dashboardLoading = dashboardQueryLoading;
+  const overviewKpis = [
+    {
+      label: 'CRM-kunder',
+      hint: 'Totalt i CRM',
+      value: formatKpiNumber(dashboardQuickStats?.totalCustomers),
+      icon: Group,
+      tone: '#ff8c00',
+    },
+    {
+      label: 'Omsetning',
+      hint: 'Enterprise',
+      value: formatKpiCurrency(dashboardQuickStats?.totalRevenue),
+      icon: AttachMoney,
+      tone: '#4ade80',
+    },
+    {
+      label: 'Aktive abonnement',
+      hint: 'Løpende planer',
+      value: formatKpiNumber(dashboardQuickStats?.activeSubscriptions),
+      icon: CardMembership,
+      tone: '#60a5fa',
+    },
+    {
+      label: 'Aktive deals',
+      hint: 'I pipeline',
+      value: formatKpiNumber(dashboardQuickStats?.activeDeals),
+      icon: TrendingUp,
+      tone: '#c084fc',
+    },
+  ];
+
   const overviewStatusCards = [
     {
       label: 'Rollenivå',
       value: currentUser?.isAdmin ? 'Full admin' : 'Begrenset',
-      tone: '#92400e',
-      background: '#fff4e5',
+      tone: '#ff8c00',
+      background: 'rgba(255,140,0,0.15)',
     },
     {
       label: 'Live datakilder',
       value: configuredOverviewFeedCount > 0
         ? `${liveOverviewFeedCount}/${configuredOverviewFeedCount}`
         : 'Avventer backend',
-      tone: '#0f766e',
-      background: '#ecfdf5',
+      tone: '#86efac',
+      background: 'rgba(34,197,94,0.18)',
     },
     {
       label: 'Sesjon',
       value: hasSessionToken ? 'Aktiv' : 'Mangler token',
-      tone: hasSessionToken ? '#1d4ed8' : '#b91c1c',
-      background: hasSessionToken ? '#eff6ff' : '#fef2f2',
+      tone: hasSessionToken ? '#93c5fd' : '#fca5a5',
+      background: hasSessionToken ? 'rgba(30,64,175,0.18)' : 'rgba(239,68,68,0.15)',
     },
+  ];
+
+  // ─── "Trenger oppfølging" items ─────────────────────────────
+  const pendingInviteRequests = pendingCountsData?.inviteRequests ?? 0;
+  const pendingPrototypeFeedback = pendingCountsData?.prototypeFeedback ?? 0;
+  const pendingBugReports = pendingCountsData?.bugReports ?? 0;
+  const unreadAlertCount = unreadAlertsData?.unread ?? 0;
+  const academyPendingPayoutsCount = academySummary?.pendingPayoutsCount ?? 0;
+  const academyPendingPayoutsAmount = academySummary?.pendingPayoutsAmount ?? 0;
+  const criticalAlerts = (securityData as any)?.unreadCriticalAlerts ?? 0;
+  const totalPendingItems = pendingInviteRequests + academyPendingPayoutsCount + unreadAlertCount + criticalAlerts + pendingBugReports + pendingPrototypeFeedback;
+
+  const needsAttentionItems = [
+    pendingInviteRequests > 0 && {
+      key: 'invite-requests',
+      label: `${pendingInviteRequests} ventende søknader`,
+      description: 'Tilgangsforespørsler som venter på godkjenning',
+      icon: HowToReg,
+      tone: '#ff8c00',
+      action: () => activateTab(tabIndexFor('invite-requests')),
+    },
+    academyPendingPayoutsCount > 0 && {
+      key: 'academy-payouts',
+      label: `${academyPendingPayoutsCount} utbetalinger · ${formatKpiCurrency(academyPendingPayoutsAmount)}`,
+      description: 'Academy-instruktører venter på utbetaling',
+      icon: Payments,
+      tone: '#ffd54f',
+      action: () => activateTab(tabIndexFor('academy')),
+    },
+    unreadAlertCount > 0 && {
+      key: 'inbound-alerts',
+      label: `${unreadAlertCount} uleste varsler`,
+      description: 'Innkommende varsler som trenger oppfølging',
+      icon: Inbox,
+      tone: '#ef5350',
+      action: () => activateTab(tabIndexFor('inbound-alerts')),
+    },
+    criticalAlerts > 0 && {
+      key: 'critical-alerts',
+      label: `${criticalAlerts} kritiske varsler`,
+      description: 'Sikkerhets- eller systemhendelser med høy prioritet',
+      icon: Warning,
+      tone: '#f44336',
+      action: () => activateTab(tabIndexFor('control-center')),
+    },
+    pendingBugReports > 0 && {
+      key: 'bug-reports',
+      label: `${pendingBugReports} feilrapporter`,
+      description: 'Prototype-feil som ikke er løst',
+      icon: BugReport,
+      tone: '#ff7043',
+      action: () => activateTab(tabIndexFor('prototype-feedback')),
+    },
+    pendingPrototypeFeedback > 0 && {
+      key: 'prototype-feedback',
+      label: `${pendingPrototypeFeedback} tilbakemeldinger`,
+      description: 'Prototype-tilbakemeldinger som ikke er behandlet',
+      icon: Feedback,
+      tone: '#ab47bc',
+      action: () => activateTab(tabIndexFor('prototype-feedback')),
+    },
+  ].filter(Boolean) as Array<{
+    key: string;
+    label: string;
+    description: string;
+    icon: React.ComponentType<any>;
+    tone: string;
+    action: () => void;
+  }>;
+
+  // ─── System helse-nøkkeltall ────────────────────────────────
+  const healthSnapshot = healthData as any;
+  const systemHealthItems = [
+    {
+      label: 'DB',
+      status: healthSnapshot?.database?.status === 'healthy' ? 'ok' : healthSnapshot?.database ? 'warn' : 'unknown',
+    },
+    {
+      label: 'Stripe',
+      status: (integrationData as any)?.environment?.stripeConfigured ? 'ok' : 'unknown',
+    },
+    {
+      label: 'Sesjon',
+      status: hasSessionToken ? 'ok' : 'error',
+    },
+  ];
+
+  // Segmenter for oversikten – progressiv visning som holder standardflaten ryddig.
+  const overviewSegments = [
+    { key: 'summary' as const, label: 'Sammendrag', icon: Dashboard },
+    { key: 'stats' as const, label: 'Statistikk', icon: Assessment },
+    { key: 'activity' as const, label: 'Aktivitet', icon: History },
   ];
 
   useEffect(() => {
@@ -1205,15 +1901,522 @@ export default function AdminDashboard({
 
   const renderOverviewPanel = () => (
     <Box sx={{ display: 'grid', gap: 3 }}>
+      <Box
+        sx={{
+          display: 'inline-flex',
+          alignSelf: 'flex-start',
+          p: 0.5,
+          gap: 0.5,
+          borderRadius: '999px',
+          border: '1px solid rgba(255,255,255,0.12)',
+          bgcolor: 'rgba(255,255,255,0.04)',
+          flexWrap: 'wrap',
+        }}
+      >
+        {overviewSegments.map((segment) => {
+          const SegmentIcon = segment.icon;
+          const isActive = overviewSection === segment.key;
+          return (
+            <Button
+              key={segment.key}
+              onClick={() => setOverviewSection(segment.key)}
+              startIcon={<SegmentIcon sx={{ fontSize: 18 }} />}
+              sx={{
+                px: 2,
+                py: 0.85,
+                borderRadius: '999px',
+                textTransform: 'none',
+                fontWeight: 700,
+                fontSize: '0.85rem',
+                color: isActive ? '#0a0f1a' : 'rgba(255,255,255,0.8)',
+                bgcolor: isActive ? '#ff8c00' : 'transparent',
+                boxShadow: 'none',
+                '&:hover': {
+                  bgcolor: isActive ? '#ff8c00' : 'rgba(255,255,255,0.08)',
+                },
+              }}
+            >
+              {segment.label}
+            </Button>
+          );
+        })}
+      </Box>
+
+      {overviewSection === 'summary' && (
+        <>
+      {/* ─── KPI-rader med loading-skeleton ──────────────────── */}
+      <Grid container spacing={{ xs: 1.5, sm: 2 }}>
+        {overviewKpis.map((kpi) => {
+          const KpiIcon = kpi.icon;
+          return (
+            <Grid item xs={6} md={3} key={kpi.label}>
+              <Card
+                sx={{
+                  height: '100%',
+                  borderRadius: '20px',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  background:
+                    'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
+                  boxShadow: '0 18px 36px rgba(0,0,0,0.32)',
+                  transition: 'transform 180ms ease, border-color 180ms ease',
+                  '&:hover': {
+                    transform: 'translateY(-3px)',
+                    borderColor: `${kpi.tone}55`,
+                  },
+                }}
+              >
+                <CardContent sx={{ p: { xs: 1.75, md: 2.25 } }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      mb: 1.25,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: '12px',
+                        display: 'grid',
+                        placeItems: 'center',
+                        bgcolor: `${kpi.tone}22`,
+                        color: kpi.tone,
+                      }}
+                    >
+                      <KpiIcon sx={{ fontSize: 20 }} />
+                    </Box>
+                    <Typography
+                      sx={{
+                        fontSize: '0.66rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.1em',
+                        color: 'rgba(255,255,255,0.55)',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {kpi.hint}
+                    </Typography>
+                  </Box>
+                  {dashboardLoading ? (
+                    <Skeleton
+                      variant="text"
+                      sx={{ bgcolor: 'rgba(255,255,255,0.08)', width: '60%', height: 32, mt: 0.5 }}
+                    />
+                  ) : (
+                    <Typography
+                      sx={{
+                        fontSize: { xs: '1.35rem', md: '1.6rem' },
+                        fontWeight: 700,
+                        color: '#fff',
+                        lineHeight: 1.1,
+                      }}
+                    >
+                      {kpi.value}
+                    </Typography>
+                  )}
+                  <Typography
+                    sx={{
+                      mt: 0.4,
+                      fontSize: '0.8rem',
+                      color: 'rgba(255,255,255,0.7)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {kpi.label}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
+      </Grid>
+
+      {/* ─── Trenger oppfølging + Systemhelse side om side ──── */}
+      <Grid container spacing={{ xs: 2, sm: 3 }}>
+        {/* Trenger oppfølging */}
+        <Grid item xs={12} lg={7}>
+          <Card
+            sx={{
+              borderRadius: '24px',
+              border: '1px solid rgba(255,255,255,0.12)',
+              background:
+                'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
+              boxShadow: '0 22px 44px rgba(0,0,0,0.35)',
+              height: '100%',
+            }}
+          >
+            <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Box>
+                  <Typography
+                    sx={{
+                      fontSize: '0.72rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.12em',
+                      color: '#ff8c00',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Trenger oppfølging
+                  </Typography>
+                  <Typography variant="h5" sx={{ mt: 0.5, fontWeight: 700, color: '#fff' }}>
+                    Hva bør du gjøre nå?
+                  </Typography>
+                </Box>
+                {needsAttentionItems.length > 0 && (
+                  <Chip
+                    label={`${totalPendingItems} ${totalPendingItems === 1 ? 'oppgave' : 'oppgaver'}`}
+                    sx={{
+                      bgcolor: 'rgba(255,140,0,0.18)',
+                      color: '#ffb74d',
+                      fontWeight: 700,
+                      border: '1px solid rgba(255,140,0,0.35)',
+                    }}
+                  />
+                )}
+              </Box>
+
+              {pendingCountsLoading ? (
+                <Box sx={{ display: 'grid', gap: 1.5 }}>
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton
+                      key={i}
+                      variant="rounded"
+                      height={64}
+                      sx={{ bgcolor: 'rgba(255,255,255,0.06)', borderRadius: '16px' }}
+                    />
+                  ))}
+                </Box>
+              ) : needsAttentionItems.length === 0 ? (
+                <Box
+                  sx={{
+                    p: 3,
+                    textAlign: 'center',
+                    borderRadius: '18px',
+                    border: '1px dashed rgba(255,255,255,0.15)',
+                    bgcolor: 'rgba(34,197,94,0.08)',
+                  }}
+                >
+                  <CheckCircle sx={{ fontSize: 40, color: '#4ade80', mb: 1 }} />
+                  <Typography sx={{ fontWeight: 700, color: '#fff' }}>
+                    Alt er oppdatert
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.65)', mt: 0.5 }}>
+                    Ingen ventende oppgaver akkurat nå.
+                  </Typography>
+                </Box>
+              ) : (
+                <Box sx={{ display: 'grid', gap: 1 }}>
+                  {needsAttentionItems.map((item) => {
+                    const ItemIcon = item.icon;
+                    return (
+                      <Button
+                        key={item.key}
+                        fullWidth
+                        onClick={item.action}
+                        sx={{
+                          p: 1.5,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1.5,
+                          borderRadius: '16px',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          bgcolor: 'rgba(255,255,255,0.03)',
+                          color: '#fff',
+                          textTransform: 'none',
+                          textAlign: 'left',
+                          boxShadow: 'none',
+                          '&:hover': {
+                            bgcolor: `${item.tone}12`,
+                            borderColor: `${item.tone}44`,
+                          },
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            width: 38,
+                            height: 38,
+                            flexShrink: 0,
+                            borderRadius: '10px',
+                            display: 'grid',
+                            placeItems: 'center',
+                            bgcolor: `${item.tone}22`,
+                            color: item.tone,
+                          }}
+                        >
+                          <ItemIcon sx={{ fontSize: 20 }} />
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography sx={{ fontWeight: 700, fontSize: '0.92rem' }}>
+                            {item.label}
+                          </Typography>
+                          <Typography
+                            sx={{
+                              fontSize: '0.78rem',
+                              color: 'rgba(255,255,255,0.6)',
+                              mt: 0.25,
+                            }}
+                          >
+                            {item.description}
+                          </Typography>
+                        </Box>
+                        <ExpandMore
+                          sx={{
+                            color: 'rgba(255,255,255,0.5)',
+                            transform: 'rotate(-90deg)',
+                            transition: 'transform 180ms ease',
+                          }}
+                        />
+                      </Button>
+                    );
+                  })}
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Systemhelse + Nylig aktivitet */}
+        <Grid item xs={12} lg={5}>
+          <Box sx={{ display: 'grid', gap: 3, height: '100%' }}>
+            {/* Systemhelse */}
+            <Card
+              sx={{
+                borderRadius: '24px',
+                border: '1px solid rgba(255,255,255,0.12)',
+                bgcolor: 'rgba(255,255,255,0.06)',
+                boxShadow: '0 22px 44px rgba(0,0,0,0.35)',
+              }}
+            >
+              <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
+                <Typography
+                  sx={{
+                    fontSize: '0.72rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.12em',
+                    color: '#ff8c00',
+                    fontWeight: 700,
+                  }}
+                >
+                  Systemhelse
+                </Typography>
+                <Typography variant="h6" sx={{ mt: 0.5, fontWeight: 700, color: '#fff' }}>
+                  Nøkkeltall
+                </Typography>
+
+                <Box sx={{ display: 'grid', gap: 1, mt: 2 }}>
+                  {healthLoading ? (
+                    [1, 2, 3].map((i) => (
+                      <Skeleton
+                        key={i}
+                        variant="rounded"
+                        height={44}
+                        sx={{ bgcolor: 'rgba(255,255,255,0.06)', borderRadius: '12px' }}
+                      />
+                    ))
+                  ) : (
+                    systemHealthItems.map((item) => (
+                      <Box
+                        key={item.label}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          px: 1.5,
+                          py: 1,
+                          borderRadius: '12px',
+                          bgcolor: 'rgba(255,255,255,0.04)',
+                        }}
+                      >
+                        <Typography sx={{ fontSize: '0.88rem', fontWeight: 600, color: '#fff' }}>
+                          {item.label}
+                        </Typography>
+                        <Chip
+                          size="small"
+                          label={item.status === 'ok' ? 'OK' : item.status === 'error' ? 'Feil' : 'Ukjent'}
+                          sx={{
+                            fontWeight: 700,
+                            bgcolor: item.status === 'ok'
+                              ? 'rgba(34,197,94,0.18)'
+                              : item.status === 'error'
+                                ? 'rgba(239,68,68,0.18)'
+                                : 'rgba(255,255,255,0.08)',
+                            color: item.status === 'ok'
+                              ? '#86efac'
+                              : item.status === 'error'
+                                ? '#fca5a5'
+                                : 'rgba(255,255,255,0.6)',
+                          }}
+                        />
+                      </Box>
+                    ))
+                  )}
+                </Box>
+
+                <Button
+                  fullWidth
+                  onClick={() => activateTab(tabIndexFor('drift-helse'))}
+                  sx={{
+                    mt: 2,
+                    py: 1,
+                    borderRadius: '12px',
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    color: 'rgba(255,255,255,0.7)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    '&:hover': {
+                      bgcolor: 'rgba(255,255,255,0.06)',
+                      color: '#fff',
+                    },
+                  }}
+                >
+                  Se full helseoversikt
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Nylig aktivitet (mini) */}
+            <Card
+              sx={{
+                borderRadius: '24px',
+                border: '1px solid rgba(255,255,255,0.12)',
+                bgcolor: 'rgba(255,255,255,0.06)',
+                boxShadow: '0 22px 44px rgba(0,0,0,0.35)',
+                flex: 1,
+              }}
+            >
+              <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                  <Typography
+                    sx={{
+                      fontSize: '0.72rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.12em',
+                      color: '#ff8c00',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Nylig aktivitet
+                  </Typography>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setOverviewSection('activity');
+                    }}
+                    sx={{
+                      textTransform: 'none',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      color: 'rgba(255,255,255,0.6)',
+                      '&:hover': { color: '#fff' },
+                    }}
+                  >
+                    Se alle
+                  </Button>
+                </Box>
+
+                {auditLoading ? (
+                  <Box sx={{ display: 'grid', gap: 0.75 }}>
+                    {[1, 2, 3, 4].map((i) => (
+                      <Skeleton
+                        key={i}
+                        variant="rounded"
+                        height={48}
+                        sx={{ bgcolor: 'rgba(255,255,255,0.06)', borderRadius: '10px' }}
+                      />
+                    ))}
+                  </Box>
+                ) : (() => {
+                  const recentAudit = Array.isArray(auditData) ? auditData.slice(0, 4) : [];
+                  if (recentAudit.length === 0) {
+                    return (
+                      <Typography sx={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', py: 2, textAlign: 'center' }}>
+                        Ingen nylig aktivitet
+                      </Typography>
+                    );
+                  }
+                  return (
+                    <Box sx={{ display: 'grid', gap: 0.75 }}>
+                      {recentAudit.map((item: any) => (
+                        <Box
+                          key={item.id}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: 1.25,
+                            py: 1,
+                            borderBottom: '1px solid rgba(255,255,255,0.06)',
+                            '&:last-child': { borderBottom: 'none' },
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              mt: 0.6,
+                              flexShrink: 0,
+                              bgcolor:
+                                item.priority === 'high'
+                                  ? '#ef5350'
+                                  : item.priority === 'medium'
+                                    ? '#ff9800'
+                                    : 'rgba(255,255,255,0.3)',
+                            }}
+                          />
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography
+                              sx={{
+                                fontSize: '0.82rem',
+                                fontWeight: 600,
+                                color: '#fff',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {item.title}
+                            </Typography>
+                            <Typography
+                              sx={{
+                                fontSize: '0.72rem',
+                                color: 'rgba(255,255,255,0.5)',
+                                mt: 0.25,
+                              }}
+                            >
+                              {item.timestamp
+                                ? new Date(item.timestamp).toLocaleString('nb-NO', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    day: 'numeric',
+                                    month: 'short',
+                                  })
+                                : ''}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      ))}
+                    </Box>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          </Box>
+        </Grid>
+      </Grid>
+
+      <CustomerSuccessSnapshotCard />
       <Grid container spacing={{ xs: 2, sm: 3 }}>
         <Grid item xs={12} xl={7}>
           <Card
             sx={{
               borderRadius: '24px',
-              border: '1px solid #eadfce',
+              border: '1px solid rgba(255,255,255,0.12)',
               background:
-                'linear-gradient(135deg, rgba(255, 248, 237, 0.96), rgba(255,255,255,0.04))',
-              boxShadow: '0 22px 44px rgba(27, 21, 12, 0.06)',
+                'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
+              boxShadow: '0 22px 44px rgba(0,0,0,0.35)',
             }}
           >
             <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
@@ -1233,16 +2436,16 @@ export default function AdminDashboard({
                       fontSize: '0.72rem',
                       textTransform: 'uppercase',
                       letterSpacing: '0.12em',
-                      color: '#8b5e34',
+                      color: '#ff8c00',
                       fontWeight: 700,
                     }}
                   >
                     Workspace Control
                   </Typography>
-                  <Typography variant="h5" sx={{ mt: 0.75, fontWeight: 700, color: '#181512' }}>
+                  <Typography variant="h5" sx={{ mt: 0.75, fontWeight: 700, color: '#fff' }}>
                     Rask tilgang til adminoppgavene som brukes mest
                   </Typography>
-                  <Typography sx={{ mt: 0.75, color: '#6b6257', maxWidth: 620 }}>
+                  <Typography sx={{ mt: 0.75, color: 'rgba(255,255,255,0.85)', maxWidth: 620 }}>
                     Hopp direkte til brukere, prisstyring og drift uten å lete i sidebar. Dette
                     er den operative startflaten for Daniel som full admin.
                   </Typography>
@@ -1250,53 +2453,76 @@ export default function AdminDashboard({
                 <Chip
                   label={`${adminTabs.length} adminflater`}
                   sx={{
-                    bgcolor: '#ffffff',
-                    border: '1px solid #eadfce',
+                    bgcolor: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.12)',
                     fontWeight: 700,
-                    color: '#5d5347',
+                    color: 'rgba(255,255,255,0.85)',
                   }}
                 />
               </Box>
 
               <Grid container spacing={1.5}>
-                {overviewQuickActions.map((action) => (
-                  <Grid item xs={12} sm={6} key={action.label}>
-                    <Button
-                      fullWidth
-                      onClick={action.action}
-                      sx={{
-                        p: 1.5,
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'flex-start',
-                        borderRadius: '18px',
-                        border: '1px solid #e6dccd',
-                        bgcolor: '#fffdf9',
-                        color: '#1f1b16',
-                        textTransform: 'none',
-                        boxShadow: 'none',
-                        '&:hover': {
-                          bgcolor: '#ffffff',
-                          borderColor: '#d7c5ad',
-                          boxShadow: '0 10px 24px rgba(27, 21, 12, 0.08)',
-                        },
-                      }}
-                    >
-                      <Box sx={{ textAlign: 'left' }}>
-                        <Typography sx={{ fontWeight: 700 }}>{action.label}</Typography>
-                        <Typography sx={{ mt: 0.4, fontSize: '0.8rem', color: '#7a7063' }}>
-                          {action.description}
-                        </Typography>
-                      </Box>
-                      <ExpandMore
+                {overviewQuickActions.map((action) => {
+                  const ActionIcon = action.icon;
+                  return (
+                    <Grid item xs={12} sm={6} key={action.label}>
+                      <Button
+                        fullWidth
+                        onClick={action.action}
                         sx={{
-                          color: '#8b8378',
-                          transform: 'rotate(-90deg)',
+                          p: 1.5,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 1.5,
+                          borderRadius: '18px',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          bgcolor: 'rgba(255,255,255,0.04)',
+                          color: '#fff',
+                          textTransform: 'none',
+                          boxShadow: 'none',
+                          '&:hover': {
+                            bgcolor: 'rgba(255,255,255,0.06)',
+                            borderColor: 'rgba(255,140,0,0.35)',
+                            boxShadow: '0 10px 24px rgba(0,0,0,0.45)',
+                            '& .qa-arrow': { transform: 'translateX(3px)' },
+                          },
                         }}
-                      />
-                    </Button>
-                  </Grid>
-                ))}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+                          <Box
+                            sx={{
+                              width: 40,
+                              height: 40,
+                              flexShrink: 0,
+                              borderRadius: '12px',
+                              display: 'grid',
+                              placeItems: 'center',
+                              bgcolor: 'rgba(255,140,0,0.15)',
+                              color: '#ff8c00',
+                            }}
+                          >
+                            <ActionIcon sx={{ fontSize: 20 }} />
+                          </Box>
+                          <Box sx={{ textAlign: 'left', minWidth: 0 }}>
+                            <Typography sx={{ fontWeight: 700 }}>{action.label}</Typography>
+                            <Typography sx={{ mt: 0.4, fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)' }}>
+                              {action.description}
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <ExpandMore
+                          className="qa-arrow"
+                          sx={{
+                            color: 'rgba(255,255,255,0.65)',
+                            transform: 'rotate(-90deg)',
+                            transition: 'transform 180ms ease',
+                          }}
+                        />
+                      </Button>
+                    </Grid>
+                  );
+                })}
               </Grid>
             </CardContent>
           </Card>
@@ -1306,9 +2532,9 @@ export default function AdminDashboard({
           <Card
             sx={{
               borderRadius: '24px',
-              border: '1px solid #eadfce',
-              bgcolor: '#ffffff',
-              boxShadow: '0 22px 44px rgba(27, 21, 12, 0.06)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              bgcolor: 'rgba(255,255,255,0.06)',
+              boxShadow: '0 22px 44px rgba(0,0,0,0.35)',
               height: '100%',
             }}
           >
@@ -1318,16 +2544,16 @@ export default function AdminDashboard({
                   fontSize: '0.72rem',
                   textTransform: 'uppercase',
                   letterSpacing: '0.12em',
-                  color: '#8b5e34',
+                  color: '#ff8c00',
                   fontWeight: 700,
                 }}
               >
                 Admin Status
               </Typography>
-              <Typography variant="h5" sx={{ mt: 0.75, fontWeight: 700, color: '#181512' }}>
+              <Typography variant="h5" sx={{ mt: 0.75, fontWeight: 700, color: '#fff' }}>
                 Operativt snapshot
               </Typography>
-              <Typography sx={{ mt: 0.75, color: '#6b6257' }}>
+              <Typography sx={{ mt: 0.75, color: 'rgba(255,255,255,0.85)' }}>
                 Et raskt bilde av tilgang, datakilder og session før du går videre inn i
                 detaljene.
               </Typography>
@@ -1344,7 +2570,7 @@ export default function AdminDashboard({
                         border: '1px solid rgba(255,255,255,0.04)',
                       }}
                     >
-                      <Typography sx={{ fontSize: '0.72rem', color: '#766d61', fontWeight: 700 }}>
+                      <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', fontWeight: 700 }}>
                         {card.label}
                       </Typography>
                       <Typography sx={{ mt: 0.5, fontWeight: 700, color: card.tone }}>
@@ -1358,238 +2584,1275 @@ export default function AdminDashboard({
           </Card>
         </Grid>
       </Grid>
+        </>
+      )}
 
-      <Box>
-        <AdminErrorBoundary>
-          <AdminStats userEmail={currentUser.email} isAdmin={currentUser.isAdmin} />
-        </AdminErrorBoundary>
-      </Box>
+      {overviewSection === 'stats' && (
+        <Box>
+          <AdminErrorBoundary>
+            <AdminStats userEmail={currentUser.email} isAdmin={currentUser.isAdmin} />
+          </AdminErrorBoundary>
+        </Box>
+      )}
 
-      <Box>
-        <AdminErrorBoundary>
-          <EnhancedActivityFeed
-            maxItems={20}
-            showFilters={true}
-            autoRefresh={true}
-            refreshInterval={30000}
-            enableTimeline={true}
-            enableExport={true}
-            enableNotifications={true}
-          />
-        </AdminErrorBoundary>
-      </Box>
+      {overviewSection === 'activity' && (
+        <Box>
+          <AdminErrorBoundary>
+            <EnhancedActivityFeed
+              maxItems={20}
+              showFilters={true}
+              autoRefresh={true}
+              refreshInterval={30000}
+              enableTimeline={true}
+              enableExport={true}
+              enableNotifications={true}
+            />
+          </AdminErrorBoundary>
+        </Box>
+      )}
     </Box>
   );
 
-  const renderAcademyPanel = () => (
-    <Box sx={{ p: 3 }}>
-      <Typography
-        variant="h5"
-        gutterBottom
-        sx={{ display: 'flex', alignItems: 'center', gap: 2 }}
-      >
-        <School sx={{ color: '#ff8c00' }} />
-        Academy Management
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-        Administrer kursutbetalinger til instruktører og plattformgebyrer
-      </Typography>
+  const renderAcademyPanel = () => {
+    const pendingPayouts = Array.isArray(academyPayoutsData?.payouts) ? academyPayoutsData.payouts : [];
+    const instructors = Array.isArray(academyInstructorsData?.instructors) ? academyInstructorsData.instructors : [];
+    const transfers = Array.isArray(academyTransfersData?.transfers) ? academyTransfersData.transfers : [];
+    const refunds = Array.isArray(academyRefundsData?.refunds) ? academyRefundsData.refunds : [];
+    const pendingPayoutsCount =
+      academySummary?.pendingPayoutsCount ?? pendingPayouts.length;
+    const pendingPayoutsAmount =
+      academySummary?.pendingPayoutsAmount ??
+      pendingPayouts.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const platformShare = academySummary?.platformShare ?? 0;
+    const enrollmentCount = academySummary?.enrollmentCount ?? 0;
+    const activeInstructorCount = academySummary?.activeInstructorCount ?? 0;
+    const payoutsEnabledCount =
+      academySummary?.payoutsEnabledCount ??
+      instructors.filter((i) => i.payoutsEnabled).length;
+    const tableMissing = academyPayoutsData?.tableMissing === true;
+    const stripeNotConfigured =
+      academySummary?.stripeConfigured === false ||
+      academyInstructorsData?.stripeConfigured === false ||
+      academyTransfersData?.stripeConfigured === false;
+    const fmt = (n: number) => n.toLocaleString('nb-NO');
+    const fmtDate = (iso: string | null) =>
+      iso ? new Date(iso).toLocaleDateString('nb-NO') : '—';
+    const fmtDateTime = (iso: string | null) =>
+      iso ? new Date(iso).toLocaleString('nb-NO') : '—';
 
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={4}>
-          <Card
-            sx={{
-              background: 'linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)',
-              color: 'white',
-            }}
-          >
-            <CardContent>
-              <Typography variant="h6">Plattformgebyrer (20%)</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
-                5,000
-              </Typography>
-              <Typography variant="body2">NOK denne måneden</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+    const darkCardSx = {
+      bgcolor: 'rgba(255,255,255,0.06)',
+      border: '1px solid rgba(255,255,255,0.12)',
+      backdropFilter: 'blur(8px)',
+      color: '#fff',
+    } as const;
 
-        <Grid item xs={12} md={4}>
-          <Card
-            sx={{
-              background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
-              color: 'white',
-            }}
-          >
-            <CardContent>
-              <Typography variant="h6">Totale Kursregistreringer</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
-                50
-              </Typography>
-              <Typography variant="body2">studenter denne måneden</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+    const onboardingStatusMeta = (
+      status: AcademyInstructor['onboardingStatus'],
+    ): { label: string; color: 'success' | 'warning' | 'error' | 'default'; icon: React.ReactElement } => {
+      switch (status) {
+        case 'enabled':
+          return { label: 'Enabled', color: 'success', icon: <CheckCircle fontSize="small" /> };
+        case 'pending':
+          return { label: 'Pending', color: 'warning', icon: <HourglassEmpty fontSize="small" /> };
+        case 'restricted':
+          return { label: 'Restricted', color: 'error', icon: <Block fontSize="small" /> };
+        default:
+          return { label: 'Not started', color: 'default', icon: <Warning fontSize="small" /> };
+      }
+    };
 
-        <Grid item xs={12} md={4}>
-          <Card
-            sx={{
-              background: 'linear-gradient(135deg, #2196f3 0%, #1976d2 100%)',
-              color: 'white',
-            }}
-          >
-            <CardContent>
-              <Typography variant="h6">Aktive Instruktører</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 700, my: 2 }}>
-                5
-              </Typography>
-              <Typography variant="body2">med aktive kurs</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+    const transferStatusMeta = (
+      status: AcademyTransfer['status'],
+    ): { label: string; color: 'success' | 'warning' | 'error' | 'info' | 'default' } => {
+      switch (status) {
+        case 'paid':
+          return { label: 'Paid', color: 'success' };
+        case 'in_transit':
+          return { label: 'In transit', color: 'info' };
+        case 'failed':
+          return { label: 'Failed', color: 'error' };
+        case 'pending':
+          return { label: 'Pending', color: 'warning' };
+        default:
+          return { label: status || 'Ukjent', color: 'default' };
+      }
+    };
 
-      <Card>
-        <CardContent>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              mb: 2,
-            }}
-          >
-            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              💸 Utbetalingsforespørsler
-            </Typography>
-            <Chip label="3 ventende" color="warning" sx={{ fontWeight: 600 }} />
-          </Box>
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography
+          variant="h5"
+          gutterBottom
+          sx={{ display: 'flex', alignItems: 'center', gap: 2, color: '#fff' }}
+        >
+          <School sx={{ color: '#ff8c00' }} />
+          Academy Management
+        </Typography>
+        <Typography variant="body2" sx={{ mb: 4, color: 'rgba(255,255,255,0.7)' }}>
+          Stripe Connect-onboarding, instruktør-payouts og transfer-historikk.
+        </Typography>
 
+        {stripeNotConfigured && (
           <Alert severity="warning" sx={{ mb: 3 }}>
-            <strong>20,500 NOK</strong> venter på godkjenning
+            Stripe ikke konfigurert. Sett <code>STRIPE_SECRET_KEY</code> på Render
+            for å aktivere payouts og onboarding.
           </Alert>
+        )}
 
-          <Grid container spacing={2}>
-            {[
-              {
-                id: '1',
-                instructorId: 'instructor-1',
-                name: 'John Doe Photography',
-                amount: 12000,
-                requestedAt: '2025-10-28',
-                bank: '****8901',
-              },
-              {
-                id: '2',
-                instructorId: 'instructor-2',
-                name: 'Jane Smith Video',
-                amount: 5500,
-                requestedAt: '2025-10-29',
-                bank: '****4523',
-              },
-              {
-                id: '3',
-                instructorId: 'instructor-3',
-                name: 'Bob Johnson Music',
-                amount: 3000,
-                requestedAt: '2025-10-30',
-                bank: '****7890',
-              },
-            ].map((payout) => (
-              <Grid item xs={12} key={payout.id}>
-                <Paper
-                  sx={{
-                    p: 2,
-                    bgcolor: 'rgba(255,193,7,0.1)',
-                    border: '1px solid rgba(255,193,7,0.3)',
-                    borderRadius: 2,
-                  }}
-                >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Avatar sx={{ bgcolor: '#ff9800' }}>
-                      <AccountCircle />
-                    </Avatar>
+        {tableMissing && (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            Migrasjon 254 (academy_payouts) er ikke kjørt enda. Kjør den for å se
+            ekte payout-data.
+          </Alert>
+        )}
 
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                        {payout.name}
-                      </Typography>
-                      <Typography variant="h6" sx={{ color: '#ff9800', fontWeight: 700 }}>
-                        {payout.amount.toLocaleString('nb-NO')} NOK
-                      </Typography>
-                      <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
-                        <Chip label="bank_transfer" size="small" />
-                        <Chip label={`Forespurt: ${payout.requestedAt}`} size="small" />
-                        <Chip label={`Bank: ${payout.bank}`} size="small" />
-                      </Box>
-                    </Box>
-
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Tooltip title="Godkjenn utbetaling">
-                        <IconButton
-                          color="success"
-                          onClick={() => setPayoutConfirmDialog({ open: true, payout })}
-                        >
-                          <Check />
-                        </IconButton>
-                      </Tooltip>
-
-                      <Tooltip title="Avvis utbetaling">
-                        <IconButton
-                          color="error"
-                          onClick={() => {
-                            setSnackbar({
-                              open: true,
-                              message: '❌ Utbetaling avvist',
-                              severity: 'error',
-                            });
-                          }}
-                        >
-                          <Close />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </Box>
-                </Paper>
-              </Grid>
-            ))}
+        {/* KPI-rad */}
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={darkCardSx}>
+              <CardContent>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Plattformgebyrer (20%)
+                </Typography>
+                <Typography variant="h4" sx={{ fontWeight: 700, my: 1, color: '#ff8c00' }}>
+                  {academySummaryLoading ? (
+                    <CircularProgress size={24} sx={{ color: '#ff8c00' }} />
+                  ) : (
+                    fmt(platformShare)
+                  )}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                  NOK plattform-andel
+                </Typography>
+              </CardContent>
+            </Card>
           </Grid>
 
-          <Button
-            variant="outlined"
-            startIcon={<History />}
-            fullWidth
-            sx={{ mt: 3 }}
-            onClick={() =>
-              setSnackbar({
-                open: true,
-                message: 'Historikk kommer snart...',
-                severity: 'info',
-              })
-            }
-          >
-            Vis historikk
-          </Button>
-        </CardContent>
-      </Card>
-    </Box>
-  );
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={darkCardSx}>
+              <CardContent>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Totale registreringer
+                </Typography>
+                <Typography variant="h4" sx={{ fontWeight: 700, my: 1, color: '#fff' }}>
+                  {academySummaryLoading ? (
+                    <CircularProgress size={24} sx={{ color: '#fff' }} />
+                  ) : (
+                    fmt(enrollmentCount)
+                  )}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                  aktive + fullførte enrollments
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={darkCardSx}>
+              <CardContent>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Aktive instruktører
+                </Typography>
+                <Typography variant="h4" sx={{ fontWeight: 700, my: 1, color: '#fff' }}>
+                  {academySummaryLoading ? (
+                    <CircularProgress size={24} sx={{ color: '#fff' }} />
+                  ) : (
+                    fmt(activeInstructorCount)
+                  )}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                  med aktive kurs
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={darkCardSx}>
+              <CardContent>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Payouts-klare
+                </Typography>
+                <Typography variant="h4" sx={{ fontWeight: 700, my: 1, color: '#4caf50' }}>
+                  {academySummaryLoading || academyInstructorsLoading ? (
+                    <CircularProgress size={24} sx={{ color: '#4caf50' }} />
+                  ) : (
+                    fmt(payoutsEnabledCount)
+                  )}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                  med Stripe Connect aktivert
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+
+        {/* Seksjons-tabs */}
+        <Tabs
+          value={academySection}
+          onChange={(_e, v) => setAcademySection(v)}
+          sx={{
+            mb: 3,
+            borderBottom: '1px solid rgba(255,255,255,0.12)',
+            '& .MuiTab-root': { color: 'rgba(255,255,255,0.7)' },
+            '& .Mui-selected': { color: '#ff8c00' },
+            '& .MuiTabs-indicator': { backgroundColor: '#ff8c00' },
+          }}
+        >
+          <Tab
+            value="instructors"
+            label={`Instruktører (${instructors.length})`}
+            icon={<AccountBox />}
+            iconPosition="start"
+          />
+          <Tab
+            value="payouts"
+            label={`Pending payouts (${pendingPayoutsCount})`}
+            icon={<Payments />}
+            iconPosition="start"
+          />
+          <Tab
+            value="transfers"
+            label={`Transfers (${transfers.length})`}
+            icon={<Receipt />}
+            iconPosition="start"
+          />
+          <Tab
+            value="b2-archive"
+            label={`B2-arkiv${
+              academyB2StatsData?.totalFiles ? ` (${academyB2StatsData.totalFiles})` : ''
+            }`}
+            icon={<Storage />}
+            iconPosition="start"
+          />
+        </Tabs>
+
+        {/* Instruktør-seksjon */}
+        {academySection === 'instructors' && (
+          <Card sx={darkCardSx}>
+            <CardContent>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  mb: 2,
+                  flexWrap: 'wrap',
+                  gap: 1,
+                }}
+              >
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
+                  <AccountBox sx={{ color: '#ff8c00' }} />
+                  Instruktør Stripe Connect-status
+                </Typography>
+                <Chip
+                  label={`${payoutsEnabledCount} / ${instructors.length} klare`}
+                  size="small"
+                  sx={{
+                    bgcolor: 'rgba(76,175,80,0.18)',
+                    color: '#a5d6a7',
+                    border: '1px solid rgba(76,175,80,0.35)',
+                    fontWeight: 600,
+                  }}
+                />
+              </Box>
+
+              {academyInstructorsLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress sx={{ color: '#ff8c00' }} />
+                </Box>
+              ) : instructors.length === 0 ? (
+                <Alert severity="info" sx={{ bgcolor: 'rgba(33,150,243,0.12)' }}>
+                  Ingen instruktører registrert enda.
+                </Alert>
+              ) : (
+                <Grid container spacing={2}>
+                  {instructors.map((instructor) => {
+                    const meta = onboardingStatusMeta(instructor.onboardingStatus);
+                    const isGenerating =
+                      generateOnboardingLinkMutation.isPending &&
+                      generateOnboardingLinkMutation.variables?.id === instructor.id;
+                    const isSyncing =
+                      syncOnboardingStatusMutation.isPending &&
+                      syncOnboardingStatusMutation.variables === instructor.id;
+                    const requirementsCount =
+                      instructor.requirementsCurrentlyDue?.length ?? 0;
+                    const displayName =
+                      instructor.name || instructor.email || `Instruktør ${instructor.id.slice(0, 8)}`;
+
+                    return (
+                      <Grid item xs={12} key={instructor.id}>
+                        <Paper
+                          sx={{
+                            p: 2,
+                            bgcolor: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            borderRadius: 2,
+                            color: '#fff',
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 2,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <Avatar sx={{ bgcolor: 'rgba(255,140,0,0.2)', color: '#ff8c00' }}>
+                              <AccountBox />
+                            </Avatar>
+
+                            <Box sx={{ flex: 1, minWidth: 200 }}>
+                              <Typography variant="body1" sx={{ fontWeight: 600, color: '#fff' }}>
+                                {displayName}
+                              </Typography>
+                              {instructor.email && (
+                                <Typography
+                                  variant="caption"
+                                  sx={{ color: 'rgba(255,255,255,0.6)', display: 'block' }}
+                                >
+                                  {instructor.email}
+                                </Typography>
+                              )}
+                              <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                                <Chip
+                                  icon={meta.icon}
+                                  label={meta.label}
+                                  size="small"
+                                  color={meta.color === 'default' ? undefined : meta.color}
+                                  sx={
+                                    meta.color === 'default'
+                                      ? {
+                                          bgcolor: 'rgba(255,255,255,0.1)',
+                                          color: 'rgba(255,255,255,0.8)',
+                                        }
+                                      : { fontWeight: 600 }
+                                  }
+                                />
+                                {instructor.stripeAccountId && (
+                                  <Chip
+                                    label={`acct ${instructor.stripeAccountId.slice(-6)}`}
+                                    size="small"
+                                    sx={{
+                                      bgcolor: 'rgba(255,255,255,0.08)',
+                                      color: 'rgba(255,255,255,0.7)',
+                                    }}
+                                  />
+                                )}
+                                {requirementsCount > 0 && (
+                                  <Chip
+                                    icon={<Warning fontSize="small" />}
+                                    label={`${requirementsCount} krav utestående`}
+                                    size="small"
+                                    color="warning"
+                                  />
+                                )}
+                                {typeof instructor.pendingPayoutAmount === 'number' &&
+                                  instructor.pendingPayoutAmount > 0 && (
+                                    <Chip
+                                      label={`${fmt(instructor.pendingPayoutAmount)} NOK pending`}
+                                      size="small"
+                                      sx={{
+                                        bgcolor: 'rgba(255,193,7,0.18)',
+                                        color: '#ffd54f',
+                                      }}
+                                    />
+                                  )}
+                              </Box>
+                            </Box>
+
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                              {instructor.onboardingStatus !== 'enabled' && (
+                                <Tooltip title="Generer onboarding-lenke">
+                                  <span>
+                                    <Button
+                                      size="small"
+                                      variant="contained"
+                                      startIcon={
+                                        isGenerating ? (
+                                          <CircularProgress size={14} sx={{ color: '#fff' }} />
+                                        ) : (
+                                          <Send fontSize="small" />
+                                        )
+                                      }
+                                      disabled={isGenerating || stripeNotConfigured}
+                                      onClick={() =>
+                                        generateOnboardingLinkMutation.mutate({
+                                          id: instructor.id,
+                                          name: instructor.name,
+                                          email: instructor.email,
+                                        })
+                                      }
+                                      sx={{
+                                        bgcolor: '#ff8c00',
+                                        '&:hover': { bgcolor: '#e67e00' },
+                                        textTransform: 'none',
+                                      }}
+                                    >
+                                      {isGenerating ? 'Genererer…' : 'Generer lenke'}
+                                    </Button>
+                                  </span>
+                                </Tooltip>
+                              )}
+                              <Tooltip title="Sync status fra Stripe">
+                                <span>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={
+                                      isSyncing ? (
+                                        <CircularProgress size={14} />
+                                      ) : (
+                                        <Refresh fontSize="small" />
+                                      )
+                                    }
+                                    disabled={isSyncing || stripeNotConfigured}
+                                    onClick={() =>
+                                      syncOnboardingStatusMutation.mutate(instructor.id)
+                                    }
+                                    sx={{
+                                      color: '#fff',
+                                      borderColor: 'rgba(255,255,255,0.3)',
+                                      textTransform: 'none',
+                                      '&:hover': {
+                                        borderColor: '#ff8c00',
+                                        bgcolor: 'rgba(255,140,0,0.1)',
+                                      },
+                                    }}
+                                  >
+                                    Sync
+                                  </Button>
+                                </span>
+                              </Tooltip>
+                            </Box>
+                          </Box>
+                        </Paper>
+                      </Grid>
+                    );
+                  })}
+                </Grid>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Payout-seksjon */}
+        {academySection === 'payouts' && (
+          <Card sx={darkCardSx}>
+            <CardContent>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  mb: 2,
+                }}
+              >
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
+                  <Payments sx={{ color: '#ff8c00' }} />
+                  Utbetalingsforespørsler
+                </Typography>
+                <Chip
+                  label={`${pendingPayoutsCount} ventende`}
+                  color="warning"
+                  sx={{ fontWeight: 600 }}
+                />
+              </Box>
+
+              {pendingPayoutsAmount > 0 && (
+                <Alert severity="warning" sx={{ mb: 3 }}>
+                  <strong>{fmt(pendingPayoutsAmount)} NOK</strong> venter på godkjenning
+                </Alert>
+              )}
+
+              {academyPayoutsLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress sx={{ color: '#ff8c00' }} />
+                </Box>
+              ) : pendingPayouts.length === 0 ? (
+                <Alert severity="success" sx={{ bgcolor: 'rgba(76,175,80,0.12)' }}>
+                  Ingen ventende utbetalinger akkurat nå.
+                </Alert>
+              ) : (
+                <Grid container spacing={2}>
+                  {pendingPayouts.map((payout) => {
+                    const displayName =
+                      payout.instructorName ||
+                      payout.notes ||
+                      `Instruktør ${payout.instructorId.slice(0, 8)}`;
+                    const bankSuffix = payout.bankAccountLast4
+                      ? `****${payout.bankAccountLast4}`
+                      : 'ikke registrert';
+                    const requestedAt = payout.requestedAt
+                      ? new Date(payout.requestedAt).toLocaleDateString('nb-NO')
+                      : '—';
+                    const isApproving =
+                      approvePayoutMutation.isPending &&
+                      approvePayoutMutation.variables === payout.id;
+                    const isRejecting =
+                      rejectPayoutMutation.isPending &&
+                      rejectPayoutMutation.variables?.id === payout.id;
+                    const isMarkingPaid =
+                      markPaidMutation.isPending &&
+                      markPaidMutation.variables === payout.id;
+                    const instructorRecord = instructors.find(
+                      (i) => i.id === payout.instructorId,
+                    );
+                    const payoutsEnabled = instructorRecord?.payoutsEnabled ?? false;
+                    const markPaidDisabled =
+                      !payoutsEnabled ||
+                      isApproving ||
+                      isRejecting ||
+                      isMarkingPaid ||
+                      stripeNotConfigured ||
+                      payout.status !== 'approved';
+                    const markPaidTooltip = !payoutsEnabled
+                      ? 'Instruktør må fullføre Stripe Connect-onboarding først'
+                      : payout.status !== 'approved'
+                        ? 'Payouten må være godkjent før den kan markeres betalt'
+                        : 'Initier Stripe transfer og marker som betalt';
+
+                    return (
+                      <Grid item xs={12} key={payout.id}>
+                        <Paper
+                          sx={{
+                            p: 2,
+                            bgcolor: 'rgba(255,193,7,0.08)',
+                            border: '1px solid rgba(255,193,7,0.3)',
+                            borderRadius: 2,
+                            color: '#fff',
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 2,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <Avatar sx={{ bgcolor: '#ff9800' }}>
+                              <AccountCircle />
+                            </Avatar>
+
+                            <Box sx={{ flex: 1, minWidth: 200 }}>
+                              <Typography variant="body1" sx={{ fontWeight: 600, color: '#fff' }}>
+                                {displayName}
+                              </Typography>
+                              <Typography
+                                variant="h6"
+                                sx={{ color: '#ff9800', fontWeight: 700 }}
+                              >
+                                {fmt(payout.amount)} NOK
+                              </Typography>
+                              <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                                <Chip
+                                  label={payout.status || 'pending'}
+                                  size="small"
+                                  sx={{
+                                    bgcolor: 'rgba(255,255,255,0.08)',
+                                    color: 'rgba(255,255,255,0.8)',
+                                  }}
+                                />
+                                <Chip
+                                  label={`Forespurt: ${requestedAt}`}
+                                  size="small"
+                                  sx={{
+                                    bgcolor: 'rgba(255,255,255,0.08)',
+                                    color: 'rgba(255,255,255,0.8)',
+                                  }}
+                                />
+                                <Chip
+                                  label={`Bank: ${bankSuffix}`}
+                                  size="small"
+                                  sx={{
+                                    bgcolor: 'rgba(255,255,255,0.08)',
+                                    color: 'rgba(255,255,255,0.8)',
+                                  }}
+                                />
+                                {!payoutsEnabled && (
+                                  <Chip
+                                    icon={<Block fontSize="small" />}
+                                    label="Connect ikke klar"
+                                    size="small"
+                                    color="error"
+                                  />
+                                )}
+                              </Box>
+                            </Box>
+
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                              <Tooltip title="Godkjenn utbetaling">
+                                <span>
+                                  <IconButton
+                                    color="success"
+                                    disabled={isApproving || isRejecting || isMarkingPaid}
+                                    onClick={() =>
+                                      setPayoutConfirmDialog({ open: true, payout })
+                                    }
+                                  >
+                                    {isApproving ? (
+                                      <CircularProgress size={20} />
+                                    ) : (
+                                      <Check />
+                                    )}
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+
+                              <Tooltip title={markPaidTooltip}>
+                                <span>
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    color="primary"
+                                    disabled={markPaidDisabled}
+                                    startIcon={
+                                      isMarkingPaid ? (
+                                        <CircularProgress size={14} sx={{ color: '#fff' }} />
+                                      ) : (
+                                        <Payments fontSize="small" />
+                                      )
+                                    }
+                                    onClick={() => markPaidMutation.mutate(payout.id)}
+                                    sx={{ textTransform: 'none' }}
+                                  >
+                                    {isMarkingPaid ? 'Overfører…' : 'Marker betalt'}
+                                  </Button>
+                                </span>
+                              </Tooltip>
+
+                              <Tooltip title="Avvis utbetaling">
+                                <span>
+                                  <IconButton
+                                    color="error"
+                                    disabled={isApproving || isRejecting || isMarkingPaid}
+                                    onClick={() => {
+                                      const reason = window.prompt(
+                                        'Begrunnelse for avvisning?',
+                                      );
+                                      if (!reason || !reason.trim()) return;
+                                      rejectPayoutMutation.mutate({
+                                        id: payout.id,
+                                        reason: reason.trim(),
+                                      });
+                                    }}
+                                  >
+                                    {isRejecting ? (
+                                      <CircularProgress size={20} />
+                                    ) : (
+                                      <Close />
+                                    )}
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            </Box>
+                          </Box>
+                        </Paper>
+                      </Grid>
+                    );
+                  })}
+                </Grid>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Transfer-history-seksjon */}
+        {academySection === 'transfers' && (
+          <>
+            <Card sx={{ ...darkCardSx, mb: 3 }}>
+              <CardContent>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    mb: 2,
+                  }}
+                >
+                  <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
+                    <Receipt sx={{ color: '#ff8c00' }} />
+                    Siste transfers
+                  </Typography>
+                  <Chip
+                    label={`${transfers.length} transfers`}
+                    size="small"
+                    sx={{
+                      bgcolor: 'rgba(255,255,255,0.08)',
+                      color: 'rgba(255,255,255,0.8)',
+                    }}
+                  />
+                </Box>
+
+                {academyTransfersLoading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                    <CircularProgress sx={{ color: '#ff8c00' }} />
+                  </Box>
+                ) : transfers.length === 0 ? (
+                  <Alert severity="info" sx={{ bgcolor: 'rgba(33,150,243,0.12)' }}>
+                    Ingen transfers registrert enda.
+                  </Alert>
+                ) : (
+                  <Grid container spacing={1.5}>
+                    {transfers.slice(0, 20).map((transfer) => {
+                      const meta = transferStatusMeta(transfer.status);
+                      const displayName =
+                        transfer.instructorName ||
+                        `Instruktør ${transfer.instructorId.slice(0, 8)}`;
+                      return (
+                        <Grid item xs={12} key={transfer.id}>
+                          <Paper
+                            sx={{
+                              p: 1.5,
+                              bgcolor: 'rgba(255,255,255,0.04)',
+                              border: '1px solid rgba(255,255,255,0.12)',
+                              borderRadius: 2,
+                              color: '#fff',
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 2,
+                                flexWrap: 'wrap',
+                              }}
+                            >
+                              <Box sx={{ flex: 1, minWidth: 220 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: '#fff' }}>
+                                  {displayName}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  sx={{ color: 'rgba(255,255,255,0.6)', display: 'block' }}
+                                >
+                                  {fmtDateTime(transfer.createdAt)}
+                                  {transfer.stripeTransferId
+                                    ? ` · ${transfer.stripeTransferId}`
+                                    : ''}
+                                </Typography>
+                                {transfer.failureReason && (
+                                  <Typography
+                                    variant="caption"
+                                    sx={{ color: '#ef9a9a', display: 'block', mt: 0.5 }}
+                                  >
+                                    {transfer.failureReason}
+                                  </Typography>
+                                )}
+                              </Box>
+                              <Typography
+                                variant="body1"
+                                sx={{ fontWeight: 700, color: '#fff', minWidth: 110, textAlign: 'right' }}
+                              >
+                                {fmt(transfer.amount)} {(transfer.currency || 'NOK').toUpperCase()}
+                              </Typography>
+                              <Chip
+                                label={meta.label}
+                                size="small"
+                                color={meta.color === 'default' ? undefined : meta.color}
+                                sx={
+                                  meta.color === 'default'
+                                    ? {
+                                        bgcolor: 'rgba(255,255,255,0.1)',
+                                        color: 'rgba(255,255,255,0.8)',
+                                      }
+                                    : { fontWeight: 600 }
+                                }
+                              />
+                              {transfer.stripeTransferId && (
+                                <Tooltip title="Åpne i Stripe Dashboard">
+                                  <IconButton
+                                    size="small"
+                                    component="a"
+                                    href={`https://dashboard.stripe.com/transfers/${transfer.stripeTransferId}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    sx={{ color: 'rgba(255,255,255,0.7)' }}
+                                  >
+                                    <OpenInNew fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                            </Box>
+                          </Paper>
+                        </Grid>
+                      );
+                    })}
+                  </Grid>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card sx={darkCardSx}>
+              <CardContent>
+                <Typography
+                  variant="h6"
+                  sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: '#fff' }}
+                >
+                  <History sx={{ color: '#ff8c00' }} />
+                  Refund-historikk
+                </Typography>
+                {refunds.length === 0 ? (
+                  <Alert severity="info" sx={{ bgcolor: 'rgba(33,150,243,0.12)' }}>
+                    Ingen refunds registrert.
+                  </Alert>
+                ) : (
+                  <Grid container spacing={1}>
+                    {refunds.slice(0, 20).map((refund) => (
+                      <Grid item xs={12} key={refund.id}>
+                        <Paper
+                          sx={{
+                            p: 1.5,
+                            bgcolor: 'rgba(244,67,54,0.08)',
+                            border: '1px solid rgba(244,67,54,0.2)',
+                            borderRadius: 2,
+                            color: '#fff',
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                            <Box sx={{ flex: 1, minWidth: 220 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                {refund.instructorName || `Instruktør ${refund.instructorId.slice(0, 8)}`}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                sx={{ color: 'rgba(255,255,255,0.6)', display: 'block' }}
+                              >
+                                {fmtDate(refund.createdAt)}
+                                {refund.reason ? ` · ${refund.reason}` : ''}
+                              </Typography>
+                            </Box>
+                            <Typography sx={{ fontWeight: 700, color: '#ef9a9a' }}>
+                              −{fmt(refund.amount)} NOK
+                            </Typography>
+                            <Chip
+                              label={refund.status}
+                              size="small"
+                              sx={{
+                                bgcolor: 'rgba(255,255,255,0.08)',
+                                color: 'rgba(255,255,255,0.8)',
+                              }}
+                            />
+                          </Box>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                )}
+              </CardContent>
+            </Card>
+          </>
+        )}
+
+        {/* B2-arkiv-seksjon (admin-only) */}
+        {academySection === 'b2-archive' && (
+          <>
+            {academyB2ListData?.b2Configured === false && (
+              <Alert severity="warning" sx={{ mb: 3 }}>
+                B2 ikke konfigurert. Sett <code>B2_APPLICATION_KEY_ID</code> +{' '}
+                <code>B2_APPLICATION_KEY</code> + <code>B2_BUCKET_NAME</code> på Render.
+              </Alert>
+            )}
+
+            {/* B2 KPI-rad */}
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12} sm={6} md={4}>
+                <Card sx={darkCardSx}>
+                  <CardContent>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                      Totalt antall filer
+                    </Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 700, my: 1, color: '#ff8c00' }}>
+                      {academyB2StatsLoading ? (
+                        <CircularProgress size={24} sx={{ color: '#ff8c00' }} />
+                      ) : (
+                        fmt(academyB2StatsData?.totalFiles ?? 0)
+                      )}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                      i academy/-prefixet
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <Card sx={darkCardSx}>
+                  <CardContent>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                      Total størrelse
+                    </Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 700, my: 1, color: '#fff' }}>
+                      {academyB2StatsLoading ? (
+                        <CircularProgress size={24} sx={{ color: '#fff' }} />
+                      ) : (
+                        (() => {
+                          const bytes = academyB2StatsData?.totalSizeBytes ?? 0;
+                          if (bytes >= 1e12) return `${(bytes / 1e12).toFixed(2)} TB`;
+                          if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
+                          if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(2)} MB`;
+                          if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(2)} KB`;
+                          return `${bytes} B`;
+                        })()
+                      )}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                      master-videoer + assets
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <Card sx={darkCardSx}>
+                  <CardContent>
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                      Kurs med arkiv
+                    </Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 700, my: 1, color: '#fff' }}>
+                      {academyB2StatsLoading ? (
+                        <CircularProgress size={24} sx={{ color: '#fff' }} />
+                      ) : (
+                        fmt(academyB2StatsData?.byCourse?.length ?? 0)
+                      )}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                      unike course-IDer i bucket
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+
+            {/* Per-kurs breakdown */}
+            {(academyB2StatsData?.byCourse?.length ?? 0) > 0 && (
+              <Card sx={{ ...darkCardSx, mb: 3 }}>
+                <CardContent>
+                  <Typography variant="h6" sx={{ color: '#fff', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Storage sx={{ color: '#ff8c00' }} />
+                    Per kurs
+                  </Typography>
+                  <Grid container spacing={1}>
+                    {(Array.isArray(academyB2StatsData?.byCourse) ? academyB2StatsData.byCourse : []).slice(0, 8).map((row) => (
+                      <Grid item xs={12} sm={6} md={4} key={row.courseId}>
+                        <Paper
+                          sx={{
+                            p: 1.5,
+                            bgcolor: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            borderRadius: 2,
+                            color: '#fff',
+                          }}
+                        >
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {row.courseName ?? row.courseId}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', display: 'block' }}>
+                            {row.fileCount} filer · {(row.sizeBytes / 1e6).toFixed(1)} MB
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Fil-liste + upload-knapp */}
+            <Card sx={darkCardSx}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                  <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
+                    <Storage sx={{ color: '#ff8c00' }} />
+                    Filer i academy/
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<CloudUpload />}
+                    onClick={() =>
+                      setAcademyB2UploadDialog({
+                        open: true,
+                        courseId: '',
+                        file: null,
+                        isMaster: true,
+                        progress: 0,
+                        isUploading: false,
+                        error: null,
+                      })
+                    }
+                    disabled={academyB2ListData?.b2Configured === false}
+                    sx={{
+                      bgcolor: '#ff8c00',
+                      '&:hover': { bgcolor: '#e67e00' },
+                      textTransform: 'none',
+                    }}
+                  >
+                    Upload master
+                  </Button>
+                </Box>
+
+                {academyB2ListLoading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                    <CircularProgress sx={{ color: '#ff8c00' }} />
+                  </Box>
+                ) : (academyB2ListData?.files?.length ?? 0) === 0 ? (
+                  <Alert severity="info" sx={{ bgcolor: 'rgba(33,150,243,0.12)' }}>
+                    Ingen filer i academy/-prefixet enda.
+                  </Alert>
+                ) : (
+                  <Grid container spacing={1}>
+                    {(Array.isArray(academyB2ListData?.files) ? academyB2ListData.files : []).map((file) => (
+                      <Grid item xs={12} key={file.key}>
+                        <Paper
+                          sx={{
+                            p: 1.5,
+                            bgcolor: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            borderRadius: 2,
+                            color: '#fff',
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                            <Box sx={{ flex: 1, minWidth: 220 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600, wordBreak: 'break-all' }}>
+                                {file.key}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                sx={{ color: 'rgba(255,255,255,0.6)', display: 'block' }}
+                              >
+                                {fmtDateTime(file.lastModified)} ·{' '}
+                                {(file.sizeBytes / 1e6).toFixed(2)} MB
+                                {file.courseId ? ` · kurs: ${file.courseId}` : ''}
+                              </Typography>
+                            </Box>
+                            {file.isMaster && (
+                              <Chip
+                                label="MASTER"
+                                size="small"
+                                sx={{
+                                  bgcolor: 'rgba(255,140,0,0.18)',
+                                  color: '#ffb74d',
+                                  fontWeight: 600,
+                                }}
+                              />
+                            )}
+                            <Tooltip title="Last ned (signed URL, 30 min)">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => academyB2DownloadMutation.mutate(file.key)}
+                                  disabled={academyB2DownloadMutation.isPending}
+                                  sx={{ color: 'rgba(255,255,255,0.8)' }}
+                                >
+                                  <CloudDownload fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="Slett fra B2">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  onClick={() =>
+                                    setAcademyB2DeleteConfirm({ open: true, key: file.key })
+                                  }
+                                  disabled={academyB2DeleteMutation.isPending}
+                                  sx={{ color: '#ef9a9a' }}
+                                >
+                                  <DeleteOutline fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </Box>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Upload-dialog */}
+            <Dialog
+              open={academyB2UploadDialog.open}
+              onClose={() =>
+                !academyB2UploadDialog.isUploading &&
+                setAcademyB2UploadDialog((prev) => ({ ...prev, open: false }))
+              }
+              fullWidth
+              maxWidth="sm"
+            >
+              <DialogTitle>Last opp til Academy B2-arkiv</DialogTitle>
+              <DialogContent>
+                <DialogContentText sx={{ mb: 2 }}>
+                  Filen skrives til{' '}
+                  <code>
+                    academy/courses/{academyB2UploadDialog.courseId || '<courseId>'}/
+                    {academyB2UploadDialog.isMaster ? 'masters' : 'assets'}/
+                    {academyB2UploadDialog.file?.name || '<filnavn>'}
+                  </code>
+                </DialogContentText>
+                <TextField
+                  select
+                  fullWidth
+                  label="Kurs"
+                  value={academyB2UploadDialog.courseId}
+                  onChange={(e) =>
+                    setAcademyB2UploadDialog((prev) => ({
+                      ...prev,
+                      courseId: e.target.value,
+                      error: null,
+                    }))
+                  }
+                  sx={{ mb: 2 }}
+                  disabled={academyB2UploadDialog.isUploading}
+                >
+                  <MenuItem value="">— velg kurs —</MenuItem>
+                  {(Array.isArray(academyCoursesData?.courses) ? academyCoursesData.courses : []).map((course) => (
+                    <MenuItem key={course.id} value={course.id}>
+                      {course.title} ({course.id.slice(0, 8)})
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    startIcon={<CloudUpload />}
+                    disabled={academyB2UploadDialog.isUploading}
+                  >
+                    Velg fil
+                    <input
+                      type="file"
+                      hidden
+                      onChange={(e) =>
+                        setAcademyB2UploadDialog((prev) => ({
+                          ...prev,
+                          file: e.target.files?.[0] ?? null,
+                          error: null,
+                        }))
+                      }
+                    />
+                  </Button>
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    {academyB2UploadDialog.file?.name || 'Ingen fil valgt'}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                  <input
+                    id="academy-b2-is-master"
+                    type="checkbox"
+                    checked={academyB2UploadDialog.isMaster}
+                    onChange={(e) =>
+                      setAcademyB2UploadDialog((prev) => ({
+                        ...prev,
+                        isMaster: e.target.checked,
+                      }))
+                    }
+                    disabled={academyB2UploadDialog.isUploading}
+                  />
+                  <label htmlFor="academy-b2-is-master">
+                    Master-fil (lagres under <code>masters/</code> — ellers under <code>assets/</code>)
+                  </label>
+                </Box>
+                {academyB2UploadDialog.isUploading && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      Laster opp… {academyB2UploadDialog.progress}%
+                    </Typography>
+                    <LinearProgress
+                      variant="determinate"
+                      value={academyB2UploadDialog.progress}
+                      sx={{ mt: 0.5 }}
+                    />
+                  </Box>
+                )}
+                {academyB2UploadDialog.error && (
+                  <Alert severity="error" sx={{ mb: 1 }}>
+                    {academyB2UploadDialog.error}
+                  </Alert>
+                )}
+              </DialogContent>
+              <DialogActions>
+                <Button
+                  onClick={() =>
+                    setAcademyB2UploadDialog((prev) => ({ ...prev, open: false }))
+                  }
+                  disabled={academyB2UploadDialog.isUploading}
+                >
+                  Avbryt
+                </Button>
+                <Button
+                  onClick={academyB2StartUpload}
+                  variant="contained"
+                  disabled={
+                    academyB2UploadDialog.isUploading ||
+                    !academyB2UploadDialog.courseId ||
+                    !academyB2UploadDialog.file
+                  }
+                  sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
+                >
+                  {academyB2UploadDialog.isUploading ? 'Laster opp…' : 'Last opp'}
+                </Button>
+              </DialogActions>
+            </Dialog>
+
+            {/* Slett-confirm-dialog */}
+            <Dialog
+              open={academyB2DeleteConfirm.open}
+              onClose={() => setAcademyB2DeleteConfirm({ open: false, key: null })}
+            >
+              <DialogTitle>Slett fil fra B2?</DialogTitle>
+              <DialogContent>
+                <DialogContentText>
+                  Dette fjerner objektet permanent fra Backblaze. Handlingen kan ikke angres.
+                  <br />
+                  <code>{academyB2DeleteConfirm.key}</code>
+                </DialogContentText>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setAcademyB2DeleteConfirm({ open: false, key: null })}>
+                  Avbryt
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (academyB2DeleteConfirm.key) {
+                      academyB2DeleteMutation.mutate(academyB2DeleteConfirm.key);
+                    }
+                    setAcademyB2DeleteConfirm({ open: false, key: null });
+                  }}
+                  color="error"
+                  variant="contained"
+                >
+                  Slett
+                </Button>
+              </DialogActions>
+            </Dialog>
+          </>
+        )}
+      </Box>
+    );
+  };
 
   const renderProtocolPanel = () => (
     <Box sx={{ p: 3 }}>
       <Typography
         variant="h5"
         gutterBottom
-        sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}
+        sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}
       >
         <Settings />
         Drift & Innstillinger
       </Typography>
 
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+        <Typography variant="h6" gutterBottom sx={{ mb: 2, color: '#fff' }}>
           Push-varsler
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography variant="body2" sx={{ mb: 2, color: 'rgba(255,255,255,0.7)' }}>
           Aktiver push-varsler for å motta varsler om systemhendelser, brukeraktivitet og
           kritiske oppdateringer.
         </Typography>
@@ -1603,16 +3866,17 @@ export default function AdminDashboard({
   );
 
   const renderMarketingPanel = () => (
+    <AdminSectionThemeProvider theme={adminDarkTheme}>
     <Box>
       <Box sx={{ mb: 3 }}>
         <Typography
           variant="h5"
-          sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}
+          sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}
         >
           <Campaign color="primary" />
           Marketing Management
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
           Content Calendar & Announcement Management
         </Typography>
       </Box>
@@ -1668,7 +3932,7 @@ export default function AdminDashboard({
                         bestPractices: res.bestPractices,
                         seo: res.seo,
                         pwa: res.pwa,
-                        recommendations: res.recommendations || [],
+                        recommendations: Array.isArray(res.recommendations) ? res.recommendations : [],
                       });
                     } catch (e: any) {
                       setSeoAuditError(e?.message || 'Audit failed');
@@ -1740,6 +4004,7 @@ export default function AdminDashboard({
         </Box>
       )}
     </Box>
+    </AdminSectionThemeProvider>
   );
 
   const renderCurrentTabContent = () => {
@@ -1747,7 +4012,14 @@ export default function AdminDashboard({
       case 'overblikk':
         return renderOverviewPanel();
       case 'brukere-roller':
-        return <UserManagementPanel {...sharedPanelProps} />;
+        return (
+          <>
+            <UserManagementPanel {...sharedPanelProps} />
+            <Box sx={{ px: { xs: 1.5, sm: 2.5 }, pb: 4, pt: 3 }}>
+              <LeadMapEntitlementsAdminPanel />
+            </Box>
+          </>
+        );
       case 'invite-requests':
         return (
           <>
@@ -1756,10 +4028,13 @@ export default function AdminDashboard({
               <AdminPaymentStatusCard />
             </Box>
             <InviteManagementDashboard />
+            <PrototypeTesterAdminPanel />
           </>
         );
       case 'send-notifications':
         return <AdminNotificationManager />;
+      case 'utstyrsdatabase':
+        return <EquipmentAdminPage />;
       case 'community':
         return <CommunityManagementDashboard />;
       case 'innhold-assets':
@@ -1774,12 +4049,12 @@ export default function AdminDashboard({
             >
               <Typography
                 variant="h5"
-                sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}
+                sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}
               >
                 <Folder color="primary" />
                 Visual CMS Dashboard
               </Typography>
-              <Typography variant="body1" color="text.secondary">
+              <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.7)' }}>
                 API Bank Management, Mock/Real Switching og Deployment Workflow
               </Typography>
             </Box>
@@ -1790,6 +4065,8 @@ export default function AdminDashboard({
         return <CustomerProjectsPanel {...sharedPanelProps} />;
       case 'kommunikasjon':
         return <AdminCommunicationPanel {...sharedPanelProps} />;
+      case 'inbound-alerts':
+        return <InboundAlertsPanel />;
       case 'prototype-feedback':
         return <PrototypeFeedbackPanel {...sharedPanelProps} />;
       case 'okonomi':
@@ -1799,6 +4076,8 @@ export default function AdminDashboard({
             onOpenPriceManagement={() => activateTab(tabIndexFor('price-management'))}
           />
         );
+      case 'affiliate-payouts':
+        return <RoleRoomAffiliateAdminPanel />;
       case 'price-management':
         return (
           <PriceManagementDashboard
@@ -1806,18 +4085,34 @@ export default function AdminDashboard({
             initialSection={priceManagementSection}
           />
         );
+      case 'leadgrid':
+        return <LeadgridAdminSection />;
       case 'user-costs':
         return <UserCostOverviewPanel />;
       case 'secrets-rotation':
         return <SecretsRotationPanel />;
       case 'marketplace-apps':
-        return <MarketplaceAppConfigManager />;
+        return (
+          <>
+            <Box sx={{ px: { xs: 1.5, sm: 2.5 }, pt: 2, pb: 1 }}>
+              <LeadMapMarketplaceCard
+                onJumpToEntitlements={() => activateTab(tabIndexFor('brukere-roller'))}
+                onJumpToPricing={() => openPriceManagementSection('lead-map')}
+              />
+            </Box>
+            <MarketplaceAppConfigManager />
+          </>
+        );
       case 'analytics-hub':
         return <AdminAnalyticsHub />;
       case 'ai-cost':
         return <AdminAICostDashboard />;
+      case 'generative-ai':
+        return <GenerativeAiAdminPanel />;
       case 'design-tokens':
         return <AdminDesignTokensPanel />;
+      case 'creatorhub-design':
+        return <CreatorHubDesignShell />;
       case 'reports':
         return <ReportsPanel onFileDownload={onFileDownload} />;
       case 'academy':
@@ -1845,17 +4140,26 @@ export default function AdminDashboard({
             }}
           />
         );
+      case 'editing-partners':
+        return <EditingPartnersAdminPanel />;
+      case 'workspace-preview':
+        return <WorkspacePreviewPanel />;
+      case 'debug-tool':
+        return <DebugToolPanel />;
       case 'profession-types':
         return <ProfessionTypeManager />;
       case 'integrasjoner':
         return (
           <Box sx={{ display: 'grid', gap: 3 }}>
             <IntegrationsManagementPanel {...sharedPanelProps} />
+            <LtiPlatformsPanel />
             <OAuthScopeChecker />
           </Box>
         );
       case 'feature-management':
         return <FeatureManagement {...sharedPanelProps} />;
+      case 'control-center':
+        return <ControlCenterPanel />;
       case 'centralized-monitoring':
         return <CentralizedMonitoringConsole {...sharedPanelProps} />;
       case 'protokollstyring':
@@ -1884,7 +4188,12 @@ export default function AdminDashboard({
       case 'integration-test':
         return <AdminDashboardIntegrationTest />;
       case 'payment-integration-test':
-        return <PaymentSystemsIntegrationTest />;
+        return (
+          <>
+            <EditingPaymentTestPanel />
+            <PaymentSystemsIntegrationTest />
+          </>
+        );
       case 'google-wallet-membership':
         return <GoogleWalletMembershipManager />;
       case 'google-wallet-integration-test':
@@ -1920,22 +4229,22 @@ export default function AdminDashboard({
         <Box
           sx={{
             minHeight: '100vh',
-            bgcolor: '#f4f1ec',
-            px: { md: 2.5, xl: 4 },
-            py: { md: 2.5, xl: 4 },
+            bgcolor: '#0a0f1a',
+            px: 0,
+            py: 0,
           }}
         >
           <Box
             sx={{
-              maxWidth: '1480px',
-              mx: 'auto',
+              maxWidth: '100%',
+              mx: 0,
               minHeight: 'calc(100vh - 40px)',
               display: 'grid',
               gridTemplateColumns: '260px minmax(0, 1fr)',
-              bgcolor: '#ffffff',
+              bgcolor: 'rgba(255,255,255,0.06)',
               borderRadius: '28px',
-              border: '1px solid #ebe3d8',
-              boxShadow: '0 24px 80px rgba(27, 21, 12, 0.08)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
               overflow: 'hidden',
             }}
           >
@@ -1943,8 +4252,8 @@ export default function AdminDashboard({
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
-                bgcolor: '#faf8f4',
-                borderRight: '1px solid #eee6db',
+                bgcolor: 'rgba(255,255,255,0.04)',
+                borderRight: '1px solid rgba(255,255,255,0.12)',
                 p: 2.5,
                 minHeight: 0,
               }}
@@ -1963,7 +4272,7 @@ export default function AdminDashboard({
                       width: 34,
                       height: 34,
                       borderRadius: '12px',
-                      bgcolor: '#181512',
+                      bgcolor: '#ff8c00',
                       display: 'grid',
                       placeItems: 'center',
                       overflow: 'hidden',
@@ -1976,15 +4285,15 @@ export default function AdminDashboard({
                     />
                   </Box>
                   <Box>
-                    <Typography sx={{ fontSize: '0.95rem', fontWeight: 700, color: '#1a1713' }}>
+                    <Typography sx={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>
                       CreatorHub
                     </Typography>
-                    <Typography sx={{ fontSize: '0.72rem', color: '#8b8378' }}>
+                    <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.65)' }}>
                       Admin workspace
                     </Typography>
                   </Box>
                 </Box>
-                <Typography sx={{ fontSize: '0.72rem', color: '#8b8378', fontWeight: 600 }}>
+                <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.65)', fontWeight: 600 }}>
                   v4.0
                 </Typography>
               </Box>
@@ -1999,16 +4308,16 @@ export default function AdminDashboard({
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
-                        <Search sx={{ fontSize: 18, color: '#9a9185' }} />
+                        <Search sx={{ fontSize: 18, color: 'rgba(255,255,255,0.65)' }} />
                       </InputAdornment>
                     ),
                   }}
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       borderRadius: '14px',
-                      bgcolor: '#ffffff',
+                      bgcolor: 'rgba(255,255,255,0.06)',
                       '& fieldset': {
-                        borderColor: '#e6dccd',
+                        borderColor: 'rgba(255,255,255,0.12)',
                       },
                     },
                     '& .MuiInputBase-input': {
@@ -2016,7 +4325,7 @@ export default function AdminDashboard({
                     },
                   }}
                 />
-                <Typography sx={{ mt: 0.75, px: 0.5, fontSize: '0.72rem', color: '#9a9185' }}>
+                <Typography sx={{ mt: 0.75, px: 0.5, fontSize: '0.72rem', color: 'rgba(255,255,255,0.65)' }}>
                   {normalizedAdminNavQuery
                     ? `${visibleAdminTabCount} treff i adminen`
                     : `${adminTabs.length} adminflater tilgjengelig`}
@@ -2039,7 +4348,7 @@ export default function AdminDashboard({
                       gap: 1,
                       cursor: 'pointer',
                       '&:hover': {
-                        bgcolor: '#f5f2ed',
+                        bgcolor: 'rgba(255,255,255,0.06)',
                       },
                     }}
                   >
@@ -2048,7 +4357,7 @@ export default function AdminDashboard({
                         fontSize: '0.72rem',
                         letterSpacing: '0.1em',
                         textTransform: 'uppercase',
-                        color: '#9a9185',
+                        color: 'rgba(255,255,255,0.65)',
                         fontWeight: 700,
                       }}
                     >
@@ -2060,8 +4369,8 @@ export default function AdminDashboard({
                         size="small"
                         sx={{
                           height: 22,
-                          bgcolor: '#ffffff',
-                          color: '#7f766b',
+                          bgcolor: 'rgba(255,255,255,0.06)',
+                          color: 'rgba(255,255,255,0.7)',
                           fontWeight: 700,
                           borderRadius: '999px',
                         }}
@@ -2069,7 +4378,7 @@ export default function AdminDashboard({
                       <ExpandMore
                         sx={{
                           fontSize: 18,
-                          color: '#8c8478',
+                          color: 'rgba(255,255,255,0.65)',
                           transform:
                             normalizedAdminNavQuery || (adminGroupExpansion[group.label] ?? true)
                               ? 'rotate(180deg)'
@@ -2100,16 +4409,16 @@ export default function AdminDashboard({
                               borderRadius: '14px',
                               textTransform: 'none',
                               fontWeight: isSelected ? 700 : 600,
-                              color: isSelected ? '#181512' : '#6c655b',
-                              bgcolor: isSelected ? '#f1eee8' : 'transparent',
+                              color: isSelected ? '#fff' : 'rgba(255,255,255,0.85)',
+                              bgcolor: isSelected ? 'rgba(255,140,0,0.15)' : 'transparent',
                               border: isSelected
-                                ? '1px solid rgba(140, 94, 52, 0.12)'
+                                ? '1px solid rgba(255,140,0,0.35)'
                                 : '1px solid transparent',
                               '&:hover': {
-                                bgcolor: isSelected ? '#f1eee8' : '#f5f2ed',
+                                bgcolor: isSelected ? 'rgba(255,140,0,0.2)' : 'rgba(255,255,255,0.06)',
                               },
                               '& .MuiButton-startIcon': {
-                                color: isSelected ? '#181512' : '#8b8378',
+                                color: isSelected ? '#fff' : 'rgba(255,255,255,0.65)',
                               },
                             }}
                           >
@@ -2122,7 +4431,7 @@ export default function AdminDashboard({
                                   sx={{
                                     mt: 0.15,
                                     fontSize: '0.72rem',
-                                    color: '#8c8478',
+                                    color: 'rgba(255,255,255,0.65)',
                                     maxWidth: 190,
                                     whiteSpace: 'nowrap',
                                     overflow: 'hidden',
@@ -2142,7 +4451,7 @@ export default function AdminDashboard({
               ))}
             </Box>
 
-            <Box sx={{ pt: 2, borderTop: '1px solid #eee6db', display: 'grid', gap: 0.75 }}>
+            <Box sx={{ pt: 2, borderTop: '1px solid rgba(255,255,255,0.12)', display: 'grid', gap: 0.75 }}>
               <Button
                 fullWidth
                 onClick={() => setFullscreenChatOpen(true)}
@@ -2152,7 +4461,7 @@ export default function AdminDashboard({
                   justifyContent: 'flex-start',
                   borderRadius: '12px',
                   textTransform: 'none',
-                  color: '#5f574f',
+                  color: 'rgba(255,255,255,0.85)',
                   fontWeight: 600,
                 }}
               >
@@ -2167,7 +4476,7 @@ export default function AdminDashboard({
                   justifyContent: 'flex-start',
                   borderRadius: '12px',
                   textTransform: 'none',
-                  color: '#5f574f',
+                  color: 'rgba(255,255,255,0.85)',
                   fontWeight: 600,
                 }}
               >
@@ -2181,7 +4490,7 @@ export default function AdminDashboard({
               sx={{
                 px: 4,
                 py: 3,
-                borderBottom: '1px solid #f0ebe3',
+                borderBottom: '1px solid rgba(255,255,255,0.12)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -2189,7 +4498,7 @@ export default function AdminDashboard({
               }}
             >
               <Box>
-                <Typography sx={{ fontSize: '0.8rem', color: '#938b80' }}>
+                <Typography sx={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.65)' }}>
                   CreatorHub Admin {'>'} Workspace {'>'} {currentTab.label}
                 </Typography>
                 <Typography
@@ -2197,12 +4506,12 @@ export default function AdminDashboard({
                     mt: 0.75,
                     fontSize: '1.05rem',
                     fontWeight: 700,
-                    color: '#181512',
+                    color: '#fff',
                   }}
                 >
                   {currentTab.label}
                 </Typography>
-                <Typography sx={{ mt: 0.5, fontSize: '0.84rem', color: '#7d7468', maxWidth: 720 }}>
+                <Typography sx={{ mt: 0.5, fontSize: '0.84rem', color: 'rgba(255,255,255,0.7)', maxWidth: 720 }}>
                   {currentTabDescription}
                 </Typography>
                 <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
@@ -2210,8 +4519,8 @@ export default function AdminDashboard({
                     label={currentUser.isAdmin ? 'Full admin' : 'Begrenset tilgang'}
                     size="small"
                     sx={{
-                      bgcolor: '#fff4e5',
-                      color: '#8c4d00',
+                      bgcolor: 'rgba(255,140,0,0.15)',
+                      color: '#ff8c00',
                       fontWeight: 700,
                       borderRadius: '999px',
                     }}
@@ -2224,8 +4533,8 @@ export default function AdminDashboard({
                     }
                     size="small"
                     sx={{
-                      bgcolor: '#ecfdf5',
-                      color: '#0f766e',
+                      bgcolor: 'rgba(34,197,94,0.18)',
+                      color: '#86efac',
                       fontWeight: 700,
                       borderRadius: '999px',
                     }}
@@ -2234,8 +4543,8 @@ export default function AdminDashboard({
                     label={hasSessionToken ? 'Sesjon aktiv' : 'Sesjon mangler'}
                     size="small"
                     sx={{
-                      bgcolor: hasSessionToken ? '#eff6ff' : '#fef2f2',
-                      color: hasSessionToken ? '#1d4ed8' : '#b91c1c',
+                      bgcolor: hasSessionToken ? 'rgba(30,64,175,0.18)' : 'rgba(239,68,68,0.15)',
+                      color: hasSessionToken ? '#93c5fd' : '#fca5a5',
                       fontWeight: 700,
                       borderRadius: '999px',
                     }}
@@ -2248,26 +4557,26 @@ export default function AdminDashboard({
                   label={currentUser.isAdmin ? 'Administrator' : 'Tilgang'}
                   size="small"
                   sx={{
-                    bgcolor: '#f6ede0',
-                    color: '#8c4d00',
+                    bgcolor: 'rgba(255,140,0,0.15)',
+                    color: '#ff8c00',
                     fontWeight: 700,
                     borderRadius: '999px',
                   }}
                 />
                 <Avatar
                   src={currentUser.picture || undefined}
-                  sx={{ width: 34, height: 34, bgcolor: '#efe2d4', color: '#181512' }}
+                  sx={{ width: 34, height: 34, bgcolor: 'rgba(255,140,0,0.18)', color: '#ff8c00' }}
                 >
                   {(currentUser.name || currentUser.email || 'A').charAt(0).toUpperCase()}
                 </Avatar>
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: '#181512' }}>
+                  <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff' }}>
                     {currentUser.name || 'Admin'}
                   </Typography>
                   <Typography
                     sx={{
                       fontSize: '0.75rem',
-                      color: '#8f877b',
+                      color: 'rgba(255,255,255,0.65)',
                       maxWidth: 240,
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
@@ -2285,10 +4594,10 @@ export default function AdminDashboard({
                 p: isVisualCmsTab ? 0 : 4,
                 minWidth: 0,
                 overflowY: 'auto',
-                bgcolor: isVisualCmsTab ? '#ffffff' : '#fcfaf7',
+                bgcolor: isVisualCmsTab ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.04)',
               }}
             >
-              <Box sx={{ maxWidth: isVisualCmsTab ? '100%' : '1280px', mx: 'auto' }}>
+              <Box sx={{ maxWidth: '100%', mx: 0 }}>
                 <AdminErrorBoundary
                   key={currentTab.id}
                   fallback={
@@ -2375,10 +4684,10 @@ export default function AdminDashboard({
         position="sticky"
         elevation={2}
         sx={{
-          backgroundColor: 'rgba(250, 248, 244, 0.96)',
-          borderBottom: '1px solid #e9dece',
+          backgroundColor: 'rgba(15,23,42,0.94)',
+          borderBottom: '1px solid rgba(255,255,255,0.12)',
           backdropFilter: 'blur(16px)',
-          color: 'text.primary',
+          color: '#fff',
         }}
       >
         <Toolbar
@@ -2411,8 +4720,7 @@ export default function AdminDashboard({
               {!isSmall && (
                 <Typography
                   variant="caption"
-                  color="text.secondary"
-                  sx={{ display: 'block', mt: -0.5 }}
+                  sx={{ display: 'block', mt: -0.5, color: 'rgba(255,255,255,0.7)' }}
                 >
                   {currentUser.email}
                 </Typography>
@@ -2425,8 +4733,8 @@ export default function AdminDashboard({
             sx={{
               color: '#ff8c00',
               ml: 1,
-              border: '1px solid #eadfce',
-              bgcolor: '#ffffff',
+              border: '1px solid rgba(255,255,255,0.12)',
+              bgcolor: 'rgba(255,255,255,0.06)',
             }}
           >
             <MenuIcon />
@@ -2437,14 +4745,15 @@ export default function AdminDashboard({
 
       <MobileDropdownMenu />
 
-      <Box sx={{ minHeight: '100vh', bgcolor: '#f4f1ec', pb: 12 }}>
+      <Box sx={{ minHeight: '100vh', bgcolor: '#0a0f1a', pb: 12 }}>
         <Container
-          maxWidth={isVisualCmsTab ? false : 'xl'}
-          disableGutters={isVisualCmsTab}
+          maxWidth={false}
+          disableGutters
           sx={{
             width: '100%',
-            py: isVisualCmsTab ? 0 : { xs: 2, sm: 3 },
-            px: isVisualCmsTab ? 0 : { xs: 1, sm: 3 },
+            maxWidth: '100%',
+            py: 0,
+            px: 0,
           }}
         >
           {!isVisualCmsTab && (
@@ -2452,31 +4761,39 @@ export default function AdminDashboard({
               sx={{
                 mt: { xs: 1, sm: 2 },
                 mb: 2.5,
-                px: { xs: 0.5, sm: 0 },
+                px: { xs: 1.5, sm: 3 },
               }}
             >
-              <Typography sx={{ fontSize: '0.76rem', color: '#938b80', mb: 0.75 }}>
+              <Typography sx={{ fontSize: '0.76rem', color: 'rgba(255,255,255,0.65)', mb: 0.75 }}>
                 CreatorHub Admin {'>'} Workspace {'>'} {currentTab.label}
               </Typography>
-              <Typography sx={{ fontSize: '1.35rem', fontWeight: 700, color: '#181512' }}>
+              <Typography sx={{ fontSize: '1.35rem', fontWeight: 700, color: '#fff' }}>
                 {currentTab.label}
               </Typography>
-              <Typography sx={{ mt: 0.5, fontSize: '0.92rem', color: '#6f675d' }}>
+              <Typography sx={{ mt: 0.5, fontSize: '0.92rem', color: 'rgba(255,255,255,0.7)' }}>
                 {currentTabDescription}
               </Typography>
             </Box>
           )}
 
-          <AdminErrorBoundary
-            key={currentTab.id}
-            fallback={
-              <Alert severity="error">
-                Denne adminflaten kunne ikke lastes. Prøv å oppdatere siden eller velg en annen fane.
-              </Alert>
-            }
-          >
-            {renderCurrentTabContent()}
-          </AdminErrorBoundary>
+          {/* Shell-nivå dark-tema: sikrer at ALLE faner arver admin-mørkt tema
+              (hvit tekst på #0a0f1a) selv om det enkelte panelet ikke wrapper
+              seg selv i adminDarkTheme. Uten dette arver uwrappede paneler
+              app-ens lyse creatorHubTheme → mørk tekst på mørk bakgrunn =
+              usynlig. Paneler som allerede wrapper seg dobbelt-wrapper trygt
+              (indre ThemeProvider vinner). */}
+          <AdminSectionThemeProvider theme={adminDarkTheme}>
+            <AdminErrorBoundary
+              key={currentTab.id}
+              fallback={
+                <Alert severity="error">
+                  Denne adminflaten kunne ikke lastes. Prøv å oppdatere siden eller velg en annen fane.
+                </Alert>
+              }
+            >
+              {renderCurrentTabContent()}
+            </AdminErrorBoundary>
+          </AdminSectionThemeProvider>
         </Container>
       </Box>
 
@@ -2558,21 +4875,149 @@ export default function AdminDashboard({
         <DialogTitle>Godkjenn utbetaling</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Godkjenn utbetaling på {payoutConfirmDialog.payout?.amount?.toLocaleString('nb-NO')} NOK til {payoutConfirmDialog.payout?.name}?
+            Godkjenn utbetaling på {payoutConfirmDialog.payout?.amount?.toLocaleString('nb-NO')} NOK til{' '}
+            {payoutConfirmDialog.payout?.instructorName ||
+              payoutConfirmDialog.payout?.notes ||
+              payoutConfirmDialog.payout?.name ||
+              'instruktør'}
+            ?
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPayoutConfirmDialog({ open: false, payout: null })}>Avbryt</Button>
           <Button
             onClick={() => {
-              // TODO: Call approval API
+              const payoutId = payoutConfirmDialog.payout?.id;
+              if (!payoutId) {
+                setPayoutConfirmDialog({ open: false, payout: null });
+                return;
+              }
+              approvePayoutMutation.mutate(payoutId);
               setPayoutConfirmDialog({ open: false, payout: null });
-              setSnackbar({ open: true, message: '✅ Utbetaling godkjent! Stripe Connect vil prosessere overføringen.', severity: 'success' });
             }}
             variant="contained"
             color="success"
+            disabled={approvePayoutMutation.isPending}
           >
-            Godkjenn
+            {approvePayoutMutation.isPending ? 'Godkjenner…' : 'Godkjenn'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Onboarding-link Dialog */}
+      <Dialog
+        open={onboardingLinkDialog.open}
+        onClose={() =>
+          setOnboardingLinkDialog({
+            open: false,
+            instructorId: null,
+            instructorName: null,
+            instructorEmail: null,
+            onboardingUrl: null,
+            expiresAt: null,
+          })
+        }
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AccountBox sx={{ color: '#ff8c00' }} />
+          Onboarding-lenke generert
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Send denne lenken til{' '}
+            <strong>
+              {onboardingLinkDialog.instructorName ||
+                onboardingLinkDialog.instructorEmail ||
+                'instruktøren'}
+            </strong>{' '}
+            for å fullføre Stripe Connect-onboarding.
+            {onboardingLinkDialog.expiresAt && (
+              <>
+                {' '}
+                Lenken utløper{' '}
+                {new Date(onboardingLinkDialog.expiresAt).toLocaleString('nb-NO')}.
+              </>
+            )}
+          </DialogContentText>
+          <TextField
+            fullWidth
+            value={onboardingLinkDialog.onboardingUrl ?? ''}
+            multiline
+            minRows={2}
+            InputProps={{ readOnly: true }}
+            sx={{ mb: 2 }}
+            onFocus={(e) => (e.target as HTMLInputElement).select()}
+          />
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              variant="outlined"
+              startIcon={<ContentCopy />}
+              onClick={async () => {
+                const url = onboardingLinkDialog.onboardingUrl;
+                if (!url) return;
+                try {
+                  await navigator.clipboard.writeText(url);
+                  setSnackbar({
+                    open: true,
+                    message: 'Onboarding-lenke kopiert til utklippstavlen.',
+                    severity: 'success',
+                  });
+                } catch {
+                  setSnackbar({
+                    open: true,
+                    message: 'Kunne ikke kopiere — kopier manuelt fra tekstfeltet.',
+                    severity: 'warning',
+                  });
+                }
+              }}
+            >
+              Kopier lenke
+            </Button>
+            {onboardingLinkDialog.instructorEmail && onboardingLinkDialog.onboardingUrl && (
+              <Button
+                variant="contained"
+                startIcon={<Email />}
+                component="a"
+                href={`mailto:${encodeURIComponent(onboardingLinkDialog.instructorEmail)}?subject=${encodeURIComponent(
+                  'Fullfør Stripe Connect-onboarding for CreatorHub Academy',
+                )}&body=${encodeURIComponent(
+                  `Hei${onboardingLinkDialog.instructorName ? ' ' + onboardingLinkDialog.instructorName : ''},\n\nFor å motta utbetalinger fra CreatorHub Academy må du fullføre Stripe Connect-onboarding. Bruk lenken under (utløper ${onboardingLinkDialog.expiresAt ? new Date(onboardingLinkDialog.expiresAt).toLocaleString('nb-NO') : 'innen kort tid'}):\n\n${onboardingLinkDialog.onboardingUrl}\n\nTakk!\nCreatorHub`,
+                )}`}
+                sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
+              >
+                Send per e-post
+              </Button>
+            )}
+            {onboardingLinkDialog.onboardingUrl && (
+              <Button
+                variant="text"
+                startIcon={<OpenInNew />}
+                component="a"
+                href={onboardingLinkDialog.onboardingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Åpne lenken
+              </Button>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() =>
+              setOnboardingLinkDialog({
+                open: false,
+                instructorId: null,
+                instructorName: null,
+                instructorEmail: null,
+                onboardingUrl: null,
+                expiresAt: null,
+              })
+            }
+          >
+            Lukk
           </Button>
         </DialogActions>
       </Dialog>

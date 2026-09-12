@@ -47,6 +47,10 @@ interface FirstTimeTourProps {
   forceShow?: boolean;
   /** Callback når bruker fullfører eller hopper over */
   onComplete?: () => void;
+  /** Aksentfarge (default gull). Settes per profesjonsmodus av RoleRoomUXLayer. */
+  accentColor?: string;
+  /** Hover-variant av aksentfargen (default mørk gull). */
+  accentHover?: string;
 }
 
 export const FirstTimeTour: React.FC<FirstTimeTourProps> = ({
@@ -54,6 +58,8 @@ export const FirstTimeTour: React.FC<FirstTimeTourProps> = ({
   steps,
   forceShow = false,
   onComplete,
+  accentColor = '#F5B82E',
+  accentHover = '#D49B1A',
 }) => {
   const [open, setOpen] = useState(false);
   const [stepIdx, setStepIdx] = useState(0);
@@ -153,7 +159,7 @@ export const FirstTimeTour: React.FC<FirstTimeTourProps> = ({
             width: '90vw',
             bgcolor: '#1a1a1a',
             color: '#fff',
-            border: '1px solid rgba(245, 184, 46, 0.3)',
+            border: `1px solid ${accentColor}4D`,
             boxShadow: '0 24px 48px rgba(0,0,0,0.4)',
             borderRadius: 3,
           }}
@@ -165,7 +171,7 @@ export const FirstTimeTour: React.FC<FirstTimeTourProps> = ({
             sx={{
               height: 3,
               borderRadius: '12px 12px 0 0',
-              '& .MuiLinearProgress-bar': { bgcolor: '#F5B82E' },
+              '& .MuiLinearProgress-bar': { bgcolor: accentColor },
               bgcolor: 'rgba(255,255,255,0.05)',
             }}
           />
@@ -187,8 +193,8 @@ export const FirstTimeTour: React.FC<FirstTimeTourProps> = ({
                     width: 64,
                     height: 64,
                     borderRadius: '50%',
-                    bgcolor: 'rgba(245, 184, 46, 0.15)',
-                    color: '#F5B82E',
+                    bgcolor: `${accentColor}26`,
+                    color: accentColor,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -220,7 +226,7 @@ export const FirstTimeTour: React.FC<FirstTimeTourProps> = ({
                     width: 6,
                     height: 6,
                     borderRadius: '50%',
-                    bgcolor: i === stepIdx ? '#F5B82E' : 'rgba(255,255,255,0.2)',
+                    bgcolor: i === stepIdx ? accentColor : 'rgba(255,255,255,0.2)',
                   }}
                 />
               ))}
@@ -235,10 +241,10 @@ export const FirstTimeTour: React.FC<FirstTimeTourProps> = ({
                 endIcon={isLast ? null : <NextIcon />}
                 onClick={handleNext}
                 sx={{
-                  bgcolor: '#F5B82E',
+                  bgcolor: accentColor,
                   color: '#1F2937',
                   fontWeight: 700,
-                  '&:hover': { bgcolor: '#D49B1A' },
+                  '&:hover': { bgcolor: accentHover },
                 }}
               >
                 {isLast ? (step.finalCta?.label ?? 'Sett i gang') : 'Neste'}

@@ -1,8 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -13,6 +11,7 @@ import {
   FormControl,
   Grid,
   IconButton,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Paper,
@@ -22,7 +21,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Tabs,
@@ -38,6 +36,7 @@ import {
   Email,
   Preview,
   Save,
+  Search,
   Send,
   Settings,
   ShoppingCart,
@@ -47,6 +46,17 @@ import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import type { ProfessionFeatureConfig } from '../../../../shared/profession-feature-matrix';
 import { PROFESSION_FEATURE_MATRIX } from '../../../../shared/profession-feature-matrix';
+import {
+  AdminButton,
+  AdminCard,
+  AdminEmpty,
+  AdminError,
+  AdminLoading,
+  AdminTableContainer,
+  StatusChip,
+  useIsMobile,
+} from './design-system';
+import DOMPurify from 'dompurify';
 
 type ReceiptTemplateType = 'subscription' | 'marketplace-addon' | 'invoice' | 'refund';
 
@@ -277,8 +287,10 @@ function buildPreviewHtml(template: ReceiptTemplate, business: BusinessSettings)
 export default function ReceiptTemplateManager() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
 
   const [tabValue, setTabValue] = useState(0);
+  const [search, setSearch] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [businessOpen, setBusinessOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -421,7 +433,10 @@ export default function ReceiptTemplateManager() {
   });
 
   const templates = templatesQuery.data ?? [];
-  const renderedPreview = selectedTemplate ? buildPreviewHtml(selectedTemplate, businessSettings) : '';
+  const renderedPreview = useMemo(
+    () => (selectedTemplate ? buildPreviewHtml(selectedTemplate, businessSettings) : ''),
+    [selectedTemplate, businessSettings],
+  );
 
   const openCreateDialog = (type: ReceiptTemplateType) => {
     setSelectedTemplate(null);
@@ -459,12 +474,12 @@ export default function ReceiptTemplateManager() {
           Receipt Template Manager
         </Typography>
         <Stack direction="row" spacing={1}>
-          <Button variant="outlined" startIcon={<Settings />} onClick={openBusinessDialog}>
+          <AdminButton tone="secondary" startIcon={<Settings />} onClick={openBusinessDialog}>
             Business Settings
-          </Button>
-          <Button variant="contained" startIcon={<Add />} onClick={() => openCreateDialog('subscription')}>
+          </AdminButton>
+          <AdminButton tone="primary" startIcon={<Add />} onClick={() => openCreateDialog('subscription')}>
             Ny template
-          </Button>
+          </AdminButton>
         </Stack>
       </Stack>
 
@@ -477,11 +492,29 @@ export default function ReceiptTemplateManager() {
 
       {tabValue === 0 && (
         <>
-          {templatesQuery.isLoading && <Alert severity="info">Laster templates...</Alert>}
-          {templatesQuery.isError && <Alert severity="error">Kunne ikke hente templates.</Alert>}
+          {templatesQuery.isLoading && <AdminLoading label="Laster templates..." />}
+          {templatesQuery.isError && (
+            <AdminError title="Kunne ikke hente templates." onRetry={() => templatesQuery.refetch()} />
+          )}
 
           {!templatesQuery.isLoading && !templatesQuery.isError && (
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Kvitterings-templates">
+              <Box sx={{ p: 1.5 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Søk i templates (navn, subject, type)…"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Search fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -493,7 +526,14 @@ export default function ReceiptTemplateManager() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {templates.map((template) => (
+                  {templates
+                    .filter((template) =>
+                      [template.name, template.subject, templateTypeLabel(template.type)]
+                        .join(' ')
+                        .toLowerCase()
+                        .includes(search.toLowerCase()),
+                    )
+                    .map((template) => (
                     <TableRow key={template.id ?? template.name} hover>
                       <TableCell>{template.name}</TableCell>
                       <TableCell>
@@ -501,21 +541,21 @@ export default function ReceiptTemplateManager() {
                       </TableCell>
                       <TableCell>{template.autoSend ? 'Ja' : 'Nei'}</TableCell>
                       <TableCell>
-                        <Chip
-                          size="small"
-                          color={template.isActive ? 'success' : 'default'}
+                        <StatusChip
+                          tone={template.isActive ? 'success' : 'neutral'}
                           label={template.isActive ? 'Aktiv' : 'Inaktiv'}
                         />
                       </TableCell>
                       <TableCell>
                         <Stack direction="row" spacing={1}>
-                          <IconButton size="small" onClick={() => openEditDialog(template)}>
+                          <IconButton aria-label="Rediger template" size="small" onClick={() => openEditDialog(template)}>
                             <Edit fontSize="small" />
                           </IconButton>
-                          <IconButton size="small" onClick={() => openPreview(template)}>
+                          <IconButton aria-label="Forhåndsvis template" size="small" onClick={() => openPreview(template)}>
                             <Preview fontSize="small" />
                           </IconButton>
                           <IconButton
+                            aria-label="Send testmail"
                             size="small"
                             onClick={() => {
                               if (template.id) {
@@ -528,6 +568,7 @@ export default function ReceiptTemplateManager() {
                             <Send fontSize="small" />
                           </IconButton>
                           <IconButton
+                            aria-label="Slett template"
                             size="small"
                             onClick={() => {
                               if (template.id) {
@@ -544,13 +585,16 @@ export default function ReceiptTemplateManager() {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           )}
 
           {templates.length === 0 && !templatesQuery.isLoading && !templatesQuery.isError && (
-            <Alert severity="warning" sx={{ mt: 2 }}>
-              Ingen templates funnet. Opprett første template for å aktivere kvitteringsflyt.
-            </Alert>
+            <Box sx={{ mt: 2 }}>
+              <AdminEmpty
+                title="Ingen templates funnet"
+                description="Opprett første template for å aktivere kvitteringsflyt."
+              />
+            </Box>
           )}
         </>
       )}
@@ -584,7 +628,7 @@ export default function ReceiptTemplateManager() {
         </Grid>
       )}
 
-      <Dialog open={editorOpen} onClose={() => setEditorOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={editorOpen} onClose={() => setEditorOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>{selectedTemplate ? 'Rediger template' : 'Ny template'}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
@@ -710,10 +754,11 @@ export default function ReceiptTemplateManager() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditorOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setEditorOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<Save />}
+            loading={saveTemplateMutation.isPending}
             disabled={!canSaveTemplate || saveTemplateMutation.isPending}
             onClick={() =>
               saveTemplateMutation.mutate({
@@ -723,11 +768,11 @@ export default function ReceiptTemplateManager() {
             }
           >
             Lagre
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth>
+      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth fullScreen={isMobile}>
         <DialogTitle>Preview</DialogTitle>
         <DialogContent>
           {selectedTemplate && (
@@ -738,16 +783,16 @@ export default function ReceiptTemplateManager() {
                 borderRadius: 1,
                 border: '1px solid #e5e7eb',
               }}
-              dangerouslySetInnerHTML={{ __html: renderedPreview }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderedPreview) }}
             />
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPreviewOpen(false)}>Lukk</Button>
+          <AdminButton tone="ghost" onClick={() => setPreviewOpen(false)}>Lukk</AdminButton>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={testDialogOpen} onClose={() => setTestDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={testDialogOpen} onClose={() => setTestDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Send testmail</DialogTitle>
         <DialogContent>
           <TextField
@@ -760,10 +805,11 @@ export default function ReceiptTemplateManager() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setTestDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setTestDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<Send />}
+            loading={sendTestEmailMutation.isPending}
             disabled={!selectedTemplate?.id || !testEmail || sendTestEmailMutation.isPending}
             onClick={() => {
               if (!selectedTemplate?.id) {
@@ -777,11 +823,11 @@ export default function ReceiptTemplateManager() {
             }}
           >
             Send
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={businessOpen} onClose={() => setBusinessOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={businessOpen} onClose={() => setBusinessOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Business Settings</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
@@ -852,15 +898,16 @@ export default function ReceiptTemplateManager() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBusinessOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setBusinessOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<Save />}
+            loading={updateBusinessSettingsMutation.isPending}
             disabled={updateBusinessSettingsMutation.isPending}
             onClick={() => updateBusinessSettingsMutation.mutate(businessDraft)}
           >
             Lagre
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

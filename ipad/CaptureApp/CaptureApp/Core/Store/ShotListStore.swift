@@ -86,6 +86,7 @@ struct ShotListStore: Sendable {
         shotId: String,
         in list: ShotList,
         capturedAssetId: String? = nil,
+        completedBy: String? = nil,
     ) async throws {
         try await mutate(list) { shots in
             for i in shots.indices where shots[i].id == shotId {
@@ -93,8 +94,10 @@ struct ShotListStore: Sendable {
                 shots[i].isCompleted = becomes
                 if becomes {
                     shots[i].capturedAssetId = capturedAssetId ?? shots[i].capturedAssetId
+                    shots[i].completedBy = completedBy ?? shots[i].completedBy
                 } else {
                     shots[i].capturedAssetId = nil
+                    shots[i].completedBy = nil
                 }
             }
         }
@@ -172,6 +175,29 @@ struct ShotListStore: Sendable {
     ) async throws {
         try await mutate(list) { shots in
             shots.removeAll { $0.id == shotId }
+        }
+    }
+
+    /// #«thumbnails overalt»: sett `capturedAssetBackendId` på shots hvis den
+    /// lokale `capturedAssetId` finnes i lokal→backend-mappen (post-levering).
+    /// Lar web/call-sheet/andre enheter hente thumbnailen. No-op hvis intet nytt.
+    func linkBackendAssetIds(
+        _ localToBackend: [String: String],
+        in list: ShotList,
+    ) async throws {
+        let needsUpdate = list.shots.contains { shot in
+            guard let cap = shot.capturedAssetId?.lowercased(),
+                  let backendId = localToBackend[cap] else { return false }
+            return shot.capturedAssetBackendId != backendId
+        }
+        guard needsUpdate else { return }
+        try await mutate(list) { shots in
+            for i in shots.indices {
+                if let cap = shots[i].capturedAssetId?.lowercased(),
+                   let backendId = localToBackend[cap] {
+                    shots[i].capturedAssetBackendId = backendId
+                }
+            }
         }
     }
 

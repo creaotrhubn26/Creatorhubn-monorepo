@@ -181,7 +181,7 @@ function Callout({
 const KANBAN_STATUSES: Record<string, { label: string; color: string; bg: string }> = {
   pending:   { label: 'Pending',   color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
   shortlist: { label: 'Shortlist', color: '#ffb800', bg: 'rgba(255,184,0,0.15)'   },
-  selected:  { label: 'Selected',  color: '#8b5cf6', bg: 'rgba(139,92,246,0.15)'  },
+  selected:  { label: 'Selected',  color: 'var(--role-violet, #8b5cf6)', bg: 'rgba(139,92,246,0.15)'  },
   confirmed: { label: 'Confirmed', color: '#10b981', bg: 'rgba(16,185,129,0.15)'  },
   rejected:  { label: 'Rejected',  color: '#ef4444', bg: 'rgba(239,68,68,0.15)'   },
 };
@@ -540,8 +540,8 @@ const STEPS: Step[] = [
               {[
                 { role: 'Casting Director', cols: 'All 5', add: '✓', move: '✓', bulk: '✓', event: '✓', color: '#f59e0b' },
                 { role: 'Producer', cols: 'All 5', add: '✓', move: '✓', bulk: '✓', event: '✓', color: '#10b981' },
-                { role: 'Admin', cols: 'All 5', add: '✓', move: '✓', bulk: '✓', event: '✓', color: '#8b5cf6' },
-                { role: 'Agent', cols: 'All 5', add: '✓', move: '—', bulk: '—', event: '—', color: '#00d4ff' },
+                { role: 'Admin', cols: 'All 5', add: '✓', move: '✓', bulk: '✓', event: '✓', color: 'var(--role-violet, #8b5cf6)' },
+                { role: 'Agent', cols: 'All 5', add: '✓', move: '—', bulk: '—', event: '—', color: 'var(--role-cyan, #00d4ff)' },
                 { role: 'Director', cols: 'Shortlist → Rejected', add: '—', move: '—', bulk: '—', event: '—', color: '#3b82f6' },
                 { role: 'Talent', cols: 'Pending → Confirmed + Rejected', add: '—', move: '—', bulk: '—', event: '—', color: '#ec4899' },
                 { role: 'Photographer', cols: 'Selected + Confirmed', add: '—', move: '—', bulk: '—', event: '—', color: '#f97316' },

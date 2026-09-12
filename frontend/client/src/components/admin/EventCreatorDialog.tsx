@@ -10,7 +10,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button,
   TextField,
   FormControl,
   InputLabel,
@@ -30,6 +29,7 @@ import {
   Public as PublicIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface EventCreatorDialogProps {
   open: boolean;
@@ -58,7 +58,7 @@ const eventTypeOptions = [
   { value: 'announcement', label: 'Kunngjøring', icon: <EventIcon />, color: '#ff8c00' },
   { value: 'video', label: 'Video', icon: <VideoIcon />, color: '#f44336' },
   { value: 'blog', label: 'Blogg', icon: <ArticleIcon />, color: '#2196f3' },
-  { value: 'social', label: 'Sosiale Medier', icon: <PublicIcon />, color: '#9c27b0' },
+  { value: 'social', label: 'Sosiale Medier', icon: <PublicIcon />, color: '#ce93d8' },
   { value: 'campaign', label: 'Kampanje', icon: <CampaignIcon />, color: '#4caf50' },
 ];
 
@@ -87,6 +87,7 @@ export default function EventCreatorDialog({
   onEventCreated,
 }: EventCreatorDialogProps) {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const isEdit = !!editEvent;
 
   const [form, setForm] = useState<Partial<CalendarEvent>>({
@@ -172,7 +173,7 @@ export default function EventCreatorDialog({
   const selectedEventType = eventTypeOptions.find((opt) => opt.value === form.event_type);
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth fullScreen={isMobile}>
       <DialogTitle>
         <Box display="flex" alignItems="center" gap={2}>
           {selectedEventType?.icon}
@@ -339,6 +340,7 @@ export default function EventCreatorDialog({
                   value={form.progress_percentage}
                   onChange={(e) => handleChange('progress_percentage', parseInt(e.target.value))}
                   style={{ width: '100%' }}
+                  aria-label="Fremdrift i prosent"
                 />
               </Grid>
             )}
@@ -353,17 +355,17 @@ export default function EventCreatorDialog({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={handleClose} disabled={createMutation.isPending}>
+        <AdminButton tone="ghost" onClick={handleClose} disabled={createMutation.isPending}>
           Avbryt
-        </Button>
-        <Button
-          variant="contained"
+        </AdminButton>
+        <AdminButton
+          tone="primary"
           onClick={handleSubmit}
-          disabled={!form.title || !form.scheduled_date || createMutation.isPending}
-          sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
+          loading={createMutation.isPending}
+          disabled={!form.title || !form.scheduled_date}
         >
           {isEdit ? 'Oppdater' : 'Opprett'}
-        </Button>
+        </AdminButton>
       </DialogActions>
     </Dialog>
   );

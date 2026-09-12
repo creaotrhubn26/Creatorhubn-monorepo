@@ -30,7 +30,7 @@ export default function ClientRolesView({ projectId }: { projectId: string }) {
   if (loading) {
     return (
       <Stack direction="row" justifyContent="center" sx={{ py: 4 }}>
-        <CircularProgress size={24} sx={{ color: '#22d3ee' }} />
+        <CircularProgress size={24} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
       </Stack>
     );
   }

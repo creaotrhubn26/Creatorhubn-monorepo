@@ -215,6 +215,26 @@ export function setupAdminDecksRoutes(deps: AdminRoomRoutesDeps): void {
     }
   });
 
+  // GET /api/admin-room/decks/:id/slides — bare slides-listen for en deck.
+  // Brukes av iPad SuperAdminBusinessDecksView.
+  app.get("/api/admin-room/decks/:id/slides", async (req, res) => {
+    const session = requireAdminRoomAccess(req, res);
+    if (!session) return;
+    try {
+      const { getDeckById, listSlidesForDeck } = await import("./role-room-investor-deck-db.js");
+      const deck = await getDeckById(pool, req.params.id, session.userId);
+      if (!deck) {
+        res.status(404).json({ error: "Deck ikke funnet" });
+        return;
+      }
+      const slides = await listSlidesForDeck(pool, deck.id);
+      res.json({ slides });
+    } catch (err) {
+      console.error("admin-room decks slides error", err);
+      res.status(500).json({ error: "Kunne ikke hente slides" });
+    }
+  });
+
   app.patch("/api/admin-room/decks/:id/slides/:slideId", async (req, res) => {
     const session = requireAdminRoomAccess(req, res);
     if (!session) return;

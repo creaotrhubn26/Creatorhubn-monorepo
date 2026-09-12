@@ -33,6 +33,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import GooglePayButton from '@/components/payment/GooglePayButton';
 import { formatNOK } from '@shared/revenue-calculator';
+import { useAcademyLocale } from './academyLocale';
 
 interface CourseEnrollmentPaymentProps {
   courseId: string;
@@ -60,6 +61,7 @@ const CourseEnrollmentPayment: React.FC<CourseEnrollmentPaymentProps> = ({
   onCancel,
 }) => {
   const theming = useTheming('music_producer');
+  const { tt } = useAcademyLocale();
   const { analytics } = useEnhancedMasterIntegration();
   const queryClient = useQueryClient();
 
@@ -117,7 +119,7 @@ const CourseEnrollmentPayment: React.FC<CourseEnrollmentPaymentProps> = ({
       error,
       timestamp: Date.now(),
     });
-    alert(`Betalingsfeil: ${error}`);
+    alert(`${tt('Betalingsfeil', 'Payment error')}: ${error}`);
   };
 
   return (
@@ -141,10 +143,10 @@ const CourseEnrollmentPayment: React.FC<CourseEnrollmentPaymentProps> = ({
               <School sx={{ fontSize: 32, color: 'white' }} />
             </Box>
             <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>
-              Meld deg på kurs
+              {tt('Meld deg på kurs', 'Enroll in course')}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Få umiddelbar tilgang etter betaling
+              {tt('Få umiddelbar tilgang etter betaling', 'Get instant access after payment')}
             </Typography>
           </Box>
 
@@ -160,7 +162,7 @@ const CourseEnrollmentPayment: React.FC<CourseEnrollmentPaymentProps> = ({
             </Typography>
 
             <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
-              <Chip label={`${videoCount} videoer`} size="small" />
+              <Chip label={`${videoCount} ${tt('videoer', 'videos')}`} size="small" />
               <Chip label={duration} size="small" />
               {rating && (
                 <Chip
@@ -173,7 +175,7 @@ const CourseEnrollmentPayment: React.FC<CourseEnrollmentPaymentProps> = ({
             </Stack>
 
             <Typography variant="caption" color="text.secondary">
-              Instruktør: <strong>{instructor}</strong>
+              {tt('Instruktør', 'Instructor')}: <strong>{instructor}</strong>
             </Typography>
           </Box>
 
@@ -186,21 +188,21 @@ const CourseEnrollmentPayment: React.FC<CourseEnrollmentPaymentProps> = ({
             >
               <Typography variant="body1" sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
                 <AttachMoney fontSize="small" />
-                Kurspris:
+                {tt('Kurspris', 'Course price')}:
               </Typography>
               <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
                 {formatNOK(priceOre)}
               </Typography>
             </Box>
             <Typography variant="caption" color="text.secondary" display="block">
-              Inkludert MVA (25%)
+              {tt('Inkludert MVA (25%)', 'VAT included (25%)')}
             </Typography>
           </Paper>
 
           {/* Payment Method */}
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
-              Betalingsmetode:
+              {tt('Betalingsmetode', 'Payment method')}:
             </Typography>
             <GooglePayButton
               amount={priceOre}
@@ -223,7 +225,7 @@ const CourseEnrollmentPayment: React.FC<CourseEnrollmentPaymentProps> = ({
               <Alert severity="info" sx={{ mt: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <CircularProgress size={20} />
-                  <Typography variant="body2">Behandler påmelding...</Typography>
+                  <Typography variant="body2">{tt('Behandler påmelding...', 'Processing enrollment...')}</Typography>
                 </Box>
               </Alert>
             )}
@@ -239,32 +241,32 @@ const CourseEnrollmentPayment: React.FC<CourseEnrollmentPaymentProps> = ({
               mb: 3}}
           >
             <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'info.dark', mb: 1 }}>
-              ✅ Inkludert i kurset:
+              ✅ {tt('Inkludert i kurset', 'Included in the course')}:
             </Typography>
             <Stack spacing={0.5}>
               <Typography
                 variant="caption"
                 sx={{ color: 'info.dark', display: 'flex', alignItems: 'center', gap: 0.5 }}
               >
-                <CheckCircle sx={{ fontSize: 14 }} /> Livstidstilgang til alle videoer
+                <CheckCircle sx={{ fontSize: 14 }} /> {tt('Livstidstilgang til alle videoer', 'Lifetime access to all videos')}
               </Typography>
               <Typography
                 variant="caption"
                 sx={{ color: 'info.dark', display: 'flex', alignItems: 'center', gap: 0.5 }}
               >
-                <CheckCircle sx={{ fontSize: 14 }} /> Interaktive quizer og oppgaver
+                <CheckCircle sx={{ fontSize: 14 }} /> {tt('Interaktive quizer og oppgaver', 'Interactive quizzes and assignments')}
               </Typography>
               <Typography
                 variant="caption"
                 sx={{ color: 'info.dark', display: 'flex', alignItems: 'center', gap: 0.5 }}
               >
-                <CheckCircle sx={{ fontSize: 14 }} /> Fullføringssertifikat
+                <CheckCircle sx={{ fontSize: 14 }} /> {tt('Fullføringssertifikat', 'Certificate of completion')}
               </Typography>
               <Typography
                 variant="caption"
                 sx={{ color: 'info.dark', display: 'flex', alignItems: 'center', gap: 0.5 }}
               >
-                <CheckCircle sx={{ fontSize: 14 }} /> 14 dagers pengene-tilbake-garanti
+                <CheckCircle sx={{ fontSize: 14 }} /> {tt('14 dagers pengene-tilbake-garanti', '14-day money-back guarantee')}
               </Typography>
             </Stack>
           </Paper>
@@ -277,7 +279,7 @@ const CourseEnrollmentPayment: React.FC<CourseEnrollmentPaymentProps> = ({
               sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
             >
               <Security sx={{ fontSize: 14 }} />
-              Sikker betaling via Stripe og Google Pay
+              {tt('Sikker betaling via Stripe og Google Pay', 'Secure payment via Stripe and Google Pay')}
             </Typography>
             <Typography
               variant="caption"
@@ -285,7 +287,7 @@ const CourseEnrollmentPayment: React.FC<CourseEnrollmentPaymentProps> = ({
               sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
             >
               <Info sx={{ fontSize: 14 }} />
-              14 dagers angrerett i henhold til norsk forbrukerlovgivning
+              {tt('14 dagers angrerett i henhold til norsk forbrukerlovgivning', '14-day right of withdrawal under Norwegian consumer law')}
             </Typography>
           </Stack>
 
@@ -298,7 +300,7 @@ const CourseEnrollmentPayment: React.FC<CourseEnrollmentPaymentProps> = ({
               onClick={onCancel}
               disabled={paymentProcessing || enrollMutation.isPending}
             >
-              Avbryt
+              {tt('Avbryt', 'Cancel')}
             </Button>
           </Stack>
         </CardContent>

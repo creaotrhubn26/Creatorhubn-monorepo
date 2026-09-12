@@ -1,0 +1,720 @@
+// LeadDetailSheet.swift
+//
+// Sheet-presentert lead-detail. Vises når en pin tap-pes på kartet.
+// SKELETON — flere seksjoner (BRREG, SSB, strategi) kommer i senere faser.
+
+import SwiftUI
+
+struct LeadDetailSheet: View {
+    let lead: LeadModel
+    @Environment(AppState.self) private var appState
+    @Environment(\.dismiss) private var dismiss
+    @State private var updating = false
+    @State private var enrichment: EnrichmentModel?
+    @State private var demographics: DemographicsModel?
+    @State private var discoveredContacts: [LeadgridCustomerContact] = []
+    @State private var visitLogShown = false
+    @State private var strategyShown = false
+    @State private var briefShown = false
+    // Pitch Deck Studio-integrasjon: hentes når sheet åpnes, vises som
+    // CTA i prosjekt-kortet KUN hvis backend bekrefter at orgen har et
+    // ready-deck OG kaller har pitch_deck.access (403 ellers).
+    @State private var pitchAvailability: PitchDeckAvailability?
+    @State private var pitchBriefShown = false
+    @State private var pitchBundleForBrief: PitchDeckBundle?
+
+    // ── Leadgrid v2 (PR #730+) ─────────────────────────────────
+    /// Backing-state for status-bytte fra Leadgrid-flow. Initialiseres
+    /// fra lead.status; sync-er tilbake til appState etter endring.
+    @State private var leadgridStatus: String = ""
+    @State private var showLeadgridStatusChanger = false
+    @State private var showLeadgridAssign = false
+    @State private var showLeadgridHistory = false
+    @State private var leadgridAssignLevel: AssignLevel = .both
+
+    /// Leadgrid Research (native Claude + BRREG + website-analyse).
+    /// Pops opp som sheet når brukeren trykker "Research" på pin-detail.
+    @State private var showResearch = false
+    @State private var showEmailTemplates = false
+
+    // ── Workflows (PR feat/leadmap-ipad-pulse-workflow-chat) ───────────
+    /// Aktive workflows i orgen — vises som "Kjør nå"-handlinger på lead.
+    @State private var availableWorkflows: [LeadgridWorkflow] = []
+    @State private var workflowsLoaded = false
+    @State private var workflowRunSheet: LeadgridWorkflow?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    headerSection
+                    distanceBar
+                    pitchDeckCTA
+                    metaSection
+                    if !discoveredContacts.isEmpty {
+                        discoveryContactsSection
+                    }
+                    if let enrichment, enrichment.found, let company = enrichment.company {
+                        brregSection(company: company, contacts: enrichment.contacts ?? [])
+                    }
+                    if let demographics, demographics.found {
+                        ssbSection(demo: demographics)
+                    }
+                    statusButtons
+                    leadgridSection
+                    workflowsSection
+                    actionGrid
+                }
+                .padding()
+            }
+            .navigationTitle(lead.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Lukk") { dismiss() }
+                }
+            }
+            .task {
+                discoveredContacts = (lead.contacts ?? []).filter {
+                    $0.source == "discovery"
+                }
+                await loadDiscoveredContacts()
+                await loadEnrichment()
+                await loadPitchAvailability()
+                await markSeenIfAssigned()
+                await loadAvailableWorkflows()
+            }
+            .onChange(of: appState.activeLeadgridProjectId) { _, _ in
+                workflowRunSheet = nil
+                Task { await loadAvailableWorkflows() }
+            }
+            .sheet(item: $workflowRunSheet) { wf in
+                LeadgridWorkflowRunSheet(
+                    workflow: wf,
+                    preselectedLeadIds: [lead.id],
+                )
+            }
+            .sheet(isPresented: $showLeadgridStatusChanger) {
+                if let api = appState.api {
+                    LeadgridStatusChangerView(
+                        customerId: lead.id,
+                        customerName: lead.name,
+                        currentStatus: $leadgridStatus,
+                        api: api,
+                    )
+                }
+            }
+            .sheet(isPresented: $showLeadgridAssign) {
+                if let api = appState.api {
+                    LeadgridAssignSheet(
+                        customerId: lead.id,
+                        customerName: lead.name,
+                        projectId: lead.projectId,
+                        level: leadgridAssignLevel,
+                        api: api,
+                    )
+                }
+            }
+            .sheet(isPresented: $showLeadgridHistory) {
+                if let api = appState.api {
+                    NavigationStack {
+                        ScrollView {
+                            LeadgridStatusHistoryView(customerId: lead.id, api: api)
+                                .padding()
+                        }
+                        .navigationTitle("Status-historikk")
+        .salesHierarchyBackdrop(.salesRep)
+                        .navigationBarTitleDisplayMode(.inline)
+                    }
+                }
+            }
+            .sheet(isPresented: $pitchBriefShown) {
+                if let bundle = pitchBundleForBrief {
+                    PitchPreMeetingBriefView(
+                        bundle: bundle,
+                        leadId: lead.id,
+                        leadName: lead.name
+                    )
+                }
+            }
+            .sheet(isPresented: $visitLogShown) {
+                VisitLogModal(lead: lead)
+            }
+            .sheet(isPresented: $strategyShown) {
+                StrategySheet(lead: lead)
+            }
+            .sheet(isPresented: $briefShown) {
+                MeetingBriefSheet(lead: lead)
+            }
+            .sheet(isPresented: $showResearch) {
+                if let api = appState.api {
+                    LeadgridResearchView(
+                        leadId: lead.id,
+                        leadName: lead.name,
+                        api: api,
+                    )
+                }
+            }
+            .sheet(isPresented: $showEmailTemplates) {
+                EmailTemplatePicker(
+                    lead: LeadRow(from: lead),
+                    toEmail: lead.email ?? ""
+                )
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    // Distanse fra brukerens posisjon + Naviger m/ Apple Maps (PR #612)
+    @ViewBuilder
+    private var distanceBar: some View {
+        if let me = LocationService.shared.currentLocation {
+            let dist = LocationService.shared.distanceMeters(
+                from: me.coordinate,
+                to: .init(latitude: lead.latitude, longitude: lead.longitude)
+            )
+            let km = dist / 1000
+            HStack(spacing: 10) {
+                Image(systemName: "location.fill")
+                    .foregroundStyle(Color(red: 0.75, green: 0.52, blue: 0.99))
+                Text(formatDistanceKm(km))
+                    .font(.headline)
+                    .foregroundStyle(Color(red: 0.75, green: 0.52, blue: 0.99))
+                Text("≈ \(estimatedDriveMin(km)) min m/ bil")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Naviger") {
+                    appState.requestNavigation(
+                        lat: lead.latitude, lon: lead.longitude,
+                        name: lead.name, address: lead.address ?? "",
+                        start: true, transport: "driving")
+                    dismiss()
+                }
+                .font(.callout.bold())
+                .foregroundStyle(Color(red: 0.75, green: 0.52, blue: 0.99))
+            }
+            .padding(10)
+            .background(Color(red: 0.75, green: 0.52, blue: 0.99).opacity(0.10),
+                        in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private func formatDistanceKm(_ km: Double) -> String {
+        if km < 1 { return "\(Int(km * 1000)) m" }
+        if km < 10 { return String(format: "%.1f km", km).replacingOccurrences(of: ".", with: ",") }
+        return "\(Int(km)) km"
+    }
+
+    private func estimatedDriveMin(_ km: Double) -> Int {
+        let avgKmh = km < 5 ? 30.0 : km < 20 ? 45.0 : 65.0
+        return Int((km / avgKmh) * 60)
+    }
+
+    private var headerSection: some View {
+        HStack(alignment: .top, spacing: 14) {
+            BrandKitMonogram(name: lead.name, accent: statusColor)
+                .frame(width: 56, height: 56)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(lead.name).font(.title3.bold())
+                if let cat = lead.category {
+                    Text(cat).foregroundStyle(.secondary).font(.subheadline)
+                }
+                HStack(spacing: 6) {
+                    if let badge = LeadTemperatureBadge(lead: lead, style: .pill) {
+                        badge
+                    } else {
+                        Circle().fill(statusColor).frame(width: 8, height: 8)
+                        Text(lead.status.label)
+                            .font(.caption.bold())
+                            .foregroundStyle(statusColor)
+                    }
+                }
+            }
+            Spacer()
+            if let score = lead.leadScore {
+                LeadScoreRing(score: score, delta: nil, diameter: 64)
+            }
+        }
+    }
+
+    private var metaSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let addr = lead.address {
+                Label("\(addr)\(lead.city.map { ", \($0)" } ?? "")", systemImage: "mappin")
+                    .font(.subheadline)
+            }
+            if let phone = lead.phone,
+               let url = URL(string: "tel:\(phone.filter { $0.isNumber || $0 == "+" })") {
+                LeadgridContactHandoffButton(
+                    url: url, channel: .phone, leadId: lead.id, projectId: lead.projectId
+                ) {
+                    Label(phone, systemImage: "phone")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+            }
+            if let email = lead.email, !email.isEmpty {
+                Button {
+                    showEmailTemplates = true
+                } label: {
+                    Label(email, systemImage: "envelope")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                .accessibilityIdentifier("lead.outreach.open")
+            }
+            if let url = lead.websiteUrl, let link = URL(string: url) {
+                Link(destination: link) {
+                    Label(url, systemImage: "globe").lineLimit(1)
+                }
+            }
+        }
+        .font(.subheadline)
+    }
+
+    private var discoveryContactsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Tannleger ved klinikken", systemImage: "person.2.fill")
+                .font(.caption.bold())
+                .foregroundStyle(.tint)
+            ForEach(discoveredContacts) { contact in
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(contact.name).font(.subheadline.bold())
+                        if let organizationNumber = contact.organizationNumber {
+                            Text("Org.nr. \(organizationNumber)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Text(contact.role ?? "Kontakt")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text("Kontaktene ble bekreftet sammen med klinikkgruppen i Discovery.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .background(Color.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityIdentifier("lead.discovery-contacts")
+    }
+
+    private func loadDiscoveredContacts() async {
+        guard let api = appState.api else { return }
+        do {
+            let current = try await api.fetchLead(
+                id: lead.id,
+                organizationId: appState.activeOrganizationId)
+            discoveredContacts = (current.contacts ?? []).filter {
+                $0.source == "discovery"
+            }
+        } catch {
+            // The cached/list payload remains usable while offline.
+        }
+    }
+
+    private func brregSection(company: EnrichmentCompany, contacts: [EnrichmentContact]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Firma (BRREG)", systemImage: "building.2")
+                .font(.caption.bold())
+                .foregroundStyle(.tint)
+            HStack {
+                Text(company.name).font(.subheadline.bold())
+                Spacer()
+                Text(company.status.label)
+                    .font(.caption2.bold())
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(statusBadgeColor(company.status).opacity(0.2))
+                    .foregroundStyle(statusBadgeColor(company.status))
+                    .clipShape(Capsule())
+            }
+            if let employees = company.employees {
+                Text("\(employees) ansatte · \(company.orgForm ?? "")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if !contacts.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(contacts.prefix(3), id: \.name) { c in
+                        HStack {
+                            Text(c.name).font(.caption)
+                            Spacer()
+                            Text(c.role).font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+        .padding(12)
+        .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func ssbSection(demo: DemographicsModel) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("BEFOLKNING \(demo.city ?? "")").font(.caption2.bold()).foregroundStyle(.secondary)
+                if let pop = demo.population {
+                    Text("\(pop, format: .number.grouping(.automatic))").font(.title3.bold())
+                }
+            }
+            Spacer()
+            if let pot = demo.marketPotential {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("MARKEDS­POTENSIAL").font(.caption2.bold()).foregroundStyle(.secondary)
+                    Text("\(pot)/100").font(.title3.bold()).foregroundStyle(.green)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var statusButtons: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("OPPDATER STATUS").font(.caption.bold()).foregroundStyle(.secondary)
+            LazyVGrid(columns: Array(repeating: .init(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                ForEach([LeadStatus.return, .notPresent, .declined, .interested, .meetingBooked, .won]) { s in
+                    Button {
+                        Task { await update(to: s) }
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: iconForStatus(s)).font(.title3)
+                            Text(s.label).font(.caption2)
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 8)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(updating || s == lead.status)
+                }
+            }
+        }
+    }
+
+    // ── Leadgrid v2-seksjon — CRM-utvidelse ─────────────────────
+    @ViewBuilder
+    private var leadgridSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Leadgrid CRM", systemImage: "person.crop.rectangle.stack.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(.purple)
+                Spacer()
+                if let api = appState.api {
+                    NavigationLink {
+                        ScrollView {
+                            LeadgridStatusHistoryView(customerId: lead.id, api: api)
+                                .padding()
+                        }
+                        .navigationTitle("Status-historikk")
+                    } label: {
+                        Label("Historikk", systemImage: "clock.arrow.circlepath")
+                            .font(.caption)
+                    }
+                }
+            }
+            if appState.api != nil {
+                // Tildelt-status — hvem er TL/rep + sett-tracking
+                LeadgridAssignmentStatusView(
+                    customerId: lead.id,
+                    api: appState.api!,
+                    canReassign: true,
+                    onReassign: { level in
+                        leadgridAssignLevel = level
+                        showLeadgridAssign = true
+                    },
+                )
+            }
+            HStack(spacing: 8) {
+                Button {
+                    showLeadgridStatusChanger = true
+                } label: {
+                    Label(LeadgridCrmStatus(rawValue: leadgridStatus)?.label ?? "Endre status",
+                           systemImage: "arrow.triangle.swap")
+                        .font(.caption.bold())
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.purple)
+
+                Button {
+                    leadgridAssignLevel = .both
+                    showLeadgridAssign = true
+                } label: {
+                    Label("Tildel", systemImage: "person.fill.badge.plus")
+                        .font(.caption.bold())
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(12)
+        .background(Color.purple.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.purple.opacity(0.20)))
+    }
+
+    private var actionGrid: some View {
+        LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: 8) {
+            Button {
+                #if !targetEnvironment(macCatalyst)
+                if #available(iOS 16.1, *) {
+                    ActiveVisitManager.shared.start(lead: lead)
+                }
+                #endif
+                visitLogShown = true
+            } label: {
+                Label("Start besøk", systemImage: "play.circle.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            Button { briefShown = true } label: {
+                Label("Forbered møte", systemImage: "sparkles")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(Color(red: 0.98, green: 0.75, blue: 0.14))
+            Button { strategyShown = true } label: {
+                Label("Strategi", systemImage: "lightbulb")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            Button {
+                showResearch = true
+            } label: {
+                Label("Research", systemImage: "sparkles.rectangle.stack")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(.purple)
+        }
+    }
+
+    // ── Workflows-seksjon — "Kjør nå"-launcher for denne lead-en ────────
+    @ViewBuilder
+    private var workflowsSection: some View {
+        if !workflowsLoaded {
+            EmptyView()
+        } else if availableWorkflows.isEmpty {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label("Workflows", systemImage: "bolt.badge.automatic.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(Color(red: 0.58, green: 0.20, blue: 0.92))
+                    Spacer()
+                    Text("\(availableWorkflows.count) aktive")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                VStack(spacing: 6) {
+                    ForEach(availableWorkflows.prefix(5)) { wf in
+                        Button {
+                            workflowRunSheet = wf
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "bolt.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(Color(red: 0.58, green: 0.20, blue: 0.92))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(wf.name).font(.callout.weight(.medium))
+                                    Text("Trigger: \(wf.triggerType)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text("Kjør nå")
+                                    .font(.caption.bold())
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(Color(red: 0.58, green: 0.20, blue: 0.92).opacity(0.18),
+                                                in: Capsule())
+                                    .foregroundStyle(Color(red: 0.58, green: 0.20, blue: 0.92))
+                            }
+                            .padding(8)
+                            .background(Color(.secondarySystemBackground),
+                                         in: RoundedRectangle(cornerRadius: 8))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(12)
+            .background(Color(red: 0.58, green: 0.20, blue: 0.92).opacity(0.06),
+                         in: RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color(red: 0.58, green: 0.20, blue: 0.92).opacity(0.20))
+            )
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func loadAvailableWorkflows() async {
+        guard let api = appState.api,
+              let projectId = lead.projectId,
+              appState.activeLeadgridProjectId == projectId else {
+            availableWorkflows = []
+            workflowsLoaded = true
+            return
+        }
+        do {
+            let all = try await api.fetchWorkflows(
+                projectId: projectId,
+                activeOnly: true
+            )
+            // Best-effort: filtrer ut workflows som åpenbart ikke kan
+            // trigges manuelt (f.eks. webhook-baserte). Backend returnerer
+            // ikke et "manually_triggerable"-flagg, så vi viser alle
+            // aktive — brukeren ser uansett trigger-type i kortet.
+            guard appState.activeLeadgridProjectId == projectId else {
+                availableWorkflows = []
+                workflowsLoaded = true
+                return
+            }
+            availableWorkflows = all.filter {
+                $0.isActive && $0.projectId == projectId
+            }
+        } catch {
+            // Stille — workflows er ikke kritisk for lead-detail.
+        }
+        workflowsLoaded = true
+    }
+
+    private func loadEnrichment() async {
+        guard let api = appState.api else { return }
+        async let e = try? await api.fetchEnrichment(
+            leadId: lead.id,
+            projectId: appState.activeLeadgridProjectId,
+            organizationId: appState.activeOrganizationId
+        )
+        async let d = try? await api.fetchDemographics(
+            leadId: lead.id,
+            projectId: appState.activeLeadgridProjectId,
+            organizationId: appState.activeOrganizationId
+        )
+        self.enrichment = await e
+        self.demographics = await d
+    }
+
+    /// Leadgrid-paritets: marker som sett når brukeren åpner detail-sheet'et.
+    /// Best-effort — feiler stille hvis brukeren ikke er tildelt.
+    /// Setter også `leadgridStatus` til lead's nåværende status.
+    private func markSeenIfAssigned() async {
+        leadgridStatus = lead.status.rawValue
+        guard let api = appState.api,
+              let organizationId = appState.activeOrganizationId else { return }
+        try? await api.markLeadSeen(
+            customerId: lead.id,
+            organizationId: organizationId
+        )
+    }
+
+    private func update(to newStatus: LeadStatus) async {
+        guard let api = appState.api else { return }
+        updating = true
+        do {
+            try await api.updateStatus(leadId: lead.id, status: newStatus.rawValue, organizationId: appState.activeOrganizationId)
+            await appState.refreshAll()
+        } catch {
+            print("[LeadDetail] status update failed: \(error)")
+        }
+        updating = false
+    }
+
+    private var statusColor: Color {
+        switch lead.status {
+        case .interested, .won: return .green
+        case .declined, .lost: return .red
+        case .meetingBooked, .proposalSent: return .purple
+        case .return: return .yellow
+        default: return .blue
+        }
+    }
+
+    private func statusBadgeColor(_ s: CompanyStatus) -> Color {
+        switch s {
+        case .active: return .green
+        case .inLiquidation: return .yellow
+        case .bankrupt: return .red
+        }
+    }
+
+    // MARK: - Pitch Deck-CTA (vises kun hvis orgen har et ready-deck)
+
+    @ViewBuilder
+    private var pitchDeckCTA: some View {
+        if let avail = pitchAvailability, avail.available,
+           let deckName = avail.deckName, let deckId = avail.deckId {
+            Button {
+                Task { await startPitchPresentation(deckId: deckId) }
+            } label: {
+                HStack(spacing: 14) {
+                    Image(systemName: "rectangle.stack.fill.badge.person.crop")
+                        .font(.title2)
+                        .foregroundStyle(Color(red: 0.83, green: 0.64, blue: 0.45))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Presenter pitch")
+                            .font(.headline)
+                        Text("\(deckName) · \(avail.slideCount ?? 9) slides")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "play.fill")
+                        .foregroundStyle(.tint)
+                }
+                .padding(12)
+                .background(
+                    Color(red: 0.83, green: 0.64, blue: 0.45).opacity(0.10),
+                    in: RoundedRectangle(cornerRadius: 10)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func loadPitchAvailability() async {
+        guard let api = appState.api,
+              let orgId = appState.activeOrganizationId else { return }
+        do {
+            // Trenger pitch_deck.access — backend 403'er ellers og vi
+            // bare skjuler CTA'en stille.
+            let avail = try await api.fetchPitchDeckAvailability(orgId: orgId)
+            pitchAvailability = avail
+        } catch {
+            pitchAvailability = nil
+        }
+    }
+
+    private func startPitchPresentation(deckId: String) async {
+        guard let api = appState.api else { return }
+        do {
+            // Pre-load deck slik at BriefView har bundle klart.
+            // BriefView kaller selv POST /presentations/brief +
+            // POST /presentations når selger trykker Start.
+            let bundle = try await api.loadPitchDeck(deckId: deckId)
+            pitchBundleForBrief = bundle
+            pitchBriefShown = true
+        } catch {
+            // Stille fallback — knappen vises ikke neste gang hvis
+            // backend mister access. Logger ikke til UI for å unngå støy.
+        }
+    }
+
+    private func iconForStatus(_ s: LeadStatus) -> String {
+        switch s {
+        case .return: return "arrow.clockwise"
+        case .notPresent: return "minus.circle"
+        case .declined: return "xmark.circle"
+        case .interested: return "heart"
+        case .meetingBooked: return "calendar"
+        case .won: return "trophy"
+        default: return "circle"
+        }
+    }
+}

@@ -2,6 +2,13 @@ import express from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import { readNumber } from "./_shared";
+import { sendTransactionalEmail } from "./transactional-email-service";
+
+const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
+
+const isUuid = (s: string | null | undefined): s is string =>
+  !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+const escH = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 export interface SubmissionsRoutesDeps {
   app: express.Application;
@@ -13,7 +20,7 @@ export interface SubmissionsRoutesDeps {
   ) => Promise<void>;
   dbCompatSubmissionKey: (submissionId: string) => string;
   recordAnalyticsEvent: (eventType: string, opts: any) => void;
-  getUserIdFromAuth: (req: any) => string | null;
+  compatResolveUserId: (req: any) => string;
   readString: (value: unknown) => string | null;
 }
 
@@ -25,7 +32,7 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
     compatStoreSet,
     dbCompatSubmissionKey,
     recordAnalyticsEvent,
-    getUserIdFromAuth,
+    compatResolveUserId,
     readString,
   } = deps;
 
@@ -181,6 +188,37 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
         })();
       }
 
+      // Standard e-post-varsel til produsenten (via Resend) — sendes idet
+      // forespørselen kommer inn, til e-posten den er rutet til (vendor_email),
+      // ELLER produsentens konto-e-post (users.email via vendorId). Når produsenten
+      // logger inn ser de i tillegg badgen på Forespørsler-fanen. Best-effort.
+      void (async () => {
+        try {
+          let toEmail: string | null = (vendorEmail && String(vendorEmail).trim()) || null;
+          if (!toEmail && vendorId) {
+            const u = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [vendorId]).catch(() => ({ rows: [] as any[] }));
+            toEmail = u.rows[0]?.email || null;
+          }
+          if (!toEmail) return;
+          const rows = [
+            projectType ? ["Type", projectType] : null,
+            eventDate ? ["Dato", eventDate] : null,
+            (budget != null && budget !== "") ? ["Budsjett", `${budget}`] : null,
+            location ? ["Sted", location] : null,
+            phone ? ["Telefon", phone] : null,
+          ].filter(Boolean) as [string, string][];
+          const table = rows.map(([k, v]) => `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;color:#666">${escH(k)}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:600">${escH(v)}</td></tr>`).join("");
+          const html = `<div style="font-family:-apple-system,sans-serif;max-width:540px;margin:0 auto;padding:24px"><h2 style="margin:0 0 12px;color:#1a1a1a">Ny forespørsel 🎉</h2><p style="font-size:15px;color:#333;line-height:1.6"><b>${escH(name)}</b> (${escH(email)}) har sendt deg en forespørsel.</p>${table ? `<table style="width:100%;border-collapse:collapse;margin:14px 0;font-size:14px">${table}</table>` : ""}${description ? `<blockquote style="border-left:3px solid #ff8c00;margin:12px 0;padding:8px 16px;color:#333">«${escH(description)}»</blockquote>` : ""}<div style="margin:20px 0"><a href="${APP_URL}" style="display:inline-block;background:#ff8c00;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Se forespørselen</a></div><p style="font-size:12px;color:#999">Du finner den under «Forespørsler» i workspacet og «Kundeforespørsler» på dashbordet.</p></div>`;
+          const text = `Ny forespørsel fra ${name} (${email}).` + rows.map(([k, v]) => ` ${k}: ${v}.`).join("") + (description ? ` «${description}»` : "") + ` Se den i CreatorHub: ${APP_URL}`;
+          await sendTransactionalEmail({
+            to: toEmail,
+            subject: `Ny forespørsel fra ${name}${projectType ? " – " + projectType : ""}`,
+            html, text, fromLabel: "CreatorHub", kind: "inquiry_received",
+            projectId: null, pool,
+          });
+        } catch (e: any) { console.warn("[submission] vendor-notify failed:", e?.message); }
+      })();
+
       res.status(201).json({
         success: true,
         submission,
@@ -237,6 +275,8 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
   });
 
   app.get("/api/submissions", async (req, res) => {
+    const requestUserId = compatResolveUserId(req);
+    if (!isUuid(requestUserId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const profession =
         typeof req.query.profession === "string"
@@ -271,7 +311,7 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
         query += ` AND status = $${paramIdx++}`;
         params.push(status);
       }
-      query += " ORDER BY submitted_at DESC";
+      query += " ORDER BY submitted_at DESC LIMIT 500";
 
       const result = await pool.query(query, params);
       const dbRows = result.rows.map(mapSubmissionRow);
@@ -380,6 +420,13 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
   });
 
   app.post("/api/submissions/:id/mark-converted", async (req, res) => {
+    // Auth + eier-scope: endepunktet hadde INGEN auth og oppdaterte
+    // client_submissions/legacy.projects kun på id → enhver (også
+    // uautentisert) kunne markere en vilkårlig forespørsel som konvertert
+    // og injisere submissionId i et vilkårlig prosjekt (cross-tenant
+    // write-IDOR). Samme kontrakt som søster-ruten /:id/status.
+    const _sCallerId = compatResolveUserId(req);
+    if (!isUuid(_sCallerId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
       const { projectId } = req.body ?? {};
@@ -391,9 +438,9 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
          SET status = 'converted',
              internal_notes = COALESCE(internal_notes, '') || E'\nKonvertert til prosjekt: ' || $1,
              updated_at = NOW()
-         WHERE id = $2
+         WHERE id = $2 AND vendor_id = $3
          RETURNING *`,
-        [projectId, id],
+        [projectId, id, _sCallerId],
       );
       if (result.rowCount === 0) {
         return res.status(404).json({ error: "Forespørsel ikke funnet" });
@@ -404,8 +451,8 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
           `UPDATE legacy.projects
            SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object('submissionId', $1::text),
                updated_at = NOW()
-           WHERE id = $2`,
-          [String(id), String(projectId)],
+           WHERE id = $2 AND user_id = $3`,
+          [String(id), String(projectId), _sCallerId],
         );
       } catch (linkErr) {
         console.warn(
@@ -416,7 +463,7 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
       recordAnalyticsEvent("submission.converted", {
         entityType: "submission",
         entityId: String(id),
-        actorUserId: readString(getUserIdFromAuth(req)) ?? null,
+        actorUserId: compatResolveUserId(req),
         metadata: {
           projectId: String(projectId),
           clientEmail: (updated as Record<string, unknown>).email ?? null,
@@ -430,6 +477,8 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
   });
 
   app.put("/api/submissions/:id/status", async (req, res) => {
+    const _sCallerId = compatResolveUserId(req);
+    if (!isUuid(_sCallerId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
       const { status, internalNotes, followUpDate } = req.body;
@@ -440,9 +489,9 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
              internal_notes = COALESCE($2, internal_notes),
              follow_up_date = COALESCE($3, follow_up_date),
              updated_at = NOW()
-         WHERE id = $4
+         WHERE id = $4 AND vendor_id = $5
          RETURNING *`,
-        [status, internalNotes || null, followUpDate || null, id],
+        [status, internalNotes || null, followUpDate || null, id, _sCallerId],
       );
 
       if (result.rowCount === 0) {
@@ -453,7 +502,7 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
         recordAnalyticsEvent("submission.status_changed", {
           entityType: "submission",
           entityId: String(id),
-          actorUserId: readString(getUserIdFromAuth(req)) ?? null,
+          actorUserId: compatResolveUserId(req),
           metadata: {
             newStatus: status,
             clientEmail: (updated as Record<string, unknown>).email ?? null,
@@ -472,6 +521,8 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
   app.post(
     "/api/submissions/:submissionId/send-email",
     async (req, res) => {
+      const _sCallerId = compatResolveUserId(req);
+      if (!isUuid(_sCallerId)) return res.status(401).json({ error: "unauthorized" });
       try {
         const { submissionId } = req.params;
         const { responseType, estimatedPrice } = req.body;
@@ -480,18 +531,23 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
           "last_contacted_at = NOW()",
           "updated_at = NOW()",
         ];
+        const params: any[] = [];
         if (responseType === "quote") {
           updates.push("quote_sent = true");
-          if (estimatedPrice)
-            updates.push(`quote_amount = ${parseFloat(estimatedPrice)}`);
+          const amount = parseFloat(estimatedPrice);
+          if (Number.isFinite(amount)) {
+            params.push(amount);
+            updates.push(`quote_amount = $${params.length}`);
+          }
           updates.push("status = 'quote_sent'");
         } else {
           updates.push("status = 'contacted'");
         }
 
+        params.push(submissionId, _sCallerId);
         const result = await pool.query(
-          `UPDATE client_submissions SET ${updates.join(", ")} WHERE id = $1 RETURNING *`,
-          [submissionId],
+          `UPDATE client_submissions SET ${updates.join(", ")} WHERE id = $${params.length - 1} AND vendor_id = $${params.length} RETURNING *`,
+          params,
         );
 
         if (result.rowCount === 0) {

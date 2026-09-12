@@ -73,7 +73,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
         })),
       });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -110,7 +110,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
         syncError,
       });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -148,7 +148,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
       await markConversationRead(pool, conversationId, session.userId);
       res.json({ success: true, conversation, messages, syncError });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -189,7 +189,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
       const messages = await listMessages(pool, conversationId);
       res.json({ success: true, messageId: result.messageId, messages });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -215,6 +215,23 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
       const conversation = await getConversation(pool, conversationId, session.userId);
       if (!conversation) {
         res.status(404).json({ success: false, error: "conversation_not_found" });
+        return;
+      }
+      // BOLA-gate (R55 invariant): the caller-supplied customerId must belong to
+      // the caller. Without it, an authenticated user could link their own IG
+      // conversation to ANOTHER tenant's crm_customer_id — injecting a
+      // crm_conversation_links bridge row (carrying their own IG-handle metadata)
+      // into the victim's customer, which the victim's contract-event / CRM-context
+      // flows read back by customer_id. Mirror the exact ownership predicate the
+      // other CRM-link writers use in communication-routes.ts.
+      const ownsCustomer = await pool.query(
+        `SELECT 1 FROM crm_customers
+           WHERE id::text = $1 AND owner_user_id::text = $2 AND deleted_at IS NULL
+           LIMIT 1`,
+        [customerId, session.userId],
+      );
+      if (ownsCustomer.rowCount === 0) {
+        res.status(404).json({ success: false, error: "customer_not_found" });
         return;
       }
       await pool.query(
@@ -244,7 +261,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
       }
       res.json({ success: true });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 }

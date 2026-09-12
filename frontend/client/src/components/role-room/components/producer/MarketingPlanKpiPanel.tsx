@@ -101,7 +101,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
   if (loading) {
     return (
       <Stack alignItems="center" sx={{ py: 4 }}>
-        <CircularProgress size={32} sx={{ color: '#22d3ee' }} />
+        <CircularProgress size={32} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
       </Stack>
     );
   }
@@ -111,7 +111,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
       <Box>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
           <Stack direction="row" alignItems="center" spacing={0.8}>
-            <GraphIcon sx={{ color: '#22d3ee' }} />
+            <GraphIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
             <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>KPI-tracking</Typography>
           </Stack>
           <Button
@@ -140,7 +140,7 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
     <Box>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
         <Stack direction="row" alignItems="center" spacing={0.8}>
-          <GraphIcon sx={{ color: '#22d3ee' }} />
+          <GraphIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
           <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>KPI-tracking</Typography>
           <Chip
             size="small"
@@ -367,9 +367,9 @@ const MarketingPlanKpiPanel: React.FC<MarketingPlanKpiPanelProps> = ({ planId })
             max={10}
             value={whatIfFrequency}
             onChange={(e) => setWhatIfFrequency(Number(e.target.value))}
-            style={{ flex: 1, accentColor: '#22d3ee' }}
+            style={{ flex: 1, accentColor: 'var(--role-cyan, #22d3ee)' }}
           />
-          <Typography sx={{ color: '#22d3ee', fontFamily: 'monospace', fontWeight: 700, minWidth: 40 }}>
+          <Typography sx={{ color: 'var(--role-cyan, #22d3ee)', fontFamily: 'monospace', fontWeight: 700, minWidth: 40 }}>
             {whatIfFrequency}/uke
           </Typography>
         </Stack>

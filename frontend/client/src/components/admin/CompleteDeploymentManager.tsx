@@ -48,14 +48,13 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Switch,
   FormControlLabel,
   Skeleton,
   LinearProgress,
+  InputAdornment,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -80,6 +79,7 @@ import {
   Build as BuildIcon,
   Science as ScienceIcon,
   CloudUpload as CloudUploadIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 const PackageIcon = InventoryIcon;
 import { apiRequest } from '@/lib/queryClient';
@@ -88,6 +88,7 @@ import { validateText, validateInput, ValidationRule } from '../../utils/inputVa
 import FeatureManagementWithPublish from './FeatureManagementWithPublish';
 import DeploymentStatusWidget from './DeploymentStatusWidget';
 import { CREATOR_HUB_BRANDING } from '../../constants/CreatorHubBranding';
+import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminEmpty, AdminError, AdminTableContainer, adminTokens, useIsMobile } from './design-system';
 
 
 interface DeploymentTarget {
@@ -361,6 +362,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
 }: CompleteDeploymentManagerProps = {}) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Master Integration Provider
   const { integration, communication, dataFlow, componentRegistry, auth } = useEnhancedMasterIntegration();
@@ -663,6 +665,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
   // ✅ NY: Feedback integration state
   const [activeTab, setActiveTab] = useState(0);
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null);
+  const [feedbackSearch, setFeedbackSearch] = useState("");
   const [showFeedbackDialog, setShowFeedbackDialog] = useState(false);
   const [feedbackDeployments, setFeedbackDeployments] = useState<FeedbackDeployment[]>([]);
   
@@ -1007,7 +1010,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
 },
     onSuccess: (data: ApiResponseData) => {
       setQualityAnalysis(data);
-      setComponentAnalyses(data.componentAnalyses || []);
+      setComponentAnalyses(Array.isArray(data.componentAnalyses) ? data.componentAnalyses : []);
 },
 });
 
@@ -1593,12 +1596,22 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
             <Grid container spacing={2}>
               {deploymentTargets.map((target, index) => (
                 <Grid item xs={12} key={index}>
-                  <Card 
-                    sx={{ 
+                  <Card
+                    sx={{
                       cursor: 'pointer',
                       border: selectedTarget === target.name.toLowerCase().split(' ')[0] ? 2 : 1,
                       borderColor: selectedTarget === target.name.toLowerCase().split(' ')[0] ? 'primary.main' : 'divider'}}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Velg distribusjonsmål ${target.name}`}
+                    aria-pressed={selectedTarget === target.name.toLowerCase().split(' ')[0]}
                     onClick={() => setSelectedTarget(target.name.toLowerCase().split(' ')[0])}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedTarget(target.name.toLowerCase().split(' ')[0]);
+                      }
+                    }}
                   >
                     <CardContent>
                       <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -1727,7 +1740,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
             {/* ✅ NY: Feature Flag Integration */}
             <Box sx={{ mt: 3, p: 2, border: '1px solid #ccc', borderRadius: 1, bgcolor: '#f8f9fa' }}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                <SettingsIcon color="primary" />
+                <SettingsIcon color="primary" aria-hidden="true" />
                 Feature Flag Integration
               </Typography>
               <FormControlLabel
@@ -1754,7 +1767,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
             {/* ✅ EnhancedMasterIntegrationProvider Integration */}
             <Box sx={{ mt: 3, p: 2, border: '1px solid #e3f2fd', borderRadius: 1, bgcolor: '#e3f2fd' }}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                <CheckCircleIcon color="primary" />
+                <CheckCircleIcon color="primary" aria-hidden="true" />
                 Enhanced Master Integration Provider
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
@@ -1967,12 +1980,12 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                         <Typography variant="subtitle1">
                           <CheckCircleIcon color="success" sx={{ mr:  1 }} />
-                          Deployed Components ({deploymentResult.deployedComponents.length})
+                          Deployed Components ({(Array.isArray(deploymentResult.deployedComponents) ? deploymentResult.deployedComponents : []).length})
                         </Typography>
                       </AccordionSummary>
                       <AccordionDetails>
                         <List dense>
-                          {deploymentResult.deployedComponents.map((component, idx) => (
+                          {(Array.isArray(deploymentResult.deployedComponents) ? deploymentResult.deployedComponents : []).map((component, idx) => (
                             <ListItem key={idx}>
                               <ListItemIcon>
                                 <CheckCircleIcon color="success" />
@@ -1988,12 +2001,12 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                         <Typography variant="subtitle1">
                           <CodeIcon color="primary" sx={{ mr:  1 }} />
-                          Updated Files ({deploymentResult.updatedFiles.length})
+                          Updated Files ({(Array.isArray(deploymentResult.updatedFiles) ? deploymentResult.updatedFiles : []).length})
                         </Typography>
                       </AccordionSummary>
                       <AccordionDetails>
                         <List dense>
-                          {deploymentResult.updatedFiles.map((file, idx) => (
+                          {(Array.isArray(deploymentResult.updatedFiles) ? deploymentResult.updatedFiles : []).map((file, idx) => (
                             <ListItem key={idx}>
                               <ListItemIcon>
                                 <CodeIcon color="primary" />
@@ -2094,7 +2107,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
           Deploy complete solutions with App.tsx integration, package.json updates, and vendor integration
         </Typography>
 
-      {/* ✅ NY: Enhanced Tab Interface , *, /}
+      {/* ✅ NY: Enhanced Tab Interface */}
       <Card sx={{ mt:  3 }}>
         <Tabs
           value={activeTab}
@@ -2116,7 +2129,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
               icon={<BugReportIcon />}
               label={
                 <Badge 
-                   badgeContent={feedbackData?.feedback?.filter(f => f.status === 'open').length || 0}
+                   badgeContent={(Array.isArray(feedbackData?.feedback) ? feedbackData.feedback : []).filter(f => f.status === 'open').length || 0}
                   color="error"
                 >
                   Feedback Fixes
@@ -2274,6 +2287,22 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
             Deploy fixes automatically based on prototype tester feedback
           </Typography>
 
+          <TextField
+            size="small"
+            fullWidth
+            placeholder="Søk i tilbakemeldinger …"
+            value={feedbackSearch}
+            onChange={(e) => setFeedbackSearch(e.target.value)}
+            sx={{ mb: 3, maxWidth: 420 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+
           {feedbackLoading ? (
             <Box sx={{ py:  2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
@@ -2302,7 +2331,18 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
             </Box>
           ) : (
             <Grid container spacing={2}>
-              {feedbackData?.feedback?.map((feedback) => (
+              {(Array.isArray(feedbackData?.feedback) ? feedbackData.feedback : [])
+                .filter((feedback) => {
+                  const q = feedbackSearch.toLowerCase();
+                  if (!q) return true;
+                  return (
+                    feedback.title.toLowerCase().includes(q) ||
+                    feedback.description.toLowerCase().includes(q) ||
+                    feedback.feedbackType.toLowerCase().includes(q) ||
+                    (feedback.locationContext?.profession || '').toLowerCase().includes(q)
+                  );
+                })
+                .map((feedback) => (
                 <Grid item xs={12} md={6} key={feedback.id}>
                   <Card sx={{ height: '100%'}}>
                     <CardContent>
@@ -2365,7 +2405,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                         <Box>
                           <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600, color: CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY }}>
                             🤖 AI Analysis Results: </Typography>
-                          {feedback.aiAnalysis.suggestedFixes.map((fix) => (
+                          {(Array.isArray(feedback.aiAnalysis.suggestedFixes) ? feedback.aiAnalysis.suggestedFixes : []).map((fix) => (
                             <Card key={fix.id} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0'}}>
                               {/* Fix Header */}
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -2394,7 +2434,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                               {/* Problem Solved Section */}
                               {fix.problemSolved && (
                                 <Box sx={{ mb: 2, p: 2, bgcolor: '#f0f9ff', borderRadius: 1, border: '1px solid #0ea5e9' }}>
-                                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#0c4a60', mb: 1 }}>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#60a5fa', mb: 1 }}>
                                     🎯 What This Fix Will Solve:
                                   </Typography>
                                   <Typography variant="body2" color="text.primary">
@@ -2516,12 +2556,9 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
           </Typography>
 
           {deploymentsLoading ? (
-            <Box sx={{ textAlign: 'center', py:  4 }}>
-              <CircularProgress />
-              <Typography sx={{ mt:  2 }}>Loading deployments...</Typography>
-            </Box>
+            <AdminLoading label="Loading deployments..." />
           ) : (
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Deployment history">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -2538,7 +2575,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                     <TableRow key={deployment.id}>
                       <TableCell>
                         <Typography variant="body2" sx={{ fontWeight: 500}}>
-                          {feedbackData?.feedback?.find(f => f.id === deployment.feedbackId)?.title || 'Unknown'}
+                          {(Array.isArray(feedbackData?.feedback) ? feedbackData.feedback : []).find(f => f.id === deployment.feedbackId)?.title || 'Unknown'}
                         </Typography>
                       </TableCell>
                       <TableCell>
@@ -2564,7 +2601,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 1 }}>
                           <Tooltip title="View Details">
-                            <IconButton size="small">
+                            <IconButton size="small" aria-label="Vis detaljer">
                               <VisibilityIcon />
                             </IconButton>
                           </Tooltip>
@@ -2573,6 +2610,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                               <IconButton
                                 size="small"
                                 color="warning"
+                                aria-label="Rull tilbake distribusjon"
                                 onClick={() => handleRollbackDeployment('production', 'v1.0.0')}
                               >
                                 <RefreshIcon />
@@ -2585,7 +2623,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           )}
         </Box>
       )}
@@ -2593,7 +2631,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
       {/* 200 OK Checker Tab */}
       {activeTab === 3 && (
         <Box sx={{ mt:  3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb:  3 }}>
             <Box>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                 🔍 System Health Checker
@@ -2692,7 +2730,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                   📊 Endpoint Status Details
                 </Typography>
-                <TableContainer>
+                <AdminTableContainer ariaLabel="Endpoint status details">
                   <Table>
                     <TableHead>
                       <TableRow>
@@ -2704,7 +2742,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {systemHealth.checks.map((check, index) => (
+                      {(Array.isArray(systemHealth.checks) ? systemHealth.checks : []).map((check, index) => (
                         <TableRow key={index}>
                           <TableCell>
                             <Typography variant="body2" sx={{ fontFamily: 'monospace'}}>
@@ -2744,7 +2782,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </CardContent>
             </Card>
           )}
@@ -2775,7 +2813,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
       {/* Quality Analysis Tab */}
       {activeTab === 5 && (
         <Box sx={{ mt:  3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb:  3 }}>
             <Box>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                 🔍 Comprehensive Quality Analysis
@@ -2910,7 +2948,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                   📊 Component Analysis Results
                 </Typography>
-                <TableContainer>
+                <AdminTableContainer ariaLabel="Component analysis results">
                   <Table>
                     <TableHead>
                       <TableRow>
@@ -2970,7 +3008,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </CardContent>
             </Card>
           )}
@@ -3173,7 +3211,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
       {/* Feature Flags Tab */}
       {activeTab === 4 && (
         <Box sx={{ mt:  3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb:  3 }}>
             <Box>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                 🚀 Feature Flag Management
@@ -3207,11 +3245,12 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
       )}
 
       {/* Health Check Dialog */}
-      <Dialog 
+      <Dialog
          open={showHealthCheckDialog}
         onClose={() => setShowHealthCheckDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
@@ -3241,18 +3280,19 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowHealthCheckDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setShowHealthCheckDialog(false)}>
             Close
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Rollback Dialog */}
-      <Dialog 
+      <Dialog
          open={showRollbackDialog}
         onClose={() => setShowRollbackDialog(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
@@ -3277,9 +3317,9 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
           </Alert>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowRollbackDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setShowRollbackDialog(false)}>
             Cancel
-          </Button>
+          </AdminButton>
           <Button
             variant="contained"
             color="warning"
@@ -3296,14 +3336,14 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
       </Dialog>
 
       {/* Confirm Dialog */}
-      <Dialog open={confirmDialog.open} onClose={() => setConfirmDialog(prev => ({ ...prev, open: false }))}>
+      <Dialog open={confirmDialog.open} onClose={() => setConfirmDialog(prev => ({ ...prev, open: false }))} fullScreen={isMobile}>
         <DialogTitle>{confirmDialog.title}</DialogTitle>
         <DialogContent>
           <Typography style={{ whiteSpace: 'pre-line' }}>{confirmDialog.message}</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDialog(prev => ({ ...prev, open: false }))}>Cancel</Button>
-          <Button variant="contained" onClick={confirmDialog.onConfirm}>Confirm</Button>
+          <AdminButton tone="ghost" onClick={() => setConfirmDialog(prev => ({ ...prev, open: false }))}>Cancel</AdminButton>
+          <AdminButton tone="primary" onClick={confirmDialog.onConfirm}>Confirm</AdminButton>
         </DialogActions>
       </Dialog>
       </Box>

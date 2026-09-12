@@ -73,4 +73,8 @@ Allow: /
 User-agent: meta-externalagent
 Allow: /
 
+# Leadgrid — kartbasert CRM (eksplisitt allow for SEO-bots)
+Allow: /leadgrid
+Allow: /leadgrid/personvern
+
 Sitemap: https://theroleroom.com/sitemap.xml

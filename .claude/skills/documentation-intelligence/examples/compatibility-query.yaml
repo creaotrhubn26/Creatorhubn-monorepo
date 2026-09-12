@@ -1,0 +1,8 @@
+capability: photoshop_plugin_export
+stack:
+  photoshop: "27.0"
+  uxp: "9.1"
+  plugin_manifest: "6"
+  os: "macOS 16"
+  architecture: arm64
+  node_runtime: "22"

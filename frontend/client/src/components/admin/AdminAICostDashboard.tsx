@@ -38,6 +38,7 @@ import {
 } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminCard, AdminLoading, AdminError, AdminTableContainer } from './design-system';
 
 const PALETTE = ['#7c3aed', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#22c55e'];
 
@@ -73,7 +74,10 @@ const AdminAICostDashboard: React.FC = () => {
     refetchInterval: 120_000,
   });
 
-  const byUser = byUserResp?.data || [];
+  const byUser = Array.isArray(byUserResp?.data) ? byUserResp.data : [];
+  const byDay = Array.isArray(overview?.byDay) ? overview.byDay : [];
+  const byModel = Array.isArray(overview?.byModel) ? overview.byModel : [];
+  const byFeature = Array.isArray(overview?.byFeature) ? overview.byFeature : [];
   const totalRow = overview?.totals?.[period === '24h' ? 'last24h' : period === '7d' ? 'last7d' : 'last30d'] || {};
 
   // ─── KPI-kort ──────────────────────────────────────────────────
@@ -82,7 +86,7 @@ const AdminAICostDashboard: React.FC = () => {
       label: 'Totalkostnad',
       value: fmtUsd(totalRow.costUsd || 0),
       sub: `${fmtNum(totalRow.calls || 0)} kall siste ${period}`,
-      color: '#7c3aed',
+      color: '#c084fc',
       icon: <MoneyIcon />,
     },
     {
@@ -111,7 +115,7 @@ const AdminAICostDashboard: React.FC = () => {
   if (overview?.error) {
     return (
       <Box>
-        <Alert severity="warning">{overview.error}</Alert>
+        <AdminError message={overview.error} onRetry={() => refetch()} />
       </Box>
     );
   }
@@ -121,14 +125,14 @@ const AdminAICostDashboard: React.FC = () => {
       {/* Header */}
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Stack direction="row" alignItems="center" spacing={1.5}>
-          <Avatar sx={{ bgcolor: alpha('#7c3aed', 0.15), color: '#7c3aed' }}>
+          <Avatar sx={{ bgcolor: alpha('#7c3aed', 0.15), color: '#c084fc' }}>
             <AIIcon />
           </Avatar>
           <Box>
-            <Typography variant="overline" sx={{ color: '#7c3aed', letterSpacing: '0.14em' }}>
+            <Typography variant="overline" sx={{ color: '#c084fc', letterSpacing: '0.14em' }}>
               AI cost-dashboard
             </Typography>
-            <Typography variant="h5" sx={{ fontWeight: 700, fontFamily: '"Space Grotesk", sans-serif' }}>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 700, fontFamily: '"Space Grotesk", sans-serif' }}>
               Claude-bruk og kostnader
             </Typography>
           </Box>
@@ -139,17 +143,13 @@ const AdminAICostDashboard: React.FC = () => {
             <ToggleButton value="7d">7d</ToggleButton>
             <ToggleButton value="30d">30d</ToggleButton>
           </ToggleButtonGroup>
-          <IconButton onClick={() => refetch()} disabled={isFetching}>
+          <IconButton onClick={() => refetch()} disabled={isFetching} aria-label="Oppdater data">
             <RefreshIcon />
           </IconButton>
         </Stack>
       </Stack>
 
-      {isLoading && !overview && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress />
-        </Box>
-      )}
+      {isLoading && !overview && <AdminLoading />}
 
       {/* KPI-kort */}
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 1.5, mb: 3 }}>
@@ -177,15 +177,13 @@ const AdminAICostDashboard: React.FC = () => {
 
       {/* Daglig trend + modell-fordeling */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' }, gap: 2, mb: 2 }}>
-        <Card>
-          <CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Daglig kostnad (30d)</Typography>
-            {(overview?.byDay || []).length === 0 ? (
+        <AdminCard title="Daglig kostnad (30d)">
+            {byDay.length === 0 ? (
               <Typography variant="caption" color="text.secondary">Ingen data ennå.</Typography>
             ) : (
               <Box sx={{ height: 260 }}>
                 <ResponsiveContainer>
-                  <AreaChart data={overview?.byDay || []}>
+                  <AreaChart data={byDay}>
                     <defs>
                       <linearGradient id="costGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#7c3aed" stopOpacity={0.4} />
@@ -213,25 +211,22 @@ const AdminAICostDashboard: React.FC = () => {
                 </ResponsiveContainer>
               </Box>
             )}
-          </CardContent>
-        </Card>
+        </AdminCard>
 
-        <Card>
-          <CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Modell-fordeling (30d)</Typography>
-            {(overview?.byModel || []).length === 0 ? (
+        <AdminCard title="Modell-fordeling (30d)">
+            {byModel.length === 0 ? (
               <Typography variant="caption" color="text.secondary">Ingen data ennå.</Typography>
             ) : (
               <Box sx={{ height: 260 }}>
                 <ResponsiveContainer>
                   <PieChart>
                     <Pie
-                      data={overview?.byModel || []}
+                      data={byModel}
                       dataKey="costUsd" nameKey="model"
                       cx="50%" cy="50%" innerRadius={50} outerRadius={90}
                       label={({ model, costUsd }) => `${model.split('-').slice(1, 3).join('-')}: ${fmtUsdCents(costUsd)}`}
                     >
-                      {(overview?.byModel || []).map((_, i) => (
+                      {byModel.map((_, i) => (
                         <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
                       ))}
                     </Pie>
@@ -240,30 +235,25 @@ const AdminAICostDashboard: React.FC = () => {
                 </ResponsiveContainer>
               </Box>
             )}
-          </CardContent>
-        </Card>
+        </AdminCard>
       </Box>
 
       {/* Top features + per-bruker */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
         {/* Top features etter kost */}
-        <Card>
-          <CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-              Top features etter kostnad (30d)
-            </Typography>
-            {(overview?.byFeature || []).length === 0 ? (
+        <AdminCard title="Top features etter kostnad (30d)">
+            {byFeature.length === 0 ? (
               <Typography variant="caption" color="text.secondary">Ingen data ennå.</Typography>
             ) : (
               <Box sx={{ height: 320 }}>
                 <ResponsiveContainer>
-                  <BarChart data={(overview?.byFeature || []).slice(0, 8)} layout="vertical" margin={{ left: 0 }}>
+                  <BarChart data={byFeature.slice(0, 8)} layout="vertical" margin={{ left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v.toFixed(0)}`} />
                     <YAxis type="category" dataKey="feature" width={130} tick={{ fontSize: 10 }} />
                     <RTooltip formatter={(v: any) => fmtUsd(Number(v))} />
                     <Bar dataKey="costUsd" name="Kostnad (USD)" radius={[0, 4, 4, 0]}>
-                      {(overview?.byFeature || []).slice(0, 8).map((_, i) => (
+                      {byFeature.slice(0, 8).map((_, i) => (
                         <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
                       ))}
                     </Bar>
@@ -271,18 +261,14 @@ const AdminAICostDashboard: React.FC = () => {
                 </ResponsiveContainer>
               </Box>
             )}
-          </CardContent>
-        </Card>
+        </AdminCard>
 
         {/* Detalj-tabell per feature */}
-        <Card>
-          <CardContent>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-              Detaljer per feature
-            </Typography>
-            {(overview?.byFeature || []).length === 0 ? (
+        <AdminCard title="Detaljer per feature">
+            {byFeature.length === 0 ? (
               <Typography variant="caption" color="text.secondary">Ingen data ennå.</Typography>
             ) : (
+              <AdminTableContainer ariaLabel="Detaljer per feature">
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -293,7 +279,7 @@ const AdminAICostDashboard: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {(overview?.byFeature || []).slice(0, 12).map((f: any, idx: number) => (
+                  {byFeature.slice(0, 12).map((f: any, idx: number) => (
                     <TableRow key={f.feature} sx={{ '&:last-child td': { borderBottom: 0 } }}>
                       <TableCell sx={{ py: 0.75 }}>
                         <Stack direction="row" spacing={0.75} alignItems="center">
@@ -308,7 +294,7 @@ const AdminAICostDashboard: React.FC = () => {
                         <Typography variant="caption" color="text.secondary">{fmtTokens(f.tokens)}</Typography>
                       </TableCell>
                       <TableCell align="right" sx={{ py: 0.75 }}>
-                        <Typography variant="caption" sx={{ fontWeight: 700, color: '#7c3aed' }}>
+                        <Typography variant="caption" sx={{ fontWeight: 700, color: '#c084fc' }}>
                           {fmtUsdCents(f.costUsd)}
                         </Typography>
                       </TableCell>
@@ -316,25 +302,22 @@ const AdminAICostDashboard: React.FC = () => {
                   ))}
                 </TableBody>
               </Table>
+              </AdminTableContainer>
             )}
-          </CardContent>
-        </Card>
+        </AdminCard>
       </Box>
 
       {/* Per-bruker — som user-card */}
-      <Card sx={{ mt: 2 }}>
-        <CardContent>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-            <PersonIcon sx={{ color: '#7c3aed' }} />
-            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Hvem bruker mest Claude (30d)
-            </Typography>
-          </Stack>
+      <AdminCard
+        title="Hvem bruker mest Claude (30d)"
+        sx={{ mt: 2 }}
+      >
           {byUser.length === 0 ? (
             <Typography variant="caption" color="text.secondary">
               Ingen brukere registrert ennå. (AI-kall uten user_id telles ikke her.)
             </Typography>
           ) : (
+            <AdminTableContainer ariaLabel="Hvem bruker mest Claude">
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -403,9 +386,9 @@ const AdminAICostDashboard: React.FC = () => {
                 })}
               </TableBody>
             </Table>
+            </AdminTableContainer>
           )}
-        </CardContent>
-      </Card>
+      </AdminCard>
 
       <Box sx={{ mt: 2, textAlign: 'center' }}>
         <Typography variant="caption" color="text.secondary">

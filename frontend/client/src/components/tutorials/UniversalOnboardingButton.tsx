@@ -66,16 +66,16 @@ export default function UniversalOnboardingButton({ userType }: UniversalOnboard
         size="small"
         sx={{
           alignItems: 'center',
-          borderColor: isCompleted ? '#4caf50' : '#ff8c00',
+          borderColor: isCompleted ? '#4caf50' : 'var(--ws-accent, #ff8c00)',
           borderRadius: '12px',
-          color: isCompleted ? '#4caf50' : '#ff8c00',
+          color: isCompleted ? '#4caf50' : 'var(--ws-accent, #ff8c00)',
           display: 'inline-flex',
           gap: '8px',
           minHeight: 38,
           px: 1.25,
           transition: 'all 120ms ease',
           '&:hover': {
-            borderColor: isCompleted ? '#4caf50' : '#ff8c00',
+            borderColor: isCompleted ? '#4caf50' : 'var(--ws-accent, #ff8c00)',
             boxShadow: `0 0 0 2px ${theming.colors.light}`,
             transform: 'translateY(-1px)',
           },

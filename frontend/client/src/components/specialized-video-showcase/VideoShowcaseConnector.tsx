@@ -76,7 +76,7 @@ export default function VideoShowcaseConnector({
 });
 
   // Fetch existing showcase system data for integration
-  const { data: existingShowcases = [, ],} = useQuery({
+  const { data: existingShowcases = [],} = useQuery({
     queryKey: ['/api/showcase','all'],
     queryFn: () => apiRequest('/api/showcase', ),
     retry: false,

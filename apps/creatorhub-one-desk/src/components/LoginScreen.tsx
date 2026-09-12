@@ -13,7 +13,7 @@ import {
 import GoogleIcon from "@mui/icons-material/Google";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { pollOauthCompletion, startGoogleLoginV2 } from "../api";
+import { getDefaultApiBase, pollOauthCompletion, startGoogleLoginV2 } from "../api";
 import DeskIcon from "./DeskIcon";
 import noProjectsBg from "../assets/no-projects-bg.png";
 
@@ -72,7 +72,7 @@ export default function LoginScreen({ onLoggedIn, onManualToken }: Props) {
     stopPolling();
     try {
       const { authorization_url, state } = await startGoogleLoginV2();
-      const apiBase = "https://creatorhubn.com";
+      const apiBase = await getDefaultApiBase();
 
       // Åpne i system-nettleser. Bruker logger inn → backend redirecter
       // til creatorhub-one-desk:// → deep-link-handler tar over hvis app

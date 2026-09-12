@@ -2,6 +2,7 @@ import express from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import { canAccessProject } from "./project-team-routes";
 
 let photographerProjectsSchemaReadyShared: Promise<void> | null = null;
 export function ensurePhotographerProjectsSchemaShared(pool: Pool): Promise<void> {
@@ -9,6 +10,29 @@ export function ensurePhotographerProjectsSchemaShared(pool: Pool): Promise<void
     photographerProjectsSchemaReadyShared = (async () => {
       try {
         await pool.query(`
+          -- Core photographer-project columns. On prod the base projects table
+          -- is the portfolio table (title/slug/category/published…), so the
+          -- create/detail queries that read user_id/name/status/etc. 500'd with
+          -- "column user_id does not exist". Add them (idempotent) so the whole
+          -- request→project→timeline→worklog loop works. slug/category are
+          -- NOT NULL on the portfolio table but unused for photographer
+          -- projects, so relax them too.
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS user_id VARCHAR(64);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_name VARCHAR(255);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type VARCHAR(64);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'active';
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS phase VARCHAR(32);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS event_date TIMESTAMPTZ;
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS estimated_hours NUMERIC(10,2);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS actual_hours NUMERIC(10,2);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS profession VARCHAR(64);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_data JSONB;
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS settings JSONB;
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS budget NUMERIC(10,2);
+          ALTER TABLE projects ALTER COLUMN slug DROP NOT NULL;
+          ALTER TABLE projects ALTER COLUMN category DROP NOT NULL;
+          CREATE INDEX IF NOT EXISTS projects_user_id_idx ON projects (user_id);
           ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_id UUID;
           ALTER TABLE projects ADD COLUMN IF NOT EXISTS service_price NUMERIC(10,2);
           ALTER TABLE projects ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC(10,2);
@@ -36,6 +60,32 @@ export function ensurePhotographerProjectsSchemaShared(pool: Pool): Promise<void
           );
           CREATE INDEX IF NOT EXISTS project_time_tracking_project_idx
             ON project_time_tracking (project_id, date_worked DESC);
+          -- An older definition FK'd project_id to integrated_projects(id),
+          -- but photographer projects live in the projects table — drop the
+          -- stale FK so time logging works (app-managed table, no FK needed).
+          ALTER TABLE project_time_tracking
+            DROP CONSTRAINT IF EXISTS project_time_tracking_project_id_integrated_projects_id_fk;
+          -- Team Workspace deling: prosjekt-listingen JOINer mot denne, så den
+          -- MÅ finnes før listing-queryen kjører (ellers kaster Postgres på
+          -- manglende relasjon). Full DDL + indekser eies av project-team-routes.
+          CREATE TABLE IF NOT EXISTS project_team_members (
+            id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            project_id     VARCHAR(64) NOT NULL,
+            user_id        VARCHAR(64),
+            email          VARCHAR(255) NOT NULL,
+            name           VARCHAR(255),
+            role           VARCHAR(20) NOT NULL DEFAULT 'member',
+            crew_role      VARCHAR(20),
+            permissions    JSONB NOT NULL DEFAULT '{"canRead":true,"canEdit":false}'::jsonb,
+            status         VARCHAR(20) NOT NULL DEFAULT 'pending',
+            invite_token   VARCHAR(80),
+            invited_by     VARCHAR(64),
+            invited_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            accepted_at    TIMESTAMPTZ,
+            deactivated_at TIMESTAMPTZ
+          );
+          CREATE INDEX IF NOT EXISTS idx_ptm_project ON project_team_members (project_id) WHERE deactivated_at IS NULL;
+          CREATE INDEX IF NOT EXISTS idx_ptm_user ON project_team_members (user_id) WHERE deactivated_at IS NULL;
         `);
       } catch (err) {
         console.warn('[photographer-projects] schema-ensure failed:', err);
@@ -105,6 +155,11 @@ export function setupPhotographerProjectsRoutes(
             GROUP BY project_id
          ) t ON t.project_id = p.id
          WHERE p.user_id = $1
+            OR EXISTS (
+                 SELECT 1 FROM project_team_members m
+                  WHERE m.project_id = p.id AND m.user_id = $1
+                    AND m.status = 'active' AND m.deactivated_at IS NULL
+               )
          ORDER BY COALESCE(p.event_date, p.created_at::date) DESC NULLS LAST`,
         [photographerId],
       );
@@ -143,7 +198,7 @@ export function setupPhotographerProjectsRoutes(
       // Schema-feil eller manglende tabeller skal ikke krasje admin dashboard.
       // Returner tom liste i stedet for 500 — UI viser allerede empty-state.
       console.warn('[photographer-projects] list failed, returning empty:', err);
-      res.json({ projects: [], schemaWarning: err instanceof Error ? err.message : String(err) });
+      res.json({ projects: [] });
     }
   });
 
@@ -354,7 +409,7 @@ export function setupPhotographerProjectsRoutes(
           `SELECT 1 FROM clients WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
           [effectiveClientId, photographerId],
         );
-        if (owned.rowCount === 0) {
+        if (!owned.rows.length) {
           return res.status(403).json({ error: 'client_not_owned' });
         }
       }
@@ -397,11 +452,11 @@ export function setupPhotographerProjectsRoutes(
             service_price, hourly_rate, cost_overhead, estimated_hours,
             project_data, settings, budget,
             created_at, updated_at)
-         VALUES ($1, $2, $2, 'photographer', $3, $4,
+         VALUES ($1, $2, $16, 'photographer', $3, $4,
                  $5, 'active', 'planning', $6, $7, $8,
                  $9, $10, $11, $12,
                  $13::jsonb, $14::jsonb, $15,
-                 NOW()::text, NOW()::text)
+                 NOW(), NOW())
          RETURNING id`,
         [
           photographerId,
@@ -420,6 +475,9 @@ export function setupPhotographerProjectsRoutes(
           Object.keys(projectDataJson).length > 0 ? JSON.stringify(projectDataJson) : null,
           settings && typeof settings === 'object' ? JSON.stringify(settings) : null,
           Number.isFinite(Number(budget)) ? Number(budget) : null,
+          // $16 — `name` gets its own placeholder (reusing $2 for title+name
+          // makes Postgres throw "inconsistent types deduced for parameter $2").
+          trimmedTitle,
         ],
       );
       const newProjectId = result.rows[0]?.id;
@@ -455,14 +513,22 @@ export function setupPhotographerProjectsRoutes(
         }
       }
 
-      // Marker submission som konvertert hvis fra inquiry-flyt.
+      // Marker submission som konvertert hvis fra inquiry-flyt. client_submissions
+      // har project_id + status (IKKE converted_to_project_id/converted_at), så
+      // den gamle UPDATEn feilet stille og forespørselen ble liggende som «ny».
       if (newProjectId && submissionId) {
         try {
+          // Eier-scope: submissionId kommer fra request-body. Uten
+          // vendor_id-filter kunne en fotograf markere EN ANNEN fotografs
+          // innkommende forespørsel som konvertert og om-lenke den til sitt
+          // eget prosjekt (cross-tenant write-IDOR — offeret mister leadet
+          // fra «nye»-listen). vendor_id er eier-kolonnen (jf. submissions-
+          // routes' `WHERE id AND vendor_id`); fremmed id → rowCount 0 = no-op.
           await pool.query(
             `UPDATE client_submissions
-                SET converted_to_project_id = $1, converted_at = NOW(), updated_at = NOW()
-              WHERE id = $2`,
-            [newProjectId, submissionId],
+                SET project_id = $1, status = 'converted', updated_at = NOW()
+              WHERE id = $2 AND vendor_id = $3`,
+            [newProjectId, submissionId, photographerId],
           );
         } catch { /* tabellen finnes kanskje ikke i alle env */ }
       }
@@ -573,6 +639,10 @@ export function setupPhotographerProjectsRoutes(
 
     try {
       await ensurePhotographerProjectsSchema();
+      // Team Workspace: eier ELLER aktivt team-medlem kan åpne prosjektet.
+      if (!(await canAccessProject(pool, photographerId, projectId))) {
+        return res.status(404).json({ error: 'project_not_found' });
+      }
       const projectQ = await pool.query(
         `SELECT
            p.id, p.title, p.name, p.client_id, p.client_name, p.description,
@@ -585,21 +655,36 @@ export function setupPhotographerProjectsRoutes(
            c.first_name, c.last_name, c.email, c.phone
          FROM projects p
          LEFT JOIN clients c ON c.id = p.client_id
-         WHERE p.id = $1 AND p.user_id = $2
+         WHERE p.id = $1
          LIMIT 1`,
-        [projectId, photographerId],
+        [projectId],
       );
-      if (projectQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
-      const p = projectQ.rows[0];
+      // canAccessProject over slipper inn workspace-prosjekter, som ligger i
+      // legacy.projects. Da må detalj-spørringen lese den tabellen også —
+      // ellers slipper eieren gjennom vakten og får 404 på sitt eget prosjekt.
+      let projectRow = projectQ.rows[0];
+      if (!projectRow) {
+        const legacyQ = await pool.query(
+          `SELECT id, title, name, description, category AS project_type,
+                  status, event_date, location, created_at, updated_at
+             FROM legacy.projects WHERE id = $1 LIMIT 1`,
+          [projectId],
+        ).catch(() => ({ rows: [] as any[] }));
+        projectRow = legacyQ.rows[0];
+      }
+      if (!projectRow) return res.status(404).json({ error: 'project_not_found' });
+      const p = projectRow;
 
       const [timeQ, galleryQ] = await Promise.all([
-        pool.query(
-          `SELECT id, task_description, hours_spent, billable_hours, rate, date_worked, created_at
-             FROM project_time_tracking
-            WHERE project_id = $1
-            ORDER BY date_worked DESC, created_at DESC`,
-          [projectId],
-        ),
+        pool
+          .query(
+            `SELECT id, task_description, hours_spent, billable_hours, rate, date_worked, created_at
+               FROM project_time_tracking
+              WHERE project_id = $1
+              ORDER BY date_worked DESC, created_at DESC`,
+            [projectId],
+          )
+          .catch(() => ({ rows: [] as Record<string, unknown>[] })),
         pool.query(
           `SELECT id, project_title, access_token, status, created_at, completed_at
              FROM photographer_client_galleries
@@ -704,7 +789,7 @@ export function setupPhotographerProjectsRoutes(
           `SELECT 1 FROM clients WHERE id = $1 AND photographer_id = $2 LIMIT 1`,
           [clientId, photographerId],
         );
-        if (owned.rowCount === 0) return res.status(403).json({ error: 'client_not_owned' });
+        if (!owned.rows.length) return res.status(403).json({ error: 'client_not_owned' });
       }
       // Slice 9X.79 — Fang previous status så vi kan trigge bare ved faktisk endring
       let previousStatus: string | null = null;
@@ -729,7 +814,7 @@ export function setupPhotographerProjectsRoutes(
            estimated_hours= COALESCE($10, estimated_hours),
            description    = COALESCE($11, description),
            client_id      = COALESCE($12, client_id),
-           updated_at     = NOW()::text
+           updated_at     = NOW()
          WHERE id = $13 AND user_id = $14
          RETURNING id, title, event_date, location, description, client_id,
                    google_calendar_event_id`,
@@ -839,7 +924,7 @@ export function setupPhotographerProjectsRoutes(
         `SELECT hourly_rate FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const defaultRate = Number(owned.rows[0]?.hourly_rate ?? 0);
       const finalRate = Number.isFinite(Number(rate)) ? Number(rate) : defaultRate;
       const billable = Number.isFinite(Number(billableHours)) ? Number(billableHours) : Number(hoursSpent);
@@ -924,7 +1009,7 @@ export function setupPhotographerProjectsRoutes(
           LIMIT 1`,
         [session.userId],
       );
-      if (r.rowCount === 0) {
+      if (!r.rows.length) {
         return res.json({
           connected: false,
           serverConfigured: isPowerOfficeConfigured(),
@@ -1032,7 +1117,7 @@ export function setupPhotographerProjectsRoutes(
           WHERE photographer_id = $1 AND provider = 'poweroffice' LIMIT 1`,
         [photographerId],
       );
-      if (intQ.rowCount === 0) {
+      if (!intQ.rows.length) {
         return res.status(412).json({
           error: 'poweroffice_not_connected',
           message: 'Koble til PowerOffice først via /photographer/settings/integrations.',
@@ -1058,7 +1143,7 @@ export function setupPhotographerProjectsRoutes(
          WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (projQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!projQ.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const p = projQ.rows[0];
 
       // Idempotens: hvis allerede fakturert via PO, returner eksisterende.
@@ -1149,7 +1234,7 @@ export function setupPhotographerProjectsRoutes(
            external_invoice_id = $1,
            external_invoice_number = $2,
            invoiced_at = NOW(),
-           updated_at = NOW()::text
+           updated_at = NOW()
          WHERE id = $3 AND user_id = $4`,
         [result.salesOrderId, result.salesOrderNumber != null ? String(result.salesOrderNumber) : null, projectId, photographerId],
       );
@@ -1215,12 +1300,10 @@ export function setupPhotographerProjectsRoutes(
     if (!projectId) return res.status(400).json({ error: 'missing_project_id' });
 
     try {
-      // Verify project ownership
-      const owned = await pool.query(
-        `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
-        [projectId, photographerId],
-      );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      // Team Workspace: eier ELLER aktivt team-medlem.
+      if (!(await canAccessProject(pool, photographerId, projectId))) {
+        return res.status(404).json({ error: 'project_not_found' });
+      }
 
       const r = await pool.query(
         `SELECT id, title, description, category, type, due_date, scheduled_date,
@@ -1228,9 +1311,9 @@ export function setupPhotographerProjectsRoutes(
                 client_approval_status, google_calendar_event_id,
                 actual_cost, budget_allocated, created_at, updated_at
            FROM project_milestones
-          WHERE project_id = $1 AND user_id = $2
+          WHERE project_id = $1
           ORDER BY due_date ASC NULLS LAST, created_at ASC`,
-        [projectId, photographerId],
+        [projectId],
       );
 
       const milestones = r.rows.map((m: Record<string, unknown>) => ({
@@ -1264,8 +1347,10 @@ export function setupPhotographerProjectsRoutes(
 
       res.json({ milestones, nextStep, totalProgress, completedCount: completed });
     } catch (err) {
-      console.error('[photographer-milestones] list failed:', err);
-      res.status(500).json({ error: 'milestones_failed' });
+      // Manglende project_milestones-tabell skal ikke krasje prosjekt-detalj.
+      // Returner tom liste i stedet for 500.
+      console.warn('[photographer-milestones] list degraded:', (err as any)?.message || err);
+      res.json({ milestones: [], nextStep: null, totalProgress: 0, completedCount: 0 });
     }
   });
 
@@ -1327,7 +1412,7 @@ export function setupPhotographerProjectsRoutes(
           WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (projQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!projQ.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const p = projQ.rows[0];
 
       const { createGoogleMeetLink } = await import('./google-meet.js');
@@ -1384,7 +1469,7 @@ export function setupPhotographerProjectsRoutes(
       });
     } catch (err: any) {
       console.error('[photographer-meet] create failed:', err);
-      res.status(500).json({ error: 'meet_create_failed', message: String(err?.message || '').slice(0, 200) });
+      res.status(500).json({ error: 'meet_create_failed' });
     }
   });
 
@@ -1410,7 +1495,7 @@ export function setupPhotographerProjectsRoutes(
         `SELECT title, event_date FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (projQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!projQ.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const proj = projQ.rows[0];
 
       // Sjekk om det allerede finnes en aktiv capture_session for prosjektet
@@ -1510,7 +1595,7 @@ export function setupPhotographerProjectsRoutes(
          WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (ctxQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!ctxQ.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const ctx = ctxQ.rows[0];
 
       if (!ctx.client_id) {
@@ -1651,7 +1736,7 @@ export function setupPhotographerProjectsRoutes(
         `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'project_not_found' });
 
       // Best-effort bakgrunns-poll. Debounced så vi ikke hammrer Gmail
       // når frontend auto-refreshes hver 30s. Kjøres etter response.
@@ -1695,8 +1780,10 @@ export function setupPhotographerProjectsRoutes(
         })),
       });
     } catch (err) {
-      console.error('[chat] list failed:', err);
-      res.status(500).json({ error: 'list_failed' });
+      // Manglende client_communications-tabell/kolonner skal ikke krasje
+      // chat-fanen. Returner tom liste istedet for 500.
+      console.warn('[chat] list degraded:', (err as any)?.message || err);
+      res.json({ messages: [] });
     }
   });
 
@@ -1715,7 +1802,7 @@ export function setupPhotographerProjectsRoutes(
         `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'project_not_found' });
 
       const { pollProjectGmailReplies } = await import('./chat-gmail-poller.js');
       const result = await pollProjectGmailReplies(pool, { photographerId, projectId });

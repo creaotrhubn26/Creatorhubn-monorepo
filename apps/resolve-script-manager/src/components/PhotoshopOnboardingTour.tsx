@@ -251,7 +251,7 @@ const overlay: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   zIndex: 2500,
-  backdropFilter: "blur(4px)",
+  backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
 };
 
 const modal: React.CSSProperties = {

@@ -52,6 +52,7 @@ import type {
 import { ROLE_DISPLAY_NAMES as ROLE_NAMES } from './types';
 import SplitSheetSongFlowIntegration from './SplitSheetSongFlowIntegration';
 import PricingSelector from '../shared/PricingSelector';
+import EditingCostSummary from '../editing-marketplace/EditingCostSummary';
 
 interface SplitSheetEditorProps {
   splitSheet?: SplitSheet | null;
@@ -334,6 +335,8 @@ export default function SplitSheetEditor({
   return (
     <Box sx={{ p: 2 }}>
       <Stack spacing={3}>
+        {/* Eksterne redigeringskostnader av-toppen (#13) */}
+        {projectId && <EditingCostSummary projectId={projectId} />}
         {/* Basic Information */}
         <Card>
           <CardContent>

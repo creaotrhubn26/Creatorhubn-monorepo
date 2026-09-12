@@ -16,7 +16,7 @@
 
 export class RateLimitExceededError extends Error {
   readonly retryAfterSeconds: number;
-  readonly scope: 'user_minute' | 'user_hour' | 'project_minute';
+  readonly scope: 'user_minute' | 'user_hour' | 'project_minute' | 'endpoint_minute';
   constructor(scope: RateLimitExceededError['scope'], retryAfterSeconds: number) {
     super(`Agent rate limit exceeded (${scope})`);
     this.name = 'RateLimitExceededError';
@@ -33,6 +33,8 @@ interface BucketWindow {
 const USER_MINUTE_BUCKETS = new Map<string, BucketWindow>();
 const USER_HOUR_BUCKETS = new Map<string, BucketWindow>();
 const PROJECT_MINUTE_BUCKETS = new Map<string, BucketWindow>();
+// Generic per-(user, endpoint) minute buckets — keyed `${endpoint}:${userId}`.
+const ENDPOINT_MINUTE_BUCKETS = new Map<string, BucketWindow>();
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -106,4 +108,26 @@ export function checkAgentRateLimit(userId: string, projectId: string): void {
   sweep(USER_MINUTE_BUCKETS, now, 60_000);
   sweep(USER_HOUR_BUCKETS, now, 60 * 60_000);
   sweep(PROJECT_MINUTE_BUCKETS, now, 60_000);
+}
+
+/**
+ * Generic per-(user, endpoint) minute rate limit for cost-incurring social
+ * endpoints (publish / metrics-snapshot / lead follow-up). Kept in its own
+ * bucket-set so a burst on one endpoint can't exhaust the agent budget (and
+ * vice-versa). Throws the same RateLimitExceededError the routes already
+ * translate to HTTP 429 + Retry-After. The same `off` kill-switch applies.
+ */
+export function checkEndpointRateLimit(
+  userId: string,
+  endpoint: string,
+  limitPerMinute: number,
+): void {
+  if (process.env.ROLE_ROOM_AGENT_RATE_LIMIT === 'off') return;
+  const now = Date.now();
+  const key = `${endpoint}:${userId}`;
+  const result = hit(ENDPOINT_MINUTE_BUCKETS, key, now, 60_000, limitPerMinute);
+  if (result.exceeded) {
+    throw new RateLimitExceededError('endpoint_minute', result.retryAfterSeconds);
+  }
+  sweep(ENDPOINT_MINUTE_BUCKETS, now, 60_000);
 }

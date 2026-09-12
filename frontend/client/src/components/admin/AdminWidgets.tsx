@@ -18,7 +18,6 @@ import {
   CardActions,
   Typography,
   IconButton,
-  Button,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -57,6 +56,8 @@ import {
   Notifications,
   Support,
 } from '@mui/icons-material';
+
+import { AdminButton, AdminLoading, useIsMobile } from './design-system';
 
 interface Widget {
   id: string;
@@ -176,6 +177,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const theme = useTheme();
+  const isMobile = useIsMobile();
   
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -214,7 +216,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
   // Initialize widgets
   useEffect(() => {
     if (!isLoading) {
-      if (userConfig?.widgets) {
+      if (Array.isArray(userConfig?.widgets)) {
         setWidgets(userConfig.widgets);
     } else {
         // Initialize with default widgets
@@ -267,7 +269,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
 
     const items = Array.from(widgets);
     const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.indexreorderedItem);
+    items.splice(result.destination.index, 0, reorderedItem);
 
     setWidgets(items);
     saveConfigMutation.mutate(items);
@@ -344,7 +346,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
         return (
           <Box>
             <List dense>
-              {(data?.errors || []).slice(0, 3).map((error: any, index: number) => (
+              {(Array.isArray(data?.errors) ? data.errors : []).slice(0, 3).map((error: any, index: number) => (
                 <ListItem key={index} sx={{ px: 0 }}>
                   <ListItemText
                     primary={error.message || 'Ukjent feil'}
@@ -390,41 +392,34 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
 };
 
   if (loading) {
-    return (
-      <Box sx={{ textAlign: 'center', py: 4 }}>
-        <CircularProgress />
-        <Typography variant="body2" sx={{ mt: 2 }}>
-          Laster widgets...
-        </Typography>
-      </Box>
-    );
+    return <AdminLoading label="Laster widgets..." />;
 }
 
   return (
     <Box>
       {/* Widget Controls */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h6" fontWeight={600} sx={{ color: theming.colors.primary }}>
+        <Typography variant="h6" component="h2" fontWeight={600} sx={{ color: theming.colors.primary }}>
           Admin Dashboard Widgets
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="secondary"
             startIcon={<Refresh />}
             onClick={() => window.location.reload()}
             size="small"
           >
             Oppdater
-          </Button>
-          <Button 
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<Settings />}
             onClick={() => setSettingsOpen(true)}
             size="small"
             sx={theming.getThemedButtonSx()}
           >
             Innstillinger
-          </Button>
+          </AdminButton>
         </Box>
       </Box>
 
@@ -485,6 +480,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
                             </Typography>
                             <IconButton
                               size="small"
+                              aria-label="Dra for å flytte widget"
                               {...provided.dragHandleProps}
                               sx={{ cursor: 'grab' }}
                             >
@@ -510,6 +506,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
         onClose={() => setSettingsOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           Widget Innstillinger
@@ -534,6 +531,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
                       checked={widget.enabled}
                       onChange={() => toggleWidget(widget.id)}
                       color="primary"
+                      aria-label={`Vis widget ${widget.title}`}
                     />
                 }
                   label=""
@@ -543,9 +541,9 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSettingsOpen(false)}>
+          <AdminButton tone="ghost" onClick={() => setSettingsOpen(false)}>
             Lukk
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

@@ -25,7 +25,8 @@ import { useRealTime } from '../../contexts/RealTimeContext';
 import type { RealTimeEvent } from '../../contexts/RealTimeContext';
 // Comprehensive feature system integration
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
-import { useTheming } from '../../utils/theming-helper';
+import { ThemeProvider } from '@mui/material/styles';
+import { ws, workspaceDarkTheme } from '../workspace/workspaceTheme';
 import ScriptManager from '../davinci-resolve/ScriptManager';
 import { useExternalData } from '../../services/ExternalDataService';
 import {
@@ -38,6 +39,7 @@ import {
   FormControl,
   InputLabel,
   Select,
+  Menu,
   MenuItem,
   Chip,
   Switch,
@@ -136,22 +138,26 @@ import {
   VideoLibrary,
   LibraryMusic,
   CameraAlt,
+  MoreVert,
 } from '@mui/icons-material';
 import MemoryCardIcon from '../ui/MemoryCardIcon';
 import MemoryCardSelector from '../memory-card/MemoryCardSelector';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
+import { useVisualEditorOptional } from '../admin/visual-editor/VisualEditorContext';
 import { useLeadImport } from '@/hooks/useLeadImport';
 import ProjectHealthCheck from './ProjectHealthCheck';
 import ProjectCollaborators from './ProjectCollaborators';
 import CloudDestinationActivator from '@/components/storage/CloudDestinationActivator';
+import ExternalEditingOption from '@/components/universal/editing-marketplace/ExternalEditingOption';
 import CloudErasePanel from '@/components/storage/CloudErasePanel';
 import DeliverFromArchiveDialog from '@/components/storage/DeliverFromArchiveDialog';
 import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
-import { getCamerasByProfession, getLogFormatsByCamera, getCameraBrand } from '../../data/video-camera-database';
-import { getPhotoCamerasByProfession, getPhotoCameraBrand } from '../../data/photo-camera-database';
-import { MemoryCardRecommendationEngine, getMemoryCardTypesByProfession, formatCurrency } from '../../data/memory-card-database';
+import CaptureBetaSignupDialog from '@/components/project/CaptureBetaSignupDialog';
+import { getCamerasByProfession, getLogFormatsByCamera, getCameraBrand, VIDEO_CAMERA_DATABASE } from '../../data/video-camera-database';
+import { getPhotoCamerasByProfession, getPhotoCameraBrand, PHOTO_CAMERA_DATABASE } from '../../data/photo-camera-database';
+import { useCameraCatalog } from '../../hooks/useCameraCatalog';
+import { MemoryCardRecommendationEngine, getMemoryCardTypesByProfession, formatCurrency, CAMERA_MEMORY_CARD_COMPATIBILITY } from '../../data/memory-card-database';
 import EnhancedMemoryCardSelector from '../memory-card/EnhancedMemoryCardSelector';
 import { useNavigate } from 'react-router-dom';
 import type { ProjectToEditorData, EditorToProjectResult } from '../../utils/story-arc-project-integration';
@@ -188,7 +194,7 @@ const PROJECT_TYPES = {
   portrait: { name: 'Portrett', icon: PhotoCamera, color: '#2e7d32' },
   event: { name: 'Event', icon: Event, color: '#ff8c00' },
   commercial: { name: 'Kommersiell', icon: Business, color: '#ff8c00' },
-  video: { name: 'Video', icon: VideoLibrary, color: '#1565c0' },
+  video: { name: 'Video', icon: VideoLibrary, color: '#4c9aff' },
   music: { name: 'Musikk', icon: LibraryMusic, color: '#7b1fa2' },
   family: { name: 'Familie', icon: Group, color: '#00897b' },
   product: { name: 'Produkt', icon: ShoppingBag, color: '#ff8f00' }
@@ -1287,7 +1293,10 @@ export default function ProjectCreationWithMemoryCards({
   };
   const { getCurrentUserProfession, professionConfigs, isLoading: professionsLoading, getProfessionDisplayName, getProfessionIcon } = useDynamicProfessions();
   const userProfession = user?.profession || profession || getCurrentUserProfession();
-  
+  // Musikkprodusent → skjul foto/video-spesifikke seksjoner (Shot List, Minnekort,
+  // DaVinci, kamera). Musikk-arbeidsflyten + bidragsytere + TONO/GRAMO beholdes.
+  const isMusicProducer = userProfession === 'music_producer';
+
   // Narrowed profession types for components that require specific union types
   const memoryCardProfession: 'photographer' | 'videographer' = 
     userProfession === 'videographer' ? 'videographer' : 'photographer';
@@ -1375,7 +1384,8 @@ export default function ProjectCreationWithMemoryCards({
 } = useExternalData();
   
   // Theming system
-  const theming = useTheming('photographer');
+  // Design: workspace-tokens (ws.*) + workspaceDarkTheme — IKKE profesjonsfarger.
+  // Modalen lever på /workspace-flatene; accent styres av CreatorHub Design-tokens.
   
   const { 
     settings, 
@@ -1407,7 +1417,9 @@ export default function ProjectCreationWithMemoryCards({
   const professionAdapterData = useProfessionAdapter();
 
   // Toast notification system
-  const visualEditorContext = useVisualEditor();
+  // Optional: modalen mountes utenfor VisualEditorProvider (bl.a. /workspace)
+  // — den kastende hooken tok da ned hele flaten til app-router-boundaryen.
+  const visualEditorContext = useVisualEditorOptional();
   const addNotification = visualEditorContext?.addNotification || ((notification: Omit<{ id: string; type: 'info' | 'success' | 'warning' | 'error'; title: string; message: string; timestamp: Date; read: boolean; action?: { label: string; callback: () => void } }, 'id' | 'timestamp'>) => {
     console.log('Visual Editor context not available, ', notification);
   });
@@ -1439,6 +1451,7 @@ export default function ProjectCreationWithMemoryCards({
   }, [showToast]);
   
   const [activeStep, setActiveStep] = useState(0);
+  const [captureBetaOpen, setCaptureBetaOpen] = useState(false);
   const [showHealthCheck, setShowHealthCheck] = useState(false);
   const [healthCheckPassed, setHealthCheckPassed] = useState(false);
   const [cultureDayDialog, setCultureDayDialog] = useState({
@@ -1492,7 +1505,7 @@ export default function ProjectCreationWithMemoryCards({
     activeDays: [1],
     memoryCardConfigs: [] as MemoryCardConfig[],
     selectedMemoryCards: [] as SelectedMemoryCard[],
-    selectedCameras: [] as Array<{ name: string; brand: string; model?: string }>,
+    selectedCameras: (initialData as any)?.selectedCameras || ([] as Array<{ id: string; name: string; brand: string; model?: string }>),
     enhancedMemoryCardSelection: null as { totalCards?: number; totalCapacity?: string; estimatedCost?: number; backupStrategy?: string; autoBackup?: boolean; recommendations?: unknown[]; customCards?: unknown[] } | null, // Enhanced memory card selection
     memoryCardBudget: 'mid' as 'budget' | 'mid' | 'premium' | 'professional',
     editingSoftware: '',
@@ -1850,6 +1863,8 @@ useEffect(() => {
   const [showScriptManager, setShowScriptManager] = useState<boolean>(false);
   const [showPreview, setShowPreview] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  // «⋯ Flere verktøy»-menyen i den forenklede handlingsraden
+  const [toolsMenuAnchor, setToolsMenuAnchor] = useState<null | HTMLElement>(null);
   const memoryPlanSavedRef = useRef(false);
 
   // Normalize multi-day event dates from initialData
@@ -1882,6 +1897,14 @@ useEffect(() => {
 
   // Existing client picker (Google Contacts)
   const [contactQuery, setContactQuery] = useState('');
+  // Selvoppdaterende kamerakatalog (statisk DB + Utstyrsdatabase-adminen)
+  const cameraCatalog = useCameraCatalog();
+  const cameraNameOptions = React.useMemo(() => {
+    const names = new Set<string>();
+    for (const c of cameraCatalog) names.add(`${c.brand} ${c.model}`);
+    for (const c of [...PHOTO_CAMERA_DATABASE, ...VIDEO_CAMERA_DATABASE] as any[]) names.add(`${c.brand} ${c.model}`);
+    return Array.from(names).sort();
+  }, [cameraCatalog]);
   const [contactOptions, setContactOptions] = useState<any[]>([]);
   const [selectedContact, setSelectedContact] = useState<any | null>(null);
 
@@ -1890,22 +1913,22 @@ useEffect(() => {
   const [addProjectTypeDialogOpen, setAddProjectTypeDialogOpen] = useState(false);
 
   useEffect(() => {
-    const controller = new AbortController();
-    const run = async () => {
+    // Debounce + stale-drop i stedet for abort: abort per tastetrykk ga
+    // AbortError-spam via nettleserutvidelser som kloner fetch-promiset
+    // uten catch. Utdaterte svar droppes bare.
+    if (!contactQuery || contactQuery.length < 2) return undefined;
+    let stale = false;
+    const timer = window.setTimeout(async () => {
       try {
-        if (!contactQuery || contactQuery.length < 2) return;
-        const res = await fetch(`/api/google/people/search-contacts?q=${encodeURIComponent(contactQuery)}`, { signal: controller.signal });
-        if (res.ok) {
-          const data = await res.json();
-          setContactOptions(data || []);
-        }
+        const res = await fetch(`/api/google/people/search-contacts?q=${encodeURIComponent(contactQuery)}`);
+        if (stale || !res.ok) return;
+        const data = await res.json();
+        if (!stale) setContactOptions(Array.isArray(data) ? data : []);
       } catch (searchErr) {
-        // Contact search can fail when aborted or offline
         console.debug('Contact search skipped:', searchErr);
       }
-    };
-    run();
-    return () => controller.abort();
+    }, 300);
+    return () => { stale = true; window.clearTimeout(timer); };
   }, [contactQuery]);
 
   useEffect(() => {
@@ -3241,15 +3264,16 @@ useEffect(() => {
   };
 
   return (
+    <ThemeProvider theme={workspaceDarkTheme}>
     <Box sx={{ p: { xs: 2, sm: 3, md: 4 }, maxWidth: '1200px', mx: 'auto' }}>
       {initialData && (
         <Alert severity="info" sx={{ 
           mb: 3, 
           borderRadius: 2,
-          borderLeft: `4px solid ${theming.colors.primary}`,
-          backgroundColor: `${theming.colors.primary}08`
+          borderLeft: `4px solid ${ws.accent}`,
+          backgroundColor: `${ws.accentSoft}`
         }}>
-          <Typography variant="body2" fontWeight={700} sx={{ color: theming.colors.primary }}>
+          <Typography variant="body2" fontWeight={700} sx={{ color: ws.accent }}>
             📨 {initialData.clientName} fra innsending
           </Typography>
           <Typography variant="caption" display="block" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -3263,9 +3287,9 @@ useEffect(() => {
         mt: 0, 
         mb: 3,
         borderRadius: 3,
-        border: '1px solid #e0e0e0',
+        border: '1px solid rgba(255,255,255,0.12)',
         boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-        background: '#fafbfc',
+        background: 'rgba(20,22,30,0.92)',
         transition: 'box-shadow 0.2s ease-in-out',
         '&:hover': {
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -3280,31 +3304,39 @@ useEffect(() => {
               display: 'flex', 
               alignItems: 'center', 
               gap: 1,
-              color: theming.colors.primary,
+              color: ws.accent,
               mb: 2
             }}
           >
             <People sx={{ fontSize: 28 }} /> Velg kontakt
           </Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
-            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' } }}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 40%' } }}>
               <Autocomplete
+                freeSolo
                 options={contactOptions}
-                getOptionLabel={(o: ContactOption) => o?.displayName || o?.email || ''}
-                onInputChange={(_: React.SyntheticEvent, val: string) => setContactQuery(val)}
-                onChange={(_: React.SyntheticEvent, val: ContactOption | null) => setSelectedContact(val)}
+                getOptionLabel={(o: ContactOption | string) => typeof o === 'string' ? o : (o?.displayName || o?.email || '')}
+                onInputChange={(_: React.SyntheticEvent, val: string) => {
+                  setContactQuery(val);
+                  // freeSolo: det du skriver ER klientnavnet — Google-treff er valgfritt
+                  setProjectData(prev => ({ ...prev, clientName: val }));
+                }}
+                onChange={(_: React.SyntheticEvent, val: ContactOption | string | null) => {
+                  if (typeof val === 'string') { setProjectData(prev => ({ ...prev, clientName: val })); return; }
+                  setSelectedContact(val);
+                }}
                 renderInput={(params) => (
                   <TextField 
                     {...params} 
-                    label="Søk navn eller e-post" 
-                    placeholder="Skriv for å søke..." 
+                    label="Navn (søk eller skriv)" 
+                    placeholder="Søk i kontakter — eller skriv navn manuelt" 
                     size="small"
                     sx={{
                       '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)', fontWeight: 600 },
                       '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: '#1565c0', borderWidth: 1.5 },
-                        '&:hover fieldset': { borderColor: '#0d47a1' },
-                        '&.Mui-focused fieldset': { borderColor: '#1565c0', borderWidth: 2 }
+                        '& fieldset': { borderColor: ws.accent, borderWidth: 1.5 },
+                        '&:hover fieldset': { borderColor: ws.accentHover },
+                        '&.Mui-focused fieldset': { borderColor: ws.accent, borderWidth: 2 }
                       },
                       '& .MuiInputBase-input': { color: 'rgba(255,255,255,0.95)', fontWeight: 500 },
                       '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.70)', opacity: 1 }
@@ -3313,19 +3345,39 @@ useEffect(() => {
                 )}
               />
             </Box>
-            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 25%' } }}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 20%' } }}>
               <TextField
                 label="E-post"
                 value={projectData.clientEmail}
+                onChange={(e) => setProjectData(prev => ({ ...prev, clientEmail: e.target.value }))}
                 fullWidth
                 size="small"
-                slotProps={{ input: { readOnly: true } }}
+                placeholder="kunde@epost.no"
                 sx={{
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)', fontWeight: 600 },
                   '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#1565c0', borderWidth: 1.5 },
-                    '&:hover fieldset': { borderColor: '#0d47a1' },
-                    '&.Mui-focused fieldset': { borderColor: '#1565c0', borderWidth: 2 }
+                    '& fieldset': { borderColor: ws.accent, borderWidth: 1.5 },
+                    '&:hover fieldset': { borderColor: ws.accentHover },
+                    '&.Mui-focused fieldset': { borderColor: ws.accent, borderWidth: 2 }
+                  },
+                  '& .MuiInputBase-input': { color: 'rgba(255,255,255,0.95)', fontWeight: 500 }
+                }}
+              />
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 15%' } }}>
+              <TextField
+                label="Telefon"
+                value={projectData.clientPhone}
+                onChange={(e) => setProjectData(prev => ({ ...prev, clientPhone: e.target.value }))}
+                fullWidth
+                size="small"
+                placeholder="+47 …"
+                sx={{
+                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)', fontWeight: 600 },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: ws.accent, borderWidth: 1.5 },
+                    '&:hover fieldset': { borderColor: ws.accentHover },
+                    '&.Mui-focused fieldset': { borderColor: ws.accent, borderWidth: 2 }
                   },
                   '& .MuiInputBase-input': { color: 'rgba(255,255,255,0.95)', fontWeight: 500 }
                 }}
@@ -3371,11 +3423,16 @@ useEffect(() => {
                         companyName: ', '
                       })
                     });
-                    if (!createRes.ok) throw new Error('Create contact failed');
+                    if (!createRes.ok) {
+                      const body = await createRes.json().catch(() => null);
+                      throw new Error(body?.error || 'Kunne ikke legge til kontakt');
+                    }
                     showSuccessToast('Kontakt lagt til i Google Kontakter');
                   } catch (contactErr) {
                     console.error('Failed to add contact:', contactErr);
-                    showErrorToast('Kunne ikke legge til kontakt');
+                    // Vis backend-forklaringen (f.eks. «mangler Google Kontakter-
+                    // tilgang — koble på nytt») i stedet for generisk melding.
+                    showErrorToast(contactErr instanceof Error ? contactErr.message : 'Kunne ikke legge til kontakt', 6000);
                   }
                 }}
               >
@@ -3386,110 +3443,7 @@ useEffect(() => {
         </CardContent>
       </Card>
 
-      {/* Wedding Timeline Status */}
-      {projectData.projectType === 'wedding' && (
-        <Card sx={{ 
-          mt: 0, 
-          mb: 3,
-          borderRadius: 3,
-          border: '1px solid #e0e0e0',
-          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
-          transition: 'box-shadow 0.2s ease-in-out',
-          '&:hover': {
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
-          }
-        }}>
-          <CardContent>
-            <Typography 
-              variant="h6" 
-              gutterBottom 
-              sx={{ 
-                fontWeight: 700, 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 1,
-                color: theming.colors.primary,
-                mb: 2
-              }}
-            >
-              <Favorite sx={{ fontSize: 28, color: '#e91e63' }} /> Bryllupstidslinje
-            </Typography>
-            {projectData.createWeddingTimeline ? (
-              projectData.weddingTimelineShared ? (
-                <Box>
-                  <Typography variant="body2">
-                    Tidslinje delt til {projectData.clientEmail || 'kunde'}
-                  </Typography>
-                  {projectData.weddingTimelineUrl && (
-                    <Typography variant="caption" color="primary" display="block">
-                      URL: {projectData.weddingTimelineUrl}
-                    </Typography>
-                  )}
-                </Box>
-              ) : (
-                <Box>
-                  <Typography variant="body2" sx={{ mb: 1 }}>
-                    Tidslinje er opprettet, men ikke delt til kunde.
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    onClick={() => {
-                      setProjectData(prev => ({ ...prev, weddingTimelineShared: true }));
-                      showSuccessToast(`Tidslinje delt til ${projectData.clientEmail || 'kunde'}`);
-                    }}
-                  >
-                    Del med kunde ({projectData.clientEmail || '—'})
-                  </Button>
-                </Box>
-              )
-            ) : (
-              <Box>
-                <Typography variant="body2" sx={{ mb: 1, color: 'rgba(255,255,255,0.95)', fontWeight: 500 }}>
-                  Ingen bryllupstidslinje. Opprett i Wedding Timeline Administration.
-                </Typography>
-                <Stack direction="row" spacing={1}>
-                  <Button
-                    variant="outlined"
-                    onClick={() => {
-                      setProjectData(prev => ({ ...prev, createWeddingTimeline: true }));
-                      showInfoToast('Bryllupstidslinje markert for opprettelse');
-                    }}
-                  >
-                    Marker for opprettelse
-                  </Button>
-                  <Button
-                    variant="contained"
-                    onClick={() => {
-                      try {
-                        communication.sendMessage({
-                          from: 'project-creation',
-                          to: 'all',
-                          type: 'navigate:wedding-timeline',
-                          data: {
-                            projectName: projectData.projectName,
-                            clientEmail: projectData.clientEmail,
-                            eventDate: projectData.eventDate,
-                            eventDates: projectData.eventDates,
-                            location: projectData.location,
-                            guestCount: projectData.guestCount,
-                          },
-                          priority: 'medium'
-                        });
-                      } catch (commErr) {
-                        console.debug('Communication message skipped:', commErr);
-                      }
-                      showInfoToast('Åpner Wedding Timeline Admin (via dashboard)');
-                    }}
-                  >
-                    Åpne Wedding Timeline Admin
-                  </Button>
-                </Stack>
-              </Box>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Wedding Timeline Status — flyttet til etter Prosjekttype (vises kun for wedding) */}
 
       {/* Event Timeline (for non-wedding events) */}
       {projectData.projectType === 'event' && (
@@ -3497,9 +3451,9 @@ useEffect(() => {
           mt: 3, 
           mb: 3,
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           transition: 'box-shadow 0.2s ease-in-out',
           '&:hover': {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -3514,7 +3468,7 @@ useEffect(() => {
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: 1,
-                color: theming.colors.primary,
+                color: ws.accent,
                 mb: 2
               }}
             >
@@ -3562,16 +3516,16 @@ useEffect(() => {
           mt: 3, 
           mb: 3,
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           transition: 'box-shadow 0.2s ease-in-out',
           '&:hover': {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
           }
         }}>
         <CardContent>
-          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700, color: '#1565c0', fontSize: '1rem' }}>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700, color: ws.accent, fontSize: '1rem' }}>
             Kontakt & Prosjekt-info
           </Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
@@ -3585,12 +3539,39 @@ useEffect(() => {
                   Draft ID: {sessionId}
                 </Typography>
               )}
-              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
-                Gjester: {projectData.guestCount || '-'}
-              </Typography>
-              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
-                Dato: {projectData.eventDate || '-'}
-              </Typography>
+              {projectData.projectType === 'wedding' && (
+                <TextField
+                  label="Gjester"
+                  value={projectData.guestCount}
+                  onChange={(e) => setProjectData(prev => ({ ...prev, guestCount: e.target.value }))}
+                  size="small"
+                  type="number"
+                  placeholder="Antall gjester"
+                  sx={{ mt: 1, mr: 1.5, width: 140 }}
+                />
+              )}
+              {/* Prosjektnavn — Helsesjekkens viktigste krav; fantes ikke som
+                  felt i modalen før (kun prefill via initialData). */}
+              <TextField
+                label="Prosjektnavn"
+                value={projectData.projectName}
+                onChange={(e) => setProjectData(prev => ({ ...prev, projectName: e.target.value }))}
+                size="small"
+                placeholder="f.eks. Høstkampanje 2026"
+                required
+                sx={{ mt: 1, mr: 1.5, width: 260, display: 'block' }}
+              />
+              {/* Native datovelger — dato lagres på prosjektet og vises i
+                  WorkspaceShell-headeren + prosjektkortet (sync med workspace). */}
+              <TextField
+                label="Dato"
+                type="date"
+                value={projectData.eventDate}
+                onChange={(e) => setProjectData(prev => ({ ...prev, eventDate: e.target.value }))}
+                size="small"
+                InputLabelProps={{ shrink: true }}
+                sx={{ mt: 1, mr: 1.5, width: 170 }}
+              />
               {projectData.eventDates && Object.keys(projectData.eventDates).length > 0 && (
                 <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                   Datoer: {Object.keys(projectData.eventDates)
@@ -3599,9 +3580,14 @@ useEffect(() => {
                     .join(', ')}
                 </Typography>
               )}
-              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
-                Lokasjon: {projectData.location || '-'}
-              </Typography>
+              <TextField
+                label="Lokasjon"
+                value={projectData.location}
+                onChange={(e) => setProjectData(prev => ({ ...prev, location: e.target.value }))}
+                size="small"
+                placeholder="Sted/adresse"
+                sx={{ mt: 1, width: 220 }}
+              />
               <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Prosjekttype: {projectData.projectType || '-'}
               </Typography>
@@ -3637,7 +3623,7 @@ useEffect(() => {
           border: '1px solid rgba(21, 101, 192, 0.2)',
           background: 'linear-gradient(135deg, rgba(21, 101, 192, 0.08) 0%, rgba(21, 101, 192, 0.04) 100%)'
         }}>
-          <Typography variant="subtitle2" gutterBottom fontWeight={700} sx={{ color: '#1565c0' }}>
+          <Typography variant="subtitle2" gutterBottom fontWeight={700} sx={{ color: ws.accent }}>
             Forhåndsutfylt fra innsending:
           </Typography>
           <Stack spacing={1}>
@@ -3684,8 +3670,8 @@ useEffect(() => {
         }}
       >
         <DialogTitle sx={{ 
-          background: '#1565c0', 
-          color: 'white', 
+          background: ws.accent, 
+          color: ws.accentContrast, 
           fontWeight: 700,
           fontSize: '1.25rem',
           display: 'flex',
@@ -3712,14 +3698,14 @@ useEffect(() => {
           <Button 
             variant="outlined"
             onClick={() => { setConnectDialogOpen(false); setAskedConnectEvent(true); setConnectToEvent(false); }}
-            sx={{ borderColor: '#1565c0', color: '#1565c0' }}
+            sx={{ borderColor: ws.accent, color: ws.accent }}
           >
             Nei
           </Button>
           <Button 
             variant="contained" 
             onClick={() => { setConnectDialogOpen(false); setAskedConnectEvent(true); setConnectToEvent(true); }}
-            sx={{ bgcolor: '#1565c0', '&:hover': { bgcolor: '#0d47a1' } }}
+            sx={{ bgcolor: ws.accent, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}
           >
             Ja, koble
           </Button>
@@ -3728,7 +3714,7 @@ useEffect(() => {
 
       {/* Video Editor Integration Button */}
       {canOpenVideoEditor && (
-        <Card sx={{ mt: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+        <Card sx={{ mt: 3, background: ws.panelSolid, border: `1px solid ${ws.accentBorder}`, color: ws.text }}>
           <CardContent>
             <Stack direction="row" spacing={2} alignItems="center">
               <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', width: 56, height: 56 }}>
@@ -3754,7 +3740,7 @@ useEffect(() => {
                 onClick={handleOpenVideoEditor}
                 sx={{
                   bgcolor: 'white',
-                  color: '#667eea',
+                  color: ws.accent,
                   fontWeight: 600,
                   px: 3, '&:hover': {
                     bgcolor: 'rgba(255,255,255,0.9)'
@@ -3811,7 +3797,7 @@ useEffect(() => {
 
       {/* Virtual Studio Integration Button (Photographers only, non-wedding projects) */}
       {canOpenVirtualStudio && (
-        <Card sx={{ mt: 3, background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
+        <Card sx={{ mt: 3, background: ws.panelSolid, border: `1px solid ${ws.accentBorder}`, color: ws.text }}>
           <CardContent>
             <Stack direction="row" spacing={2} alignItems="center">
               <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', width: 56, height: 56 }}>
@@ -3837,7 +3823,7 @@ useEffect(() => {
                 onClick={handleOpenVirtualStudio}
                 sx={{
                   bgcolor: 'white',
-                  color: '#f5576c',
+                  color: ws.accent,
                   fontWeight: 600,
                   px: 3, '&:hover': {
                     bgcolor: 'rgba(255,255,255,0.9)'
@@ -3984,9 +3970,9 @@ useEffect(() => {
           mt: 3, 
           mb: 3,
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           transition: 'box-shadow 0.2s ease-in-out',
           '&:hover': {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -4001,14 +3987,14 @@ useEffect(() => {
               display: 'flex', 
               alignItems: 'center', 
               gap: 1,
-              color: theming.colors.primary,
+              color: ws.accent,
               mb: 2
             }}
           >
             <Assignment sx={{ fontSize: 28 }} /> Prosjekttype
           </Typography>
           <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 600, '&.Mui-focused': { color: '#1565c0' } }}>Velg prosjekttype</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 600, '&.Mui-focused': { color: ws.accent } }}>Velg prosjekttype</InputLabel>
             <Select
               value={projectData.projectType || ''}
               onChange={(e) => {
@@ -4027,9 +4013,9 @@ useEffect(() => {
               }}
               label="Velg prosjekttype"
               sx={{
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: '#1565c0', borderWidth: 1.5 },
-                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#0d47a1' },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#1565c0', borderWidth: 2 },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: ws.accent, borderWidth: 1.5 },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: ws.accentHover },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: ws.accent, borderWidth: 2 },
                 '& .MuiSelect-select': { color: 'rgba(255,255,255,0.95)', fontWeight: 500 }
               }}
               MenuProps={{
@@ -4038,8 +4024,8 @@ useEffect(() => {
                     bgcolor: '#2c2c2c',
                     '& .MuiMenuItem-root': {
                       color: 'white',
-                      '&:hover': { bgcolor: '#1565c0' },
-                      '&.Mui-selected': { bgcolor: '#1565c0', '&:hover': { bgcolor: '#0d47a1' } }
+                      '&:hover': { bgcolor: ws.accent },
+                      '&.Mui-selected': { bgcolor: ws.accent, '&:hover': { bgcolor: ws.accentHover } }
                     }
                   }
                 }
@@ -4088,11 +4074,11 @@ useEffect(() => {
             sx={{ 
               py: 1.5, 
               fontWeight: 600,
-              borderColor: theming.colors.primary,
-              color: theming.colors.primary,
+              borderColor: ws.accent,
+              color: ws.accent,
               '&:hover': {
-                backgroundColor: `${theming.colors.primary}08`,
-                borderColor: theming.colors.primary
+                backgroundColor: `${ws.accentSoft}`,
+                borderColor: ws.accent
               }
             }}
           >
@@ -4116,9 +4102,9 @@ useEffect(() => {
         <Box sx={{ 
           mt: 4, 
           p: 2.5, 
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           borderRadius: 3, 
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)'
         }}>
           <FormControlLabel
@@ -4129,7 +4115,7 @@ useEffect(() => {
             variant="contained"
             disabled={!connectToEvent}
             onClick={handleOpenEventManagementClick}
-            sx={{ mt: 1, bgcolor: '#1565c0', '&:hover': { bgcolor: '#0d47a1' } }}
+            sx={{ mt: 1, bgcolor: ws.accent, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}
           >
             Åpne Event Management
           </Button>
@@ -4142,9 +4128,9 @@ useEffect(() => {
           mt: 3, 
           mb: 3,
           borderRadius: 3,
-          border: '1px solid #e0e0e0',
+          border: '1px solid rgba(255,255,255,0.12)',
           boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-          background: '#fafbfc',
+          background: 'rgba(20,22,30,0.92)',
           transition: 'box-shadow 0.2s ease-in-out',
           '&:hover': {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
@@ -4159,11 +4145,11 @@ useEffect(() => {
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: 1,
-                color: theming.colors.primary,
+                color: ws.accent,
                 mb: 2
               }}
             >
-              <AccountBalance sx={{ color: theming.colors.primary }} />
+              <AccountBalance sx={{ color: ws.accent }} />
               Split Sheet Setup
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -4193,110 +4179,195 @@ useEffect(() => {
         </Card>
       )}
 
+      {/* Wedding Timeline Status — etter Prosjekttype (vises kun for wedding) */}
+      {projectData.projectType === 'wedding' && (
+        <Card sx={{
+          mt: 0,
+          mb: 3,
+          borderRadius: 3,
+          border: '1px solid rgba(255,255,255,0.12)',
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+          background: 'rgba(20,22,30,0.92)',
+          transition: 'box-shadow 0.2s ease-in-out',
+          '&:hover': {
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
+          }
+        }}>
+          <CardContent>
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                color: ws.accent,
+                mb: 2
+              }}
+            >
+              <Favorite sx={{ fontSize: 28, color: '#e91e63' }} /> Bryllupstidslinje
+            </Typography>
+            {projectData.createWeddingTimeline ? (
+              projectData.weddingTimelineShared ? (
+                <Box>
+                  <Typography variant="body2">
+                    Tidslinje delt til {projectData.clientEmail || 'kunde'}
+                  </Typography>
+                  {projectData.weddingTimelineUrl && (
+                    <Typography variant="caption" color="primary" display="block">
+                      URL: {projectData.weddingTimelineUrl}
+                    </Typography>
+                  )}
+                </Box>
+              ) : (
+                <Box>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    Tidslinje er opprettet, men ikke delt til kunde.
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    onClick={() => {
+                      setProjectData(prev => ({ ...prev, weddingTimelineShared: true }));
+                      showSuccessToast(`Tidslinje delt til ${projectData.clientEmail || 'kunde'}`);
+                    }}
+                  >
+                    Del med kunde ({projectData.clientEmail || '—'})
+                  </Button>
+                </Box>
+              )
+            ) : (
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1, color: 'rgba(255,255,255,0.95)', fontWeight: 500 }}>
+                  Ingen bryllupstidslinje. Opprett i Wedding Timeline Administration.
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      setProjectData(prev => ({ ...prev, createWeddingTimeline: true }));
+                      showInfoToast('Bryllupstidslinje markert for opprettelse');
+                    }}
+                  >
+                    Marker for opprettelse
+                  </Button>
+                  <Button
+                    variant="contained"
+                    onClick={() => {
+                      try {
+                        communication.sendMessage({
+                          from: 'project-creation',
+                          to: 'all',
+                          type: 'navigate:wedding-timeline',
+                          data: {
+                            projectName: projectData.projectName,
+                            clientEmail: projectData.clientEmail,
+                            eventDate: projectData.eventDate,
+                            eventDates: projectData.eventDates,
+                            location: projectData.location,
+                            guestCount: projectData.guestCount,
+                          },
+                          priority: 'medium'
+                        });
+                      } catch (commErr) {
+                        console.debug('Communication message skipped:', commErr);
+                      }
+                      showInfoToast('Åpner Wedding Timeline Admin (via dashboard)');
+                    }}
+                  >
+                    Åpne Wedding Timeline Admin
+                  </Button>
+                </Stack>
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* ==========================================
-         PROJECT MANAGEMENT TOOLBAR
+         HANDLINGSRAD — forenklet for forbruker: én tydelig primærhandling,
+         utkast-status, og power-verktøy bak «Flere verktøy»-menyen.
+         (Dupliser/Arkiver/Slett/Publiser vises kun for eksisterende prosjekt;
+         cache/synk/optimaliser/samarbeid er systemverktøy og er tatt ut av UI.)
          ========================================== */}
-      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
-            <Settings sx={{ fontSize: 28 }} /> Prosjektverktøy
-          </Typography>
-          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
-            <Tooltip title="Lagre utkast">
-              <Badge badgeContent={hasUnsavedChanges ? '!' : 0} color="warning">
-                <Button variant="outlined" size="small" startIcon={<Save />} onClick={handleSaveDraft} disabled={!hasUnsavedChanges}>
-                  Lagre utkast
-                </Button>
-              </Badge>
-            </Tooltip>
-            <Tooltip title="Dupliser prosjekt">
-              <Button variant="outlined" size="small" startIcon={<Restore />} onClick={handleDuplicateProject} disabled={!currentProject?.id}>
-                Dupliser
-              </Button>
-            </Tooltip>
-            <Tooltip title="Arkiver prosjekt">
-              <Button variant="outlined" size="small" startIcon={<Drafts />} onClick={handleArchiveProject} disabled={!currentProject?.id}>
-                Arkiver
-              </Button>
-            </Tooltip>
-            <Tooltip title="Slett prosjekt">
-              <Button variant="outlined" size="small" color="error" startIcon={<Delete />} onClick={handleDeleteProject} disabled={!currentProject?.id}>
-                Slett
-              </Button>
-            </Tooltip>
-            <Tooltip title="Publiser prosjekt">
-              <Button variant="contained" size="small" startIcon={<Publish />} onClick={handlePublishProject} disabled={!currentProject?.id || draftMode === 'published'}>
-                Publiser
-              </Button>
-            </Tooltip>
-            <Tooltip title="Forhåndsvisning">
-              <IconButton size="small" onClick={handleTogglePreview}>
-                {showPreview ? <VisibilityOff /> : <Visibility />}
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Versjonhistorikk">
-              <IconButton size="small" onClick={() => { setShowVersionHistory(true); setShowHistoryDialog(true); }}>
-                <History />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Sammenlign versjoner">
-              <IconButton size="small" onClick={() => setShowComparisonDialog(true)}>
-                <Compare />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Utkast-panel">
-              <IconButton size="small" onClick={() => setDraftSidebarOpen(true)}>
-                <ChevronRight />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Helsesjekk">
-              <IconButton size="small" onClick={() => setShowHealthCheck(true)}>
-                <CheckCircle color={healthCheckPassed ? 'success' : 'action'} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Importer lead">
-              <IconButton size="small" onClick={() => setShowLeadImport(true)}>
-                <PersonAdd />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Oppdater cache">
-              <IconButton size="small" onClick={handleRefreshProjectCache}>
-                <Refresh />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Synk frakoblet">
-              <IconButton size="small" onClick={handleSyncOffline}>
-                <CloudDone />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Optimaliser data">
-              <IconButton size="small" onClick={handleOptimizeProject}>
-                <CloudUpload />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Samarbeidsøkt">
-              <IconButton size="small" onClick={handleCreateCollabSession}>
-                <Groups />
-              </IconButton>
-            </Tooltip>
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(20,22,30,0.92)' }}>
+        <CardContent sx={{ py: 2 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', sm: 'center' }}>
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<CheckCircle />}
+              onClick={() => setShowHealthCheck(true)}
+              disabled={isCreating || !!currentProject?.id}
+              sx={{ bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 700, textTransform: 'none', px: 3, '&:hover': { bgcolor: ws.accentHover } }}
+            >
+              {currentProject?.id ? 'Prosjekt opprettet' : 'Opprett prosjekt'}
+            </Button>
+            <Button variant="outlined" size="small" startIcon={<Save />} onClick={handleSaveDraft} disabled={!hasUnsavedChanges}
+              sx={{ textTransform: 'none' }}>
+              {hasUnsavedChanges ? 'Lagre utkast' : 'Utkast lagret'}
+            </Button>
+            <Box sx={{ flex: 1 }} />
+            {publishedProject && (
+              <Chip icon={<CloudDone />} label="Publisert" size="small" color="success" />
+            )}
+            {traditionsInfo && (
+              <Chip icon={<Info />} label={`Tradisjon: ${traditionsInfo.displayName}`} size="small" />
+            )}
+            <Button variant="text" size="small" endIcon={<MoreVert />} onClick={(e) => setToolsMenuAnchor(e.currentTarget)}
+              sx={{ color: ws.textDim, textTransform: 'none' }}>
+              Flere verktøy
+            </Button>
+            <Menu anchorEl={toolsMenuAnchor} open={!!toolsMenuAnchor} onClose={() => setToolsMenuAnchor(null)}>
+              <MenuItem onClick={() => { setToolsMenuAnchor(null); handleTogglePreview(); }}>
+                {showPreview ? <VisibilityOff fontSize="small" style={{ marginRight: 10 }} /> : <Visibility fontSize="small" style={{ marginRight: 10 }} />}
+                Forhåndsvisning
+              </MenuItem>
+              <MenuItem onClick={() => { setToolsMenuAnchor(null); setShowVersionHistory(true); setShowHistoryDialog(true); }}>
+                <History fontSize="small" style={{ marginRight: 10 }} /> Versjonshistorikk
+              </MenuItem>
+              <MenuItem onClick={() => { setToolsMenuAnchor(null); setShowComparisonDialog(true); }}>
+                <Compare fontSize="small" style={{ marginRight: 10 }} /> Sammenlign versjoner
+              </MenuItem>
+              <MenuItem onClick={() => { setToolsMenuAnchor(null); setDraftSidebarOpen(true); }}>
+                <ChevronRight fontSize="small" style={{ marginRight: 10 }} /> Utkast-panel
+              </MenuItem>
+              <MenuItem onClick={() => { setToolsMenuAnchor(null); setShowLeadImport(true); }}>
+                <PersonAdd fontSize="small" style={{ marginRight: 10 }} /> Importer lead
+              </MenuItem>
+              {currentProject?.id && <Divider />}
+              {currentProject?.id && (
+                <MenuItem onClick={() => { setToolsMenuAnchor(null); handlePublishProject(); }} disabled={draftMode === 'published'}>
+                  <Publish fontSize="small" style={{ marginRight: 10 }} /> Publiser
+                </MenuItem>
+              )}
+              {currentProject?.id && (
+                <MenuItem onClick={() => { setToolsMenuAnchor(null); handleDuplicateProject(); }}>
+                  <Restore fontSize="small" style={{ marginRight: 10 }} /> Dupliser
+                </MenuItem>
+              )}
+              {currentProject?.id && (
+                <MenuItem onClick={() => { setToolsMenuAnchor(null); handleArchiveProject(); }}>
+                  <Drafts fontSize="small" style={{ marginRight: 10 }} /> Arkiver
+                </MenuItem>
+              )}
+              {currentProject?.id && (
+                <MenuItem onClick={() => { setToolsMenuAnchor(null); handleDeleteProject(); }} sx={{ color: '#fda4af' }}>
+                  <Delete fontSize="small" style={{ marginRight: 10 }} /> Slett
+                </MenuItem>
+              )}
+            </Menu>
           </Stack>
           {isCreating && <LinearProgress sx={{ mt: 2, borderRadius: 1 }} />}
-          {projectTypesLoading && <CircularProgress size={20} sx={{ ml: 1 }} />}
-          {publishedProject && (
-            <Chip icon={<CloudDone />} label={`Publisert: ${publishedProject.projectName || 'Prosjekt'}`} size="small" color="success" sx={{ mt: 1 }} />
-          )}
-          {traditionsInfo && (
-            <Chip icon={<Info />} label={`Tradisjon: ${traditionsInfo.displayName}`} size="small" sx={{ mt: 1, ml: 1 }} />
-          )}
         </CardContent>
       </Card>
 
       {/* ==========================================
          PROJECT PHASE STEPPER
          ========================================== */}
-      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 2 }}>
             <Timeline sx={{ fontSize: 28 }} /> Prosjektfaser
           </Typography>
           <Stepper activeStep={activeStep} orientation="vertical">
@@ -4334,9 +4405,9 @@ useEffect(() => {
       {/* ==========================================
          LOCATION INTELLIGENCE
          ========================================== */}
-      <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid #e0e0e0', '&:before': { display: 'none' } }}>
+      <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', '&:before': { display: 'none' } }}>
         <AccordionSummary expandIcon={<ExpandMore />}>
-          <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent }}>
             <LocationOn sx={{ fontSize: 28 }} /> Lokasjonsintelligens
           </Typography>
         </AccordionSummary>
@@ -4397,16 +4468,75 @@ useEffect(() => {
       {/* ==========================================
          SHOT LIST MANAGER
          ========================================== */}
-      <Collapse in={projectData.projectType === 'wedding' || projectData.projectType === 'event' || projectData.projectType === 'portrait'}>
-        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+      {/* ==========================================
+         CAMERA DETECTION SECTION (før Shot List — velg utstyr først)
+         Skjult for musikkprodusent (kamera/DaVinci er foto/video-spesifikt).
+         ========================================== */}
+      {!isMusicProducer && projectData.projectType !== 'music' && (
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 2 }}>
+            <Videocam sx={{ fontSize: 28 }} /> Kamera & Utstyr
+          </Typography>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+            {/* Forslagsliste fra foto- + video-kameradatabasene (fritekst
+                fortsatt mulig via freeSolo — LOG-deteksjonen kjører uansett). */}
+            <Autocomplete
+              freeSolo
+              fullWidth
+              options={cameraNameOptions}
+              value={projectData.primaryCamera || ''}
+              onInputChange={(_e, val) => {
+                setProjectData(prev => ({ ...prev, primaryCamera: val }));
+                detectCameraInfo(val);
+              }}
+              renderInput={(params) => (
+                <TextField {...params} label="Hovedkamera" size="small" placeholder="Velg eller skriv — f.eks. Sony A7S III" />
+              )}
+            />
+            <Autocomplete
+              freeSolo
+              fullWidth
+              options={cameraNameOptions}
+              value={projectData.backupCamera || ''}
+              onInputChange={(_e, val) => setProjectData(prev => ({ ...prev, backupCamera: val }))}
+              renderInput={(params) => (
+                <TextField {...params} label="Backup-kamera" size="small" placeholder="Velg eller skriv" />
+              )}
+            />
+          </Stack>
+          {projectData.detectedLogFormats?.length > 0 && (
+            <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+              <Storage fontSize="small" color="primary" />
+              <Typography variant="body2">LOG formater: {projectData.detectedLogFormats?.join(', ')}</Typography>
+            </Stack>
+          )}
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<Movie />}
+            onClick={openDavinciScriptManager}
+            sx={{ mt: 2 }}
+            disabled={!projectData.davinciIntegrationEnabled}
+          >
+            Åpne DaVinci Script Manager
+          </Button>
+        </CardContent>
+      </Card>
+      )}
+
+      <Collapse in={!!projectData.projectType && !isMusicProducer && projectData.projectType !== 'music'}>
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 2 }}>
               <CameraAlt sx={{ fontSize: 28 }} /> Shot List & Minnekort
             </Typography>
             <ShotListManager
               projectType={projectData.projectType}
               culture={projectData.weddingCulture}
               totalDays={projectData.totalDays}
+              shots={projectData.shotList as unknown as any}
+              onShotCreate={(shot: any) => setProjectData(prev => ({ ...prev, shotList: [...prev.shotList, shot] }))}
               onShotUpdate={(shot: ShotListItem) => setProjectData(prev => ({ ...prev, shotList: prev.shotList.map((s) => s.id === shot.id ? shot : s) }))}
               onShotDelete={(shotId: string) => setProjectData(prev => ({ ...prev, shotList: prev.shotList.filter((s) => s.id !== shotId) }))}
             />
@@ -4415,18 +4545,30 @@ useEffect(() => {
               <MemoryCardIcon letter="A" type="SD" capacity="64GB" size="small" /> Minnekort-konfigurasjon
             </Typography>
             <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-              {Object.keys(LABELING_SCHEMES).map(scheme => (
-                <Chip
-                  key={scheme}
-                  label={scheme}
-                  size="small"
-                  variant={memoryCardLabeling === scheme ? 'filled' : 'outlined'}
-                  onClick={() => handleLabelingChange(scheme as LabelingKey)}
-                  icon={<Memory />}
-                />
-              ))}
+              {Object.keys(LABELING_SCHEMES).map(scheme => {
+                const active = memoryCardLabeling === scheme;
+                return (
+                  <Chip
+                    key={scheme}
+                    label={scheme}
+                    size="small"
+                    variant={active ? 'filled' : 'outlined'}
+                    onClick={() => handleLabelingChange(scheme as LabelingKey)}
+                    icon={<Memory />}
+                    sx={{
+                      fontWeight: 600,
+                      color: active ? '#0b0c10' : '#f6f2ea',
+                      bgcolor: active ? ws.accent : 'rgba(255,255,255,0.06)',
+                      borderColor: 'rgba(255,255,255,0.35)',
+                      '& .MuiChip-icon': { color: active ? '#0b0c10' : ws.accent },
+                      '&:hover': { bgcolor: active ? ws.accent : 'rgba(255,255,255,0.12)' },
+                    }}
+                  />
+                );
+              })}
             </Stack>
             <MemoryCardSelector
+              projectType={projectData.projectType}
               profession={memoryCardProfession}
               onCardsSelected={(cards) => {
                 const mapped: SelectedMemoryCard[] = cards.map(c => ({ type: 'SD', capacity: c.capacity, count: c.count, estimatedPhotos: c.estimatedPhotos.raw + c.estimatedPhotos.craw }));
@@ -4434,6 +4576,38 @@ useEffect(() => {
               }}
             />
             <Box sx={{ mt: 2 }}>
+              {/* Kameravelger — EKTE kilde for anbefalingsmotoren:
+                  CAMERA_MEMORY_CARD_COMPATIBILITY (slots + kort-kompatibilitet
+                  per kamera). Uten valgte kameraer har motoren ingen input. */}
+              <Autocomplete
+                multiple
+                options={CAMERA_MEMORY_CARD_COMPATIBILITY}
+                getOptionLabel={(o) => `${o.cameraBrand} ${o.cameraModel}`}
+                isOptionEqualToValue={(o, v) => o.cameraId === v.cameraId}
+                value={CAMERA_MEMORY_CARD_COMPATIBILITY.filter((c) =>
+                  (projectData.selectedCameras || []).some((sel: any) => sel.id === c.cameraId),
+                )}
+                onChange={(_e, val) => {
+                  setProjectData(prev => ({
+                    ...prev,
+                    selectedCameras: val.map((c) => ({
+                      id: c.cameraId,
+                      name: `${c.cameraBrand} ${c.cameraModel}`,
+                      brand: c.cameraBrand,
+                      model: c.cameraModel,
+                    })),
+                  }));
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Kameraer for prosjektet"
+                    placeholder="Velg kameraer — gir ekte minnekort-anbefalinger"
+                    size="small"
+                  />
+                )}
+                sx={{ mb: 2 }}
+              />
               <EnhancedMemoryCardSelector
                 selectedCameras={projectData.selectedCameras || []}
                 projectType={projectData.projectType}
@@ -4455,49 +4629,29 @@ useEffect(() => {
       </Collapse>
 
       {/* ==========================================
-         CAMERA DETECTION SECTION
+         BACKUP-STRATEGI: Creatorhub One (alltid synlig — forklarer hvorfor)
          ========================================== */}
-      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
-            <Videocam sx={{ fontSize: 28 }} /> Kamera & Utstyr
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 1 }}>
+            <img src="/creatorhub-one-logo.svg" alt="Creatorhub One" style={{ width: 30, height: 30, objectFit: 'contain' }} /> Backup-strategi: Creatorhub One
           </Typography>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-            <TextField
-              label="Hovedkamera"
-              value={projectData.primaryCamera}
-              onChange={(e) => {
-                setProjectData(prev => ({ ...prev, primaryCamera: e.target.value }));
-                detectCameraInfo(e.target.value);
-              }}
-              size="small"
-              fullWidth
-              placeholder="f.eks. Sony A7S III"
-            />
-            <TextField
-              label="Backup-kamera"
-              value={projectData.backupCamera}
-              onChange={(e) => setProjectData(prev => ({ ...prev, backupCamera: e.target.value }))}
-              size="small"
-              fullWidth
-            />
-          </Stack>
-          {projectData.detectedLogFormats?.length > 0 && (
-            <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
-              <Storage fontSize="small" color="primary" />
-              <Typography variant="body2">LOG formater: {projectData.detectedLogFormats?.join(', ')}</Typography>
-            </Stack>
-          )}
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<Movie />}
-            onClick={openDavinciScriptManager}
-            sx={{ mt: 2 }}
-            disabled={!projectData.davinciIntegrationEnabled}
-          >
-            Åpne DaVinci Script Manager
-          </Button>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Creatorhub One er desktop-appen (Mac) som tar offsite-backup direkte fra minnekortene
+            under opptaket — til din egen Backblaze B2, ende-til-ende-verifisert (xxHash64). Vi ser
+            aldri filene. Dette sikrer råmaterialet mot kortfeil og tyveri allerede på sett, før noe
+            er redigert eller levert til kunde.
+          </Typography>
+          <OneDeskDownloadCard />
+          <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Typography variant="body2" color="text.secondary">
+              iPad Capture-app — backup og monitorering rett fra settet.
+            </Typography>
+            <Chip size="small" label="Kommer snart (TestFlight)" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#f6f2ea', fontWeight: 600 }} />
+            <Button size="small" variant="outlined" onClick={() => setCaptureBetaOpen(true)}>
+              Ønsker du å teste? Meld deg på
+            </Button>
+          </Box>
         </CardContent>
       </Card>
 
@@ -4505,9 +4659,9 @@ useEffect(() => {
          OFFSITE BACKUP (B2)
          ========================================== */}
       {currentProject?.id && (
-        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 1 }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 1 }}>
               Ekstern backup (offsite)
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -4521,6 +4675,12 @@ useEffect(() => {
                 showSuccessToast?.('Offsite-backup aktivert — den nye destinasjonen vises i One Desk neste gang du starter en backup.', 5000);
               }}
             />
+            {/* Hyr inn eksternt redigeringsteam for dette prosjektet (#6) */}
+            <ExternalEditingOption
+              projectId={String(currentProject.id)}
+              projectTitle={projectData.projectName || String(currentProject.id)}
+              locale="no"
+            />
             <Box sx={{ mt: 2 }}>
               <Button
                 variant="contained"
@@ -4528,7 +4688,7 @@ useEffect(() => {
                 onClick={() => setDeliverDialogOpen(true)}
                 sx={{ borderRadius: 2 }}
               >
-                📤 Lever til klient fra arkiv
+                Lever til klient fra arkiv
               </Button>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                 Velg filer som er backup'et til Backblaze og send som tilgangs-galleri. Klienten ser filene direkte fra B2 via Cloudflare-cache (ingen ekstra lagring eller egress-kost).
@@ -4557,9 +4717,9 @@ useEffect(() => {
          PROJECT COLLABORATORS
          ========================================== */}
       {currentProject?.id && (
-        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 2 }}>
               <Groups sx={{ fontSize: 28 }} /> Samarbeidspartnere
             </Typography>
             <ProjectCollaborators
@@ -4583,9 +4743,9 @@ useEffect(() => {
       {/* ==========================================
          WORKLOG & CULTURAL PLANNING
          ========================================== */}
-      <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid #e0e0e0', '&:before': { display: 'none' } }}>
+      <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', '&:before': { display: 'none' } }}>
         <AccordionSummary expandIcon={<ExpandMore />}>
-          <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent }}>
             <AccessTime sx={{ fontSize: 28 }} /> Arbeidstid & Planlegging
           </Typography>
         </AccordionSummary>
@@ -4645,8 +4805,8 @@ useEffect(() => {
          PROJECT PREVIEW PANEL
          ========================================== */}
       <Collapse in={showPreview}>
-        <Paper sx={{ mt: 3, p: 3, borderRadius: 3, border: '1px solid #e0e0e0', background: '#f8f9fa' }}>
-          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+        <Paper sx={{ mt: 3, p: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(20,22,30,0.92)' }}>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent }}>
             <Visibility sx={{ fontSize: 28 }} /> Prosjekt-forhåndsvisning
           </Typography>
           <Divider sx={{ my: 1.5 }} />
@@ -4684,6 +4844,9 @@ useEffect(() => {
          DIALOGS: Health Check, Cultural Day, Worklog Tips, Lead Import, Version History, Script Manager, Comparison
          ========================================== */}
       
+      {/* iPad Capture beta-påmelding */}
+      <CaptureBetaSignupDialog open={captureBetaOpen} onClose={() => setCaptureBetaOpen(false)} />
+
       {/* Health Check Dialog */}
       <Dialog open={showHealthCheck} onClose={() => setShowHealthCheck(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -4925,9 +5088,9 @@ useEffect(() => {
 
       {/* Cultural day buttons for wedding projects */}
       {projectData.projectType === 'wedding' && projectData.weddingCulture !== 'norsk' && (
-        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 2 }}>
               <Info sx={{ fontSize: 28 }} /> Kulturelle seremonidager
             </Typography>
             <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 0.5 }}>
@@ -4958,7 +5121,7 @@ useEffect(() => {
       />
 
       {/* Create Project Button */}
-      <Card sx={{ mt: 3, background: `linear-gradient(135deg, ${theming.colors.primary}15 0%, ${theming.colors.primary}05 100%)` }}>
+      <Card sx={{ mt: 3, background: `linear-gradient(135deg, ${ws.accent}15 0%, ${ws.accent}05 100%)` }}>
         <CardContent>
           <Stack direction="row" spacing={2} justifyContent="flex-end" alignItems="center">
             <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
@@ -4991,7 +5154,7 @@ useEffect(() => {
                 }
               }}
               sx={{
-                bgcolor: theming.colors.primary,
+                bgcolor: ws.accent,
                 color: 'white',
                 px: 4,
                 py: 2,
@@ -4999,12 +5162,12 @@ useEffect(() => {
                 fontSize: '1.05rem',
                 textTransform: 'none',
                 borderRadius: 1.5,
-                boxShadow: `0 4px 12px ${theming.colors.primary}40`,
+                boxShadow: `0 4px 12px ${ws.accent}40`,
                 '&:hover': {
-                  bgcolor: theming.colors.primary,
+                  bgcolor: ws.accent,
                   opacity: 0.9,
                   transform: 'translateY(-2px)',
-                  boxShadow: `0 6px 16px ${theming.colors.primary}50`
+                  boxShadow: `0 6px 16px ${ws.accent}50`
                 },
                 '&:disabled': {
                   bgcolor: 'action.disabledBackground',
@@ -5069,8 +5232,8 @@ useEffect(() => {
                 }
               }}
               sx={{
-                color: theming.colors.primary,
-                borderColor: theming.colors.primary,
+                color: ws.accent,
+                borderColor: ws.accent,
                 px: 3,
                 py: 2,
                 fontWeight: 600,
@@ -5084,5 +5247,6 @@ useEffect(() => {
         </CardContent>
       </Card>
     </Box>
+    </ThemeProvider>
   );
 };

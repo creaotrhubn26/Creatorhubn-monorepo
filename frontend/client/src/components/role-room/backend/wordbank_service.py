@@ -9,11 +9,8 @@ from psycopg2.extras import RealDictCursor, Json
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-# Database connection string from environment
-DATABASE_URL_RAW = os.getenv(
-    'DATABASE_URL',
-    'postgresql://neondb_owner:npg_vgy4STuQ8Mja@ep-soft-pond-ag9vm5a4-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
-)
+# Database connection string must be supplied by the runtime environment.
+DATABASE_URL_RAW = os.getenv('DATABASE_URL', '')
 # Clean up DATABASE_URL
 DATABASE_URL = DATABASE_URL_RAW.strip()
 if DATABASE_URL.startswith('psql '):
@@ -26,6 +23,8 @@ elif DATABASE_URL.startswith('"') and DATABASE_URL.endswith('"'):
 
 def get_db_connection():
     """Get database connection"""
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL must be set in the environment")
     return psycopg2.connect(DATABASE_URL)
 
 

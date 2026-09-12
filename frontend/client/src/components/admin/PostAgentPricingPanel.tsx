@@ -10,11 +10,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
-  Chip,
-  CircularProgress,
   Snackbar,
   Stack,
   TextField,
@@ -26,6 +23,7 @@ import {
   Refresh as RefreshIcon,
   Save as SaveIcon,
 } from '@mui/icons-material';
+import { AdminCard, AdminButton, StatusChip, AdminLoading, adminTokens } from './design-system';
 
 interface StripePrice {
   id: string;
@@ -112,6 +110,7 @@ export function PostAgentPricingPanel({ theming, priceManagementSurfaceSx }: Pro
         return;
       }
       const json = (await res.json()) as StripeProductSnapshot;
+      if (!Array.isArray(json.prices)) json.prices = [];
       setData(json);
       // Sync local form-state from server
       const monthlyPrice = json.prices.find((p) => p.recurring?.interval === 'month' && p.active);
@@ -170,11 +169,7 @@ export function PostAgentPricingPanel({ theming, priceManagementSurfaceSx }: Pro
         <code>theroleroom.com/billing/post-agent</code>. AI-forbruk (Claude API-kall) faktureres separat.
       </Alert>
 
-      {loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress />
-        </Box>
-      )}
+      {loading && <AdminLoading />}
 
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
@@ -188,13 +183,12 @@ export function PostAgentPricingPanel({ theming, priceManagementSurfaceSx }: Pro
             <Grid size={{ xs: 12, md: 8 }}>
               <Card sx={priceManagementSurfaceSx}>
                 <CardContent>
-                  <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
-                    <MoneyIcon sx={{ mr: 1 }} />
+                  <Typography variant="h6" component="h2" sx={{ mb: 2, display: 'flex', alignItems: 'center', flexWrap: 'wrap', color: theming.colors.primary }}>
+                    <MoneyIcon aria-hidden sx={{ mr: 1 }} />
                     Base-priser (eks. MVA)
-                    <Chip
+                    <StatusChip
                       label={data.mode.toUpperCase()}
-                      size="small"
-                      color={data.mode === 'live' ? 'success' : 'warning'}
+                      tone={data.mode === 'live' ? 'success' : 'warning'}
                       sx={{ ml: 2 }}
                     />
                   </Typography>
@@ -232,33 +226,30 @@ export function PostAgentPricingPanel({ theming, priceManagementSurfaceSx }: Pro
                   />
 
                   <Stack direction="row" spacing={1.5} sx={{ mt: 2 }}>
-                    <Button
-                      variant="contained"
+                    <AdminButton
+                      tone="primary"
+                      loading={saving}
                       startIcon={<SaveIcon />}
                       onClick={handleSave}
                       disabled={saving || !data.product}
                     >
                       {saving ? 'Lagrer…' : 'Lagre i Stripe'}
-                    </Button>
-                    <Button
-                      variant="outlined"
+                    </AdminButton>
+                    <AdminButton
+                      tone="secondary"
                       startIcon={<RefreshIcon />}
                       onClick={load}
                       disabled={loading}
                     >
                       Last på nytt
-                    </Button>
+                    </AdminButton>
                   </Stack>
                 </CardContent>
               </Card>
             </Grid>
 
             <Grid size={{ xs: 12, md: 4 }}>
-              <Card sx={priceManagementSurfaceSx}>
-                <CardContent>
-                  <Typography variant="h6" sx={{ mb: 2 }}>
-                    Aktive abonnementer
-                  </Typography>
+              <AdminCard title="Aktive abonnementer" sx={priceManagementSurfaceSx}>
                   {data.usageMetrics ? (
                     <>
                       <Typography variant="h3" sx={{ fontWeight: 700, color: theming.colors.primary }}>
@@ -279,16 +270,11 @@ export function PostAgentPricingPanel({ theming, priceManagementSurfaceSx }: Pro
                       Statistikk ikke tilgjengelig.
                     </Typography>
                   )}
-                </CardContent>
-              </Card>
+              </AdminCard>
             </Grid>
           </Grid>
 
-          <Card sx={priceManagementSurfaceSx}>
-            <CardContent>
-              <Typography variant="h6" sx={{ mb: 2 }}>
-                Stripe konfigurasjon
-              </Typography>
+          <AdminCard title="Stripe konfigurasjon" sx={priceManagementSurfaceSx}>
               <Stack spacing={1.5}>
                 <Box>
                   <Typography variant="caption" color="text.secondary">Product ID</Typography>
@@ -311,16 +297,15 @@ export function PostAgentPricingPanel({ theming, priceManagementSurfaceSx }: Pro
                 <Box sx={{ mt: 1 }}>
                   <Typography variant="caption" color="text.secondary">Aktive priser i Stripe ({data.prices.length})</Typography>
                   {data.prices.map((p) => (
-                    <Box key={p.id} sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 0.5 }}>
+                    <Box key={p.id} sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', mt: 0.5 }}>
                       <code style={{ fontSize: 11 }}>{p.id}</code>
-                      <Chip label={`${(p.unit_amount ?? 0) / 100} ${p.currency.toUpperCase()}/${p.recurring?.interval}`} size="small" />
-                      {!p.active && <Chip label="archived" size="small" color="default" />}
+                      <StatusChip tone="neutral" label={`${(p.unit_amount ?? 0) / 100} ${p.currency.toUpperCase()}/${p.recurring?.interval}`} />
+                      {!p.active && <StatusChip tone="neutral" label="archived" />}
                     </Box>
                   ))}
                 </Box>
               </Stack>
-            </CardContent>
-          </Card>
+          </AdminCard>
         </>
       )}
 

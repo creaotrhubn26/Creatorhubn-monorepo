@@ -1,0 +1,3 @@
+-- 0319_testflight_testers_and_nda.sql
+-- TestFlight-tester-flyt: legg til, send NDA+intent, graduate.
+-- Body satt via psql; denne filen er for sporbarhet.

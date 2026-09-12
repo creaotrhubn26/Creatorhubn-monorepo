@@ -13,7 +13,10 @@
 
 import { test, expect } from '@playwright/test';
 
-const BACKEND_URL = process.env.E2E_BACKEND_URL ?? 'https://creatorhub-backend-rtbl.onrender.com';
+// Default = lokal backend. Denne suiten SKRIVER (seed-all oppretter prosjekter)
+// — prod-default var kilden til E2E-søppel i prod-databasen. Sett
+// E2E_BACKEND_URL eksplisitt hvis du bevisst vil teste mot et annet miljø.
+const BACKEND_URL = process.env.E2E_BACKEND_URL ?? 'http://localhost:3003';
 
 test.describe('Troll-demo seed mot prod', () => {
   let seededProjectId = '';

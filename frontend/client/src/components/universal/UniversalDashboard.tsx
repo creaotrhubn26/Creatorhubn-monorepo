@@ -12,7 +12,7 @@ const PrintOrdersModal = React.lazy(() => import('@/components/photographer/Prin
 const PhotographerEquipment = React.lazy(() => import('@/pages/photographer-equipment'));
 const PhotographerSettings = React.lazy(() => import('@/pages/photographer-settings'));
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { apiRequest, queryClient } from '@/lib/queryClient';
+import { apiRequest, queryClient, getAuthHeader } from '@/lib/queryClient';
 import {
   getEvendiBookings,
   getEvendiAnalyticsSummary,
@@ -151,6 +151,10 @@ import {
   AdminPanelSettings,
   Close,
   VideoLibrary,
+  LocationOn as LocationOnIcon,
+  Star as StarIcon,
+  PhotoCamera as PhotoCameraIcon,
+  WarningAmber as WarningAmberIcon,
 } from '@mui/icons-material';
 
 // Import profession-specific components
@@ -178,6 +182,8 @@ import EvendiTimelineAdmin from '../wedding/WeddingTimelineAdmin';
 
 // Import Academy Dashboard
 import AcademyDashboard from '../academy/AcademyDashboardCinematic';
+// Import Academy instruktør-admin (full innholdsstyring) for mentor-fanen
+import AcademyInstructorAdminStudio from '../academy/AcademyInstructorAdminStudio';
 // Import Universal Showcase
 import UniversalShowcase from './UniversalShowcase';
 // Import CreatorHub Icons
@@ -208,6 +214,8 @@ import {
   PhotographerAdminWidgets,
   PhotographerOtherProjectsTimelineWidget,
 } from '../photographer/PhotographerTabWidgets';
+// Mitt B2-arkiv — kompakt status-widget. Klikkbar; ruter til settings#b2.
+import B2UsageWidget from '../dashboard/B2UsageWidget';
 
 // Import Timeline & Showcase components for universal access
 import ProjectTimeline from '../project/ProjectTimeline';
@@ -228,6 +236,10 @@ import WeddingTimelineChangesOverview from '../wedding/WeddingTimelineChangesOve
 
 // Import Client Activity Panel for dashboard integration
 import ClientActivityPanel from './showcase/ClientActivityPanel';
+
+// Import redigerings-marketplace discovery-panel (hyr eksternt redigeringsteam)
+import EditingVendorDiscoveryPanel from './editing-marketplace/EditingVendorDiscoveryPanel';
+import EditingVendorWorkspace from './editing-marketplace/EditingVendorWorkspace';
 
 // Import Story Arc Studio for Pro Editor Mode
 import StoryArcStudio from '../StoryArcStudio';
@@ -337,6 +349,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'academy', label: 'Academy', icon: <School /> },
       { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
+      { id: 'editing-studio', label: 'Redigeringsteam', icon: <Group /> },
       { id: 'file-upload', label: 'Filsystem', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'AI Forbedring', icon: <AutoFixHigh /> },
       { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
@@ -369,6 +382,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'academy', label: 'Academy', icon: <School /> },
       { id: 'wedding-timeline', label: 'Evendi', icon: <img src="/assets/Evendi_app_icon.png" alt="Evendi" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
+      { id: 'editing-studio', label: 'Redigeringsteam', icon: <Group /> },
       { id: 'file-upload', label: 'Filsystem', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'Video AI', icon: <MovieCreation /> },
       { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
@@ -819,10 +833,16 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   
   // Enhance with dynamic profession branding (auto-scalable)
   // This makes UniversalDashboard auto-scalable - new professions added via ProfessionTypeManager will automatically work
+  // Beregn profesjons-avledede verdier UTENFOR useMemo-en. Funksjonene fra
+  // useDynamicProfessions() er IKKE memoisert (ny identitet hver render). Lå de i
+  // config-deps re-beregnet config HVER render → config.tabs ny hver render →
+  // availableTabs ustabil → de 8 effektene (deps: availableTabs) kjørte hver
+  // render = kontinuerlig re-render («risting»). Verdiene her er stabile (strenger
+  // / ref fra professionConfigs-state), så config blir stabil.
+  const displayName = getProfessionDisplayName(profession);
+  const professionColor = getUserProfessionColor(profession);
+  const professionIcon = getProfessionIcon(profession);
   const config = useMemo(() => {
-    const displayName = getProfessionDisplayName(profession);
-    const professionColor = getUserProfessionColor(profession);
-    const professionIcon = getProfessionIcon(profession);
     const creatorPublishingProfessions = new Set(['admin', 'photographer', 'videographer', 'music_producer', 'enterprise']);
     const nextTabs = [...(baseConfig.tabs || [])].filter((tab) => tab.id !== 'showcase-publisher');
 
@@ -851,7 +871,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       icon: professionIcon || baseConfig.icon,
       tabs: nextTabs,
     };
-  }, [profession, baseConfig, getProfessionDisplayName, getUserProfessionColor, getProfessionIcon]);
+  }, [profession, baseConfig, displayName, professionColor, professionIcon]);
 
   // Fetch user session (public, minimal info)
   const { data: userSession } = useQuery({
@@ -1065,6 +1085,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         // installert betalt-modulen skal ikke se denne fanen.
         'wedding-timeline': evendiInstalled,
         'showcase-admin': true, // Always available
+        // Redigerings-marketplace: hyr eksternt redigeringsteam (foto/video)
+        'editing-studio': profession === 'photographer' || profession === 'videographer',
         'publishing': true,
         'showcase-viewer': true, // Available for professions without Showcase Admin tab
         'file-upload': true,
@@ -1086,33 +1108,40 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       };
 
       const hasAccess = featureMap[tab.id] !== false;
-      if (tab.id === 'administration') {
-        console.log('🔍 Administration tab check:', { tabId: tab.id, hasAccess, featureMapValue: featureMap[tab.id] });
-      }
       return hasAccess;
     });
-    
-    console.log('📋 Available tabs:', tabs.map(t => t.id));
-    console.log('📋 Config tabs:', config.tabs.map(t => t.id));
-    
-    // Track filtered tabs for analytics
-    const filteredTabIds = config.tabs
-      .filter(tab => !tabs.find(t => t.id === tab.id))
-      .map(tab => tab.id);
-    
-    if (universalDashboardAccess.hasAccess && filteredTabIds.length > 0) {
-      features.trackFeatureUsage('universal-dashboard','tabs-filtered', {
-        filteredTabs: filteredTabIds,
-        availableCount: tabs.length,
-        totalCount: config.tabs.length
-      });
-    }
-    
+
+    // VIKTIG: ingen side-effekter (analytics/console) i denne useMemo-en.
+    // `features.trackFeatureUsage(...)` ble tidligere kalt her under render, og
+    // siden `features` lå i deps re-beregnet memo-en HVER render → ny tabs-array
+    // hver render → de 8 effektene under (deps: availableTabs) kjørte hver render
+    // → kontinuerlig re-render («risting») + en GA `feature_used`-storm. Analytics
+    // ligger nå i en guardet useEffect under, og `features` er fjernet fra deps.
     return tabs;
   }, [config.tabs, projectsTabAccess.hasAccess, clientsTabAccess.hasAccess, equipmentTabAccess.hasAccess,
       showcaseTabAccess.hasAccess, settingsTabAccess.hasAccess, timelineTabAccess.hasAccess,
       photoEnhancementAccess.hasAccess, videoEnhancementAccess.hasAccess, audioEnhancementAccess.hasAccess,
-      profession, isAdmin, isMentor, features, roleRoomAccess.hasWorkspaceAccess, universalDashboardAccess.hasAccess]);
+      profession, isAdmin, isMentor, roleRoomAccess.hasWorkspaceAccess]);
+
+  // 'tabs-filtered'-analytics — fyres KUN når det filtrerte settet faktisk endrer
+  // seg (keyet på ID-ene), aldri per render. Flyttet ut av useMemo-en over.
+  const filteredTabIds = useMemo(
+    () => config.tabs.filter((tab) => !availableTabs.find((t) => t.id === tab.id)).map((tab) => tab.id),
+    [config.tabs, availableTabs],
+  );
+  const filteredTabsKey = filteredTabIds.join(',');
+  useEffect(() => {
+    if (universalDashboardAccess.hasAccess && filteredTabIds.length > 0) {
+      features.trackFeatureUsage('universal-dashboard', 'tabs-filtered', {
+        filteredTabs: filteredTabIds,
+        availableCount: availableTabs.length,
+        totalCount: config.tabs.length,
+      });
+    }
+    // `features` er et stabilt API fra context; bevisst utelatt fra deps så
+    // effekten ikke re-fyrer på identitets-churn (det ville gjeninnført stormen).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredTabsKey, universalDashboardAccess.hasAccess]);
 
   // Register this component in the integration system
   useEffect(() => {
@@ -1171,7 +1200,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     return () => {
       communication.unregisterComponent('universal-dashboard');
     };
-}, [communication, dataFlow]);
+    // KJØR KUN ÉN GANG (mount). Tidligere deps [communication, dataFlow] endret
+    // identitet hver render (context-verdiene er ikke memoisert), så denne
+    // effekten kjørte hver render → `trackFeatureUsage('opened')`-storm +
+    // 4 nye dataFlow-noder PER render (ubegrenset lekkasje). registerComponent/
+    // registerNode opererer på stabile refs/useCallbacks, så mount-once er korrekt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   // Listen to global events and update accordingly
   useEffect(() => {
@@ -1363,7 +1398,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     }, 1000); // Wait 1 second before saving to reduce API calls
 
     return () => clearTimeout(timeoutId);
-  }, [interfacePrefs, sessionId, savePreferencesMutation]);
+    // NOTE: savePreferencesMutation is intentionally NOT a dependency. The
+    // react-query mutation object gets a new identity on every status change
+    // (idle→pending→success), so including it made this effect re-run after
+    // each save, re-scheduling another save — a self-perpetuating ~1/s storm
+    // of PUT /api/user/interface-preferences that saturated the backend. The
+    // .mutate function reference is stable, so capturing it here is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interfacePrefs, sessionId]);
 
   const updateInterfacePref = (key: string, value: any) => {
     setInterfacePrefs((prev: any) => ({ ...prev, [key]: value }));
@@ -2224,7 +2266,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             left: 0,
             right: 0,
             height: '4px',
-            background: `linear-gradient(90deg, ${customBranding.color} 0%, #6366F1 50%, #10B981 100%)`,
+            background: `linear-gradient(90deg, ${customBranding.color} 0%, #ff8c00 50%, #ffb347 100%)`,
           }
         }}>
           <Typography variant="h6" sx={{ mb: 2.5, fontWeight: 700, color: 'text.primary', display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -2357,6 +2399,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const _userVendorType = vendorProfile?.vendorType || 'print';
   const shouldLoadEvendi = !!userId && userId !== 'guest' && profession === 'vendor';
 
+  // #15: utenlandsk redigeringsvendor → HELE dashboardet på engelsk = kun det
+  // engelske EditingVendorWorkspace (ingen norsk generisk vendor-chrome).
+  const { data: editingMe } = useQuery<{ isEditingVendor?: boolean; isForeign?: boolean }>({
+    queryKey: ['/api/editing/vendor/me'],
+    queryFn: () => apiRequest('/api/editing/vendor/me'),
+    enabled: profession === 'vendor',
+  });
+  const isEditingVendor = Boolean(editingMe?.isEditingVendor);
+
   // Fetch Evendi bookings & analytics (wired via evendi-api.ts)
   const { data: evendiBookings = [] } = useQuery<EvendiBooking[]>({
     queryKey: evendiQueryKeys.bookings(),
@@ -2477,7 +2528,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const { data: storyArcProjectsData, isLoading: _loadingStoryArc } = useQuery({
     queryKey: ['story-arc-projects', userId],
     queryFn: async () => {
-      const res = await fetch('/api/story-arc/projects', { credentials: 'include' });
+      const res = await fetch('/api/story-arc/projects', { credentials: 'include', headers: await getAuthHeader() });
       if (res.ok) {
         const data = await res.json();
         return data.success ? data.projects.slice(0, 5) : [];
@@ -2491,12 +2542,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const { data: allPhotoProjects, isLoading: _loadingPhoto } = useQuery({
     queryKey: ['all-wedding-projects', userId],
     queryFn: async () => {
-      const res = await fetch('/api/wedding-projects', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        return data.success ? data.projects.slice(0, 5) : [];
+      // Bruker apiRequest istedet for fetch slik at session-token vedlegges
+      // som Authorization-header. Backend leser ikke cookies for auth.
+      try {
+        const data = await apiRequest('/api/wedding-projects');
+        return data?.success ? data.projects.slice(0, 5) : [];
+      } catch {
+        return [];
       }
-      return [];
     },
     enabled: !!userId && userId !== 'guest' && (profession === 'photographer' || profession === 'admin'),
   });
@@ -2801,7 +2854,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       openStoryArcStudioPage();
       return;
     }
-    setTabValue(newValue);
+    // #426-vakt: flere faner (fotograf-projects/clients/profitability/equipment/
+    // settings) er React.lazy. Synkron setTabValue fra <MuiTabs onChange> lar den
+    // nye lazy-fanen suspende midt i en synkron input-oppdatering → React #426.
+    // Per-fane ErrorBoundary (TabPanel) fanger krasjen, men brukeren ser da et
+    // «Noe gikk galt»-blaff. startTransition markerer byttet som ikke-hastende så
+    // Suspense-fallbacken vises jevnt i stedet.
+    React.startTransition(() => setTabValue(newValue));
 }, [availableTabs, openStoryArcStudioPage, setTabValue]);
 
   // Optimized event handlers
@@ -3048,7 +3107,22 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   // (matcher landing direkte); videograf rød, musikkprodusent blå,
   // vendor grønn, enterprise lilla. Alle på samme dark navy base så
   // CreatorHub-identitet er konsistent men hver fag har egen "lyd".
-  const professionAccent = customBranding.color || '#ffba6c';
+  const professionAccent = customBranding.color || '#ff8c00';
+
+  // Redigeringsvendors (foto/video) ser KUN redigerings-arbeidsområdet
+  // (Partner-dashboard + oppdrag/compliance/katalog/chat) — ALDRI den generiske
+  // plugin-/produkt-vendor-chromen. Workspace self-lokaliserer (norsk/engelsk
+  // ut fra vendorens land), så utenlandske får engelsk ved default.
+  if (isEditingVendor) {
+    return (
+      <Box sx={{ minHeight: '100vh', background: '#05060a', color: '#f6f2ea', py: { xs: 2, md: 4 }, px: { xs: 1, sm: 2 } }}>
+        <Box sx={{ maxWidth: 1100, mx: 'auto' }}>
+          <EditingVendorWorkspace userId={userId} />
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box
       sx={{
@@ -3166,9 +3240,17 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         role="main"
         aria-label="Dashboard hovedinnhold"
       >
+        {/* Redigeringsvendor-arbeidsområde — vises øverst for vendors (self-gating
+            til vendor_type='editing'; self-lokaliserer til engelsk for utenlandske). */}
+        {profession === 'vendor' && (
+          <Box sx={{ mb: 3 }}>
+            <EditingVendorWorkspace userId={userId} />
+          </Box>
+        )}
+
         {/* Admin Indicator - only shown when admin is logged in */}
         {isAdmin && (
-          <AdminIndicator 
+          <AdminIndicator
             userEmail={userEmail}
             profession={profession}
             variant="full"
@@ -3244,9 +3326,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           // prosjekt-detalj med ProjectTimeline + next-steps,
                           // så hun ser hva som er auto-generert og hva som
                           // gjenstår frem til leveranse.
-                          if (profession === 'photographer' && projectId) {
+                          if ((profession === 'photographer' || profession === 'videographer') && projectId) {
                             queryClient.invalidateQueries({ queryKey: ['/api/photographer/projects'] });
-                            setLocation(`/photographer/projects/${projectId}?created=1`);
+                            // Åpne det nye Team Workspacet — hjemmet for prosjektet
+                            // wizarden nettopp lagde (shot-list, capture, type → tidslinje).
+                            setLocation(`/workspace/${projectId}`);
                           }
                         }}
                       />
@@ -3498,9 +3582,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           PaperProps={{
             sx: {
               borderRadius: '24px',
-              background: 'radial-gradient(circle at top, rgba(255,186,108,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
+              background: 'radial-gradient(circle at top, rgba(255,140,0,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
               color: '#fff5e8',
-              border: '1px solid rgba(255,186,108,0.18)',
+              border: '1px solid rgba(255,140,0,0.18)',
               boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
               maxHeight: '92vh',
             }
@@ -3510,19 +3594,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             px: 3,
             pt: 3,
             pb: 2,
-            background: 'linear-gradient(135deg, rgba(255,186,108,0.16), rgba(255,186,108,0.02))',
-            borderBottom: '1px solid rgba(255,186,108,0.18)',
+            background: 'linear-gradient(135deg, rgba(255,140,0,0.16), rgba(255,140,0,0.02))',
+            borderBottom: '1px solid rgba(255,140,0,0.18)',
             display: 'flex',
             alignItems: 'center',
             gap: 2,
             justifyContent: 'space-between',
           }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <Avatar sx={{ bgcolor: 'rgba(255,186,108,0.18)', color: '#ffba6c' }}>
+              <Avatar sx={{ bgcolor: 'rgba(255,140,0,0.18)', color: '#ff8c00' }}>
                 <AccountBalance />
               </Avatar>
               <Box>
-                <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.18em' }}>
+                <Typography variant="overline" sx={{ color: '#ff8c00', letterSpacing: '0.18em' }}>
                   Split Sheets
                 </Typography>
                 <Typography variant="h5" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontWeight: 700 }}>
@@ -3538,7 +3622,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   borderRadius: '999px',
                   px: 2.5,
                   py: 1,
-                  bgcolor: '#ffba6c',
+                  bgcolor: '#ff8c00',
                   color: '#150d05',
                   fontWeight: 700,
                   textTransform: 'none',
@@ -3562,8 +3646,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   py: 1,
                   textTransform: 'none',
                   color: '#fff5e8',
-                  borderColor: 'rgba(255,186,108,0.32)',
-                  '&:hover': { borderColor: '#ffba6c', bgcolor: 'rgba(255,186,108,0.08)' },
+                  borderColor: 'rgba(255,140,0,0.32)',
+                  '&:hover': { borderColor: '#ff8c00', bgcolor: 'rgba(255,140,0,0.08)' },
                 }}
               >
                 Admin
@@ -3589,9 +3673,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   color: 'rgba(246,242,234,0.62)',
                   minHeight: 40,
                   py: 0.5,
-                  '&.Mui-selected': { color: '#ffba6c' },
+                  '&.Mui-selected': { color: '#ff8c00' },
                 },
-                '& .MuiTabs-indicator': { backgroundColor: '#ffba6c', height: 3, borderRadius: 2 },
+                '& .MuiTabs-indicator': { backgroundColor: '#ff8c00', height: 3, borderRadius: 2 },
               }}
             >
               <Tab value="stats" label="Statistikk & honorar" />
@@ -3632,8 +3716,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       borderRadius: '999px', px: 2, py: 0.75,
                       textTransform: 'none',
                       color: '#fff5e8',
-                      borderColor: 'rgba(255,186,108,0.32)',
-                      '&:hover': { borderColor: '#ffba6c', bgcolor: 'rgba(255,186,108,0.08)' },
+                      borderColor: 'rgba(255,140,0,0.32)',
+                      '&:hover': { borderColor: '#ff8c00', bgcolor: 'rgba(255,140,0,0.08)' },
                     }}
                   >
                     Kjør onboarding på nytt
@@ -3756,12 +3840,44 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             >
               GÅ TIL ACADEMY
             </Button>
-            
+
+            {/* Mentor/instruktør → Academy-administrasjon (instruktør-hub). Samme
+                tilgang som Academy-fanen (isMentor || enterprise). */}
+            {(isMentor || profession === 'enterprise') && (
+              <Button
+                variant="outlined"
+                startIcon={<Settings />}
+                onClick={() => {
+                  const i = availableTabs.findIndex((tab) => tab.id === 'academy');
+                  if (i !== -1) setTabValue(i);
+                }}
+                sx={{
+                  color: customBranding.color,
+                  borderColor: alpha(customBranding.color, 0.45),
+                  px: 4,
+                  py: 1.5,
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  borderRadius: 3,
+                  textTransform: 'none',
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                  '&:hover': {
+                    borderColor: customBranding.color,
+                    background: alpha(customBranding.color, 0.10),
+                    transform: 'translateY(-3px)',
+                  },
+                  '&:active': { transform: 'translateY(-1px)' },
+                }}
+              >
+                Administrer Academy
+              </Button>
+            )}
+
             <Button variant="contained"
               startIcon={<Collections />}
               onClick={() => setShowShowcase(true)}
               sx={{ 
-                background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)',
+                background: 'linear-gradient(135deg, #ff8c00 0%, #e67e00 100%)',
                 color: 'white',
                 px: 4,
                 py: 1.5,
@@ -3771,7 +3887,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 boxShadow: '0 4px 20px rgba(99, 102, 241, 0.35)',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 '&:hover': { 
-                  background: 'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)',
+                  background: 'linear-gradient(135deg, #e67e00 0%, #ff8c00 100%)',
                   transform: 'translateY(-3px)',
                   boxShadow: '0 8px 30px rgba(99, 102, 241, 0.45)',
                 },
@@ -3830,7 +3946,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 left: 0,
                 right: 0,
                 height: '4px',
-                background: `linear-gradient(90deg, ${customBranding.color} 0%, ${customBranding.color}80 50%, #6366F1 100%)`,
+                background: `linear-gradient(90deg, ${customBranding.color} 0%, ${customBranding.color}80 50%, #ff8c00 100%)`,
               },
               '&:hover': {
                 boxShadow: '0 16px 48px rgba(0, 0, 0, 0.12)',
@@ -4444,7 +4560,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 left: 0,
                 right: 0,
                 height: '3px',
-                background: `linear-gradient(90deg, #6366F1 0%, #818CF8 100%)`,
+                background: `linear-gradient(90deg, #ff8c00 0%, #ffb347 100%)`,
                 opacity: 0,
                 transition: 'opacity 0.3s ease',
               },
@@ -4466,7 +4582,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     p: { xs: 1, sm: 1.5 },
                     borderRadius: 3,
                     bgcolor: 'rgba(99, 102, 241, 0.12)',
-                    color: '#6366F1',
+                    color: '#ff8c00',
                     minWidth: 'fit-content',
                     display: 'flex',
                     alignItems: 'center',
@@ -4845,9 +4961,6 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 allowScrollButtonsMobile
                 sx={{
                   minHeight: 56,
-                  '& .MuiTabs-indicator': {
-                    bgcolor: professionAccent,
-                  },
                   '& .MuiTab-root': {
                     fontWeight: 600,
                     fontSize: { xs: '0.75rem', sm: '0.85rem', md: '0.9rem' },
@@ -5045,6 +5158,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     </IconButton>
                   </DialogTitle>
                   <DialogContent dividers sx={{ p: 0 }}>
+                    <ErrorBoundary componentName="dashboard-quick-modal">
                     <Suspense fallback={
                       <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
                         <CircularProgress />
@@ -5056,18 +5170,29 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       {quickModal === 'equipment' && <PhotographerEquipment />}
                       {quickModal === 'settings' && <PhotographerSettings />}
                     </Suspense>
+                    </ErrorBoundary>
                   </DialogContent>
                 </Dialog>
 
                 {/* Dedikert print-orders-modal (samme mønster som klient-modal): maxWidth="lg", dark-bg */}
+                <ErrorBoundary componentName="dashboard-print-orders-modal">
                 <Suspense fallback={null}>
                   <PrintOrdersModal
                     open={quickModal === 'print-orders'}
                     onClose={() => setQuickModal(null)}
                   />
                 </Suspense>
+                </ErrorBoundary>
               </Box>
             )}
+
+            {/* Mitt B2-arkiv — kompakt status (filer / størrelse / Backblaze-kost).
+                Klikkbar; navigerer til /photographer/settings#b2 hvor UserB2Panel
+                rendrer. Vises i overview-tab for alle brukere som har en B2-konto
+                eller får CTA hvis ikke. */}
+            <Box sx={{ mb: { xs: 3, md: 4 } }}>
+              <B2UsageWidget />
+            </Box>
 
             {/* Slice 9X.72 — Customer Inquiry & Email Center — dark theme */}
             <Box sx={{
@@ -5266,7 +5391,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     left: 0,
                     right: 0,
                     height: '4px',
-                    background: 'linear-gradient(90deg, #6366F1 0%, #10B981 50%, #F59E0B 100%)',
+                    background: 'linear-gradient(90deg, #ff8c00 0%, #ffb347 50%, #F59E0B 100%)',
                   }
                 }}>
                   <MuiCardContent sx={{ pt: 3 }}>
@@ -5281,9 +5406,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                         <WbSunny sx={{ color: '#F59E0B' }} />
                         Lokasjonsintelligens
                         {detectedLocation && (
-                          <Chip 
-                            label={locationPermissionDenied ? '📍 Oslo (standard)' : '📍 Din posisjon'} 
-                            size="small" 
+                          <Chip
+                            icon={<LocationOnIcon sx={{ fontSize: 14 }} />}
+                            label={locationPermissionDenied ? 'Oslo (standard)' : 'Din posisjon'}
+                            size="small"
                             sx={{ 
                               ml: 1,
                               bgcolor: locationPermissionDenied ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)',
@@ -5318,7 +5444,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                               '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.2)' }
                             }}
                           >
-                            <LocationOn sx={{ fontSize: '1.2rem', color: '#6366F1' }} />
+                            <LocationOn sx={{ fontSize: '1.2rem', color: '#ff8c00' }} />
                           </IconButton>
                         </Tooltip>
                       )}
@@ -5334,11 +5460,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           border: '1px solid rgba(99, 102, 241, 0.1)',
                           height: '100%'
                         }}>
-                          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, color: '#6366F1', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, color: '#ff8c00', display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <WbCloudy sx={{ fontSize: '1.1rem' }} />
                             Værmelding
                           </Typography>
-                          <Typography variant="h4" sx={{ color: '#6366F1', fontWeight: 700 }}>
+                          <Typography variant="h4" sx={{ color: '#ff8c00', fontWeight: 700 }}>
                             {locationIntelligence.weatherData.temperature}°C
                           </Typography>
                           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -5808,12 +5934,21 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               )}
               
               {profession === 'vendor' && projectsTabValue === 3 && (
-                <VendorProductManager 
+                <VendorProductManager
                   userId={userId}
                 />
               )}
-              
-              {projectsTabValue === 0 && (
+
+              {/* Leverandør: standard-fanen viser PRODUKTER, ikke fotograf-shoot-
+                  prosjekter. Shoot-prosjektmodalen (minnekort/kamera/bryllup) er
+                  ikke relevant for en leverandør. */}
+              {profession === 'vendor' && projectsTabValue === 0 && (
+                <VendorProductManager
+                  userId={userId}
+                />
+              )}
+
+              {projectsTabValue === 0 && profession !== 'vendor' && (
               <>
               
               <Grid2 container spacing={{ xs: 2, md: 3 }}>
@@ -6284,7 +6419,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'team-management')}>
               <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                  <Box component="img" src="/norwed.png" alt="Norwedfilm" sx={{ width: 48, height: 48, borderRadius: 2, objectFit: 'contain', bgcolor: '#f5f5f5', p: 0.5 }} />
+                  <Box component="img" src="/norwed.png" alt="Norwedfilm" sx={{ width: 48, height: 48, borderRadius: 2, objectFit: 'contain', bgcolor: 'rgba(255,255,255,0.92)', p: 0.5 }} />
                   <Box>
                     <Typography variant="h5" sx={{ fontWeight: 700, color: '#6c3483' }}>Teamadministrasjon</Typography>
                     <Typography variant="body2" color="text.secondary">Administrer teammedlemmer, roller og tilganger</Typography>
@@ -6501,6 +6636,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               </TabPanel>
 
+              {/* Tab: Redigeringsteam (ekstern redigerings-marketplace) */}
+              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'editing-studio')}>
+                <Box sx={{ p: { xs: 1, md: 2 } }}>
+                  <EditingVendorDiscoveryPanel locale="no" busyCount={Array.isArray(projects) ? projects.length : 0} />
+                </Box>
+              </TabPanel>
+
               {/* Tab 4b: Publishing */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'publishing')}>
                 <YouTubeIntegration
@@ -6626,12 +6768,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       sx={{
                         p: { xs: 1.25, md: 2 },
                         borderRadius: 4,
-                        border: `1px solid ${alpha(customBranding.color, 0.08)}`,
-                        backgroundColor: alpha('#ffffff', 0.96),
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        bgcolor: 'rgba(15,23,42,0.94)',
+                        backdropFilter: 'blur(8px)',
+                        color: '#fff',
                         boxShadow: `0 18px 42px ${alpha('#0f172a', 0.06)}`,
                       }}
                     >
-                      <UniversalCRMDashboard 
+                      <UniversalCRMDashboard
                         profession={profession}
                         onCustomerSelect={(customer) => {
                           setUniversalSelectedClient(customer as any);
@@ -6646,17 +6790,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       elevation={0}
                       sx={{
                         borderRadius: 4,
-                        border: `1px solid ${alpha(customBranding.color, 0.08)}`,
-                        backgroundColor: alpha('#ffffff', 0.96),
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        bgcolor: 'rgba(15,23,42,0.94)',
+                        backdropFilter: 'blur(8px)',
+                        color: '#fff',
                         boxShadow: `0 18px 42px ${alpha('#0f172a', 0.06)}`,
                       }}
                     >
                       <MuiCardContent>
-                        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
+                        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', color: '#fff' }}>
                           <AttachMoney sx={{ mr: 1, fontSize: 28, color: customBranding.color }} />
                           Prisadministrasjon
                         </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                        <Typography variant="body2" sx={{ mb: 3, color: 'rgba(255,255,255,0.7)' }}>
                           Administrer alle dine priser, pakker og tilbud på ett sted.
                         </Typography>
                         <PriceAdministration 
@@ -6677,18 +6823,20 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       elevation={0}
                       sx={{
                         borderRadius: 4,
-                        border: `1px solid ${alpha(customBranding.color, 0.08)}`,
-                        backgroundColor: alpha('#ffffff', 0.96),
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        bgcolor: 'rgba(15,23,42,0.94)',
+                        backdropFilter: 'blur(8px)',
+                        color: '#fff',
                         boxShadow: `0 18px 42px ${alpha('#0f172a', 0.06)}`,
                         height: 'fit-content',
                       }}
                     >
                       <MuiCardContent>
-                        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
+                        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', color: '#fff' }}>
                           <Event sx={{ mr: 1, fontSize: 28, color: customBranding.color }} />
                           Google Workspace Møter
                         </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        <Typography variant="body2" sx={{ mb: 2, color: 'rgba(255,255,255,0.7)' }}>
                           Administrer møter og del showcase-linker direkte med kunder.
                         </Typography>
                         <GoogleWorkspaceMeetingManager 
@@ -6727,6 +6875,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'support')}>
                 <HelpdeskSystem profession={profession} userId={userId} dashboardFeatures={[]} />
               </TabPanel>
+
+              {/* Academy — full instruktør-administrasjon (innholdsstyring: kurs,
+                  læreplan, leksjoner, quiz, kull, analyse, inntekt) rett i fanen.
+                  Fanen er allerede gated til mentor/enterprise i availableTabs. */}
+              {availableTabs.some((tab) => tab.id === 'academy') && (
+                <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'academy')}>
+                  <AcademyInstructorAdminStudio />
+                </TabPanel>
+              )}
 
               {/* Tab 15: Innstillinger */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'settings')}>
@@ -7027,7 +7184,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                         </Box>
                       </Grid2>
                       <Grid2 size={{ xs: 12, lg: 4 }}>
-                        <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 2, mb: 3 }}>
+                        <Box sx={{
+                          p: 2,
+                          bgcolor: 'rgba(7, 10, 16, 0.6)',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: '10px',
+                          mb: 3,
+                          color: '#edf0f7',
+                        }}>
                           <GoogleWorkspaceStorageInfo userId={userId} />
                         </Box>
                         
@@ -7382,9 +7546,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           
                           {/* Featured App: NextRole by CreatorHub */}
                           <Box sx={{ mb: 3 }}>
-                            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, color: theming.colors.primary }}>
-                              ⭐ Featured App
-                            </Typography>
+                            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
+                              <StarIcon sx={{ color: theming.colors.primary, fontSize: 18 }} />
+                              <Typography variant="subtitle1" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                                Anbefalt app
+                              </Typography>
+                            </Stack>
                             <CreatorHubMarketplace 
                               profession={profession}
                               userId={userId}
@@ -7473,7 +7640,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                             </Typography>
                             <Grid2 container spacing={2}>
                               <Grid2 size={{ xs: 12 }}>
-                                <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                                <Paper sx={{
+                                  p: 2,
+                                  bgcolor: 'rgba(7, 10, 16, 0.6)',
+                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  borderRadius: '10px',
+                                  color: '#edf0f7',
+                                }}>
                                   <Typography variant="subtitle2" gutterBottom>Tema</Typography>
                                   <Stack direction="row" spacing={1}>
                                     <Chip 
@@ -7498,7 +7671,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                                 </Paper>
                               </Grid2>
                               <Grid2 size={{ xs: 12 }}>
-                                <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                                <Paper sx={{
+                                  p: 2,
+                                  bgcolor: 'rgba(7, 10, 16, 0.6)',
+                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  borderRadius: '10px',
+                                  color: '#edf0f7',
+                                }}>
                                   <Typography variant="subtitle2" gutterBottom>Språk</Typography>
                                   <Stack direction="row" spacing={1}>
                                     <Chip 
@@ -7523,7 +7702,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                                 </Paper>
                               </Grid2>
                               <Grid2 size={{ xs: 12 }}>
-                                <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                                <Paper sx={{
+                                  p: 2,
+                                  bgcolor: 'rgba(7, 10, 16, 0.6)',
+                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  borderRadius: '10px',
+                                  color: '#edf0f7',
+                                }}>
                                   <Typography variant="subtitle2" gutterBottom>Skriftstørrelse</Typography>
                                   <Stack direction="row" spacing={1}>
                                     <Chip 
@@ -7796,8 +7981,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       />
 
       {/* Universal Project Creation Modal - Enhanced */}
-      <Dialog 
-        open={showProjectCreation || showProjectModal}
+      {/* Ikke for leverandører: dette er fotograf-shoot-modalen (minnekort/kamera). */}
+      <Dialog
+        open={(showProjectCreation || showProjectModal) && profession !== 'vendor'}
         onClose={(_event, _reason) => {
           setShowProjectCreation(false);
           setShowProjectModal(false);
@@ -7806,22 +7992,46 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         fullWidth
         PaperProps={{
           sx: {
-            bgcolor: 'background.default',
+            bgcolor: '#06080d',
             backgroundImage: 'none',
             borderRadius: 3,
             border: `2px solid ${customBranding.color}40`,
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)'
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.45)',
+            color: '#edf0f7',
+            // Dialogen er portalert utenfor dashboardets dark-tema-kaskade, så
+            // MUI-standard (hvite) Paper/Card/inputs i underkomponenter ble hvite.
+            // Kaskade dark-tema her dekker hele modal-innholdet (memory/pris/shot osv.).
+            '& .MuiPaper-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7' },
+            '& .MuiCard-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7', borderColor: `${customBranding.color}33`, borderRadius: 2.5, transition: 'border-color .2s ease, box-shadow .2s ease', '&:hover': { borderColor: `${customBranding.color}5c`, boxShadow: `0 4px 18px ${customBranding.color}1f` } },
+            '& .MuiAccordion-root': { backgroundImage: 'none', backgroundColor: 'rgba(20,22,30,0.92)', color: '#edf0f7' },
+            '& .MuiTypography-colorTextSecondary, & .MuiTypography-body2': { color: 'rgba(237,240,247,0.66)' },
+            '& .MuiOutlinedInput-root': { color: '#edf0f7', backgroundColor: 'rgba(255,255,255,0.04)', '& fieldset': { borderColor: `${customBranding.color}3d` }, '&:hover fieldset': { borderColor: `${customBranding.color}66` } },
+            '& .MuiInputLabel-root': { color: 'rgba(237,240,247,0.66)' },
+            '& .MuiInputBase-input': { color: '#edf0f7' },
+            '& .MuiSvgIcon-root': { color: 'rgba(237,240,247,0.8)' },
+            '& .MuiDivider-root': { borderColor: 'rgba(255,255,255,0.12)' },
       }
     }}
       >
-        <DialogTitle sx={{ 
-          textAlign: 'center', 
+        <DialogTitle sx={{
+          textAlign: 'center',
           pb: 1,
+          position: 'relative',
           background: `linear-gradient(135deg, ${customBranding.color}15 0%, ${customBranding.color}05 100%)`
     }}>
           <Typography variant="h5" component="div" sx={{ fontWeight: 600, color: theming.colors.primary }}>
             Opprett nytt prosjekt
           </Typography>
+          <IconButton
+            aria-label="Lukk"
+            onClick={() => {
+              setShowProjectCreation(false);
+              setShowProjectModal(false);
+            }}
+            sx={{ position: 'absolute', right: 8, top: 8, color: 'rgba(246,242,234,0.7)' }}
+          >
+            <Close />
+          </IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
           {(showProjectCreation || showProjectModal) && (
@@ -7865,7 +8075,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         PaperProps={{
           sx: {
             borderRadius: 0,
-            background: '#f5f5f0'
+            bgcolor: 'rgba(15,23,42,0.94)',
+            color: '#fff',
+            backdropFilter: 'blur(8px)',
           }
         }}
       >
@@ -8631,17 +8843,23 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               borderRadius: 2,
               border: '1px solid rgba(2, 4, 4, 67, 54, 0.3)'
             }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
-                📸 {selectedProject!.title || selectedProject!.name}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                <PhotoCameraIcon fontSize="small" />
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                  {selectedProject!.title || selectedProject!.name}
+                </Typography>
+              </Stack>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                 Klient: {selectedProject!.clientName || 'Ikke angitt'}
               </Typography>
             </Box>
           )}
-          <Typography variant="body2" color="error" sx={{ mt: 2, fontWeight: 600}}>
-            ⚠️ Dette kan ikke angres!
-          </Typography>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 2 }}>
+            <WarningAmberIcon color="error" fontSize="small" />
+            <Typography variant="body2" color="error" sx={{ fontWeight: 600 }}>
+              Dette kan ikke angres
+            </Typography>
+          </Stack>
         </DialogContent>
         <DialogActions>
           <Button 
@@ -8678,7 +8896,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         aria-labelledby="academy-overlay-title"
         PaperProps={{
           sx: {
-            bgcolor: 'background.default',
+            bgcolor: '#06080d',
+            color: '#edf0f7',
             zIndex: dashboardFullscreenZIndex,
           },
         }}
@@ -8713,7 +8932,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         aria-labelledby="showcase-overlay-title"
         PaperProps={{
           sx: {
-            bgcolor: 'background.default',
+            bgcolor: '#06080d',
+            color: '#edf0f7',
             zIndex: dashboardFullscreenZIndex,
           },
         }}
@@ -8763,9 +8983,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             maxHeight: '92vh',
             borderRadius: '24px',
             overflow: 'hidden',
-            background: 'radial-gradient(circle at top, rgba(255,186,108,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
+            background: 'radial-gradient(circle at top, rgba(255,140,0,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
             color: '#fff5e8',
-            border: '1px solid rgba(255,186,108,0.18)',
+            border: '1px solid rgba(255,140,0,0.18)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
           }
         }}
@@ -8777,15 +8997,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: 'linear-gradient(135deg, rgba(255,186,108,0.16), rgba(255,186,108,0.02))',
-          borderBottom: '1px solid rgba(255,186,108,0.18)',
+          background: 'linear-gradient(135deg, rgba(255,140,0,0.16), rgba(255,140,0,0.02))',
+          borderBottom: '1px solid rgba(255,140,0,0.18)',
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Avatar sx={{ bgcolor: 'rgba(255,186,108,0.18)', color: '#ffba6c' }}>
+            <Avatar sx={{ bgcolor: 'rgba(255,140,0,0.18)', color: '#ff8c00' }}>
               <Store />
             </Avatar>
             <Box>
-              <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.18em' }}>
+              <Typography variant="overline" sx={{ color: '#ff8c00', letterSpacing: '0.18em' }}>
                 Marketplace
               </Typography>
               <Typography component="div" variant="h5" sx={{ fontWeight: 700, fontFamily: '"Space Grotesk", sans-serif' }}>
@@ -8808,10 +9028,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 severity={marketplaceInstallNotice.severity}
                 sx={{
                   mb: 2,
-                  bgcolor: 'rgba(255,186,108,0.08)',
+                  bgcolor: 'rgba(255,140,0,0.08)',
                   color: '#fff5e8',
-                  border: '1px solid rgba(255,186,108,0.22)',
-                  '& .MuiAlert-icon': { color: '#ffba6c' },
+                  border: '1px solid rgba(255,140,0,0.22)',
+                  '& .MuiAlert-icon': { color: '#ff8c00' },
                 }}
               >
                 {marketplaceInstallNotice.message}

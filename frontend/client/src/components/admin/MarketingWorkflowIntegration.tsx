@@ -48,6 +48,7 @@ import {
   Schedule as ScheduleIcon,
 } from '@mui/icons-material';
 import EmailDesigner from '../EmailDesigner/EmailDesigner';
+import { AdminButton, adminTokens, useIsMobile } from './design-system';
 
 interface WorkflowIntegrationProps {
   open: boolean;
@@ -280,7 +281,7 @@ export default function MarketingWorkflowIntegration({
         // Content Type Selection
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h2" gutterBottom>
               Velg innholdstype
             </Typography>
             <Grid container spacing={2}>
@@ -310,11 +311,11 @@ export default function MarketingWorkflowIntegration({
                       cursor: 'pointer',
                       border: 2,
                       borderColor: 'divider', '&:hover': {
-                        borderColor: '#ff8c00',
+                        borderColor: adminTokens.color.brand,
                       }}}
                   >
                     <CardContent sx={{ textAlign: 'center' }}>
-                      <Box sx={{ color: '#ff8c00', mb: 2 }}>{item.icon}</Box>
+                      <Box sx={{ color: adminTokens.color.brand, mb: 2 }}>{item.icon}</Box>
                       <Typography variant="h6">{item.label}</Typography>
                       <Typography variant="body2" color="text.secondary">
                         {item.description}
@@ -331,7 +332,7 @@ export default function MarketingWorkflowIntegration({
         // Email Design
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h2" gutterBottom>
               Design e-postmal
             </Typography>
             <Alert severity="info" sx={{ mb: 3 }}>
@@ -365,14 +366,13 @@ export default function MarketingWorkflowIntegration({
                 </CardContent>
               </Card>
             ) : (
-              <Button
-                variant="contained"
+              <AdminButton
+                tone="primary"
                 startIcon={<EmailIcon />}
                 onClick={() => setEmailDesignerOpen(true)}
-                sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
               >
                 Åpne E-postdesigner
-              </Button>
+              </AdminButton>
             )}
 
             <Box mt={3}>
@@ -401,7 +401,7 @@ export default function MarketingWorkflowIntegration({
         // Announcement Details
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h2" gutterBottom>
               Kunngjøring Detaljer
             </Typography>
             <TextField
@@ -425,7 +425,7 @@ export default function MarketingWorkflowIntegration({
               sx={{ mb: 2 }}
             />
             <Grid container spacing={2}>
-              <Grid item xs={6}>
+              <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
                   <InputLabel>Kategori</InputLabel>
                   <Select
@@ -444,7 +444,7 @@ export default function MarketingWorkflowIntegration({
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={6}>
+              <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
                   <InputLabel>Viktighet</InputLabel>
                   <Select
@@ -468,7 +468,7 @@ export default function MarketingWorkflowIntegration({
         // Scheduling
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h2" gutterBottom>
               Planlegging
             </Typography>
             <FormControlLabel
@@ -486,7 +486,7 @@ export default function MarketingWorkflowIntegration({
 
             {!workflowData.publishImmediately && (
               <Grid container spacing={2}>
-                <Grid item xs={6}>
+                <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     type="date"
@@ -498,7 +498,7 @@ export default function MarketingWorkflowIntegration({
                     InputLabelProps={{ shrink: true }}
                   />
                 </Grid>
-                <Grid item xs={6}>
+                <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     type="time"
@@ -525,7 +525,7 @@ export default function MarketingWorkflowIntegration({
         // Marketing Automation
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h2" gutterBottom>
               Markedsføringsautomatisering
             </Typography>
             <FormControlLabel
@@ -551,7 +551,7 @@ export default function MarketingWorkflowIntegration({
                       setWorkflowData((prev) => ({ ...prev, workflowId: e.target.value }))
                     }
                   >
-                    {workflows?.data?.map((workflow: any) => (
+                    {(Array.isArray(workflows?.data) ? workflows.data : []).map((workflow: any) => (
                       <MenuItem key={workflow.id} value={workflow.id}>
                         {workflow.name} - {workflow.description}
                       </MenuItem>
@@ -581,7 +581,7 @@ export default function MarketingWorkflowIntegration({
                       </Box>
                     )}
                   >
-                    {segments?.data?.map((segment: any) => (
+                    {(Array.isArray(segments?.data) ? segments.data : []).map((segment: any) => (
                       <MenuItem key={segment.id} value={segment.id}>
                         {segment.name} ({segment.size} kontakter)
                       </MenuItem>
@@ -600,7 +600,7 @@ export default function MarketingWorkflowIntegration({
                     <MenuItem value="">
                       <em>Ingen</em>
                     </MenuItem>
-                    {campaigns?.data?.map((campaign: any) => (
+                    {(Array.isArray(campaigns?.data) ? campaigns.data : []).map((campaign: any) => (
                       <MenuItem key={campaign.id} value={campaign.id}>
                         {campaign.name} ({campaign.type})
                       </MenuItem>
@@ -616,7 +616,7 @@ export default function MarketingWorkflowIntegration({
         // Confirmation
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h2" gutterBottom>
               Bekreft og Publiser
             </Typography>
             <Alert severity="success" sx={{ mb: 3 }}>
@@ -681,11 +681,11 @@ export default function MarketingWorkflowIntegration({
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth fullScreen={useIsMobile()}>
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={2}>
-            <CampaignIcon sx={{ color: '#ff8c00' }} />
-            <Typography variant="h6">Marketing Workflow</Typography>
+            <CampaignIcon sx={{ color: adminTokens.color.brand }} aria-hidden="true" />
+            <Typography variant="h6" component="h2">Marketing Workflow</Typography>
           </Box>
         </DialogTitle>
         <DialogContent>
@@ -706,25 +706,24 @@ export default function MarketingWorkflowIntegration({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={onClose} disabled={createWorkflowMutation.isPending}>
+          <AdminButton tone="ghost" onClick={onClose} disabled={createWorkflowMutation.isPending}>
             Avbryt
-          </Button>
+          </AdminButton>
           {activeStep > 0 && (
-            <Button onClick={handleBack} disabled={createWorkflowMutation.isPending}>
+            <AdminButton tone="ghost" onClick={handleBack} disabled={createWorkflowMutation.isPending}>
               Tilbake
-            </Button>
+            </AdminButton>
           )}
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
             onClick={handleNext}
-            disabled={createWorkflowMutation.isPending}
+            loading={createWorkflowMutation.isPending}
             startIcon={
               activeStep === steps.length - 1 ? <SendIcon /> : undefined
             }
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
           >
             {activeStep === steps.length - 1 ? 'Publiser' : 'Neste'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -734,6 +733,7 @@ export default function MarketingWorkflowIntegration({
         onClose={() => setEmailDesignerOpen(false)}
         maxWidth="xl"
         fullWidth
+        fullScreen={useIsMobile()}
       >
         <DialogTitle>E-postdesigner</DialogTitle>
         <DialogContent>

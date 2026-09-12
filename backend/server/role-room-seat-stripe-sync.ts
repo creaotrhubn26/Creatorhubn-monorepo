@@ -170,7 +170,9 @@ export async function syncRoleRoomSeatQuantity(opts: SyncOptions): Promise<SyncR
       detail: (err as Error).message,
       stripeSubscriptionId,
     });
-    return { ok: false, reason: (err as Error).message };
+    // Ikke lekk rå Stripe-/exception-tekst til klient. Detaljene er allerede
+    // logget i logBillingAlert (admin-synlig) + console.error (server-logg).
+    return { ok: false, reason: "stripe_sync_failed" };
   }
 }
 

@@ -49,6 +49,26 @@ function track(eventName: string, params: EventParams = {}) {
   }
 }
 
+// ─── Audio Showcase (mix/master-review, splitt, publisering, Spotify) ──
+export const audioShowcaseEvents = {
+  projectCreated: (data: { hasBand: boolean }) => track('audio_project_created', { has_band: data.hasBand }),
+  versionUploaded: (data: { sizeBytes?: number }) => track('audio_version_uploaded', { size_bytes: data.sizeBytes }),
+  commentAdded: (data: { category?: string; hasTimecode: boolean }) => track('audio_comment_added', { category: data.category, has_timecode: data.hasTimecode }),
+  memberInvited: (data: { method: 'email' | 'link' }) => track('audio_member_invited', { method: data.method }),
+  profileCompleted: (data: { isVocalist: boolean; hasAvatar: boolean }) => track('audio_profile_completed', { is_vocalist: data.isVocalist, has_avatar: data.hasAvatar }),
+  splitGenerated: (participantCount: number) => track('audio_split_generated', { participant_count: participantCount }),
+  splitSigned: (data: { method: 'drawn' | 'typed' | 'simple'; by: 'owner' | 'party' }) => track('audio_split_signed', { method: data.method, by: data.by }),
+  agreementDownloaded: (by: 'owner' | 'party') => track('audio_agreement_downloaded', { by }),
+  // Publisering
+  releaseStarted: () => track('audio_release_started', {}),
+  releaseExported: (data: { valid: boolean }) => track('audio_release_exported', { valid: data.valid }),
+  // Spotify
+  spotifyArtistLinked: (where: 'profile' | 'invite') => track('audio_spotify_artist_linked', { where }),
+  spotifyEnriched: () => track('audio_spotify_enriched', {}),
+  spotifyStatusChecked: (live: boolean) => track('audio_spotify_status_checked', { live }),
+  nowOnSpotifyShown: () => track('audio_now_on_spotify_shown', {}),
+};
+
 // ─── Marketplace ───────────────────────────────────────────────────
 export const marketplaceEvents = {
   opened: (source: 'dashboard_button' | 'tab' | 'cta' | 'other') =>

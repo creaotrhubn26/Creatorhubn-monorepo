@@ -1,0 +1,371 @@
+name: LeadMapApp
+options:
+  bundleIdPrefix: com.creatorhubn
+  deploymentTarget:
+    iOS: "17.0"
+    watchOS: "10.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+
+settings:
+  base:
+    # Swift 6 + complete strict concurrency — samme policy som CaptureApp.
+    SWIFT_VERSION: "6"
+    SWIFT_STRICT_CONCURRENCY: complete
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: "9TAUZCPK95"
+    LEAD_MAP_API_BASE: "https://creatorhub-backend-rtbl.onrender.com"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    VERSIONING_SYSTEM: apple-generic
+    CURRENT_PROJECT_VERSION: "202609120000"
+    MARKETING_VERSION: "2.2"
+
+targets:
+  LeadMapApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: LeadMapApp
+    dependencies:
+      # Widget + Watch-app embed KUN på iPhone/iPad (ikke Mac Catalyst).
+      # macOS-varianten kan ikke embedde iOS-appex / watchOS-app — Xcode
+      # kaster «target built for macOS but contains embedded content built
+      # for iOS» ellers. platformFilter=iOS ekskluderer Catalyst automatisk.
+      - target: LeadMapWidget
+        platformFilter: iOS
+      - target: LeadgridWatchApp
+        embed: true
+        platformFilter: iOS
+    info:
+      path: LeadMapApp/Generated/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDisplayName: Leadgrid
+        CFBundleName: Leadgrid
+        LeadMapAPIBaseURL: $(LEAD_MAP_API_BASE)
+        UILaunchScreen:
+          UIImageName: LeadgridLogo
+          UIImageRespectsSafeAreaInsets: true
+        UIRequiredDeviceCapabilities: [arm64]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # Bruker GPS til å auto-fylle visit_latitude/longitude ved fysiske besøk
+        # + vise "leads i nærheten av meg"-sortering.
+        NSLocationWhenInUseUsageDescription: Leadgrid bruker din posisjon til å vise leads i nærheten + auto-fylle koordinater når du logger fysiske besøk.
+        # 'Always' kreves for Nær-lead-varsel — CLCircularRegion-monitorering
+        # i bakgrunn slik at selger får push når de er innen 500m av en tildelt
+        # lead, selv om app-en er lukket.
+        NSLocationAlwaysAndWhenInUseUsageDescription: Leadgrid varsler deg når du er innen 500m av en tildelt lead, og kan føre kjøreboka automatisk (Leadgrid Go) — også når app-en er lukket. Begge er valgfrie og kan skrus av i innstillingene.
+        UIBackgroundModes:
+          - location
+        # Kamera: QR-paring + visittkort-skanner (VisionKit #182).
+        # Kalender (write-only): ruteplanleggeren legger besøkene i kalenderen
+        # med beregnet ankomsttid («Legg besøkene i kalenderen»).
+        NSCalendarsWriteOnlyAccessUsageDescription: Leadgrid legger rute-stoppene dine inn i kalenderen med beregnet ankomsttid, slik at dagen din er synlig der du planlegger.
+        NSCameraUsageDescription: Leadgrid bruker kameraet til å skanne visittkort (auto-fyll lead) og QR-koden i nettleseren for paring.
+        # Mikrofon: dikter visit-notater (#183).
+        NSMicrophoneUsageDescription: Leadgrid bruker mikrofonen til å diktere visit-notater etter besøk.
+        # Tale-gjenkjenning: transkriber dikterte notater (#183).
+        NSSpeechRecognitionUsageDescription: Leadgrid transkriberer din tale til tekst slik at du kan diktere visit-notater hands-free.
+        # Bevegelse & Trening: nav-modus kjenner igjen om du går/sykler/kjører
+        # (Core Motion) for å velge riktig rute-type og ETA automatisk.
+        NSMotionUsageDescription: Leadgrid bruker bevegelsessensoren til å kjenne igjen om du går, sykler eller kjører, slik at navigasjonen velger riktig rute og ankomsttid automatisk.
+        # Fotobibliotek (Pakke 10): PhotosPicker brukes til visittkort-import
+        # i Leadbook → Maler, profilbilde-velger i Min Profil, og bilde-bilag
+        # på Eksempler-fanen. Read-only — vi laster ikke opp uten brukerhandling.
+        NSPhotoLibraryUsageDescription: Leadgrid lar deg velge bilder fra galleriet for visittkort-import, profilbilder og bildebilag på samtale-eksempler.
+        # Apple Pencil til notater i visit-loggen.
+        UIApplicationSupportsIndirectInputEvents: true
+        # Live Activities — 'Pågående besøk' på låseskjerm + Dynamic Island (#184).
+        NSSupportsLiveActivities: true
+        # URL Schemes for Google Sign-In OAuth callback.
+        # 'leadgrid://oauth?code=…' fanges av ASWebAuthenticationSession.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.creatorhubn.LeadMapApp.oauth
+            CFBundleURLSchemes:
+              - leadgrid
+        # Export Compliance — Leadgrid bruker kun HTTPS (URLSession) +
+        # iOS Data Protection. Ingen egen krypto-kode i appen. Flipp
+        # dette til true HVIS du innfører end-to-end-kryptering,
+        # importerer CryptoKit for egen AES/RSA-bruk, eller
+        # implementerer noe utover OS-innebygd kryptering.
+        ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: LeadMapApp/Generated/LeadMapApp.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.creatorhubn.LeadMapApp
+        # APNs (PR #622+627). 'development' = Sandbox (dev-bygg).
+        # App Store-bygging overskrives automatisk til 'production'
+        # av Apple ved arkiv-eksport — det skjer transparently.
+        aps-environment: development
+        # Mac Catalyst sandbox: CoreLocation-tilgang. Uten denne
+        # entitlementen returnerer CLLocationManager.currentCoordinate
+        # nil på Mac (iPad er ikke sandbox-ed så det trengs ikke der).
+        # NSLocationWhenInUseUsageDescription står allerede i Info.plist.
+        com.apple.security.personal-information.location: true
+    settings:
+      # TestFlight-CI (2026-07-05): archive-fasen signerte automatisk og
+      # opprettet et nytt iOS Development-cert PER ephemeral runner til
+      # kontoen traff Apples cert-tak («choose a certificate to revoke»).
+      # Manuell Release-signering m/ distribusjonsprofilene (samme som
+      # ExportOptions.plist) trenger aldri å opprette noe. Debug er
+      # fortsatt automatisk (sim/lokal utvikling upåvirket).
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: "LeadMap App Store"
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp
+        INFOPLIST_FILE: LeadMapApp/Generated/Info.plist
+        # 1 = iPhone, 2 = iPad, 6 = Mac (Catalyst). «Pondus overalt» trinn 2-3:
+        # Universal iPhone+iPad + ekte Catalyst-app på macOS.
+        TARGETED_DEVICE_FAMILY: "1,2,6"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        # Mac Catalyst — ekte Catalyst UI framfor «Designed for iPad»-shim.
+        SUPPORTS_MACCATALYST: YES
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  # Widget Extension: 'Møter i dag' + 'Stille leads' på homescreen.
+  # Leser data fra delt App Group skrevet av hovedappen etter hver
+  # refreshAll.
+  LeadMapWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: LeadMapWidget
+      # Shared snapshot-modell — kompileres i begge targets.
+      - path: LeadMapApp/Core/WidgetSnapshot.swift
+      # ActivityKit-attributter for Live Activity — delt med hovedapp.
+      - path: LeadMapApp/Core/ActiveVisitAttributes.swift
+    info:
+      path: LeadMapWidget/Generated/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDisplayName: Leadgrid
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: LeadMapWidget/Generated/LeadMapWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.creatorhubn.LeadMapApp
+    settings:
+      # TestFlight-CI (2026-07-05): archive-fasen signerte automatisk og
+      # opprettet et nytt iOS Development-cert PER ephemeral runner til
+      # kontoen traff Apples cert-tak («choose a certificate to revoke»).
+      # Manuell Release-signering m/ distribusjonsprofilene (samme som
+      # ExportOptions.plist) trenger aldri å opprette noe. Debug er
+      # fortsatt automatisk (sim/lokal utvikling upåvirket).
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: "LeadMap Widget App Store"
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp.LeadMapWidget
+        INFOPLIST_FILE: LeadMapWidget/Generated/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+  # ─────────────────────────────────────────────────────────────────
+  # LeadgridWatchApp (watchOS 10+, Apple Watch Series 4+).
+  # Roadmap #403 — hurtig-lead-add + nærmeste leads + komplikasjon.
+  #
+  # Arkitektur:
+  #   - watchOS SwiftUI-app (single-target, Apple anbefaler dette
+  #     siden watchOS 7+ — ingen separat WatchKit-Extension)
+  #   - WatchConnectivity-bro (`WatchSession.swift` på iPhone-siden +
+  #     `PhoneSession.swift` på watch-siden) sender leads + GPS
+  #   - Komplikasjon = WidgetKit-style i watchOS 10 (samme infrastruktur
+  #     som home-screen-widget, gjenbruker WidgetSnapshot.swift)
+  #
+  # 3 features (Daniel-prioritert 2026-06-28):
+  #   1. NearbyLeadsView — leads sortert etter distanse via CL
+  #   2. QuickActionView — tap lead → marker visited/called/booked
+  #      (sender til iPhone via WatchConnectivity → iPhone POSTer)
+  #   3. LeadgridComplication — viser "12 leads i dag" på watch-face
+  # ─────────────────────────────────────────────────────────────────
+  LeadgridWatchApp:
+    type: application
+    platform: watchOS
+    sources:
+      - path: LeadgridWatchApp
+    info:
+      path: LeadgridWatchApp/Generated/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDisplayName: Leadgrid
+        CFBundleName: Leadgrid
+        WKApplication: true
+        WKWatchOnly: false
+        WKCompanionAppBundleIdentifier: com.creatorhubn.LeadMapApp
+        # GPS for nærmeste-leads-sortering.
+        NSLocationWhenInUseUsageDescription: Leadgrid bruker din posisjon for å sortere leads etter avstand.
+        # Mikrofon for voice-memo (deferred til neste PR).
+        NSMicrophoneUsageDescription: Leadgrid bruker mikrofonen til å ta opp voice-memo på lead.
+        ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: LeadgridWatchApp/Generated/LeadgridWatchApp.entitlements
+      properties: {}
+        # App Groups droppet fra watch-target (Daniel-fiks 2026-06-28):
+        # WatchConnectivity gir oss alt vi trenger for å dele data med
+        # iPhone-appen (PhoneSession.swift bruker WCSession.transferUserInfo,
+        # ikke shared container). App Group krever Apple-side-binding
+        # som ikke kan automatiseres via ASC API i nåværende rolle.
+    settings:
+      # TestFlight-CI (2026-07-05): archive-fasen signerte automatisk og
+      # opprettet et nytt iOS Development-cert PER ephemeral runner til
+      # kontoen traff Apples cert-tak («choose a certificate to revoke»).
+      # Manuell Release-signering m/ distribusjonsprofilene (samme som
+      # ExportOptions.plist) trenger aldri å opprette noe. Debug er
+      # fortsatt automatisk (sim/lokal utvikling upåvirket).
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: "LeadMap Watch App Store"
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp.watchkitapp
+        INFOPLIST_FILE: LeadgridWatchApp/Generated/Info.plist
+        TARGETED_DEVICE_FAMILY: "4"
+        WATCHOS_DEPLOYMENT_TARGET: "10.0"
+        SDKROOT: watchos
+        SUPPORTED_PLATFORMS: "watchsimulator watchos"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_VERSION: "6"
+        SWIFT_STRICT_CONCURRENCY: complete
+        # Automatic signing (Daniel-fiks 2026-06-28 iterasjon 4).
+        # Manual signing fungerte for sigh-profilen, men førte til
+        # "Embedded binary not signed with same certificate as parent
+        # app" pga cert-mismatch mellom Manual (lokal cert) og
+        # iPhone-appens Automatic (cloud-managed). Nå som bundle ID +
+        # APP_GROUPS capability er registrert paa Apple, skal
+        # automatic signing fungere — entitlements er tomme saa det
+        # kreves ingen ekstra Apple-binding.
+
+  # ─────────────────────────────────────────────────────────────────
+  # LeadgridVisionApp (visionOS 2.0+, Apple Vision Pro).
+  # «Pondus overalt» trinn 4 — 2026-07-01.
+  #
+  # Målsetting: gi bruker en spatial pondus-coach der score-ring +
+  # steg-kort svever rundt dem i ImmersiveSpace. Deler backend + auth
+  # med iPad-target, men har egen kopi av modell-strukturer (siden
+  # target ikke deler kompileringsenhet).
+  #
+  # 2 scener:
+  #   • PondusVisionWindow — 2D-window med template-picker + score-liste
+  #   • PondusCoachSpace   — ImmersiveSpace med spatial 3D-visning
+  # ─────────────────────────────────────────────────────────────────
+  LeadgridVisionApp:
+    type: application
+    platform: visionOS
+    sources:
+      - path: LeadgridVisionApp
+    info:
+      path: LeadgridVisionApp/Generated/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDisplayName: Leadgrid
+        CFBundleName: Leadgrid
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        NSCameraUsageDescription: Leadgrid bruker kameraet til visittkort-scanning.
+        NSMicrophoneUsageDescription: Live transkripsjon under møter.
+        ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: LeadgridVisionApp/Generated/LeadgridVisionApp.entitlements
+      properties: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp.vision
+        INFOPLIST_FILE: LeadgridVisionApp/Generated/Info.plist
+        TARGETED_DEVICE_FAMILY: "7"
+        XROS_DEPLOYMENT_TARGET: "2.0"
+        SDKROOT: xros
+        SUPPORTED_PLATFORMS: "xros xrsimulator"
+        SWIFT_VERSION: "6"
+        SWIFT_STRICT_CONCURRENCY: complete
+        # AppIcon droppes for Vision-target — visionOS krever egen
+        # AppIcon.solidimagestack som ikke er generert enda. Standard-ikon
+        # brukes til bygg går grønt lokalt.
+
+  # QA-harness (2026-07-04): innlogget UI-test-sveip over alle faner +
+  # sheets med snapshot-galleri og tilgjengelighets-audit. Kjøres via
+  # scripts/qa-sweep.sh — token injiseres med TEST_RUNNER_QA_BEARER_TOKEN.
+  LeadMapAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: LeadMapAppUITests
+    dependencies:
+      - target: LeadMapApp
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6"
+        # Mac Catalyst QA-sveip (qa-sweep-mac.sh): uten eksplisitt
+        # deployment target arver test-target-et SDK-ens versjon og
+        # nekter aa kjoere paa en Mac som ligger en OS-patch bak.
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        SUPPORTS_MACCATALYST: YES
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+
+  # Logikk-unit-tester (Tier 0 i AI-verifiseringsstigen): rute-/fallback-
+  # logikken i TranscriptIntelligence testes deterministisk uten modellen
+  # og uten nettverk — kjørbart i CI på Xcode 26.6 / iOS 26.5.
+  LeadMapAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: LeadMapAppTests
+    dependencies:
+      - target: LeadMapApp
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        # Keep native unit tests runnable on the supported Catalyst host.
+        # Otherwise Xcode inherits the SDK patch version (for example 26.5)
+        # and refuses to run on a 26.4 CI/developer Mac.
+        SUPPORTS_MACCATALYST: YES
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+
+# Eksplisitt scheme så UI-test-target-et er koblet til test-action.
+# archive-config beholdt for TestFlight-CI (fastlane bruker samme scheme).
+schemes:
+  LeadMapApp:
+    build:
+      targets:
+        LeadMapApp: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - LeadMapAppTests
+        - LeadMapAppUITests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

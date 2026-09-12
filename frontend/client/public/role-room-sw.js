@@ -1,4 +1,4 @@
-const ROLE_ROOM_CACHE = 'role-room-shell-v1';
+const ROLE_ROOM_CACHE = 'role-room-shell-v2';
 const ROLE_ROOM_SHELL_URLS = ['/', '/theroleroom.webmanifest', '/TheRoleRoom_App_Logo.png'];
 
 self.addEventListener('install', (event) => {
@@ -50,9 +50,42 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const isVersionedBuildAsset = (
+    requestUrl.pathname.startsWith('/assets/')
+    || requestUrl.pathname.startsWith('/js/')
+  ) && /\.(?:css|js)$/i.test(requestUrl.pathname);
+
   event.respondWith((async () => {
     const cache = await caches.open(ROLE_ROOM_CACHE);
-    const cachedResponse = await cache.match(request);
+    let cachedResponse = await cache.match(request);
+    const isUnexpectedHtml = (response) => Boolean(
+      response
+      && (response.headers.get('content-type') || '').includes('text/html')
+      && /\.(?:css|js)$/i.test(requestUrl.pathname)
+    );
+
+    if (cachedResponse && isUnexpectedHtml(cachedResponse)) {
+      await cache.delete(request).catch(() => undefined);
+      cachedResponse = undefined;
+    }
+
+    // Build-chunks må være network-first. Cache-first her kan blande moduler
+    // fra to deployer i en allerede åpen fane og gi runtime-feil selv om alle
+    // filene hver for seg er gyldige. Cachen beholdes kun som offline-fallback.
+    if (isVersionedBuildAsset) {
+      try {
+        const networkResponse = await fetch(request);
+        if (networkResponse && networkResponse.ok && !isUnexpectedHtml(networkResponse)) {
+          cache.put(request, networkResponse.clone()).catch(() => undefined);
+        }
+        if (isUnexpectedHtml(networkResponse) && cachedResponse) {
+          return cachedResponse;
+        }
+        return networkResponse;
+      } catch (_error) {
+        return cachedResponse || Response.error();
+      }
+    }
 
     const networkResponsePromise = fetch(request)
       .then((networkResponse) => {

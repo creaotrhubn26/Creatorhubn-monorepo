@@ -83,10 +83,14 @@ import {
   type BusinessPlan,
   type BusinessPlanInput,
   type ActivityLogEntry,
+  type AdminProductKey,
+  ADMIN_PRODUCTS,
 } from '../services/adminRoomApi';
 
 import { RoleNavConfigTab } from '../components/role-room/components/admin-room/RoleNavConfigTab';
 import { WhatsNewTab } from '../components/role-room/components/admin-room/WhatsNewTab';
+import ObservabilityPanel from '../components/admin-room/observability/ObservabilityPanel';
+import IntegrationCenterTab from '../components/admin-room/integration-center/IntegrationCenterTab';
 import { ResendStatusTab } from '../components/role-room/components/admin-room/ResendStatusTab';
 import { B2ArchiveTab } from '../components/role-room/components/admin-room/B2ArchiveTab';
 import { PlatformStatusWidget } from '../components/role-room/components/admin-room/PlatformStatusWidget';
@@ -97,10 +101,12 @@ import { OperatingSystemTab } from '../components/admin/content-marketing/Operat
 import { AiCitationTab } from '../components/admin/content-marketing/AiCitationTab';
 import { RoleRoomEconomyTab } from '../components/admin/content-marketing/RoleRoomEconomyTab';
 import { NewsletterStudioTab } from '../components/admin/content-marketing/NewsletterStudioTab';
-import { RoleRoomTesterInviteDialog } from '../components/invite/RoleRoomTesterInviteDialog';
+import PrototypeTesterAdminPanel from '../components/admin/PrototypeTesterAdminPanel';
 import { STUDENT_PAGE_CONFIGS } from '../components/role-room/components/StudentSEOPage';
 import { COMPETITOR_CONFIGS } from '../components/role-room/components/CompetitorComparisonPage';
+import { MARKETING_PAGES, PILLAR_LABELS } from '../components/admin/content-marketing/marketingPagesConfig';
 import BlockListEditor from '../components/role-room/cms/BlockListEditor';
+import InfographicTemplatesTab from '../components/admin/InfographicTemplatesTab';
 import RevisionsDrawer from '../components/role-room/cms/RevisionsDrawer';
 import { createBlock, isBlockArray, type Block, type BlocksContent } from '../components/role-room/cms/blockSchema';
 import { PAGE_TEMPLATES, type TemplateKind } from '../components/role-room/cms/pageTemplates';
@@ -109,10 +115,11 @@ import AutoAwesomeMosaicIcon from '@mui/icons-material/AutoAwesomeMosaic';
 import MarketingCockpitTab from './admin-room/MarketingCockpitTab';
 import RoleRoomAgentTab from './admin-room/RoleRoomAgentTab';
 import ContentCalendarTab from './admin-room/ContentCalendarTab';
+import { apiRequest, clearClientAuthState } from '../lib/queryClient';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 'migrations';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 'migrations' | 'observability' | 'integrations' | 'infographic-templates';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -457,7 +464,7 @@ function FundingAppDrawer({ open, initial, onClose, onSaved }: FundingDrawerProp
   );
 }
 
-function FundingAppsTab() {
+export function FundingAppsTab() {
   const [items, setItems] = useState<FundingApp[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -469,7 +476,7 @@ function FundingAppsTab() {
     setError(null);
     try {
       const data = await fundingAppsApi.list();
-      setItems(data);
+      setItems(Array.isArray(data) ? data : []);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -922,7 +929,7 @@ function InvestorDrawer({ open, initial, onClose, onSaved }: InvestorDrawerProps
   );
 }
 
-function InvestorContactsTab() {
+export function InvestorContactsTab() {
   const [items, setItems] = useState<InvestorContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -933,7 +940,8 @@ function InvestorContactsTab() {
     setLoading(true);
     setError(null);
     try {
-      setItems(await investorContactsApi.list());
+      const data = await investorContactsApi.list();
+      setItems(Array.isArray(data) ? data : []);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -1214,7 +1222,7 @@ function PartnerDrawer({ open, initial, onClose, onSaved }: PartnerDrawerProps) 
   );
 }
 
-function PartnerContactsTab() {
+export function PartnerContactsTab() {
   const [items, setItems] = useState<PartnerContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1225,7 +1233,8 @@ function PartnerContactsTab() {
     setLoading(true);
     setError(null);
     try {
-      setItems(await partnerContactsApi.list());
+      const data = await partnerContactsApi.list();
+      setItems(Array.isArray(data) ? data : []);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -1351,108 +1360,184 @@ interface BizPlanSection {
   }>;
 }
 
-const BIZ_PLAN_SECTIONS: BizPlanSection[] = [
-  {
-    id: 'exec',
-    title: '1.0 Executive Summary',
-    helperText: 'Kort oppsummering av hva The Role Room er, markedet, traction og hva du søker.',
-    fields: [{
-      key: 'execSummary',
-      dbKey: 'exec_summary',
-      label: 'Sammendrag',
-      minRows: 6,
-      placeholder: 'The Role Room er en helhetlig produksjonsplattform for det norske...',
-    }],
-  },
-  {
-    id: 'intro',
-    title: '2.0 Introduksjon',
-    helperText: 'Selskap, visjon, bærekraft, bransje og økonomiske nøkkeltall.',
-    fields: [
-      { key: 'introOverview', dbKey: 'intro_overview', label: '2.1 Selskapet', minRows: 4 },
-      { key: 'introVision', dbKey: 'intro_vision', label: '2.2 Visjon', minRows: 3 },
-      { key: 'introSustainability', dbKey: 'intro_sustainability', label: '2.3 Bærekraftige tiltak', minRows: 3 },
-      { key: 'introIndustry', dbKey: 'intro_industry', label: '2.4 Bransje', minRows: 3 },
-      { key: 'introFinancials', dbKey: 'intro_financials', label: '2.5 Regnskapstall (siste 2 år)', minRows: 3 },
-    ],
-  },
-  {
-    id: 'internal',
-    title: '3.0 Internanalyse',
-    helperText: 'Verdinettverk, drivere, ressurser og verdiskapningsevne.',
-    fields: [
-      { key: 'internalValueNetworkPrimary', dbKey: 'internal_value_network_primary', label: '3.1.1 Primæraktiviteter', minRows: 3 },
-      { key: 'internalValueNetworkSupport', dbKey: 'internal_value_network_support', label: '3.1.2 Støtteaktiviteter', minRows: 3 },
-      { key: 'internalDriversCustomer', dbKey: 'internal_drivers_customer', label: '3.2.1 Kundemasse og skala', minRows: 3 },
-      { key: 'internalDriversCapacity', dbKey: 'internal_drivers_capacity', label: '3.2.2 Kapasitetsutnyttelse', minRows: 3 },
-      { key: 'internalDriversLearning', dbKey: 'internal_drivers_learning', label: '3.2.3 Læring', minRows: 3 },
-      { key: 'internalResourceAnalysis', dbKey: 'internal_resource_analysis', label: '3.3 Ressursanalyse', minRows: 4 },
-      { key: 'internalOperational', dbKey: 'internal_operational', label: '3.4.1 Operasjonell evne', minRows: 3 },
-      { key: 'internalDynamic', dbKey: 'internal_dynamic', label: '3.4.2 Dynamisk evne', minRows: 3 },
-      { key: 'internalVrio', dbKey: 'internal_vrio', label: '3.5.1 VRIO-analyse',
-        helperText: 'Verdifull, sjelden, vanskelig å imitere, organisert. Liste opp ressurser per V/R/I/O-akse.',
-        minRows: 5 },
-      { key: 'internalNetworkStructure', dbKey: 'internal_network_structure', label: '3.5.2 Nettverksstruktur', minRows: 3 },
-      { key: 'internalStrengthsWeaknesses', dbKey: 'internal_strengths_weaknesses', label: '3.6 Styrker og svakheter', minRows: 4 },
-    ],
-  },
-  {
-    id: 'external',
-    title: '4.0 Ekstern analyse',
-    helperText: 'PESTEL, Porter\'s 5, konkurrenter og interessenter.',
-    fields: [
-      { key: 'externalPestel', dbKey: 'external_pestel', label: '4.1 PESTEL-analyse',
-        helperText: 'Politisk · Økonomisk · Sosialt · Teknologisk · Miljø · Juridisk',
-        minRows: 6 },
-      { key: 'externalPestelConclusion', dbKey: 'external_pestel_conclusion', label: '4.1.1 Konklusjon — PESTEL', minRows: 2 },
-      { key: 'externalPorter', dbKey: 'external_porter', label: '4.2.1 Porters fem krefter',
-        helperText: 'Nye aktører · Leverandører · Kunder · Substitutter · Konkurranseintensitet',
-        minRows: 5 },
-      { key: 'externalPorterConclusion', dbKey: 'external_porter_conclusion', label: '4.2.2 Konklusjon — bransjeanalyse', minRows: 2 },
-      { key: 'externalCompetitors', dbKey: 'external_competitors', label: '4.3 Konkurrentanalyse',
-        helperText: 'Liste opp 3-5 hovedkonkurrenter med posisjonering, styrker og svakheter.',
-        minRows: 5 },
-      { key: 'externalCompetitorSummary', dbKey: 'external_competitor_summary', label: '4.3.1 Oppsummering konkurrenter', minRows: 2 },
-      { key: 'externalStakeholders', dbKey: 'external_stakeholders', label: '4.4 Interessentanalyse',
-        helperText: 'Kunder, NFI, Filmforbundet, leverandører, ansatte. Interesse vs påvirkning.',
-        minRows: 4 },
-      { key: 'externalStakeholderConclusion', dbKey: 'external_stakeholder_conclusion', label: '4.4.1 Konklusjon — interessenter', minRows: 2 },
-    ],
-  },
-  {
-    id: 'swot',
-    title: '5.0 SWOT-analyse',
-    helperText: 'Styrker, svakheter, muligheter, trusler — én linje per punkt.',
-    fields: [
-      { key: 'swotStrengths', dbKey: 'swot_strengths', label: 'Styrker (S)', minRows: 3 },
-      { key: 'swotWeaknesses', dbKey: 'swot_weaknesses', label: 'Svakheter (W)', minRows: 3 },
-      { key: 'swotOpportunities', dbKey: 'swot_opportunities', label: 'Muligheter (O)', minRows: 3 },
-      { key: 'swotThreats', dbKey: 'swot_threats', label: 'Trusler (T)', minRows: 3 },
-    ],
-  },
-  {
-    id: 'wheel',
-    title: '6.0 Strategisk hjul + nåværende strategi',
-    helperText: 'Beskriv det strategiske hjulet (mål, virkemidler, tiltak) og hva som er den nåværende strategien.',
-    fields: [
-      { key: 'strategicWheel', dbKey: 'strategic_wheel', label: 'Strategisk hjul', minRows: 4 },
-      { key: 'currentStrategy', dbKey: 'current_strategy', label: 'Nåværende strategi', minRows: 4 },
-    ],
-  },
-  {
-    id: 'recommendation',
-    title: '7.0 Strategisk anbefaling',
-    helperText: 'Hvor bør The Role Room være om 12-24 måneder, og hvorfor — vurdert mot SAFe-kriteriene.',
-    fields: [
-      { key: 'strategicRecommendation', dbKey: 'strategic_recommendation', label: 'Anbefaling', minRows: 5 },
-      { key: 'safeSuitability', dbKey: 'safe_suitability', label: '7.1.1 Suitability — passer strategien?', minRows: 3 },
-      { key: 'safeAcceptability', dbKey: 'safe_acceptability', label: '7.1.2 Acceptability — godtas av interessenter?', minRows: 3 },
-      { key: 'safeFeasibility', dbKey: 'safe_feasibility', label: '7.1.3 Feasibility — gjennomførbar?', minRows: 3 },
-    ],
-  },
-];
+// Sections-struktur er identisk for begge produkter (samme tabell, samme felt),
+// men hjelpetekstene og placeholder-eksemplene bør tilpasses produktet — det
+// gjør utfyllingen mye lettere når Daniel sitter i Leadgrid-kontekst og ikke
+// vil tenke film/casting.
+function bizPlanSectionsForProduct(productKey: AdminProductKey): BizPlanSection[] {
+  const isLeadgrid = productKey === 'leadgrid';
+  const productLabel = isLeadgrid ? 'Leadgrid' : 'The Role Room';
+  const summaryPlaceholder = isLeadgrid
+    ? 'Leadgrid er det kartbaserte CRM-operativsystemet for B2B-feltsalg...'
+    : 'The Role Room er en helhetlig produksjonsplattform for det norske...';
+  const competitorHelper = isLeadgrid
+    ? 'Liste opp 3-5 hovedkonkurrenter (Pipedrive/HubSpot/SuperOffice/Salesforce/SPOTIO) med posisjonering, styrker og svakheter.'
+    : 'Liste opp 3-5 hovedkonkurrenter med posisjonering, styrker og svakheter.';
+  const stakeholderHelper = isLeadgrid
+    ? 'Kunder (B2B-byråer + interne markedsavd), bransjeforeninger, BRREG, Tripletex/Visma, Meta/Google. Interesse vs påvirkning.'
+    : 'Kunder, NFI, Filmforbundet, leverandører, ansatte. Interesse vs påvirkning.';
+  const pestelHelper = 'Politisk · Økonomisk · Sosialt · Teknologisk · Miljø · Juridisk';
+  const porterHelper = 'Nye aktører · Leverandører · Kunder · Substitutter · Konkurranseintensitet';
+  const vrioHelper = 'Verdifull, sjelden, vanskelig å imitere, organisert. Liste opp ressurser per V/R/I/O-akse.';
 
-function BusinessPlanTab() {
+  return [
+    {
+      id: 'exec',
+      title: '1.0 Executive Summary',
+      helperText: `Kort oppsummering av hva ${productLabel} er, markedet, traction og hva du søker.`,
+      fields: [{
+        key: 'execSummary',
+        dbKey: 'exec_summary',
+        label: 'Sammendrag',
+        minRows: 6,
+        placeholder: summaryPlaceholder,
+      }],
+    },
+    {
+      id: 'intro',
+      title: '2.0 Introduksjon',
+      helperText: 'Selskap, visjon, bærekraft, bransje og økonomiske nøkkeltall.',
+      fields: [
+        { key: 'introOverview', dbKey: 'intro_overview', label: '2.1 Selskapet', minRows: 4 },
+        { key: 'introVision', dbKey: 'intro_vision', label: '2.2 Visjon', minRows: 3 },
+        { key: 'introSustainability', dbKey: 'intro_sustainability', label: '2.3 Bærekraftige tiltak', minRows: 3 },
+        { key: 'introIndustry', dbKey: 'intro_industry', label: '2.4 Bransje', minRows: 3 },
+        { key: 'introFinancials', dbKey: 'intro_financials', label: '2.5 Regnskapstall (siste 2 år)', minRows: 3 },
+      ],
+    },
+    {
+      id: 'internal',
+      title: '3.0 Internanalyse',
+      helperText: 'Verdinettverk, drivere, ressurser og verdiskapningsevne.',
+      fields: [
+        { key: 'internalValueNetworkPrimary', dbKey: 'internal_value_network_primary', label: '3.1.1 Primæraktiviteter', minRows: 3 },
+        { key: 'internalValueNetworkSupport', dbKey: 'internal_value_network_support', label: '3.1.2 Støtteaktiviteter', minRows: 3 },
+        { key: 'internalDriversCustomer', dbKey: 'internal_drivers_customer', label: '3.2.1 Kundemasse og skala', minRows: 3 },
+        { key: 'internalDriversCapacity', dbKey: 'internal_drivers_capacity', label: '3.2.2 Kapasitetsutnyttelse', minRows: 3 },
+        { key: 'internalDriversLearning', dbKey: 'internal_drivers_learning', label: '3.2.3 Læring', minRows: 3 },
+        { key: 'internalResourceAnalysis', dbKey: 'internal_resource_analysis', label: '3.3 Ressursanalyse', minRows: 4 },
+        { key: 'internalOperational', dbKey: 'internal_operational', label: '3.4.1 Operasjonell evne', minRows: 3 },
+        { key: 'internalDynamic', dbKey: 'internal_dynamic', label: '3.4.2 Dynamisk evne', minRows: 3 },
+        { key: 'internalVrio', dbKey: 'internal_vrio', label: '3.5.1 VRIO-analyse', helperText: vrioHelper, minRows: 5 },
+        { key: 'internalNetworkStructure', dbKey: 'internal_network_structure', label: '3.5.2 Nettverksstruktur', minRows: 3 },
+        { key: 'internalStrengthsWeaknesses', dbKey: 'internal_strengths_weaknesses', label: '3.6 Styrker og svakheter', minRows: 4 },
+      ],
+    },
+    {
+      id: 'external',
+      title: '4.0 Ekstern analyse',
+      helperText: 'PESTEL, Porter\'s 5, konkurrenter og interessenter.',
+      fields: [
+        { key: 'externalPestel', dbKey: 'external_pestel', label: '4.1 PESTEL-analyse', helperText: pestelHelper, minRows: 6 },
+        { key: 'externalPestelConclusion', dbKey: 'external_pestel_conclusion', label: '4.1.1 Konklusjon — PESTEL', minRows: 2 },
+        { key: 'externalPorter', dbKey: 'external_porter', label: '4.2.1 Porters fem krefter', helperText: porterHelper, minRows: 5 },
+        { key: 'externalPorterConclusion', dbKey: 'external_porter_conclusion', label: '4.2.2 Konklusjon — bransjeanalyse', minRows: 2 },
+        { key: 'externalCompetitors', dbKey: 'external_competitors', label: '4.3 Konkurrentanalyse', helperText: competitorHelper, minRows: 5 },
+        { key: 'externalCompetitorSummary', dbKey: 'external_competitor_summary', label: '4.3.1 Oppsummering konkurrenter', minRows: 2 },
+        { key: 'externalStakeholders', dbKey: 'external_stakeholders', label: '4.4 Interessentanalyse', helperText: stakeholderHelper, minRows: 4 },
+        { key: 'externalStakeholderConclusion', dbKey: 'external_stakeholder_conclusion', label: '4.4.1 Konklusjon — interessenter', minRows: 2 },
+      ],
+    },
+    {
+      id: 'swot',
+      title: '5.0 SWOT-analyse',
+      helperText: 'Styrker, svakheter, muligheter, trusler — én linje per punkt.',
+      fields: [
+        { key: 'swotStrengths', dbKey: 'swot_strengths', label: 'Styrker (S)', minRows: 3 },
+        { key: 'swotWeaknesses', dbKey: 'swot_weaknesses', label: 'Svakheter (W)', minRows: 3 },
+        { key: 'swotOpportunities', dbKey: 'swot_opportunities', label: 'Muligheter (O)', minRows: 3 },
+        { key: 'swotThreats', dbKey: 'swot_threats', label: 'Trusler (T)', minRows: 3 },
+      ],
+    },
+    {
+      id: 'wheel',
+      title: '6.0 Strategisk hjul + nåværende strategi',
+      helperText: 'Beskriv det strategiske hjulet (mål, virkemidler, tiltak) og hva som er den nåværende strategien.',
+      fields: [
+        { key: 'strategicWheel', dbKey: 'strategic_wheel', label: 'Strategisk hjul', minRows: 4 },
+        { key: 'currentStrategy', dbKey: 'current_strategy', label: 'Nåværende strategi', minRows: 4 },
+      ],
+    },
+    {
+      id: 'recommendation',
+      title: '7.0 Strategisk anbefaling',
+      helperText: `Hvor bør ${productLabel} være om 12-24 måneder, og hvorfor — vurdert mot SAFe-kriteriene.`,
+      fields: [
+        { key: 'strategicRecommendation', dbKey: 'strategic_recommendation', label: 'Anbefaling', minRows: 5 },
+        { key: 'safeSuitability', dbKey: 'safe_suitability', label: '7.1.1 Suitability — passer strategien?', minRows: 3 },
+        { key: 'safeAcceptability', dbKey: 'safe_acceptability', label: '7.1.2 Acceptability — godtas av interessenter?', minRows: 3 },
+        { key: 'safeFeasibility', dbKey: 'safe_feasibility', label: '7.1.3 Feasibility — gjennomførbar?', minRows: 3 },
+      ],
+    },
+  ];
+}
+
+// Beholder eksport for bakoverkompatibilitet hvis andre filer importerer den
+// (default: Role Room).
+const BIZ_PLAN_SECTIONS: BizPlanSection[] = bizPlanSectionsForProduct('role_room');
+
+// Liten produkt-velger som speiler ADMIN_PRODUCTS — gjenbrukbar når flere
+// tabs (outreach, content marketing) skal få samme bryter.
+function ProductSwitcher({
+  value,
+  onChange,
+}: {
+  value: AdminProductKey;
+  onChange: (next: AdminProductKey) => void;
+}) {
+  return (
+    <Stack direction="row" spacing={0.5} sx={{
+      p: 0.5,
+      borderRadius: 999,
+      border: '1px solid rgba(148,163,184,0.22)',
+      bgcolor: 'rgba(15,23,42,0.65)',
+    }}>
+      {ADMIN_PRODUCTS.map((product) => {
+        const isActive = product.key === value;
+        return (
+          <Box
+            key={product.key}
+            onClick={() => onChange(product.key)}
+            sx={{
+              px: 1.6,
+              py: 0.5,
+              borderRadius: 999,
+              cursor: 'pointer',
+              userSelect: 'none',
+              fontSize: '0.83rem',
+              fontWeight: 700,
+              transition: 'all 120ms ease',
+              color: isActive ? '#0f172a' : 'rgba(226,232,240,0.78)',
+              bgcolor: isActive ? product.accent : 'transparent',
+              boxShadow: isActive ? `0 0 0 2px ${product.accent}33` : 'none',
+              '&:hover': {
+                color: isActive ? '#0f172a' : '#fff',
+                bgcolor: isActive ? product.accent : 'rgba(255,255,255,0.05)',
+              },
+            }}
+          >
+            {product.label}
+          </Box>
+        );
+      })}
+    </Stack>
+  );
+}
+
+export function BusinessPlanTab() {
+  // Mig 0335: én forretningsplan per produkt. Daniel veksler mellom Role Room
+  // og Leadgrid uten å rote sammen tekstene. URL-state (?bizProduct=) gjør
+  // dette deeplink-vennlig.
+  const [productKey, setProductKey] = useState<AdminProductKey>(() => {
+    if (typeof window === 'undefined') return 'role_room';
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get('bizProduct');
+    return fromUrl === 'leadgrid' ? 'leadgrid' : 'role_room';
+  });
+  const productLabel = ADMIN_PRODUCTS.find((p) => p.key === productKey)?.label ?? 'The Role Room';
+  const productAccent = ADMIN_PRODUCTS.find((p) => p.key === productKey)?.accent ?? '#22d3ee';
+  const sections = useMemo(() => bizPlanSectionsForProduct(productKey), [productKey]);
+
   const [plan, setPlan] = useState<BusinessPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1460,15 +1545,29 @@ function BusinessPlanTab() {
   const [generatingField, setGeneratingField] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Partial<Record<keyof BusinessPlan, string>>>({});
 
+  function handleProductChange(next: AdminProductKey) {
+    if (next === productKey) return;
+    setProductKey(next);
+    setDrafts({});
+    setPlan(null);
+    setError(null);
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      params.set('bizProduct', next);
+      const newUrl = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    businessPlanApi.get()
+    businessPlanApi.get(productKey)
       .then((data) => { if (!cancelled) setPlan(data); })
       .catch((err) => { if (!cancelled) setError((err as Error).message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [productKey]);
 
   function valueFor(dbKey: keyof BusinessPlan): string {
     if (drafts[dbKey] !== undefined) return drafts[dbKey] as string;
@@ -1494,7 +1593,7 @@ function BusinessPlanTab() {
     }
     setSavingField(String(field.dbKey));
     try {
-      const updated = await businessPlanApi.patch({ [field.key]: value } as BusinessPlanInput);
+      const updated = await businessPlanApi.patch({ [field.key]: value } as BusinessPlanInput, productKey);
       setPlan(updated);
       setDrafts((prev) => {
         const next = { ...prev };
@@ -1521,10 +1620,10 @@ function BusinessPlanTab() {
         fieldKey: String(field.key),
         fieldLabel: field.label,
         existingContent,
-      });
+      }, productKey);
       // Sett som draft + persist umiddelbart
       setDrafts((prev) => ({ ...prev, [field.dbKey]: result.text }));
-      const updated = await businessPlanApi.patch({ [field.key]: result.text } as BusinessPlanInput);
+      const updated = await businessPlanApi.patch({ [field.key]: result.text } as BusinessPlanInput, productKey);
       setPlan(updated);
       setDrafts((prev) => {
         const next = { ...prev };
@@ -1538,25 +1637,59 @@ function BusinessPlanTab() {
     }
   }
 
+  // Sist-oppdatert-chip — leser direkte fra rad-en, ingen ekstra fetch
+  const lastUpdatedHint = (() => {
+    if (!plan?.updated_at) return null;
+    const date = new Date(plan.updated_at);
+    if (Number.isNaN(date.getTime())) return null;
+    const diffSec = Math.round((Date.now() - date.getTime()) / 1000);
+    if (diffSec < 60) return 'oppdatert nå';
+    if (diffSec < 3600) return `oppdatert ${Math.round(diffSec / 60)} min siden`;
+    if (diffSec < 86_400) return `oppdatert ${Math.round(diffSec / 3600)} t siden`;
+    return `oppdatert ${date.toLocaleDateString('nb-NO')}`;
+  })();
+
   if (loading) return <Stack alignItems="center" sx={{ py: 6 }}><CircularProgress /></Stack>;
 
   return (
     <Stack spacing={3}>
       {error ? <Alert severity="error">{error}</Alert> : null}
-      <Stack direction="row" alignItems="center" justifyContent="space-between">
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        alignItems={{ xs: 'flex-start', md: 'center' }}
+        justifyContent="space-between"
+        spacing={1.5}
+      >
         <Box>
-          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.1rem' }}>
-            Forretningsplan & strategi — The Role Room
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={1.2} sx={{ mb: 0.4 }}>
+            <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.1rem' }}>
+              Forretningsplan & strategi — {productLabel}
+            </Typography>
+            {lastUpdatedHint ? (
+              <Chip
+                size="small"
+                label={lastUpdatedHint}
+                sx={{
+                  bgcolor: `${productAccent}22`,
+                  color: productAccent,
+                  fontWeight: 700,
+                  fontSize: '0.72rem',
+                }}
+              />
+            ) : null}
+          </Stack>
           <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.86rem' }}>
-            Lagrer automatisk når du klikker ut av et felt. Følger BI/BBI-strukturen for strategiske analyser.
+            Hver produkt har egen plan. Lagrer automatisk når du klikker ut av et felt. Følger BI/BBI-strukturen.
           </Typography>
         </Box>
-        <Button variant="outlined" onClick={handlePrint} sx={{ textTransform: 'none', fontWeight: 700 }}>
-          Skriv ut / lagre PDF
-        </Button>
+        <Stack direction="row" spacing={1.2} alignItems="center">
+          <ProductSwitcher value={productKey} onChange={handleProductChange} />
+          <Button variant="outlined" onClick={handlePrint} sx={{ textTransform: 'none', fontWeight: 700 }}>
+            Skriv ut / lagre PDF
+          </Button>
+        </Stack>
       </Stack>
-      {BIZ_PLAN_SECTIONS.map((section) => (
+      {sections.map((section) => (
         <Box
           key={section.id}
           sx={{
@@ -1627,7 +1760,7 @@ const ACTION_LABEL: Record<string, string> = {
   status_change: 'Status endret',
 };
 
-function ActivityLogTab() {
+export function ActivityLogTab() {
   const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1636,7 +1769,7 @@ function ActivityLogTab() {
     let cancelled = false;
     setLoading(true);
     activityLogApi.list({ limit: 100 })
-      .then((data) => { if (!cancelled) setEntries(data); })
+      .then((data) => { if (!cancelled) setEntries(Array.isArray(data) ? data : []); })
       .catch((err) => { if (!cancelled) setError((err as Error).message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -1711,9 +1844,9 @@ function DashboardTab({ onJumpToTab }: { onJumpToTab: (tab: AdminRoomTab) => voi
       businessPlanApi.get().catch(() => null),
     ]).then(([f, i, p, bp]) => {
       if (cancelled) return;
-      setFunding(f);
-      setInvestors(i);
-      setPartners(p);
+      setFunding(Array.isArray(f) ? f : []);
+      setInvestors(Array.isArray(i) ? i : []);
+      setPartners(Array.isArray(p) ? p : []);
       setPlan(bp);
     }).finally(() => {
       if (!cancelled) setLoading(false);
@@ -2176,7 +2309,7 @@ function AnalyticsTab() {
             />
           </Stack>
           <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.78rem', mb: 1 }}>
-            Lytter på <code>window.dataLayer.push</code> for å fange opp gtag-events i sanntid. Tom på localhost — Clarity og GA4 skipper localhost. Bruk Vercel-preview eller produksjon for å se trafikk.
+            Lytter på <code>window.dataLayer.push</code> for å fange opp gtag-events i sanntid. Tom på localhost — Clarity og GA4 skipper localhost. Bruk Netlify-preview eller produksjon for å se trafikk.
           </Typography>
           {recentEvents.length === 0 ? (
             <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>
@@ -2302,12 +2435,38 @@ function CmsListView({ onEdit }: { onEdit: (slug: string) => void }) {
     }));
     const landingEntries = [
       { slug: 'home', variant: 'landing', h1: 'The Role Room (forside)', audience: '/' },
-      { slug: 'talentportal', variant: 'landing', h1: 'Talentportal', audience: 'For skuespillere og crew' },
+      { slug: 'talentportal', variant: 'landing', h1: 'Talentportal (hero-seksjon)', audience: 'For skuespillere og crew — kun banner øverst, ikke hele siden' },
+      { slug: 'agencyportal', variant: 'landing', h1: 'Agency-portal (hero-seksjon)', audience: 'For byråer — kun banner øverst, ikke hele siden' },
       { slug: 'utdanningsinstitusjon', variant: 'landing', h1: 'For utdanningsinstitusjoner', audience: 'Skoler og fagmiljø' },
       { slug: 'alternatives', variant: 'competitor', h1: 'Casting-plattform alternativer', audience: 'Indeks-side' },
       { slug: 'presse', variant: 'landing', h1: 'Pressepakke', audience: 'Journalister og partnere' },
+      { slug: 'for-byraer', variant: 'landing', h1: 'For byråer', audience: 'B2B-landingsside' },
+      { slug: 'faq', variant: 'landing', h1: 'Ofte stilte spørsmål', audience: 'Offentlig FAQ' },
+      { slug: 'pitch', variant: 'landing', h1: 'Pitch deck', audience: 'Investorer' },
+      { slug: 'privacy-policy', variant: 'landing', h1: 'Personvernerklæring', audience: 'Juridisk — deles med CreatorHub-varianten av samme URL' },
+      { slug: 'brief', variant: 'landing', h1: 'Norwegian Casting Brief (arkiv-intro)', audience: '/brief — kun toppseksjon over utgave-listen' },
+      { slug: 'clientportal', variant: 'landing', h1: 'Klientportal (banner)', audience: 'Klienter med magic-link — kun banner øverst, ikke hele siden' },
+      { slug: 'clientworkspace', variant: 'landing', h1: 'Klient-workspace (banner)', audience: 'Klienter med prosjekttilgang — kun banner mellom header og faner' },
     ];
-    return [...studentEntries, ...competitorEntries, ...landingEntries];
+    const marketingEntries = MARKETING_PAGES.map((page) => ({
+      slug: page.key,
+      variant: 'landing' as const,
+      h1: page.title,
+      audience: PILLAR_LABELS[page.pillar],
+    }));
+    const creatorHubEntries = [
+      { slug: 'creatorhub-home', variant: 'landing' as const, h1: 'CreatorHub (forside)', audience: 'creatorhubn.com /' },
+      { slug: 'about', variant: 'landing' as const, h1: 'Om CreatorHub', audience: '/about, /about-us' },
+      { slug: 'request-access', variant: 'landing' as const, h1: 'Be om tilgang', audience: '/request-access' },
+      { slug: 'creatorhub-innovasjon', variant: 'landing' as const, h1: 'Tidum / CreatorHub Innovasjon', audience: '/creatorhub-innovasjon' },
+      { slug: 'terms-and-conditions', variant: 'landing' as const, h1: 'Vilkår og betingelser', audience: 'Juridisk — deles med Role Room-varianten av samme URL' },
+      { slug: 'nextrole', variant: 'landing' as const, h1: 'NextRole (salgsside)', audience: '/nextrole' },
+      { slug: 'academy', variant: 'landing' as const, h1: 'Academy (hero-seksjon)', audience: '/academy — kun banner øverst, ikke kurslisten' },
+      { slug: 'pricing', variant: 'landing' as const, h1: 'Priser (offentlig side)', audience: '/pricing — sammenlign planer' },
+      { slug: 'cookie-policy', variant: 'landing' as const, h1: 'Cookie-erklæring', audience: '/cookie-policy — deles med Role Room-varianten av samme URL' },
+      { slug: 'data-deletion', variant: 'landing' as const, h1: 'Sletting av brukerdata', audience: '/data-deletion' },
+    ];
+    return [...studentEntries, ...competitorEntries, ...landingEntries, ...marketingEntries, ...creatorHubEntries];
   }, []);
 
   const [cmsPages, setCmsPages] = useState<CmsPageRow[]>([]);
@@ -2457,7 +2616,10 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
   }));
   // Block-CMS state. Når `blocks` er null bruker editoren legacy-skjema-felter.
   const [blocks, setBlocks] = useState<Block[] | null>(null);
-  const [published, setPublished] = useState(true);
+  // Default utkast for nye sider — matcher backend-defaulten i cms-pages-routes.ts
+  // (published=false når raden ikke finnes fra før). Lastes over med faktisk
+  // verdi fra `data.page.published` under hvis en CMS-override allerede finnes.
+  const [published, setPublished] = useState(false);
   const [publishAt, setPublishAt] = useState<string>('');
   const [unpublishAt, setUnpublishAt] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -2480,7 +2642,7 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
       const previewContent = blocks ? { blocks } : content;
       win.postMessage(
         { type: 'roleroom-cms-preview', pageKey: slug, content: previewContent },
-        '*',
+        window.location.origin,
       );
     });
     return () => cancelAnimationFrame(raf);
@@ -2489,12 +2651,13 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
   // Vent til iframe sender "preview-ready" så vi vet at den kan motta postMessage
   useEffect(() => {
     const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'roleroom-cms-preview-ready' && event.data?.pageKey === slug) {
         previewReadyRef.current = true;
         const previewContent = blocks ? { blocks } : content;
         iframeRef.current?.contentWindow?.postMessage(
           { type: 'roleroom-cms-preview', pageKey: slug, content: previewContent },
-          '*',
+          window.location.origin,
         );
       }
     };
@@ -3409,7 +3572,8 @@ function PostAgentSeatsTab() {
   if (error) return <Alert severity="error">Kunne ikke laste seats: {error}</Alert>;
   if (!data) return null;
 
-  const { seats, summary } = data;
+  const { summary } = data;
+  const seats = Array.isArray(data.seats) ? data.seats : [];
 
   return (
     <Stack spacing={3}>
@@ -4280,87 +4444,168 @@ function PresenceContactsView() {
 // ─────────────────────────────────────────────────────────
 
 function PrototypeTestersTab() {
-  const [inviteOpen, setInviteOpen] = useState(false);
-
-  return (
-    <Stack spacing={3}>
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
-        <Box>
-          <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700 }}>
-            Prototype-testere
-          </Typography>
-          <Typography variant="body2" sx={{ color: 'rgba(203,213,225,0.7)', mt: 0.5 }}>
-            Inviter testere direkte med NDA og system-krav, eller åpne den fulle
-            admin-flaten for å godkjenne søknader som kommer inn organisk.
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={1.5}>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setInviteOpen(true)}
-            sx={{ bgcolor: '#a78bfa', color: '#0b1120', fontWeight: 700, '&:hover': { bgcolor: '#8b5cf6' } }}
-          >
-            Inviter ny tester
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<OpenInNewIcon />}
-            href="/admin-invite-system"
-            sx={{ color: '#a78bfa', borderColor: 'rgba(167,139,250,0.5)' }}
-          >
-            Full admin-flate
-          </Button>
-        </Stack>
-      </Box>
-
-      <Card sx={{ bgcolor: 'rgba(2,6,23,0.6)', border: '1px solid rgba(255,255,255,0.08)' }}>
-        <CardContent>
-          <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
-            Workflow
-          </Typography>
-          <Box component="ol" sx={{ pl: 2.5, color: 'rgba(203,213,225,0.86)', m: 0 }}>
-            <li><strong>Invitasjon:</strong> Du sender en one-time-link til tester. Den utløper om 14 dager.</li>
-            <li><strong>NDA-signering:</strong> Tester må lese gjennom og signere NDA før tilgang aktiveres.</li>
-            <li><strong>System-sjekk:</strong> Auto-test av nettleser/skjerm/storage/WebGL. Advarsler hvis miljø er undermåls.</li>
-            <li><strong>Tilgang:</strong> Tester får begrenset Role Room-tilgang (read+test-write, ingen produksjons-data).</li>
-            <li><strong>Feedback:</strong> Universal feedback-widget er aktiv på alle paneler.</li>
-            <li><strong>Avslutning:</strong> Etter test-periode trekkes tilgangen automatisk. NDA-perioden løper videre.</li>
-          </Box>
-        </CardContent>
-      </Card>
-
-      <Alert
-        severity="info"
-        variant="outlined"
-        sx={{ borderColor: 'rgba(167,139,250,0.4)', color: '#cbd5e1', '& .MuiAlert-icon': { color: '#a78bfa' } }}
-      >
-        Ventende søknader, godkjenninger og bedriftsprofilering finnes på den fulle
-        admin-flaten (<strong>/admin-invite-system</strong>) — denne fanen fokuserer på direkte invitasjoner.
-      </Alert>
-
-      <RoleRoomTesterInviteDialog
-        open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-      />
-    </Stack>
-  );
+  return <PrototypeTesterAdminPanel />;
 }
 
 // ─────────────────────────────────────────────────────────
 // Page shell
 // ─────────────────────────────────────────────────────────
 
-export default function AdminRoom() {
-  const [tab, setTab] = useState<AdminRoomTab>('dashboard');
-  const userEmail = useMemo(() => getCurrentUserEmail(), []);
+// Leser initial tab fra URL (?adminTab=...) eller sessionStorage
+// (satt av SuperAdminOverlay/Shell). Fallback til 'dashboard'.
+function resolveInitialAdminTab(): AdminRoomTab {
+  if (typeof window === 'undefined') return 'dashboard';
+  const validTabs: AdminRoomTab[] = [
+    'dashboard', 'business-plan', 'funding', 'investors', 'partners',
+    'activity', 'analytics', 'cms', 'presence', 'role-nav',
+    'prototype-testers', 'post-agent-seats', 'operating-system',
+    'content-marketing', 'industry-crm', 'role-room-economy',
+    'newsletter-studio', 'ai-citation', 'whats-new', 'resend',
+    'marketing-cockpit', 'role-room-agent', 'content-calendar',
+    'b2-archive', 'migrations', 'observability', 'integrations',
+  ];
+  try {
+    const fromUrl = new URLSearchParams(window.location.search).get('adminTab');
+    if (fromUrl && validTabs.includes(fromUrl as AdminRoomTab)) {
+      return fromUrl as AdminRoomTab;
+    }
+    const fromStorage = sessionStorage.getItem('superAdmin:targetAdminRoomTab');
+    if (fromStorage && validTabs.includes(fromStorage as AdminRoomTab)) {
+      // Bruk én gang, så rydd opp
+      sessionStorage.removeItem('superAdmin:targetAdminRoomTab');
+      return fromStorage as AdminRoomTab;
+    }
+  } catch { /* ignore */ }
+  return 'dashboard';
+}
 
-  if (userEmail !== ADMIN_ROOM_OWNER_EMAIL) {
+type AdminAuthStatus = 'checking' | 'authenticated' | 'unauthenticated' | 'error';
+
+export default function AdminRoom() {
+  const [tab, setTab] = useState<AdminRoomTab>(resolveInitialAdminTab);
+  const localEmail = useMemo(() => getCurrentUserEmail(), []);
+  const [serverEmail, setServerEmail] = useState<string | null>(null);
+  const [authStatus, setAuthStatus] = useState<AdminAuthStatus>('checking');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authCheckVersion, setAuthCheckVersion] = useState(0);
+
+  // Admin Room skal aldri autoriseres fra en localStorage-profil alene.
+  // Dette kallet validerer bearer-tokenet mot backend og hydrater samtidig
+  // backendens in-memory session-cache fra den persisterte sesjonen. Først
+  // etterpå mountes panelene som bruker synkrone admin-guards.
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    setAuthStatus('checking');
+    setAuthError(null);
+
+    (async () => {
+      try {
+        const response = await fetch('/api/auth/user', {
+          credentials: 'include',
+          signal: controller.signal,
+        });
+        if (cancelled) return;
+        if (!response.ok) {
+          if (response.status === 401) {
+            setServerEmail(null);
+            setAuthStatus('unauthenticated');
+            return;
+          }
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const body = await response.json().catch(() => null) as
+          | { authenticated?: boolean; user?: { email?: string } | null; email?: string }
+          | null;
+        const email = typeof body?.user?.email === 'string'
+          ? body.user.email.trim().toLowerCase()
+          : typeof body?.email === 'string'
+            ? body.email.trim().toLowerCase()
+            : null;
+
+        if (body?.authenticated !== true || !email) {
+          setServerEmail(null);
+          setAuthStatus('unauthenticated');
+          return;
+        }
+
+        setServerEmail(email);
+        setAuthStatus('authenticated');
+      } catch (error) {
+        if (cancelled || controller.signal.aborted) return;
+        setServerEmail(null);
+        setAuthError(error instanceof Error ? error.message : 'Ukjent nettverksfeil');
+        setAuthStatus('error');
+      }
+    })();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [authCheckVersion]);
+
+  const handleReauthenticate = useCallback(() => {
+    clearClientAuthState();
+    const returnPath = `${window.location.pathname}${window.location.search}`;
+    window.location.assign(`/login?redirect=${encodeURIComponent(returnPath)}`);
+  }, []);
+
+  if (authStatus === 'checking') {
+    return (
+      <Container maxWidth="sm" sx={{ py: 8, textAlign: 'center' }}>
+        <CircularProgress size={24} />
+        <Typography sx={{ mt: 2 }} color="text.secondary">
+          Validerer Admin Room-sesjonen…
+        </Typography>
+      </Container>
+    );
+  }
+
+  if (authStatus === 'error') {
     return (
       <Container maxWidth="sm" sx={{ py: 8 }}>
-        <Alert severity="error">
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Kunne ikke validere sesjonen mot serveren. Ingen Admin Room-data er lastet.
+          {authError ? <> Teknisk detalj: <code>{authError}</code>.</> : null}
+        </Alert>
+        <Button variant="contained" onClick={() => setAuthCheckVersion((value) => value + 1)}>
+          Prøv igjen
+        </Button>
+      </Container>
+    );
+  }
+
+  if (authStatus === 'unauthenticated') {
+    return (
+      <Container maxWidth="sm" sx={{ py: 8 }}>
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Sesjonen din er utløpt eller mangler. Logg inn på nytt før Admin Room-data kan lastes.
+        </Alert>
+        {localEmail ? (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Lagret brukerprofil: <code>{localEmail}</code>. Denne profilen er ikke en gyldig backend-sesjon.
+          </Alert>
+        ) : null}
+        <Button variant="contained" onClick={handleReauthenticate}>
+          Logg inn på nytt
+        </Button>
+      </Container>
+    );
+  }
+
+  if (serverEmail !== ADMIN_ROOM_OWNER_EMAIL) {
+    return (
+      <Container maxWidth="sm" sx={{ py: 8 }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
           Admin Room er kun tilgjengelig for produkteier ({ADMIN_ROOM_OWNER_EMAIL}).
         </Alert>
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Innlogget som: <code>{serverEmail || '(ingen session funnet)'}</code>
+        </Alert>
+        <Button variant="outlined" onClick={handleReauthenticate}>
+          Logg inn med produkteier-kontoen
+        </Button>
       </Container>
     );
   }
@@ -4374,6 +4619,7 @@ export default function AdminRoom() {
   else if (tab === 'activity') content = <ActivityLogTab />;
   else if (tab === 'analytics') content = <AnalyticsTab />;
   else if (tab === 'cms') content = <CmsTab />;
+  else if (tab === 'infographic-templates') content = <InfographicTemplatesTab />;
   else if (tab === 'presence') content = <PresenceTab />;
   else if (tab === 'role-nav') content = <RoleNavConfigTab />;
   else if (tab === 'prototype-testers') content = <PrototypeTestersTab />;
@@ -4385,6 +4631,8 @@ export default function AdminRoom() {
   else if (tab === 'newsletter-studio') content = <NewsletterStudioTab />;
   else if (tab === 'ai-citation') content = <AiCitationTab />;
   else if (tab === 'whats-new') content = <WhatsNewTab />;
+  else if (tab === 'observability') content = <ObservabilityPanel />;
+  else if (tab === 'integrations') content = <IntegrationCenterTab />;
   else if (tab === 'resend') content = <ResendStatusTab />;
   else if (tab === 'marketing-cockpit') content = <MarketingCockpitTab />;
   else if (tab === 'role-room-agent') content = <RoleRoomAgentTab />;
@@ -4393,6 +4641,22 @@ export default function AdminRoom() {
   else if (tab === 'migrations') content = <MigrationsTab />;
 
   return (
+    <Box
+      sx={{
+        // AdminRoom er gjennomgående mørk-tema-stylet (hvit header,
+        // gjennomskinnelige mørke paneler, lys tab-tekst), men rendres i
+        // SPA-en på lys body — uten eget lerret ble alt grått og utvasket.
+        // Dette mørke lerretet gir tokens riktig grunn uansett host-tema.
+        minHeight: '100vh',
+        background:
+          'radial-gradient(1100px 700px at 15% -10%, rgba(124,58,237,0.14), transparent 60%), linear-gradient(180deg, #0b1120 0%, #0a0807 100%)',
+        // Body har lys-temaets tekstfarge (#262626); theme-default
+        // Typography (uten color-prop) ARVER den og ble usynlig på mørk
+        // grunn («Min dag», «Vunnet / Tapt»). Lys arvefarge her gir alle
+        // faner lesbar default-tekst; eksplisitte farger vinner fortsatt.
+        color: '#e2e8f0',
+      }}
+    >
     <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1.5, md: 3 } }}>
       <style>{`
         @media print {
@@ -4430,6 +4694,7 @@ export default function AdminRoom() {
           <Tab value="activity" label="Aktivitets-logg" />
           <Tab value="analytics" label="Analytics" />
           <Tab value="cms" label="CMS" />
+          <Tab value="infographic-templates" label="Infografikk-maler" />
           <Tab value="presence" label="Presence" />
           <Tab value="role-nav" label="Rolle-navigasjon" />
           <Tab value="prototype-testers" label="Prototype-testere" />
@@ -4447,9 +4712,11 @@ export default function AdminRoom() {
           <Tab value="content-calendar" label="Content-kalender" />
           <Tab value="b2-archive" label="B2-arkiv" />
           <Tab value="migrations" label="Migrasjoner" />
+          <Tab value="integrations" label="🔌 Integrasjoner" />
         </Tabs>
         <Box>{content}</Box>
       </Stack>
     </Container>
+    </Box>
   );
 }

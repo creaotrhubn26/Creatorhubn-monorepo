@@ -1,10 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Button,
   Card,
   CardContent,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -35,6 +33,7 @@ import {
   SmartToy,
   Warning,
 } from '@mui/icons-material';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 
 export interface InstallationStep {
   id: string;
@@ -233,6 +232,7 @@ async function createAIAnalysis(mode: 'install' | 'update', packages: PackageInf
 }
 
 const InstallationWizard: React.FC<InstallationWizardProps> = ({ open, onClose, packages, mode, onComplete }) => {
+  const isMobile = useIsMobile();
   const [activeStep, setActiveStep] = useState(0);
   const [steps, setSteps] = useState<InstallationStep[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -306,14 +306,14 @@ const InstallationWizard: React.FC<InstallationWizardProps> = ({ open, onClose, 
   }, [activeStep, isRunning, onComplete, runStep, steps.length, updateStep]);
 
   return (
-    <Dialog open={open} onClose={isRunning ? undefined : onClose} maxWidth="md" fullWidth disableEscapeKeyDown={isRunning}>
+    <Dialog open={open} onClose={isRunning ? undefined : onClose} maxWidth="md" fullWidth fullScreen={isMobile} disableEscapeKeyDown={isRunning}>
       <DialogTitle>
         <Stack direction="row" alignItems="center" spacing={1.5}>
           <SmartToy color="primary" />
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
             AI {mode === 'install' ? 'Installation' : 'Update'} Wizard
           </Typography>
-          <Chip size="small" label={`${packages.length} package(s)`} color="primary" />
+          <StatusChip tone="brand" label={`${packages.length} package(s)`} />
         </Stack>
       </DialogTitle>
 
@@ -365,9 +365,9 @@ const InstallationWizard: React.FC<InstallationWizardProps> = ({ open, onClose, 
                     secondary={pkg.description}
                   />
                   <Stack direction="row" spacing={0.75}>
-                    {pkg.breaking ? <Chip size="small" color="warning" icon={<Warning />} label="breaking" /> : null}
+                    {pkg.breaking ? <StatusChip tone="warning" label="breaking" /> : null}
                     {pkg.vulnerabilities > 0 ? (
-                      <Chip size="small" color="error" icon={<Security />} label={`${pkg.vulnerabilities} vuln`} />
+                      <StatusChip tone="error" label={`${pkg.vulnerabilities} vuln`} />
                     ) : null}
                   </Stack>
                 </ListItem>
@@ -492,19 +492,20 @@ const InstallationWizard: React.FC<InstallationWizardProps> = ({ open, onClose, 
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose} disabled={isRunning}>
+        <AdminButton tone="ghost" onClick={onClose} disabled={isRunning}>
           {isRunning ? 'Running...' : 'Cancel'}
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={isRunning ? <CircularProgress size={14} /> : <RocketLaunch />}
+        </AdminButton>
+        <AdminButton
+          tone="primary"
+          loading={isRunning}
+          startIcon={<RocketLaunch />}
           onClick={() => {
             void startInstallation();
           }}
           disabled={isRunning || packages.length === 0}
         >
           {isRunning ? 'Executing...' : mode === 'install' ? 'Start Install' : 'Start Update'}
-        </Button>
+        </AdminButton>
       </DialogActions>
     </Dialog>
   );

@@ -15,6 +15,12 @@
 
 import type Stripe from "stripe";
 import type { AdminRoomRoutesDeps } from "./_shared";
+import {
+  NETLIFY_DASHBOARD_URL,
+  NETLIFY_SITE_API_URL,
+  NETLIFY_SITE_HOST,
+  normalizeNetlifyStatus,
+} from "./control-center-deploys-client.js";
 
 interface PlatformStatusDeps extends AdminRoomRoutesDeps {
   getRoleRoomStripeClient: () => Stripe | null;
@@ -133,45 +139,46 @@ async function checkNeon(): Promise<ProviderStatus> {
   }
 }
 
-async function checkVercel(): Promise<ProviderStatus> {
+interface NetlifyDeploymentSummary {
+  id?: string;
+  state?: string;
+  skipped?: boolean | null;
+}
+
+async function checkNetlify(): Promise<ProviderStatus> {
   const base: Omit<ProviderStatus, 'health' | 'message' | 'metrics'> = {
-    provider: 'Vercel',
-    dashboardUrl: 'https://vercel.com/dashboard',
+    provider: 'Netlify',
+    dashboardUrl: NETLIFY_DASHBOARD_URL,
     lastCheckedAt: new Date().toISOString(),
   };
-  const token = process.env.VERCEL_TOKEN;
-  if (!token) {
-    return { ...base, health: 'unconfigured', message: 'VERCEL_TOKEN ikke satt', metrics: {} };
-  }
   try {
-    const teamId = process.env.VERCEL_TEAM_ID;
-    const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
-    const teamQuery = teamId ? `?teamId=${encodeURIComponent(teamId)}` : '';
-    const [projectsResp, deploymentsResp] = await Promise.all([
-      fetchWithTimeout(`https://api.vercel.com/v9/projects${teamQuery}`, { headers }),
-      fetchWithTimeout(`https://api.vercel.com/v6/deployments${teamQuery}${teamQuery ? '&' : '?'}limit=10`, { headers }),
-    ]);
-    if (!projectsResp.ok) throw new Error(`Vercel projects HTTP ${projectsResp.status}`);
-    const projectsData = await projectsResp.json() as { projects: Array<{ name: string }> };
-    const projects = projectsData.projects ?? [];
+    const response = await fetchWithTimeout(
+      `${NETLIFY_SITE_API_URL}/deploys?production=true&per_page=10`,
+      { headers: { Accept: 'application/json' } },
+    );
+    if (!response.ok) throw new Error(`Netlify deploys HTTP ${response.status}`);
+    const deployments = await response.json() as NetlifyDeploymentSummary[];
+    if (!Array.isArray(deployments)) throw new Error('Netlify deploys returnerte ugyldig format');
 
-    let deployments: Array<{ state?: string; created?: number; readyState?: string }> = [];
-    if (deploymentsResp.ok) {
-      const depPayload = await deploymentsResp.json() as { deployments?: Array<{ state?: string; created?: number; readyState?: string }> };
-      deployments = depPayload.deployments ?? [];
-    }
+    const statuses = deployments.map((d) => normalizeNetlifyStatus(d.state ?? '', d.skipped === true));
     const recentDeployments = deployments.length;
-    const errorDeployments = deployments.filter((d) => d.state === 'ERROR' || d.readyState === 'ERROR').length;
-    const buildingDeployments = deployments.filter((d) => d.state === 'BUILDING' || d.readyState === 'BUILDING').length;
+    const errorDeployments = statuses.filter((status) => status === 'failed').length;
+    const buildingDeployments = statuses.filter((status) => status === 'building').length;
+    const latestStatus = statuses[0] ?? 'unknown';
 
     return {
       ...base,
-      health: errorDeployments > 0 ? 'warning' : 'ok',
-      message: errorDeployments > 0
-        ? `${errorDeployments} mislykket deploy(s) sist 10`
-        : `${projects.length} prosjekter, ${recentDeployments} deploys sist`,
+      health: recentDeployments === 0 || errorDeployments > 0 || buildingDeployments > 0 ? 'warning' : 'ok',
+      message:
+        recentDeployments === 0
+          ? 'Ingen produksjonsdeploys funnet'
+          : errorDeployments > 0
+            ? `${errorDeployments} mislykket produksjonsdeploy(s) blant siste ${recentDeployments}`
+            : buildingDeployments > 0
+              ? `${buildingDeployments} produksjonsdeploy(s) bygges nå`
+              : `${recentDeployments} produksjonsdeploys · siste er ${latestStatus === 'live' ? 'live' : latestStatus}`,
       metrics: {
-        projects: projects.length,
+        site: NETLIFY_SITE_HOST.replace('.netlify.app', ''),
         recentDeployments,
         errors: errorDeployments,
         building: buildingDeployments,
@@ -243,6 +250,23 @@ interface UserPresenceSummary {
 }
 
 async function checkUserPresence(pool: AdminRoomRoutesDeps['pool']): Promise<UserPresenceSummary> {
+  try {
+    return await checkUserPresenceInner(pool);
+  } catch (err) {
+    // Defensiv: hvis schema mangler (user_presence-tabell, profession-kolonne),
+    // returner tomt fallback istedenfor å throw'e Promise.all i kaller.
+    console.warn('[platform-status] checkUserPresence failed:', (err as Error).message);
+    return {
+      activeNow: 0,
+      activeLast24h: 0,
+      activeLast7d: 0,
+      totalRoleRoomUsers: 0,
+      recentUsers: [],
+    };
+  }
+}
+
+async function checkUserPresenceInner(pool: AdminRoomRoutesDeps['pool']): Promise<UserPresenceSummary> {
   // Bruker user_presence-heartbeat hvis raden finnes, ellers faller tilbake
   // til users.last_login_at. 90 sek vindu for "aktiv nå" siden klient pinger
   // hvert 30 sek (toleranse for nettverks-jitter + lukket tab-deteksjon).
@@ -255,7 +279,7 @@ async function checkUserPresence(pool: AdminRoomRoutesDeps['pool']): Promise<Use
               p.user_agent_short,
               CASE WHEN p.user_id IS NOT NULL THEN TRUE ELSE FALSE END AS has_heartbeat
          FROM users u
-         LEFT JOIN user_presence p ON p.user_id = u.id
+         LEFT JOIN user_presence p ON p.user_id = u.id::uuid
         WHERE u.profession = ANY($1::text[]) AND u.is_active = TRUE
      )
      SELECT
@@ -276,7 +300,7 @@ async function checkUserPresence(pool: AdminRoomRoutesDeps['pool']): Promise<Use
             p.is_idle,
             p.user_agent_short
        FROM users u
-       LEFT JOIN user_presence p ON p.user_id = u.id
+       LEFT JOIN user_presence p ON p.user_id = u.id::uuid
       WHERE u.profession = ANY($1::text[]) AND u.is_active = TRUE
         AND COALESCE(p.last_seen_at, u.last_login_at) IS NOT NULL
       ORDER BY COALESCE(p.last_seen_at, u.last_login_at) DESC
@@ -347,16 +371,30 @@ export function setupAdminPlatformStatusRoutes(deps: PlatformStatusDeps): void {
     if (!session) return;
     try {
       const stripeClient = getRoleRoomStripeClient();
-      const [render, neon, vercel, stripe, anthropic, presence] = await Promise.all([
+      const nowIso = new Date().toISOString();
+      const fallbackError = (provider: string, message: string): ProviderStatus => ({
+        provider, dashboardUrl: '', lastCheckedAt: nowIso,
+        health: 'error', message, metrics: {},
+      });
+      const results = await Promise.allSettled([
         checkRender(),
         checkNeon(),
-        checkVercel(),
+        checkNetlify(),
         checkStripe(stripeClient),
         checkAnthropic(pool),
         checkUserPresence(pool),
       ]);
+      const [renderR, neonR, netlifyR, stripeR, anthropicR, presenceR] = results;
+      const render    = renderR.status    === 'fulfilled' ? renderR.value    : fallbackError('Render',    String(renderR.reason));
+      const neon      = neonR.status      === 'fulfilled' ? neonR.value      : fallbackError('Neon',      String(neonR.reason));
+      const netlify   = netlifyR.status   === 'fulfilled' ? netlifyR.value   : fallbackError('Netlify',   String(netlifyR.reason));
+      const stripe    = stripeR.status    === 'fulfilled' ? stripeR.value    : fallbackError('Stripe',    String(stripeR.reason));
+      const anthropic = anthropicR.status === 'fulfilled' ? anthropicR.value : fallbackError('Anthropic', String(anthropicR.reason));
+      const presence: UserPresenceSummary  = presenceR.status === 'fulfilled' ? presenceR.value : {
+        activeNow: 0, activeLast24h: 0, activeLast7d: 0, totalRoleRoomUsers: 0, recentUsers: [],
+      };
 
-      const providers = [render, neon, vercel, stripe, anthropic];
+      const providers = [render, neon, netlify, stripe, anthropic];
       const errorCount = providers.filter((p) => p.health === 'error').length;
       const warningCount = providers.filter((p) => p.health === 'warning').length;
       const unconfiguredCount = providers.filter((p) => p.health === 'unconfigured').length;
@@ -370,8 +408,15 @@ export function setupAdminPlatformStatusRoutes(deps: PlatformStatusDeps): void {
         checkedAt: new Date().toISOString(),
       });
     } catch (err) {
-      console.error("[platform-status] error", err);
-      res.status(500).json({ error: "Kunne ikke hente plattform-status" });
+      // Graceful: catch-all → tom platform-status (iPad viser tom providers-liste).
+      console.warn("[platform-status] failed:", (err as Error).message);
+      res.json({
+        overall: "ok",
+        summary: { okCount: 0, warningCount: 0, errorCount: 0, unconfiguredCount: 0 },
+        providers: [],
+        presence: { activeNow: 0, activeLast24h: 0, activeLast7d: 0, totalRoleRoomUsers: 0, recentUsers: [] },
+        checkedAt: new Date().toISOString(),
+      });
     }
   });
 }

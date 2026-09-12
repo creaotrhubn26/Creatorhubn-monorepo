@@ -18,7 +18,9 @@ export default function PhotoShowcase() {
   });
 
   return (
-    <Box sx={{ minHeight: '100vh' }}>
+    // Dark cinematic backdrop spans the whole page so the conversion footer
+    // (testimonials/FAQ/CTA) reads on-brand instead of on default white.
+    <Box sx={{ minHeight: '100vh', bgcolor: '#0B0B0C', color: '#F5F2EA' }}>
       <UniversalShowcase
         profession="photographer"
         userId={userId}
@@ -30,6 +32,9 @@ export default function PhotoShowcase() {
         profession="photographer"
         displayName={displayName}
         contactEmail={user?.email || null}
+        photographerId={userId}
+        clientView={false}
+        editable
       />
     </Box>
   );

@@ -116,6 +116,7 @@ import { useAutoSave } from "@/hooks/useAutoSave";
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
 import { withUniversalIntegration } from "@/integration/UniversalIntegrationHOC";
 import { useTheming } from "../../utils/theming-helper";
+import { useAcademyLocale } from "./academyLocale";
 
 interface CourseVersion {
   id: string;
@@ -285,6 +286,9 @@ function CourseCreatorSidebar({
 
   // Theming system
   const theming = useTheming("music_producer");
+
+  // Localization
+  const { tt, navLabel } = useAcademyLocale();
 
   // Wire up CreatorHub icons for sidebar navigation
   const sidebarIcons = {
@@ -541,23 +545,23 @@ function CourseCreatorSidebar({
           <Sync color={autoSave.isSaving ? "primary" : "inherit"} />
         </ListItemIcon>
         <ListItemText
-          primary="Auto-Save"
+          primary={tt("Automatisk lagring", "Auto-Save")}
           secondary={
             autoSave.isSaving
-              ? "Saving..."
+              ? tt("Lagrer...", "Saving...")
               : autoSave.pendingChanges
-                ? "Pending changes"
-                : "Up to date"
+                ? tt("Ventende endringer", "Pending changes")
+                : tt("Oppdatert", "Up to date")
           }
         />
         <ListItemSecondaryAction>
           <Chip
             label={
               autoSave.isSaving
-                ? "Saving"
+                ? tt("Lagrer", "Saving")
                 : autoSave.pendingChanges
-                  ? "Pending"
-                  : "Saved"
+                  ? tt("Ventende", "Pending")
+                  : tt("Lagret", "Saved")
             }
             size="small"
             color={
@@ -578,10 +582,10 @@ function CourseCreatorSidebar({
           <Stack spacing={1}>
             <Box>
               <Typography variant="caption" color="text.secondary">
-                Last saved:{", "}
+                {tt("Sist lagret", "Last saved")}:{", "}
                 {autoSave.lastSave
                   ? formatDate(new Date(autoSave.lastSave).toISOString())
-                  : "Never"}
+                  : tt("Aldri", "Never")}
               </Typography>
             </Box>
 
@@ -594,14 +598,14 @@ function CourseCreatorSidebar({
                 onClick={() => autoSave.forceSave()}
                 disabled={autoSave.isSaving}
               >
-                Save Now
+                {tt("Lagre nå", "Save Now")}
               </Button>
               <Button
                 size="small"
                 startIcon={autoSave.isPaused ? <Sync /> : <SyncDisabled />}
                 onClick={autoSave.isPaused ? autoSave.resume : autoSave.pause}
               >
-                {autoSave.isPaused ? "Resume" : "Pause"}
+                {autoSave.isPaused ? tt("Gjenoppta", "Resume") : tt("Pause", "Pause")}
               </Button>
             </Stack>
 
@@ -620,8 +624,8 @@ function CourseCreatorSidebar({
       <ListItemButton onClick={() => toggleSection("status")}>
         <ListItemIcon>{getStatusIcon(course.status || "draft")}</ListItemIcon>
         <ListItemText
-          primary="Course Status"
-          secondary={`${course.status || "draft"} • Version ${SAMPLE_VERSIONS.find((v) => v.isCurrent)?.version || "1.0.0"}`}
+          primary={tt("Kursstatus", "Course Status")}
+          secondary={`${course.status || "draft"} • ${tt("Versjon", "Version")} ${SAMPLE_VERSIONS.find((v) => v.isCurrent)?.version || "1.0.0"}`}
         />
         <ListItemSecondaryAction>
           <Chip
@@ -646,7 +650,7 @@ function CourseCreatorSidebar({
                 disabled={course.status === "published" || lockPublishing}
                 sx={{ flex: 1 }}
               >
-                Publish
+                {navLabel("Publish")}
               </Button>
               <Button
                 size="small"
@@ -655,7 +659,7 @@ function CourseCreatorSidebar({
                 onClick={() => onSaveDraft(course)}
                 sx={{ flex: 1 }}
               >
-                Save Draft
+                {navLabel("Save Draft")}
               </Button>
             </Stack>
 
@@ -666,7 +670,7 @@ function CourseCreatorSidebar({
                 onClick={() => onPreview(course)}
                 sx={{ flex: 1 }}
               >
-                Preview
+                {navLabel("Preview")}
               </Button>
               <Button
                 size="small"
@@ -674,7 +678,7 @@ function CourseCreatorSidebar({
                 onClick={() => onShare(course)}
                 sx={{ flex: 1 }}
               >
-                Share
+                {tt("Del", "Share")}
               </Button>
             </Stack>
           </Stack>
@@ -691,8 +695,8 @@ function CourseCreatorSidebar({
           <History />
         </ListItemIcon>
         <ListItemText
-          primary="Versions"
-          secondary={`${SAMPLE_VERSIONS.length} versions`}
+          primary={tt("Versjoner", "Versions")}
+          secondary={`${SAMPLE_VERSIONS.length} ${tt("versjoner", "versions")}`}
         />
         {expandedSections.versions ? <ExpandLess /> : <ExpandMore />}
       </ListItemButton>
@@ -706,7 +710,7 @@ function CourseCreatorSidebar({
               onClick={() => setShowVersionDialog(true)}
               fullWidth
             >
-              Create Version
+              {tt("Opprett versjon", "Create Version")}
             </Button>
 
             {SAMPLE_VERSIONS.map((version) => (
@@ -741,7 +745,7 @@ function CourseCreatorSidebar({
                     {version.title}
                   </Typography>
                   {version.isCurrent && (
-                    <Chip label="Current" size="small" color="primary" />
+                    <Chip label={tt("Gjeldende", "Current")} size="small" color="primary" />
                   )}
                 </Stack>
 
@@ -784,8 +788,8 @@ function CourseCreatorSidebar({
           <Analytics />
         </ListItemIcon>
         <ListItemText
-          primary="Analytics"
-          secondary="Course performance metrics"
+          primary={navLabel("Analytics")}
+          secondary={tt("Kursytelsesmålinger", "Course performance metrics")}
         />
         {expandedSections.analytics ? <ExpandLess /> : <ExpandMore />}
       </ListItemButton>
@@ -795,7 +799,7 @@ function CourseCreatorSidebar({
           <Stack spacing={2}>
             <Box>
               <Typography variant="caption" color="text.secondary">
-                Content Overview
+                {tt("Innholdsoversikt", "Content Overview")}
               </Typography>
               <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
                 <Box sx={{ textAlign: "center" }}>
@@ -805,7 +809,7 @@ function CourseCreatorSidebar({
                   >
                     {modules.length}
                   </Typography>
-                  <Typography variant="caption">Modules</Typography>
+                  <Typography variant="caption">{navLabel("Modules")}</Typography>
                 </Box>
                 <Box sx={{ textAlign: "center" }}>
                   <Typography
@@ -814,7 +818,7 @@ function CourseCreatorSidebar({
                   >
                     {lessons.length}
                   </Typography>
-                  <Typography variant="caption">Lessons</Typography>
+                  <Typography variant="caption">{navLabel("Lessons")}</Typography>
                 </Box>
                 <Box sx={{ textAlign: "center" }}>
                   <Typography
@@ -823,7 +827,7 @@ function CourseCreatorSidebar({
                   >
                     {resources.length}
                   </Typography>
-                  <Typography variant="caption">Resources</Typography>
+                  <Typography variant="caption">{tt("Ressurser", "Resources")}</Typography>
                 </Box>
                 <Box sx={{ textAlign: "center" }}>
                   <Typography
@@ -832,14 +836,14 @@ function CourseCreatorSidebar({
                   >
                     {lowerThirds.length}
                   </Typography>
-                  <Typography variant="caption">Lower thirds</Typography>
+                  <Typography variant="caption">{navLabel("Lower Thirds")}</Typography>
                 </Box>
               </Stack>
             </Box>
 
             <Box>
               <Typography variant="caption" color="text.secondary">
-                Auto-Save Stats
+                {tt("Statistikk for automatisk lagring", "Auto-Save Stats")}
               </Typography>
               <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
                 <Box sx={{ textAlign: "center" }}>
@@ -849,7 +853,7 @@ function CourseCreatorSidebar({
                   >
                     {autoSave.saveCount}
                   </Typography>
-                  <Typography variant="caption">Saves</Typography>
+                  <Typography variant="caption">{tt("Lagringer", "Saves")}</Typography>
                 </Box>
                 <Box sx={{ textAlign: "center" }}>
                   <Typography
@@ -858,7 +862,7 @@ function CourseCreatorSidebar({
                   >
                     {autoSave.errorCount}
                   </Typography>
-                  <Typography variant="caption">Errors</Typography>
+                  <Typography variant="caption">{tt("Feil", "Errors")}</Typography>
                 </Box>
                 <Box sx={{ textAlign: "center" }}>
                   <Typography
@@ -867,7 +871,7 @@ function CourseCreatorSidebar({
                   >
                     {autoSave.conflictCount}
                   </Typography>
-                  <Typography variant="caption">Conflicts</Typography>
+                  <Typography variant="caption">{tt("Konflikter", "Conflicts")}</Typography>
                 </Box>
               </Stack>
             </Box>
@@ -884,9 +888,11 @@ function CourseCreatorSidebar({
           <Security />
         </ListItemIcon>
         <ListItemText
-          primary="Workflow Controls"
+          primary={tt("Arbeidsflytkontroller", "Workflow Controls")}
           secondary={
-            lockPublishing ? "Publishing locked" : "Publishing enabled"
+            lockPublishing
+              ? tt("Publisering låst", "Publishing locked")
+              : tt("Publisering aktivert", "Publishing enabled")
           }
         />
         {showWorkflowSettings ? <ExpandLess /> : <ExpandMore />}
@@ -899,15 +905,15 @@ function CourseCreatorSidebar({
               <AccordionSummary expandIcon={<ExpandMore />}>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <AutoAwesome fontSize="small" />
-                  <Typography variant="body2">Sidebar Mode</Typography>
+                  <Typography variant="body2">{tt("Sidefeltmodus", "Sidebar Mode")}</Typography>
                 </Stack>
               </AccordionSummary>
               <AccordionDetails>
                 <FormControl fullWidth size="small">
-                  <InputLabel>View</InputLabel>
+                  <InputLabel>{tt("Visning", "View")}</InputLabel>
                   <Select
                     value={workflowView}
-                    label="View"
+                    label={tt("Visning", "View")}
                     onChange={(event) => {
                       const selectedView = event.target.value as string;
                       if (
@@ -922,19 +928,19 @@ function CourseCreatorSidebar({
                     <MenuItem value="overview">
                       <Stack direction="row" spacing={1} alignItems="center">
                         <Timeline fontSize="small" />
-                        <span>Overview</span>
+                        <span>{navLabel("Overview")}</span>
                       </Stack>
                     </MenuItem>
                     <MenuItem value="versions">
                       <Stack direction="row" spacing={1} alignItems="center">
                         <Assessment fontSize="small" />
-                        <span>Versions</span>
+                        <span>{tt("Versjoner", "Versions")}</span>
                       </Stack>
                     </MenuItem>
                     <MenuItem value="analytics">
                       <Stack direction="row" spacing={1} alignItems="center">
                         <TrendingUp fontSize="small" />
-                        <span>Analytics</span>
+                        <span>{navLabel("Analytics")}</span>
                       </Stack>
                     </MenuItem>
                   </Select>
@@ -956,7 +962,7 @@ function CourseCreatorSidebar({
                   ) : (
                     <LockOpen fontSize="small" />
                   )}
-                  <span>Lock publishing actions</span>
+                  <span>{tt("Lås publiseringshandlinger", "Lock publishing actions")}</span>
                 </Stack>
               }
             />
@@ -976,7 +982,7 @@ function CourseCreatorSidebar({
                   ) : (
                     <VisibilityOff fontSize="small" />
                   )}
-                  <span>Highlight critical metadata</span>
+                  <span>{tt("Fremhev kritiske metadata", "Highlight critical metadata")}</span>
                 </Stack>
               }
             />
@@ -984,7 +990,7 @@ function CourseCreatorSidebar({
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <Chip
                 icon={<People />}
-                label={courseManagementAccess ? "Team ready" : "Team limited"}
+                label={courseManagementAccess ? tt("Team klart", "Team ready") : tt("Team begrenset", "Team limited")}
                 size="small"
                 color={courseManagementAccess ? "success" : "default"}
                 variant="outlined"
@@ -992,7 +998,9 @@ function CourseCreatorSidebar({
               <Chip
                 icon={<Business />}
                 label={
-                  contentManagementAccess ? "Content ops" : "Content limited"
+                  contentManagementAccess
+                    ? tt("Innholdsdrift", "Content ops")
+                    : tt("Innhold begrenset", "Content limited")
                 }
                 size="small"
                 color={contentManagementAccess ? "success" : "default"}
@@ -1002,8 +1010,8 @@ function CourseCreatorSidebar({
                 icon={<Celebration />}
                 label={
                   coursePublishingAccess
-                    ? "Publish enabled"
-                    : "Publish disabled"
+                    ? tt("Publisering aktivert", "Publish enabled")
+                    : tt("Publisering deaktivert", "Publish disabled")
                 }
                 size="small"
                 color={coursePublishingAccess ? "success" : "default"}
@@ -1011,7 +1019,7 @@ function CourseCreatorSidebar({
               />
               <Chip
                 icon={<Speed />}
-                label={autoSaveAccess ? "Auto-save active" : "Auto-save off"}
+                label={autoSaveAccess ? tt("Automatisk lagring aktiv", "Auto-save active") : tt("Automatisk lagring av", "Auto-save off")}
                 size="small"
                 color={autoSaveAccess ? "success" : "default"}
                 variant="outlined"
@@ -1019,7 +1027,9 @@ function CourseCreatorSidebar({
               <Chip
                 icon={<Flag />}
                 label={
-                  courseCreationAccess ? "Creation open" : "Creation blocked"
+                  courseCreationAccess
+                    ? tt("Oppretting åpen", "Creation open")
+                    : tt("Oppretting blokkert", "Creation blocked")
                 }
                 size="small"
                 color={courseCreationAccess ? "success" : "default"}
@@ -1027,7 +1037,7 @@ function CourseCreatorSidebar({
               />
               <Chip
                 icon={versionControlAccess ? <Star /> : <StarBorder />}
-                label="Version control"
+                label={tt("Versjonskontroll", "Version control")}
                 size="small"
                 color={versionControlAccess ? "success" : "default"}
                 variant="outlined"
@@ -1035,7 +1045,9 @@ function CourseCreatorSidebar({
               <Chip
                 icon={collaborationAccess ? <Bookmark /> : <BookmarkBorder />}
                 label={
-                  collaborationAccess ? "Collaboration on" : "Collaboration off"
+                  collaborationAccess
+                    ? tt("Samarbeid på", "Collaboration on")
+                    : tt("Samarbeid av", "Collaboration off")
                 }
                 size="small"
                 color={collaborationAccess ? "success" : "default"}
@@ -1045,8 +1057,8 @@ function CourseCreatorSidebar({
                 icon={courseAnalyticsAccess ? <FlagOutlined /> : <Warning />}
                 label={
                   courseAnalyticsAccess
-                    ? "Analytics ready"
-                    : "Analytics limited"
+                    ? tt("Analyser klare", "Analytics ready")
+                    : tt("Analyser begrenset", "Analytics limited")
                 }
                 size="small"
                 color={courseAnalyticsAccess ? "success" : "warning"}
@@ -1055,7 +1067,7 @@ function CourseCreatorSidebar({
             </Stack>
 
             <Stack direction="row" spacing={1}>
-              <Tooltip title="Mark course as reviewed and sync timestamps">
+              <Tooltip title={tt("Merk kurset som gjennomgått og synkroniser tidsstempler", "Mark course as reviewed and sync timestamps")}>
                 <span style={{ flex: 1 }}>
                   <Button
                     size="small"
@@ -1069,11 +1081,11 @@ function CourseCreatorSidebar({
                       })
                     }
                   >
-                    Refresh State
+                    {tt("Oppdater status", "Refresh State")}
                   </Button>
                 </span>
               </Tooltip>
-              <Tooltip title="Flag this course for manual review">
+              <Tooltip title={tt("Flagg dette kurset for manuell gjennomgang", "Flag this course for manual review")}>
                 <span style={{ flex: 1 }}>
                   <Button
                     size="small"
@@ -1087,7 +1099,7 @@ function CourseCreatorSidebar({
                       })
                     }
                   >
-                    Needs Review
+                    {tt("Trenger gjennomgang", "Needs Review")}
                   </Button>
                 </span>
               </Tooltip>
@@ -1101,7 +1113,7 @@ function CourseCreatorSidebar({
                 fullWidth
                 onClick={() => onImport(course)}
               >
-                Sync In
+                {tt("Synkroniser inn", "Sync In")}
               </Button>
               <Button
                 size="small"
@@ -1110,7 +1122,7 @@ function CourseCreatorSidebar({
                 fullWidth
                 onClick={() => onExport(course)}
               >
-                Sync Out
+                {tt("Synkroniser ut", "Sync Out")}
               </Button>
             </Stack>
 
@@ -1129,7 +1141,7 @@ function CourseCreatorSidebar({
                   })
                 }
               >
-                Schedule
+                {navLabel("Schedule")}
               </Button>
               <Button
                 size="small"
@@ -1142,7 +1154,7 @@ function CourseCreatorSidebar({
                   })
                 }
               >
-                Estimate
+                {tt("Estimer", "Estimate")}
               </Button>
             </Stack>
 
@@ -1157,14 +1169,19 @@ function CourseCreatorSidebar({
                 </Avatar>
               </Badge>
               <Typography variant="caption" color="text.secondary">
-                Publishing is {lockPublishing ? "locked" : "unlocked"} in this
-                panel.
+                {tt(
+                  `Publisering er ${lockPublishing ? "låst" : "opplåst"} i dette panelet.`,
+                  `Publishing is ${lockPublishing ? "locked" : "unlocked"} in this panel.`,
+                )}
               </Typography>
             </Stack>
 
             {highlightCritical ? (
               <Alert icon={<Warning />} severity="warning">
-                Keep title, status, and pricing consistent before publishing.
+                {tt(
+                  "Hold tittel, status og pris konsistent før publisering.",
+                  "Keep title, status, and pricing consistent before publishing.",
+                )}
               </Alert>
             ) : null}
 
@@ -1181,7 +1198,7 @@ function CourseCreatorSidebar({
                 })
               }
             >
-              Reset workflow flags
+              {tt("Nullstill arbeidsflytflagg", "Reset workflow flags")}
             </Button>
           </Stack>
         </Box>
@@ -1197,8 +1214,8 @@ function CourseCreatorSidebar({
           <Settings />
         </ListItemIcon>
         <ListItemText
-          primary="Tools"
-          secondary="Export, import, and utilities"
+          primary={tt("Verktøy", "Tools")}
+          secondary={tt("Eksport, import og verktøy", "Export, import, and utilities")}
         />
         {expandedSections.tools ? <ExpandLess /> : <ExpandMore />}
       </ListItemButton>
@@ -1212,7 +1229,7 @@ function CourseCreatorSidebar({
               onClick={() => onExport(course)}
               fullWidth
             >
-              Export Course
+              {tt("Eksporter kurs", "Export Course")}
             </Button>
             <Button
               size="small"
@@ -1220,7 +1237,7 @@ function CourseCreatorSidebar({
               onClick={() => onImport(course)}
               fullWidth
             >
-              Import Course
+              {tt("Importer kurs", "Import Course")}
             </Button>
             <Button
               size="small"
@@ -1228,7 +1245,7 @@ function CourseCreatorSidebar({
               onClick={() => autoSave.forceSave()}
               fullWidth
             >
-              Backup Now
+              {tt("Sikkerhetskopier nå", "Backup Now")}
             </Button>
             <Button
               size="small"
@@ -1236,7 +1253,7 @@ function CourseCreatorSidebar({
               onClick={() => autoSave.restoreFromBackup()}
               fullWidth
             >
-              Restore Backup
+              {tt("Gjenopprett sikkerhetskopi", "Restore Backup")}
             </Button>
             <Divider />
             <Button
@@ -1246,7 +1263,7 @@ function CourseCreatorSidebar({
               fullWidth
               color="error"
             >
-              Delete Course
+              {tt("Slett kurs", "Delete Course")}
             </Button>
           </Stack>
         </Box>
@@ -1278,7 +1295,7 @@ function CourseCreatorSidebar({
           >
             <Box>
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                Skills Builder
+                {tt("Ferdighetsbygger", "Skills Builder")}
               </Typography>
 
               {/* Feature Analytics Display */}
@@ -1291,7 +1308,7 @@ function CourseCreatorSidebar({
                 }}
               >
                 <Typography variant="caption" color="text.secondary">
-                  Features: {features.getFeatureAnalytics().enabledFeatures}/
+                  {tt("Funksjoner", "Features")}: {features.getFeatureAnalytics().enabledFeatures}/
                   {features.getFeatureAnalytics().totalFeatures}
                 </Typography>
                 <Chip
@@ -1312,7 +1329,7 @@ function CourseCreatorSidebar({
           {/* Navigation Tabs */}
           <Box sx={{ p: 2 }}>
             <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-              Navigation
+              {tt("Navigasjon", "Navigation")}
             </Typography>
             <List dense>
               {SIDEBAR_TABS.map((tab) => (
@@ -1335,7 +1352,7 @@ function CourseCreatorSidebar({
                       {tab.icon}
                     </ListItemIcon>
                     <ListItemText
-                      primary={tab.label}
+                      primary={navLabel(tab.label)}
                       primaryTypographyProps={{ variant: "body2" }}
                     />
                   </ListItemButton>
@@ -1383,35 +1400,35 @@ function CourseCreatorSidebar({
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Create New Version</DialogTitle>
+        <DialogTitle>{tt("Opprett ny versjon", "Create New Version")}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
               fullWidth
-              label="Version Title"
+              label={tt("Versjonstittel", "Version Title")}
               value={versionTitle}
               onChange={(e) => setVersionTitle(e.target.value)}
-              placeholder="e.g., Added video content"
+              placeholder={tt("f.eks. La til videoinnhold", "e.g., Added video content")}
             />
             <TextField
               fullWidth
-              label="Description"
+              label={navLabel("Description")}
               value={versionDescription}
               onChange={(e) => setVersionDescription(e.target.value)}
               multiline
               rows={3}
-              placeholder="Describe the changes in this version"
+              placeholder={tt("Beskriv endringene i denne versjonen", "Describe the changes in this version")}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowVersionDialog(false)}>Cancel</Button>
+          <Button onClick={() => setShowVersionDialog(false)}>{navLabel("Cancel")}</Button>
           <Button
             variant="contained"
             onClick={handleCreateVersion}
             disabled={!versionTitle.trim()}
           >
-            Create Version
+            {tt("Opprett versjon", "Create Version")}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1423,15 +1440,17 @@ function CourseCreatorSidebar({
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Delete Course</DialogTitle>
+        <DialogTitle>{tt("Slett kurs", "Delete Course")}</DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to delete this course? This action cannot be
-            undone.
+            {tt(
+              "Er du sikker på at du vil slette dette kurset? Denne handlingen kan ikke angres.",
+              "Are you sure you want to delete this course? This action cannot be undone.",
+            )}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
+          <Button onClick={() => setShowDeleteDialog(false)}>{navLabel("Cancel")}</Button>
           <Button
             variant="contained"
             color="error"
@@ -1440,7 +1459,7 @@ function CourseCreatorSidebar({
               setShowDeleteDialog(false);
             }}
           >
-            Delete Course
+            {tt("Slett kurs", "Delete Course")}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1462,19 +1481,19 @@ function CourseCreatorSidebar({
               <ListItemIcon>
                 <Restore fontSize="small" />
               </ListItemIcon>
-              <ListItemText>Restore Version</ListItemText>
+              <ListItemText>{tt("Gjenopprett versjon", "Restore Version")}</ListItemText>
             </MenuItem>
             <MenuItem onClick={() => setContextMenu(null)}>
               <ListItemIcon>
                 <ContentCopy fontSize="small" />
               </ListItemIcon>
-              <ListItemText>Duplicate Version</ListItemText>
+              <ListItemText>{tt("Dupliser versjon", "Duplicate Version")}</ListItemText>
             </MenuItem>
             <MenuItem onClick={() => setContextMenu(null)}>
               <ListItemIcon>
                 <Download fontSize="small" />
               </ListItemIcon>
-              <ListItemText>Export Version</ListItemText>
+              <ListItemText>{tt("Eksporter versjon", "Export Version")}</ListItemText>
             </MenuItem>
           </MenuList>
         )}

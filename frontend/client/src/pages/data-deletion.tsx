@@ -27,12 +27,20 @@ import {
 import { useLocation } from 'wouter';
 import PublicSocialLinks from '@/components/common/PublicSocialLinks';
 import { getPublicSocialProfiles } from '@/lib/publicBrandLinks';
+import BlockRenderer from '@/components/role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '@/components/role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '@/components/role-room/cms/blockSchema';
 
 const creatorhubSocialLinks = getPublicSocialProfiles('creatorhub');
 
 const DataDeletion: React.FC = () => {
   const [, setLocation] = useLocation();
   const theming = useTheming('photographer');
+  const cmsBlocks = useCmsBlocks('data-deletion');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
 
   return (
     <Box

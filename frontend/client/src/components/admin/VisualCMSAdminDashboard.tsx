@@ -30,7 +30,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Accordion,
@@ -45,6 +44,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  InputAdornment,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -81,9 +81,11 @@ import {
   MusicNote as MusicNoteIcon,
   Web as WebIcon,
   Lightbulb as LightbulbIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import MonacoEditor from '@monaco-editor/react';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton, StatusChip, AdminLoading, AdminTableContainer } from './design-system';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -125,6 +127,7 @@ interface GoogleAPIResults {
 
 export default function VisualCMSAdminDashboard() {
   const [tabValue, setTabValue] = useState(0);
+  const [search, setSearch] = useState("");
   const [mockServersActive, setMockServersActive] = useState(false);
   const [testRunning, setTestRunning] = useState(false);
   const [codeGeneratorOpen, setCodeGeneratorOpen] = useState(false);
@@ -271,23 +274,24 @@ export default function VisualCMSAdminDashboard() {
 };
 
   const getSuccessRate = (results: APIStatus[]) => {
-    if (!results || results.length === 0) return 0;
-    const successful = results.filter(r => r.success).length;
-    return Math.round((successful / results.length) * 100);
+    const safeResults = Array.isArray(results) ? results : [];
+    if (safeResults.length === 0) return 0;
+    const successful = safeResults.filter(r => r.success).length;
+    return Math.round((successful / safeResults.length) * 100);
 };
 
   return (
-    <Box sx={{ width: '100%', bgcolor: 'background.default', minHeight: '100vh', p: 3 }}>
+    <Box sx={{ width: '100%', bgcolor: 'background.default', minHeight: '100vh', py: 3, px: { xs: 2, sm: 3 } }}>
       {/* Header */}
       <Paper elevation={2} sx={{ ...theming.getThemedCardSx(), p: 3, mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-        <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 'bold', mb: 1 }}>
+        <Typography variant="h4" component="h1" sx={{ color: theming.colors.primary, fontWeight: 'bold', mb: 1 }}>
           Visual CMS Admin Dashboard
         </Typography>
         <Typography variant="subtitle1" sx={{ color: 'white', opacity: 0.9 }}>
           Complete API Integration Management & Testing Infrastructure
         </Typography>
-        <Box sx={{ mt: 2, display: 'flex', gap:  2 }}>
-          <Chip 
+        <Box sx={{ mt: 2, display: 'flex', gap:  2, flexWrap: 'wrap' }}>
+          <Chip
             icon={<GoogleIcon />}
             label={`Google APIs: ${googleStatus?.success_rate || '0, %'}`}
             color={googleStatus?.success_rate === '100%' ? 'success' : 'warning'}
@@ -336,7 +340,7 @@ export default function VisualCMSAdminDashboard() {
           <Grid item xs={12} md={6}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h2" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
                   <GoogleIcon color="primary" />
                   Google API Integration
                 </Typography>
@@ -380,7 +384,7 @@ export default function VisualCMSAdminDashboard() {
           <Grid item xs={12} md={6}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h2" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
                   <MonitorIcon color="success" />
                   System Health
                 </Typography>
@@ -412,17 +416,18 @@ export default function VisualCMSAdminDashboard() {
           <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
                   Quick Actions
                 </Typography>
                 <Stack direction="row" spacing={2} flexWrap="wrap">
-                  <Button variant="contained" 
+                  <AdminButton
+                    tone="primary"
                     startIcon={<PlayArrowIcon />}
                     onClick={() => runComprehensiveTest.mutate()}
-                    disabled={testRunning}
+                    loading={testRunning}
                   >
                     {testRunning ? 'Running Tests...' : 'Run All Tests'}
-                  </Button>
+                  </AdminButton>
                   <Button 
                     variant="outlined" 
                     startIcon={<TestTubeIcon />}
@@ -461,13 +466,25 @@ export default function VisualCMSAdminDashboard() {
 
           {statusLoading ? (
             <Grid item xs={12}>
-              <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
-                <CircularProgress />
-              </Box>
+              <AdminLoading />
             </Grid>
           ) : (
             <Grid item xs={12}>
-              <TableContainer component={Paper} elevation={2}>
+              <TextField
+                size="small"
+                placeholder="Søk tjeneste …"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <AdminTableContainer ariaLabel="Google API-statuser">
                 <Table>
                   <TableHead>
                     <TableRow>
@@ -478,7 +495,7 @@ export default function VisualCMSAdminDashboard() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {googleStatus?.results?.map((api: APIStatus, index: number) => (
+                    {(Array.isArray(googleStatus?.results) ? googleStatus.results : []).filter((api: APIStatus) => (api.service || '').toLowerCase().includes(search.toLowerCase())).map((api: APIStatus, index: number) => (
                       <TableRow key={index}>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
@@ -487,10 +504,9 @@ export default function VisualCMSAdminDashboard() {
                           </Box>
                         </TableCell>
                         <TableCell>
-                          <Chip 
+                          <StatusChip
+                            tone={api.success ? 'success' : 'error'}
                             label={api.success ? 'Connected' : 'Error'}
-                            color={api.success ? 'success' : 'error'}
-                            size="small"
                           />
                         </TableCell>
                         <TableCell>
@@ -513,7 +529,7 @@ export default function VisualCMSAdminDashboard() {
                     ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
+              </AdminTableContainer>
             </Grid>
           )}
         </Grid>
@@ -525,7 +541,7 @@ export default function VisualCMSAdminDashboard() {
           <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h2" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
                   <TestTubeIcon />
                   WireMock Testing Infrastructure
                 </Typography>
@@ -533,10 +549,10 @@ export default function VisualCMSAdminDashboard() {
                   Comprehensive API mocking and testing infrastructure for 100+ services integration coverage.
                 </Typography>
                 
-                <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+                <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
                   <FormControlLabel
                     control={
-                      <Switch 
+                      <Switch
                         checked={mockServersActive}
                         onChange={(e) => toggleMockServers.mutate(e.target.checked)}
                       />
@@ -573,10 +589,9 @@ export default function VisualCMSAdminDashboard() {
                       <Card variant="outlined" sx={{ ...theming.getThemedCardSx(), p: 2 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  1 }}>
                           <Typography variant="subtitle2">{server.name}</Typography>
-                          <Chip 
+                          <StatusChip
+                            tone={server.status ? 'success' : 'neutral'}
                             label={server.status ? 'Running' : 'Stopped'}
-                            color={server.status ? 'success' : 'default'}
-                            size="small"
                           />
                         </Box>
                         <Typography variant="body2" color="text.secondary">
@@ -617,7 +632,7 @@ export default function VisualCMSAdminDashboard() {
 
       {/* Enhanced Code Generator Tab */}
       <TabPanel value={tabValue} index={3}>
-        <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
+        <Typography variant="h5" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
           AI-Drevet Code Generator
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -643,7 +658,7 @@ export default function VisualCMSAdminDashboard() {
                       onChange={(e) => setSelectedCategory(e.target.value)}
                       label="API Kategori"
                     >
-                      {codeCategories?.categories.map((cat: any) => (
+                      {(Array.isArray(codeCategories?.categories) ? codeCategories.categories : []).map((cat: any) => (
                         <MenuItem key={cat.name} value={cat.name}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
                             {cat.name === 'Google Services' && <GoogleIcon fontSize="small" />}
@@ -811,6 +826,7 @@ export default function VisualCMSAdminDashboard() {
                       <IconButton
                         onClick={() => navigator.clipboard.writeText(generatedCode)}
                         title="Kopier kode"
+                        aria-label="Kopier kode"
                       >
                         <ContentCopyIcon />
                       </IconButton>
@@ -825,6 +841,7 @@ export default function VisualCMSAdminDashboard() {
                           URL.revokeObjectURL(url);
                         }}
                         title="Last ned fil"
+                        aria-label="Last ned fil"
                       >
                         <DownloadIcon />
                       </IconButton>
@@ -879,12 +896,12 @@ export default function VisualCMSAdminDashboard() {
           <Card sx={{ ...theming.getThemedCardSx(), mt: 3 }}>
             <CardHeader
               title="Tilgjengelige API Kategorier"
-              subheader={`${codeCategories.total_endpoints} total endpoints på tvers av ${codeCategories.categories.length} kategorier`}
+              subheader={`${codeCategories.total_endpoints} total endpoints på tvers av ${(Array.isArray(codeCategories.categories) ? codeCategories.categories : []).length} kategorier`}
               avatar={<LightbulbIcon color="primary" />}
             />
             <CardContent>
               <Grid container spacing={2}>
-                {codeCategories.categories.map((category: any) => (
+                {(Array.isArray(codeCategories.categories) ? codeCategories.categories : []).map((category: any) => (
                   <Grid item xs={12} sm={6} md={3} key={category.name}>
                     <Card
                       variant="outlined"
@@ -898,6 +915,15 @@ export default function VisualCMSAdminDashboard() {
                         borderColor: selectedCategory === category.name ? 'primary.main' : 'divider'
                       }}
                       onClick={() => setSelectedCategory(category.name)}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Velg kategori ${category.name}`}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedCategory(category.name);
+                        }
+                      }}
                     >
                       <CardContent sx={{ textAlign: 'center', py: 2 }}>
                         <Typography variant="h6" gutterBottom noWrap sx={{ color: theming.colors.primary }}>
@@ -931,7 +957,7 @@ export default function VisualCMSAdminDashboard() {
           <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h2" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
                   <StorageIcon />
                   PostgreSQL Database Status
                 </Typography>
@@ -950,7 +976,7 @@ export default function VisualCMSAdminDashboard() {
           <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h2" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
                   <MonitorIcon />
                   System Performance Monitor
                 </Typography>
@@ -969,7 +995,7 @@ export default function VisualCMSAdminDashboard() {
           <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h2" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
                   <SettingsIcon />
                   System Configuration
                 </Typography>

@@ -25,6 +25,7 @@ import {
 import { PrototypeTesterIcon } from '../icons/PrototypeTesterIcon';
 import { startCreatorHubGoogleLogin, consumeCreatorHubGoogleLoginError, dismissCreatorHubGoogleLoginError } from '@/lib/creatorhubGoogleAuth';
 import { useAuth } from '@/hooks/useAuth';
+import { useLandingBrand } from '@/hooks/useLandingAccent';
 
 interface LoginModalProps {
   open: boolean;
@@ -65,6 +66,9 @@ export function LoginModal({
 }: LoginModalProps) {
   const [, setLocation] = useLocation();
   const { login } = useAuth();
+  // CreatorHub Design: token-driv login-modalens aksent (--chl-accent) fra creatorhub landingAccent,
+  // så den selv-brander uansett vert. Ingen override → var uset → literal (#ffba6c) → identisk.
+  useLandingBrand('creatorhub', { landingAccent: '--chl-accent' });
   const [loginType, setLoginType] = useState<'general' | 'prototype' | null>(initialLoginType);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,12 +87,23 @@ export function LoginModal({
 
     switch (String(role || '').toLowerCase()) {
       case 'vendor':
-        return '/fotograf';
+        // Vendor-rollen skal inn i sin egen workspace, IKKE fotograf-dashboardet
+        // (gammel feilruting). /vendor-dashboard = UniversalDashboard(profession=vendor).
+        return '/vendor-dashboard';
+      case 'editing_vendor':
+      case 'editing':
+        // Redigeringspartnere skal inn i sin egen portal/workspace, ALDRI skaper-
+        // prosjektvelgeren. /partner-portal viser EditingVendorWorkspace fra
+        // eksisterende sesjon når det ikke er noen magic-link-token i URL-en.
+        return '/partner-portal';
       case 'admin':
       case 'super_admin':
         return '/admin';
       default:
-        return '/dashboard';
+        // Workspace er hovedflaten. Dette er den ENE kilden til post-login-ruting
+        // (LoginPageSimple OG landingssidenes direkte LoginModal går gjennom her),
+        // så skaper-brukere (role 'user') havner i workspace uansett inngang.
+        return '/workspace';
     }
   };
 
@@ -447,7 +462,7 @@ export function LoginModal({
                   px: 2.5,
                   py: 1,
                   '&:hover': {
-                    borderColor: '#ffba6c',
+                    borderColor: 'var(--chl-accent, #ffba6c)',
                     background: 'rgba(255,186,108,0.08)',
                   },
                 }}
@@ -562,7 +577,7 @@ export function LoginModal({
                         background: 'rgba(255,255,255,0.04)',
                         '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
                         '&:hover fieldset': { borderColor: 'rgba(255,186,108,0.35)' },
-                        '&.Mui-focused fieldset': { borderColor: '#ffba6c' },
+                        '&.Mui-focused fieldset': { borderColor: 'var(--chl-accent, #ffba6c)' },
                       },
                     }}
                   />
@@ -585,7 +600,7 @@ export function LoginModal({
                         background: 'rgba(255,255,255,0.04)',
                         '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
                         '&:hover fieldset': { borderColor: 'rgba(255,186,108,0.35)' },
-                        '&.Mui-focused fieldset': { borderColor: '#ffba6c' },
+                        '&.Mui-focused fieldset': { borderColor: 'var(--chl-accent, #ffba6c)' },
                       },
                     }}
                   />
@@ -604,7 +619,7 @@ export function LoginModal({
                       textTransform: 'none',
                       fontWeight: 700,
                       '&:hover': {
-                        borderColor: '#ffba6c',
+                        borderColor: 'var(--chl-accent, #ffba6c)',
                         background: 'rgba(255,186,108,0.08)',
                       },
                     }}
@@ -621,7 +636,7 @@ export function LoginModal({
                       textTransform: 'none',
                       fontWeight: 600,
                       '&:hover': {
-                        color: '#ffba6c',
+                        color: 'var(--chl-accent, #ffba6c)',
                         background: 'transparent',
                       },
                     }}

@@ -88,7 +88,7 @@ function EditDialog({
   draft, open, onClose, onSave,
 }: { draft: Draft; open: boolean; onClose: () => void; onSave: (patch: Partial<Draft>) => Promise<void>; }) {
   const [caption, setCaption] = useState(draft.caption);
-  const [hashtags, setHashtags] = useState((draft.hashtags || []).join(' '));
+  const [hashtags, setHashtags] = useState((Array.isArray(draft.hashtags) ? draft.hashtags : []).join(' '));
   const [imageBrief, setImageBrief] = useState(draft.imageBrief || '');
   const [imageUrl, setImageUrl] = useState(draft.imageUrl || '');
   const [videoUrl, setVideoUrl] = useState(draft.videoUrl || '');
@@ -329,7 +329,7 @@ export default function PostDraftsPanel() {
       const r = await fetch('/api/role-room/agent/post-drafts?brandKey=theroleroom&limit=50', { credentials: 'include' });
       if (!r.ok) throw new Error(`Status ${r.status}`);
       const d = await r.json();
-      setDrafts(d.drafts || []);
+      setDrafts(Array.isArray(d.drafts) ? d.drafts : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally { setLoading(false); }

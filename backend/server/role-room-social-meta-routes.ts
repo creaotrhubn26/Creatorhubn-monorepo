@@ -39,6 +39,7 @@
  * Mode-noter: Innholdsprodusent-mode-features. Backend mode-agnostic.
  */
 
+import crypto from "crypto";
 import express from "express";
 import type { Pool } from "pg";
 
@@ -83,6 +84,8 @@ import {
 } from "./role-room-instagram-deauth.js";
 import { isInstagramImageUploadConfigured } from "./role-room-instagram-image-upload.js";
 import { checkAgentEntitlement } from "./role-room-agent-entitlements.js";
+import { resolveClientPortalSession } from "./role-room-client-portal.js";
+import { getProjectProducerUserId } from "./client-portal-connected-platforms.js";
 
 interface AdminSession {
   userId: string;
@@ -132,6 +135,35 @@ export function setupRoleRoomSocialMetaRoutes(
     }
     const projectId = typeof req.query.projectId === "string" ? req.query.projectId : null;
     const state = signOauthState({ userId: session.userId, projectId });
+    const url = buildAuthorizationUrl(state);
+    if (!url) return res.status(500).json({ success: false, error: "Kunne ikke bygge auth-URL." });
+    return res.json({ success: true, url, scopes: META_REQUIRED_SCOPES });
+  });
+
+  // Klient-initiert Instagram/Meta-kobling: klienten (via portal-token) gir
+  // selv tilgang fra portalen. Vi mynter samme signerte state som
+  // produsentens start — men med PROSJEKTEIERENS userId — slik at den delte
+  // callbacken lagrer koblingen under produsenten + prosjektet, og Stig
+  // faktisk kan publisere. Consent gis med klientens egen Meta-innlogging.
+  // Tokens utveksles server-side i callbacken; klienten får kun authorize-URL.
+  app.get("/api/client/portal/oauth/instagram/start", async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token) return res.status(400).json({ success: false, error: "missing_token" });
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) return res.status(404).json({ success: false, error: "invalid_or_expired_token" });
+    const config = getMetaAppConfig();
+    if (!config) {
+      return res.status(503).json({ success: false, error: "Meta App er ikke konfigurert." });
+    }
+    const producerUserId = await getProjectProducerUserId(pool, session.projectId);
+    if (!producerUserId) {
+      return res.status(409).json({
+        success: false,
+        error: "Prosjektet mangler en produsent å koble kontoen til.",
+      });
+    }
+    const returnPath = `/client/portal/${encodeURIComponent(token)}`;
+    const state = signOauthState({ userId: producerUserId, projectId: session.projectId, returnPath });
     const url = buildAuthorizationUrl(state);
     if (!url) return res.status(500).json({ success: false, error: "Kunne ikke bygge auth-URL." });
     return res.json({ success: true, url, scopes: META_REQUIRED_SCOPES });
@@ -201,6 +233,12 @@ export function setupRoleRoomSocialMetaRoutes(
           });
         }
       }
+      // Klient-initiert kobling (returnPath satt): send klienten tilbake til
+      // portalen i stedet for en generisk success-side.
+      if (claims.returnPath && claims.returnPath.startsWith("/") && !claims.returnPath.startsWith("//")) {
+        const sep = claims.returnPath.includes("?") ? "&" : "?";
+        return res.redirect(`${claims.returnPath}${sep}connected=instagram`);
+      }
       return res.send(
         `<html><body style="font-family:system-ui;padding:40px;background:#0b1220;color:#e2e8f0;">` +
           `<h1>Instagram er koblet til</h1>` +
@@ -211,6 +249,10 @@ export function setupRoleRoomSocialMetaRoutes(
       );
     } catch (oauthError) {
       console.error("[ig-oauth] callback failed", oauthError);
+      if (claims.returnPath && claims.returnPath.startsWith("/") && !claims.returnPath.startsWith("//")) {
+        const sep = claims.returnPath.includes("?") ? "&" : "?";
+        return res.redirect(`${claims.returnPath}${sep}connect_error=instagram`);
+      }
       return res.status(500).send(
         `<html><body><h1>Innlogging feilet</h1><p>${(oauthError as Error).message}</p></body></html>`,
       );
@@ -321,6 +363,8 @@ export function setupRoleRoomSocialMetaRoutes(
     const pageId = typeof body.pageId === "string" ? body.pageId.trim() : "";
     const videoDataUrl = typeof body.videoDataUrl === "string" ? body.videoDataUrl : "";
     const description = typeof body.description === "string" ? body.description.trim() : "";
+    // Egendefinert cover/thumbnail (image/* data URL) → Graph `thumb`-feltet.
+    const coverDataUrl = typeof body.coverDataUrl === "string" ? body.coverDataUrl : "";
     const scheduledForIso = typeof body.scheduledFor === "string" ? body.scheduledFor.trim() : "";
     if (!pageId || !videoDataUrl) {
       return res.status(400).json({ success: false, error: "pageId og videoDataUrl er påkrevd." });
@@ -384,6 +428,17 @@ export function setupRoleRoomSocialMetaRoutes(
     const blob = new Blob([new Uint8Array(buffer)], { type: mimeType });
     form.append("source", blob, `upload.${mimeType.split("/")[1] || "mp4"}`);
     if (description) form.append("description", description);
+    // Custom thumbnail: Graph `/videos` tar et `thumb`-multipart-bilde. Ignorér
+    // stille hvis coveret ikke er et gyldig image/* data-URL (Meta auto-genererer
+    // da en frame fra videoen).
+    const coverMatch = coverDataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+    if (coverMatch) {
+      const coverBuffer = Buffer.from(coverMatch[2], "base64");
+      if (coverBuffer.length > 0 && coverBuffer.length <= 10 * 1024 * 1024) {
+        const coverBlob = new Blob([new Uint8Array(coverBuffer)], { type: coverMatch[1] });
+        form.append("thumb", coverBlob, `cover.${coverMatch[1].split("/")[1] || "jpg"}`);
+      }
+    }
     if (scheduledPublishUnix) {
       // Two-part flag: published=false + scheduled_publish_time tells
       // Meta to queue rather than publish immediately.
@@ -549,6 +604,7 @@ export function setupRoleRoomSocialMetaRoutes(
       : undefined;
     const imageDataUrl = typeof body.imageDataUrl === "string" ? body.imageDataUrl : undefined;
     const videoDataUrl = typeof body.videoDataUrl === "string" ? body.videoDataUrl : undefined;
+    const coverDataUrl = typeof body.coverDataUrl === "string" ? body.coverDataUrl : undefined;
     const mediaType = body.mediaType as "image" | "reel" | "carousel";
     if (mediaType === "reel") {
       if (!videoDataUrl) {
@@ -572,6 +628,7 @@ export function setupRoleRoomSocialMetaRoutes(
         imageDataUrl,
         imageDataUrls,
         videoDataUrl,
+        coverDataUrl,
         scheduledFor: typeof body.scheduledFor === "string" ? body.scheduledFor : null,
       });
       return res.json({
@@ -598,11 +655,13 @@ export function setupRoleRoomSocialMetaRoutes(
 
   // Meta webhook for IG events (status updates, mention notifications, etc.)
   app.get("/api/role-room/instagram/webhook", (req, res) => {
-    const expectedToken = process.env.META_WEBHOOK_VERIFY_TOKEN;
+    const expectedToken = process.env.META_WEBHOOK_VERIFY_TOKEN || "";
     const mode = req.query["hub.mode"];
-    const token = req.query["hub.verify_token"];
+    const tokenStr = typeof req.query["hub.verify_token"] === "string" ? req.query["hub.verify_token"] : "";
     const challenge = req.query["hub.challenge"];
-    if (mode === "subscribe" && expectedToken && token === expectedToken) {
+    const tokensMatch = !!expectedToken && tokenStr.length === expectedToken.length &&
+      crypto.timingSafeEqual(Buffer.from(tokenStr), Buffer.from(expectedToken));
+    if (mode === "subscribe" && tokensMatch) {
       return res.status(200).send(String(challenge ?? ""));
     }
     return res.status(403).send("verify token mismatch");
@@ -761,9 +820,11 @@ export function setupRoleRoomSocialMetaRoutes(
       (process.env.META_FB_WEBHOOK_VERIFY_TOKEN || "").trim() ||
       (process.env.META_WEBHOOK_VERIFY_TOKEN || "").trim();
     const mode = req.query["hub.mode"];
-    const token = req.query["hub.verify_token"];
+    const tokenStr = typeof req.query["hub.verify_token"] === "string" ? req.query["hub.verify_token"] : "";
     const challenge = req.query["hub.challenge"];
-    if (mode === "subscribe" && expectedToken && token === expectedToken) {
+    const tokensMatch = !!expectedToken && tokenStr.length === expectedToken.length &&
+      crypto.timingSafeEqual(Buffer.from(tokenStr), Buffer.from(expectedToken));
+    if (mode === "subscribe" && tokensMatch) {
       return res.status(200).send(String(challenge ?? ""));
     }
     return res.status(403).send("verify token mismatch");

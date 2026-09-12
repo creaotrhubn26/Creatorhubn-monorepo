@@ -55,6 +55,7 @@ interface VendorProductManagerProps {
   initialMode?: 'overview' | 'add';
   onProductCreated?: () => void;
   vendorType?: string;
+  locale?: 'no' | 'en';
   // Integration props for universal workflow connectivity
   onMeetingCreate?: (meeting: VendorMeeting) => void;
   onProjectUpdate?: (project: VendorProjectUpdate) => void;
@@ -197,6 +198,7 @@ export default function VendorProductManager({
   initialMode = 'overview',
   onProductCreated,
   vendorType = 'print',
+  locale = 'no',
   onMeetingCreate,
   onProjectUpdate,
   onWorklogCreate,
@@ -213,6 +215,8 @@ export default function VendorProductManager({
 }: VendorProductManagerProps) {
   // Theming system
   const theming = useTheming('vendor');
+  // Tospråklig: engelsk for utenlandske vendors (locale='en').
+  const tr = (no: string, en: string) => (locale === 'en' ? en : no);
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState(0);
   const [showAddDialog, setShowAddDialog] = useState(initialMode === 'add');
@@ -375,7 +379,7 @@ export default function VendorProductManager({
       const now = new Date().toISOString();
       onWorklogCreate?.({
         id: `worklog-${productId}`,
-        title: editingProduct ? 'Oppdaterte produkt' : 'Opprettet produkt',
+        title: editingProduct ? tr('Oppdaterte produkt', 'Product updated') : tr('Opprettet produkt', 'Product created'),
         description: savedProduct.name,
         productId,
         createdAt: now
@@ -658,20 +662,20 @@ export default function VendorProductManager({
   }
 
   return (
-    <Box component="main" role="main" aria-label="Produkthåndtering" sx={{ p: initialMode === 'add' ? 0 : 3 }}>
+    <Box component="main" role="main" aria-label={tr('Produkthåndtering', 'Product management')} sx={{ p: initialMode === 'add' ? 0 : 3 }}>
       {/* Only show overview when not in add mode */}
       {initialMode !== 'add' && (
         <>
           {/* Header */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
             <Typography variant="h5" component="h1" sx={{ fontWeight: 600, color: theming.colors.primary }}>
-              Produkthåndtering - {vendorConfig?.name || vendorType}
+              {tr('Produkthåndtering', 'Product management')} - {vendorConfig?.name || vendorType}
             </Typography>
             <Button
               variant="contained"
               startIcon={<Add aria-hidden="true" />}
               onClick={handleAddProduct}
-              aria-label="Legg til nytt produkt"
+              aria-label={tr('Legg til nytt produkt', 'Add new product')}
               sx={{ 
                 bgcolor: '#27ae60', 
                 minHeight: 48,
@@ -682,7 +686,7 @@ export default function VendorProductManager({
                 }
               }}
             >
-              Legg til Produkt
+              {tr('Legg til Produkt', 'Add product')}
             </Button>
           </Box>
 
@@ -712,7 +716,7 @@ export default function VendorProductManager({
                   onClick={() =>
                     onWorklogCreate({
                       id: `worklog-general-${Date.now()}`,
-                      title: 'Oppdaterte produktkatalog',
+                      title: tr('Oppdaterte produktkatalog', 'Product catalog updated'),
                       description: 'Planlegging og prioritering av produktkatalog.',
                       createdAt: new Date().toISOString()
                     })
@@ -734,7 +738,7 @@ export default function VendorProductManager({
                     })
                   }
                 >
-                  Lag showcase
+                  {tr('Lag showcase', 'Create showcase')}
                 </Button>
               )}
             </Box>
@@ -750,7 +754,7 @@ export default function VendorProductManager({
                       {analytics.totalDownloads || 0}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                      Totale Downloads
+                      {tr('Totale Downloads', 'Total downloads')}
                     </Typography>
                   </CardContent>
                 </Card>
@@ -762,7 +766,7 @@ export default function VendorProductManager({
                       {analytics.totalRevenue || 0} NOK
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                      Total Omsetning
+                      {tr('Total Omsetning', 'Total revenue')}
                     </Typography>
                   </CardContent>
                 </Card>
@@ -774,7 +778,7 @@ export default function VendorProductManager({
                       {analytics.averageRating || 0}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                      Gjennomsnittlig Rating
+                      {tr('Gjennomsnittlig Rating', 'Average rating')}
                     </Typography>
                   </CardContent>
                 </Card>
@@ -786,7 +790,7 @@ export default function VendorProductManager({
                       {products.length}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                      Aktive Produkter
+                      {tr('Aktive Produkter', 'Active products')}
                     </Typography>
                   </CardContent>
                 </Card>
@@ -798,13 +802,13 @@ export default function VendorProductManager({
           <Tabs
             value={activeTab}
             onChange={(_, newValue) => setActiveTab(newValue)}
-            aria-label="Produktfiltrering"
+            aria-label={tr('Produktfiltrering', 'Product filter')}
             sx={{ mb: 3 }}
           >
-            <Tab label="Alle Produkter" id="tab-0" aria-controls="tabpanel-0" />
-            <Tab label="Aktive" id="tab-1" aria-controls="tabpanel-1" />
-            <Tab label="Inaktive" id="tab-2" aria-controls="tabpanel-2" />
-            <Tab label="Venter" id="tab-3" aria-controls="tabpanel-3" />
+            <Tab label={tr('Alle Produkter', 'All products')} id="tab-0" aria-controls="tabpanel-0" />
+            <Tab label={tr('Aktive', 'Active')} id="tab-1" aria-controls="tabpanel-1" />
+            <Tab label={tr('Inaktive', 'Inactive')} id="tab-2" aria-controls="tabpanel-2" />
+            <Tab label={tr('Venter', 'Pending')} id="tab-3" aria-controls="tabpanel-3" />
           </Tabs>
 
           {/* Products Grid */}
@@ -956,7 +960,7 @@ export default function VendorProductManager({
                                 }
                               }}
                             >
-                              {product.status === 'active' ? 'Avpubliser' : 'Publiser'}
+                              {product.status === 'active' ? tr('Avpubliser', 'Unpublish') : tr('Publiser', 'Publish')}
                             </Button>
                           </Box>
                         </Box>
@@ -1008,7 +1012,7 @@ export default function VendorProductManager({
                         </Box>
 
                         {/* Actions */}
-                        <Box role="group" aria-label="Produkt handlinger" sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
+                        <Box role="group" aria-label={tr('Produkt handlinger', 'Product actions')} sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
                           <IconButton
                             size="small"
                             onClick={() => handleEditProduct(product)}
@@ -1087,7 +1091,7 @@ export default function VendorProductManager({
         fullWidth
       >
         <DialogTitle>
-          {editingProduct ? 'Rediger Produkt' : `Legg til Nytt ${vendorConfig?.name || vendorType} Produkt`}
+          {editingProduct ? tr('Rediger Produkt', 'Edit product') : tr(`Legg til Nytt ${vendorConfig?.name || vendorType} Produkt`, `Add new ${vendorConfig?.name || vendorType} product`)}
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={3} sx={{ mt: 1 }}>
@@ -1095,14 +1099,14 @@ export default function VendorProductManager({
             <Grid item xs={12}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Star sx={{ color: vendorConfig?.color || '#2196f3' }} />
-                Produktbilde
+                {tr('Produktbilde', 'Product image')}
               </Typography>
               {newProduct.imageUrl && (
                 <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Box
                     component="img"
                     src={newProduct.imageUrl}
-                    alt="Produktbilde"
+                    alt={tr('Produktbilde', 'Product image')}
                     sx={{
                       width: 100,
                       height: 100,
@@ -1116,7 +1120,7 @@ export default function VendorProductManager({
                     size="small"
                     color="error"
                   >
-                    Fjern bilde
+                    {tr('Fjern bilde', 'Remove image')}
                   </Button>
                 </Box>
               )}
@@ -1140,17 +1144,17 @@ export default function VendorProductManager({
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Produktnavn"
+                label={tr('Produktnavn', 'Product name')}
                 value={newProduct.name}
                 onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
-                <InputLabel>Kategori</InputLabel>
+                <InputLabel>{tr('Kategori', 'Category')}</InputLabel>
                 <Select
                   value={newProduct.category}
-                  label="Kategori"
+                  label={tr('Kategori', 'Category')}
                   onChange={(e) => {
                     if (e.target.value === '__add_custom__') {
                       setShowCustomCategoryDialog(true);
@@ -1171,7 +1175,7 @@ export default function VendorProductManager({
                   <MenuItem value="__add_custom__">
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'primary.main' }}>
                       <AddCircle fontSize="small" />
-                      Legg til ny kategori...
+                      {tr('Legg til ny kategori...', 'Add new category...')}
                     </Box>
                   </MenuItem>
                 </Select>
@@ -1180,7 +1184,7 @@ export default function VendorProductManager({
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Versjon"
+                label={tr('Versjon', 'Version')}
                 value={newProduct.version}
                 onChange={(e) => setNewProduct({ ...newProduct, version: e.target.value })}
               />
@@ -1188,7 +1192,7 @@ export default function VendorProductManager({
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Pris (NOK)"
+                label={tr('Pris (NOK)', 'Price')}
                 type="number"
                 value={newProduct.price}
                 onChange={(e) => setNewProduct({ ...newProduct, price: Number(e.target.value) })}
@@ -1197,7 +1201,7 @@ export default function VendorProductManager({
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Beskrivelse"
+                label={tr('Beskrivelse', 'Description')}
                 multiline
                 rows={3}
                 value={newProduct.description}
@@ -1207,17 +1211,17 @@ export default function VendorProductManager({
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Tags (komma-separert)"
+                label={tr('Tags (komma-separert)', 'Tags (comma-separated)')}
                 value={newProduct.tags}
                 onChange={(e) => setNewProduct({ ...newProduct, tags: e.target.value })}
-                helperText="Eksempel: synthesizer, kontakt, piano"
+                helperText={tr('Eksempel: synthesizer, kontakt, piano', 'Example: synthesizer, kontakt, piano')}
               />
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowAddDialog(false)}>
-            Avbryt
+            {tr('Avbryt', 'Cancel')}
           </Button>
           <Button
             onClick={handleSaveProduct}
@@ -1225,7 +1229,7 @@ export default function VendorProductManager({
             disabled={productMutation.isPending}
             sx={{ bgcolor: '#27ae60', '&:hover': { bgcolor: '#229954' } }}
           >
-            {productMutation.isPending ? 'Lagrer...' : (editingProduct ? 'Oppdater' : 'Legg til')}
+            {productMutation.isPending ? tr('Lagrer...', 'Saving...') : (editingProduct ? tr('Oppdater', 'Update') : tr('Legg til', 'Add'))}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1240,40 +1244,40 @@ export default function VendorProductManager({
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <AddCircle sx={{ color: vendorConfig?.color || 'primary.main' }} />
-            Legg til ny kategori
+            {tr('Legg til ny kategori', 'Add new category')}
           </Box>
         </DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 3, mt: 1 }}>
-            Ny kategori vil bli lagt til for alle {vendorConfig?.name || 'vendor'}-produkter.
+            {tr(`Ny kategori vil bli lagt til for alle ${vendorConfig?.name || 'vendor'}-produkter.`, `The new category will be added for all ${vendorConfig?.name || 'vendor'} products.`)}
           </Alert>
           <Stack spacing={2}>
             <TextField
               fullWidth
-              label="Kategori ID"
+              label={tr('Kategori ID', 'Category ID')}
               value={customCategory.id}
               onChange={(e) => setCustomCategory({
                 ...customCategory,
                 id: e.target.value.toLowerCase().replace(/\s+/g, '_')
               })}
-              placeholder="f.eks. synthesizers"
+              placeholder={tr('f.eks. synthesizers', 'e.g. synthesizers')}
               helperText={
                 categoryIdExists(customCategory.id)
-                  ? "Denne kategorien finnes allerede - klikk for å velge den" : "Unik ID (lowercase, ingen mellomrom)"
+                  ? tr("Denne kategorien finnes allerede - klikk for å velge den", "This category already exists - click to select it") : tr("Unik ID (lowercase, ingen mellomrom)", "Unique ID (lowercase, no spaces)")
               }
               error={categoryIdExists(customCategory.id)}
               color={categoryIdExists(customCategory.id) ? 'warning' : undefined}
             />
             <TextField
               fullWidth
-              label="Visningsnavn"
+              label={tr('Visningsnavn', 'Display name')}
               value={customCategory.label}
               onChange={(e) => setCustomCategory({ ...customCategory, label: e.target.value })}
-              placeholder="f.eks. Synthesizers"
-              helperText="Navn som vises i menyen"
+              placeholder={tr('f.eks. Synthesizers', 'e.g. Synthesizers')}
+              helperText={tr('Navn som vises i menyen', 'Name shown in the menu')}
             />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Typography variant="body2">Farge:</Typography>
+              <Typography variant="body2">{tr('Farge:', 'Color:')}</Typography>
               <input
                 type="color"
                 value={customCategory.color}
@@ -1290,14 +1294,14 @@ export default function VendorProductManager({
                   fontWeight: 50
                 }}
               >
-                {customCategory.label || 'Forhåndsvisning'}
+                {customCategory.label || tr('Forhåndsvisning', 'Preview')}
               </Box>
             </Box>
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowCustomCategoryDialog(false)}>
-            Avbryt
+            {tr('Avbryt', 'Cancel')}
           </Button>
           <Button
             onClick={handleAddCustomCategory}
@@ -1306,9 +1310,9 @@ export default function VendorProductManager({
             sx={{ bgcolor: vendorConfig?.color || 'primary.main' }}
           >
             {addCategoryMutation.isPending
-              ? 'Legger til...'
+              ? tr('Legger til...', 'Adding...')
               : categoryIdExists(customCategory.id)
-                ? 'Velg eksisterende kategori' : 'Legg til kategori'
+                ? tr('Velg eksisterende kategori', 'Select existing category') : tr('Legg til kategori', 'Add category')
             }
           </Button>
         </DialogActions>

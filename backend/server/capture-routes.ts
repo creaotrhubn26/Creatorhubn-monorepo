@@ -15,13 +15,14 @@ import {
 import {
   registerAsset,
   fetchAsset,
+  fetchAssetPreviewKey,
   listAssets,
   updateAssetLabels,
   updateAssetSignals,
   CaptureAuthzError,
 } from './capture-assets-service.js';
 import { appendEvents, listEvents } from './capture-events-service.js';
-import { broadcastUserEvent } from './realtime-user-events.js';
+import { broadcastUserEvent, type UserEvent } from './realtime-user-events.js';
 import { addReview, listReviews } from './capture-reviews-service.js';
 import {
   abortMultipartUpload,
@@ -33,10 +34,12 @@ import {
   type UploadError,
 } from './capture-upload-service.js';
 import { broadcastCaptureEvent } from './capture-websocket.js';
+import { sendTransactionalEmail } from './transactional-email-service.js';
 import {
   createClientToken,
   fetchSessionForClient,
   listClientTokens,
+  recordClientGalleryView,
   revokeClientToken,
   validateClientToken,
   type ValidatedClientAuth,
@@ -89,6 +92,33 @@ interface SessionData {
 
 type AuthedRequest = Request & { userId: string };
 
+async function broadcastCaptureWorkspaceEvent(
+  pool: Pool,
+  sessionId: string,
+  createEvents: (target: { projectId: string | null }) => UserEvent | UserEvent[],
+): Promise<void> {
+  try {
+    const result = await pool.query<{
+      owner_user_id: string;
+      project_id: string | null;
+    }>(
+      `SELECT owner_user_id, project_id
+         FROM capture_sessions
+        WHERE id = $1
+        LIMIT 1`,
+      [sessionId],
+    );
+    const target = result.rows[0];
+    if (!target?.owner_user_id) return;
+    const events = createEvents({ projectId: target.project_id ?? null });
+    for (const event of Array.isArray(events) ? events : [events]) {
+      broadcastUserEvent(target.owner_user_id, event);
+    }
+  } catch (error) {
+    console.warn('Could not broadcast Capture event to the user stream:', error);
+  }
+}
+
 const createSessionBody = z.object({
   name: z.string().min(1).max(255),
   clientId: z.string().uuid().optional(),
@@ -140,6 +170,12 @@ const deliverToShowcaseBody = z.object({
   clientName: z.string().min(1).max(255),
   clientEmail: z.string().email().max(255),
   projectTitle: z.string().min(1).max(255).optional(),
+  // Samme-dags levering: send «bildene dine er klare»-e-post automatisk.
+  sendEmail: z.boolean().default(false),
+  // Valgfri FM-skrevet e-post-kropp (on-device, iPad). Faller tilbake til en
+  // standard norsk mal hvis utelatt.
+  emailBody: z.string().max(4000).optional(),
+  photographerName: z.string().max(255).optional(),
 });
 
 // 12 MB cap on the base64 payload — comfortably above any preview JPEG
@@ -364,12 +400,16 @@ function requireAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
   };
 }
 
+// Strukturell type-predicate: narrower `parse` til success-varianten så
+// `parse.data` blir garantert definert hos kalleren. (z.ZodSafeParseSuccess<T>
+// som predikat-mål narrowet ikke `data` bort fra `T | undefined` på union-typen
+// .safeParse() gir, siden data?:never i error-grenen gjør feltet valgfritt.)
 function handleZod<T>(
   res: Response,
-  parse: z.ZodSafeParseResult<T>,
-): parse is z.ZodSafeParseSuccess<T> {
+  parse: { success: true; data: T } | { success: false; error: z.ZodError },
+): parse is { success: true; data: T } {
   if (!parse.success) {
-    res.status(400).json({ error: 'invalid_request', details: z.treeifyError(parse.error) });
+    res.status(400).json({ error: 'invalid_request', details: parse.error.format() });
     return false;
   }
   return true;
@@ -468,6 +508,8 @@ export function buildExifTags(exif: NormalizedExif): string[] {
   return Array.from(tags).slice(0, 50);
 }
 
+import { registerCaptureDeviceToken } from './capture-push';
+
 export function createCaptureRouter(
   pool: Pool,
   activeSessions?: Map<string, SessionData>,
@@ -486,6 +528,21 @@ export function createCaptureRouter(
     const limit = Math.min(Number(req.query.limit ?? 50), 200);
     const rows = await listProjectsForPhotographer(db, userId, limit);
     res.json({ projects: rows });
+  });
+
+  // ── Push: registrer APNs-token (varsler når appen er lukket) ──
+  router.post('/me/device-token', auth, async (req, res) => {
+    const { userId } = req as AuthedRequest;
+    const token = String(req.body?.deviceToken ?? '').trim();
+    if (!token) {
+      res.status(400).json({ error: 'deviceToken required' });
+      return;
+    }
+    await registerCaptureDeviceToken(pool, userId, token, {
+      deviceName: typeof req.body?.deviceName === 'string' ? req.body.deviceName : undefined,
+      appVersion: typeof req.body?.appVersion === 'string' ? req.body.appVersion : undefined,
+    });
+    res.json({ ok: true });
   });
 
   router.get('/projects/:id', auth, async (req, res) => {
@@ -515,6 +572,65 @@ export function createCaptureRouter(
       projectType: parsed.data.projectType,
     });
     res.status(201).json(created);
+  });
+
+  // ── Client-requested revisions ──────────────────────────────────────────
+  // The gallery "be om endringer" flow posts here when a client wants changes
+  // on a delivered photo; the iPad "Revisjoner" inbox reads + resolves them.
+  // `originalFilename` is the key the iPad matches against memory cards.
+  router.post('/projects/:projectId/revision-requests', auth, async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const filename = String(body.originalFilename ?? body.filename ?? '').trim();
+    if (!filename) {
+      res.status(400).json({ error: 'original_filename_required' });
+      return;
+    }
+    const assetId = typeof body.assetId === 'string' && body.assetId ? body.assetId : null;
+    const result = await pool.query<{ id: string }>(
+      `INSERT INTO capture_revision_requests
+         (project_id, asset_id, original_filename, client_email, note, source)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [
+        req.params.projectId,
+        assetId,
+        filename,
+        typeof body.clientEmail === 'string' ? body.clientEmail : null,
+        typeof body.note === 'string' ? body.note : '',
+        typeof body.source === 'string' ? body.source : 'gallery',
+      ],
+    );
+    res.status(201).json({ id: result.rows[0].id });
+  });
+
+  router.get('/projects/:projectId/revision-requests', auth, async (req, res) => {
+    const status = typeof req.query.status === 'string' ? req.query.status : 'open';
+    const result = await pool.query(
+      `SELECT id, project_id AS "projectId", asset_id AS "assetId",
+              original_filename AS "originalFilename", client_email AS "clientEmail",
+              note, status, source, created_at AS "createdAt", resolved_at AS "resolvedAt"
+         FROM capture_revision_requests
+        WHERE project_id = $1 AND ($2 = 'all' OR status = $2)
+        ORDER BY created_at DESC`,
+      [req.params.projectId, status],
+    );
+    res.json({ revisions: result.rows });
+  });
+
+  router.post('/revision-requests/:id/status', auth, async (req, res) => {
+    const status = String(((req.body ?? {}) as Record<string, unknown>).status ?? '').trim();
+    if (!['open', 'in_progress', 'resolved'].includes(status)) {
+      res.status(400).json({ error: 'bad_status' });
+      return;
+    }
+    await pool.query(
+      `UPDATE capture_revision_requests
+          SET status = $2,
+              resolved_at = CASE WHEN $2 = 'resolved' THEN now() ELSE resolved_at END
+        WHERE id = $1`,
+      [req.params.id, status],
+    );
+    res.json({ ok: true });
   });
 
   // Mark a shot complete / incomplete. Body is `{ isCompleted: boolean }`.
@@ -679,6 +795,24 @@ export function createCaptureRouter(
     }
   });
 
+  // Stabil thumbnail-URL for shot-oppdaterings-kortet i team-chatten. 302 →
+  // fersk-signert R2-preview hver gang (aldri utløper), så en varig chat-
+  // melding kan peke hit. INGEN auth: må lastes av <img>/AsyncImage uten
+  // headere, og team-medlemmer (ikke bare økt-eier) må se den. Asset-id er en
+  // ugjettbar UUID; den underliggende R2-URL-en er fortsatt kortlevd signert.
+  router.get('/assets/:id/preview', async (req, res) => {
+    try {
+      const key = await fetchAssetPreviewKey(db, req.params.id);
+      if (!key) { res.status(404).json({ error: 'not_found' }); return; }
+      const url = await signAssetReadUrl(key);
+      if (!url) { res.status(404).json({ error: 'not_found' }); return; }
+      res.setHeader('Cache-Control', 'private, max-age=120');
+      res.redirect(302, url);
+    } catch {
+      res.status(404).json({ error: 'not_found' });
+    }
+  });
+
   router.get('/assets/:id', auth, async (req, res) => {
     const { userId } = req as AuthedRequest;
     const row = await fetchAsset(db, userId, req.params.id);
@@ -714,6 +848,14 @@ export function createCaptureRouter(
       rejected: row.rejected ?? null,
       timestamp: new Date().toISOString(),
     });
+    void broadcastCaptureWorkspaceEvent(pool, row.sessionId, ({ projectId }) => ({
+      kind: 'capture.asset-updated',
+      projectId,
+      sessionId: row.sessionId,
+      assetId: row.id,
+      reason: 'labels',
+      timestamp: new Date().toISOString(),
+    }));
     res.json(row);
   });
 
@@ -943,6 +1085,21 @@ export function createCaptureRouter(
     for (const row of rows) {
       broadcastCaptureEvent(req.params.sessionId, row);
     }
+    void broadcastCaptureWorkspaceEvent(pool, req.params.sessionId, ({ projectId }) =>
+      rows.map((row) => ({
+        kind: 'capture.activity-recorded' as const,
+        projectId,
+        sessionId: req.params.sessionId,
+        activity: {
+          id: row.id,
+          assetId: row.assetId ?? null,
+          eventType: row.eventType,
+          metadata: row.metadata as Record<string, unknown>,
+          createdAt: row.createdAt.toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      })),
+    );
     res.status(201).json({ events: rows });
   });
 
@@ -1201,6 +1358,15 @@ export function createCaptureRouter(
       submittedCount: result.submittedCount,
       requestedCount: result.requestedCount,
     });
+    void broadcastCaptureWorkspaceEvent(pool, req.params.sessionId, ({ projectId }) => ({
+      kind: 'capture.handoff-triggered',
+      projectId,
+      sessionId: req.params.sessionId,
+      handoffId: result.handoffId,
+      submittedCount: result.submittedCount,
+      requestedCount: result.requestedCount,
+      timestamp: new Date().toISOString(),
+    }));
     res.status(202).json(result);
   });
 
@@ -1301,12 +1467,58 @@ export function createCaptureRouter(
       });
       return;
     }
+    // Samme-dags levering + oppfølging: auto-send e-post med galleri-lenken.
+    // Variant-bevisst: «bildene klare» ved første levering, «N nye bilder lagt
+    // til» ved re-levering med nye bilder. Hopper over hvis re-levering ikke
+    // ga noe nytt (ingenting å varsle om). FM-kroppen brukes for førstegangs-
+    // leveringen; standard norsk mal ellers. Best-effort — feil blokkerer ikke.
+    const newCount = result.uploadedImageCount;
+    const isNewPhotos = result.reusedExisting && newCount > 0;
+    const nothingNew = result.reusedExisting && newCount === 0;
+    let emailSent = false;
+    if (parsed.data.sendEmail && !nothingNew) {
+      const esc = (s: string) =>
+        s.replace(/[&<>"]/g, (c) => (({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string));
+      const photographer = parsed.data.photographerName?.trim() || 'Fotografen din';
+      const project = parsed.data.projectTitle?.trim() || 'shooten';
+      const url = result.shareUrl;
+      const subject = isNewPhotos
+        ? `${newCount} ${newCount === 1 ? 'nytt bilde' : 'nye bilder'} i galleriet ditt ✨`
+        : 'Bildene dine er klare ✨';
+      const intro = isNewPhotos
+        ? `Hei ${parsed.data.clientName}!\n\nFotografen har lagt til ${newCount} ${newCount === 1 ? 'nytt bilde' : 'nye bilder'} i galleriet ditt. Åpne for å se dem, hjerte favorittene dine og laste ned.`
+        : (parsed.data.emailBody?.trim()
+           || `Hei ${parsed.data.clientName}!\n\nBildene fra ${project} er klare. Åpne galleriet under for å se dem, hjerte favorittene dine og laste ned.`);
+      const cta = isNewPhotos ? 'Se de nye bildene →' : 'Se galleriet ditt →';
+      const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">`
+        + `<p style="white-space:pre-wrap;font-size:15px;line-height:1.55">${esc(intro)}</p>`
+        + `<p style="margin:28px 0"><a href="${esc(url)}" style="background:#FF6B35;color:#fff;text-decoration:none;padding:13px 26px;border-radius:10px;font-weight:700;display:inline-block">${esc(cta)}</a></p>`
+        + `<p style="font-size:12px;color:#888">Eller åpne lenken: <a href="${esc(url)}" style="color:#FF6B35">${esc(url)}</a></p>`
+        + `<p style="font-size:13px;color:#555;margin-top:24px">Hilsen ${esc(photographer)}</p></div>`;
+      const text = `${intro}\n\nSe galleriet: ${url}\n\nHilsen ${photographer}`;
+      try {
+        const sendResult = await sendTransactionalEmail({
+          to: parsed.data.clientEmail,
+          subject,
+          html,
+          text,
+          fromLabel: photographer,
+          kind: isNewPhotos ? 'capture_new_photos_notification' : 'capture_delivery_notification',
+          pool,
+        });
+        emailSent = sendResult.sent;
+      } catch (err) {
+        console.warn('[capture] delivery email failed', err);
+      }
+    }
+
     res.status(result.reusedExisting ? 200 : 201).json({
       galleryId: result.galleryId,
       accessToken: result.accessToken,
       shareUrl: result.shareUrl,
       uploadedImageCount: result.uploadedImageCount,
       reusedExisting: result.reusedExisting,
+      emailSent,
     });
   });
 
@@ -1359,6 +1571,8 @@ export function createCaptureRouter(
 
   router.get('/client/assets', clientAuth, async (req, res) => {
     const { clientAuth: auth } = req as ClientAuthedRequest;
+    // Les-kvittering: klienten åpnet galleriet. Fire-and-forget (best-effort).
+    void recordClientGalleryView(db, auth.tokenId);
     const limit = Math.min(Number(req.query.limit ?? 500), 2000);
     const offset = Math.max(Number(req.query.offset ?? 0), 0);
     const rows = await db
@@ -1430,6 +1644,13 @@ export function createCaptureRouter(
       type: 'client_review',
       review: row,
     });
+    void broadcastCaptureWorkspaceEvent(pool, auth.sessionId, ({ projectId }) => ({
+      kind: 'capture.client-review',
+      projectId,
+      sessionId: auth.sessionId,
+      review: row as unknown as Record<string, unknown>,
+      timestamp: new Date().toISOString(),
+    }));
     res.status(201).json(row);
   });
 

@@ -40,7 +40,7 @@ export function useRealtimeNotifications(
     }
 
     // Bygg WS-URL mot backenden. Returnerer null i prod uten eksplisitt
-    // WS-host (Vercel proxy-er ikke WS) — da kobler vi ikke, og slipper
+    // WS-host (frontend-hostingen proxy-er ikke WS) — da kobler vi ikke, og slipper
     // den uendelige reconnect-spammen i konsollen.
     const wsUrl = buildEventsWsUrl('/ws/events');
     if (!wsUrl) {
@@ -185,4 +185,3 @@ export function useRealtimeNotifications(
     disconnect
   };
 }
-

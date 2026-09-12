@@ -202,8 +202,13 @@ export async function createTakeUploadUrl(
   const mediaType: "video" | "audio" = input.mediaType ?? "video";
   const safeName = sanitizeFilenameSegment(input.filename);
   const timestamp = Date.now();
-  const scenePart = input.sceneId ? `${input.sceneId}/` : "_unscoped/";
-  const mediaKey = `takes/${input.projectId}/${scenePart}${timestamp}-${takeId}-${safeName}`;
+  const scenePart = input.sceneId
+    ? `${sanitizeFilenameSegment(input.sceneId)}/`
+    : "_unscoped/";
+  // projectId is access-checked at the route layer, but sanitize it too so a
+  // rogue value can never traverse the R2 key namespace (parity with sceneId).
+  const safeProjectId = sanitizeFilenameSegment(input.projectId);
+  const mediaKey = `takes/${safeProjectId}/${scenePart}${timestamp}-${takeId}-${safeName}`;
 
   const r2 = getR2();
   let uploadUrl: string;

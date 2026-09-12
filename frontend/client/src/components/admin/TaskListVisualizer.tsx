@@ -44,6 +44,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
 import { useToast } from '../../hooks/use-toast';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 
 type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'blocked';
 type TaskCategory = 'critical' | 'high' | 'medium' | 'low';
@@ -237,7 +238,7 @@ const createFallbackPayload = (): DeploymentPayload => {
         name: 'API Validation',
         description: 'Verifies critical API endpoints, auth, and payload contracts.',
         icon: 'api',
-        color: '#2563eb',
+        color: '#60a5fa',
         checks: [
           {
             id: 'api-auth-check',
@@ -430,6 +431,7 @@ export default function TaskListVisualizer({
 }: TaskListVisualizerProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -645,7 +647,7 @@ export default function TaskListVisualizer({
     <Box>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 700 }}>
             Deployment Task Visualizer
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -714,7 +716,7 @@ export default function TaskListVisualizer({
                   <Typography variant="body2" sx={{ minWidth: 48, textAlign: 'right' }}>
                     {group.progress}%
                   </Typography>
-                  <IconButton onClick={() => toggleGroupExpand(group.id)}>
+                  <IconButton aria-label={expanded ? 'Skjul sjekkliste' : 'Vis sjekkliste'} onClick={() => toggleGroupExpand(group.id)}>
                     {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                   </IconButton>
                 </Stack>
@@ -768,11 +770,9 @@ export default function TaskListVisualizer({
                               <Stack direction="row" spacing={0.5}>
                                 {check.validationRules.map((rule, index) => (
                                   <Tooltip key={`${check.id}-rule-${index}`} title={rule.message}>
-                                    <Chip
-                                      size="small"
-                                      variant="outlined"
+                                    <StatusChip
+                                      tone={rule.passed ? 'success' : 'error'}
                                       label={rule.rule}
-                                      color={rule.passed ? 'success' : 'error'}
                                     />
                                   </Tooltip>
                                 ))}
@@ -797,14 +797,14 @@ export default function TaskListVisualizer({
                           ) : null}
 
                           {check.status !== 'completed' ? (
-                            <Button
+                            <AdminButton
+                              tone="primary"
                               size="small"
-                              variant="contained"
                               onClick={() => completeTaskMutation.mutate(check.id)}
-                              disabled={completeTaskMutation.isPending}
+                              loading={completeTaskMutation.isPending}
                             >
                               Complete
-                            </Button>
+                            </AdminButton>
                           ) : null}
                         </Stack>
                       </ListItem>
@@ -819,7 +819,7 @@ export default function TaskListVisualizer({
 
       <Card sx={{ mt: 2 }}>
         <CardContent>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+          <Typography variant="h6" component="h3" sx={{ fontWeight: 700, mb: 1.5 }}>
             Deployment Gates
           </Typography>
 
@@ -864,7 +864,7 @@ export default function TaskListVisualizer({
         </CardContent>
       </Card>
 
-      <Dialog open={retryDialogOpen} onClose={() => setRetryDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={retryDialogOpen} onClose={() => setRetryDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Retry failed task</DialogTitle>
         <DialogContent dividers>
           {selectedTask ? (
@@ -882,10 +882,9 @@ export default function TaskListVisualizer({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRetryDialogOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            color="warning"
+          <AdminButton tone="ghost" onClick={() => setRetryDialogOpen(false)}>Cancel</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => {
               if (selectedTaskId) {
                 retryTaskMutation.mutate(selectedTaskId);
@@ -894,11 +893,11 @@ export default function TaskListVisualizer({
             }}
           >
             Retry task
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={bypassDialogOpen} onClose={() => setBypassDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={bypassDialogOpen} onClose={() => setBypassDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ color: 'error.main' }}>Emergency bypass</DialogTitle>
         <DialogContent dividers>
           {selectedGate ? (
@@ -914,10 +913,9 @@ export default function TaskListVisualizer({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBypassDialogOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            color="error"
+          <AdminButton tone="ghost" onClick={() => setBypassDialogOpen(false)}>Cancel</AdminButton>
+          <AdminButton
+            tone="danger"
             onClick={() => {
               if (selectedGateId) {
                 bypassGateMutation.mutate(selectedGateId);
@@ -926,7 +924,7 @@ export default function TaskListVisualizer({
             }}
           >
             Activate bypass
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

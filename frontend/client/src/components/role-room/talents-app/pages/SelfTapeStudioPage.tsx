@@ -239,7 +239,7 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
   }, []);
 
   return (
-    <Box sx={{ p: 3, maxWidth: 1600, mx: 'auto' }}>
+    <Box sx={{ p: { xs: 1.5, sm: 2, md: 3 }, maxWidth: 1600, mx: 'auto' }}>
       {/* Header */}
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 3, gap: 2 }}>
         <Box>
@@ -316,6 +316,7 @@ export default function SelfTapeStudioPage({ demoMode = false }: SelfTapeStudioP
           sx={{
             display: 'grid',
             gap: 2,
+            // xs (mobile): 1-col stacking. md (tablet): main + sidebar (sidebar er midt+høyre kombinert). lg: 3 cols.
             gridTemplateColumns: { xs: '1fr', lg: 'minmax(0,1fr) 360px 320px' },
             alignItems: 'start',
           }}

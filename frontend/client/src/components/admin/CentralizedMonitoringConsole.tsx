@@ -21,7 +21,9 @@ import {
   Button,
   Divider,
   Stack,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Monitor as MonitorIcon,
   Storage as StorageIcon,
@@ -40,6 +42,7 @@ import {
   Psychology as PsychologyIcon,
 } from '@mui/icons-material';
 import { useTheming } from '../../utils/theming-helper';
+import { AdminButton } from './design-system';
 
 import APIEndpointMonitor from './APIEndpointMonitor';
 import PlaceholderTextScanner from '../development/PlaceholderTextScanner';
@@ -273,6 +276,7 @@ const CentralizedMonitoringConsole: React.FC<CentralizedMonitoringConsoleProps> 
   }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ width: '100%' }}>
       {isMonitoringSleeping && (
         <Alert severity="info" sx={{ mb: 2 }}>
@@ -321,12 +325,12 @@ const CentralizedMonitoringConsole: React.FC<CentralizedMonitoringConsoleProps> 
             >
               Refresh data
             </Button>
-            <Button
-              variant="outlined"
+            <AdminButton
+              tone="ghost"
               onClick={() => setIsMonitoringSleeping((previous) => !previous)}
             >
               {isMonitoringSleeping ? 'Wake monitoring' : 'Sleep mode'}
-            </Button>
+            </AdminButton>
           </Stack>
         </CardContent>
       </Card>
@@ -416,6 +420,7 @@ const CentralizedMonitoringConsole: React.FC<CentralizedMonitoringConsoleProps> 
         </TabPanel>
       </Card>
     </Box>
+    </ThemeProvider>
   );
 };
 

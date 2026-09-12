@@ -121,6 +121,27 @@ export function attachCaptureWebSocket(
 ): void {
   const wss = new WebSocketServer({ noServer: true });
 
+  // RT-2: 30s heartbeat sweep. node-ws v8 har ingen innebygd liveness-
+  // sjekk (en halv-åpen TCP-socket rapporterer fortsatt OPEN, så
+  // broadcastCaptureEvent forblir uvitende om at klienten er borte).
+  // Vi markerer hver socket m/ isAlive ved register + pong; sweep'er
+  // terminerer dem som ikke svarte siste tick. terminate() fyrer
+  // 'close' → eksisterende cleanup tar over.
+  const heartbeatInterval = setInterval(() => {
+    for (const set of sessionClients.values()) {
+      for (const ws of set) {
+        const tagged = ws as WebSocket & { isAlive?: boolean };
+        if (tagged.isAlive === false) {
+          try { ws.terminate(); } catch { /* noop */ }
+          continue;
+        }
+        tagged.isAlive = false;
+        try { ws.ping(); } catch { /* noop */ }
+      }
+    }
+  }, 30_000);
+  wss.on('close', () => clearInterval(heartbeatInterval));
+
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head) => {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
     const match = url.pathname.match(SESSION_PATH_RE);
@@ -158,12 +179,39 @@ export function attachCaptureWebSocket(
       socket.destroy();
     });
   });
+
+  // Keep-alive sweep — without it half-open sockets (laptop sleep, iPad
+  // backgrounded, NAT timeout) linger in sessionClients forever and
+  // broadcastToSession keeps writing to dead connections. Terminate any that
+  // missed the previous ping.
+  const heartbeat = setInterval(() => {
+    for (const set of sessionClients.values()) {
+      for (const ws of set) {
+        const live = ws as LiveWebSocket;
+        if (live.isAlive === false) {
+          try { ws.terminate(); } catch { /* ignore */ }
+          continue;
+        }
+        live.isAlive = false;
+        try { ws.ping(); } catch { /* ignore */ }
+      }
+    }
+  }, 30000);
+  heartbeat.unref?.();
+  wss.on('close', () => clearInterval(heartbeat));
 }
+
+type LiveWebSocket = WebSocket & { isAlive?: boolean };
 
 function registerClient(sessionId: string, ws: WebSocket): void {
   const set = sessionClients.get(sessionId) ?? new Set<WebSocket>();
   set.add(ws);
   sessionClients.set(sessionId, set);
+  (ws as LiveWebSocket).isAlive = true;
+
+  // RT-2: marker som alive ved connect — heartbeat sweep oppdaterer
+  // dette pr pong.
+  (ws as WebSocket & { isAlive?: boolean }).isAlive = true;
 
   ws.send(
     JSON.stringify({
@@ -174,7 +222,7 @@ function registerClient(sessionId: string, ws: WebSocket): void {
   );
 
   ws.on('pong', () => {
-    // heartbeat: node ws emits this on incoming pongs; no-op handler keeps socket alive
+    (ws as LiveWebSocket).isAlive = true;
   });
 
   ws.on('close', () => {

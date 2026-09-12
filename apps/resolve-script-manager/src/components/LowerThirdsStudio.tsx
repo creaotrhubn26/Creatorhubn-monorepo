@@ -180,7 +180,7 @@ export function LowerThirdsStudio({
     <div
       style={{
         position: "fixed", inset: 0, zIndex: 5800,
-        background: "rgba(8,4,20,0.92)", backdropFilter: "blur(10px)",
+        background: "rgba(8,4,20,0.92)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
         display: "flex", flexDirection: "column",
         color: ROLE_ROOM_BRAND.textPrimary,
         fontFamily: "system-ui, -apple-system, sans-serif",
@@ -620,7 +620,7 @@ function ItemEditPanel({ item, onChange, onChangeStyle, onApplyPreset }: {
       <div>
         <div style={SECTION_TITLE}>POSISJON</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
-          {(Object.keys(POSITION_LABELS) as LowerThirdPosition[]).slice(0, 6).map(p => (
+          {(Object.keys(POSITION_LABELS) as LowerThirdPosition[]).map(p => (
             <button key={p}
                     onClick={() => onChange({ position: p })}
                     style={{

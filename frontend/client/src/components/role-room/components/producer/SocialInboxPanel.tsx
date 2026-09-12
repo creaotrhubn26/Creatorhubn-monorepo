@@ -11,6 +11,7 @@ import {
   MenuItem,
   Select,
   Stack,
+  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
@@ -25,11 +26,15 @@ import {
   Refresh as RefreshIcon,
   CheckCircleOutline as MarkReadIcon,
   MoveToInbox as InboxHeaderIcon,
+  AutoAwesome as DraftReplyIcon,
+  ContentCopy as CopyIcon,
 } from '@mui/icons-material';
 import roleRoomAgentService, {
   type RoleRoomSentimentLabel,
   type RoleRoomSocialEvent,
 } from '../../services/roleRoomAgentService';
+import { useSequencedFetch } from '../../hooks/useSequencedFetch';
+import { LoadingSkeleton, PanelHeader, EmptyState, ErrorAlert } from './ui';
 
 type FilterPlatform = 'all' | 'instagram' | 'facebook_page' | 'linkedin' | 'youtube';
 type FilterKind = 'all' | 'comment' | 'reply' | 'mention' | 'dm' | 'reaction';
@@ -56,6 +61,18 @@ const SENTIMENT_BG: Record<RoleRoomSentimentLabel, string> = {
   positive: 'rgba(134,239,172,0.18)',
   mixed: 'rgba(251,191,36,0.18)',
 };
+
+// Kinds that represent something a producer can actually reply to. Reactions
+// (likes etc) have no body, so we don't offer a draft-reply action for them.
+const REPLYABLE_KINDS = new Set(['comment', 'reply', 'mention', 'dm']);
+
+interface DraftReplyState {
+  loading: boolean;
+  draft: string;
+  model?: string;
+  error?: string;
+  copied?: boolean;
+}
 
 const PLATFORM_LABEL: Record<string, string> = {
   instagram: 'Instagram',
@@ -90,21 +107,36 @@ export default function SocialInboxPanel(): React.ReactElement {
   const [kindFilter, setKindFilter] = useState<FilterKind>('all');
   const [sentimentFilter, setSentimentFilter] = useState<FilterSentiment>('all');
   const [unreadOnly, setUnreadOnly] = useState(false);
+  // Per-event reply drafts (Phase 2b). Keyed by event id so each row owns its
+  // own draft/loading/error without affecting the rest of the list.
+  const [drafts, setDrafts] = useState<Record<string, DraftReplyState>>({});
+
+  // The 30s auto-poll overlaps with filter changes and manual refreshes, so
+  // responses can arrive out of order — without guarding, a slow stale response
+  // could overwrite the freshly-filtered list (or flip `loading` off while a
+  // newer request is still in flight). useSequencedFetch applies only the
+  // latest request's result and skips post-unmount updates.
+  const sequencedFetch = useSequencedFetch();
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const result = await roleRoomAgentService.listSocialInbox({
-      platform: platformFilter === 'all' ? undefined : platformFilter,
-      kind: kindFilter === 'all' ? undefined : kindFilter,
-      sentiment: sentimentFilter === 'all' ? undefined : sentimentFilter,
-      unread: unreadOnly,
-      limit: 100,
-    });
-    if (result.error) setError(result.error);
-    setEvents(result.events);
-    setLoading(false);
-  }, [platformFilter, kindFilter, sentimentFilter, unreadOnly]);
+    await sequencedFetch(
+      () =>
+        roleRoomAgentService.listSocialInbox({
+          platform: platformFilter === 'all' ? undefined : platformFilter,
+          kind: kindFilter === 'all' ? undefined : kindFilter,
+          sentiment: sentimentFilter === 'all' ? undefined : sentimentFilter,
+          unread: unreadOnly,
+          limit: 100,
+        }),
+      (result) => {
+        if (result.error) setError(result.error);
+        setEvents(result.events);
+        setLoading(false);
+      },
+    );
+  }, [platformFilter, kindFilter, sentimentFilter, unreadOnly, sequencedFetch]);
 
   useEffect(() => {
     void refresh();
@@ -125,6 +157,54 @@ export default function SocialInboxPanel(): React.ReactElement {
         prev.map((e) => (e.id === eventId ? { ...e, isRead: true } : e)),
       );
     }
+  };
+
+  const handleDraftReply = async (eventId: string) => {
+    setDrafts((prev) => ({
+      ...prev,
+      [eventId]: { ...prev[eventId], loading: true, error: undefined, draft: prev[eventId]?.draft ?? '' },
+    }));
+    const result = await roleRoomAgentService.draftInboxReply(eventId);
+    setDrafts((prev) => ({
+      ...prev,
+      [eventId]: result.error
+        ? { ...prev[eventId], loading: false, error: result.error, draft: prev[eventId]?.draft ?? '' }
+        : { loading: false, draft: result.draft ?? '', model: result.model },
+    }));
+  };
+
+  const handleDraftChange = (eventId: string, value: string) => {
+    setDrafts((prev) => ({
+      ...prev,
+      [eventId]: { ...prev[eventId], draft: value, copied: false },
+    }));
+  };
+
+  const handleCopyDraft = async (eventId: string) => {
+    const text = drafts[eventId]?.draft ?? '';
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setDrafts((prev) => ({ ...prev, [eventId]: { ...prev[eventId], copied: true } }));
+      setTimeout(() => {
+        setDrafts((prev) =>
+          prev[eventId] ? { ...prev, [eventId]: { ...prev[eventId], copied: false } } : prev,
+        );
+      }, 1800);
+    } catch {
+      setDrafts((prev) => ({
+        ...prev,
+        [eventId]: { ...prev[eventId], error: 'Kunne ikke kopiere til utklippstavlen.' },
+      }));
+    }
+  };
+
+  const handleDismissDraft = (eventId: string) => {
+    setDrafts((prev) => {
+      const next = { ...prev };
+      delete next[eventId];
+      return next;
+    });
   };
 
   const counts = useMemo(() => {
@@ -152,22 +232,18 @@ export default function SocialInboxPanel(): React.ReactElement {
         borderRadius: 2,
       }}
     >
-      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-        <Stack direction="row" spacing={1} alignItems="center">
-          <InboxHeaderIcon sx={{ color: '#22d3ee' }} />
-          <Box>
-            <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem' }}>Inbox</Typography>
-            <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.84rem' }}>
-              {events.length} hendelser{counts.unread > 0 ? ` · ${counts.unread} ulest` : ''}
-            </Typography>
-          </Box>
-        </Stack>
-        <Tooltip title="Oppdater">
-          <IconButton size="small" aria-label="Oppdater inbox" onClick={() => void refresh()} disabled={loading}>
-            <RefreshIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} />
-          </IconButton>
-        </Tooltip>
-      </Stack>
+      <PanelHeader
+        icon={<InboxHeaderIcon />}
+        title="Inbox"
+        subtitle={`${events.length} hendelser${counts.unread > 0 ? ` · ${counts.unread} ulest` : ''}`}
+        actions={
+          <Tooltip title="Oppdater">
+            <IconButton size="small" aria-label="Oppdater inbox" onClick={() => void refresh()} disabled={loading}>
+              <RefreshIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} />
+            </IconButton>
+          </Tooltip>
+        }
+      />
 
       <Stack direction="row" spacing={1.2} alignItems="center" flexWrap="wrap" useFlexGap>
         <ToggleButtonGroup
@@ -226,96 +302,46 @@ export default function SocialInboxPanel(): React.ReactElement {
         </ToggleButton>
       </Stack>
 
-      {error ? (
-        <Alert severity="error" sx={{ bgcolor: 'rgba(239,68,68,0.08)', color: '#fecaca' }}>
-          {error}
-        </Alert>
-      ) : null}
+      {error ? <ErrorAlert message={error} onRetry={() => void refresh()} /> : null}
 
       {loading && events.length === 0 ? (
-        <Stack alignItems="center" sx={{ py: 4 }}>
-          <CircularProgress size={20} />
-        </Stack>
+        <LoadingSkeleton variant="list" />
       ) : events.length === 0 ? (
-        <Box
-          sx={{
-            textAlign: 'center',
-            py: 4,
-            px: 2,
-            color: 'rgba(226,232,240,0.7)',
-            bgcolor: 'rgba(15,23,42,0.4)',
-            borderRadius: 2,
-            border: '1px dashed rgba(148,163,184,0.25)',
-          }}
-        >
-          <Typography sx={{ fontSize: '0.95rem', fontWeight: 700, mb: 0.5 }}>
-            Ingen events ennå
-          </Typography>
-          <Typography sx={{ fontSize: '0.78rem', mb: 1.5, opacity: 0.85 }}>
-            Når koblede plattformer mottar comments, mentions, eller DMs, lander de her med
-            sentiment-score og avsender-info.
-          </Typography>
-          <Stack
-            direction="row"
-            spacing={1}
-            justifyContent="center"
-            flexWrap="wrap"
-            useFlexGap
-            sx={{ mt: 1.5, fontSize: '0.74rem' }}
-          >
-            <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.74rem' }}>
-              Sjekk:
-            </Typography>
-            <Chip
-              size="small"
-              label="1. Kontoer koblet (bar øverst)"
-              sx={{
-                fontSize: '0.7rem',
-                bgcolor: 'rgba(34,211,238,0.12)',
-                color: '#22d3ee',
-                border: '1px solid rgba(34,211,238,0.3)',
-              }}
-            />
-            <Chip
-              size="small"
-              label="2. Webhook subscribed (skjer auto ved connect)"
-              sx={{
-                fontSize: '0.7rem',
-                bgcolor: 'rgba(134,239,172,0.12)',
-                color: '#86efac',
-                border: '1px solid rgba(134,239,172,0.3)',
-              }}
-            />
-            <Chip
-              size="small"
-              label="3. Posts publisert (Plan-fase)"
-              sx={{
-                fontSize: '0.7rem',
-                bgcolor: 'rgba(236,72,153,0.12)',
-                color: '#f9a8d4',
-                border: '1px solid rgba(236,72,153,0.3)',
-              }}
-            />
-          </Stack>
-        </Box>
+        <EmptyState
+          title="Ingen events ennå"
+          description="Når koblede plattformer mottar comments, mentions, eller DMs, lander de her med sentiment-score og avsender-info."
+          hintsLabel="Sjekk:"
+          hints={[
+            { label: '1. Kontoer koblet (bar øverst)', tone: 'accent' },
+            { label: '2. Webhook subscribed (skjer auto ved connect)', tone: 'positive' },
+            { label: '3. Posts publisert (Plan-fase)', tone: 'neutral' },
+          ]}
+        />
       ) : (
         <Stack spacing={1} data-testid="inbox-event-list">
-          {events.map((e) => (
-            <Stack
+          {events.map((e) => {
+            const draftState = drafts[e.id];
+            const canReply =
+              REPLYABLE_KINDS.has(e.kind) && Boolean(e.body && e.body.trim());
+            return (
+            <Box
               key={e.id}
+              data-testid="inbox-event-wrap"
+              sx={{
+                borderRadius: 1.4,
+                bgcolor: e.isRead ? 'rgba(15,23,42,0.4)' : 'rgba(34,211,238,0.06)',
+                border: '1px solid rgba(148,163,184,0.18)',
+                opacity: e.isRead ? 0.85 : 1,
+              }}
+            >
+            <Stack
               direction="row"
               spacing={1.2}
               data-testid="inbox-event"
               data-platform={e.platform}
               data-kind={e.kind}
               data-sentiment={e.sentimentLabel ?? 'pending'}
-              sx={{
-                p: 1.2,
-                borderRadius: 1.4,
-                bgcolor: e.isRead ? 'rgba(15,23,42,0.4)' : 'rgba(34,211,238,0.06)',
-                border: '1px solid rgba(148,163,184,0.18)',
-                opacity: e.isRead ? 0.75 : 1,
-              }}
+              sx={{ p: 1.2 }}
             >
               <Avatar
                 src={e.authorAvatarUrl ?? undefined}
@@ -382,7 +408,7 @@ export default function SocialInboxPanel(): React.ReactElement {
                           : e.platform === 'facebook_page'
                             ? '#93c5fd'
                             : e.platform === 'linkedin'
-                              ? '#7dd3fc'
+                              ? 'var(--role-cyan, #7dd3fc)'
                               : e.platform === 'youtube'
                                 ? '#fca5a5'
                                 : '#cbd5e1',
@@ -435,20 +461,141 @@ export default function SocialInboxPanel(): React.ReactElement {
                   {e.body ?? <em style={{ opacity: 0.5 }}>(ingen tekst)</em>}
                 </Typography>
               </Box>
-              {!e.isRead ? (
-                <Tooltip title="Marker som lest">
-                  <IconButton
-                    size="small"
-                    onClick={() => void handleMarkRead(e.id)}
-                    data-testid="inbox-mark-read"
-                    sx={{ color: 'rgba(134,239,172,0.85)' }}
-                  >
-                    <MarkReadIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              ) : null}
+              <Stack direction="row" spacing={0.2} alignItems="flex-start">
+                {canReply ? (
+                  <Tooltip title="Foreslå svar med agenten">
+                    <IconButton
+                      size="small"
+                      onClick={() => void handleDraftReply(e.id)}
+                      disabled={draftState?.loading}
+                      data-testid="inbox-draft-reply"
+                      aria-label="Foreslå svar"
+                      sx={{ color: 'rgba(34,211,238,0.9)' }}
+                    >
+                      {draftState?.loading ? (
+                        <CircularProgress size={16} sx={{ color: 'rgba(34,211,238,0.9)' }} />
+                      ) : (
+                        <DraftReplyIcon fontSize="small" />
+                      )}
+                    </IconButton>
+                  </Tooltip>
+                ) : null}
+                {!e.isRead ? (
+                  <Tooltip title="Marker som lest">
+                    <IconButton
+                      size="small"
+                      onClick={() => void handleMarkRead(e.id)}
+                      data-testid="inbox-mark-read"
+                      sx={{ color: 'rgba(134,239,172,0.85)' }}
+                    >
+                      <MarkReadIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                ) : null}
+              </Stack>
             </Stack>
-          ))}
+            {draftState && (draftState.loading || draftState.draft || draftState.error) ? (
+              <Box
+                data-testid="inbox-draft-area"
+                sx={{
+                  px: 1.2,
+                  pb: 1.2,
+                  pt: 0.2,
+                  borderTop: '1px dashed rgba(148,163,184,0.16)',
+                }}
+              >
+                {draftState.error ? (
+                  <Alert
+                    severity="error"
+                    sx={{ mt: 1, bgcolor: 'rgba(239,68,68,0.08)', color: '#fecaca' }}
+                  >
+                    {draftState.error}
+                  </Alert>
+                ) : null}
+                {draftState.draft ? (
+                  <>
+                    <TextField
+                      multiline
+                      fullWidth
+                      minRows={2}
+                      maxRows={8}
+                      size="small"
+                      value={draftState.draft}
+                      onChange={(ev) => handleDraftChange(e.id, ev.target.value)}
+                      data-testid="inbox-draft-text"
+                      inputProps={{ 'aria-label': 'Svarutkast' }}
+                      sx={{
+                        mt: 1,
+                        '& .MuiInputBase-root': {
+                          bgcolor: 'rgba(15,23,42,0.55)',
+                          color: '#e2e8f0',
+                          fontSize: '0.82rem',
+                        },
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'rgba(148,163,184,0.25)',
+                        },
+                      }}
+                    />
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      alignItems="center"
+                      sx={{ mt: 0.8 }}
+                      flexWrap="wrap"
+                      useFlexGap
+                    >
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<CopyIcon fontSize="small" />}
+                        onClick={() => void handleCopyDraft(e.id)}
+                        data-testid="inbox-draft-copy"
+                        sx={{
+                          textTransform: 'none',
+                          fontSize: '0.74rem',
+                          bgcolor: 'rgba(34,211,238,0.18)',
+                          color: 'var(--role-cyan, #22d3ee)',
+                          boxShadow: 'none',
+                          '&:hover': { bgcolor: 'rgba(34,211,238,0.28)', boxShadow: 'none' },
+                        }}
+                      >
+                        {draftState.copied ? 'Kopiert!' : 'Kopier'}
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => void handleDraftReply(e.id)}
+                        disabled={draftState.loading}
+                        sx={{
+                          textTransform: 'none',
+                          fontSize: '0.74rem',
+                          color: 'rgba(226,232,240,0.7)',
+                        }}
+                      >
+                        Generer på nytt
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => handleDismissDraft(e.id)}
+                        sx={{
+                          textTransform: 'none',
+                          fontSize: '0.74rem',
+                          color: 'rgba(226,232,240,0.5)',
+                        }}
+                      >
+                        Lukk
+                      </Button>
+                      <Typography sx={{ color: 'rgba(226,232,240,0.4)', fontSize: '0.68rem' }}>
+                        Lim inn svaret på {PLATFORM_LABEL[e.platform] ?? e.platform}. Kun
+                        denne kommentaren ble sendt til agenten.
+                      </Typography>
+                    </Stack>
+                  </>
+                ) : null}
+              </Box>
+            ) : null}
+            </Box>
+            );
+          })}
           {loading ? (
             <Stack direction="row" justifyContent="center" sx={{ py: 1 }}>
               <CircularProgress size={14} />

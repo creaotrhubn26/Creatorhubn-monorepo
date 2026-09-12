@@ -201,6 +201,23 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
     retry: false,
   });
 
+  // Hent brukerens utstyr — så vi kan skille «ingen utstyr lagt til» fra
+  // «utstyr finnes, men ingen oppdateringer». Uten dette viste panelet
+  // feilaktig «Alle firmware-versjoner er oppdaterte!» når lista var tom.
+  const { data: userEquipment = [] } = useQuery({
+    queryKey: ['/api/equipment/user', userId],
+    enabled: Boolean(userId) && !firmwareEndpointUnavailable,
+    queryFn: async () => {
+      try {
+        return await apiRequest(`/api/equipment/user/${userId}`);
+      } catch {
+        return [];
+      }
+    },
+    retry: false,
+  });
+  const equipmentCount = Array.isArray(userEquipment) ? userEquipment.length : 0;
+
   // Manual firmware check
   const checkAllFirmwareMutation = useMutation({
     mutationFn: () => apiRequest('/api/equipment/sync-firmware', { method: 'POST' }),
@@ -763,7 +780,35 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
         </Box>
       )}
 
-      {!firmwareEndpointUnavailable && sortedUpdates.length === 0 && !isLoading && (
+      {/* Ingen utstyr lagt til — IKKE «alt oppdatert». Veiled til å legge til utstyr. */}
+      {!firmwareEndpointUnavailable && sortedUpdates.length === 0 && !isLoading && equipmentCount === 0 && (
+        <Box sx={{ minHeight: { xs: 260, md: 320 }, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Box
+            sx={{
+              width: '100%',
+              maxWidth: 860,
+              textAlign: 'center',
+              py: { xs: 5, md: 6 },
+              px: { xs: 2.5, md: 4 },
+              borderRadius: 2,
+              background: 'linear-gradient(140deg, rgba(96,165,250,0.14) 0%, rgba(15,23,42,0.62) 100%)',
+              border: '1px solid rgba(96,165,250,0.34)',
+            }}
+          >
+            <Info sx={{ fontSize: '3.2rem', mb: 1.5, color: '#60a5fa' }} />
+            <Typography variant="h4" sx={{ mb: 1, color: ROLE_ROOM_BRAND.textPrimary, fontWeight: 700 }}>
+              Ingen utstyr lagt til ennå
+            </Typography>
+            <Typography sx={{ color: ROLE_ROOM_BRAND.textSecondary, fontSize: '1.15rem' }}>
+              Legg til kamera og utstyr i Utstyr-fanen, så viser vi firmware-status
+              og oppdateringer for hvert produkt her.
+            </Typography>
+          </Box>
+        </Box>
+      )}
+
+      {/* Utstyr finnes, men ingen ventende oppdateringer → faktisk «alt oppdatert». */}
+      {!firmwareEndpointUnavailable && sortedUpdates.length === 0 && !isLoading && equipmentCount > 0 && (
         <Box sx={{ minHeight: { xs: 260, md: 320 }, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Box
             sx={{

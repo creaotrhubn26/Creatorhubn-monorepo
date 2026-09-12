@@ -1336,19 +1336,23 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             formations={formations}
             dancers={dancers}
             hiddenDancerIds={hiddenDancerIds}
-            onToggleHidden={(id) => setHiddenDancerIds((prev) => {
+            // Hold tunge 3D-oppdateringer lavt prioritert.
+            onToggleHidden={(id) => React.startTransition(() => setHiddenDancerIds((prev) => {
               const next = new Set(prev);
               if (next.has(id)) next.delete(id); else next.add(id);
               return next;
-            })}
+            }))}
             showPaths={showPaths}
+            // showPaths går ikke til StageMap3D — mounter ingen <Text>, trenger ingen transition.
             onToggleShowPaths={() => setShowPaths((v) => !v)}
             showIds={showIds}
-            onToggleShowIds={() => setShowIds((v) => !v)}
+            // Slår på en ekstra sprite-label per danser.
+            onToggleShowIds={() => React.startTransition(() => setShowIds((v) => !v))}
             stageOpacity={stageOpacity}
             onStageOpacityChange={setStageOpacity}
             stageMode={stageMode}
-            onStageModeChange={setStageMode}
+            // Sprite-labelene suspenderer ikke; transition holder GPU-mounten responsiv.
+            onStageModeChange={(m) => React.startTransition(() => setStageMode(m))}
             onChange={updateActiveFormation}
           />
         ) : null}

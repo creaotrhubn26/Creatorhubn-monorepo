@@ -1,10 +1,39 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { createRoot } from 'react-dom/client';
 import { Box, CircularProgress, CssBaseline, Typography } from '@mui/material';
 import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CastingPlannerPanel } from './components/CastingPlannerPanel';
 import { CastingLandingPage } from './components/CastingLandingPage';
+import TheRoleRoomLanding from '@/pages/theroleroom-landing';
+import RoleRoomGdprNotice from '@/components/role-room/RoleRoomGdprNotice';
+import LeadgridLanding from '@/pages/leadgrid-landing';
+import LeadgridPricingPage from '@/pages/leadgrid-pricing';
+import LeadgridPersonvern from '@/pages/leadgrid-personvern';
+import LeadgridSuperadminPage from '@/pages/leadgrid-superadmin';
+import LeadgridClientPortalPage from '@/pages/leadgrid-client-portal';
+import LeadgridPartnerApplicationPage from '@/pages/leadgrid-partner-application';
+import LeadgridDevelopersPage from '@/pages/leadgrid-developers';
+import LeadgridDeveloperApplicationPage from '@/pages/leadgrid-developer-application';
+import LeadgridPartnerWizardPage from '@/pages/leadgrid-partner-wizard';
+import LeadgridPartnerDashboardPage from '@/pages/leadgrid-partner-dashboard';
+import LeadgridMarketplacePage from '@/pages/leadgrid-marketplace';
+import LeadgridConnectorsPage from '@/pages/leadgrid-connectors';
+import LeadgridImportPage from '@/pages/leadgrid-import';
+import LeadgridWorkflowsPage from '@/pages/leadgrid-workflows';
+import LeadgridWorkflowWebhooksPage from '@/pages/leadgrid-workflow-webhooks';
+import LeadgridDealsPage from '@/pages/leadgrid-deals';
+import LeadgridSkaffeLeadsGuidePage from '@/pages/leadgrid-skaffe-leads-guide';
+import LeadgridFeltsalgSalgsteamPage from '@/pages/leadgrid-feltsalg-salgsteam';
+import LeadgridAkademiPage from '@/pages/leadgrid-akademi';
+import LeadgridAkademiSamarbeidPage from '@/pages/leadgrid-akademi-samarbeid-salg-marked';
+import LeadgridAkademiVelgeCrmPage from '@/pages/leadgrid-akademi-velge-crm-feltsalg';
+import BlogIndexPage from '@/pages/blog-index';
+import BlogPostPage from '@/pages/blog-post';
+import AgencyLandingPage from '@/pages/agency-landing';
+import AgencyFAQPage from '@/pages/agency-faq';
+import PitchDeckPage from '@/pages/pitch-deck';
 import RoleRoomEducationPartnershipPage from './components/RoleRoomEducationPartnershipPage';
 import TalentPortalView from './components/TalentPortalView';
 import AgencyPortalView from './components/AgencyPortalView';
@@ -20,6 +49,7 @@ import MarketingPageRouter from '@/components/admin/content-marketing/MarketingP
 import { parseMarketingPagePath } from '@/components/admin/content-marketing/marketingPagesConfig';
 import { PublicBriefDetail, PublicBriefIndex, parsePublicBriefPath } from '@/components/admin/content-marketing/PublicBriefPage';
 import ClientWorkspaceShell from './components/client-workspace/ClientWorkspaceShell';
+import ClientPortalMarketingPage from '@/pages/client-portal-marketing';
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
 import { useAriaHiddenFocusFix } from '@/hooks/useAriaHiddenFocusFix';
 import { detectLocale } from './cms/useLocale';
@@ -29,17 +59,45 @@ import { clientInvitesApi, googleWorkspaceApi } from './services/castingApiServi
 import { EnhancedMasterIntegrationProvider } from '@/integration/EnhancedMasterIntegrationProvider';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { parseTalentPortalIntentFromWindow } from './utils/talentPortal';
-import { isRoleRoomEducationPathname } from './utils/runtime';
+import { isLeadgridDedicatedHost, isRoleRoomEducationPathname } from './utils/runtime';
 import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 import RoleRoomUXLayer from './shared/RoleRoomUXLayer';
-import { getActiveProfessionMode } from './config/professionMode';
+import { getActiveProfessionMode, type ProfessionMode } from './config/professionMode';
+
+/**
+ * Velkomst-teksten i onboarding-turen er felles for alle vertikaler unntatt
+ * talent-portalen: tittelen er alltid «The Role Room» (produkt-branding), mens
+ * undertittelen beskriver den aktive vertikalen. Record<ProfessionMode> gjør at
+ * tsc roper hvis en ny persona ikke får sin egen velkomst.
+ */
+const WELCOME_SUBTITLE_BY_MODE: Record<ProfessionMode, string> = {
+  production: 'Produksjonsmodus — her planlegger du hele produksjonen: roller, kandidater, auditions, lokasjoner og team. Vi tar deg gjennom 3 viktige snarveier.',
+  photographer: 'Fotomodus — her planlegger du fotoprosjektet: medvirkende, lokasjoner, utstyr og leveranser. Vi tar deg gjennom 3 viktige snarveier.',
+  content_producer: 'Innholdsprodusent — her går du fra brief til ferdig innhold: storyboard, bidragsytere og klientgodkjenning. Vi tar deg gjennom 3 viktige snarveier.',
+  content_creator: 'Innholdsskaper — her planlegger og produserer du innholdet ditt fra idé til levering. Vi tar deg gjennom 3 viktige snarveier.',
+  dance_studio: 'Dansestudio — her styrer du studioet: produksjoner, dansere og timeplan. Vi tar deg gjennom 3 viktige snarveier.',
+  dance_freelance: 'Dans (frilans) — her holder du oversikt over oppdrag, tilgjengelighet og produksjonene du er med i. Vi tar deg gjennom 3 viktige snarveier.',
+  education: 'Utdanningsmodus — her underviser du: kull, studentproduksjoner, oppgaver og vurdering. Vi tar deg gjennom 3 viktige snarveier.',
+  student: 'Studentmodus — her ser du produksjonene, oppgavene og tilbakemeldingene dine. Vi tar deg gjennom 3 viktige snarveier.',
+};
+import { ROLE_CHROME_VAR } from './hooks/useRoleRoomBrand';
+import { useElementEdits, detectDesignWorkspace } from '@/components/workspace/elementEdits';
+import WorkspaceDesignOverlay from '@/components/workspace/WorkspaceDesignOverlay';
+import { Route } from 'wouter';
 import {
   Search as SearchTourIcon,
   HelpOutline as HelpTourIcon,
   EmojiPeople as WelcomeIcon,
-  Theaters as CastingIcon,
 } from '@mui/icons-material';
+// Super Admin: alltid-tilgjengelig kontrollflate for daniel@creatorhubn.com.
+// Mountes på toppen av Role Room-shellen så det er synlig SELV når et
+// prosjekt er åpent. /admin-room-ruten åpner AdminRoom direkte uten å
+// gå via dashboard-subtab (som var begravd bak email-gate + project-state).
+import SuperAdminOverlay from './components/admin/SuperAdminOverlay';
+import SuperAdminAdminRoomShell, {
+  isSuperAdminAdminRoomPath,
+} from './components/admin/SuperAdminAdminRoomShell';
 
 const castingQueryClient = new QueryClient({
   defaultOptions: {
@@ -78,6 +136,53 @@ function upsertHeadLink(rel: string, href: string) {
   document.head.appendChild(link);
 }
 
+// App.tsx-only ruter som ALSO må virke på theroleroom.com. App.tsx kjører aldri
+// på denne hosten, så magic-link/invite/settings-lenker (bygd med theroleroom.com
+// som origin/hardkodet) falt stille til landingssiden. Lazy + wouter <Route> så
+// :token når komponenter som bruker useParams. (Audit etter dead-links/GA/portal.)
+const RrTesterInviteLanding = React.lazy(() =>
+  import('@/components/role-room/dance/BillingPanels').then((m) => ({ default: m.TesterInviteLanding })),
+);
+const RrDanceInviteLanding = React.lazy(() => import('@/components/role-room/dance/InviteLandingPage'));
+const RrLeadMapAccept = React.lazy(() => import('@/pages/LeadMapAccept'));
+const RrPostAgentLink = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
+const RrAcceptTesterInvite = React.lazy(() => import('@/pages/AcceptTesterInvite'));
+const RrClaimStudentAccess = React.lazy(() => import('@/pages/ClaimStudentAccess'));
+const RrClaimCensorAccess = React.lazy(() => import('@/pages/ClaimCensorAccess'));
+const RrCensorView = React.lazy(() => import('@/pages/CensorView'));
+const RrAcceptPrototypeTesterInvite = React.lazy(() => import('@/pages/AcceptPrototypeTesterInvite'));
+const RrSecuritySettings = React.lazy(() => import('@/pages/sikkerhet'));
+// Innlogging + passord-reset: var KUN App.tsx-ruter, så klienter på
+// theroleroom.com som klikket «Logg inn-side» / passord-reset-lenker falt
+// til landingssiden. Wires her så e-post+passord-innlogging faktisk virker
+// for klient-portal-brukere (de som ikke logger inn med Google).
+const RrLoginPage = React.lazy(() => import('@/pages/LoginPageSimple'));
+const RrResetPassword = React.lazy(() => import('@/pages/reset-passord'));
+// Personvern — offentlig privacy-URL kreves for Google OAuth-verifisering
+// (dekker Google Ads/Workspace-data). Var KUN App.tsx-rute → død på theroleroom.
+const RrPrivacyPolicy = React.lazy(() => import('@/pages/privacy-policy'));
+// Offentlig Review Room-lenke fra Post Agent. theroleroom.com bruker denne
+// dedikerte bootstrapen i stedet for App.tsx, så ruten må finnes begge steder.
+const RrMockupReview = React.lazy(() => import('@/pages/mockup-review'));
+
+const THEROLEROOM_APP_ROUTES: Array<{ test: RegExp; path: string; component: React.ComponentType<any> }> = [
+  { test: /^\/privacy-policy$/, path: '/privacy-policy', component: RrPrivacyPolicy },
+  { test: /^\/personvern$/, path: '/personvern', component: RrPrivacyPolicy },
+  { test: /^\/mockup-review\/[^/]+$/, path: '/mockup-review/:token', component: RrMockupReview },
+  { test: /^\/invite\/[^/]+$/, path: '/invite/:token', component: RrTesterInviteLanding },
+  { test: /^\/dance\/invite\/[^/]+$/, path: '/dance/invite/:token', component: RrDanceInviteLanding },
+  { test: /^\/role-room\/accept-invite$/, path: '/role-room/accept-invite', component: RrAcceptTesterInvite },
+  { test: /^\/role-room\/student\/claim$/, path: '/role-room/student/claim', component: RrClaimStudentAccess },
+  { test: /^\/role-room\/censor\/claim$/, path: '/role-room/censor/claim', component: RrClaimCensorAccess },
+  { test: /^\/role-room\/censor$/, path: '/role-room/censor', component: RrCensorView },
+  { test: /^\/prototype-tester\/accept-invite$/, path: '/prototype-tester/accept-invite', component: RrAcceptPrototypeTesterInvite },
+  { test: /^\/lead-map\/accept$/, path: '/lead-map/accept', component: RrLeadMapAccept },
+  { test: /^\/link$/, path: '/link', component: RrPostAgentLink },
+  { test: /^\/innstillinger\/sikkerhet$/, path: '/innstillinger/sikkerhet', component: RrSecuritySettings },
+  { test: /^\/login$/, path: '/login', component: RrLoginPage },
+  { test: /^\/reset-passord\/[^/]+$/, path: '/reset-passord/:token', component: RrResetPassword },
+];
+
 function CastingStandaloneAppContent() {
   // Detekter locale fra /en/-prefix og strip det før path-parsing.
   // Kanonisk innhold på /<path>, oversatt på /en/<path>.
@@ -95,6 +200,12 @@ function CastingStandaloneAppContent() {
     // Pass strippet pathname så `/en/utdanningsinstitusjon` matches
     return isRoleRoomEducationPathname(localeCtx.pathname, window.location);
   }, [localeCtx.pathname]);
+
+  // Super Admin-rute: /admin-room mountes som egen toplevel-flate. Detekteres
+  // her — ikke i RoleRoomDashboardPanel — for å bypasse email-gate-bug og
+  // project-room-auto-restore. Bare daniel@creatorhubn.com slipper gjennom
+  // (verifisert i SuperAdminAdminRoomShell selv).
+  const isAdminRoomPath = useMemo(() => isSuperAdminAdminRoomPath(), [localeCtx.pathname]);
 
   // Public SEO-landingssider — detekteres før auth-gate slik at
   // Googlebot kan indeksere innholdet uten login.
@@ -131,18 +242,168 @@ function CastingStandaloneAppContent() {
     return match ? decodeURIComponent(match[1]) : null;
   }, [localeCtx.pathname]);
 
+  // Klient-portal magic-link: /client/portal/:token — read-only marketing-plan-
+  // dashboard (token-i-URL-auth). Var KUN rutet i App.tsx, som ALDRI kjører på
+  // theroleroom.com/casting-main-hosten → lenken falt til landingssiden. Ekstraher
+  // token og render portalen her (mønster som /client/workspace over).
+  const clientPortalToken = useMemo(() => {
+    const match = localeCtx.pathname.match(/^\/client\/portal\/([^/]+)\/?$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }, [localeCtx.pathname]);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
 
-    syncSiteSeo({
-      hostname: window.location.hostname,
-      pathname: window.location.pathname,
-    });
+    // Leadgrid-dedikert host: siteSeo kjenner kun Role Room/CreatorHub og
+    // ville satt «CreatorHub Norge | …»-tittelen oppå Leadgrid-sidenes egen
+    // SEO (denne foreldre-effekten kjører ETTER sidenes effekter).
+    if (!isLeadgridDedicatedHost(window.location.hostname)) {
+      syncSiteSeo({
+        hostname: window.location.hostname,
+        pathname: window.location.pathname,
+      });
+    }
 
     trackMarketingPageView(window.location.pathname);
   }, [isEducationPath, competitorKey, studentPageKey, isPressKitPath]);
+
+  if (isAdminRoomPath) {
+    return <SuperAdminAdminRoomShell />;
+  }
+
+  // Leadgrid dedikert host (leadgrid.no): rene stier uten /leadgrid-prefiks —
+  // '/' → landing, '/priser' → '/leadgrid/priser', osv. Prefiksede stier
+  // fortsetter å virke på alle hoster (lenker/bokmerker brekker ikke).
+  const leadgridHost = typeof window !== 'undefined'
+    && isLeadgridDedicatedHost(window.location.hostname);
+  const leadgridPath = (() => {
+    const p = localeCtx.pathname;
+    if (!leadgridHost) return p;
+    if (p === '/' || p === '') return '/leadgrid';
+    if (p.startsWith('/leadgrid')) return p;
+    // Vanlige aliaser pa ren host -> kjente sider.
+    if (p === '/importer' || p === '/importer/') return '/leadgrid/import';
+    if (p === '/demo' || p === '/demo/') return '/leadgrid';
+    return `/leadgrid${p}`;
+  })();
+
+  // Leadgrid landing-side + personvern (offentlige sider — krever ikke auth).
+  // Personvern må komme før hoved-landing-en pga prefix-match.
+  if (leadgridPath === '/leadgrid/personvern'
+      || leadgridPath === '/leadgrid/personvern/') {
+    return <LeadgridPersonvern />;
+  }
+  if (localeCtx.pathname === '/personvern/automatisk-research'
+      || localeCtx.pathname === '/personvern/automatisk-research/') {
+    const LeadgridResearchConsent = React.lazy(
+      () => import('@/pages/leadgrid-research-consent')
+    );
+    return (
+      <ErrorBoundary componentName="casting-main-leadgrid-consent">
+      <React.Suspense fallback={null}>
+        <LeadgridResearchConsent />
+      </React.Suspense>
+      </ErrorBoundary>
+    );
+  }
+  if (leadgridPath === '/leadgrid/pricing' || leadgridPath === '/leadgrid/pricing/'
+      || leadgridPath === '/leadgrid/priser' || leadgridPath === '/leadgrid/priser/') {
+    return <LeadgridPricingPage />;
+  }
+  // GEO-innholdssider (offentlige — docs/integration-audit/09)
+  if (leadgridPath === '/leadgrid/skaffe-leads-guide'
+      || leadgridPath === '/leadgrid/skaffe-leads-guide/') {
+    return <LeadgridSkaffeLeadsGuidePage />;
+  }
+  if (leadgridPath === '/leadgrid/feltsalg-for-salgsteam'
+      || leadgridPath === '/leadgrid/feltsalg-for-salgsteam/') {
+    return <LeadgridFeltsalgSalgsteamPage />;
+  }
+  // Leadgrid Akademi — redaksjonelt læringstilbud (doc 13). Offentlig.
+  if (leadgridPath === '/leadgrid/akademi' || leadgridPath === '/leadgrid/akademi/') {
+    return <LeadgridAkademiPage />;
+  }
+  if (leadgridPath === '/leadgrid/akademi/samarbeid-salg-marked'
+      || leadgridPath === '/leadgrid/akademi/samarbeid-salg-marked/') {
+    return <LeadgridAkademiSamarbeidPage />;
+  }
+  if (leadgridPath === '/leadgrid/akademi/velge-crm-feltsalg'
+      || leadgridPath === '/leadgrid/akademi/velge-crm-feltsalg/') {
+    return <LeadgridAkademiVelgeCrmPage />;
+  }
+
+  if (leadgridPath === '/leadgrid' || leadgridPath === '/leadgrid/') {
+    return <LeadgridLanding />;
+  }
+  if (localeCtx.pathname === '/superadmin' || localeCtx.pathname === '/superadmin/') {
+    return <LeadgridSuperadminPage />;
+  }
+  // Leadgrid klient-portal: /c/{token} (offentlig, ingen TRR-konto kreves)
+  if (/^\/c\/[A-Za-z0-9_-]+\/?$/.test(localeCtx.pathname)) {
+    return <LeadgridClientPortalPage />;
+  }
+  // Org-side partnerskap — multi-step wizard (krever innlogget org-admin)
+  if (leadgridPath === '/leadgrid/innstillinger/partnerskap' ||
+      leadgridPath === '/leadgrid/innstillinger/partnerskap/') {
+    return <LeadgridPartnerWizardPage />;
+  }
+  // Partner-dashboard (etter submit)
+  if (leadgridPath === '/leadgrid/partner-dashboard' ||
+      leadgridPath === '/leadgrid/partner-dashboard/') {
+    return <LeadgridPartnerDashboardPage />;
+  }
+  // Public marketplace
+  if (leadgridPath === '/leadgrid/marketplace' ||
+      leadgridPath === '/leadgrid/marketplace/') {
+    return <LeadgridMarketplacePage />;
+  }
+  // Connector Marketplace (public — viser frem API v1 integrasjoner)
+  if (leadgridPath === '/leadgrid/connectors' ||
+      leadgridPath === '/leadgrid/connectors/') {
+    return <LeadgridConnectorsPage />;
+  }
+  // CSV/Excel + URL-basert lead-import (mig 328, krever innlogging)
+  if (leadgridPath === '/leadgrid/import' ||
+      leadgridPath === '/leadgrid/import/') {
+    return <LeadgridImportPage />;
+  }
+  // Webhook-destinasjoner (mig 0350) — MÅ komme FØR /leadgrid/workflows for
+  // å unngå at /workflows/webhooks tolkes som workflow-sida.
+  if (leadgridPath === '/leadgrid/workflows/webhooks' ||
+      leadgridPath === '/leadgrid/workflows/webhooks/') {
+    return <LeadgridWorkflowWebhooksPage />;
+  }
+  // Smart Workflow Builder (mig 0349, #203) — Leadgrid-koblede triggers + actions
+  if (leadgridPath === '/leadgrid/workflows' ||
+      leadgridPath === '/leadgrid/workflows/') {
+    return <LeadgridWorkflowsPage />;
+  }
+  // Deal Pipeline Kanban (mig 0349, #154/#155) — weighted forecast
+  if (leadgridPath === '/leadgrid/deals' ||
+      leadgridPath === '/leadgrid/deals/') {
+    return <LeadgridDealsPage />;
+  }
+  // Developer-docs (public)
+  if (leadgridPath === '/leadgrid/utviklere' ||
+      leadgridPath === '/leadgrid/utviklere/') {
+    return <LeadgridDevelopersPage />;
+  }
+  // Utvikler-søknadsskjema (public)
+  if (leadgridPath === '/leadgrid/utviklere/soknad' ||
+      leadgridPath === '/leadgrid/utviklere/soknad/') {
+    return <LeadgridDeveloperApplicationPage />;
+  }
+
+  // Leadgrid-dedikert host: ukjente stier skal ALDRI falle gjennom til
+  // Role Room-innholdet (leadgrid.no/demo viste film-landingen). Kjente
+  // unntak (/c/-portal, /superadmin, consent) er matchet over; auth-stier
+  // slippes gjennom som sikkerhetsventil.
+  if (leadgridHost && !localeCtx.pathname.startsWith('/auth')
+      && !localeCtx.pathname.startsWith('/oauth')) {
+    return <LeadgridLanding />;
+  }
 
   if (competitorKey) {
     return <CompetitorComparisonPage competitor={competitorKey} locale={localeCtx.locale} />;
@@ -166,12 +427,51 @@ function CastingStandaloneAppContent() {
       : <PublicBriefDetail slug={briefRoute.slug} />;
   }
 
+  if (clientPortalToken) {
+    return <ClientPortalMarketingPage token={clientPortalToken} />;
+  }
+
   if (clientWorkspaceProjectId) {
     return <ClientWorkspaceShell projectId={clientWorkspaceProjectId} />;
   }
 
   if (isEducationPath) {
     return <RoleRoomEducationPartnershipPage locale={localeCtx.locale} />;
+  }
+
+  // Public marketing/SEO landing pages (agency, FAQ, pitch, blog). These live in
+  // pages/ but were only routed in App.tsx — which never loads on dedicated
+  // Role Room hosts (theroleroom.com) — so the footer/nav links were dead.
+  // Route them here, before the auth-gated fallback.
+  {
+    const publicPath = localeCtx.pathname.replace(/\/+$/, '') || '/';
+    if (publicPath === '/for-byraer' || publicPath === '/for-byråer' || publicPath === '/agencies') {
+      return <AgencyLandingPage />;
+    }
+    if (publicPath === '/faq') {
+      return <AgencyFAQPage />;
+    }
+    if (publicPath === '/pitch') {
+      return <PitchDeckPage />;
+    }
+    if (publicPath === '/blog') {
+      return <BlogIndexPage />;
+    }
+    if (/^\/blog\/[^/]+$/.test(publicPath)) {
+      return <BlogPostPage />;
+    }
+
+    // App.tsx-only ruter (invite/magic-link/settings) som også må virke her.
+    const appRoute = THEROLEROOM_APP_ROUTES.find((r) => r.test.test(publicPath));
+    if (appRoute) {
+      return (
+        <ErrorBoundary componentName="casting-main-app-route">
+        <React.Suspense fallback={null}>
+          <Route path={appRoute.path} component={appRoute.component} />
+        </React.Suspense>
+        </ErrorBoundary>
+      );
+    }
   }
 
   return <CastingStandaloneRuntimeContent />;
@@ -191,6 +491,13 @@ function CastingStandaloneRuntimeContent() {
   useAriaHiddenFocusFix(true);
   const [processingGoogleLogin, setProcessingGoogleLogin] = useState(false);
   const [processingClientInviteLogin, setProcessingClientInviteLogin] = useState(false);
+  // CreatorHub Design (per-element-lag): anvend lagrede stil-edits (theroleroom.com el. leadgrid.no).
+  const designWs = useMemo(() => detectDesignWorkspace(), []);
+  useElementEdits(designWs);
+  // Live per-element-editor på ?design=1 (persist er server-side admin-gated → trygt uten egen gate).
+  const [designMode, setDesignMode] = useState<boolean>(() => {
+    try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
+  });
   const handledGoogleTransferRef = useRef<string | null>(null);
   const handledClientInviteTransferRef = useRef<string | null>(null);
 
@@ -471,6 +778,24 @@ function CastingStandaloneRuntimeContent() {
 
   return (
     <Box sx={{ width: '100%', minHeight: '100vh', position: 'relative' }}>
+      {/*
+        Super Admin-overlay: alltid-tilgjengelig kontroll for daniel@creatorhubn.com.
+        Komponenten self-gater på email — andre brukere får null tilbake og
+        ingen DOM-fotavtrykk. FAB er nederst-venstre (?-knapp er nederst-høyre i
+        RoleRoomUXLayer, så de kolliderer ikke). Cmd/Ctrl + Shift + A toggler.
+        URL ?super=1 eller /super-admin åpner overlayen direkte.
+      */}
+      <SuperAdminOverlay />
+
+      {/* CreatorHub Design: live per-element-editor på ?design=1 (workspace=theroleroom). */}
+      {designMode && (
+        <WorkspaceDesignOverlay
+          workspace={designWs}
+          targetFile="frontend/client/src/components/role-room/casting-main.tsx"
+          onClose={() => setDesignMode(false)}
+        />
+      )}
+
       {!authResolved || processingGoogleLogin || processingClientInviteLogin ? (
         <Box
           sx={{
@@ -481,10 +806,10 @@ function CastingStandaloneRuntimeContent() {
             justifyContent: 'center',
             gap: 1.5,
             color: 'rgba(255,255,255,0.84)',
-            bgcolor: '#050816',
+            bgcolor: 'var(--role-chrome-bg, #050816)',
           }}
         >
-          <CircularProgress size={30} sx={{ color: '#8b5cf6' }} />
+          <CircularProgress size={30} sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
           <Typography sx={{ fontSize: '0.95rem', fontWeight: 600 }}>
             {processingGoogleLogin
               ? 'Fullfører Google-innlogging…'
@@ -498,7 +823,11 @@ function CastingStandaloneRuntimeContent() {
         ) : isProposalAcceptPath ? (
           <TalentProposalAcceptPage />
         ) : !isAuthenticated ? (
-          <CastingLandingPage onEnter={handleEnter} />
+          // 2026-06-07: theroleroom.com/ for unauth-brukere viser TheRoleRoom-
+          // Landing (operativsystem-positionering per produktdok). Den gamle
+          // CastingLandingPage er beholdt importert som backup; kan
+          // gjeninnsettes hvis CMS-redigerbar landing trengs.
+          <TheRoleRoomLanding onEnter={handleEnter} />
         ) : shouldRenderTalentsApp ? (
           <ToastProvider position="bottom-right">
             <TalentsApp initialPage={talentsAppPage ?? undefined} />
@@ -543,9 +872,9 @@ function CastingStandaloneRuntimeContent() {
                     ]
                   : [
                       {
-                        title: 'Velkommen til Casting Planner',
-                        body: 'Her organiserer du roller, kandidater og audition-prosesser. Vi tar deg gjennom 3 viktige snarveier.',
-                        icon: <CastingIcon />,
+                        title: 'Velkommen til The Role Room',
+                        body: WELCOME_SUBTITLE_BY_MODE[getActiveProfessionMode()] ?? WELCOME_SUBTITLE_BY_MODE.production,
+                        icon: <WelcomeIcon />,
                       },
                       {
                         title: 'Søk overalt med Cmd+K',
@@ -611,10 +940,81 @@ export default function CastingStandaloneApp() {
       return;
     }
 
-    document.title = ROLE_ROOM_DOCUMENT_TITLE;
+    // Leadgrid-dedikert host: Leadgrid eier tittel + favicon. Sidene
+    // setter egen tittel - denne effekten skal ikke overskrive den med
+    // Role Room-branding (jf. fanetittel-buggen pa leadgrid.no).
+    // Statisk index.html-tittel ("CreatorHub Norge | ...") regnes ogsaa som
+    // ikke-satt: sider uten egen SEO (f.eks. /connectors) ble staaende
+    // med CreatorHub-tittelen.
+    if (isLeadgridDedicatedHost(window.location.hostname)) {
+      if (
+        !document.title
+        || document.title === ROLE_ROOM_DOCUMENT_TITLE
+        || document.title.startsWith('CreatorHub Norge')
+      ) {
+        document.title = 'Leadgrid \u2014 Kartbasert CRM for feltsalg';
+      }
+      upsertHeadLink('icon', '/leadgrid/app/kart.png');
+      upsertHeadLink('shortcut icon', '/leadgrid/app/kart.png');
+      upsertHeadLink('apple-touch-icon', '/leadgrid/app/kart.png');
+      return;
+    }
+    // 2026-08-20: sider uten egen SEO fikk aldri en tittel her (greit) —
+    // men sider MED egen tittel-effekt (f.eks. RoleRoomEducationPartnershipPage)
+    // fikk den overskrevet, siden barn-effekter kjører før foreldre-effekter
+    // ved mount. Samme vaktmønster som Leadgrid-grenen over.
+    if (!document.title || document.title.startsWith('CreatorHub Norge')) {
+      document.title = ROLE_ROOM_DOCUMENT_TITLE;
+    }
     upsertHeadLink('icon', ROLE_ROOM_FAVICON_URL);
     upsertHeadLink('shortcut icon', ROLE_ROOM_FAVICON_URL);
     upsertHeadLink('apple-touch-icon', ROLE_ROOM_FAVICON_URL);
+  }, []);
+
+  // CreatorHub Design (Fase C): token-driv Role Room-aksenten (casting-admin-panelene) fra
+  // design-tokens (ws=theroleroom, RÅ override m/ raw:true-markør). Ingen override →
+  // literalene (#b86bff) gjelder → identisk. Deler theroleroom-aksent med Talents (--rr-*).
+  useEffect(() => {
+    let live = true;
+    fetch('/api/design/tokens?ws=theroleroom&raw=1', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!live || !d || d.raw !== true || !d.tokens) return;
+        const root = document.documentElement;
+        const hex = d.tokens.accent;
+        if (typeof hex === 'string' && /^#[0-9a-fA-F]{6}$/.test(hex)) {
+          const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+          root.style.setProperty('--role-accent', hex);
+          root.style.setProperty('--role-border', `rgba(${r},${g},${b},0.32)`);
+        }
+        // Portal-aksent (cyan-familien: Talent/Agency-portaler) — egen nøkkel, uavhengig av casting-lilla.
+        const portal = d.tokens.portalAccent;
+        if (typeof portal === 'string' && /^#[0-9a-fA-F]{6}$/.test(portal)) {
+          root.style.setProperty('--role-portal-accent', portal);
+        }
+        // Cyan-aksent (dominerende cyan-familie i casting-planner/producer-flatene). Ingen override →
+        // --role-cyan uset → hver forekomst faller til sin egen literal (#00d4ff/#22d3ee/#7dd3fc) → identisk.
+        const cyan = d.tokens.cyanAccent;
+        if (typeof cyan === 'string' && /^#[0-9a-fA-F]{6}$/.test(cyan)) {
+          root.style.setProperty('--role-cyan', cyan);
+        }
+        // Fiolett-aksent (primær sekundærfarge #8b5cf6 — dekorative flater, ikke kategorisk koding).
+        const violet = d.tokens.violetAccent;
+        if (typeof violet === 'string' && /^#[0-9a-fA-F]{6}$/.test(violet)) {
+          root.style.setProperty('--role-violet', violet);
+        }
+        // Chrome (Fase B-paritet): shell-overflate-farger → --role-chrome-* (hex ELLER rgba()).
+        const chrome = d.tokens.chrome;
+        if (chrome && typeof chrome === 'object' && !Array.isArray(chrome)) {
+          const c = chrome as Record<string, unknown>;
+          for (const [k, cssVar] of Object.entries(ROLE_CHROME_VAR)) {
+            const v = c[k];
+            if (typeof v === 'string' && v) root.style.setProperty(cssVar, v);
+          }
+        }
+      })
+      .catch(() => {});
+    return () => { live = false; };
   }, []);
 
   const muiTheme = useMemo(() => createTheme({
@@ -626,11 +1026,20 @@ export default function CastingStandaloneApp() {
     <QueryClientProvider client={castingQueryClient}>
       <MuiThemeProvider theme={muiTheme}>
         <CssBaseline />
-        <AuthProvider>
-          <EnhancedMasterIntegrationProvider>
-            <CastingStandaloneAppContent />
-          </EnhancedMasterIntegrationProvider>
-        </AuthProvider>
+        <RoleRoomGdprNotice />
+        {/* Ingen ErrorBoundary rundt hele treet tidligere — en uncaught
+            render-feil (f.eks. mobil-viewport framer-motion-krasj på
+            leadgrid.no) unmounter hele React-treet i React 18 og etterlater
+            en tom, svart side uten feilmelding. Boundary her sikrer at
+            brukeren ser noe i stedet, uansett hvilken barne-komponent som
+            faktisk kaster. */}
+        <ErrorBoundary componentName="casting-main-root">
+          <AuthProvider>
+            <EnhancedMasterIntegrationProvider>
+              <CastingStandaloneAppContent />
+            </EnhancedMasterIntegrationProvider>
+          </AuthProvider>
+        </ErrorBoundary>
       </MuiThemeProvider>
     </QueryClientProvider>
   );
@@ -640,4 +1049,16 @@ const container = document.getElementById('casting-root');
 if (container) {
   const root = createRoot(container);
   root.render(<CastingStandaloneApp />);
+
+  // Observability: theroleroom.com-flaten (denne entryen) hadde ingen
+  // frontend-feilrapportering — verken Sentry eller in-house-reporteren var
+  // wiret her, kun i main.tsx (CreatorHub-appen). Det er derfor klient-portal-
+  // 401-ene aldri dukket opp noe sted. Vi wirer begge:
+  //   • initSentry() — no-op uten VITE_SENTRY_DSN, trygt for paritet.
+  //   • installFrontendErrorReporter() — JS-errors + unhandledrejection +
+  //     uventede API-svar (401/403/5xx) → /api/admin-room/errors (Admin Room).
+  void import('@/utils/sentry').then((m) => m.initSentry()).catch(() => {});
+  void import('@/utils/installFrontendErrorReporter')
+    .then((m) => m.installFrontendErrorReporter())
+    .catch(() => {});
 }

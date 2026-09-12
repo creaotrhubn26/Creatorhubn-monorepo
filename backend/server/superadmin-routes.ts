@@ -1,0 +1,876 @@
+/**
+ * superadmin-routes.ts
+ *
+ * Egne endepunkter for users.role='super_admin' (global rolle, ikke
+ * per-org). Gir Daniel (eller andre super-admins i fremtiden):
+ *
+ *   - Liste av alle organisasjoner med org_type + medlems-tall + plan
+ *   - Opprett ny organisasjon (BRREG-oppslag + invite av admin-bruker)
+ *   - Bytte org-kontekst ("lån" en kunde-org for å feilsøke). Hver
+ *     switch logges i superadmin_audit_log slik at det er sporbart
+ *     hvem som så hva og når.
+ *   - Hente setup-templates (mig 0311) for å vise mal-velgeren
+ *
+ * Selv-onboarding (org_type=customer/agency) ligger i en SEPARAT
+ * route-fil (org-self-onboard-routes.ts) som er åpen og ikke krever
+ * super_admin.
+ */
+
+import type { Express, Request, Response } from "express";
+import type { Pool } from "pg";
+import crypto from "crypto";
+import { sendTransactionalEmail } from "./transactional-email-service.js";
+import { isLeadgridDiscoveryEnabled } from "./leadgrid-discovery-service.js";
+
+type SessionData = { userId: string; role?: string; email?: string };
+
+interface Deps {
+  app: Express;
+  pool: Pool;
+  activeSessions: Map<string, SessionData>;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function getSessionFromReq(req: Request, activeSessions: Map<string, SessionData>): SessionData | null {
+  // Standard mønster i index.ts — Bearer-token eller cookie
+  const auth = req.headers.authorization;
+  if (auth?.startsWith("Bearer ")) {
+    return activeSessions.get(auth.substring(7)) ?? null;
+  }
+  const token = (req as any).cookies?.sessionToken;
+  if (token) return activeSessions.get(token) ?? null;
+  return null;
+}
+
+async function requireSuperAdmin(
+  req: Request,
+  res: Response,
+  pool: Pool,
+  activeSessions: Map<string, SessionData>,
+): Promise<SessionData | null> {
+  const session = getSessionFromReq(req, activeSessions);
+  if (!session) {
+    res.status(401).json({ error: "Ikke innlogget" });
+    return null;
+  }
+  // Hent fersk rolle fra DB — session-rolle kan være utdatert
+  const r = await pool.query<{ role: string }>(
+    `SELECT role FROM users WHERE id = $1`,
+    [session.userId],
+  );
+  if (r.rows.length === 0 || r.rows[0].role !== "super_admin") {
+    res.status(403).json({ error: "Krever super-admin" });
+    return null;
+  }
+  return session;
+}
+
+async function logAudit(
+  pool: Pool,
+  superAdminId: string,
+  action: string,
+  details: Record<string, unknown>,
+  opts: {
+    targetOrgId?: string;
+    targetUserId?: string;
+    ipAddress?: string;
+    userAgent?: string;
+  } = {},
+) {
+  await pool.query(
+    `INSERT INTO superadmin_audit_log
+      (super_admin_id, action, target_org_id, target_user_id, details,
+       ip_address, user_agent)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      superAdminId,
+      action,
+      opts.targetOrgId ?? null,
+      opts.targetUserId ?? null,
+      JSON.stringify(details),
+      opts.ipAddress ?? null,
+      opts.userAgent ?? null,
+    ],
+  );
+}
+
+async function lookupBrreg(orgNumber: string): Promise<{
+  name?: string;
+  industry?: string;
+  address?: string;
+  postalCode?: string;
+  city?: string;
+} | null> {
+  try {
+    const cleaned = orgNumber.replace(/\D/g, "");
+    if (cleaned.length !== 9) return null;
+    const r = await fetch(
+      `https://data.brreg.no/enhetsregisteret/api/enheter/${cleaned}`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (!r.ok) return null;
+    const d = (await r.json()) as any;
+    return {
+      name: d.navn,
+      industry: d.naeringskode1?.beskrivelse,
+      address: (d.forretningsadresse?.adresse ?? []).join(", "),
+      postalCode: d.forretningsadresse?.postnummer,
+      city: d.forretningsadresse?.poststed,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** UUID-validering FØR verdien når en Postgres uuid-kolonne. Uten dette
+ *  kaster en malformert :id/orgId `invalid input syntax for type uuid`,
+ *  og fordi flere super_admin-handlere manglet try/catch ble den async-
+ *  throwen uhåndtert → Express svarte ALDRI (hang + connection lekket).
+ *  Samme feilklasse som capture/projects-hangen. */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUUID(v: unknown): v is string {
+  return typeof v === "string" && UUID_RE.test(v);
+}
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
+export function registerSuperadminRoutes({
+  app,
+  pool,
+  activeSessions,
+}: Deps): void {
+  const ROOT = "/api/superadmin";
+
+  // ---------- Org-liste ----------
+  app.get(`${ROOT}/organizations`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    try {
+      const r = await pool.query(
+        `SELECT
+           o.id, o.name, o.slug, o.org_type, o.plan, o.owner_user_id,
+           o.org_number, o.website, o.industry, o.logo_url, o.created_at,
+           (SELECT COUNT(*) FROM organization_members WHERE organization_id = o.id) AS member_count,
+           -- crm_customers har INGEN organization_id-kolonne — eierskap er
+           -- per owner_user_id (varchar). Tell via org-medlemmer. (Samme
+           -- fix-mønster som PR #837 i plan-limits-service.)
+           (SELECT COUNT(*) FROM crm_customers
+             WHERE owner_user_id IN (
+               SELECT user_id::text FROM organization_members
+                WHERE organization_id = o.id
+             ) AND archived_at IS NULL
+           ) AS customer_count,
+           (SELECT email FROM users WHERE id = o.owner_user_id) AS owner_email
+         FROM organizations o
+         ORDER BY o.created_at DESC`,
+      );
+      res.json({ organizations: r.rows });
+    } catch (e) {
+      console.error("[superadmin] list orgs failed", e);
+      res.status(500).json({ error: "Kunne ikke hente orgs" });
+    }
+  });
+
+  // ---------- Feature-entitlements per org (mig 0370) ----------
+  //
+  // SuperAdmin-konsollens tilgangs-matrise. Ingen rader for en org =
+  // ingen overrides = alt følger planen. PUT er full erstatning (matrisen
+  // sender alltid hele katalogen) og logges i superadmin_audit_log.
+
+  const ENTITLEMENT_STATES = new Set(["included", "trial", "add_on", "locked"]);
+
+  app.get(`${ROOT}/organizations/:id/entitlements`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    try {
+      const orgR = await pool.query<{ id: string; plan: string | null }>(
+        `SELECT id, plan FROM organizations WHERE id = $1`,
+        [req.params.id],
+      );
+      if (orgR.rows.length === 0) {
+        return res.status(404).json({ error: "Ukjent organisasjon" });
+      }
+      const r = await pool.query(
+        `SELECT feature_key, state, monthly_limit, trial_ends_at,
+                addon_price_monthly, updated_at
+           FROM leadgrid_org_entitlements
+          WHERE organization_id = $1
+          ORDER BY feature_key`,
+        [req.params.id],
+      );
+      res.json({
+        organization_id: req.params.id,
+        plan: orgR.rows[0].plan,
+        entitlements: r.rows,
+      });
+    } catch (e) {
+      console.error("[superadmin] get entitlements failed", e);
+      res.status(500).json({ error: "Kunne ikke hente entitlements" });
+    }
+  });
+
+  app.put(`${ROOT}/organizations/:id/entitlements`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    const entitlements = req.body?.entitlements;
+    if (!Array.isArray(entitlements) || entitlements.length === 0) {
+      return res.status(400).json({ error: "entitlements-liste mangler" });
+    }
+    if (entitlements.length > 200) {
+      return res.status(400).json({ error: "For mange entitlements (maks 200)" });
+    }
+    const seen = new Set<string>();
+    for (const e of entitlements) {
+      if (typeof e?.feature_key !== "string" || e.feature_key.length === 0
+          || e.feature_key.length > 80) {
+        return res.status(400).json({ error: "Ugyldig feature_key" });
+      }
+      if (!ENTITLEMENT_STATES.has(e?.state)) {
+        return res.status(400).json({
+          error: "Ugyldig state",
+          allowed: Array.from(ENTITLEMENT_STATES),
+          feature_key: e.feature_key,
+        });
+      }
+      if (seen.has(e.feature_key)) {
+        return res.status(400).json({ error: `Duplikat feature_key: ${e.feature_key}` });
+      }
+      seen.add(e.feature_key);
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const orgR = await client.query(
+        `SELECT id, name FROM organizations WHERE id = $1`,
+        [req.params.id],
+      );
+      if (orgR.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Ukjent organisasjon" });
+      }
+      await client.query(
+        `DELETE FROM leadgrid_org_entitlements WHERE organization_id = $1`,
+        [req.params.id],
+      );
+      for (const e of entitlements) {
+        await client.query(
+          `INSERT INTO leadgrid_org_entitlements
+             (organization_id, feature_key, state, monthly_limit,
+              trial_ends_at, addon_price_monthly, updated_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            req.params.id,
+            e.feature_key,
+            e.state,
+            Number.isFinite(e.monthly_limit) ? e.monthly_limit : null,
+            e.trial_ends_at ?? null,
+            Number.isFinite(e.addon_price_monthly) ? e.addon_price_monthly : null,
+            session.userId,
+          ],
+        );
+      }
+      await client.query("COMMIT");
+      await logAudit(pool, session.userId, "update_entitlements", {
+        org_name: orgR.rows[0].name,
+        count: entitlements.length,
+        locked: entitlements.filter((e: any) => e.state === "locked").map((e: any) => e.feature_key),
+        trial: entitlements.filter((e: any) => e.state === "trial").map((e: any) => e.feature_key),
+        add_on: entitlements.filter((e: any) => e.state === "add_on").map((e: any) => e.feature_key),
+      }, {
+        targetOrgId: req.params.id,
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"],
+      });
+      res.json({ ok: true, count: entitlements.length });
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("[superadmin] put entitlements failed", e);
+      res.status(500).json({ error: "Kunne ikke lagre entitlements" });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ---------- Egen orgs entitlements (kunde-appen, IKKE super_admin) ----
+  //
+  // Leses ved bootstrap i iPad-appen så .gated()-flatene speiler hva
+  // SuperAdmin faktisk har gitt organisasjonen. Tom liste = ingen
+  // overrides = alt åpent (bakoverkompatibelt for orgs uten rader).
+  app.get("/api/leadgrid/me/entitlements", async (req, res) => {
+    const session = getSessionFromReq(req, activeSessions);
+    if (!session?.userId) {
+      return res.status(401).json({ error: "Ikke innlogget" });
+    }
+    // Valgfri org-param: multi-org-brukere (byrå, super_admin) må kunne
+    // hente entitlements for AKTIV org, ikke bare primær-org. Verifiserer
+    // at brukeren faktisk er medlem (ellers ignoreres param → primær-org).
+    const rawOrg = req.query.organization_id;
+    if (rawOrg !== undefined && !isUUID(rawOrg)) {
+      return res.status(400).json({ error: "Ugyldig organization_id" });
+    }
+    try {
+      const orgR = await pool.query<{ organization_id: string; plan: string | null }>(
+        `SELECT om.organization_id::text, o.plan
+           FROM organization_members om
+           JOIN organizations o ON o.id = om.organization_id
+          WHERE om.user_id = $1
+            AND ($2::uuid IS NULL OR om.organization_id = $2::uuid)
+          ORDER BY
+            -- Foretrekk eksplisitt valgt org hvis param er satt+medlem
+            CASE WHEN om.organization_id = $2::uuid THEN 0 ELSE 1 END,
+            CASE om.role WHEN 'admin' THEN 1 WHEN 'salgssjef' THEN 2 ELSE 3 END,
+            om.joined_at ASC
+          LIMIT 1`,
+        [session.userId, isUUID(rawOrg) ? rawOrg : null],
+      );
+      if (orgR.rows.length === 0) {
+        return res.json({
+          organization_id: null,
+          plan: null,
+          entitlements: [],
+          leadgrid_discovery_enabled: false,
+        });
+      }
+      const orgId = orgR.rows[0].organization_id;
+      const r = await pool.query(
+        `SELECT feature_key, state, monthly_limit, trial_ends_at, addon_price_monthly
+           FROM leadgrid_org_entitlements
+          WHERE organization_id = $1
+          ORDER BY feature_key`,
+        [orgId],
+      );
+      res.json({
+        organization_id: orgId,
+        plan: orgR.rows[0].plan,
+        entitlements: r.rows,
+        leadgrid_discovery_enabled: isLeadgridDiscoveryEnabled(),
+      });
+    } catch (e) {
+      console.error("[leadgrid] me/entitlements failed", e);
+      res.status(500).json({ error: "Kunne ikke hente entitlements" });
+    }
+  });
+
+  // ---------- Setup-templates ----------
+  app.get(`${ROOT}/setup-templates`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    try {
+      const r = await pool.query(
+        `SELECT id, template_key, label, description, allowed_roles,
+                default_permissions, lead_preset_key, default_plan,
+                self_onboard_allowed, display_order
+         FROM organization_setup_templates
+         WHERE is_active = TRUE
+         ORDER BY display_order ASC`,
+      );
+      res.json({ templates: r.rows });
+    } catch (e) {
+      res.status(500).json({ error: "Kunne ikke hente maler" });
+    }
+  });
+
+  // ---------- BRREG-oppslag (proxy) ----------
+  app.get(`${ROOT}/brreg/:orgnr`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    const data = await lookupBrreg(req.params.orgnr);
+    if (!data) return res.status(404).json({ error: "Ikke funnet i BRREG" });
+    res.json(data);
+  });
+
+  // ---------- Opprett organisasjon (med invite) ----------
+  app.post(`${ROOT}/organizations`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+
+    const {
+      name,
+      orgNumber,
+      orgType, // 'agency' | 'customer'
+      adminEmail,
+      adminName,
+      templateKey, // hvilken mal (default 'agency_small')
+      website,
+      industry,
+    } = req.body ?? {};
+
+    if (!name || !adminEmail || !orgType) {
+      return res.status(400).json({ error: "Mangler navn/admin-e-post/org_type" });
+    }
+    if (!["agency", "customer"].includes(orgType)) {
+      return res.status(400).json({ error: "Ugyldig org_type" });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // 1) Hent mal
+      const tmplR = await client.query(
+        `SELECT * FROM organization_setup_templates
+         WHERE template_key = $1 AND is_active = TRUE`,
+        [templateKey ?? "agency_small"],
+      );
+      if (tmplR.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Ukjent mal" });
+      }
+      const tmpl = tmplR.rows[0];
+
+      // 2) Sjekk om bruker eksisterer
+      const userR = await client.query(
+        `SELECT id, email FROM users WHERE LOWER(email) = LOWER($1)`,
+        [adminEmail],
+      );
+      let userId: string;
+      let isNewUser = false;
+      if (userR.rows.length > 0) {
+        userId = userR.rows[0].id;
+      } else {
+        // Opprett pending-bruker — invite-token sendes på e-post
+        userId = crypto.randomUUID();
+        // users.password er NOT NULL uten default — trenger en ikke-null
+        // placeholder inntil bruker setter passord via invite-token (samme
+        // mønster som google-id-token-service.ts). Uten denne feiler INSERT
+        // med "null value in column password violates not-null constraint".
+        const bcrypt = await import("bcrypt");
+        const placeholderPassword = await bcrypt.default.hash(
+          `${crypto.randomUUID()}${crypto.randomUUID()}`,
+          10,
+        );
+        await client.query(
+          `INSERT INTO users (id, email, password, role, created_at)
+           VALUES ($1, $2, $3, 'member', now())`,
+          [userId, adminEmail, placeholderPassword],
+        );
+        isNewUser = true;
+      }
+
+      // 3) Opprett organisasjon
+      const slug = String(name).toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").substring(0, 60);
+      const slugUnique = `${slug}-${crypto.randomBytes(3).toString("hex")}`;
+      const orgR = await client.query(
+        `INSERT INTO organizations
+          (name, slug, org_type, owner_user_id, org_number, website,
+           industry, plan, meta)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING id`,
+        [
+          name,
+          slugUnique,
+          orgType,
+          userId,
+          orgNumber ?? null,
+          website ?? null,
+          industry ?? null,
+          tmpl.default_plan,
+          JSON.stringify({ setup_template_key: tmpl.template_key }),
+        ],
+      );
+      const orgId = orgR.rows[0].id;
+
+      // 4) Legg admin som medlem (rolle: admin)
+      await client.query(
+        `INSERT INTO organization_members (organization_id, user_id, role, invited_by)
+         VALUES ($1, $2, 'admin', $3)`,
+        [orgId, userId, session.userId],
+      );
+
+      // 5) Lag invite-token hvis ny bruker
+      let inviteToken: string | null = null;
+      if (isNewUser) {
+        inviteToken = crypto.randomBytes(32).toString("hex");
+        // Vi gjenbruker project_invitations-tabellen (utvidet i mig 0308)
+        // hvis den finnes — ellers en enkel pending-marker. Vi bruker
+        // en dedikert tabell hvis tilgjengelig.
+        await client.query(
+          `INSERT INTO users SELECT * FROM users WHERE FALSE`, // no-op
+        );
+        // Lagre invite-token i users.meta hvis ingen invitations-tabell
+        // (tryggere fallback)
+        await client.query(
+          `UPDATE users
+              SET meta = COALESCE(meta, '{}'::jsonb)
+                       || jsonb_build_object('invite_token', $1::text, 'invite_org_id', $2::text, 'invite_expires', $3::text)
+            WHERE id = $4`,
+          [
+            inviteToken,
+            orgId,
+            new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+            userId,
+          ],
+        );
+      }
+
+      // 6) Audit
+      await logAudit(pool, session.userId, "create_organization", {
+        org_id: orgId,
+        org_name: name,
+        org_type: orgType,
+        template_key: tmpl.template_key,
+        admin_email: adminEmail,
+        new_user: isNewUser,
+      }, {
+        targetOrgId: orgId,
+        targetUserId: userId,
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"] as string,
+      });
+
+      await client.query("COMMIT");
+
+      // 7) Send invite-e-post (utenfor transaction)
+      if (isNewUser && inviteToken) {
+        const inviteUrl = `https://theroleroom.com/invite/${inviteToken}`;
+        try {
+          await sendTransactionalEmail({
+            to: adminEmail,
+            subject: `Velkommen til Leadgrid — ${name} er klar`,
+            html: `<p>Hei${adminName ? ` ${adminName}` : ""},</p>
+             <p>${session.email ?? "Leadgrid"} har opprettet organisasjonen
+             <strong>${name}</strong> for deg. Klikk lenken under for å sette
+             passord og komme i gang:</p>
+             <p><a href="${inviteUrl}">${inviteUrl}</a></p>
+             <p>Lenken er gyldig i 7 dager.</p>`,
+            text: `Hei${adminName ? ` ${adminName}` : ""}, ${session.email ?? "Leadgrid"} har opprettet organisasjonen ${name} for deg. Sett passord her: ${inviteUrl} (gyldig 7 dager).`,
+            kind: "leadgrid_org_invite",
+            sentByUserId: session.userId,
+            pool,
+          });
+        } catch (e) {
+          console.error("[superadmin] invite-mail failed", e);
+        }
+      }
+
+      res.status(201).json({
+        organization: {
+          id: orgId, name, slug: slugUnique, org_type: orgType,
+          plan: tmpl.default_plan,
+        },
+        admin_user_id: userId,
+        invite_sent: isNewUser,
+        invite_token_preview: inviteToken
+          ? inviteToken.substring(0, 8) + "…"
+          : null,
+      });
+    } catch (e) {
+      await client.query("ROLLBACK");
+      console.error("[superadmin] create org failed", e);
+      res.status(500).json({ error: "Kunne ikke opprette org" });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ---------- Switch org-kontekst (impersonate) ----------
+  app.post(`${ROOT}/switch-context`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    const { orgId, reason } = req.body ?? {};
+    if (!isUUID(orgId)) return res.status(400).json({ error: "Ugyldig orgId" });
+    try {
+      const orgR = await pool.query(
+        `SELECT id, name, org_type FROM organizations WHERE id = $1`,
+        [orgId],
+      );
+      if (orgR.rows.length === 0) {
+        return res.status(404).json({ error: "Org finnes ikke" });
+      }
+
+      await pool.query(
+        `INSERT INTO superadmin_impersonation_session
+          (super_admin_id, active_org_id, started_at, expires_at)
+         VALUES ($1, $2, now(), now() + interval '2 hours')
+         ON CONFLICT (super_admin_id) DO UPDATE
+           SET active_org_id = EXCLUDED.active_org_id,
+               started_at    = now(),
+               expires_at    = EXCLUDED.expires_at`,
+        [session.userId, orgId],
+      );
+
+      await logAudit(pool, session.userId, "switch_org_context", {
+        org_id: orgId,
+        org_name: orgR.rows[0].name,
+        reason: reason ?? null,
+      }, {
+        targetOrgId: orgId,
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"] as string,
+      });
+
+      res.json({
+        ok: true,
+        active_org: orgR.rows[0],
+        expires_at_minutes: 120,
+      });
+    } catch (e) {
+      console.error("[superadmin] switch-context failed", e);
+      res.status(500).json({ error: "Kunne ikke bytte kontekst" });
+    }
+  });
+
+  // Avslutt impersonation
+  app.post(`${ROOT}/end-impersonation`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    await pool.query(
+      `DELETE FROM superadmin_impersonation_session WHERE super_admin_id = $1`,
+      [session.userId],
+    );
+    await logAudit(pool, session.userId, "end_impersonation", {}, {
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"] as string,
+    });
+    res.json({ ok: true });
+  });
+
+  // ---------- Hent audit-log ----------
+  app.get(`${ROOT}/audit-log`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    const limit = Math.min(Number(req.query.limit ?? 100), 500);
+    // Valgfritt org-filter — OrgDetailSheet-audit-fanen viser kun
+    // hendelser for den ene organisasjonen. Ugyldig uuid → 400 (ellers
+    // kastet `::uuid`-casten og handleren hang uten try/catch).
+    const rawOrg = req.query.organization_id;
+    if (rawOrg !== undefined && !isUUID(rawOrg)) {
+      return res.status(400).json({ error: "Ugyldig organization_id" });
+    }
+    const orgId = isUUID(rawOrg) ? rawOrg : null;
+    try {
+      const r = await pool.query(
+        `SELECT a.*, o.name AS org_name, u.email AS super_admin_email
+           FROM superadmin_audit_log a
+           LEFT JOIN organizations o ON o.id = a.target_org_id
+           LEFT JOIN users u ON u.id = a.super_admin_id
+          WHERE ($2::uuid IS NULL OR a.target_org_id = $2::uuid)
+           ORDER BY a.created_at DESC
+           LIMIT $1`,
+        [limit, orgId],
+      );
+      res.json({ entries: r.rows });
+    } catch (e) {
+      console.error("[superadmin] audit-log failed", e);
+      res.status(500).json({ error: "Kunne ikke hente audit-logg" });
+    }
+  });
+
+  // ---------- Token-usage per organisasjon ----------
+  // GET /api/superadmin/org-token-usage?period=30d&groupBy=org|feature
+  app.get(`${ROOT}/org-token-usage`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    const periodDays = Math.min(Number(req.query.period ?? 30), 365);
+    const groupBy = (req.query.groupBy as string) ?? "org";
+
+    try {
+      const since = new Date(Date.now() - periodDays * 24 * 3600 * 1000);
+
+      if (groupBy === "feature") {
+        // Aggregat per feature på tvers av alle orgs
+        const r = await pool.query(
+          `SELECT feature,
+                  COUNT(*) AS calls,
+                  COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                  COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                  COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+                  COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
+                  COALESCE(SUM(cost_usd), 0)::numeric(12,4) AS cost_usd
+             FROM ai_usage_log
+            WHERE created_at >= $1
+            GROUP BY feature
+            ORDER BY cost_usd DESC NULLS LAST`,
+          [since],
+        );
+        return res.json({ period_days: periodDays, by_feature: r.rows });
+      }
+
+      // Per-org aggregat (default)
+      const r = await pool.query(
+        `SELECT a.organization_id,
+                o.name AS org_name,
+                o.org_type,
+                o.plan,
+                COUNT(*) AS calls,
+                COALESCE(SUM(a.input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(a.output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(a.cache_read_tokens), 0) AS cache_read_tokens,
+                COALESCE(SUM(a.cache_write_tokens), 0) AS cache_write_tokens,
+                COALESCE(SUM(a.cost_usd), 0)::numeric(12,4) AS cost_usd,
+                MAX(a.created_at) AS last_call_at
+           FROM ai_usage_log a
+           LEFT JOIN organizations o ON o.id = a.organization_id
+          WHERE a.created_at >= $1
+          GROUP BY a.organization_id, o.name, o.org_type, o.plan
+          ORDER BY cost_usd DESC NULLS LAST`,
+        [since],
+      );
+      // Total + ukjent (organization_id IS NULL)
+      const totalR = await pool.query(
+        `SELECT COUNT(*) AS calls,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+                COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
+                COALESCE(SUM(cost_usd), 0)::numeric(12,4) AS cost_usd
+           FROM ai_usage_log
+          WHERE created_at >= $1`,
+        [since],
+      );
+      res.json({
+        period_days: periodDays,
+        total: totalR.rows[0],
+        by_org: r.rows,
+      });
+    } catch (e) {
+      console.error("[superadmin] org-token-usage failed", e);
+      res.status(500).json({ error: "Kunne ikke hente token-usage" });
+    }
+  });
+
+  // ---------- Pause / Resume / Suspend organisasjon ----------
+  // POST body: { status: 'paused'|'read_only'|'suspended'|'active', reason: string, resumeAt?: ISO-date }
+  app.post(`${ROOT}/organizations/:id/set-status`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    if (!isUUID(req.params.id)) {
+      return res.status(400).json({ error: "Ugyldig org-id" });
+    }
+    const { status, reason, resumeAt } = req.body ?? {};
+    const ALLOWED = ["active", "paused", "read_only", "suspended", "closed"];
+    if (!ALLOWED.includes(status)) {
+      return res.status(400).json({ error: "Ugyldig status" });
+    }
+    if (status !== "active" && (!reason || !reason.trim())) {
+      return res.status(400).json({ error: "reason påkrevd ved ikke-active" });
+    }
+    // resumeAt må være en gyldig dato hvis satt — en søppel-streng traff
+    // pause_resume_at (timestamptz) og kastet → hang uten try/catch.
+    if (resumeAt != null && Number.isNaN(Date.parse(String(resumeAt)))) {
+      return res.status(400).json({ error: "Ugyldig resumeAt-dato" });
+    }
+    try {
+    const orgR = await pool.query<{ name: string; stripe_subscription_id: string | null }>(
+      `SELECT name, stripe_subscription_id FROM organizations WHERE id = $1`,
+      [req.params.id],
+    );
+    if (orgR.rows.length === 0) return res.status(404).json({ error: "Org finnes ikke" });
+
+    if (status === "active") {
+      await pool.query(
+        `UPDATE organizations
+            SET status = 'active', paused_at = NULL, paused_by = NULL,
+                pause_reason = NULL, pause_resume_at = NULL
+          WHERE id = $1`,
+        [req.params.id],
+      );
+      // Reactivate Stripe pause hvis sub finnes
+      if (orgR.rows[0].stripe_subscription_id) {
+        try {
+          const Stripe = (await import("stripe")).default;
+          const stripeKey = process.env.CREATORHUB_STRIPE_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY;
+          if (stripeKey) {
+            const stripe = new Stripe(stripeKey);
+            await stripe.subscriptions.update(orgR.rows[0].stripe_subscription_id, {
+              pause_collection: null,
+            } as any);
+          }
+        } catch (e) { console.error("[stripe resume]", e); }
+      }
+    } else {
+      await pool.query(
+        `UPDATE organizations
+            SET status = $1, paused_at = now(), paused_by = $2,
+                pause_reason = $3, pause_resume_at = $4
+          WHERE id = $5`,
+        [status, session.userId, reason, resumeAt || null, req.params.id],
+      );
+      // Pause Stripe-subscription hvis 'paused'
+      if (status === "paused" && orgR.rows[0].stripe_subscription_id) {
+        try {
+          const Stripe = (await import("stripe")).default;
+          const stripeKey = process.env.CREATORHUB_STRIPE_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY;
+          if (stripeKey) {
+            const stripe = new Stripe(stripeKey);
+            await stripe.subscriptions.update(orgR.rows[0].stripe_subscription_id, {
+              pause_collection: { behavior: "keep_as_draft" },
+            } as any);
+          }
+        } catch (e) { console.error("[stripe pause]", e); }
+      }
+    }
+
+    await logAudit(pool, session.userId, "set_org_status", {
+      org_id: req.params.id, org_name: orgR.rows[0].name,
+      new_status: status, reason, resume_at: resumeAt || null,
+    }, {
+      targetOrgId: req.params.id, ipAddress: req.ip,
+      userAgent: req.headers["user-agent"] as string,
+    });
+
+    res.json({
+      ok: true, organization_id: req.params.id, status,
+      paused_until: resumeAt || null,
+    });
+    } catch (e) {
+      console.error("[superadmin] set-status failed", e);
+      res.status(500).json({ error: "Kunne ikke endre org-status" });
+    }
+  });
+
+  // ---------- Drill-down: én org's siste calls ----------
+  app.get(`${ROOT}/organizations/:id/recent-ai-calls`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    if (!isUUID(req.params.id)) {
+      return res.status(400).json({ error: "Ugyldig org-id" });
+    }
+    const limit = Math.min(Number(req.query.limit ?? 50), 500);
+    try {
+      const r = await pool.query(
+        `SELECT model, feature, route, input_tokens, output_tokens,
+                cache_read_tokens, cache_write_tokens,
+                cost_usd::numeric(10,6) AS cost_usd,
+                duration_ms, success, error_code, created_at, user_id
+           FROM ai_usage_log
+          WHERE organization_id = $1
+          ORDER BY created_at DESC
+          LIMIT $2`,
+        [req.params.id, limit],
+      );
+      res.json({ calls: r.rows });
+    } catch (e) {
+      console.error("[superadmin] recent-ai-calls failed", e);
+      res.status(500).json({ error: "Kunne ikke hente AI-kall" });
+    }
+  });
+
+  // ---------- Hent aktiv impersonation ----------
+  app.get(`${ROOT}/active-impersonation`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    try {
+      const r = await pool.query(
+        `SELECT s.active_org_id, s.started_at, s.expires_at,
+                o.name AS org_name, o.org_type
+           FROM superadmin_impersonation_session s
+           JOIN organizations o ON o.id = s.active_org_id
+          WHERE s.super_admin_id = $1
+            AND (s.expires_at IS NULL OR s.expires_at > now())`,
+        [session.userId],
+      );
+      res.json({ active: r.rows[0] ?? null });
+    } catch (e) {
+      console.error("[superadmin] active-impersonation failed", e);
+      res.status(500).json({ error: "Kunne ikke hente impersonation-status" });
+    }
+  });
+}

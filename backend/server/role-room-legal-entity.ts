@@ -1,3 +1,8 @@
+import {
+  extractWebsiteLegalIdentityFromHtml,
+  isValidNorwegianOrganizationNumber,
+} from "./role-room-agent-website-identity.js";
+
 /**
  * Role Room — kunde-bedrift legal entity discovery (Slice 6 add-on).
  *
@@ -52,44 +57,6 @@ export interface FindCandidatesInput {
   municipalityNumber?: string | null;
 }
 
-/** Mod-11 checksum validation for a 9-digit Norwegian organization
- *  number. Reused from role-room-agent.ts to keep this module
- *  standalone. */
-function isValidNorwegianOrgNumber(digits: string): boolean {
-  if (!/^\d{9}$/.test(digits)) return false;
-  const weights = [3, 2, 7, 6, 5, 4, 3, 2];
-  let sum = 0;
-  for (let i = 0; i < 8; i++) sum += Number(digits[i]) * weights[i];
-  const remainder = sum % 11;
-  const checksum = remainder === 0 ? 0 : 11 - remainder;
-  if (checksum === 10) return false;
-  return checksum === Number(digits[8]);
-}
-
-/** Extract the first mod-11-valid 9-digit orgnr from raw HTML. */
-function extractOrgNumberFromHtml(html: string): string | null {
-  if (!html) return null;
-  const stripped = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ");
-  const labelled = stripped.match(
-    /(?:org\.?\s*nr\.?|organisasjonsnummer|orgnr|mva)\s*[:.]?\s*(?:no)?\s*((?:\d[\s.-]?){9})/i,
-  );
-  if (labelled) {
-    const digits = labelled[1].replace(/\D/g, "");
-    if (digits.length === 9 && isValidNorwegianOrgNumber(digits)) return digits;
-  }
-  const candidates = stripped.match(/\b\d{3}[\s.-]?\d{3}[\s.-]?\d{3}\b/g) ?? [];
-  for (const c of candidates) {
-    const digits = c.replace(/\D/g, "");
-    if (digits.length === 9 && isValidNorwegianOrgNumber(digits)) return digits;
-  }
-  return null;
-}
-
 function normalizeHost(url: string | null | undefined): string | null {
   if (!url) return null;
   try {
@@ -106,7 +73,7 @@ function brregUnitToCandidate(
 ): LegalEntityCandidate | null {
   const orgNumber = typeof unit.organisasjonsnummer === "string" ? unit.organisasjonsnummer : null;
   const name = typeof unit.navn === "string" ? unit.navn : null;
-  if (!orgNumber || !name || !isValidNorwegianOrgNumber(orgNumber)) return null;
+  if (!orgNumber || !name || !isValidNorwegianOrganizationNumber(orgNumber)) return null;
 
   const fa = unit.forretningsadresse && typeof unit.forretningsadresse === "object"
     ? (unit.forretningsadresse as Record<string, unknown>)
@@ -273,6 +240,7 @@ export async function findCustomerLegalEntityCandidates(
 
   const websiteHost = normalizeHost(input.websiteUrl ?? null);
   let scrapedOrgNumber: string | null = null;
+  let scrapedLegalName: string | null = null;
   let scrapedUnit: Record<string, unknown> | null = null;
 
   // Step 1: scrape the brand website for an embedded orgnr.
@@ -285,7 +253,9 @@ export async function findCustomerLegalEntityCandidates(
       });
       if (r.ok) {
         const html = await r.text();
-        scrapedOrgNumber = extractOrgNumberFromHtml(html);
+        const identity = extractWebsiteLegalIdentityFromHtml(html);
+        scrapedOrgNumber = identity.organizationNumber;
+        scrapedLegalName = identity.legalName;
       }
     } catch {
       /* best-effort */
@@ -298,7 +268,11 @@ export async function findCustomerLegalEntityCandidates(
   }
 
   // Step 3: run the name search.
-  const nameSearchResults = await brregNameSearch(brandName, input.municipalityNumber ?? null);
+  const legalLookupName = scrapedLegalName || brandName;
+  const nameSearchResults = await brregNameSearch(
+    legalLookupName,
+    input.municipalityNumber ?? null,
+  );
 
   // Step 4: combine + dedupe + score + rank.
   const seen = new Set<string>();
@@ -306,7 +280,7 @@ export async function findCustomerLegalEntityCandidates(
 
   if (scrapedUnit && typeof scrapedUnit.organisasjonsnummer === "string") {
     const c = brregUnitToCandidate(scrapedUnit, {
-      brandName,
+      brandName: legalLookupName,
       websiteHost,
       scrapedOrgNumber,
     });
@@ -320,7 +294,7 @@ export async function findCustomerLegalEntityCandidates(
     const orgNr = u.organisasjonsnummer;
     if (typeof orgNr !== "string" || seen.has(orgNr)) continue;
     seen.add(orgNr);
-    const c = brregUnitToCandidate(u, { brandName, websiteHost, scrapedOrgNumber });
+    const c = brregUnitToCandidate(u, { brandName: legalLookupName, websiteHost, scrapedOrgNumber });
     if (c) candidates.push(c);
   }
 

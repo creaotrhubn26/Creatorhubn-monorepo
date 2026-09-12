@@ -2,8 +2,30 @@ import "dotenv/config";
 import { config } from "dotenv";
 config({ override: true });
 
+// Sentry MUST initialiseres FØR alle andre imports for å fange tidlig errors
+import { initBackendSentry, buildSentryErrorMiddleware } from "./sentry-init.js";
+initBackendSentry();
+import {
+  registerErrorLogRoutes,
+  buildErrorLogMiddleware,
+  installProcessErrorHandlers,
+} from "./error-log-routes.js";
+import {
+  hydrateSessionsFromDb,
+  invalidateSession,
+  persistSession,
+} from "./persistent-session-store.js";
+import {
+  CREATORHUB_LANDING_WORDMARK_URL,
+  creatorHubEmailLogoDimensions,
+  normalizeCreatorHubEmailLogoUrl,
+} from "./creatorhub-email-branding.js";
+import { buildCreatorHubEmailLayout } from "./creatorhub-email-layout.js";
+
 import express from "express";
+import helmet from "helmet";
 import cors from "cors";
+import { isTrustedNetlifyProductionOrigin } from "./web-origin-allowlist.js";
 import multer from "multer";
 import { createRequire } from "module";
 const _require = createRequire(import.meta.url);
@@ -30,15 +52,18 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { load as loadHtml } from "cheerio";
 import Stripe from "stripe";
+import { creditFromStripeSession } from "./ai-credits";
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { Pool, type PoolConfig } from "pg";
 import * as schema from "../migrations/schema.js";
+import { verifyDatabaseOwnerSession } from "./database-owner-role.js";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { createRoleRoomRouter } from "./role-room-routes.js";
 import { registerRoleRoomProfileRoutes } from "./role-room-profile-routes.js";
@@ -49,7 +74,30 @@ import { registerRoleRoomBillingAlertsRoutes } from "./role-room-billing-alerts-
 import { registerRoleRoomSeatReconciliationRoutes } from "./role-room-seat-reconciliation-routes.js";
 import { registerRoleRoomUpcomingJobsRoutes } from "./role-room-upcoming-jobs-routes.js";
 import { registerRoleRoomFeedPlanThumbnailRoutes } from "./role-room-feed-plan-thumbnail-routes.js";
+import { registerRoleRoomFeedMockupLinkRoutes } from "./role-room-feed-mockup-links-routes.js";
+import { registerInfographicRenderRoutes } from "./infographic-render-routes.js";
+import { registerInfographicLeadgridRoutes } from "./infographic-leadgrid-connector.js";
 import { registerRoleRoomBrandAssetsRoutes } from "./role-room-brand-assets-routes.js";
+import { registerRoleRoomUserStorageRoutes } from "./role-room-user-storage-routes.js";
+import {
+  accrueRoleRoomCommercialAffiliateCommission,
+  handleRoleRoomStorageStripeEvent,
+  registerRoleRoomStorageBillingRoutes,
+  syncRoleRoomCommercialStorageEntitlement,
+} from "./role-room-storage-billing.js";
+import {
+  handleRoleRoomAffiliateStripeEvent,
+  readStripeInvoicePaymentReferences,
+  registerRoleRoomAffiliatePayoutRoutes,
+} from "./role-room-affiliate-payouts.js";
+import { registerRoleRoomByoStorageRoutes } from "./role-room-byo-storage-routes.js";
+import { startInProcessCleanupLoop as startRoleRoomStorageCleanupLoop } from "./role-room-storage-cleanup-worker.js";
+import { registerRoleRoomPublishedGuidesRoutes } from "./role-room-published-guides-routes.js";
+import { registerRoleRoomDemoAssetsRoutes } from "./role-room-demo-assets-routes.js";
+import { registerRoleRoomMockupProjectsRoutes } from "./role-room-mockup-projects-routes.js";
+import { registerRoleRoomMockupStudioRoutes } from "./role-room-mockup-studio-routes.js";
+import { registerRoleRoomInfographicSignalsRoutes } from "./role-room-infographic-signals-routes.js";
+import { registerRoleRoomInfographicLibraryRoutes } from "./role-room-infographic-library-routes.js";
 import { registerRoleRoomThumbnailTemplatesRoutes } from "./role-room-thumbnail-templates-routes.js";
 import { registerRoleRoomLowerThirdsRoutes } from "./role-room-lower-thirds-routes.js";
 import { registerRoleRoomCaptionsRoutes } from "./role-room-captions-routes.js";
@@ -59,6 +107,12 @@ import { registerRoleRoomMulticamRoutes } from "./role-room-multicam-routes.js";
 import { registerRoleRoomSocialCutsRoutes } from "./role-room-social-cuts-routes.js";
 import { registerRoleRoomReviewRoutes } from "./role-room-review-routes.js";
 import { registerRoleRoomEditorCommentsRoutes } from "./role-room-editor-comments-routes.js";
+import { registerRoleRoomDeliverablesRoutes } from "./role-room-deliverables-routes.js";
+import { registerRoleRoomMeetingsRoutes } from "./role-room-meetings-routes.js";
+import { registerRoleRoomMessagesRoutes } from "./role-room-messages-routes.js";
+import { registerRoleRoomAssistantAccessRoutes } from "./role-room-assistant-access-routes.js";
+import { registerRoleRoomContentPlanRoutes } from "./role-room-content-plan-routes.js";
+import { registerRoleRoomDeadlineReminderRoutes } from "./role-room-deadline-reminders-routes.js";
 import { registerRoleRoomMarketingPreviewVideoRoutes } from "./role-room-marketing-preview-video-routes.js";
 import { registerRoleRoomIntakeVersionsRoutes } from "./role-room-intake-versions-routes.js";
 import { registerRoleRoomPlanVersionsRoutes } from "./role-room-plan-versions-routes.js";
@@ -145,6 +199,28 @@ import {
 } from "./dance-team-routes.js";
 import { createDanceAddonRouter } from "./dance-addon-routes.js";
 import { createStoryboardRouter } from "./storyboard-routes.js";
+import { createStoryboardAiRouter } from "./storyboard-ai-routes.js";
+import { createCrewNotificationsRouter } from "./crew-notifications-routes.js";
+import { createEducationCohortsRouter } from "./role-room-education-cohorts-routes.js";
+import { createEducationGroupsRouter } from "./role-room-education-groups-routes.js";
+import { createEducationPortfoliosRouter } from "./role-room-education-portfolios-routes.js";
+import { createEducationLicenseRouter } from "./role-room-education-license-routes.js";
+import { createEducationTalentPipelineRouter } from "./role-room-education-talent-pipeline-routes.js";
+import { createEducationCoursesRouter } from "./role-room-education-courses-routes.js";
+import { createEducationAssignmentsRouter } from "./role-room-education-assignments-routes.js";
+import { createEducationProductionsRouter } from "./role-room-education-productions-routes.js";
+import { createEducationResourcesRouter } from "./role-room-education-resources-routes.js";
+import { createEducationAssessmentRouter } from "./role-room-education-assessment-routes.js";
+import { createEducationStudentInvitesRouter } from "./role-room-education-student-invites-routes.js";
+import { createEducationStudentViewRouter } from "./role-room-education-student-view-routes.js";
+import { createEducationProductionMembersRouter } from "./role-room-education-production-members-routes.js";
+import { createEducationOverviewRouter } from "./role-room-education-overview-routes.js";
+import { createEducationRubricRouter } from "./role-room-education-rubric-routes.js";
+import { createEducationCensorRouter } from "./role-room-education-censor-routes.js";
+import { createEducationFacultyRouter } from "./role-room-education-faculty-routes.js";
+import { createEducationLearningGoalsRouter } from "./role-room-education-learning-goals-routes.js";
+import { createFeideRouter } from "./role-room-feide-routes.js";
+import { createLtiRouter } from "./role-room-lti-routes.js";
 import { createConsentPortalRouter } from "./consent-portal-routes.js";
 import { createCastingProductionRouter } from "./casting-production-routes.js";
 import { setupOEmbedRoutes } from "./role-room-oembed-routes.js";
@@ -195,7 +271,19 @@ import { attachCaptureWebSocket } from "./capture-websocket.js";
 import {
   attachUserEventsWebSocket,
   broadcastUserEvent,
+  deliverUserEventLocally,
+  isLegacyUserEventsTokenAllowed,
+  setupUserEventsTicketRoute,
 } from "./realtime-user-events.js";
+import {
+  closeRealtimeUserEventFanout,
+  getRealtimeUserEventFanoutHealth,
+  initializeRealtimeUserEventFanout,
+} from "./realtime-user-event-fanout.js";
+import {
+  leadgridRealtime,
+  setupLeadgridRealtimeTicketRoute,
+} from "./leadgrid-realtime.js";
 import {
   ensureProjectChangeLogSchema,
   listProjectChangeLog,
@@ -219,6 +307,8 @@ import { createCreatorHubGoogleRouter } from "./creatorhub-google-routes.js";
 import { createDesktopAuthRouter } from "./desktop-auth-routes.js";
 import { setupStorageProvidersRoutes } from "./storage-providers-routes.js";
 import { createRoleRoomIntegrationsV1Router } from "./role-room-integrations-v1-routes.js";
+import { createRoleRoomMcpRouter } from "./role-room-mcp-routes.js";
+import { createRoleRoomMcpOAuthRouter } from "./role-room-mcp-oauth-routes.js";
 import { createCommunicationRouter } from "./communication-routes.js";
 import { createDashboardCompatRouter } from "./dashboard-compat-routes.js";
 import { createLightroomRouter } from "./lightroom-routes.js";
@@ -413,6 +503,7 @@ import { setupNextRoleReferralRoutes } from "./nextrole-referrals";
 import { setupNextRoleDripRoutes } from "./nextrole-drip";
 import { setupRoleRoomAdsCron } from "./role-room-ads-cron";
 import { setupRoleRoomApprovalCron } from "./role-room-approval-cron";
+import { setupRoleRoomAgentLearningCron } from "./role-room-agent-learning-cron";
 import { setupNextRoleSalaryRoutes } from "./nextrole-salary";
 import { setupNextRoleMilestonesRoutes } from "./nextrole-milestones";
 import { setupNextRoleVideoPresentationRoutes } from "./nextrole-video-presentations";
@@ -428,8 +519,13 @@ import {
 import { setupAdminFundingRoutes } from "./admin-room-funding-routes";
 import { setupAdminInvestorsRoutes } from "./admin-room-investors-routes";
 import { setupWhatsNewRoutes } from "./whats-new-routes";
+import { setupMarketingPosterRoutes } from "./marketing-poster-routes";
 import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-routes";
+import { setupAdminMarketingSegmentsRoutes } from "./admin-room-marketing-segments-routes";
+import { setupAdminMarketingCatalogRoutes } from "./admin-room-marketing-catalog-routes";
 import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
+import { setupAdminWorkspaceAggregatorRoutes } from "./admin-workspace-aggregator-routes";
+import { setupAdminWorkspaceCasesRoutes } from "./admin-workspace-cases-routes";
 import { setupAdminAiCitationRoutes } from "./admin-room-ai-citation-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
 import { setupNewsletterFromReportRoutes } from "./role-room-newsletter-from-report-routes";
@@ -438,15 +534,22 @@ import { setupTheRoleRoomSitemapRoutes } from "./theroleroom-sitemap-routes";
 import { setupAdminRoleRoomEconomyRoutes } from "./admin-room-role-room-economy-routes";
 import { setupAdminPlatformCostSyncRoutes } from "./admin-room-platform-cost-sync-routes";
 import { setupAdminPlatformStatusRoutes } from "./admin-room-platform-status-routes";
-import { setupAdminMigrationsRoutes } from "./admin-room-migrations-routes";
+import { setupAdminLeadsGrowthRoutes } from "./admin-leads-growth-routes";
+import { setupAdminSocialConnectionsStatusRoutes } from "./admin-social-connections-status-routes";
+import { setupAdminCompetitorReportRoutes } from "./admin-competitor-report-routes";
+import { setupAdminResendStatusRoutes } from "./admin-resend-status-routes";
+import { setupJobQueueRoutes, startBackgroundJobs } from "./job-handlers.js";
 import { setupPresenceHeartbeatRoutes } from "./presence-heartbeat-routes";
 import { setupAdminPartnersRoutes } from "./admin-room-partners-routes";
 import { setupAdminDecksRoutes } from "./admin-room-decks-routes";
 import { setupAdminBusinessPlanRoutes } from "./admin-room-business-plan-routes";
 import { setupAdminActivityRoutes } from "./admin-room-activity-routes";
+import { setupAdminContentCalendarRoutes } from "./admin-content-calendar-routes";
 import { setupRoleRoomVendorLinksRoutes } from "./role-room-vendor-links-routes";
 import { setupRoleRoomCastingRoutes } from "./role-room-casting-routes";
 import { setupRoleRoomClientPortalRoutes } from "./role-room-client-portal-routes";
+import { setupClientPortalGoogleAdsRoutes } from "./client-portal-google-ads-oauth";
+import { setupGoogleVerificationMarketingRoutes } from "./google-verification-marketing-routes";
 import { setupShowcaseTemplatesRoutes } from "./showcase-templates-routes";
 import { setupShowcaseCollectionsRoutes } from "./showcase-collections-routes";
 import { setupShowcaseItemsRoutes } from "./showcase-items-routes";
@@ -454,11 +557,16 @@ import { setupShowcaseCategoriesRoutes } from "./showcase-categories-routes";
 import { setupShowcaseCommentsRoutes } from "./showcase-comments-routes";
 import { setupShowcaseAnalyticsRoutes } from "./showcase-analytics-routes";
 import { setupShowcasePricingRoutes } from "./showcase-pricing-routes";
+import { setupPhotographerStripeConnectRoutes } from "./photographer-stripe-connect-routes";
+import { setupPhotographerReviewsRoutes } from "./photographer-reviews-routes";
+import { setupAudioShowcaseRoutes } from "./audio-showcase-routes";
+import { setupSoundRoomOperatingSystemRoutes } from "./sound-room-operating-system-routes";
+import { sendTransactionalEmail as sendAudioReviewEmail, sendTransactionalEmail } from "./transactional-email-service";
 import { setupShowcaseSmartAlbumsRoutes } from "./showcase-smart-albums-routes";
 import { setupShowcaseBatchOperationsRoutes } from "./showcase-batch-operations-routes";
 import { setupShowcaseGooglePhotosRoutes } from "./showcase-google-photos-routes";
 import { setupShowcaseClientRoutes } from "./showcase-client-routes";
-import { setupShowcaseMiscRoutes } from "./showcase-misc-routes";
+import { setupShowcaseMiscRoutes, runDeadlineReminderSweep } from "./showcase-misc-routes";
 import { setupShowcaseImageOpsRoutes } from "./showcase-image-ops-routes";
 import { setupEvendiPlanningRoutes } from "./evendi-planning-routes";
 import { setupEvendiWeatherLocationRoutes } from "./evendi-weather-location-routes";
@@ -469,6 +577,7 @@ import { setupEvendiBridgesRoutes } from "./evendi-bridges-routes";
 import { setupEvendiMiscRoutes } from "./evendi-misc-routes";
 import { setupRoleRoomMarketingPlanRoutes } from "./role-room-marketing-plan-routes";
 import { setupRoleRoomAgentCoreRoutes } from "./role-room-agent-core-routes";
+import { setupRoleRoomPublishProviderRoutes } from "./role-room-publish-providers";
 import { setupRoleRoomDataSourcesRoutes } from "./role-room-data-sources-routes";
 import { setupRoleRoomClientRequestsRoutes } from "./role-room-client-requests-routes";
 import { setupRoleRoomAgentFeedPlanRoutes } from "./role-room-agent-feed-plan-routes";
@@ -481,10 +590,148 @@ import { setupRoleRoomAgencySearchRoutes } from "./role-room-agency-search-route
 import { setupRoleRoomAgencyProposalsRoutes } from "./role-room-agency-proposals-routes";
 import { setupRoleRoomPartnershipsRoutes } from "./role-room-partnerships-routes";
 import { setupTalentSelftapesRoutes } from "./talent-selftapes-routes";
+import { setupAgencyLeadsRoutes } from "./agency-leads-routes";
+import { setupCustomerSuccessRoutes } from "./customer-success-routes.js";
+import { setupMarketScansSuperAdminRoutes } from "./market-scans-superadmin-routes.js";
+import { setupControlCenterRoutes } from "./control-center-routes.js";
+import { setupAdminLeadMapPricingRoutes } from "./admin-lead-map-pricing-routes.js";
+import { setupLeadMapRoutes } from "./lead-map-routes.js";
+import { registerLeadMapCollaborationRoutes } from "./lead-map-collaboration-routes.js";
+import { registerLeadgridOutreachComplianceRoutes } from "./leadgrid-outreach-compliance-routes.js";
+import { registerLeadMapFileRoutes } from "./lead-map-file-routes.js";
+import { createLeadMapSessionHydrator } from "./lead-map-session-helper.js";
+import { registerLeadMapCompetitorRoutes } from "./lead-map-competitor-routes.js";
+import { registerIpadPairRoutes } from "./ipad-pair-routes.js";
+import { registerLeadMapProjectRoutes } from "./lead-map-project-routes.js";
+import { registerLeadMapTeamRoutes } from "./lead-map-team-routes.js";
+import { registerLeadMapOrgRoutes } from "./lead-map-org-routes.js";
+import { registerLeadMapProfileRoutes } from "./lead-map-profile-routes.js";
+import { registerLeadMapPermissionRoutes } from "./lead-map-permission-routes.js";
+import { registerLeadMapMeProfileRoutes } from "./lead-map-me-profile-routes.js";
+import { registerLeadMapLogoRoutes } from "./lead-map-logo-routes.js";
+import { registerMePermissionsRoute } from "./lead-map-rbac-helper.js";
+import { registerLeadMapWorkloadRoutes } from "./lead-map-workload-routes.js";
+import { registerLeadMapLeaderboardRoutes } from "./lead-map-leaderboard-routes.js";
+import { registerLeadMapNotificationRoutes } from "./lead-map-notification-routes.js";
+import { registerLeadMapAnnotationRoutes } from "./lead-map-annotation-routes.js";
+import { registerLeadMapFollowupCronRoutes } from "./lead-map-followup-cron.js";
+import { registerLeadMapPromotionRoutes } from "./lead-map-promotion-routes.js";
+import { registerLeadMapTranscriptRoutes } from "./lead-map-transcript-routes.js";
+import { registerPitchDeckRoutes } from "./pitch-deck-routes.js";
+import { registerPitchDeckPdfRoutes } from "./pitch-deck-pdf-service.js";
+import { registerPitchDeckBriefRoutes } from "./pitch-deck-brief-routes.js";
+import { registerPitchDeckAssetRoutes } from "./pitch-deck-asset-service.js";
+import { registerLeadMapResearchRoutes } from "./lead-map-research-routes.js";
+import { registerLeadgridResearchRoutes } from "./leadgrid-research-routes.js";
+import { registerLeadgridMarketScanRoutes } from "./leadgrid-market-scan-routes.js";
+import { registerLeadgridIntelligenceRoutes } from "./leadgrid-intelligence-routes.js";
+import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.js";
+import { registerLeadgridRetentionCron } from "./leadgrid-retention-cron.js";
+import { registerLeadgridBackfillCron } from "./leadgrid-backfill-cron.js";
+import { registerLeadgridAIUsageRoutes } from "./leadgrid-ai-usage-routes.js";
+import { registerLeadgridForecastingRoutes } from "./leadgrid-forecasting-routes.js";
+import { registerLeadgridMomentumRoutes } from "./leadgrid-momentum-routes.js";
+import { registerLeadgridImportRoutes } from "./leadgrid-import-routes.js";
+import { registerLeadgridContinuousDiscoveryCron } from "./leadgrid-continuous-discovery.js";
+import { registerLeadgridDiscoveryRoutes } from "./leadgrid-discovery-routes.js";
+import { registerLeadgridDiscoveryConfigRoutes } from "./leadgrid-discovery-config-routes.js";
+import { registerLeadgridDomainOnboardingRoutes } from "./leadgrid-domain-onboarding-routes.js";
+import { registerLeadgridIndustriesRoutes } from "./leadgrid-industries-routes.js";
+import { registerLeadgridDealsRoutes } from "./leadgrid-deals-routes.js";
+import { registerLeadgridWorkflowRoutes } from "./leadgrid-workflow-routes.js";
+import { registerRoleRoomAgentThreadsRoutes } from "./role-room-agent-threads-routes.js";
+import { registerLeadgridWorkflowWebhookRoutes } from "./leadgrid-workflow-webhooks-routes.js";
+import { registerLeadgridWorkflowTriggerRoutes } from "./leadgrid-workflow-triggers-routes.js";
+import { registerLeadgridWebhookRotationRoutes } from "./leadgrid-webhook-rotation-routes.js";
+import { registerLeadgridPublicApiV1 } from "./leadgrid-public-api-v1.js";
+import { registerLeadgridPublicOutcomeRoutes } from "./leadgrid-public-outcome-routes.js";
+import { registerLeadgridApiKeyMgmtRoutes } from "./leadgrid-api-key-mgmt-routes.js";
+import { registerLeadgridOpenApiRoutes } from "./leadgrid-openapi-routes.js";
+import { registerLeadgridTerritoryRoutes } from "./leadgrid-territory-routes.js";
+import { registerLeadgridRouteRoutes } from "./leadgrid-route-routes.js";
+import { registerLeadgridAnalyticsRoutes } from "./leadgrid-analytics-routes.js";
+import { registerLeadgridMeetingNotesRoutes } from "./leadgrid-meeting-notes-routes.js";
+import { registerLeadgridAgentBridgeRoutes } from "./leadgrid-agent-bridge-routes.js";
+import { registerLeadScoutRoutes } from "./lead-scout-routes.js";
+import { registerLeadPresetRoutes } from "./lead-preset-routes.js";
+import { registerLeadRulesRoutes } from "./lead-rules-routes.js";
+import { registerLeadRulesCron } from "./lead-rules-cron.js";
+import { registerLeadPortfolioRoutes } from "./lead-portfolio-routes.js";
+import { registerCustomerAutoOnboardRoutes } from "./customer-auto-onboard-routes.js";
+import { registerClientPortalRoutes } from "./leadgrid-client-portal-routes.js";
+import { registerDeliveryPlaybookRoutes } from "./delivery-playbook-routes.js";
+import { registerSuperadminRoutes } from "./superadmin-routes.js";
+import { registerOrgSelfOnboardRoutes } from "./org-self-onboard-routes.js";
+import { registerPlanRoutes } from "./plan-routes.js";
+import { registerLeadgridBillingRoutes } from "./leadgrid-billing-routes.js";
+import {
+  enqueueLeadgridStripeEvent,
+  LEADGRID_AI_STRUCTURE_PRICE,
+  startLeadgridBillingWorker,
+} from "./leadgrid-billing-service.js";
+import { enforceOrgStatus } from "./org-status-enforcement.js";
+import { registerLeadgridPartnersRoutes } from "./leadgrid-partners-routes.js";
+import { registerPartnerApplicationsRoutes } from "./partner-applications-routes.js";
+import { registerPartnerIntentRoutes } from "./partner-intent-routes.js";
+import { registerTestflightTestersRoutes } from "./testflight-testers-routes.js";
+import { registerLeadgridGoogleAuthRoutes } from "./leadgrid-google-auth-routes.js";
+import { registerUserOrgRoutes } from "./user-org-routes.js";
+import { registerLeadgridDripsRoutes } from "./leadgrid-drips-routes.js";
+import { registerPartnerApiRoutes } from "./partner-api-routes.js";
+import { registerPartnerApiManagementRoutes } from "./partner-api-management-routes.js";
+import { registerDeveloperApplicationRoutes } from "./developer-application-routes.js";
+import { registerPartnerVerificationRoutes } from "./partner-verification-routes.js";
+import { registerLeadgridOnboardingRoutes } from "./leadgrid-onboarding-routes.js";
+import { registerLeadgridOverageBillingRoutes } from "./leadgrid-overage-billing.js";
+import { registerClientNotificationPrefsRoutes } from "./client-notification-prefs-routes.js";
+import { registerWaTemplatesAdminRoutes } from "./wa-templates-admin-routes.js";
+import { registerLeadgridEmailBrandingRoutes } from "./leadgrid-email-branding-routes.js";
+import { registerLeadgridChannelOnboardingRoutes } from "./leadgrid-channel-onboarding-routes.js";
+import { registerLeadAcceptanceRoutes } from "./lead-acceptance-routes.js";
+import { registerLeadAssignmentRoutes } from "./lead-assignment-routes.js";
+import { registerLeadbookRecordingConsentRoutes } from "./leadbook-recording-consent-routes.js";
+import { registerLeadStatusRoutes } from "./lead-status-routes.js";
+import { registerLeadExportRoutes } from "./lead-export-routes.js";
+import { registerLeadgridScheduledReportsRoutes } from "./leadgrid-scheduled-reports-routes.js";
+import { registerBrandKitRoutes } from "./brand-kit-routes.js";
+import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
+import { registerGeoVisibilityRoutes } from "./market-intelligence/geo-visibility-routes.js";
+import { registerModuleFeaturesRoutes } from "./feature-flags/module-features-routes.js";
+import { registerIntegrationsAdminRoutes } from "./integrations/integrations-admin-routes.js";
+import { registerOwnedChannelsRoutes } from "./integrations/owned-channels-routes.js";
+import { registerKeywordPlannerRoutes } from "./integrations/keyword-planner-routes.js";
+import { registerManualImportRoutes } from "./integrations/manual-import-routes.js";
+import { registerInsightsRoutes } from "./integrations/insights-routes.js";
+import { registerAiUsageRoutes } from "./integrations/ai-usage-routes.js";
+import { registerScoreModelRoutes } from "./integrations/score-model-routes.js";
+import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
+import { registerMarketIntelAgentRoutes } from "./market-intelligence/market-intel-agent-routes.js";
+import { registerLearningLoopRoutes } from "./market-intelligence/learning-loop-routes.js";
+import { registerLeadMapCampaignRoutes } from "./market-intelligence/lead-map-campaign-routes.js";
+import { registerSuperAdminEmergencyLoginRoutes } from "./super-admin-emergency-login-routes.js";
+import {
+  linkOrgStripeCustomer,
+  backfillOrgStripeCustomers,
+} from "./creatorhub-stripe-org-link.js";
+import {
+  upsertRenewalFromStripeSubscription as upsertCsRenewalFromStripe,
+  markRenewalChurnedForStripeSubscription as markCsRenewalChurned,
+} from "./customer-success-service.js";
+import {
+  expireEntitlementForSubscription as expireLeadMapEntitlement,
+  tierFromPriceId as leadMapTierFromPriceId,
+  upsertEntitlementFromStripeSubscription as upsertLeadMapEntitlement,
+} from "./lead-map-entitlements-service.js";
+import { setupClientAdsRoutes } from "./client-ads-routes";
+import { setupCockpitB2BRoutes } from "./cockpit-b2b-routes";
+import { setupLinkedInOAuthRoutes } from "./linkedin-oauth-routes";
+import { setupLinkedInPrepRoutes } from "./linkedin-prep-routes";
+import { setupBlogPublicRoutes } from "./blog-public-routes";
 import { setupRoleRoomCandidateStatusRoutes } from "./role-room-candidate-status-routes";
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
+import { setupRoleRoomAgentInboxReplyRoutes } from "./role-room-agent-inbox-reply-routes";
 import { setupRoleRoomSocialMetaRoutes } from "./role-room-social-meta-routes";
 import { setupRoleRoomIgMessagingRoutes } from "./role-room-ig-messaging-routes.js";
 import { setupRoleRoomLeadsProducerRoutes } from "./role-room-leads-producer-routes.js";
@@ -624,6 +871,7 @@ import {
   sceneReadinessApplier,
 } from "./ai-scene-readiness-agent.js";
 import { setupCcapiRoutes } from "./ccapi-routes.js";
+import { registerAerospotRoutes } from "./aerospot-routes.js";
 import { setupMultiVendorCameraRoutes } from "./multi-vendor-camera-routes.js";
 import { setupCoverageTakeRoutes } from "./coverage-take-routes.js";
 import { createCoverageJobWorker } from "./coverage-job-queue.js";
@@ -636,6 +884,7 @@ import { setupWeddingMileageRoutes } from "./wedding-mileage-routes";
 import { setupPhotoVenuesRoutes } from "./photo-venues-routes";
 import { setupWeddingWalkthroughRoutes } from "./wedding-walkthrough-routes";
 import { setupWeddingLocationAlternativesRoutes } from "./wedding-location-alternatives-routes";
+import { setupWeddingProductionMapRoutes } from "./wedding-production-map-routes";
 import { setupWeddingExpensesRoutes } from "./wedding-expenses-routes";
 import { setupWeddingInvoiceRoutes } from "./wedding-invoice-routes";
 import { setupWeddingGalleryDeliveryRoutes } from "./wedding-gallery-delivery-routes";
@@ -648,13 +897,25 @@ import {
   setupPrototypeTesterInvitesRoutes,
   createInviteFromApprovedRequest,
 } from "./prototype-tester-invites-routes";
+import {
+  sendVerificationCode,
+  verifyCode,
+} from "./email-verification-service";
 import { setupAdminNotificationsRoutes } from "./admin-notifications-routes";
+import { setupAdminInboundAlertsRoutes } from "./admin-inbound-alerts-routes";
+import { setupAdminAnnouncementsRoutes } from "./admin-announcements-routes";
 import { setupInviteRequestsRoutes } from "./invite-requests-routes";
 import { setupSubmissionsRoutes } from "./submissions-routes";
+import { setupContactFormsRoutes } from "./contact-forms-routes";
 import { setupGoogleWalletRoutes } from "./google-wallet-routes";
 import { setupUniversalVendorShowcaseRoutes } from "./universal-vendor-showcase-routes";
 import { setupBrandingRoutes } from "./branding-routes";
 import { setupVendorTypesRoutes } from "./vendor-types-routes";
+import { setupEditingJobsRoutes } from "./editing-jobs-routes";
+import { setupEditingPartnerApplicationsAdminRoutes } from "./editing-partner-applications-admin-routes";
+import { setupSuperadminImpersonationRoutes } from "./superadmin-impersonation-routes";
+import { createImpersonationSessionGuard } from "./impersonation-session-guard.js";
+import { setupSuperadminDebugRoutes } from "./superadmin-debug-routes";
 import { setupMeetingNotesRoutes } from "./meeting-notes-routes";
 import { setupDavinciResolveRoutes } from "./davinci-resolve-routes";
 import { setupSeoBotRoutes } from "./seo-bot-routes";
@@ -662,6 +923,44 @@ import { setupGooglePhotosRoutes } from "./google-photos-routes";
 import { setupDeliveriesRoutes } from "./deliveries-routes";
 import { setupAudioSettingsRoutes } from "./audio-settings-routes";
 import { setupSalesRoutes } from "./sales-routes";
+import { registerSalesLeadershipRoutes } from "./sales-leadership-routes";
+import { registerLeadgridSalesManagementRoutes } from "./leadgrid-sales-management-routes";
+import { registerLeadgridManualInvoiceRoutes } from "./leadgrid-manual-invoice-routes";
+import { registerLeadgridMileageApprovalRoutes } from "./leadgrid-mileage-approval-routes";
+import { registerLeadgridCockpitRoutes } from "./leadgrid-cockpit-routes";
+import { registerLeadgridPondusQuizRoutes } from "./leadgrid-pondus-quiz-routes";
+import { registerLeadgridSalesTeamsRoutes } from "./leadgrid-sales-teams-routes";
+import { registerLeadgridProposalsRoutes } from "./leadgrid-proposals-routes";
+import { registerLeadgridAcademyRoutes } from "./leadgrid-academy-routes";
+import { registerLeadgridOrgOverrideRoutes } from "./leadgrid-org-override-routes";
+import { registerWorkflowResumeCron } from "./leadgrid-workflow-engine";
+import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
+import { registerLeadgridKartverketRoutes, registerLeadgridAdresseRoutes } from "./leadgrid-kartverket-routes";
+import { registerLeadgridDorsalgRoutes } from "./leadgrid-dorsalg-routes";
+import { registerLeadgridPricingConfigRoutes } from "./leadgrid-pricing-config-routes";
+import { registerLeadgridExperienceConfigRoutes } from "./leadgrid-experience-config-routes";
+import { registerLeadgridTestimonialsRoutes } from "./leadgrid-testimonials-routes";
+import { registerLeadgridBriefRoutes } from "./leadgrid-brief-routes";
+import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
+import { registerLeadgridNvdbRoutes } from "./leadgrid-nvdb-routes";
+import { registerLeadgridVehicleRoutes } from "./leadgrid-vehicle-routes";
+import { registerLeadgridTripsRoutes } from "./leadgrid-trips-routes";
+import { leadgridOrganizationContextMiddleware } from "./leadgrid-org-resolver";
+import { registerLeadgridQualityRoutes } from "./leadgrid-quality-routes";
+import { registerLeadgridDoffinRoutes } from "./leadgrid-doffin-routes";
+import { registerLeadgridRuteRoutes } from "./leadgrid-rute-routes";
+import { registerLeadgridOversiktRoutes } from "./leadgrid-oversikt-routes";
+import { registerLeadgridCanvasRoutes } from "./leadgrid-canvas-routes";
+import { registerLeadgridCpvRoutes } from "./leadgrid-cpv-routes";
+import { registerLeadgridParkeringRoutes } from "./leadgrid-parkering-routes";
+import { registerLeadgridMotebriefRoutes } from "./leadgrid-motebrief-routes";
+import { registerLeadgridLeadbookExamplesRoutes } from "./leadgrid-leadbook-examples-routes";
+import { registerLeadgridEquipmentRoutes } from "./leadgrid-equipment-routes";
+import { registerLeadgridCrashRoutes } from "./leadgrid-crash-routes";
+import { registerLeadgridSignupInterestRoutes } from "./leadgrid-signup-interest-routes";
+import { registerLeadgridDemoRequestRoutes } from "./leadgrid-demo-request-routes";
+import { registerLeadgridAppWaitlistRoutes } from "./leadgrid-app-waitlist-routes";
+import { registerPondusRoutes, registerPondusUsageRoutes } from "./pondus-routes";
 import { setupExternalDataRoutes } from "./external-data-routes";
 import { setupInspirationsRoutes } from "./inspirations-routes";
 import { setupCmsRoutes } from "./cms-routes";
@@ -680,6 +979,7 @@ import { setupResendAdminRoutes } from "./resend-admin-routes";
 import { setupEmailsRoutes } from "./emails-routes";
 import { setupTelemetryRoutes } from "./telemetry-routes";
 import { setupVideoSyncRoutes } from "./video-sync-routes";
+import { setupAdminTrainingMonitoringRoutes } from "./admin-training-monitoring-routes";
 import { setupUserPreferencesRoutes } from "./user-preferences-routes";
 import { setupOnboardingRoutes } from "./onboarding-routes";
 import { setupWorklogRoutes } from "./worklog-routes";
@@ -698,6 +998,11 @@ import {
   ensurePhotographerProjectsSchemaShared,
 } from "./photographer-projects-routes";
 import { setupPhotographerMiscRoutes } from "./photographer-misc-routes";
+import { setupProjectTeamRoutes, canAccessProject } from "./project-team-routes";
+import { requireProjectAccess } from "./project-access";
+import { setupProjectWorkspaceRoutes } from "./project-workspace-routes";
+import { setupProToolsCompanionRoutes } from "./protools-companion-routes";
+import { startProToolsSyncWorker } from "./protools-companion-sync-worker";
 import { setupGoogleDriveSyncRoutes } from "./google-drive-sync-routes";
 import { setupChunkedUploadRoutes } from "./chunked-upload-routes";
 import { setupUploadsRoutes } from "./uploads-routes";
@@ -711,6 +1016,9 @@ import { setupGalleryVersionsRoutes } from "./gallery-versions-routes";
 import { setupContractsRoutes } from "./contracts-routes";
 import { setupBusinessRoutes } from "./business-routes";
 import { setupAnalyticsRoutes } from "./analytics-routes";
+import { setupChatWidgetAnalyticsRoutes } from "./chat-widget-analytics-routes";
+import { setupPrototypeReportRoutes } from "./prototype-report-routes";
+import { setupPrototypeTeamAdminRoutes } from "./prototype-team-admin-routes";
 import { setupCommunityRoutes } from "./community-routes";
 import { setupUserRoutes } from "./user-routes";
 import { setupQuotesRoutes } from "./quotes-routes";
@@ -719,6 +1027,7 @@ import { setupUniversalCrmRoutes } from "./universal-crm-routes";
 import { setupWeddingRoutes } from "./wedding-routes";
 import { setupWeddingTimelineRoutes } from "./wedding-timeline-routes";
 import { setupProjectsRoutes } from "./projects-routes";
+import { setupWorkflowOrchestrationRoutes } from "./workflow-orchestration-routes";
 import { setupRoleRoomDealsRoutes } from "./role-room-deals-routes";
 import { setupRoleRoomInvitesTicketsRoutes } from "./role-room-invites-tickets-routes";
 import { setupProjectsOutliersRoutes } from "./projects-outliers-routes";
@@ -726,6 +1035,24 @@ import { setupContractsUploadImportRoutes } from "./contracts-upload-import-rout
 import { setupBackupRoutes } from "./backup-routes";
 import { setupMaintenanceRoutes } from "./maintenance-routes";
 import { setupSplitSheetsRoutes } from "./split-sheets-routes";
+import { setupSplitSheetSigningRoutes } from "./split-sheet-signing-routes";
+import {
+  setupWorkspaceProjectParticipantsRoutes,
+  type AuthoritativeSessionResolution,
+} from "./workspace-project-participants-routes";
+import { parseWorkspaceParticipantAuthoritativeSession } from "./workspace-participant-authoritative-session";
+import {
+  setupWorkspaceParticipantDocumentBodyParserBoundary,
+  setupWorkspaceParticipantDocumentRoutes,
+} from "./workspace-participant-documents-routes";
+import { createWorkspaceParticipantDocumentEmailDeliveryAdapter } from "./workspace-participant-document-delivery";
+import { setupWorkspaceParticipantCompensationRoutes } from "./workspace-participant-compensation-routes";
+import { setupWorkspaceParticipantClearanceRoutes } from "./workspace-participant-clearance-routes";
+import { isWorkspaceParticipantCompensationMetadata } from "../../frontend/shared/workspace-participant-compensation.ts";
+import { setupEquipmentValueRoutes } from "./equipment-value-routes";
+import { setupSoftwareExpensesRoutes } from "./software-expenses-routes";
+import { setupMicrosoftOauthRoutes } from "./microsoft-oauth-routes";
+import { getGoogleOAuthClient } from "./google-oauth-shared.js";
 import { setupSongflowDeprecatedAliasesRoutes } from "./songflow-deprecated-aliases-routes";
 import { setupEquipmentDiscoveryRoutes } from "./equipment-discovery-routes";
 import { setupEquipmentCatalogRoutes } from "./equipment-catalog-routes";
@@ -745,17 +1072,52 @@ import { setupFileManagementRoutes } from "./file-management-routes";
 import { setupAudioRoutes } from "./audio-routes";
 import { setupPlatformRoutes } from "./platform-routes";
 import { setupAdminMiscRoutes } from "./admin-misc-routes";
+// UX-consistency-pass: 16 nye admin-routes-filer for å fjerne stubs
+// fra AdminDashboard-fanene (audit fant ~25 broken endepunkter).
+import { setupAdminBillingExtrasRoutes } from "./admin-billing-extras-routes";
+import { setupAdminEnterprisePricingRoutes } from "./admin-enterprise-pricing-routes";
+import { setupAdminCustomersRoutes } from "./admin-customers-routes";
+import { setupAdminMonitoringRoutes } from "./admin-monitoring-routes";
+import { setupAdminProtocolRoutes } from "./admin-protocol-routes";
+import { setupAdminIntegrationsExtrasRoutes } from "./admin-integrations-extras-routes";
+import { setupAdminPaymentTestsRoutes } from "./admin-payment-tests-routes";
+import { setupAdminSystemBackupRoutes } from "./admin-system-backup-routes";
+import { setupAdminGdprLegalRoutes } from "./admin-gdpr-legal-routes";
+import { setupAdminReportsRoutes } from "./admin-reports-routes";
+import { setupAdminCommunityExtrasRoutes } from "./admin-community-extras-routes";
+import { setupAdminCommunicationExtrasRoutes } from "./admin-communication-extras-routes";
+import { setupAdminProvisioningExtrasRoutes } from "./admin-provisioning-extras-routes";
+import { setupAdminAutomationsRoutes } from "./admin-automations-routes";
+import { setupAdminSocialMediaRoutes } from "./admin-social-media-routes";
+import { setupAdminEmailAnalyticsRoutes } from "./admin-email-analytics-routes";
+import { setupAdminGoogleWalletExtrasRoutes } from "./admin-google-wallet-extras-routes";
+import { setupAdminGooglePayConfigRoutes } from "./admin-google-pay-config-routes";
+import { setupAdminGoogleWalletTestsRoutes } from "./admin-google-wallet-tests-routes";
+import { setupAdminMarketplaceFixRoutes } from "./admin-marketplace-fix-routes";
+import { setupAdminFeatureCustomizationsRoutes } from "./admin-feature-customizations-routes";
+import { setupAdminTesterSkillsRoutes } from "./admin-tester-skills-routes";
+import { setupAdminTestCaseGeneratorRoutes } from "./admin-test-case-generator-routes";
+import { setupAdminAcademyRoutes } from "./admin-academy-routes";
+import { setupAcademyStripeWebhookRoutes } from "./academy-stripe-webhook-routes";
+import { setupAdminAcademyB2Routes } from "./admin-academy-b2-routes";
+import { setupUserB2CredentialsRoutes } from "./user-b2-credentials-routes";
+import { startB2SyncCron } from "./user-b2-sync-worker";
+import { setupUserDriveCredentialsRoutes } from "./user-drive-credentials-routes";
+import { setupAdminMarketingSeoRoutes } from "./admin-marketing-seo-routes";
+import { setupAdminIntegrationTestsRoutes } from "./admin-integration-tests-routes";
 import { setupOrchestrationRoutes } from "./orchestration-routes";
 import { setupAuthRoutes } from "./auth-routes";
 import { setupFirmwareRoutes } from "./firmware-routes";
 import { setupClientPortalRoutes } from "./client-portal-routes";
 import { setupEquipmentRootRoutes } from "./equipment-root-routes";
+import { setupEquipmentAdminRoutes } from "./equipment-admin-routes";
 import {
   setupTesterEnterpriseOfferRoutes,
   runOfferCreationSweep,
   handleTesterEnterpriseOfferWebhook,
 } from "./tester-enterprise-offer-routes";
 import { setupAdminConfigCheckRoutes } from "./admin-config-check-routes";
+import { setupAdminDevelopmentToolsRoutes } from "./admin-development-tools-routes";
 import { setupWeddingAssistantBriefNotesRoutes } from "./wedding-assistant-brief-notes";
 import { setupWeddingAssistantGdprRoutes } from "./wedding-assistant-gdpr-routes";
 import {
@@ -788,8 +1150,10 @@ import {
 } from "./notebooklm-workspace.js";
 import { createWebSocketServer, broadcastChatEventToUser } from "./websocket-chat.js";
 import { createDanceRealtimeServer } from "./dance-realtime-server.js";
+import { createCanvasRealtimeServer } from "./leadgrid-canvas-realtime.js";
 import { createReferenceProxyRouter } from "./reference-proxy-routes.js";
-import { createYouTubeRouter } from "./youtube-routes.js";
+import { createYouTubeRouter, buildAuthorizedYoutubeClient, buildAuthorizedGoogleCalendar } from "./youtube-routes.js";
+import { createGoogleWorkspaceExtraRouter } from "./google-workspace-extra-routes.js";
 import {
   deletePersistedAuthSession,
   hydratePersistedAuthSessions,
@@ -816,6 +1180,7 @@ import {
 } from "../../frontend/client/src/data/audio-storage-device-database.ts";
 import { WORLD_CAMERA_DATABASE } from "../../frontend/shared/camera-database.ts";
 import { CAMERA_RELEASE_REGISTRY_2020_2026 } from "../../frontend/shared/camera-release-registry.ts";
+import { normalizeProfession as normalizeCanonicalProfession, canonicalizeProfession } from "../../frontend/shared/profession-types.ts";
 import { DEFAULT_PROFESSION_CONFIGS } from "../../frontend/client/src/types/ProfessionConfig.ts";
 import {
   ACADEMY_PRESENTATION_GRAMMAR_BUDGETS,
@@ -840,11 +1205,39 @@ import { respondWithError } from "./api-error";
 validateEnvOrExit();
 
 // Database connection
-const pool = new Pool({
+// PERF (skalering nivå 2): tunet pool for å håndtere cron-batches (100 leads
+// samtidig) + concurrent web requests. Default pg.Pool max=10 var for lavt.
+const databasePoolConfig: PoolConfig & { enableChannelBinding: boolean } = {
   connectionString: process.env.DATABASE_URL,
-});
+  // node-postgres does not map channel_binding from a connection URI.
+  // Enable SCRAM-SHA-256-PLUS explicitly for every production connection.
+  enableChannelBinding: true,
+  max: parseInt(process.env.PG_POOL_MAX ?? "30", 10),
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
+  // The ownership bootstrap persists statement_timeout=30s on the runtime
+  // role. Neon transaction pooling can ignore unsupported startup parameters,
+  // so the boot audit below verifies the active server-side value instead.
+};
+const pool = new Pool(databasePoolConfig);
+
+await verifyDatabaseOwnerSession(pool);
+
+// Logger pool-health hvert 5. min for observability (Render-logs)
+setInterval(() => {
+  console.log(
+    `[pg-pool] total=${pool.totalCount} idle=${pool.idleCount} waiting=${pool.waitingCount}`,
+  );
+}, 5 * 60 * 1000).unref?.();
 
 const db = drizzle(pool, { schema });
+
+// Leadgrid schema-validator (mig 313–318) — kjøres i bakgrunn ved boot.
+// Logger ADVARSEL hvis kritiske kolonner mangler. Sett
+// LEADGRID_STRICT_SCHEMA=1 for å abort'e boot isteden.
+void import("./leadgrid-schema-check.js")
+  .then(({ runSchemaCheck }) => runSchemaCheck(pool))
+  .catch((err) => console.error("[schema-check] boot-feil:", err));
 
 // upload-multer (PDF/DOCX kontrakt-import) — flyttet til ./contracts-upload-import-routes.ts
 
@@ -901,6 +1294,10 @@ const showcaseMediaUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 250 * 1024 * 1024,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (/^(image\/|video\/|audio\/)/.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Filtype ikke tillatt") as any, false);
   },
 });
 
@@ -1082,6 +1479,40 @@ installSecretRedactor();
 
 const app = express();
 
+// AI-kreditt topp-opp webhook (robust backup for confirm-on-return). Begge er
+// idempotente på ref=stripe:<session> → ingen dobbel-kreditt. Dvale til
+// STRIPE_AI_CREDITS_WEBHOOK_SECRET er satt + Stripe-webhook opprettet.
+app.post(
+  "/api/ai/credits/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const secret = process.env.STRIPE_SECRET_KEY;
+    const whSecret = process.env.STRIPE_AI_CREDITS_WEBHOOK_SECRET;
+    if (!secret || !whSecret) return res.status(503).json({ error: "not_configured" });
+    const stripe = new Stripe(secret.trim());
+    const sig = req.headers["stripe-signature"];
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(String(req.body ?? ""), "utf8");
+    let event: Stripe.Event;
+    try {
+      if (typeof sig !== "string" || !sig.trim()) return res.status(400).json({ error: "missing_signature" });
+      event = stripe.webhooks.constructEvent(rawBody, sig, whSecret);
+    } catch (e) {
+      console.error("[ai-credits webhook] signature error", e);
+      return res.status(400).json({ error: "bad_signature" });
+    }
+    try {
+      if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
+        const session = event.data.object as Stripe.Checkout.Session;
+        if ((session as any)?.metadata?.kind === "ai_credits") await creditFromStripeSession(pool, session);
+      }
+      res.json({ received: true });
+    } catch (e) {
+      console.error("[ai-credits webhook] handler error", e);
+      res.status(500).json({ error: "handler_failed" });
+    }
+  },
+);
+
 app.post(
   "/api/role-room/billing/webhook",
   express.raw({ type: "application/json" }),
@@ -1131,10 +1562,46 @@ app.post(
         ? new Date(event.created * 1000).toISOString()
         : new Date().toISOString();
 
+      const storageBillingResult = await handleRoleRoomStorageStripeEvent(
+        pool,
+        stripe,
+        event,
+      );
+      if (storageBillingResult.matched) {
+        return res.json({
+          received: true,
+          duplicate: storageBillingResult.duplicate === true,
+        });
+      }
+
+      const affiliatePayoutResult = await handleRoleRoomAffiliateStripeEvent(
+        pool,
+        event,
+      );
+      if (affiliatePayoutResult.matched) {
+        return res.json({
+          received: true,
+          duplicate: affiliatePayoutResult.duplicate === true,
+        });
+      }
+
       switch (event.type) {
         case "checkout.session.completed":
         case "checkout.session.async_payment_succeeded": {
           const session = event.data.object as Stripe.Checkout.Session;
+          // Editing-marketplace: marker oppdrag som betalt → escrow «held» (robust kilde,
+          // virker selv om fotografen lukker fanen før success-redirect). Reverterer ikke 'released'.
+          if (session.metadata?.kind === "editing_job" && session.metadata?.editingJobId) {
+            try {
+              await pool.query(
+                `UPDATE editing_jobs SET payment_status='held', updated_at=NOW()
+                  WHERE id=$1 AND payment_status IS DISTINCT FROM 'released'`,
+                [session.metadata.editingJobId],
+              );
+            } catch (e) {
+              console.error("[stripe-webhook] editing held-update failed", e);
+            }
+          }
           // Sjekk NextRole først (egen app_id-metadata).
           // NextRole-handleren sender sin egen 'Subscribe'-event til CAPI,
           // så vi hopper over generisk fallback for å unngå dobbeltsending.
@@ -1156,12 +1623,16 @@ app.post(
           }
           break;
         }
-        case "invoice.paid":
-          await syncRoleRoomCommercialStripeInvoice(
-            event.data.object as Stripe.Invoice,
-            eventTimestamp,
-          );
+        case "invoice.paid": {
+          const eventInvoice = event.data.object as Stripe.Invoice;
+          const invoice = eventInvoice.payments?.data.length
+            ? eventInvoice
+            : await stripe.invoices.retrieve(eventInvoice.id, {
+                expand: ["payments.data.payment.payment_intent"],
+              });
+          await syncRoleRoomCommercialStripeInvoice(invoice, eventTimestamp);
           break;
+        }
         case "invoice.payment_failed": {
           const invoice = event.data.object as Stripe.Invoice;
           const agentResult = await handleAgentPaymentFailed(pool, invoice);
@@ -1187,12 +1658,18 @@ app.post(
           }
           // I tillegg: revoker tilgangen til alle team-medlemmer
           await handleRoleRoomSubscriptionDeleted(pool, subscription);
+          // Wave M2: marker renewal-rad som churned
+          void markCsRenewalChurned(pool, subscription.id);
+          // Wave LM-Agent Fase 2: expire Lead Map-entitlement
+          void expireLeadMapEntitlement(pool, subscription.id);
           break;
         }
         case "customer.subscription.updated": {
           const subscription = event.data.object as Stripe.Subscription;
           // Detecter quantity-drift + status-overganger til past_due/unpaid
           await handleRoleRoomSubscriptionUpdated(pool, subscription);
+          // Wave M2: upsert renewal-pipeline
+          void upsertCsRenewalFromStripe(pool, subscription as unknown as Parameters<typeof upsertCsRenewalFromStripe>[1]);
           break;
         }
         default:
@@ -1209,6 +1686,49 @@ app.post(
   },
 );
 
+// Stripe Connect webhook — separate signing secret from the platform webhook.
+// Must be mounted before express.json() so Stripe receives the exact raw body.
+app.post(
+  "/api/role-room/billing/connect-webhook",
+  express.raw({ type: "application/json", limit: "1mb" }),
+  async (req, res) => {
+    const stripe = getRoleRoomStripeClient();
+    if (!stripe) return res.status(503).json({ error: "stripe_ikke_konfigurert" });
+    const webhookSecret = process.env.ROLE_ROOM_STRIPE_CONNECT_WEBHOOK_SECRET?.trim();
+    const signatureHeader = req.headers["stripe-signature"];
+    const rawBody = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.from(String(req.body ?? ""), "utf8");
+    let event: Stripe.Event;
+    try {
+      if (webhookSecret) {
+        if (typeof signatureHeader !== "string" || !signatureHeader.trim()) {
+          return res.status(400).json({ error: "mangler_stripe_signature" });
+        }
+        event = stripe.webhooks.constructEvent(rawBody, signatureHeader, webhookSecret);
+      } else if (process.env.NODE_ENV === "production") {
+        return res.status(503).json({ error: "stripe_connect_webhook_secret_mangler" });
+      } else {
+        event = JSON.parse(rawBody.toString("utf8")) as Stripe.Event;
+      }
+    } catch (error) {
+      console.error("Role Room Stripe Connect webhook signature error:", error);
+      return res.status(400).json({ error: "ugyldig_stripe_connect_signatur" });
+    }
+    try {
+      const result = await handleRoleRoomAffiliateStripeEvent(pool, event);
+      return res.json({
+        received: true,
+        matched: result.matched,
+        duplicate: result.duplicate === true,
+      });
+    } catch (error) {
+      console.error("Role Room Stripe Connect webhook handling error:", error);
+      return res.status(500).json({ error: "stripe_connect_webhook_feilet" });
+    }
+  },
+);
+
 // Post Agent webhook — must be mounted BEFORE express.json() so raw body is
 // preserved for Stripe signature verification. Handles subscription lifecycle
 // events to keep role_room_agent_entitlements in sync.
@@ -1217,6 +1737,11 @@ app.post(
   express.raw({ type: "application/json" }),
   handlePostAgentStripeWebhook({ pool }),
 );
+
+// Academy Stripe webhook — same rationale; mounted before express.json() for
+// raw body signature verification. Handles Connect account.updated +
+// transfer.*/payout.* events for instructor payouts.
+setupAcademyStripeWebhookRoutes({ app, pool });
 
 app.post(
   "/api/platform/billing/webhook",
@@ -1263,6 +1788,9 @@ app.post(
     }
 
     try {
+      // Leadgrid billing is journal-first. Duplicate delivery is absorbed by
+      // stripe_event_id and projection happens asynchronously from PostgreSQL.
+      await enqueueLeadgridStripeEvent(pool, event);
       switch (event.type) {
         case "checkout.session.completed":
         case "checkout.session.async_payment_succeeded": {
@@ -1276,7 +1804,19 @@ app.post(
           // still work end-to-end.
           const agentResult = await handleAgentCheckoutSessionCompleted(pool, session);
           if (!agentResult.matched) {
-            await syncCreatorHubStripeCheckoutSession(session);
+            const chRecord = await syncCreatorHubStripeCheckoutSession(session);
+            // Persister org→Stripe-kunde-koblingen (Fase C-forutsetning): plattform-
+            // checkout lagrer den ellers kun i KV. Ikke-destruktiv + fire-and-forget.
+            if (chRecord?.paymentCompleted && chRecord.stripeCustomerId) {
+              try {
+                await linkOrgStripeCustomer(pool, {
+                  userId: chRecord.userId,
+                  stripeCustomerId: chRecord.stripeCustomerId,
+                });
+              } catch (linkErr) {
+                console.warn("[creatorhub-stripe-org-link] webhook link failed:", (linkErr as Error).message);
+              }
+            }
           }
           break;
         }
@@ -1370,6 +1910,30 @@ app.post(
             interval: item?.price?.recurring?.interval || '',
             trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
           });
+          // Wave M2: opprett renewal-rad i CSM-pipeline
+          void upsertCsRenewalFromStripe(pool, subscription as unknown as Parameters<typeof upsertCsRenewalFromStripe>[1]);
+          // Wave LM-Agent Fase 2: hvis subscription er Lead Map-modul, upsert entitlement
+          {
+            const meta = subscription.metadata || {};
+            const priceId = subscription.items?.data?.[0]?.price?.id;
+            const tier = meta.module === 'lead_map' && typeof meta.tier === 'string'
+              ? leadMapTierFromPriceId(priceId || '') || (['discover','pro','agency'].includes(meta.tier) ? meta.tier as 'discover'|'pro'|'agency' : null)
+              : null;
+            if (tier && meta.config_id && meta.producer_user_id) {
+              const subLoose = subscription as unknown as { current_period_end?: number };
+              const periodEnd = subLoose.current_period_end;
+              void upsertLeadMapEntitlement(pool, {
+                configId: String(meta.config_id),
+                producerUserId: String(meta.producer_user_id),
+                tier,
+                stripeSubscriptionId: subscription.id,
+                stripePriceId: priceId || null,
+                stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : null,
+                cancelAtPeriodEnd: subscription.cancel_at_period_end ?? false,
+                currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : null,
+              });
+            }
+          }
           break;
         }
         // Slice 10.2 — gallery checkout completion. We only act when
@@ -1584,10 +2148,84 @@ async function ensureFirmwareUpdatesCompatibilityColumns(): Promise<void> {
   await firmwareCompatColumnsPromise;
 }
 
-// CORS — apply CORS_ALLOW_ORIGINS to Role Room routes; wide-open for legacy routes
-app.use(cors());
+// CORS — credentials: 'include' fra frontend krever EKSPLISITT origin (ikke *).
+// Lister kjente prod- og dev-origins; reflekterer requestens origin ved match
+// så browseren tillater credentials. Ukjent origin svarer uten CORS-header.
+const KNOWN_ORIGINS = new Set([
+  'https://creatorhubn.com',
+  'https://www.creatorhubn.com',
+  // Admin-dedikert host (Control Center-cockpit). Serveres av samme Netlify-
+  // nettsted (same-origin /api/*-proxy), men enkelte klient-kall bruker
+  // hardkodet backend-URL → CORS-subjekt. Uten denne CORS-blokkeres bl.a.
+  // /api/auth/user på admin.creatorhubn.com (innlogging feiler).
+  'https://admin.creatorhubn.com',
+  'https://theroleroom.com',
+  'https://www.theroleroom.com',
+  'http://localhost:5001',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5001',
+  'http://127.0.0.1:5173',
+  // Post Agent desktop-app (Tauri v2 webview-origin): macOS = tauri://localhost,
+  // Windows/Linux = http(s)://tauri.localhost. Sign-in-dialogen bruker webview-
+  // fetch (CORS-subjekt) mot /api/post-agent/pairing/*, så disse MÅ stå her —
+  // ellers «TypeError: Load failed» ved innlogging i det signerte bygget.
+  'tauri://localhost',
+  'http://tauri.localhost',
+  'https://tauri.localhost',
+]);
+app.use(helmet({
+  // API-only backend — no HTML served, so CSP is not needed
+  contentSecurityPolicy: false,
+  // CORS handles cross-origin; crossOriginResourcePolicy would break file downloads
+  crossOriginResourcePolicy: false,
+  // Prevent cross-origin window attacks (e.g. Spectre)
+  crossOriginOpenerPolicy: { policy: "same-origin" },
+}));
+// Permissions-Policy is not set by helmet — add explicitly
+app.use((_req, res, next) => {
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=(self)"
+  );
+  next();
+});
+app.use(cors({
+  origin: (origin, callback) => {
+    // Ingen origin (samme-origin eller server-til-server) — tillat
+    if (!origin) return callback(null, true);
+    if (KNOWN_ORIGINS.has(origin)) return callback(null, origin);
+    // Kun stabile Netlify-produksjonsaliaser. Preview-origins kan inneholde
+    // ukontrollert PR-kode og får derfor aldri credentialed CORS.
+    if (isTrustedNetlifyProductionOrigin(origin)) {
+      return callback(null, origin);
+    }
+    // Ikke-matchet origin — svar uten CORS-header (browseren blokkerer da)
+    return callback(null, false);
+  },
+  credentials: true,
+  exposedHeaders: ['Content-Disposition'],
+}));
+app.use((req, _res, next) => {
+  const normalizedUrl = normalizeIncomingApiUrl(req.url);
+  if (normalizedUrl !== req.url) {
+    req.url = normalizedUrl;
+  }
+  next();
+});
+setupWorkspaceParticipantDocumentBodyParserBoundary(app);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+// Propagate the selected Leadgrid workspace through legacy module helpers.
+// AsyncLocalStorage keeps concurrent devices/windows isolated.
+app.use(leadgridOrganizationContextMiddleware);
+
+// All /api responses must never be cached — prevents stale sensitive data
+// being served from browser cache or shared proxies.
+app.use("/api", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
 
 function normalizeIncomingApiUrl(rawUrl: string): string {
   if (!rawUrl) return rawUrl;
@@ -1625,14 +2263,6 @@ function normalizeIncomingApiUrl(rawUrl: string): string {
   return query ? `${normalizedPath}?${query}` : normalizedPath;
 }
 
-app.use((req, _res, next) => {
-  const normalizedUrl = normalizeIncomingApiUrl(req.url);
-  if (normalizedUrl !== req.url) {
-    req.url = normalizedUrl;
-  }
-  next();
-});
-
 // ── Role Room API (x-api-key or Bearer session token) ────
 type ActiveSessionData = {
   userId: string;
@@ -1648,6 +2278,12 @@ type ActiveSessionData = {
   picture?: string;
   verified_email?: boolean;
   impersonatedByAdmin?: boolean;
+  // User-nivå impersonation (super_admin «vis som bruker»): peker sesjonen på
+  // målbrukeren, men beholder super_adminen for gjenoppretting + audit.
+  impersonatorId?: string;
+  impersonatorEmail?: string;
+  impersonatorSnapshot?: Partial<ActiveSessionData>;
+  impersonationExpiresAt?: number;
   isAdmin?: boolean;
   vendorId?: string;
   businessName?: string;
@@ -1657,6 +2293,25 @@ type ActiveSessionData = {
 };
 
 const activeSessions: Map<string, ActiveSessionData> = new Map();
+
+// Native Leadgrid bearers are persisted in Postgres, while many legacy route
+// guards still read activeSessions synchronously. Warm the process-local Map
+// before every Leadgrid handler so a token minted on Render pod A is
+// immediately usable on pod B. The middleware is hydration-only: public
+// routes without a bearer continue unchanged. /api/auth/user is included
+// because it is part of the native app's post-login bootstrap.
+const leadMapSessionHydrator = createLeadMapSessionHydrator(
+  pool,
+  activeSessions,
+);
+app.use("/api/admin-room/lead-map", leadMapSessionHydrator);
+app.use("/api/lead-map", leadMapSessionHydrator);
+app.use("/api/leadgrid", leadMapSessionHydrator);
+app.use("/api/auth/user", leadMapSessionHydrator);
+// Role Room agent guards are intentionally synchronous, so warm their
+// process-local session map from the durable store before each request. This
+// keeps valid web sessions working across Render restarts and instances.
+app.use("/api/role-room/agent", leadMapSessionHydrator);
 
 // Pending-2FA-state for login-flow. Når en bruker har TOTP aktivert,
 // stasher vi alt vi trenger for å fullføre sessionen mens vi venter på
@@ -1752,6 +2407,46 @@ function getActiveSessionFromRequest(req: express.Request) {
   return activeSessions.get(sessionToken) || getLocalDevelopmentSession(sessionToken);
 }
 
+// The users table is the source of truth for ADMIN privilege. A session can
+// carry a stale or marketplace-shadowed role — e.g. a Google login that stored
+// 'couple' because the same person also owns a couple profile — and the admin
+// guards (requireAdminSession) read session.role DIRECTLY and synchronously from
+// the in-memory map. So a mis-roled session locks a real admin out of every
+// /api/admin/* route. When a non-admin session belongs to a user the DB marks
+// admin/super_admin, upgrade the live session object IN PLACE (and persist it),
+// so every guard — sync or async — sees the correct role. Checked at most once
+// per token to keep the auth hot-path cheap for ordinary (non-admin) users.
+const adminRoleReconciledTokens = new Set<string>();
+async function reconcileSessionAdminRole(
+  token: string,
+  session: ActiveSessionData,
+): Promise<ActiveSessionData> {
+  const role = String(session.role || "").trim().toLowerCase();
+  if (ADMIN_SESSION_ROLES.has(role)) {
+    return session;
+  }
+  if (adminRoleReconciledTokens.has(token)) {
+    return session;
+  }
+  adminRoleReconciledTokens.add(token);
+  try {
+    const r = await pool.query<{ role: string }>(
+      `SELECT role FROM users WHERE id::text = $1 OR LOWER(email) = LOWER($2) LIMIT 1`,
+      [session.userId, session.email],
+    );
+    const dbRole = String(r.rows[0]?.role || "").trim().toLowerCase();
+    if (ADMIN_SESSION_ROLES.has(dbRole)) {
+      session.role = dbRole;
+      session.isAdmin = true;
+      activeSessions.set(token, session);
+      void persistAuthSession(pool, token, session);
+    }
+  } catch (error) {
+    console.warn("[auth] admin-role reconcile failed:", error);
+  }
+  return session;
+}
+
 async function resolveActiveSessionFromRequest(
   req: express.Request,
 ): Promise<ActiveSessionData | null> {
@@ -1762,7 +2457,7 @@ async function resolveActiveSessionFromRequest(
 
   const inMemorySession = activeSessions.get(sessionToken);
   if (inMemorySession) {
-    return inMemorySession;
+    return reconcileSessionAdminRole(sessionToken, inMemorySession);
   }
 
   const localDevelopmentSession = getLocalDevelopmentSession(sessionToken);
@@ -1776,10 +2471,78 @@ async function resolveActiveSessionFromRequest(
   );
   if (persistedSession) {
     activeSessions.set(sessionToken, persistedSession);
-    return persistedSession;
+    return reconcileSessionAdminRole(sessionToken, persistedSession);
   }
 
   return null;
+}
+
+async function resolveAuthoritativeSessionFromRequest(
+  req: express.Request,
+): Promise<AuthoritativeSessionResolution> {
+  const sessionToken = readActiveSessionToken(req);
+  if (!sessionToken || sessionToken.length > 512) {
+    return { status: "unauthenticated" };
+  }
+
+  if (sessionToken === DEV_LOCAL_ADMIN_SESSION_TOKEN) {
+    const remoteAddress = String(req.socket.remoteAddress || "").toLowerCase();
+    const isLoopback = remoteAddress === "127.0.0.1"
+      || remoteAddress === "::1"
+      || remoteAddress.startsWith("::ffff:127.");
+    if (process.env.NODE_ENV !== "development" || !isLoopback) {
+      return { status: "unauthenticated" };
+    }
+    const localDevelopmentSession = getLocalDevelopmentSession(sessionToken);
+    return localDevelopmentSession
+      ? { status: "authenticated", session: localDevelopmentSession }
+      : { status: "unauthenticated" };
+  }
+
+  try {
+    const result = await pool.query<{ session_data: unknown }>(
+      `SELECT session_data
+         FROM creatorhub_auth_sessions
+        WHERE token = $1
+          AND (expires_at IS NULL OR expires_at > NOW())
+        LIMIT 1`,
+      [sessionToken],
+    );
+    const session = parseWorkspaceParticipantAuthoritativeSession(
+      result.rows[0]?.session_data,
+    );
+    if (
+      session?.impersonatedByAdmin &&
+      session.impersonatorId &&
+      !activeSessions.has(sessionToken) &&
+      ["POST", "PUT", "PATCH", "DELETE"].includes(req.method.toUpperCase())
+    ) {
+      await pool.query(
+        `INSERT INTO superadmin_impersonation_audit
+           (super_admin_id, action, target_user_id, details)
+         VALUES ($1, 'write', $2, $3::jsonb)`,
+        [
+          session.impersonatorId,
+          session.userId,
+          JSON.stringify({
+            method: req.method.toUpperCase(),
+            path: String(req.path).slice(0, 200),
+            source: "workspace_participant_persisted_session",
+          }),
+        ],
+      );
+    }
+    return session
+      ? { status: "authenticated", session }
+      : { status: "unauthenticated" };
+  } catch (error) {
+    const errorCode = error && typeof error === "object"
+      && typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code: string }).code
+      : "unknown";
+    console.error("[workspace-participants] session authority unavailable", errorCode);
+    return { status: "unavailable" };
+  }
 }
 
 function requireAdminSession(
@@ -1801,12 +2564,97 @@ function requireAdminSession(
   return session;
 }
 
+async function requireResolvedAdminSession(
+  req: express.Request,
+  res: express.Response,
+): Promise<{ userId: string; email: string; name: string; role: string; loginAt: string } | null> {
+  const session = await resolveActiveSessionFromRequest(req);
+  if (!session) {
+    res.status(401).json({ error: "Admin-innlogging kreves" });
+    return null;
+  }
+
+  const normalizedRole = String(session.role || "").trim().toLowerCase();
+  if (!ADMIN_SESSION_ROLES.has(normalizedRole)) {
+    res.status(403).json({ error: "Admin-tilgang kreves" });
+    return null;
+  }
+
+  (req as any).adminSession = session;
+  return session;
+}
+
+// ─── GET /api/admin/presence/online ──────────────────────────────────────
+// Admin-guardet oversikt over hvilke brukere som er pålogget akkurat nå.
+// Håndhev impersonation-TTL før alle applikasjonsruter. Standalone target-
+// tokens kan ikke gjenopprettes uten et verifiserbart admin-snapshot og blir
+// derfor revokert fail-closed ved utløp eller ugyldige markører.
+app.use(createImpersonationSessionGuard({
+  activeSessions,
+  readSessionToken: readActiveSessionToken,
+  persistSession: (token, session) => persistAuthSession(pool, token, session),
+  revokeSession: async (token) => {
+    await Promise.all([
+      deletePersistedAuthSession(pool, token),
+      invalidateSession(pool, token),
+    ]);
+  },
+  auditWrite: async (impersonatorId, targetUserId, details) => {
+    await pool.query(
+      `INSERT INTO superadmin_impersonation_audit (super_admin_id, action, target_user_id, details)
+       VALUES ($1,'write',$2,$3::jsonb)`,
+      [impersonatorId, targetUserId, JSON.stringify(details)],
+    );
+  },
+}));
+
+// Presence er personvern-sensitivt → kun admin. Online = user_presence
+// last_seen_at innen 90 sek og ikke idle (samme vindu som Admin Room /
+// platform-status). Degraderer trygt hvis user_presence-tabellen mangler.
+app.get("/api/admin/presence/online", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  try {
+    const result = await pool.query(
+      `SELECT u.id,
+              u.email,
+              COALESCE(
+                NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
+                u.email
+              ) AS name,
+              p.last_seen_at,
+              p.is_idle,
+              p.current_route,
+              (p.last_seen_at > NOW() - INTERVAL '90 seconds'
+                AND COALESCE(p.is_idle, FALSE) = FALSE) AS is_online
+         FROM users u
+         LEFT JOIN user_presence p ON p.user_id::text = u.id
+        WHERE p.last_seen_at > NOW() - INTERVAL '90 seconds'
+          AND COALESCE(p.is_idle, FALSE) = FALSE`,
+    );
+    const online = result.rows.map((row) => ({
+      userId: row.id,
+      email: row.email,
+      name: row.name,
+      lastSeenAt: row.last_seen_at ?? null,
+      isIdle: row.is_idle === true,
+      currentRoute: row.current_route ?? null,
+    }));
+    res.json({ online, onlineCount: online.length, generatedAt: new Date().toISOString() });
+  } catch (error) {
+    // Tabellen kan mangle i enkelte miljøer — da er ingen «pålogget», ikke en feil.
+    console.warn("[admin/presence/online] degraded:", error);
+    res.json({ online: [], onlineCount: 0, generatedAt: new Date().toISOString(), degraded: true });
+  }
+});
+
 registerTidumAdminRoutes(app, pool, requireAdminSession);
-registerMarketplaceAppConfigRoutes(app, pool, requireAdminSession);
+registerStripePriceDriftRoutes(app, pool, requireAdminSession);
+registerMarketplaceAppConfigRoutes(app, pool, requireResolvedAdminSession, (req) =>
+  getActiveSessionFromRequest(req)?.userId ?? null,
+);
 configureAIUsageTracker(pool);
 registerAIUsageRoutes(app, pool, requireAdminSession);
 registerDesignTokensRoutes(app, pool, requireAdminSession);
-registerStripePriceDriftRoutes(app, pool, requireAdminSession);
 registerB2CompanyArchiveRoutes({
   app,
   requireAdminSession,
@@ -1835,6 +2683,7 @@ app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
 {
   const r2cfg = buildCmsR2Config();
   let uploadImage: ((buf: Buffer, mime: string, key: string) => Promise<string>) | undefined;
+  let deleteImage: ((key: string) => Promise<void>) | undefined;
   if (r2cfg.enabled && r2cfg.endpoint && r2cfg.accessKeyId && r2cfg.secretAccessKey && r2cfg.bucket) {
     const client = new S3Client({
       region: "auto",
@@ -1854,7 +2703,11 @@ app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
       }));
       return publicBase ? `${publicBase}/${key}` : `${r2cfg.endpoint}/${bucket}/${key}`;
     };
+    deleteImage = async (key) => {
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+    };
   }
+  registerLeadMapMeProfileRoutes({ app, pool, activeSessions, uploadImage, deleteImage });
   registerRoleRoomProfileRoutes(app, { pool, activeSessions, uploadImage, requireAdminSession });
 }
 registerRoleRoomProjectTabConfigRoutes(app, { pool, activeSessions });
@@ -1864,7 +2717,35 @@ registerRoleRoomBillingAlertsRoutes(app, { pool, requireAdminSession });
 registerRoleRoomSeatReconciliationRoutes(app, { pool, requireAdminSession });
 registerRoleRoomUpcomingJobsRoutes(app, { pool, activeSessions });
 registerRoleRoomFeedPlanThumbnailRoutes(app, { pool, activeSessions });
+registerInfographicRenderRoutes(app, { activeSessions, pool, requireAdminSession });
+registerInfographicLeadgridRoutes({ app, activeSessions, pool });
 registerRoleRoomBrandAssetsRoutes(app, { pool, activeSessions });
+registerRoleRoomUserStorageRoutes(app, { pool, activeSessions });
+registerRoleRoomStorageBillingRoutes({
+  app,
+  pool,
+  activeSessions,
+  stripe: getRoleRoomStripeClient(),
+});
+registerRoleRoomAffiliatePayoutRoutes({
+  app,
+  pool,
+  activeSessions,
+  stripe: getRoleRoomStripeClient(),
+  requireAdminSession,
+});
+registerRoleRoomByoStorageRoutes(app, { pool, activeSessions });
+// Start in-process cleanup-loop hvis ROLE_ROOM_STORAGE_CLEANUP_INTERVAL_MS er satt
+startRoleRoomStorageCleanupLoop(pool);
+registerRoleRoomPublishedGuidesRoutes(app, { activeSessions, pool });
+registerRoleRoomDemoAssetsRoutes(app, { pool, activeSessions });
+// Collaboration routes go first because they provide a backwards-compatible
+// superset of the owner-only project endpoints.
+registerRoleRoomMockupStudioRoutes(app, { pool, activeSessions });
+registerRoleRoomFeedMockupLinkRoutes(app, { pool, activeSessions });
+registerRoleRoomMockupProjectsRoutes(app, { pool, activeSessions });
+registerRoleRoomInfographicSignalsRoutes(app, { pool, activeSessions });
+registerRoleRoomInfographicLibraryRoutes(app, { pool, activeSessions });
 registerRoleRoomThumbnailTemplatesRoutes(app, { pool, activeSessions });
 registerRoleRoomLowerThirdsRoutes(app, { pool, activeSessions });
 registerRoleRoomCaptionsRoutes(app, { pool, activeSessions });
@@ -1874,6 +2755,12 @@ registerRoleRoomMulticamRoutes(app, { pool, activeSessions });
 registerRoleRoomSocialCutsRoutes(app, { pool, activeSessions });
 registerRoleRoomReviewRoutes(app, { pool, activeSessions });
 registerRoleRoomEditorCommentsRoutes(app, { pool, activeSessions });
+registerRoleRoomDeliverablesRoutes(app, { pool, activeSessions });
+registerRoleRoomMeetingsRoutes(app, { pool, activeSessions });
+registerRoleRoomMessagesRoutes(app, { pool, activeSessions });
+registerRoleRoomAssistantAccessRoutes(app, { pool, activeSessions });
+registerRoleRoomContentPlanRoutes(app, { pool, activeSessions });
+registerRoleRoomDeadlineReminderRoutes(app, { pool });
 registerRoleRoomMarketingPreviewVideoRoutes(app, { pool, activeSessions });
 registerRoleRoomIntakeVersionsRoutes(app, { pool, activeSessions });
 registerRoleRoomPlanVersionsRoutes(app, { pool, activeSessions });
@@ -1958,6 +2845,94 @@ app.use(
   createStoryboardRouter(pool, { activeSessions }),
 );
 app.use(
+  "/api/storyboards",
+  createStoryboardAiRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createCrewNotificationsRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationCohortsRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationGroupsRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationPortfoliosRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationLicenseRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationTalentPipelineRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationCoursesRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationAssignmentsRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationProductionsRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationResourcesRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationAssessmentRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationStudentInvitesRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationStudentViewRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationProductionMembersRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationOverviewRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationRubricRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationCensorRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationFacultyRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createEducationLearningGoalsRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createFeideRouter(pool, { activeSessions }),
+);
+app.use(
+  "/api/role-room",
+  createLtiRouter(pool, { activeSessions }),
+);
+app.use(
   "/api/role-room/locations/analysis",
   createLocationAnalysisRouter(pool, { activeSessions }),
 );
@@ -1966,12 +2941,17 @@ app.use(
   createCastingVideoRouter(pool, { activeSessions }),
 );
 app.use("/api/youtube", createYouTubeRouter(pool));
+app.use("/api/google-workspace", createGoogleWorkspaceExtraRouter(pool));
 app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool));
 app.use("/api/photo-enhancement", createPhotoEnhancementCompatRouter());
 app.use(
   "/api/integrations/v1/role-room",
   createRoleRoomIntegrationsV1Router(pool),
 );
+// The Role Room MCP-server (JSON-RPC 2.0) — eksterne AI-klienter mot rri_-nokler.
+app.use("/api/role-room", createRoleRoomMcpRouter(pool));
+// OAuth 2.1 «Sign in with The Role Room» for MCP (rot-montert for .well-known).
+app.use("/", createRoleRoomMcpOAuthRouter(pool));
 app.use(
   "/api/consent",
   createConsentPortalRouter(pool, { activeSessions }),
@@ -6954,7 +7934,7 @@ const loadDatabaseCameraStore = async (): Promise<CameraRecord[]> => {
     }
     if (!model && displayName && brand) {
       const withoutBrand = displayName
-        .replace(new RegExp(`^${brand}\\s+`, "i"), "")
+        .replace(new RegExp(`^${escapeRegex(brand)}\\s+`, "i"), "")
         .trim();
       model = withoutBrand || displayName;
     } else if (!model && displayName) {
@@ -8586,7 +9566,7 @@ const stripLeadingBrandFromModel = (brand: string, model: string): string => {
   const normalizedBrand = brand.trim().toLowerCase();
   const normalizedModel = model.trim();
   if (!normalizedBrand || !normalizedModel) return model.trim();
-  const prefixPattern = new RegExp(`^${normalizedBrand}\\s+`, "iu");
+  const prefixPattern = new RegExp(`^${escapeRegex(normalizedBrand)}\\s+`, "iu");
   return normalizedModel.replace(prefixPattern, "").trim();
 };
 
@@ -13380,6 +14360,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function compatResolveUserId(req: any): string {
+  // SECURITY: a validated session token (server-side activeSessions lookup) is
+  // non-spoofable and MUST win over the client-supplied x-user-id header /
+  // body.userId / query.userId below. Otherwise any authenticated caller — or an
+  // anonymous one — could impersonate another account by setting those values.
+  // Legacy/compat callers with no session fall through to the old resolution.
+  const sessionUserId = getActiveSessionFromRequest(req)?.userId;
+  if (sessionUserId) return sessionUserId;
+
   const headerUserId = compatHeaderString(req.headers?.["x-user-id"]);
   if (headerUserId) return headerUserId;
 
@@ -13388,7 +14376,19 @@ function compatResolveUserId(req: any): string {
     const token = authHeader.slice("Bearer ".length).trim();
     const activeSession = activeSessions.get(token);
     if (activeSession?.userId) return activeSession.userId;
-    if (token.length > 0) return token;
+    // Session token not in activeSessions (restart race condition): trigger lazy
+    // hydration so the NEXT request finds the real userId, but return "guest"
+    // for this request rather than the raw token (which is a session-ID UUID,
+    // not the user-ID UUID, and would corrupt per-user KV/preference data).
+    if (token.length > 0) {
+      void loadPersistedAuthSession<ActiveSessionData>(pool, token).then(
+        (persisted) => {
+          if (persisted && !activeSessions.has(token)) {
+            activeSessions.set(token, persisted);
+          }
+        },
+      );
+    }
   }
 
   const bodyUserId = compatHeaderString(req.body?.userId ?? req.body?.user_id);
@@ -13994,11 +14994,15 @@ const speedDialPreferencesFallbackStore = new Map<
 
 const LEGACY_COMPAT_TABLE_NAME = "legacy_compat_store";
 let legacyCompatTableReadyPromise: Promise<boolean> | null = null;
+// Sann når compat-storen sist falt tilbake til minne (DB utilgjengelig).
+// Eksponeres i /api/health for alarmer — hendelsen 2026-08-22 viste at
+// stille fallback ser ut som datatap for brukerne.
+let compatStoreDegraded = false;
 
 async function ensureLegacyCompatTable(): Promise<boolean> {
   if (legacyCompatTableReadyPromise) return legacyCompatTableReadyPromise;
 
-  legacyCompatTableReadyPromise = (async () => {
+  const attempt = (async () => {
     try {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS ${LEGACY_COMPAT_TABLE_NAME} (
@@ -14008,17 +15012,25 @@ async function ensureLegacyCompatTable(): Promise<boolean> {
         )
       `);
       tableExistsCache.set(LEGACY_COMPAT_TABLE_NAME, true);
+      compatStoreDegraded = false;
       return true;
     } catch (error) {
-      console.warn(
-        "Legacy compat store unavailable, using in-memory fallback:",
+      console.error(
+        "COMPAT_STORE_FALLBACK: legacy compat store unavailable, using in-memory fallback:",
         error,
       );
+      compatStoreDegraded = true;
+      // KRITISK: ikke cache negativen. Feiler dette under oppstart (DB
+      // ikke klar rett etter deploy) ville hele compat-storen lest tomt
+      // for resten av prosessens levetid — casting-data «forsvant» fra
+      // prod til neste restart. Nullstill så neste kall prøver igjen.
+      legacyCompatTableReadyPromise = null;
       return false;
     }
   })();
 
-  return legacyCompatTableReadyPromise;
+  legacyCompatTableReadyPromise = attempt;
+  return attempt;
 }
 
 // ── Compat-store laget ─────────────────────────────────────────────────
@@ -14071,10 +15083,51 @@ async function compatStoreSet(
       [storeKey, serialized],
     );
   } catch (error) {
-    console.warn("compatStoreSet failed, using in-memory only:", {
+    compatStoreDegraded = true;
+    console.error("COMPAT_STORE_FALLBACK: compatStoreSet failed, using in-memory only:", {
       storeKey,
       error,
     });
+  }
+}
+
+/**
+ * Som compatStoreSet, men KASTER når DB ikke er tilgjengelig i stedet for
+ * å svelge feilen. Brukes for kritiske skriveveier (tegnedata) der et
+ * stille minne-fall betyr at brukerens arbeid forsvinner ved neste
+ * restart — ruta skal svare 503 så klienten beholder sin lokale backup.
+ */
+class CompatStoreUnavailableError extends Error {
+  constructor(storeKey: string) {
+    super(`compat store unavailable for ${storeKey}`);
+    this.name = "CompatStoreUnavailableError";
+  }
+}
+
+async function compatStoreSetStrict(
+  storeKey: string,
+  storeValue: unknown,
+  executor: PgQueryRunner = pool,
+): Promise<void> {
+  if (!(await ensureLegacyCompatTable())) {
+    throw new CompatStoreUnavailableError(storeKey);
+  }
+  try {
+    const serialized = JSON.stringify(storeValue ?? null) ?? "null";
+    await executor.query(
+      `INSERT INTO ${LEGACY_COMPAT_TABLE_NAME} (store_key, store_value, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (store_key)
+       DO UPDATE SET
+         store_value = EXCLUDED.store_value,
+         updated_at = NOW()`,
+      [storeKey, serialized],
+    );
+    compatStoreDegraded = false;
+  } catch (error) {
+    compatStoreDegraded = true;
+    console.error("COMPAT_STORE_FALLBACK: strict write failed:", { storeKey, error });
+    throw new CompatStoreUnavailableError(storeKey);
   }
 }
 
@@ -14317,6 +15370,9 @@ app.get("/api/profession/config/:profession", async (req, res) => {
 });
 
 app.post("/api/profession/config/:profession", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
   const profession =
     typeof req.params.profession === "string"
       ? req.params.profession.trim().toLowerCase()
@@ -14410,6 +15466,7 @@ const manuscriptsService = createCastingManuscriptsService({
   compatStoreSet,
   compatStoreDelete,
   compatStoreListByPrefix,
+  compatStoreSetStrict,
 });
 
 // Revisions-service for diff/restore-API. Avhenger av manuscriptsService.
@@ -14463,6 +15520,9 @@ setupCoverageTakeRoutes({ app, pool, requireUserSession });
 
 // Canon CCAPI-proxy — frontend snakker hit, vi snakker direkte mot kamera-AP
 setupCcapiRoutes({ app, pool, requireUserSession });
+
+// AeroSpot — flytrafikk, vær, loggbok, varsler + CCAPI camera-sync
+registerAerospotRoutes({ app, pool, requireUserSession });
 
 // Multi-vendor kamera-proxy — Sony Wi-Fi Remote + ARRI Web Remote
 // (Z CAM HTTP og GoPro BLE kommer senere; RED krever native SDK)
@@ -15622,7 +16682,14 @@ type CreatorHubPlatformEmailTemplateId =
   | "creatorhub_account_activated"
   | "creatorhub_payment_failed"
   | "creatorhub_payment_recovered"
-  | "creatorhub_subscription_cancelled";
+  | "creatorhub_subscription_cancelled"
+  | "creatorhub_access_request_received"
+  | "creatorhub_prototype_tester_invite"
+  | "creatorhub_prototype_tester_signing_code"
+  | "creatorhub_prototype_tester_signature_receipt"
+  | "creatorhub_access_request_approved"
+  | "creatorhub_access_request_rejected"
+  | "creatorhub_tester_access_activated";
 
 type CreatorHubPlatformEmailSenderKind =
   | "billing"
@@ -15673,7 +16740,7 @@ const CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY: CreatorHubPlatformBrandingI
     domain: "creatorhubn.com",
     supportEmail: "hello@creatorhubn.com",
     docsUrl: "https://creatorhubn.com",
-    emailLogoUrl: "https://creatorhubn.com/creatorhub-logo-amber.svg",
+    emailLogoUrl: CREATORHUB_LANDING_WORDMARK_URL,
   };
 
 const CREATORHUB_PLATFORM_DEFAULT_EMAIL_THEME: CreatorHubPlatformEmailTheme = {
@@ -15773,7 +16840,104 @@ const CREATORHUB_PLATFORM_DEFAULT_EMAIL_TEMPLATES: CreatorHubPlatformEmailTempla
       footerNote:
         "Dette er en systemmelding. Hvis du trenger hjelp, kan du kontakte oss via supportsiden i CreatorHub.",
     },
+    {
+      id: "creatorhub_access_request_received",
+      name: "Tilgangsforespørsel mottatt",
+      description:
+        "Sendes til søkeren når en CreatorHub- eller prototype-tester-søknad er registrert.",
+      subject: "Vi har mottatt CreatorHub-søknaden din",
+      title: "Søknaden din er mottatt",
+      body:
+        "<p>Hei {{recipientName}},</p><p>Takk for at du søkte om tilgang til CreatorHub som <strong>{{professionName}}</strong>.</p><p>CreatorHub-teamet gjennomgår søknaden personlig. Du får svar på e-post innen <strong>1–3 virkedager</strong>.</p>",
+      footerNote:
+        "Du trenger ikke sende inn søknaden på nytt. Svar på denne e-posten hvis du vil legge til noe.",
+    },
+    {
+      id: "creatorhub_prototype_tester_invite",
+      name: "Direkte prototype-invitasjon",
+      description:
+        "Sendes når CreatorHub inviterer en prototype-tester direkte fra adminpanelet.",
+      subject: "Du er invitert til CreatorHubs prototypeprogram",
+      title: "Vil du bli prototype-tester?",
+      body:
+        "<p>Hei {{recipientName}},</p><p>CreatorHub-teamet har invitert deg til prototype-testerprogrammet.</p><p>Programmet varer i <strong>{{programDurationWeeks}} uker</strong>. Før tilgangen aktiveres må du lese og akseptere programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen via knappen under.</p>",
+      ctaLabel: "Les vilkår og signer",
+      footerNote:
+        "Den personlige lenken utløper om {{inviteExpiresDays}} dager. Svar på denne e-posten hvis du trenger hjelp.",
+    },
+    {
+      id: "creatorhub_prototype_tester_signing_code",
+      name: "Bekreftelseskode for signering",
+      description:
+        "Sendes når en prototype-tester bekrefter den inviterte e-postadressen før signering.",
+      subject: "Bekreft signeringen i CreatorHub",
+      title: "Din bekreftelseskode",
+      body:
+        "<p>Hei {{recipientName}},</p><p>Bruk denne koden for å bekrefte e-postadressen din og signere prototype-testeravtalene:</p><p style=\"font-size:30px;font-weight:800;letter-spacing:0.2em\"><strong>{{signingCode}}</strong></p><p>Koden er gyldig i <strong>{{codeExpiresMinutes}} minutter</strong> og kan bare brukes én gang.</p>",
+      footerNote:
+        "Hvis du ikke ba om koden, kan du ignorere e-posten. Ikke videresend koden til andre.",
+    },
+    {
+      id: "creatorhub_prototype_tester_signature_receipt",
+      name: "Kvittering for prototype-signering",
+      description:
+        "Sendes etter fullført signering og viser hvor den etterprøvbare PDF-kvitteringen finnes.",
+      subject: "Kvittering for signerte CreatorHub-avtaler",
+      title: "Avtalene dine er signert",
+      body:
+        "<p>Hei {{recipientName}},</p><p>Vi har registrert signeringen av programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen.</p><p>Kvitterings-ID: <strong>{{receiptId}}</strong></p><p>Du kan laste ned en etterprøvbar PDF-kvittering fra <strong>Mine avtaler</strong>.</p>",
+      ctaLabel: "Åpne Mine avtaler",
+      footerNote:
+        "Integritetskontroll (SHA-256): {{agreementDigest}}. Oppbevar denne e-posten som dokumentasjon.",
+    },
+    {
+      id: "creatorhub_access_request_approved",
+      name: "Tilgangsforespørsel godkjent",
+      description:
+        "Sendes når en prototype-tester er godkjent og skal lese og signere hele avtalegrunnlaget.",
+      subject: "Du er godkjent som prototype-tester i CreatorHub",
+      title: "Søknaden din er godkjent",
+      body:
+        "<p>Hei {{recipientName}},</p><p>Vi har godkjent søknaden din til CreatorHub sitt prototype-testerprogram.</p><p>Programmet varer i <strong>{{programDurationWeeks}} uker</strong>. Før tilgangen aktiveres må du lese og akseptere programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen via knappen under.</p>",
+      ctaLabel: "Les vilkår og signer",
+      footerNote:
+        "Den personlige lenken utløper om {{inviteExpiresDays}} dager. Svar på denne e-posten hvis du trenger hjelp.",
+    },
+    {
+      id: "creatorhub_access_request_rejected",
+      name: "Tilgangsforespørsel avslått",
+      description:
+        "Sendes når teamet avslår en CreatorHub- eller prototype-tester-søknad.",
+      subject: "En oppdatering om CreatorHub-søknaden din",
+      title: "Takk for interessen",
+      body:
+        "<p>Hei {{recipientName}},</p><p>Takk for at du søkte om tilgang til CreatorHub.</p><p>Vi har dessverre ikke anledning til å tilby deg plass i prototype-testerprogrammet denne gangen. Du er velkommen til å søke igjen ved en senere opptaksrunde.</p>",
+      footerNote:
+        "Har du spørsmål til avgjørelsen, kan du svare direkte på denne e-posten.",
+    },
+    {
+      id: "creatorhub_tester_access_activated",
+      name: "Prototype-tilgang aktivert",
+      description:
+        "Sendes etter at testeren har akseptert hele avtalegrunnlaget og kontoen er aktivert.",
+      subject: "Tilgangen din til CreatorHub er aktivert",
+      title: "Velkommen som prototype-tester",
+      body:
+        "<p>Hei {{recipientName}},</p><p>Programvilkårene, NDA-en, databehandleravtalen og intensjonsavtalen er registrert, og CreatorHub-kontoen din er nå aktiv.</p><p>Logg inn med <strong>{{recipientEmail}}</strong>. Testperioden varer til <strong>{{programEndsAt}}</strong>.</p>",
+      ctaLabel: "Logg inn i CreatorHub",
+      footerNote:
+        "Svar på denne e-posten hvis du trenger hjelp med innlogging eller tilgang.",
+    },
   ];
+
+const CREATORHUB_PLATFORM_LEGACY_ACCESS_TEMPLATE_BODIES: Partial<
+  Record<CreatorHubPlatformEmailTemplateId, string>
+> = {
+  creatorhub_access_request_approved:
+    "<p>Hei {{recipientName}},</p><p>Vi har godkjent søknaden din til CreatorHub sitt prototype-testerprogram.</p><p>Programmet varer i <strong>{{programDurationWeeks}} uker</strong>. Før tilgangen aktiveres må du lese programvilkårene og signere NDA-en via knappen under.</p>",
+  creatorhub_tester_access_activated:
+    "<p>Hei {{recipientName}},</p><p>NDA-en og programvilkårene er registrert, og CreatorHub-kontoen din er nå aktiv.</p><p>Logg inn med <strong>{{recipientEmail}}</strong>. Testperioden varer til <strong>{{programEndsAt}}</strong>.</p>",
+};
 
 function creatorHubEmailSettingsStoreKey(userId?: string) {
   return dbLegacySettingKey(
@@ -15787,6 +16951,12 @@ function normalizeCreatorHubPlatformEmailTemplate(
   fallback: CreatorHubPlatformEmailTemplate,
 ): CreatorHubPlatformEmailTemplate {
   const record = normalizeJsonObjectField(value) || {};
+  const configuredBody = readString(record.body);
+  const legacyDefaultBody = CREATORHUB_PLATFORM_LEGACY_ACCESS_TEMPLATE_BODIES[fallback.id];
+  const normalizedBody =
+    configuredBody && configuredBody !== legacyDefaultBody
+      ? configuredBody
+      : fallback.body;
   return {
     ...fallback,
     ...(record as Partial<CreatorHubPlatformEmailTemplate>),
@@ -15795,7 +16965,7 @@ function normalizeCreatorHubPlatformEmailTemplate(
     description: readString(record.description) || fallback.description,
     subject: readString(record.subject) || fallback.subject,
     title: readString(record.title) || fallback.title,
-    body: readString(record.body) || fallback.body,
+    body: normalizedBody,
     ...(Object.prototype.hasOwnProperty.call(record, "ctaLabel")
       ? { ctaLabel: readString(record.ctaLabel) || undefined }
       : fallback.ctaLabel !== undefined
@@ -15838,6 +17008,8 @@ function normalizeCreatorHubPlatformBrandingSettings(
       ([key, value]) => readString(themeRecord[key]) === value,
     );
 
+  const configuredEmailLogoUrl =
+    readString(identityRecord.emailLogoUrl) || readString(record.emailLogoUrl);
   const identity = {
     ...CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY,
     appName:
@@ -15860,10 +17032,7 @@ function normalizeCreatorHubPlatformBrandingSettings(
       readString(identityRecord.docsUrl) ||
       readString(record.docsUrl) ||
       CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.docsUrl,
-    emailLogoUrl:
-      readString(identityRecord.emailLogoUrl) ||
-      readString(record.emailLogoUrl) ||
-      CREATORHUB_PLATFORM_BRANDING_DEFAULT_IDENTITY.emailLogoUrl,
+    emailLogoUrl: normalizeCreatorHubEmailLogoUrl(configuredEmailLogoUrl),
   };
 
   return {
@@ -15987,6 +17156,26 @@ async function findByIdInDbProjectArrays(
   return null;
 }
 
+// Owner-or-active-member gate for a casting/role-room project. Same predicate
+// as the canonical viewerCanAccessProject copies in the role-room route files;
+// used by the inline legacy project-agreements mutators below (which resolve the
+// agreement GLOBALLY by id and must not let a caller mutate another tenant's).
+async function callerCanAccessCastingProject(
+  projectId: string,
+  viewerId: string,
+): Promise<boolean> {
+  const { rows } = await pool.query<{ owns: boolean; member: boolean }>(
+    `SELECT
+       EXISTS(SELECT 1 FROM casting_projects
+               WHERE id = $1 AND created_by = $2) AS owns,
+       EXISTS(SELECT 1 FROM casting_user_roles
+               WHERE project_id = $1 AND user_id = $2
+                 AND deactivated_at IS NULL) AS member`,
+    [projectId, viewerId],
+  );
+  return rows[0]?.owns === true || rows[0]?.member === true;
+}
+
 function normalizeProjectAgreementStatus(
   value: unknown,
 ): "draft" | "sent" | "signed" {
@@ -16088,7 +17277,8 @@ function createProjectAgreementRecord(
 app.put(
   "/api/role-room/project-agreements/:agreementId/status",
   async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     let location = findByIdInProjectMap(
       legacyProjectAgreementsByProject,
       req.params.agreementId,
@@ -16109,6 +17299,12 @@ app.put(
     }
     if (!location) {
       res.status(404).json({ error: "Agreement not found" });
+      return;
+    }
+    // BOLA-gate (object-first): the agreement is resolved globally by id — verify
+    // caller access to its actual project before changing its (NDA) status.
+    if (!(await callerCanAccessCastingProject(location.projectId, session.userId))) {
+      res.status(403).json({ error: "ingen_tilgang" });
       return;
     }
     const current = getProjectItems(
@@ -16143,7 +17339,8 @@ app.put(
 app.patch(
   "/api/role-room/project-agreements/:agreementId",
   async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     let location = findByIdInProjectMap(
       legacyProjectAgreementsByProject,
       req.params.agreementId,
@@ -16164,6 +17361,12 @@ app.patch(
     }
     if (!location) {
       res.status(404).json({ error: "Agreement not found" });
+      return;
+    }
+    // BOLA-gate (object-first): the agreement is resolved globally by id — verify
+    // caller access to its actual project before editing its counterparty fields.
+    if (!(await callerCanAccessCastingProject(location.projectId, session.userId))) {
+      res.status(403).json({ error: "ingen_tilgang" });
       return;
     }
     const current = getProjectItems(
@@ -16277,6 +17480,15 @@ setupAdminFundingRoutes({
   logAdminActivity,
 });
 
+// ── Content Calendar — marketing-fanen i Admin Room (migrasjon 252)
+setupAdminContentCalendarRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
 // ── Investor contacts — endpoints flyttet til ./admin-room-investors-routes.ts
 setupAdminInvestorsRoutes({
   app,
@@ -16295,8 +17507,35 @@ setupWhatsNewRoutes({
   logAdminActivity,
 });
 
+// ── Marketing-feed-posters (4:5 PNG-assets) — admin CRUD
+setupMarketingPosterRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
 // ── Industry targets (Tier-1 CRM) — driver content-marketing-engagement-system
 setupAdminIndustryTargetsRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
+// ── Målrettet markedsføring: segment → ad-audience-bro (fase 1)
+setupAdminMarketingSegmentsRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
+// ── Business DNA — Catalog (auto-populert fra systemets vertikaler)
+setupAdminMarketingCatalogRoutes({
   app,
   pool,
   getActiveSessionFromRequest,
@@ -16311,6 +17550,24 @@ setupAdminOutreachRoutes({
   getActiveSessionFromRequest,
   requireAdminRoomAccess,
   logAdminActivity,
+});
+
+// ── AdminWorkspace «Saker» (cases + comments, multi-produkt)
+setupAdminWorkspaceCasesRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
+// ── AdminWorkspace aggregator (dagens agenda + kommende frister)
+// Fyller empty-states i AdminWorkspace høyre kolonne med live data
+// på tvers av meetings/funding/cases (PR #828 + #830).
+setupAdminWorkspaceAggregatorRoutes({
+  app,
+  pool,
+  requireAdminRoomAccess,
 });
 
 // ── AI-citation-tracker (måler om GEO-strategien faktisk fører til at AI-modeller siterer oss)
@@ -16358,7 +17615,7 @@ setupAdminRoleRoomEconomyRoutes({
   getRoleRoomStripeClient,
 });
 
-// ── Platform cost sync — live-hent fra Render/Neon/Vercel API
+// ── Platform cost sync — live-hent fra Render/Neon API
 setupAdminPlatformCostSyncRoutes({
   app,
   pool,
@@ -16377,13 +17634,35 @@ setupAdminPlatformStatusRoutes({
   getRoleRoomStripeClient,
 });
 
-// ── Migrations — admin-trigger av migrate.sh fra Admin Room
-setupAdminMigrationsRoutes({
+// ── Fase 21: Leads-growth (B2B + per-org)
+setupAdminLeadsGrowthRoutes({
+  app, pool, getActiveSessionFromRequest, requireAdminRoomAccess, logAdminActivity,
+});
+
+// ── Fase 21: Social-connections-status (Facebook/IG/LinkedIn/TikTok/YouTube)
+setupAdminSocialConnectionsStatusRoutes({
+  app, pool, getActiveSessionFromRequest, requireAdminRoomAccess, logAdminActivity,
+});
+
+// ── Fase 21: Competitor-rapport (Claude-generert SWOT per konkurrent)
+setupAdminCompetitorReportRoutes({
+  app, pool, getActiveSessionFromRequest, requireAdminRoomAccess, logAdminActivity,
+});
+
+// ── Fase 21: Resend-status (transactional email health)
+setupAdminResendStatusRoutes({
+  app, pool, getActiveSessionFromRequest, requireAdminRoomAccess, logAdminActivity,
+});
+
+// ── Jobb-kø (0400): innsyns-ruten MÅ registreres synkront — en async
+// import ville landet bak catch-all-404-en lengre ned og blitt død
+// rute (fanget 19.07: /api/admin-room/jobs ga 404). Worker startes i
+// listen-callbacken sammen med de andre bakgrunnsarbeiderne.
+setupJobQueueRoutes({
   app,
   pool,
-  getActiveSessionFromRequest,
-  requireAdminRoomAccess,
-  logAdminActivity,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
 });
 
 // ── Presence heartbeat — auth-gated POST /api/presence/heartbeat (30s ping)
@@ -16453,6 +17732,7 @@ setupNextRoleReferralRoutes({
 setupNextRoleDripRoutes({ app, pool });
 setupRoleRoomAdsCron({ app, pool });
 setupRoleRoomApprovalCron({ app, pool });
+setupRoleRoomAgentLearningCron({ app, pool });
 setupNextRoleSalaryRoutes({ app, pool });
 setupNextRoleMilestonesRoutes({ app, pool, getActiveSessionFromRequest });
 setupNextRoleVideoPresentationRoutes({ app, pool, getActiveSessionFromRequest });
@@ -16469,15 +17749,37 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
     // "demo-user" kun hvis ingen session — slik kan demo brukes anonymt i dev,
     // men ekte brukere får prosjektet eid av seg selv så /api/casting/projects/:id
     // finner det (filtrerer på created_by).
+    // NOTE: x-user-id header intentionally NOT trusted — attacker-controlled.
     const resolvedUserId = compatResolveUserId(req);
     const ownerUserId = (resolvedUserId && resolvedUserId !== "guest")
       ? resolvedUserId
-      : readString(req.headers["x-user-id"] as string | undefined) || "demo-user";
+      : "demo-user";
     const body = (req.body ?? {}) as {
       projectId?: string;
       projectName?: string;
       projectDescription?: string;
     };
+    // Destructive-seed IDOR guard: seedTrollDemo DELETEs all sub-tables and
+    // UPSERTs casting_projects keyed on options.projectId. Without this, any
+    // caller could pass an arbitrary victim projectId and wipe/overwrite their
+    // project. A caller-supplied id that resolves to an EXISTING project may
+    // only be re-seeded by its true (session-authenticated) owner. Fresh/unknown
+    // ids — what the real client always sends (troll-<timestamp>) — pass freely.
+    if (body.projectId) {
+      const existing = await pool.query(
+        "SELECT created_by FROM casting_projects WHERE id = $1",
+        [body.projectId],
+      );
+      const existingOwner = existing.rows[0]?.created_by ?? null;
+      if (existingOwner) {
+        const sessionUserId = getActiveSessionFromRequest(req)?.userId || null;
+        if (!sessionUserId || sessionUserId !== existingOwner) {
+          return res.status(403).json({
+            error: "Du kan ikke seede demo-data inn i et prosjekt du ikke eier.",
+          });
+        }
+      }
+    }
     const { seedTrollDemo } = await import("./troll-demo-seed-service.js");
     const report = await seedTrollDemo(pool, ownerUserId, {
       projectId: body.projectId,
@@ -16709,15 +18011,37 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
 // Bare videre-kaller seed-all-handleren.
 app.post("/api/demo/troll/initialize-all", async (req, res) => {
   try {
+    // NOTE: x-user-id header intentionally NOT trusted — attacker-controlled.
+    // Aligned with /seed-all so an anonymous caller cannot attribute the seeded
+    // demo project's created_by to an attacker-chosen id.
     const resolvedUserId = compatResolveUserId(req);
     const ownerUserId = (resolvedUserId && resolvedUserId !== "guest")
       ? resolvedUserId
-      : readString(req.headers["x-user-id"] as string | undefined) || "demo-user";
+      : "demo-user";
     const body = (req.body ?? {}) as {
       projectId?: string;
       projectName?: string;
       projectDescription?: string;
     };
+    // Destructive-seed IDOR guard (see /seed-all). An existing casting project
+    // may only be re-seeded by its true session-authenticated owner; the check
+    // uses getActiveSessionFromRequest (non-spoofable) rather than ownerUserId,
+    // which here falls back to the attacker-controlled x-user-id header.
+    if (body.projectId) {
+      const existing = await pool.query(
+        "SELECT created_by FROM casting_projects WHERE id = $1",
+        [body.projectId],
+      );
+      const existingOwner = existing.rows[0]?.created_by ?? null;
+      if (existingOwner) {
+        const sessionUserId = getActiveSessionFromRequest(req)?.userId || null;
+        if (!sessionUserId || sessionUserId !== existingOwner) {
+          return res.status(403).json({
+            error: "Du kan ikke seede demo-data inn i et prosjekt du ikke eier.",
+          });
+        }
+      }
+    }
     const { seedTrollDemo } = await import("./troll-demo-seed-service.js");
     const report = await seedTrollDemo(pool, ownerUserId, {
       projectId: body.projectId,
@@ -16929,6 +18253,9 @@ type CompatSubscriptionStatus = {
   email: string | null;
   autoRenew: boolean;
   source: "database" | "compat" | "default";
+  // Stripe-abonnements-id — brukes til lat live-rekonsiliering når cachet
+  // tilgangsvindu er utløpt (fanger tapte webhooks: fornyelse/kansellering).
+  stripeSubscriptionId?: string | null;
 };
 
 type CompatPaymentMethod = {
@@ -17615,6 +18942,7 @@ function buildCompatSubscriptionStatus(
     email: overrides?.email ?? null,
     autoRenew: overrides?.autoRenew ?? true,
     source: overrides?.source ?? (plan ? "compat" : "default"),
+    stripeSubscriptionId: overrides?.stripeSubscriptionId ?? null,
   };
 }
 
@@ -17912,15 +19240,70 @@ async function resolveCompatSubscriptionStatus(
 ): Promise<CompatSubscriptionStatus> {
   const storedStatus = await readCompatSubscriptionStatus(userId);
   if (storedStatus) {
-    return {
+    const withEmail: CompatSubscriptionStatus = {
       ...storedStatus,
       email: storedStatus.email ?? email ?? null,
     };
+    // Lat live-rekonsiliering: kall Stripe KUN når det cachede tilgangsvinduet
+    // er utløpt (eller mangler) og vi har en abonnements-id. Da fanger vi tapte
+    // webhooks — fornyelse (forleng tilgang) eller kansellering (marker inaktiv)
+    // — uten å hitte Stripe på hvert statusoppslag. Best-effort: enhver feil
+    // faller tilbake til cachet verdi.
+    const subId = withEmail.stripeSubscriptionId;
+    const accessMs = withEmail.accessUntil
+      ? new Date(withEmail.accessUntil).getTime()
+      : 0;
+    const stale = !withEmail.accessUntil || accessMs < Date.now();
+    if (subId && stale) {
+      try {
+        const stripeClient = getCreatorHubStripeClient();
+        if (stripeClient) {
+          const sub = await stripeClient.subscriptions.retrieve(subId);
+          const subStatus = String((sub as { status?: string }).status || "");
+          // Stripe v18/v19: current_period_end flyttet fra topp-nivå til
+          // items.data[0]. Les derfra, med topp-nivå som fallback (eldre API).
+          const periodEnd =
+            (sub as { items?: { data?: Array<{ current_period_end?: number }> } })
+              .items?.data?.[0]?.current_period_end ??
+            (sub as { current_period_end?: number }).current_period_end;
+          const cancelAtEnd = Boolean(
+            (sub as { cancel_at_period_end?: boolean }).cancel_at_period_end,
+          );
+          const active = subStatus === "active" || subStatus === "trialing";
+          const periodEndIso =
+            typeof periodEnd === "number" && periodEnd > 0
+              ? new Date(periodEnd * 1000).toISOString()
+              : null;
+          const reconciled: CompatSubscriptionStatus = {
+            ...withEmail,
+            paymentCompleted: active,
+            subscriptionSelected: active,
+            autoRenew: cancelAtEnd ? false : withEmail.autoRenew,
+            accessUntil: periodEndIso ?? withEmail.accessUntil,
+            nextBillingDate: periodEndIso ?? withEmail.nextBillingDate,
+            // Negativ caching: når abonnementet er bekreftet inaktivt (kansellert/
+            // utløpt), fjern subscription-id-en så vi ikke slår opp mot Stripe på
+            // HVERT statuskall for en churnet bruker. Et nytt kjøp skriver en ny id.
+            stripeSubscriptionId: active ? subId : null,
+          };
+          await writeCompatSubscriptionStatus(userId, reconciled).catch(
+            () => undefined,
+          );
+          return reconciled;
+        }
+      } catch (e) {
+        console.warn(
+          "Stripe live-rekonsiliering feilet (bruker cache):",
+          (e as any)?.message,
+        );
+      }
+    }
+    return withEmail;
   }
 
   if (userId !== "guest" && (await hasTable("user_subscriptions"))) {
     const result = await pool.query(
-      `SELECT plan_id, status, started_at, auto_renew
+      `SELECT plan_id, status, started_at, auto_renew, billing_cycle, next_billing_date
        FROM user_subscriptions
        WHERE user_id = $1
        ORDER BY started_at DESC NULLS LAST
@@ -17931,6 +19314,19 @@ async function resolveCompatSubscriptionStatus(
     if (row) {
       const plan = getCompatPlatformSubscriptionPlan(row.plan_id);
       const normalizedStatus = readString(row.status) || "inactive";
+      // Bruk den lagrede ekte periodeslutten; ellers estimat med RIKTIG syklus
+      // (ikke hardkodet 30 dager, som bommet på årsplaner).
+      const startedIso = row.started_at
+        ? new Date(row.started_at).toISOString()
+        : null;
+      const periodEnd = row.next_billing_date
+        ? new Date(row.next_billing_date).toISOString()
+        : startedIso
+          ? addBillingCycleIso(
+              startedIso,
+              normalizeCreatorHubBillingCycle(row.billing_cycle),
+            )
+          : null;
       return buildCompatSubscriptionStatus(userId, plan, {
         selectedPlan: plan?.id ?? null,
         planName: plan?.displayName ?? null,
@@ -17938,15 +19334,9 @@ async function resolveCompatSubscriptionStatus(
           normalizedStatus === "active" || normalizedStatus === "trial",
         paymentCompleted:
           normalizedStatus === "active" || normalizedStatus === "trial",
-        memberSince: row.started_at
-          ? new Date(row.started_at).toISOString()
-          : null,
-        nextBillingDate: row.started_at
-          ? addDaysIso(new Date(row.started_at).toISOString(), 30)
-          : null,
-        accessUntil: row.started_at
-          ? addDaysIso(new Date(row.started_at).toISOString(), 30)
-          : null,
+        memberSince: startedIso,
+        nextBillingDate: periodEnd,
+        accessUntil: periodEnd,
         autoRenew: row.auto_renew !== false,
         email,
         source: "database",
@@ -18312,11 +19702,11 @@ async function decorateCompatPaymentHistoryWithRefundRequests(
     const receiptSentAt =
       paymentRecord?.receiptSentAt || entry.receiptSentAt || null;
     const receiptUrl = documentIdentifier
-      ? `/api/payments/receipt/${encodeURIComponent(documentIdentifier)}`
+      ? `/api/payments/receipt/${encodeURIComponent(documentIdentifier)}${buildCompatPaymentDocQuery(documentIdentifier)}`
       : null;
     const invoiceUrl =
       documentIdentifier && entry.isInFiken
-        ? `/api/payments/invoice/${encodeURIComponent(documentIdentifier)}`
+        ? `/api/payments/invoice/${encodeURIComponent(documentIdentifier)}${buildCompatPaymentDocQuery(documentIdentifier)}`
         : null;
 
     if (!latestRequest) {
@@ -18526,6 +19916,19 @@ async function syncCompatUserSubscriptionRecord(
     return;
   }
 
+  // Lagre faktureringssyklus + ekte periodeslutt slik at fallback-resolveren
+  // slipper å hardkode 30 dager (som bommer på årsplaner). Foretrekk den ekte
+  // Stripe-datoen (metadata.currentPeriodEnd), ellers estimat med RIKTIG syklus.
+  const subMeta = normalizeJsonObjectField(record.metadata) || {};
+  const subBillingCycle = normalizeCreatorHubBillingCycle(subMeta.billingCycle);
+  const subPeriodEnd =
+    typeof subMeta.currentPeriodEnd === "string" && subMeta.currentPeriodEnd
+      ? subMeta.currentPeriodEnd
+      : addBillingCycleIso(
+          record.completedAt || record.createdAt,
+          subBillingCycle,
+        );
+
   const existing = await pool.query(
     `SELECT id
      FROM user_subscriptions
@@ -18540,18 +19943,20 @@ async function syncCompatUserSubscriptionRecord(
     await pool.query(
       `UPDATE user_subscriptions
        SET status = 'active',
-           auto_renew = true
+           auto_renew = true,
+           billing_cycle = $2,
+           next_billing_date = $3
        WHERE id = $1`,
-      [existing.rows[0]?.id],
+      [existing.rows[0]?.id, subBillingCycle, subPeriodEnd],
     );
     return;
   }
 
   await pool.query(
     `INSERT INTO user_subscriptions
-      (user_id, plan_id, status, started_at, auto_renew)
-     VALUES ($1, $2, 'active', NOW(), true)`,
-    [record.userId, planId],
+      (user_id, plan_id, status, started_at, auto_renew, billing_cycle, next_billing_date)
+     VALUES ($1, $2, 'active', NOW(), true, $3, $4)`,
+    [record.userId, planId, subBillingCycle, subPeriodEnd],
   );
 }
 
@@ -18652,10 +20057,18 @@ async function recordCompatPaymentCompletion(
   const billingCycle = normalizeCreatorHubBillingCycle(
     normalizeJsonObjectField(record.metadata)?.billingCycle,
   );
-  const currentPeriodEnd = addBillingCycleIso(
-    record.completedAt || record.createdAt,
-    billingCycle,
-  );
+  // Foretrekk den EKTE Stripe-periodeslutten (current_period_end) når den er
+  // lagret på betalings-recorden (settes i markCreatorHubStripeCheckoutRecordPaid).
+  // Ellers falltilbake til estimat (completedAt + faktureringssyklus). Estimatet
+  // bommer på trial/proration; den ekte verdien er korrekt.
+  const metaPeriodEnd = normalizeJsonObjectField(record.metadata)?.currentPeriodEnd;
+  const currentPeriodEnd =
+    typeof metaPeriodEnd === "string" && metaPeriodEnd
+      ? metaPeriodEnd
+      : addBillingCycleIso(
+          record.completedAt || record.createdAt,
+          billingCycle,
+        );
   const history = await readCompatPaymentHistory(record.userId);
   const nextHistory = [
     {
@@ -18709,6 +20122,10 @@ async function recordCompatPaymentCompletion(
       email: record.email,
       autoRenew: true,
       source: "compat",
+      stripeSubscriptionId:
+        (normalizeJsonObjectField(record.metadata)?.stripeSubscriptionId as
+          | string
+          | undefined) || null,
     },
   );
   await writeCompatSubscriptionStatus(record.userId, nextSubscriptionStatus);
@@ -19977,6 +21394,11 @@ async function getAudioBufferFromUrl(audioUrl: string) {
   }
 
   if (isHttpUrl(normalizedSource)) {
+    let hostname: string;
+    try { hostname = new URL(normalizedSource).hostname; } catch { throw new Error("Ugyldig URL"); }
+    if (/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|0\.|::1$|localhost$)/i.test(hostname) || hostname === "metadata.google.internal") {
+      throw new Error("SSRF: intern adresse ikke tillatt");
+    }
     const response = await fetch(normalizedSource);
     if (!response.ok) {
       throw new Error("Failed to fetch audio");
@@ -19990,28 +21412,15 @@ async function getAudioBufferFromUrl(audioUrl: string) {
     };
   }
 
-  let localPath = normalizedSource;
-  if (localPath.startsWith("file://")) {
-    localPath = fileURLToPath(localPath);
-  }
-  if (!path.isAbsolute(localPath)) {
-    localPath = path.resolve(process.cwd(), localPath);
-  }
-
-  const buffer = await fs.readFile(localPath);
-  const extension = path.extname(localPath).toLowerCase();
-  const mimeByExtension: Record<string, string> = {
-    ".wav": "audio/wav",
-    ".wave": "audio/wav",
-    ".mp3": "audio/mpeg",
-    ".m4a": "audio/mp4",
-    ".aac": "audio/aac",
-    ".flac": "audio/flac",
-    ".ogg": "audio/ogg",
-    ".webm": "audio/webm",
-  };
-  const mime = mimeByExtension[extension] || "audio/mpeg";
-  return { buffer, size: buffer.length, mime };
+  // No stored-file match and not an http(s) URL. Every caller (mix, restore,
+  // waveform, level-match) reaches here with a user-supplied audioUrl/
+  // sourceFile from the request body; legit audio is always referenced either
+  // as a stored file (/api/audio/file/<id>) or a remote http(s) URL. Reading a
+  // bare local filesystem path / file:// URL here would let a crafted input
+  // exfiltrate arbitrary server files (LFI: .env, secrets, /etc/passwd). Reject.
+  throw new Error(
+    "Ugyldig lydkilde: kun http(s)-URL eller lagret fil (/api/audio/file/…) er tillatt",
+  );
 }
 
 function seedFromString(value: string) {
@@ -21423,7 +22832,7 @@ async function checkContractSignature(
       `SELECT signature_status, status FROM contracts WHERE id = $1 LIMIT 1`,
       [contractId],
     );
-    if (r.rowCount === 0) {
+    if (!r.rows.length) {
       // Kontrakten er slettet — fail-safe blokker. Stine må enten
       // unlinke kontrakten eller laste opp ny.
       return { ok: false, status: 412, error: 'linked_contract_missing' };
@@ -21604,10 +23013,12 @@ async function notifyPhotographerOfDownload(input: {
     }
   }
 
-  // 4. E-post-varsling til fotografen
-  const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || '').trim();
-  const mailPass = (process.env.GMAIL_APP_PASSWORD || '').trim().replace(/\s+/g, '');
-  if (!mailUser || !mailPass || !ctx.photographer_email) {
+  // 4. E-post-varsling til fotografen — via appens KANONISKE transactional-tjeneste
+  //    (Resend foretrukket, Gmail SMTP-fallback) i stedet for hardkodet nodemailer/
+  //    Gmail. Slik sendes nedlastings-varselet hvis ENTEN Resend ELLER Gmail er
+  //    konfigurert på Render — ikke kun Gmail (som ikke er satt i prod). Stille
+  //    no-op hvis ingen provider er konfigurert.
+  if (!ctx.photographer_email) {
     return;
   }
 
@@ -21624,10 +23035,6 @@ async function notifyPhotographerOfDownload(input: {
       : '';
 
   try {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: mailUser, pass: mailPass },
-    });
     const html = `
       <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
         <h2 style="color:#1a1a1a;margin:0 0 16px;">Klient-nedlasting registrert</h2>
@@ -21668,12 +23075,23 @@ async function notifyPhotographerOfDownload(input: {
         </p>
       </div>
     `;
-    await transporter.sendMail({
-      from: `"Creatorhubn" <${mailUser}>`,
+    const text = `${String(ctx.client_name ?? input.clientEmail)} (${input.clientEmail}) har lastet ned `
+      + `${input.newDownloadCount} nye bilder fra galleriet "${ctx.project_title}". `
+      + `Totalt brukt: ${limitText}.`
+      + (input.clientIp ? ` Fra IP: ${input.clientIp}.` : '');
+    const result = await sendTransactionalEmail({
       to: String(ctx.photographer_email),
       subject: `Klient lastet ned ${input.newDownloadCount} bilder — ${ctx.project_title}`,
       html,
+      text,
+      fromLabel: 'Creatorhubn',
+      kind: 'gallery_download',
+      projectId: ctx.project_id ? String(ctx.project_id) : null,
+      pool,
     });
+    if (!result.sent) {
+      console.warn('[download-notify] email not sent:', result.reason || result.errorMessage || 'no_provider_configured');
+    }
   } catch (err) {
     console.warn('[download-notify] email failed:', err);
   }
@@ -21693,26 +23111,68 @@ async function readFfmpegHealth(): Promise<{ available: boolean; version: string
   return { available: Boolean(version), version };
 }
 
-app.get("/api/health", async (req, res) => {
-  const isRenderRuntime =
-    String(process.env.RENDER || "").toLowerCase() === "true";
-  const ffmpeg = await readFfmpegHealth();
+let ffmpegHealthRefreshing = false;
+
+// Non-blocking variant for the liveness probe. Returns the cached value
+// immediately (available:null when never sampled) and refreshes in the
+// background. The /api/health handler must NEVER await a subprocess spawn:
+// under event-loop saturation that can blow past Render's 5s health-check
+// timeout, get the instance evicted, and 502 every route until it recovers.
+function peekFfmpegHealth(): { available: boolean | null; version: string | null } {
+  const now = Date.now();
+  if (
+    (!ffmpegHealthCache || now - ffmpegHealthCache.at >= 60_000) &&
+    !ffmpegHealthRefreshing
+  ) {
+    ffmpegHealthRefreshing = true;
+    void ffmpegVersionLine()
+      .then((version) => {
+        ffmpegHealthCache = { at: Date.now(), available: Boolean(version), version };
+      })
+      .catch(() => {})
+      .finally(() => {
+        ffmpegHealthRefreshing = false;
+      });
+  }
+  return ffmpegHealthCache
+    ? { available: ffmpegHealthCache.available, version: ffmpegHealthCache.version }
+    : { available: null, version: null };
+}
+
+app.get("/api/health", (_req, res) => {
+  const realtimeFanout = getRealtimeUserEventFanoutHealth();
+  const realtimeFanoutDegraded = realtimeFanout.required && !realtimeFanout.ready;
   res.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    startedAt: serverStartedAt,
-    commit: process.env.RENDER_GIT_COMMIT || null,
-    branch: process.env.RENDER_GIT_BRANCH || null,
-    serviceId: process.env.RENDER_SERVICE_ID || null,
-    serviceName: process.env.RENDER_SERVICE_NAME || null,
-    instanceId: process.env.RENDER_INSTANCE_ID || null,
-    runtime: isRenderRuntime ? "render" : process.env.NODE_ENV || "unknown",
-    // Surfaces on Render's status-page poll so we can see at a glance
-    // whether the reel normaliser has a usable ffmpeg binary on this
-    // instance. Without it reels still ship, but unchanged — the
-    // photographer sees any quality/size issues Meta flags.
-    ffmpeg,
+    status: compatStoreDegraded || realtimeFanoutDegraded ? "degraded" : "ok",
+    compatStoreDegraded,
+    realtimeLegacyTokenAllowed: isLegacyUserEventsTokenAllowed(),
+    realtimeFanout,
   });
+});
+
+// Hvilken commit kjører prod akkurat nå. Offentlig + lettvekt: brukes til
+// deploy-deteksjon (f.eks. auto-migrate-workflowen venter til den utplasserte
+// commit-en matcher før den trigger migrate → unngår 502 midt i deploy-
+// rolloveren). RENDER_GIT_COMMIT settes av Render på hver deploy.
+app.get("/api/version", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    commit: process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT ?? null,
+    branch: process.env.RENDER_GIT_BRANCH ?? null,
+    node: process.version,
+  });
+});
+
+// AI-queue health for observability (Leadgrid skalering nivå 2).
+// Eksponerer per-provider RPM-bruk, in-flight og pending wait-queue.
+app.get("/api/leadgrid/ai-queue/health", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  try {
+    const { aiQueue } = await import("./leadgrid-ai-queue.js");
+    res.json({ ok: true, ...aiQueue.snapshot() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: "internal_error" });
+  }
 });
 
 // Auth endpoints - session-based login
@@ -21812,10 +23272,16 @@ function buildSalesLeadSelectQuery(shape: SalesLeadsStorageShape): string {
 // GET /api/audio-enhancement/jobs — list audio enhancement jobs with optional filters
 app.get("/api/audio-enhancement/jobs", async (req, res) => {
   try {
-    const headerUserId = readString(req.headers["x-user-id"]);
-    const queryUserId = readString(req.query.userId);
+    // Session-only: the spoofable x-user-id/query.userId previously selected which
+    // tenant's audio-enhancement jobs (file paths, error messages) to read — and an
+    // empty userId dropped the WHERE clause entirely, dumping 300 jobs across ALL
+    // tenants. Bind to the authenticated session; anonymous callers get nothing.
+    const session = getActiveSessionFromRequest(req);
+    const userId = session?.userId || null;
+    if (!userId) {
+      return res.json({ success: true, jobs: [] });
+    }
     const projectId = readString(req.query.projectId);
-    const userId = queryUserId || headerUserId;
 
     const params: string[] = [];
     const filters: string[] = [];
@@ -21904,9 +23370,11 @@ app.get("/api/communication/google-chat/status", async (req, res) => {
     const forceRefresh = ["1", "true", "yes"].includes(
       String(req.query.force ?? "").toLowerCase(),
     );
-    const headerUserId = readString(req.headers["x-user-id"]);
-    const queryUserId = readString(req.query.userId);
-    const userId = queryUserId || headerUserId;
+    // Session-only: the spoofable x-user-id/query.userId selected which tenant's
+    // Google Chat connection row (space_id, sync status) to read. Bind to session.
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const userId = session.userId;
     const liveCheck = await getGoogleChatLiveHealthCheck({
       forceRefresh,
       pool,
@@ -22627,10 +24095,15 @@ async function buildGoogleWorkspaceStorageSnapshot(
 // GET /api/google-workspace/storage/:userId — aggregate storage consumption
 app.get("/api/google-workspace/storage/:userId", async (req, res) => {
   try {
-    const userId =
-      readString(req.params.userId) ||
-      readString(req.headers["x-user-id"]) ||
-      "guest";
+    // Session-only identitet: ignorer :userId i path OG x-user-id-headeren (begge
+    // spoofbare) — snapshotet inkluderer brukerens Google Drive-tilkobling
+    // (konto-e-post) + lagringsbruk, så et vilkårlig id lekket en annen brukers
+    // PII (IDOR). Alle ekte kallere sender Bearer for innlogget bruker.
+    const session = getActiveSessionFromRequest(req);
+    if (!session?.userId) {
+      return res.status(401).json({ error: "auth_required" });
+    }
+    const userId = session.userId;
     const snapshot = await buildGoogleWorkspaceStorageSnapshot(
       userId,
       derivePreferredGoogleWorkspaceOauthApps(req),
@@ -22655,8 +24128,17 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
       compatResolveUserEmail(req);
     const requestId =
       compatHeaderString(body.requestId ?? body.request_id) || null;
+    // Conservative session-wins hardening: this route is public/pre-auth (guest,
+    // invite and free-plan onboarding happen before a session exists), so we keep
+    // the body.userId fallback for the anonymous case. But when a real session IS
+    // present it must take precedence over any client-supplied body.userId — an
+    // authenticated caller could otherwise pass body.userId=<victim> to scope the
+    // checkout (and any recorded completion) onto another tenant's account.
+    const sessionUserId = getActiveSessionFromRequest(req)?.userId || null;
     const userId = resolveCompatPaymentUserScope(
-      compatHeaderString(body.userId ?? body.user_id) || compatResolveUserId(req),
+      sessionUserId ||
+        compatHeaderString(body.userId ?? body.user_id) ||
+        compatResolveUserId(req),
       requestId,
       email,
     );
@@ -22692,44 +24174,17 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
     }
 
     if (plan.price <= 0) {
-      const createdAt = new Date().toISOString();
-      const record: CompatPaymentStatusRecord = {
-        id: `pay_${crypto.randomUUID()}`,
-        transactionId: `free_${crypto.randomUUID()}`,
-        userId,
-        email,
-        requestId,
-        planId: plan.id,
-        planName: plan.displayName,
-        amountMinor: 0,
-        amountMajor: 0,
-        currency: plan.currency,
-        paymentMethod: "stripe",
-        status: "completed",
-        createdAt,
-        completedAt: createdAt,
-        provider: "compat",
-        metadata: {
-          profession,
-          requestId,
-          flow: "creatorhub_free_plan",
-        },
-        receiptSentAt: null,
-        membershipCard: null,
-      };
-
-      await recordCompatPaymentCompletion(record);
-
-      return res.status(200).json({
-        success: true,
-        alreadyPaid: true,
-        freePlan: true,
-        planId: plan.id,
-        planName: plan.displayName,
-        amount: record.amountMinor,
-        currency: record.currency,
-        transactionId: record.transactionId,
-        paymentCompleted: true,
+      // Business rule: there is NO free/self-serve account. Free/prototype plans
+      // must never self-complete a subscription through the public checkout
+      // endpoint — that path previously fabricated a completed, access-granting
+      // record with amount 0. Legitimate prototype testers are provisioned only
+      // through the admin/auto-bridge NDA invite flow
+      // (prototype-tester-invites-routes → provisionTesterAccount), which does
+      // NOT touch this endpoint. Reject any price<=0 checkout outright.
+      return res.status(400).json({
+        error:
+          "Gratis selvbetjent aktivering er ikke tilgjengelig. Velg en betalt plan for å fortsette.",
+        code: "free_plan_not_available",
       });
     }
 
@@ -22803,6 +24258,13 @@ app.post("/api/platform/billing/checkout-session", async (req, res) => {
                 },
               },
             },
+        // AI-overage metered-linje (Fase C). Metered-priser tar IKKE `quantity`.
+        // Legger 0 kr på abonnementet fram til bruk rapporteres — og bruk
+        // rapporteres kun når AI_OVERAGE_BILLING_ENABLED="true" (dobbelt-gated).
+        // Uten env satt = ingen linje (bakoverkompatibelt).
+        ...(creatorHubAiOveragePriceId()
+          ? [{ price: creatorHubAiOveragePriceId() as string }]
+          : []),
       ],
       metadata: {
         ch_user_id: userId,
@@ -22938,28 +24400,87 @@ app.get("/api/platform/billing/session-status", async (req, res) => {
 
 
 
+// Short-lived HMAC token authorizing a single payment document (receipt /
+// invoice) via a URL query param. These documents are opened by <a href> anchor
+// navigation, which sends cookies only (no Authorization header), so the
+// header-only getActiveSessionFromRequest can't see a session. The token is
+// minted ONLY while building an authenticated user's own payment history
+// (buildCompatPaymentHistory + /api/payments/history are session-scoped), so a
+// valid token proves the server issued it for that user's own document.
+const COMPAT_PAYMENT_DOC_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+
+function compatPaymentDocSigningSecret(): string {
+  return (
+    process.env.AUTH_SECRET ||
+    process.env.SESSION_SECRET ||
+    process.env.CREATORHUB_STRIPE_WEBHOOK_SECRET ||
+    "compat-payment-doc-signing-fallback"
+  );
+}
+
+function signCompatPaymentDocToken(documentId: string, expMs: number): string {
+  return crypto
+    .createHmac("sha256", compatPaymentDocSigningSecret())
+    .update(`${documentId}:${expMs}`)
+    .digest("hex");
+}
+
+function buildCompatPaymentDocQuery(documentId: string): string {
+  const exp = Date.now() + COMPAT_PAYMENT_DOC_TOKEN_TTL_MS;
+  const sig = signCompatPaymentDocToken(documentId, exp);
+  return `?exp=${exp}&sig=${sig}`;
+}
+
+function verifyCompatPaymentDocToken(
+  documentId: string,
+  req: express.Request,
+): boolean {
+  const exp = Number(readString(req.query.exp));
+  const sig = readString(req.query.sig);
+  if (!documentId || !sig || !Number.isFinite(exp) || exp < Date.now()) {
+    return false;
+  }
+  const expected = signCompatPaymentDocToken(documentId, exp);
+  try {
+    const a = Buffer.from(sig);
+    const b = Buffer.from(expected);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
 function canAccessCompatPaymentDocument(
   req: express.Request,
   record: CompatPaymentStatusRecord,
 ) {
+  // 1. Real (non-spoofable) session: admin, or the document's own owner.
   const session = getActiveSessionFromRequest(req);
   if (session) {
     const normalizedRole = String(session.role || "").trim().toLowerCase();
     if (ADMIN_SESSION_ROLES.has(normalizedRole)) {
       return true;
     }
+    const sessionEmail =
+      normalizeMailConfigValue(session.email).toLowerCase() || null;
+    const recordEmail =
+      normalizeMailConfigValue(record.email).toLowerCase() || null;
+    if (
+      (session.userId && record.userId && session.userId === record.userId) ||
+      (sessionEmail && recordEmail && sessionEmail === recordEmail)
+    ) {
+      return true;
+    }
   }
 
-  const requestUserId = compatResolveUserId(req);
-  const requestEmail =
-    normalizeMailConfigValue(compatResolveUserEmail(req)).toLowerCase() || null;
-  const recordEmail =
-    normalizeMailConfigValue(record.email).toLowerCase() || null;
-
-  return Boolean(
-    (requestUserId && record.userId && requestUserId === record.userId) ||
-      (requestEmail && recordEmail && requestEmail === recordEmail),
-  );
+  // 2. Signed document link for anchor navigation (cookies only, no Bearer).
+  //    The previous check trusted compatResolveUserId/compatResolveUserEmail,
+  //    which fall back to the spoofable x-user-id / x-user-email headers — a
+  //    caller who knew a victim's id OR email could read their receipt/invoice.
+  //    Replaced with an HMAC token only the server can mint for the owner's
+  //    own documents.
+  const documentId = readString(req.params.paymentId);
+  return documentId ? verifyCompatPaymentDocToken(documentId, req) : false;
 }
 
 function formatCompatPaymentDocumentAmount(amountMajor: number, currency: string) {
@@ -23119,7 +24640,7 @@ app.post("/api/tripletex/customers/ensure", async (req, res) => {
     res.json({ success: true, customer });
   } catch (error) {
     if (error instanceof TripletexApiError) {
-      return res.status(error.status).json({ error: error.message, details: error.details });
+      return res.status(error.status).json({ error: "internal_error", details: error.details });
     }
     console.error("Tripletex ensure customer error:", error);
     res.status(500).json({ error: "Kunne ikke opprette kunde i Tripletex" });
@@ -23265,7 +24786,7 @@ app.post("/api/tripletex/invoices/create", async (req, res) => {
     });
   } catch (error) {
     if (error instanceof TripletexApiError) {
-      return res.status(error.status).json({ error: error.message, details: error.details });
+      return res.status(error.status).json({ error: "internal_error", details: error.details });
     }
 
     console.error("Tripletex invoice create error:", error);
@@ -23275,7 +24796,9 @@ app.post("/api/tripletex/invoices/create", async (req, res) => {
 
 app.get("/api/tripletex/invoices/:invoiceId/pdf", async (req, res) => {
   try {
-    const userId = compatResolveUserId(req);
+    // Session-only identitet (ikke compatResolveUserId — den stoler på x-user-id-
+    // headeren, som kan spoofes for å hente en annen brukers faktura-PDF).
+    const userId = getActiveSessionFromRequest(req)?.userId || null;
     const invoiceId = compatHeaderString(req.params.invoiceId);
     if (!userId || userId === "guest") {
       return res.status(401).json({ error: "Innlogging kreves for å hente faktura-PDF" });
@@ -23301,7 +24824,7 @@ app.get("/api/tripletex/invoices/:invoiceId/pdf", async (req, res) => {
     res.send(Buffer.from(pdf));
   } catch (error) {
     if (error instanceof TripletexApiError) {
-      return res.status(error.status).json({ error: error.message, details: error.details });
+      return res.status(error.status).json({ error: "internal_error", details: error.details });
     }
     console.error("Tripletex invoice pdf error:", error);
     res.status(500).json({ error: "Kunne ikke hente faktura fra Tripletex" });
@@ -23310,7 +24833,8 @@ app.get("/api/tripletex/invoices/:invoiceId/pdf", async (req, res) => {
 
 app.get("/api/tripletex/vouchers/:voucherId/pdf", async (req, res) => {
   try {
-    const userId = compatResolveUserId(req);
+    // Session-only identitet (ikke compatResolveUserId — spoofbar x-user-id).
+    const userId = getActiveSessionFromRequest(req)?.userId || null;
     const voucherId = compatHeaderString(req.params.voucherId);
     if (!userId || userId === "guest") {
       return res.status(401).json({ error: "Innlogging kreves for å hente bilag" });
@@ -23336,7 +24860,7 @@ app.get("/api/tripletex/vouchers/:voucherId/pdf", async (req, res) => {
     res.send(Buffer.from(pdf));
   } catch (error) {
     if (error instanceof TripletexApiError) {
-      return res.status(error.status).json({ error: error.message, details: error.details });
+      return res.status(error.status).json({ error: "internal_error", details: error.details });
     }
     console.error("Tripletex voucher pdf error:", error);
     res.status(500).json({ error: "Kunne ikke hente bilag fra Tripletex" });
@@ -23357,9 +24881,15 @@ app.post("/api/google-pay/refund", async (req, res) => {
       return res.status(404).json({ error: "Payment not found for refund" });
     }
 
-    const requesterUserId = compatResolveUserId(req);
+    // Session-only ownership identity: compatResolveUserId/Email fall back to
+    // the spoofable x-user-id/x-user-email headers when no session is present,
+    // which would let an anonymous caller who knows a victim's id/email + a
+    // transactionId file a refund on the victim's payment. Bind to the session.
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const requesterUserId = session.userId;
     const requesterEmail = normalizeMailConfigValue(
-      compatResolveUserEmail(req),
+      session.email,
     ).toLowerCase();
     const paymentEmail = normalizeMailConfigValue(paymentRecord.email).toLowerCase();
     const ownsPayment =
@@ -23501,7 +25031,10 @@ app.post("/api/story-arc/init", (req, res) => {
 });
 
 app.get("/api/story-arc/onboarding/status", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only: x-user-id fallback leaked another tenant's onboarding state.
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
   const onboardingState = compatStoryArcOnboardingStore.get(userId);
   res.json({
     success: true,
@@ -23511,7 +25044,11 @@ app.get("/api/story-arc/onboarding/status", (req, res) => {
 });
 
 app.post("/api/story-arc/onboarding/complete", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only: x-user-id fallback let a caller write onboarding state for a
+  // victim userId.
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
   const now = new Date().toISOString();
   compatStoryArcOnboardingStore.set(userId, {
     completed: true,
@@ -23525,7 +25062,12 @@ app.post("/api/story-arc/onboarding/complete", (req, res) => {
 });
 
 app.get("/api/story-arc/projects", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only: without a session compatResolveUserId returns "guest", and
+  // getStoryArcProjectsForUser("guest") dumps EVERY tenant's projects. An
+  // attacker could also pass x-user-id=<victim> to read their project list.
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
   const projects = getStoryArcProjectsForUser(userId).map(
     normalizeStoryArcProjectForResponse,
   );
@@ -23533,7 +25075,11 @@ app.get("/api/story-arc/projects", (req, res) => {
 });
 
 app.post("/api/story-arc/projects", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only: x-user-id fallback let a caller create projects owned by a
+  // victim userId.
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
   const body = isRecord(req.body) ? req.body : {};
   const storyArcName =
     compatHeaderString(body.storyArcName) ||
@@ -23564,9 +25110,16 @@ app.post("/api/story-arc/projects", (req, res) => {
 });
 
 app.get("/api/story-arc/projects/:projectId", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only identitet (ikke compatResolveUserId — x-user-id spoofbar) OG
+  // fjern «guest»-bypass-en (`userId !== "guest"`) som lot en kaller uten
+  // identitet lese ETHVERT prosjekt by id (IDOR).
+  const session = getActiveSessionFromRequest(req);
+  if (!session?.userId) {
+    return res.status(401).json({ success: false, error: "auth_required" });
+  }
+  const userId = session.userId;
   const project = compatStoryArcProjectsStore.get(req.params.projectId);
-  if (!project || (project.userId !== userId && userId !== "guest")) {
+  if (!project || project.userId !== userId) {
     return res
       .status(404)
       .json({ success: false, error: "Story arc project not found" });
@@ -23578,7 +25131,13 @@ app.get("/api/story-arc/projects/:projectId", (req, res) => {
 });
 
 app.get("/api/story-arc/by-project/:projectId", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only identitet — nøkkelen inkluderer userId, så x-user-id-spoof lot
+  // en kaller slå opp en annen brukers prosjekt-mapping.
+  const session = getActiveSessionFromRequest(req);
+  if (!session?.userId) {
+    return res.status(401).json({ success: false, error: "auth_required" });
+  }
+  const userId = session.userId;
   const externalProjectId = req.params.projectId;
   const mappedId = compatStoryArcProjectByExternalStore.get(
     compatStoryArcExternalKey(userId, externalProjectId),
@@ -23606,7 +25165,13 @@ app.get("/api/story-arc/by-project/:projectId", (req, res) => {
 });
 
 app.post("/api/story-arc/by-project/:projectId/ensure", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only identitet — ensure skriver til kallerens navnerom; x-user-id-
+  // spoof lot en kaller opprette/kartlegge under en annen brukers identitet.
+  const session = getActiveSessionFromRequest(req);
+  if (!session?.userId) {
+    return res.status(401).json({ success: false, error: "auth_required" });
+  }
+  const userId = session.userId;
   const externalProjectId = req.params.projectId;
   const preferredName =
     compatHeaderString(req.query?.name) ||
@@ -23633,7 +25198,17 @@ app.post("/api/story-arc/by-project/:projectId/ensure", (req, res) => {
 });
 
 app.get("/api/story-arc/:storyArcId/editor-state", (req, res) => {
+  // Var HELT ugated (gjett en storyArcId → les tidslinje-state). Krev innlogging
+  // + eierskap via prosjekt-eier; ikke-eier/ukjent → null (ikke-avslørende).
+  const session = getActiveSessionFromRequest(req);
+  if (!session?.userId) {
+    return res.status(401).json({ success: false, error: "auth_required" });
+  }
   const storyArcId = req.params.storyArcId;
+  const project = compatStoryArcProjectsStore.get(storyArcId);
+  if (!project || project.userId !== session.userId) {
+    return res.json({ success: true, storyArcId, editorState: null });
+  }
   const editorState = compatStoryArcEditorStateStore.get(storyArcId);
   res.json({
     success: true,
@@ -23643,12 +25218,21 @@ app.get("/api/story-arc/:storyArcId/editor-state", (req, res) => {
 });
 
 app.put("/api/story-arc/:storyArcId/editor-state", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Var ugated write-IDOR (overskriv ethvert story-arc editor-state by id).
+  // Session-only + eierskaps-sjekk: eies av en annen bruker → 403.
+  const session = getActiveSessionFromRequest(req);
+  if (!session?.userId) {
+    return res.status(401).json({ success: false, error: "auth_required" });
+  }
+  const userId = session.userId;
   const storyArcId = req.params.storyArcId;
   const body = isRecord(req.body) ? req.body : {};
   const editorState = isRecord(body.editorState) ? body.editorState : {};
 
   let project = compatStoryArcProjectsStore.get(storyArcId);
+  if (project && project.userId !== userId) {
+    return res.status(403).json({ success: false, error: "forbidden" });
+  }
   if (!project) {
     project = createCompatStoryArcProject({
       id: storyArcId,
@@ -23682,8 +25266,12 @@ app.post("/api/story-arc/:storyArcId/google-drive/upload-audio", (req, res) => {
 });
 
 function applyStoryArcAutoMonitorSettings(req: any, res: any) {
+  // Session-only: body.userId previously overrode even a valid session, so any
+  // caller could write auto-monitor settings under an arbitrary victim userId.
+  const session = requireUserSession(req, res);
+  if (!session) return;
   const body = isRecord(req.body) ? req.body : {};
-  const userId = compatHeaderString(body.userId) || compatResolveUserId(req);
+  const userId = session.userId;
   const folderName = compatStoryArcNormalizeFolderName(
     body.folderName ?? body.monitorFolderName,
   );
@@ -23746,7 +25334,10 @@ function applyStoryArcAutoMonitorSettings(req: any, res: any) {
 }
 
 app.get("/api/story-arc/auto-monitor/status", (req, res) => {
-  const userId = compatResolveUserId(req);
+  // Session-only: spoofable x-user-id fallback leaked another tenant's monitors.
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
   res.json({
     success: true,
     userId,
@@ -23755,8 +25346,11 @@ app.get("/api/story-arc/auto-monitor/status", (req, res) => {
 });
 
 app.get("/api/story-arc/auto-monitor/status/:userId", (req, res) => {
-  const userId =
-    compatHeaderString(req.params.userId) || compatResolveUserId(req);
+  // Session-only: ignorer :userId i path (spoofbar) og bruk innlogget bruker —
+  // ellers kunne hvem som helst lese en annen brukers auto-monitor-status.
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
   res.json({
     success: true,
     userId,
@@ -23765,8 +25359,10 @@ app.get("/api/story-arc/auto-monitor/status/:userId", (req, res) => {
 });
 
 app.get("/api/story-arc/auto-monitor/history/:userId", (req, res) => {
-  const userId =
-    compatHeaderString(req.params.userId) || compatResolveUserId(req);
+  // Session-only: ignorer :userId i path (spoofbar) og bruk innlogget bruker.
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const userId = session.userId;
   const monitors = getCompatStoryArcMonitorsForUser(userId);
   const history = monitors
     .flatMap((monitor) =>
@@ -23789,8 +25385,12 @@ app.get("/api/story-arc/auto-monitor/history/:userId", (req, res) => {
 });
 
 app.post("/api/story-arc/auto-monitor/enable", (req, res) => {
+  // Session-only: body.userId previously overrode the session, allowing a caller
+  // to enable/overwrite a monitor on a victim's account.
+  const session = requireUserSession(req, res);
+  if (!session) return;
   const body = isRecord(req.body) ? req.body : {};
-  const userId = compatHeaderString(body.userId) || compatResolveUserId(req);
+  const userId = session.userId;
   const folderName = compatStoryArcNormalizeFolderName(
     body.monitorFolderName ?? body.folderName,
   );
@@ -23832,8 +25432,12 @@ app.post("/api/story-arc/auto-monitor/enable", (req, res) => {
 });
 
 app.post("/api/story-arc/auto-monitor/disable", (req, res) => {
+  // Session-only: body.userId previously overrode the session, allowing a caller
+  // to disable a victim's monitor.
+  const session = requireUserSession(req, res);
+  if (!session) return;
   const body = isRecord(req.body) ? req.body : {};
-  const userId = compatHeaderString(body.userId) || compatResolveUserId(req);
+  const userId = session.userId;
   const folderName = compatStoryArcNormalizeFolderName(
     body.folderName ?? body.monitorFolderName,
   );
@@ -23868,8 +25472,12 @@ app.put(
 app.put("/api/story-arc/auto-monitor/config", applyStoryArcAutoMonitorSettings);
 
 app.post("/api/story-arc/auto-monitor/check", (req, res) => {
+  // Session-only: body.userId previously overrode the session, allowing a caller
+  // to enumerate a victim's monitors and create projects under their account.
+  const session = requireUserSession(req, res);
+  if (!session) return;
   const body = isRecord(req.body) ? req.body : {};
-  const userId = compatHeaderString(body.userId) || compatResolveUserId(req);
+  const userId = session.userId;
   const targetFolder = compatHeaderString(
     body.folderName ?? body.monitorFolderName,
   );
@@ -23965,6 +25573,8 @@ setupRoleRoomAgentCoreRoutes({
   isCompatAdminFeatureEnabled,
   getCompatAdminFeature,
 });
+// Publiseringsflater utover Meta/LinkedIn (TikTok/YouTube/Pinterest).
+setupRoleRoomPublishProviderRoutes({ app, pool, requireAdminSession });
 // ── Role Room agent feed-plan — flyttet til ./role-room-agent-feed-plan-routes.ts
 //   10 endpoints: templates CRUD, strategy/refresh, recommend (Claude),
 //   drive (images/import), feed-plan CRUD, approval.
@@ -24022,6 +25632,468 @@ setupTalentSelftapesRoutes({
   pool,
   getActiveSession: getActiveSessionFromRequest,
 });
+// Agency-leads (byrå-akkvisisjon fra /for-byraer landingsside)
+setupAgencyLeadsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Customer Success Manager — health/renewal/interactions (Wave M2)
+setupCustomerSuccessRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Market Intelligence — GET-routes for iPad SuperAdminMarketScansView
+setupMarketScansSuperAdminRoutes({ app, pool, activeSessions });
+setupControlCenterRoutes({ app, pool, activeSessions });
+// Lead Map module pricing-admin
+setupAdminLeadMapPricingRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Leadgrid offentlig pris-config (én sannhetskilde: landing + admin + iPad)
+registerLeadgridPricingConfigRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Leadgrid experience-media (mockup-innhold i scrollfilmen, super-admin-styrt)
+registerLeadgridExperienceConfigRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+registerLeadgridTestimonialsRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Organization status must wrap Leadgrid routes before they are registered.
+// Billing recovery is exempted inside the middleware; all other explicit-org
+// mutations fail closed when status cannot be verified.
+app.use("/api/admin-room/lead-map", enforceOrgStatus(pool, activeSessions));
+app.use("/api/leadgrid", enforceOrgStatus(pool, activeSessions));
+// Lead Map (Phase 1 — Marketing Cockpit-utvidelse)
+setupLeadMapRoutes({ app, pool, activeSessions });
+registerLeadMapCollaborationRoutes({ app, pool, activeSessions });
+registerLeadgridOutreachComplianceRoutes({ app, pool, activeSessions });
+registerLeadMapFileRoutes({ app, pool, activeSessions });
+// Lead Map ↔ Konkurrent-management (manuell add, Claude threat-assessment,
+// lead-rangering, kombinert /market-points-endepunkt)
+registerLeadMapCompetitorRoutes({ app, pool, activeSessions });
+// iPad-paring (LeadMapApp + fremtidige iPad-apper)
+registerIpadPairRoutes({ app, pool, activeSessions });
+// Lead Map ↔ Prosjekt-kobling (per-bedrift filtering + ProjectCard)
+registerLeadMapProjectRoutes({ app, pool, activeSessions });
+// Lead Map ↔ Team-invitasjoner per prosjekt (eier/medlem/lese + Resend)
+registerLeadMapTeamRoutes({ app, pool, activeSessions });
+// Lead Map ↔ Organisasjon (Creatorhub AS som første utvikler-org + org-invitasjoner)
+registerLeadMapOrgRoutes({ app, pool, activeSessions });
+// Lead Map ↔ Profil + Salgs-team (org-profil, user-profil, teamleder/konsulent/promotør)
+registerLeadMapProfileRoutes({ app, pool, activeSessions });
+// Lead Map ↔ Granulær tillatelses-styring (RBAC + per-bruker overstyringer)
+registerLeadMapPermissionRoutes({ app, pool, activeSessions });
+// Self-profile routes are registered below after the shared R2 uploader exists.
+// Lead Map ↔ Logo-fetch fra bedrifts-website (favicon/og-image/apple-touch)
+registerLeadMapLogoRoutes({ app, pool, activeSessions });
+// /me/permissions — effektive tillatelser for innlogget bruker i org
+// Brukes av frontend til å gate knapper/menyer.
+registerMePermissionsRoute(app, pool, activeSessions);
+// /me/workload + /me/quota + /leads/:id/assign + /leads/auto-assign
+// Salgskonsulentens daglige arbeidsliste + kvote-progresjon
+registerLeadMapWorkloadRoutes({ app, pool, activeSessions });
+// /organizations/:id/leaderboard + /leaderboard-summary
+// Team-leaderboard for Salgssjef/Teamleder
+registerLeadMapLeaderboardRoutes({ app, pool, activeSessions });
+// Varsler ved lead-events (assign, status, follow-up, won-on-team)
+registerLeadMapNotificationRoutes({ app, pool, activeSessions });
+// Kart-annotasjoner (Apple Pencil tegn-modus + tildelte fokusområder)
+registerLeadMapAnnotationRoutes({ app, pool, activeSessions });
+// Follow-up cron (GitHub Actions hver 15. min → forfalt-varsler)
+registerLeadMapFollowupCronRoutes({ app, pool });
+// Forfremmelses-wizard (rolle + tittel + team + kvote i én tx + audit)
+registerLeadMapPromotionRoutes({ app, pool, activeSessions });
+// Smart visit-transkript-analyse (Claude erstatter 'kunden'+ finner datoer/actions)
+registerLeadMapTranscriptRoutes({ app, pool, activeSessions });
+// Pitch Deck Studio — per-org-decks (Claude-generert fra onboarding-svar),
+// presentasjons-loggen + Pencil-annotasjoner. Gated på 3 nye RBAC-keys
+// (pitch_deck.access / .edit / .export — fra migrasjon 0294).
+registerPitchDeckRoutes({ app, pool, activeSessions });
+registerPitchDeckPdfRoutes({ app, pool, activeSessions });
+// Pre-møte-brief + per-lead Value-tilpasning + post-møte-loop som
+// auto-setter follow-up-dato / lead-status basert på outcome.
+registerPitchDeckBriefRoutes({ app, pool, activeSessions });
+// Mockup-upload → B2 m/ pitch-decks/{org_id}/... prefix
+registerPitchDeckAssetRoutes({ app, pool, activeSessions });
+// Research → Leads-orkestrator (gated på lead_research.run)
+registerLeadMapResearchRoutes({ app, pool, activeSessions });
+// Native Leadgrid Research — per-lead Claude + BRREG + website-analyse
+// (POST/GET /api/leadgrid/leads/:id/research). Used by iPad-app.
+registerLeadgridResearchRoutes({ app, pool, activeSessions });
+// Native Leadgrid Market Scan — markedssjef-lead-discovery m/ auto-pin
+// (/api/leadgrid/market-scan/*). Gjenbruker market_scans-orkestratoren.
+// Gated på leadgrid.market_scan.run (migrate 312).
+registerLeadgridMarketScanRoutes({ app, pool, activeSessions });
+// Leadgrid Intelligence Engine — composite scoring + Next Best Action
+// (mig 313). Gated på intelligence.* / routes.*-permissions per rolle.
+registerLeadgridIntelligenceRoutes({ app, pool, activeSessions });
+// Daglig cron-rescore (kalles fra GitHub Actions @ 04:00 UTC).
+// Krever LEADGRID_INTELLIGENCE_CRON_TOKEN env-var i tillegg til
+// matching x-cron-trigger-token-header.
+registerLeadgridIntelligenceCron({ app, pool });
+// Data-retention-cron: daglig sletting av gamle scores/recs/queue-rader.
+// Trigget @ 03:00 UTC fra GitHub Actions
+// (.github/workflows/leadgrid-retention-cleanup.yml). Bruker samme
+// CRON_TOKEN som intelligence-rescore.
+registerLeadgridRetentionCron({ app, pool });
+// Skalering nivå 2b — denormaliser crm_customers.organization_id (mig 320)
+// via backfill-cron (kjøres @ 03:15 UTC daily + manuell trigger). Eliminerer
+// owner_user_id IN organization_members-subqueries fra hot-path queries.
+registerLeadgridBackfillCron({ app, pool });
+// Per-org AI-cost tracking (mig 321): GET /summary + /history.
+// Gated på billing.view_ai_usage.
+registerLeadgridAIUsageRoutes({ app, pool, activeSessions });
+// Pakke 3B — Pipeline forecasting + NBA attribution (mig 323).
+// GET /forecasting/pipeline (p10/p50/p90 m/ Claude-refinement + 6t cache),
+// POST /forecasting/pipeline/refresh, GET /forecasting/attribution.
+// Gated på forecasting.view (admin/salgssjef/teamleder).
+registerLeadgridForecastingRoutes({ app, pool, activeSessions });
+// Momentum Engine — sales-goal + daglig activity-target + momentum-score
+// 0-100 + neste-handling-anbefaling (mig 327).
+// 3 endepunkter: GET /momentum/today, GET /momentum/goal, POST /momentum/goal
+// Gated på momentum.view / momentum.set_goal.
+registerLeadgridMomentumRoutes({ app, pool, activeSessions });
+// CSV/Excel-import (mig 328). Endpoints:
+//   POST /api/leadgrid/import/csv/{preview,commit}
+//   GET  /api/leadgrid/import/batches
+// Gated på leads.import_csv.
+registerLeadgridImportRoutes({ app, pool, activeSessions });
+// Legacy URL Research persisted raw Google Places payloads without a
+// customer-project boundary or Discovery V2 attestation. Keep one
+// authenticated tombstone for every method/subpath while a safe, project-bound
+// website-research source is redesigned on top of Discovery V2.
+app.use("/api/leadgrid/url-research", (req, res) => {
+  if (!requireUserSession(req, res)) return;
+  res.setHeader("Cache-Control", "no-store");
+  res.status(410).json({
+    error: "legacy_url_research_retired",
+    message:
+      "URL Research er erstattet av prosjektbundet Discovery V2 med manuell kandidatgodkjenning.",
+    replacement: "/api/leadgrid/projects/:projectId/discovery/profiles",
+  });
+});
+// Legacy Google-based Discovery is permanently fail-closed. Historical code
+// is intentionally not imported into the production graph; all new work uses
+// the review-first, BRREG-backed v2 contract below.
+app.post(
+  "/api/leadgrid/projects/:projectId/discover-leads",
+  (req, res) => {
+    if (!requireUserSession(req, res)) return;
+    res.status(410).json({
+      error: "legacy_discovery_retired",
+      message: "Denne Discovery-flyten er erstattet av Discovery v2.",
+      replacement: `/api/leadgrid/projects/${encodeURIComponent(req.params.projectId)}/discovery/runs`,
+    });
+  },
+);
+// Discovery v2 — varige runs, kandidater, beslutninger og profiler.
+registerLeadgridDiscoveryRoutes({ app, pool, activeSessions });
+// Mig 0353 — Continuous Lead Discovery (workflow-action + cron-poller).
+// CRUD for per-prosjekt-config + 5-min poller som kjører discovery
+// for auto_discover_enabled prosjekter.
+registerLeadgridDiscoveryConfigRoutes({ app, pool, activeSessions });
+registerLeadgridDomainOnboardingRoutes({ app, pool, activeSessions });
+registerLeadgridContinuousDiscoveryCron(pool);
+// Industries-katalog + member-spesialiseringer (mig 329).
+// 3-lags bransje-system: industries (global+custom) + crm_customers.industry_id
+// + organization_member_industries (sales-rep × bransje × expertise).
+// Endpoints:
+//   GET/POST/PATCH/DELETE /api/leadgrid/industries[/:id]
+//   GET/PUT /api/leadgrid/members/{me|:userId}/industries
+// Gated på industries.view / .manage / .assign.
+registerLeadgridIndustriesRoutes({ app, pool, activeSessions });
+// Deal Management (mig 0349, #154/#155) — deal_probability, expected_close_date,
+// weighted forecast (sum amount × probability/100), at-risk-list, stage-history.
+// Gated på deals.view_forecast / deals.view_amount / deals.edit.
+registerLeadgridDealsRoutes({ app, pool, activeSessions });
+// Smart Workflow Builder (mig 0349, #203) — Leadgrid-koblede triggers
+// (lead.created, pipeline.stage_changed, deal.probability_changed, ...) +
+// actions (send_email/sms/wa, change_pipeline_stage, add_tag, create_task,
+// notify_channel, wait, ai_pitch_generate). 10 forhåndsbygde templates.
+// Gated på workflows.view / workflows.create / workflows.execute.
+registerLeadgridWorkflowRoutes({ app, pool, activeSessions });
+// Mig 0350: Webhook-destinasjoner (post_to_webhook / trigger_zapier actions)
+// + event-mottakere for 6 nye triggers (email.opened/link_clicked,
+// meeting.booked/no_show, proposal.opened, contract.signed).
+registerLeadgridWorkflowWebhookRoutes({ app, pool, activeSessions });
+registerLeadgridWorkflowTriggerRoutes({ app, pool, activeSessions });
+// Role Room Agent threads HTTP-eksponering for iPad-chat (genjenbruker
+// eksisterende threads-service + SSE-streaming i role-room-agent-stream).
+// GET/POST/DELETE /api/role-room/agent/threads[/:id] + POST :id/messages
+// for SSE streaming. Web-chatten bruker /projects/:id/agent/stream-routen
+// fortsatt — denne tilbyr en tråd-først URL-form for native klienter.
+registerRoleRoomAgentThreadsRoutes({ app, pool, activeSessions });
+// Webhook-secret-rotering m/ 7-dagers grace-period (mig 322).
+// POST /webhooks/:id/rotate-secret + cron /expire-old-webhook-secrets.
+registerLeadgridWebhookRotationRoutes({ app, pool, activeSessions });
+// Skalering nivå 3c — Public API v1 + API-keys + OpenAPI docs (mig 325).
+// Stabilt schema for 3.-parts-integrasjoner (Salesforce, HubSpot, custom).
+// /api/v1/leads, /api/v1/recommendations, /api/v1/health auth via lgk_-key.
+registerLeadgridPublicApiV1({ app, pool });
+registerLeadgridPublicOutcomeRoutes({ app, pool });
+// Admin-management av API-keys (session-auth, gated på api_keys.*).
+registerLeadgridApiKeyMgmtRoutes({ app, pool, activeSessions });
+// Swagger UI på /api/v1/docs + OpenAPI 3.1-spec på /api/v1/openapi.json.
+registerLeadgridOpenApiRoutes(app);
+// LeadGrid territorie-grids — "hold deg i din grid" (mig 314).
+// CRUD + check + brudd-logg (/api/leadgrid/territories/*).
+// Gated på territories.view / territories.manage / territories.view_breaches.
+registerLeadgridTerritoryRoutes({ app, pool, activeSessions });
+// Smart dagsrute — ordner selgerens in-grid leads (Distance Matrix +
+// nærmeste-nabo). /api/leadgrid/routes/* (mig 313/316). routes.create/view/execute.
+registerLeadgridRouteRoutes({ app, pool, activeSessions });
+// Leadgrid Analytics Dashboard — KPI-er per org (overview, channels,
+// sources, segments, territories, velocity, conversion-funnel). Gated på
+// analytics.view_overview/channels/sources/segments/velocity (migrate 317).
+registerLeadgridAnalyticsRoutes({ app, pool, activeSessions });
+// AI Meeting Notes — voice memo → Whisper → Claude action items
+// (/api/leadgrid/leads/:id/meeting-notes/*). Gated på meeting_notes.*
+// (migrate 318).
+registerLeadgridMeetingNotesRoutes({ app, pool, activeSessions });
+// Role Room Agent Bridge — full intelligence-rapport per lead som
+// orkestrerer alle Role Room Agent-services (brreg, website, competitors,
+// merch-fit, threat, swot, outreach). Gated på leadgrid.research.run
+// (migrate 318).
+registerLeadgridAgentBridgeRoutes({ app, pool, activeSessions });
+// Lead Scout — crawl + Claude needs/signals/scoring
+// Gated på marketing.scout.run / marketing.needs.view / marketing.needs.edit
+registerLeadScoutRoutes({ app, pool, activeSessions });
+// Parameter presets + custom field definitions (org-styrt)
+registerLeadPresetRoutes({ app, pool, activeSessions });
+// IF/THEN automation-regler m/ engine + audit
+registerLeadRulesRoutes({ app, pool, activeSessions });
+// Varig, prosjektbundet kø for cron_hourly/cron_daily-regler.
+registerLeadRulesCron(pool);
+// Prosjekt-portefølje (alle kundeprosjekter for én org m/ score+needs)
+registerLeadPortfolioRoutes({ app, pool, activeSessions });
+// Selv-onboarding (BRREG + crawl + scout + invite til klient-portal)
+registerCustomerAutoOnboardRoutes({ app, pool, activeSessions });
+// Klient-portal — public token-basert visning av needs/deliverables
+registerClientPortalRoutes({ app, pool });
+// Delivery playbooks — markedsføreren's oppsett-system m/ steg-for-steg
+registerDeliveryPlaybookRoutes({ app, pool, activeSessions });
+// Super-admin governance: org-registry + impersonation + audit
+registerSuperadminRoutes({ app, pool, activeSessions });
+// Selv-onboard for Solo-planen (åpen registrering uten super-admin)
+registerOrgSelfOnboardRoutes({ app, pool });
+// Plan-grenser/usage/upgrade for PlanUsageBar + pricing-page
+registerPlanRoutes({ app, pool, activeSessions });
+// Leadgrid billing: Customer Portal-link, invoice-liste, superadmin payments-overview
+const leadgridStripeClient = getCreatorHubStripeClient();
+registerLeadgridBillingRoutes({ app, pool, activeSessions, stripe: leadgridStripeClient });
+startLeadgridBillingWorker({
+  pool,
+  stripe: leadgridStripeClient,
+  storageAddonPriceId: process.env.LEADGRID_PRICE_STORAGE_100_GIB?.trim(),
+  aiStructurePriceId: LEADGRID_AI_STRUCTURE_PRICE,
+});
+// Leadbook lydopptak fase 2 — §7 GDPR-samtykke-sjekkliste + selv-service-sletting
+// (2026-08-16). Registreringen falt ut av en tidligere kontekst-komprimering
+// i samme økt — endepunktene fantes, men var uregistrert/404 (2026-08-19).
+registerLeadbookRecordingConsentRoutes({ app, pool, requireUserSession });
+// Leadgrid partners (dynamisk landing-strip + superadmin CRUD)
+registerLeadgridPartnersRoutes({ app, pool, activeSessions });
+// Partner-søknader: bruker-initiert + superadmin-invitasjon m/ samtykke
+registerPartnerApplicationsRoutes({ app, pool, activeSessions });
+// Intensjonsavtale-flyt: superadmin sender, partner e-signerer m/ IP+UA-logg
+registerPartnerIntentRoutes({ app, pool, activeSessions });
+// TestFlight-testere: legg til, send NDA + intent, graduate til ekte org
+registerTestflightTestersRoutes({ app, pool, activeSessions });
+// Google Sign-In for Leadgrid (web + iOS native), oppretter Solo Free
+registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions });
+// OrgSwitcher endepunkter (alle medlemskap + sett aktiv)
+registerUserOrgRoutes({ app, pool, activeSessions });
+// E-post-drypp (dag 1/3/7/14) + grace-period-håndhevelse (cron-trigget)
+registerLeadgridDripsRoutes({ app, pool, activeSessions });
+// Partner-API på /api/v1/partner/* (Bearer lg_live_<key>)
+registerPartnerApiRoutes({ app, pool });
+// Superadmin CRUD for API-keys + webhook-endpoints + delivery-log
+registerPartnerApiManagementRoutes({ app, pool, activeSessions });
+// Selv-betjent utvikler-søknad på /leadgrid/utviklere/soknad (public)
+registerDeveloperApplicationRoutes({ app, pool });
+// Full partner-verification: multi-step søknad, risk scores, sandbox,
+// state-machine, alerts, document upload, auto webhook test
+registerPartnerVerificationRoutes({ app, pool, activeSessions });
+// Leadgrid in-app onboarding-tour state
+registerLeadgridOnboardingRoutes({ app, pool, activeSessions });
+// Leadgrid API overage-billing (Stripe meters)
+registerLeadgridOverageBillingRoutes({ app, pool, activeSessions });
+// Leadgrid klient-varsels-prefs (e-post/SMS/WhatsApp via Twilio)
+registerClientNotificationPrefsRoutes({ app, pool, activeSessions });
+// Super-admin: administrere WhatsApp-templates direkte fra appen
+registerWaTemplatesAdminRoutes({ app, pool, activeSessions });
+// Super-admin: e-post-branding per org (signatur, logo, farger, footer)
+registerLeadgridEmailBrandingRoutes({ app, pool, activeSessions });
+// Kunde-onboarding for varslings-kanaler (5-steg wizard)
+registerLeadgridChannelOnboardingRoutes({ app, pool, activeSessions });
+// Lead-inbox + accept-as-project + auto-research-trigger
+registerLeadAcceptanceRoutes({ app, pool, activeSessions });
+// Hierarkisk lead-tildeling (markedssjef → teamleder → rep)
+registerLeadAssignmentRoutes({ app, pool, activeSessions });
+// Lead-status-flow + won/lost-tracking + notifications
+registerLeadStatusRoutes({ app, pool, activeSessions });
+// Lead-eksport (CSV + PDF rapport m/ org-branding)
+registerLeadExportRoutes({ app, pool, activeSessions });
+// Schedulerte rapporter (ukentlig PDF på e-post til markedssjefer)
+registerLeadgridScheduledReportsRoutes({ app, pool, activeSessions });
+// Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
+registerBrandKitRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Modul-feature-state for frontend-gating (CTO-audit P1 — leser
+// module_feature_entitlements via resolveModuleFeatureState, fail-open)
+registerModuleFeaturesRoutes({ app, pool, activeSessions });
+// Admin Integration Center v1 — read-only registry (integrasjonsanalysen steg 2)
+registerIntegrationsAdminRoutes({ app, pool, activeSessions });
+// GSC/GA4 → normalized_signals-synk + AI-trafikk-lesning (integrasjonsplanen steg 3)
+registerOwnedChannelsRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Keyword Planner — søkevolum m/ cache-først (integrasjonsplanen steg 5)
+registerKeywordPlannerRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Manuell CSV-import → normalized_signals (integrasjonsplanen steg 4)
+registerManualImportRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Innsiktsmotoren fase 1 — detektorer over normalized_signals (docs/integration-audit/10)
+registerInsightsRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Per-org AI-forbrukstellere (integrasjonsanalysen steg 9)
+registerAiUsageRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Score-modeller fase 3 — GEO Opportunity Score (docs/integration-audit/11)
+registerScoreModelRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Market Intelligence Scanner (Fase 2 — orkestrert competitor/funnel/teknikk-scan)
+registerMarketScanRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// GEO Visibility — syntetisk AI-synlighets-probing (docs/integration-audit/08)
+registerGeoVisibilityRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Marketing Workflow-orkestrering (Fase 4 — broen til eksisterende Marketing Cockpit)
+registerMarketingWorkflowRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// MI Agent kontekst (Fase 5 — agent får oversikt over markedet)
+registerMarketIntelAgentRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// MI Læringsløkke (Fase 6 — analytics feedback)
+registerLearningLoopRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// MI Fase 7 — Lead Map kampanjer (kategoribasert outreach + analytics)
+registerLeadMapCampaignRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Emergency login for Super Admin når Google OAuth er ødelagt
+registerSuperAdminEmergencyLoginRoutes({ app, pool, activeSessions });
+// Observability — error_log som Sentry-erstatning i Admin Room
+registerErrorLogRoutes({
+  app, pool, activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+installProcessErrorHandlers(pool);
+
+// Hydrate sessions fra DB ved oppstart — slik at Daniel slipper å
+// re-logge etter hver Render-restart. Persistent sessions lagres av
+// emergency-login + andre login-flyter som opt-er inn.
+void hydrateSessionsFromDb(pool, activeSessions);
+// Multi-tenant Google Ads conversion-tracking for The Role Room Agent
+// (B0/B1 live; B2/B3/B4 i pipeline). Innholdsprodusenter setter opp
+// conversion-tracking for klienter via Agent.
+setupClientAdsRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+});
+// Marketing Cockpit B2B-stack (9 features: LinkedIn, funnel, scoring, PR, webinars, referrals, competitor, nurture, case-studies)
+setupCockpitB2BRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// LinkedIn OAuth-setup for Creatorhub AS + The Role Room Showcase
+setupLinkedInOAuthRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// LinkedIn Lead Sync + Conversions API klargjøring (kjøres under review)
+setupLinkedInPrepRoutes({
+  app,
+  pool,
+  getActiveSession: getActiveSessionFromRequest,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// Offentlig blog (les fra cms_pages med variant='blog')
+setupBlogPublicRoutes({ app, pool });
 // Candidate-status PATCH med partnership-callback til byrå (Phase 9.6).
 setupRoleRoomCandidateStatusRoutes({
   app,
@@ -24071,6 +26143,13 @@ setupRoleRoomEventsProducerRoutes({ app, pool, requireAdminSession });
 // ── Role Room social (non-Meta) — flyttet til ./role-room-social-routes.ts
 //   16 endpoints: linkedin, youtube, tiktok, og generelle /social/*.
 setupRoleRoomSocialRoutes({
+  app,
+  pool,
+  requireAdminSession,
+  isCompatAdminFeatureEnabled,
+});
+
+setupRoleRoomAgentInboxReplyRoutes({
   app,
   pool,
   requireAdminSession,
@@ -24228,6 +26307,8 @@ setupRoleRoomClientRequestsRoutes({
 //   ./role-room-client-portal-routes.ts. Klient-siden (magic-link-auth)
 //   blir igjen i index.ts som /api/client/portal/*.
 setupRoleRoomClientPortalRoutes({ app, pool, requireAdminSession });
+setupClientPortalGoogleAdsRoutes({ app, pool });
+setupGoogleVerificationMarketingRoutes({ app, pool });
 
 // Klient-portal: hent alle forespørsler scopet til (project, email)
 //   som session-tokenet representerer. Klienten ser kun det de er
@@ -24251,6 +26332,7 @@ setupAdminFeaturesRoutes({
   dbCompatAdminFeatureKey,
   compatResolveUserId,
   isRecord,
+  requireAdminSession,
 });
 
 // ── Admin refund-requests — flyttet til ./admin-refund-requests-routes.ts
@@ -24364,6 +26446,47 @@ setupAdminUsersRoutes({
 
 // /api/davinci-resolve/* (8 endpoints) → ./davinci-resolve-routes.ts
 
+// ── UX-consistency-pass: 16 nye admin-routes for AdminDashboard
+//   Fyller hull avdekket i deep-audit av Oversikt/Forretning/Plattform/Lab.
+//   Alle returnerer foreløpig tom liste / sensible defaults; senere
+//   kobles de mot ekte DB-tabeller eller eksterne APIs.
+setupAdminBillingExtrasRoutes({ app, pool, requireAdminSession });
+setupAdminEnterprisePricingRoutes({ app, pool, requireAdminSession });
+setupAdminCustomersRoutes({ app, pool, requireAdminSession });
+setupAdminMonitoringRoutes({ app, pool, requireAdminSession });
+setupAdminProtocolRoutes({ app, pool, requireAdminSession });
+setupAdminIntegrationsExtrasRoutes({ app, pool, requireAdminSession });
+setupAdminPaymentTestsRoutes({ app, pool, requireAdminSession });
+setupAdminSystemBackupRoutes({ app, pool, requireAdminSession });
+setupAdminGdprLegalRoutes({ app, pool, requireAdminSession });
+setupAdminReportsRoutes({ app, pool, requireAdminSession });
+setupAdminCommunityExtrasRoutes({ app, pool, requireAdminSession });
+setupAdminCommunicationExtrasRoutes({ app, pool, requireAdminSession });
+setupAdminProvisioningExtrasRoutes({ app, pool, requireAdminSession });
+setupAdminAutomationsRoutes({ app, pool, requireAdminSession });
+setupAdminSocialMediaRoutes({ app, pool, requireAdminSession });
+setupAdminEmailAnalyticsRoutes({ app, pool, requireAdminSession });
+setupAdminGoogleWalletExtrasRoutes({ app, pool, requireAdminSession });
+setupAdminGooglePayConfigRoutes({ app, pool, requireAdminSession });
+setupAdminGoogleWalletTestsRoutes({ app, pool, requireAdminSession });
+setupAdminMarketplaceFixRoutes({ app, pool, requireAdminSession });
+setupAdminFeatureCustomizationsRoutes({ app, pool, requireAdminSession });
+setupAdminTesterSkillsRoutes({ app, pool, requireAdminSession });
+setupAdminTestCaseGeneratorRoutes({ app, pool, requireAdminSession });
+setupAdminAcademyRoutes({ app, pool, requireAdminSession });
+setupAdminAcademyB2Routes({ app, pool, requireAdminSession });
+setupUserB2CredentialsRoutes({ app, pool, requireUserSession });
+startB2SyncCron({ pool });
+setupUserDriveCredentialsRoutes({ app, pool, requireUserSession });
+
+// Task #121a — Marketing SEO-fanen:
+//   /api/seo/keywords, /api/seo/pages, /api/seo/backlinks,
+//   /api/seo/research/stats, /api/seo/crawl, /api/seo/jsonld/generate, …
+setupAdminMarketingSeoRoutes({ app, pool, requireAdminSession });
+
+// Task #127a — Integrasjonstest-fanen:
+//   POST /api/admin/run-comprehensive-tests + GET /api/admin/integration-tests/history
+setupAdminIntegrationTestsRoutes({ app, pool, requireAdminSession });
 
 // ── Evendi misc — flyttet til ./evendi-misc-routes.ts
 //   16 endpoints: vendor-categories, products, photo-shots, schedule-events,
@@ -24498,9 +26621,18 @@ function readCompatUserKvParamKey(rawValue: unknown): string | null {
   }
 }
 
+// Secret-shaped key patterns are blocked for unauthenticated callers too:
+// every anonymous request shares the literal userId "guest" below (there is
+// no per-visitor anonymous identity), so any non-academy key an anonymous
+// caller could write/read here is visible to every OTHER anonymous visitor —
+// a real cross-visitor leak for anything secret-shaped (e.g. a user-supplied
+// third-party API key stored via /api/user/kv).
+const SENSITIVE_KV_KEY_PATTERN = /(api[_-]?key|apikey|access[_-]?token|auth[_-]?token|secret|password|credential|private[_-]?key)/i;
+
 function isProtectedAcademyKvKey(rawKey: unknown): boolean {
   const normalizedKey = readString(rawKey)?.trim().toLowerCase();
-  return Boolean(normalizedKey && normalizedKey.startsWith("academy"));
+  if (!normalizedKey) return false;
+  return normalizedKey.startsWith("academy") || SENSITIVE_KV_KEY_PATTERN.test(normalizedKey);
 }
 
 function resolveUserKvScope(req: express.Request): {
@@ -24567,8 +26699,13 @@ app.get("/api/communication/google-chat/status", async (req, res) => {
 // Google Workspace storage summary
 app.get("/api/google-workspace/storage/:userId", async (req, res) => {
   try {
-    const requestedUserId = readString(req.params.userId) || "guest";
-    const snapshot = await buildGoogleWorkspaceStorageSnapshot(requestedUserId);
+    // (Skygget av registreringen lenger opp, men herdet for defense-in-depth:)
+    // session-only identitet, ikke det spoofbare :userId-path-parameteret.
+    const session = getActiveSessionFromRequest(req);
+    if (!session?.userId) {
+      return res.status(401).json({ error: "auth_required" });
+    }
+    const snapshot = await buildGoogleWorkspaceStorageSnapshot(session.userId);
     res.json(snapshot);
   } catch (error) {
     console.error("Legacy Google Workspace storage summary failed:", error);
@@ -24865,6 +27002,28 @@ app.get("/api/professions/:id/dashboard-config", async (req, res) => {
 app.get("/api/enterprise/team/:organizationId/members", async (req, res) => {
   const { organizationId } = req.params;
   try {
+    // Krev innlogging + at kalleren faktisk tilhører organisasjonen — ellers
+    // kunne hvem som helst liste en annen orgs medlemmer + e-post (IDOR/PII).
+    const session = getActiveSessionFromRequest(req);
+    if (!session?.userId) {
+      return res.status(401).json({ error: "auth_required" });
+    }
+    let callerEmail: string | null = null;
+    try {
+      const u = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [session.userId]);
+      callerEmail = u.rows[0]?.email ? String(u.rows[0].email).toLowerCase() : null;
+    } catch { /* e-post-fallback valgfri */ }
+    const membership = await pool.query(
+      `SELECT 1 FROM enterprise_team_members
+        WHERE organization_id = $1
+          AND status = 'active'
+          AND (user_id = $2 OR ($3::text IS NOT NULL AND LOWER(email) = $3))
+        LIMIT 1`,
+      [organizationId, session.userId, callerEmail],
+    );
+    if (membership.rowCount === 0) {
+      return res.status(403).json({ error: "forbidden" });
+    }
     const result = await pool.query(
       "SELECT id, email, role, status, invited_at, joined_at FROM enterprise_team_members WHERE organization_id = $1 ORDER BY role, email",
       [organizationId],
@@ -24877,6 +27036,62 @@ app.get("/api/enterprise/team/:organizationId/members", async (req, res) => {
   } catch (err) {
     console.error("Enterprise team fetch error:", (err as any).message);
     res.status(500).json({ error: "Failed to fetch team members" });
+  }
+});
+
+// GET /api/enterprise/my-membership — innlogget brukers aktive Enterprise-medlemskap.
+// Frontend (useEnterpriseFeatureAccess, useTeamAccess, GettingStartedChecklist)
+// spør dette for å avgjøre team-/Enterprise-tilgang. Manglet tidligere → alle
+// falt til «ikke enterprise». Leser enterprise_team_members på user_id, med
+// e-post-fallback (invitert på e-post før konto-kobling).
+app.get("/api/enterprise/my-membership", async (req, res) => {
+  try {
+    // Krev en EKTE sesjon (activeSessions-token), ikke det rå X-User-Id-headeren
+    // — ellers kan hvem som helst lese en annen brukers medlemskap + e-post
+    // (IDOR/PII-lekkasje). Uinnlogget → null-medlemskap.
+    const session = getActiveSessionFromRequest(req);
+    const userId = session?.userId || null;
+    if (!userId) {
+      res.json({ membership: null });
+      return;
+    }
+    let email: string | null = null;
+    try {
+      const u = await pool.query(
+        `SELECT email FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      email = u.rows[0]?.email ? String(u.rows[0].email).toLowerCase() : null;
+    } catch {
+      /* e-post-fallback er valgfri */
+    }
+    const r = await pool.query(
+      `SELECT id, organization_id, role, status
+         FROM enterprise_team_members
+        WHERE status = 'active'
+          AND (user_id = $1 OR ($2::text IS NOT NULL AND LOWER(email) = $2))
+        ORDER BY (role = 'admin') DESC, joined_at DESC NULLS LAST, invited_at DESC
+        LIMIT 1`,
+      [userId, email],
+    );
+    const row = r.rows[0];
+    if (!row) {
+      res.json({ membership: null });
+      return;
+    }
+    // Returner IKKE e-post (PII, unødvendig for klienten — den bruker kun
+    // organizationId + role).
+    res.json({
+      membership: {
+        id: row.id,
+        organizationId: row.organization_id,
+        role: row.role,
+        status: row.status,
+      },
+    });
+  } catch (err) {
+    console.error("my-membership error:", (err as any)?.message);
+    res.json({ membership: null });
   }
 });
 
@@ -24969,6 +27184,17 @@ function getCreatorHubStripeWebhookSecret() {
   );
 }
 
+/**
+ * Price-ID for den metered AI-overage-linjen (Fase C). Settes via env
+ * `CREATORHUB_AI_OVERAGE_PRICE_ID` (Stripe usage-based price knyttet til
+ * `creatorhub_ai_overage`-meteren). Når satt, legges den som ekstra
+ * subscription-linje på nye plattform-checkouts — 0 kr fram til bruk
+ * rapporteres. Uten env = ingen linje (bakoverkompatibelt).
+ */
+function creatorHubAiOveragePriceId(): string | null {
+  return normalizeMailConfigValue(process.env.CREATORHUB_AI_OVERAGE_PRICE_ID) || null;
+}
+
 function getCreatorHubStripePriceId(
   planId: string | null | undefined,
   billingCycle: "monthly" | "yearly" = "monthly",
@@ -25047,10 +27273,8 @@ function buildCreatorHubCheckoutReturnUrl(input: {
   status: "success" | "cancel";
   includeSessionId?: boolean;
 }) {
-  const rawPath =
-    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
-      ? input.returnPath.trim()
-      : "/subscription-selection";
+  const _rawPath = typeof input.returnPath === "string" ? input.returnPath.trim() : "";
+  const rawPath = _rawPath.startsWith("/") && !_rawPath.startsWith("//") ? _rawPath : "/subscription-selection";
   const url = new URL(rawPath, input.browserOrigin);
   url.searchParams.set("payment", input.status);
   if (input.includeSessionId) {
@@ -25857,6 +28081,35 @@ async function markCreatorHubStripeCheckoutRecordPaid(
       : null) ||
     (await readCompatPaymentStatusRecord(`pay_${record.sessionId}`));
 
+  // Hent den EKTE periodeslutten fra Stripe-abonnementet (håndterer trial/
+  // proration korrekt) i stedet for completedAt+syklus-estimatet. Best-effort.
+  let realStripePeriodEnd: string | null = null;
+  if (nextRecord.stripeSubscriptionId) {
+    try {
+      const stripeClient = getCreatorHubStripeClient();
+      if (stripeClient) {
+        const sub = await stripeClient.subscriptions.retrieve(
+          nextRecord.stripeSubscriptionId,
+        );
+        // Stripe v18/v19: current_period_end ligger på items.data[0], ikke
+        // topp-nivå. Les derfra, med topp-nivå som fallback.
+        const periodEnd =
+          (sub as unknown as {
+            items?: { data?: Array<{ current_period_end?: number }> };
+          }).items?.data?.[0]?.current_period_end ??
+          (sub as unknown as { current_period_end?: number }).current_period_end;
+        if (typeof periodEnd === "number" && periodEnd > 0) {
+          realStripePeriodEnd = new Date(periodEnd * 1000).toISOString();
+        }
+      }
+    } catch (e) {
+      console.warn(
+        "Stripe current_period_end-oppslag feilet:",
+        (e as any)?.message,
+      );
+    }
+  }
+
   const compatRecord: CompatPaymentStatusRecord = {
     id: existingPaymentRecord?.id || `pay_${record.sessionId}`,
     transactionId: input.transactionId,
@@ -25881,12 +28134,68 @@ async function markCreatorHubStripeCheckoutRecordPaid(
       stripeSessionId: nextRecord.sessionId,
       stripeSubscriptionId: nextRecord.stripeSubscriptionId,
       stripeCustomerId: nextRecord.stripeCustomerId,
+      // Ekte Stripe-periodeslutt (foretrekkes over estimat i
+      // recordCompatPaymentCompletion). null → estimat brukes.
+      ...(realStripePeriodEnd ? { currentPeriodEnd: realStripePeriodEnd } : {}),
     },
     receiptSentAt: existingPaymentRecord?.receiptSentAt || null,
     membershipCard: existingPaymentRecord?.membershipCard || null,
   };
 
   await recordCompatPaymentCompletion(compatRecord);
+
+  // Enterprise-kjøp → gi kjøperen et aktivt org-medlemskap (admin), slik at
+  // team-/Enterprise-gatene (useTeamAccess, «Inviter team», Easeverse-band)
+  // faktisk slår inn. Uten dette er et fullført Enterprise-kjøp ≠ tilgang.
+  // Deterministisk org-id (org_<userId>) → idempotent på (org, e-post).
+  if (
+    nextRecord.planId === "enterprise" &&
+    nextRecord.userId &&
+    isPersistableCompatUserId(nextRecord.userId)
+  ) {
+    try {
+      const orgId = `org_${nextRecord.userId}`;
+      const memberEmail =
+        (nextRecord.email && nextRecord.email.trim()) ||
+        `${nextRecord.userId}@enterprise.local`;
+      await pool.query(
+        `INSERT INTO enterprise_team_members
+           (organization_id, user_id, email, role, status, invited_by, invited_at, joined_at)
+         VALUES ($1, $2, $3, 'admin', 'active', $2, NOW(), NOW())
+         ON CONFLICT (organization_id, email)
+         DO UPDATE SET user_id = EXCLUDED.user_id, role = 'admin', status = 'active',
+                       joined_at = COALESCE(enterprise_team_members.joined_at, NOW()),
+                       updated_at = NOW()`,
+        [orgId, nextRecord.userId, memberEmail],
+      );
+    } catch (e) {
+      console.warn(
+        "Enterprise-medlemskap-grant feilet:",
+        (e as any)?.message,
+      );
+    }
+  }
+
+  // Profesjons-endring krever betaling: fri-veien (PATCH /api/user/profile +
+  // branding) er låst via COALESCE-guard, men et fullført kjøp der brukeren
+  // valgte en profesjon SKAL kunne endre den. Dette er server-håndhevelsen —
+  // betalingen ER gaten, så her overskriver vi (uten COALESCE).
+  if (nextRecord.profession && nextRecord.userId) {
+    try {
+      const canon = canonicalizeProfession(nextRecord.profession);
+      if (canon) {
+        await pool.query(
+          `UPDATE users SET profession = $1, updated_at = now() WHERE id = $2`,
+          [canon, nextRecord.userId],
+        );
+      }
+    } catch (e) {
+      console.warn(
+        "Betalt profesjons-endring feilet:",
+        (e as any)?.message,
+      );
+    }
+  }
 
   if (nextRecord.email && (wasPaymentFailed || wasPendingPayment)) {
     const recipient = await resolveCreatorHubBillingRecipientContext(nextRecord);
@@ -26088,6 +28397,35 @@ async function syncCreatorHubStripeCheckoutSession(
     stripeCustomerId: record.stripeCustomerId,
   });
 }
+
+// ── POST /api/superadmin/creatorhub/backfill-org-stripe-links ──────────────
+// Engangs (idempotent) backfill av organizations.stripe_customer_id fra
+// eksisterende plattform-checkout-records i KV. Fase C-forutsetning: uten denne
+// koblingen kan ikke AI-overage faktureres for kunder som abonnerte FØR
+// webhook-hooken ble lagt til. Ikke-destruktiv (rører aldri en org som allerede
+// har en kunde-id) og skriver ALDRI til Stripe. Kun super_admin.
+app.post("/api/superadmin/creatorhub/backfill-org-stripe-links", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+  if (String(session.role || "").trim().toLowerCase() !== "super_admin") {
+    return res.status(403).json({ error: "Krever super-admin" });
+  }
+  try {
+    const entries = await compatStoreListByPrefix<CreatorHubStripeCheckoutSessionRecord>(
+      CREATORHUB_STRIPE_CHECKOUT_RECORD_PREFIX,
+    );
+    const records = entries.map((e) => ({
+      userId: e.value?.userId,
+      stripeCustomerId: e.value?.stripeCustomerId,
+      paymentCompleted: e.value?.paymentCompleted,
+    }));
+    const summary = await backfillOrgStripeCustomers(pool, records);
+    return res.json({ scannedRecords: entries.length, ...summary });
+  } catch (err) {
+    console.warn("[creatorhub-stripe-org-link] backfill failed:", (err as Error).message);
+    return res.status(500).json({ error: "backfill_failed", message: (err as Error).message });
+  }
+});
 
 function getStripeInvoicePaymentIntent(
   invoice: Stripe.Invoice,
@@ -26469,6 +28807,56 @@ async function markRoleRoomCommercialCheckoutRecordPaid(
     updatedAt: new Date().toISOString(),
   };
   await writeRoleRoomCommercialCheckoutSessionRecord(nextRecord);
+
+  await syncRoleRoomCommercialStorageEntitlement(pool, {
+    organizationNumber: nextRecord.organizationNumber,
+    persona: nextRecord.persona,
+    active: true,
+    stripeSubscriptionId: nextRecord.stripeSubscriptionId,
+    stripeCustomerId: nextRecord.stripeCustomerId,
+  }).catch((error) => {
+    console.warn(
+      "[role-room-storage] commercial entitlement sync failed:",
+      error instanceof Error ? error.message : error,
+    );
+  });
+
+  // Best-effort: hvis en booket demo i agency_leads-CRM-en konverterte til et
+  // betalt commercial-abonnement, flipp leaden til 'customer'. Matcher på e-post
+  // (team-lead eller medlem) — den selvbetjente konverterings-lenken sender
+  // kontakten gjennom den ordinære checkout-flyten, så vi har ikke lead-id i
+  // metadataen, men e-posten er stabil. Additivt; rører ikke provisjoneringen.
+  try {
+    const leadEmails = Array.from(
+      new Set(
+        [nextRecord.teamLeadEmail, ...nextRecord.memberEmails]
+          .filter(Boolean)
+          .map((value) => value.toLowerCase()),
+      ),
+    );
+    if (leadEmails.length > 0 && (await hasTable("agency_leads"))) {
+      await pool.query(
+        `UPDATE agency_leads
+           SET status = 'customer',
+               customer_at = COALESCE(customer_at, now()),
+               stripe_subscription_id = COALESCE($2, stripe_subscription_id),
+               stripe_customer_id = COALESCE($3, stripe_customer_id),
+               conversion_persona = COALESCE(conversion_persona, $4),
+               updated_at = now()
+         WHERE LOWER(email) = ANY($1::text[])
+           AND status NOT IN ('customer', 'archived', 'disqualified')`,
+        [
+          leadEmails,
+          nextRecord.stripeSubscriptionId || null,
+          nextRecord.stripeCustomerId || null,
+          nextRecord.persona || null,
+        ],
+      );
+    }
+  } catch (error) {
+    console.warn("[agency-lead] commercial-payment customer-flip feilet", error);
+  }
+
   if (record.checkoutStatus === "payment_failed") {
     await sendRoleRoomCommercialPaymentRecoveryEmail({
       companyName: record.companyName,
@@ -26590,9 +28978,10 @@ async function syncRoleRoomCommercialStripeInvoice(
     return null;
   }
 
-  return markRoleRoomCommercialCheckoutRecordPaid(storedRecord, {
+  const completedAt = completedAtOverride || new Date().toISOString();
+  const syncedRecord = await markRoleRoomCommercialCheckoutRecordPaid(storedRecord, {
     transactionId: subscriptionId,
-    completedAt: completedAtOverride || new Date().toISOString(),
+    completedAt,
     amountMajor:
       typeof invoice.amount_paid === "number" && Number.isFinite(invoice.amount_paid)
         ? invoice.amount_paid / 100
@@ -26607,6 +28996,18 @@ async function syncRoleRoomCommercialStripeInvoice(
     latestInvoiceId: invoice.id,
     latestInvoiceStatus: invoice.status || "paid",
   });
+
+  await accrueRoleRoomCommercialAffiliateCommission(pool, {
+    organizationNumber: storedRecord.organizationNumber,
+    stripeInvoiceId: invoice.id,
+    currency: invoice.currency,
+    amountPaidMinor: invoice.amount_paid,
+    subtotalExcludingTaxMinor: invoice.subtotal_excluding_tax,
+    paidAt: new Date(completedAt),
+    ...readStripeInvoicePaymentReferences(invoice),
+  });
+
+  return syncedRecord;
 }
 
 async function clearRoleRoomCommercialStripeSubscription(
@@ -26644,6 +29045,19 @@ async function clearRoleRoomCommercialStripeSubscription(
       paymentFailedAt: new Date().toISOString(),
     },
   );
+
+  await syncRoleRoomCommercialStorageEntitlement(pool, {
+    organizationNumber: storedRecord.organizationNumber,
+    persona: storedRecord.persona,
+    active: false,
+    stripeSubscriptionId: storedRecord.stripeSubscriptionId,
+    stripeCustomerId: storedRecord.stripeCustomerId,
+  }).catch((error) => {
+    console.warn(
+      "[role-room-storage] commercial entitlement revocation failed:",
+      error instanceof Error ? error.message : error,
+    );
+  });
 
   await sendRoleRoomCommercialPaymentFailedEmail({
     companyName: storedRecord.companyName,
@@ -27382,68 +29796,37 @@ async function renderCreatorHubPlatformEmail(input: {
   const ctaLabel = template.ctaLabel
     ? replaceRoleRoomEmailVariables(template.ctaLabel, input.variables, "text")
     : "";
-  const ctaHtml =
-    ctaLabel && normalizeMailConfigValue(input.ctaUrl)
-      ? `<a href="${escapeRoleRoomEmailHtml(
-          normalizeMailConfigValue(input.ctaUrl),
-        )}" style="display:inline-block;padding:15px 22px;border-radius:999px;background:${theme.buttonBackground};color:${theme.buttonText};text-decoration:none;font-weight:800;letter-spacing:0.01em">${escapeRoleRoomEmailHtml(
-          ctaLabel,
-        )}</a>`
-      : "";
-  const logoHtml = normalizeMailConfigValue(settings.identity.emailLogoUrl)
-    ? `<img src="${escapeRoleRoomEmailHtml(
-        normalizeMailConfigValue(settings.identity.emailLogoUrl),
-      )}" alt="${escapeRoleRoomEmailHtml(
-        settings.identity.appName,
-      )}" width="42" height="42" style="display:block;width:42px;height:42px;border:0" />`
-    : "";
+  const emailLogoUrl = normalizeMailConfigValue(settings.identity.emailLogoUrl);
+  const logoDimensions = emailLogoUrl
+    ? creatorHubEmailLogoDimensions(emailLogoUrl)
+    : null;
+  const categoryLabel =
+    input.templateId.startsWith("creatorhub_access_request_") ||
+    input.templateId === "creatorhub_prototype_tester_invite" ||
+    input.templateId === "creatorhub_prototype_tester_signing_code" ||
+    input.templateId === "creatorhub_prototype_tester_signature_receipt" ||
+    input.templateId === "creatorhub_tester_access_activated"
+      ? "CreatorHub Tilgang"
+      : "CreatorHub Commerce";
 
-  const html = `
-    <div style="font-family:Inter,Arial,sans-serif;background:${theme.canvasBackground};padding:32px 16px;color:${theme.bodyText}">
-      <div style="max-width:720px;margin:0 auto">
-        <div style="background:${theme.cardBackground};border:1px solid ${theme.cardBorder};border-radius:28px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,0.38)">
-          <div style="padding:28px 28px 24px;background:${theme.headerBackground};color:${theme.headerText};border-bottom:1px solid ${theme.cardBorder}">
-            <div style="display:flex;align-items:center;gap:14px">
-              ${logoHtml}
-              <div>
-                <div style="font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:${theme.brandLabelColor};font-weight:800">${escapeRoleRoomEmailHtml(
-                  settings.identity.appName,
-                )}</div>
-                <div style="margin-top:6px;font-size:13px;line-height:1.5;color:${theme.mutedText}">${escapeRoleRoomEmailHtml(
-                  settings.identity.tagline,
-                )}</div>
-              </div>
-            </div>
-            <div style="margin-top:24px;display:inline-block;padding:7px 12px;border-radius:999px;background:#171d26;color:${theme.brandLabelColor};font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-weight:800">CreatorHub Commerce</div>
-            <h1 style="margin:18px 0 0;font-size:29px;line-height:1.1;color:${theme.headerText};font-family:'Space Grotesk',Inter,Arial,sans-serif;font-weight:700">${escapeRoleRoomEmailHtml(
-              title,
-            )}</h1>
-            <p style="margin:14px 0 0;font-size:14px;line-height:1.7;color:${theme.mutedText}">${escapeRoleRoomEmailHtml(
-              `${settings.identity.tagline} • ${settings.identity.domain}`,
-            )}</p>
-          </div>
-          <div style="padding:28px">
-            <div style="margin:0 0 22px;font-size:15px;line-height:1.85;color:${theme.bodyText}">${bodyHtml}</div>
-            ${detailSection.html}
-            ${noticeSection.html}
-            ${ctaHtml ? `<div style="margin:0 0 22px">${ctaHtml}</div>` : ""}
-            ${
-              footerNote
-                ? `<p style="margin:0 0 16px;font-size:12px;line-height:1.8;color:${theme.mutedText}">${escapeRoleRoomEmailHtml(
-                    footerNote,
-                  )}</p>`
-                : ""
-            }
-            <div style="padding-top:18px;border-top:1px solid ${theme.cardBorder}">
-              <p style="margin:0;font-size:12px;line-height:1.8;color:${theme.footerText}">${escapeRoleRoomEmailHtml(
-                footerText,
-              )}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+  const html = buildCreatorHubEmailLayout({
+    theme,
+    appName: settings.identity.appName,
+    tagline: settings.identity.tagline,
+    domain: settings.identity.domain,
+    categoryLabel,
+    title,
+    bodyHtml,
+    detailHtml: detailSection.html,
+    noticeHtml: noticeSection.html,
+    ctaLabel,
+    ctaUrl: normalizeMailConfigValue(input.ctaUrl),
+    footerNote,
+    footerText,
+    logo: emailLogoUrl && logoDimensions
+      ? { url: emailLogoUrl, ...logoDimensions }
+      : null,
+  });
 
   const textParts = [
     bodyText,
@@ -27715,6 +30098,13 @@ function resolveCreatorHubTemplateSenderKind(
 ): CreatorHubPlatformEmailSenderKind {
   switch (templateId) {
     case "creatorhub_account_activated":
+    case "creatorhub_access_request_received":
+    case "creatorhub_prototype_tester_invite":
+    case "creatorhub_prototype_tester_signing_code":
+    case "creatorhub_prototype_tester_signature_receipt":
+    case "creatorhub_access_request_approved":
+    case "creatorhub_access_request_rejected":
+    case "creatorhub_tester_access_activated":
       return "welcome";
     case "creatorhub_subscription_cancelled":
       return "system";
@@ -27753,6 +30143,408 @@ function resolveCreatorHubTemplateFromEmail(
         CREATORHUB_PLATFORM_DEFAULT_FROM_EMAIL
       );
   }
+}
+
+type CreatorHubAccessEmailTemplateId =
+  | "creatorhub_access_request_received"
+  | "creatorhub_prototype_tester_invite"
+  | "creatorhub_prototype_tester_signing_code"
+  | "creatorhub_prototype_tester_signature_receipt"
+  | "creatorhub_access_request_approved"
+  | "creatorhub_access_request_rejected"
+  | "creatorhub_tester_access_activated";
+
+type CreatorHubAccessEmailDelivery = {
+  sent: boolean;
+  provider: string | null;
+  reason: string | null;
+  messageId: string | null;
+};
+
+async function sendCreatorHubAccessLifecycleEmail(options: {
+  templateId: CreatorHubAccessEmailTemplateId;
+  recipientEmail: string;
+  variables: Record<string, string | number | null | undefined>;
+  ctaUrl?: string | null;
+  trackingPixelUrl?: string | null;
+  detailRows?: Array<{ label: string; value: string }>;
+  noticeSection?: {
+    label?: string;
+    body: string;
+    tone?: "neutral" | "danger";
+  } | null;
+  projectId?: string | null;
+  sentByUserId?: string | null;
+}): Promise<CreatorHubAccessEmailDelivery> {
+  const brandingSettings = await resolveCreatorHubPlatformBrandingSettings().catch(
+    () => null,
+  );
+  const rendered = await renderCreatorHubPlatformEmail({
+    templateId: options.templateId,
+    variables: options.variables,
+    ctaUrl: options.ctaUrl,
+    detailRows: options.detailRows,
+    noticeSection: options.noticeSection,
+  });
+  const trackingPixel = normalizeMailConfigValue(options.trackingPixelUrl)
+    ? `<img src="${escapeRoleRoomEmailHtml(
+        normalizeMailConfigValue(options.trackingPixelUrl),
+      )}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0" />`
+    : "";
+  const result = await sendTransactionalEmail({
+    to: options.recipientEmail,
+    subject: rendered.subject,
+    html: `${rendered.html}${trackingPixel}`,
+    text: rendered.text,
+    replyTo: rendered.replyToEmail,
+    fromLabel:
+      normalizeMailConfigValue(brandingSettings?.identity.appName) ||
+      "CreatorHub Norge",
+    fromAddress: resolveCreatorHubTemplateFromEmail(
+      options.templateId,
+      brandingSettings,
+    ),
+    credentialScope: "creatorhub",
+    kind: options.templateId,
+    projectId: options.projectId || null,
+    sentByUserId: options.sentByUserId || null,
+    pool,
+  });
+
+  return {
+    sent: result.sent,
+    provider: result.provider,
+    reason: result.reason,
+    messageId: result.messageId,
+  };
+}
+
+function formatCreatorHubAccessProfession(value: string | null | undefined) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return (
+    {
+      photographer: "Fotograf",
+      videographer: "Videograf",
+      music_producer: "Musikkprodusent",
+      vendor: "Leverandør",
+    }[normalized] || String(value || "CreatorHub-bruker")
+  );
+}
+
+async function sendCreatorHubAccessRequestReceivedEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  requestId: string;
+  companyName: string;
+  professionName: string;
+  source: string;
+}) {
+  return sendCreatorHubAccessLifecycleEmail({
+    templateId: "creatorhub_access_request_received",
+    recipientEmail: options.recipientEmail,
+    variables: {
+      recipientName: options.recipientName,
+      recipientEmail: options.recipientEmail,
+      companyName: options.companyName,
+      professionName: options.professionName,
+      responseTime: "1–3 virkedager",
+      source: options.source,
+    },
+    detailRows: [
+      { label: "Firma", value: options.companyName },
+      { label: "Rolle", value: options.professionName },
+      { label: "Status", value: "Til personlig vurdering" },
+      { label: "Forventet svar", value: "1–3 virkedager" },
+    ],
+    projectId: options.requestId,
+  });
+}
+
+async function sendCreatorHubAccessRequestRejectedEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  requestId: string;
+  companyName: string;
+  professionName: string;
+  sentByUserId: string;
+}) {
+  return sendCreatorHubAccessLifecycleEmail({
+    templateId: "creatorhub_access_request_rejected",
+    recipientEmail: options.recipientEmail,
+    variables: {
+      recipientName: options.recipientName,
+      recipientEmail: options.recipientEmail,
+      companyName: options.companyName,
+      professionName: options.professionName,
+    },
+    detailRows: [
+      { label: "Firma", value: options.companyName },
+      { label: "Rolle", value: options.professionName },
+      { label: "Status", value: "Ikke godkjent i denne opptaksrunden" },
+    ],
+    projectId: options.requestId,
+    sentByUserId: options.sentByUserId,
+  });
+}
+
+async function sendCreatorHubPrototypeTesterInviteEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  inviteUrl: string;
+  ctaUrl: string;
+  trackingPixelUrl: string;
+  inviteId: string;
+  sentByUserId: string | null;
+  profession: string | null;
+  company: string | null;
+  testingAreas: string[];
+  personalMessage: string | null;
+  programDurationWeeks: number;
+  inviteExpiresDays: number;
+}) {
+  const presentation = creatorHubPrototypeTesterInvitePresentation(
+    options,
+    options.ctaUrl,
+  );
+  return sendCreatorHubAccessLifecycleEmail({
+    templateId: "creatorhub_prototype_tester_invite",
+    recipientEmail: options.recipientEmail,
+    ...presentation,
+    trackingPixelUrl: options.trackingPixelUrl,
+    projectId: options.inviteId,
+    sentByUserId: options.sentByUserId,
+  });
+}
+
+function creatorHubPrototypeTesterInvitePresentation(options: {
+  recipientEmail: string;
+  recipientName: string;
+  inviteUrl: string;
+  profession: string | null;
+  company: string | null;
+  testingAreas: string[];
+  personalMessage: string | null;
+  programDurationWeeks: number;
+  inviteExpiresDays: number;
+}, ctaUrl = options.inviteUrl): {
+  variables: Record<string, string | number | null | undefined>;
+  ctaUrl: string;
+  detailRows: Array<{ label: string; value: string }>;
+  noticeSection: {
+    label: string;
+    body: string;
+    tone: "neutral";
+  } | null;
+} {
+  const professionName = formatCreatorHubAccessProfession(options.profession);
+  const testingAreas = options.testingAreas
+    .map((area) => String(area).trim())
+    .filter(Boolean)
+    .join(", ");
+  return {
+    variables: {
+      recipientName: options.recipientName,
+      recipientEmail: options.recipientEmail,
+      companyName: options.company,
+      professionName,
+      inviteUrl: options.inviteUrl,
+      programDurationWeeks: options.programDurationWeeks,
+      inviteExpiresDays: options.inviteExpiresDays,
+    },
+    ctaUrl,
+    detailRows: [
+      { label: "Rolle", value: professionName },
+      ...(options.company ? [{ label: "Firma", value: options.company }] : []),
+      ...(testingAreas ? [{ label: "Testområder", value: testingAreas }] : []),
+      { label: "Programlengde", value: `${options.programDurationWeeks} uker` },
+      { label: "Neste steg", value: "Les og signer fire dokumenter" },
+      { label: "Lenken utløper", value: `${options.inviteExpiresDays} dager` },
+    ],
+    noticeSection: options.personalMessage
+      ? {
+          label: "Personlig hilsen fra CreatorHub",
+          body: options.personalMessage,
+          tone: "neutral",
+        }
+      : null,
+  };
+}
+
+async function previewCreatorHubPrototypeTesterInviteEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  inviteUrl: string;
+  profession: string | null;
+  company: string | null;
+  testingAreas: string[];
+  personalMessage: string | null;
+  programDurationWeeks: number;
+  inviteExpiresDays: number;
+}) {
+  const brandingSettings = await resolveCreatorHubPlatformBrandingSettings();
+  const rendered = await renderCreatorHubPlatformEmail({
+    templateId: "creatorhub_prototype_tester_invite",
+    ...creatorHubPrototypeTesterInvitePresentation(options),
+  });
+  return {
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    fromLabel: brandingSettings.identity.appName,
+    fromAddress: resolveCreatorHubTemplateFromEmail(
+      "creatorhub_prototype_tester_invite",
+      brandingSettings,
+    ),
+    replyToEmail: rendered.replyToEmail,
+  };
+}
+
+async function sendCreatorHubPrototypeTesterApprovalEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  inviteUrl: string;
+  ctaUrl: string;
+  trackingPixelUrl: string;
+  inviteRequestId: string;
+  sentByUserId: string | null;
+  profession: string | null;
+  company: string | null;
+  programDurationWeeks: number;
+  inviteExpiresDays: number;
+}) {
+  const professionName = formatCreatorHubAccessProfession(options.profession);
+  return sendCreatorHubAccessLifecycleEmail({
+    templateId: "creatorhub_access_request_approved",
+    recipientEmail: options.recipientEmail,
+    variables: {
+      recipientName: options.recipientName,
+      recipientEmail: options.recipientEmail,
+      companyName: options.company,
+      professionName,
+      inviteUrl: options.inviteUrl,
+      programDurationWeeks: options.programDurationWeeks,
+      inviteExpiresDays: options.inviteExpiresDays,
+    },
+    ctaUrl: options.ctaUrl,
+    trackingPixelUrl: options.trackingPixelUrl,
+    detailRows: [
+      { label: "Rolle", value: professionName },
+      { label: "Programlengde", value: `${options.programDurationWeeks} uker` },
+      { label: "Neste steg", value: "Les og signer fire dokumenter" },
+      { label: "Lenken utløper", value: `${options.inviteExpiresDays} dager` },
+    ],
+    projectId: options.inviteRequestId,
+    sentByUserId: options.sentByUserId,
+  });
+}
+
+function formatCreatorHubProgramEndDate(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "datoen oppgitt i CreatorHub";
+  return new Intl.DateTimeFormat("nb-NO", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Europe/Oslo",
+  }).format(date);
+}
+
+async function sendCreatorHubTesterAccessActivatedEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  loginUrl: string;
+  inviteRequestId: string | null;
+  inviteId: string;
+  profession: string | null;
+  company: string | null;
+  programEndsAt: Date | string;
+}) {
+  const professionName = formatCreatorHubAccessProfession(options.profession);
+  const programEndsAt = formatCreatorHubProgramEndDate(options.programEndsAt);
+  return sendCreatorHubAccessLifecycleEmail({
+    templateId: "creatorhub_tester_access_activated",
+    recipientEmail: options.recipientEmail,
+    variables: {
+      recipientName: options.recipientName,
+      recipientEmail: options.recipientEmail,
+      professionName,
+      companyName: options.company,
+      programEndsAt,
+    },
+    ctaUrl: options.loginUrl,
+    detailRows: [
+      { label: "Status", value: "Tilgang aktiv" },
+      { label: "Avtaler", value: "Programvilkår, NDA, DPA og intensjonsavtale" },
+      { label: "Rolle", value: professionName },
+      { label: "Innlogging", value: options.recipientEmail },
+      { label: "Testperiode til", value: programEndsAt },
+    ],
+    projectId: options.inviteRequestId || options.inviteId,
+  });
+}
+
+async function sendCreatorHubPrototypeTesterSigningCodeEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  signingCode: string;
+  codeExpiresMinutes: number;
+  inviteId: string;
+}) {
+  return sendCreatorHubAccessLifecycleEmail({
+    templateId: "creatorhub_prototype_tester_signing_code",
+    recipientEmail: options.recipientEmail,
+    variables: {
+      recipientName: options.recipientName,
+      recipientEmail: options.recipientEmail,
+      signingCode: options.signingCode,
+      codeExpiresMinutes: options.codeExpiresMinutes,
+    },
+    detailRows: [
+      { label: "Formål", value: "Signering av fire prototype-testeravtaler" },
+      { label: "Gyldighet", value: `${options.codeExpiresMinutes} minutter` },
+      { label: "Sikkerhet", value: "Engangskode" },
+    ],
+    projectId: options.inviteId,
+  });
+}
+
+async function sendCreatorHubPrototypeTesterReceiptEmail(options: {
+  recipientEmail: string;
+  recipientName: string;
+  agreementsUrl: string;
+  receiptId: string;
+  agreementDigest: string;
+  acceptedAt: Date | string;
+  programEndsAt: Date | string;
+  inviteId: string;
+  company: string | null;
+}) {
+  const signedAt = new Intl.DateTimeFormat("nb-NO", {
+    dateStyle: "long",
+    timeStyle: "short",
+    timeZone: "Europe/Oslo",
+  }).format(new Date(options.acceptedAt));
+  return sendCreatorHubAccessLifecycleEmail({
+    templateId: "creatorhub_prototype_tester_signature_receipt",
+    recipientEmail: options.recipientEmail,
+    variables: {
+      recipientName: options.recipientName,
+      recipientEmail: options.recipientEmail,
+      companyName: options.company,
+      receiptId: options.receiptId,
+      agreementDigest: options.agreementDigest,
+      signedAt,
+      programEndsAt: formatCreatorHubProgramEndDate(options.programEndsAt),
+    },
+    ctaUrl: options.agreementsUrl,
+    detailRows: [
+      { label: "Signert av", value: options.recipientName },
+      { label: "Signert", value: signedAt },
+      { label: "Metode", value: "E-postkode og skrevet navn" },
+      { label: "Kvitterings-ID", value: options.receiptId },
+    ],
+    projectId: options.inviteId,
+  });
 }
 
 function escapeHtml(value: string): string {
@@ -28824,42 +31616,29 @@ type RoleRoomCommercialResolvedAccount = {
   nextPaymentAttemptAt: string | null;
 };
 
-function readRoleRoomCommercialRequestIdentity(
+async function readRoleRoomCommercialRequestIdentity(
   req: express.Request,
-): RoleRoomCommercialRequestIdentity {
-  const session = getActiveSessionFromRequest(req);
-  const readHeaderValue = (headerName: string) => {
-    const raw = req.headers[headerName.toLowerCase()];
-    const value = Array.isArray(raw) ? raw[0] : raw;
-    return typeof value === "string" && value.trim().length > 0
-      ? value.trim()
-      : null;
-  };
-
+): Promise<RoleRoomCommercialRequestIdentity> {
+  // SECURITY (IDOR/broken-auth-fiks): identiteten som binder en kaller til en
+  // fakturakonto utledes KUN fra den autentiserte sesjonen (Bearer →
+  // activeSessions / persistert sesjon). Tidligere falt vi tilbake på klient-
+  // satte headere (x-role-room-user-id / x-user-id / x-role-room-email / -role /
+  // -login-as / -requested-role) som en angriper fritt kan spoofe. Å sende
+  // `x-role-room-email: <offer-teamleder>` lot enhver uinnlogget kaller lese en
+  // annen kundes fakturakonto (Stripe-kunde/-abonnement, org.nr, teammedlemmer)
+  // via GET /billing/account, og — fordi teamleder-sjekken sammenligner mot
+  // nettopp denne e-posten — åpne offerets Stripe-portal via POST /billing/manage
+  // og tvinge nye betalingsforsøk via /billing/retry-payment. Innlogging alene er
+  // nå påkrevd; ingen header kan overstyre eller forfalske identiteten.
+  const session = await resolveActiveSessionFromRequest(req);
   const sessionEmail = normalizeMailConfigValue(session?.email).toLowerCase();
 
   return {
-    userId:
-      normalizeMailConfigValue(session?.userId) ||
-      readHeaderValue("x-role-room-user-id") ||
-      readHeaderValue("x-user-id") ||
-      null,
-    email:
-      sessionEmail ||
-      normalizeMailConfigValue(readHeaderValue("x-role-room-email")).toLowerCase() ||
-      null,
-    role:
-      normalizeMailConfigValue(session?.role) ||
-      readHeaderValue("x-role-room-role") ||
-      null,
-    loginAs:
-      normalizeMailConfigValue(session?.loginAs) ||
-      readHeaderValue("x-role-room-login-as") ||
-      null,
-    requestedRole:
-      normalizeMailConfigValue(session?.requestedRole) ||
-      readHeaderValue("x-role-room-requested-role") ||
-      null,
+    userId: normalizeMailConfigValue(session?.userId) || null,
+    email: sessionEmail || null,
+    role: normalizeMailConfigValue(session?.role) || null,
+    loginAs: normalizeMailConfigValue(session?.loginAs) || null,
+    requestedRole: normalizeMailConfigValue(session?.requestedRole) || null,
   };
 }
 
@@ -29014,7 +31793,7 @@ const resolveStripeCustomerForCastingProject: ProjectCustomerResolver = async (
 async function resolveRoleRoomCommercialAccountForRequest(
   req: express.Request,
 ): Promise<RoleRoomCommercialResolvedAccount | null> {
-  const identity = readRoleRoomCommercialRequestIdentity(req);
+  const identity = await readRoleRoomCommercialRequestIdentity(req);
   if (!identity.userId && !identity.email) {
     return null;
   }
@@ -29712,6 +32491,7 @@ setupRoleRoomEducationInquiriesRoutes({
 //   over slik at casting DELETE-handler kan rydde live-set state).
 setupRoleRoomProjectsRoutes({
   app,
+  pool,
   requireUserSession,
   compatStoreGet,
   legacyOffersByProject,
@@ -29759,7 +32539,7 @@ setupRoleRoomBillingHealthRoutes({
 setupRoleRoomAuditionsRoutes({
   app,
   pool,
-  requireAdminSession,
+  requireUserSession,
 });
 
 // ── CMS-sider for SEO-landingssider (migrasjon 141) ────────────
@@ -29891,10 +32671,12 @@ setupCastingAgreementsRoutes({
 setupCastingManuscriptsRoutes({
   app,
   requireUserSession,
+  compatStoreGet,
   manuscriptsService,
   revisionsService: manuscriptRevisionsService,
+  pool,
 });
-setupRoleRoomCallSheetRoutes({ app, requireUserSession });
+setupRoleRoomCallSheetRoutes({ app, pool, requireUserSession });
 
 // ── AI Suggestion System — substrate-routes for forslag generert av
 //   registrerte agenter. 4 endpoints: list / generate / accept / reject.
@@ -29911,6 +32693,7 @@ setupAISuggestionRoutes({
 //   for sub-cluster-rydding.
 setupCastingProjectsRoutes({
   app,
+  pool,
   requireUserSession,
   compatStoreGet,
   compatStoreSet,
@@ -30158,7 +32941,12 @@ function isDemoBypassed(req: express.Request): boolean {
     (typeof req.headers["x-demo-token"] === "string"
       ? (req.headers["x-demo-token"] as string).trim()
       : "");
-  return provided === expected;
+  // Konstant-tid sammenligning av bypass-hemmeligheten — matcher timingSafeEqual-
+  // mønsteret i WhatsApp webhook verify-token og cron-token-gatene. Lengde-sjekk
+  // først fordi timingSafeEqual krever like lange buffere (og for å unngå at et
+  // tomt/kort forsøk kaster). Uten dette lekker `===` prefiks/lengde via timing.
+  if (provided.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
 }
 
 function requireAdminOrDemoBypass(
@@ -31196,7 +33984,13 @@ type InviteRequestProffRiskIndicator = {
     | "debt_collection"
     | "forced_liquidation"
     | "bankruptcy_history"
-    | "tax_debt";
+    | "tax_debt"
+    | "new_registration"
+    | "missing_website"
+    | "missing_industry"
+    | "negative_equity"
+    | "low_equity_ratio"
+    | "operating_loss";
   severity: InviteRequestScreeningRiskLevel;
   description: string;
   date?: string;
@@ -31222,6 +34016,20 @@ type InviteRequestProffCompanyData = {
     profit?: number;
     year?: number;
   };
+  financials?: {
+    year: number;
+    revenue: number | null;
+    operatingResult: number | null;
+    netResult: number | null;
+    equity: number | null;
+    totalAssets: number | null;
+    equityRatio: number | null;
+    operatingMargin: number | null;
+    currency: string;
+  } | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string;
   keyPersons: Array<{
     name: string;
     role: string;
@@ -31255,6 +34063,8 @@ type InviteRequestBrregCompanySnapshot = {
   employees: number;
   website: string;
   operationalStatus: "active" | "inactive" | "bankruptcy" | "liquidation";
+  latitude?: number | null;
+  longitude?: number | null;
   source: "brreg_api" | "fallback";
 };
 
@@ -31440,6 +34250,127 @@ async function lookupInviteRequestBrregCompany(
   }
 }
 
+/** Hent siste årsregnskap fra Regnskapsregisteret (gratis, åpent API). */
+async function fetchInviteRequestFinancials(
+  orgNr: string,
+): Promise<{
+  year: number;
+  revenue: number | null;
+  operatingResult: number | null;
+  netResult: number | null;
+  equity: number | null;
+  totalAssets: number | null;
+  equityRatio: number | null;
+  operatingMargin: number | null;
+  currency: string;
+} | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    let r: Response;
+    try {
+      r = await fetch(
+        `https://data.brreg.no/regnskapsregisteret/regnskap/${orgNr}`,
+        {
+          headers: { Accept: "application/json", "User-Agent": "CreatorHub/1.0" },
+          signal: controller.signal,
+        },
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!r.ok) return null;
+    const body = (await r.json()) as Array<{
+      regnskapsperiode?: { tilDato?: string };
+      valuta?: string;
+      resultatregnskapResultat?: {
+        aarsresultat?: number;
+        driftsresultat?: {
+          driftsresultat?: number;
+          driftsinntekter?: { sumDriftsinntekter?: number };
+        };
+      };
+      egenkapitalGjeld?: {
+        egenkapital?: { sumEgenkapital?: number };
+        sumEgenkapitalGjeld?: number;
+      };
+    }>;
+    if (!Array.isArray(body) || body.length === 0) return null;
+    // Sorter etter periode Sluttdato synkende for å sikre nyeste først
+    const sorted = [...body].sort((a, b) =>
+      (b.regnskapsperiode?.tilDato ?? "").localeCompare(
+        a.regnskapsperiode?.tilDato ?? "",
+      ),
+    );
+    const entry = sorted[0];
+    const til = entry.regnskapsperiode?.tilDato;
+    const year = til ? Number(til.slice(0, 4)) : NaN;
+    if (!Number.isFinite(year)) return null;
+    const rr = entry.resultatregnskapResultat;
+    const revenue =
+      rr?.driftsresultat?.driftsinntekter?.sumDriftsinntekter ?? null;
+    const operatingResult = rr?.driftsresultat?.driftsresultat ?? null;
+    const netResult = rr?.aarsresultat ?? null;
+    const equity =
+      entry.egenkapitalGjeld?.egenkapital?.sumEgenkapital ?? null;
+    // sumEgenkapitalGjeld = egenkapital + gjeld = totalkapital (balance identity)
+    const totalAssets = entry.egenkapitalGjeld?.sumEgenkapitalGjeld ?? null;
+    return {
+      year,
+      revenue,
+      operatingResult,
+      netResult,
+      equity,
+      totalAssets,
+      equityRatio:
+        equity !== null && totalAssets !== null && totalAssets > 0
+          ? Math.round((equity / totalAssets) * 1000) / 1000
+          : null,
+      operatingMargin:
+        operatingResult !== null && revenue !== null && revenue > 0
+          ? Math.round((operatingResult / revenue) * 1000) / 1000
+          : null,
+      currency: entry.valuta ?? "NOK",
+    };
+  } catch (err) {
+    console.warn(`[invite-screening] Regnskapsregisteret lookup failed for ${orgNr}:`, err);
+    return null;
+  }
+}
+
+/** Geokod en norsk adresse via Kartverket/Geonorge (gratis, åpent API). */
+async function geocodeInviteRequestAddress(
+  addressText: string,
+): Promise<{ latitude: number; longitude: number } | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    let res: Response;
+    try {
+      const url = `https://ws.geonorge.no/adresser/v1/sok?sok=${encodeURIComponent(addressText)}&fuzzy=true&treffPerSide=1`;
+      res = await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!res.ok) return null;
+    const payload = (await res.json()) as {
+      adresser?: Array<{
+        representasjonspunkt?: { lat?: number; lon?: number };
+      }>;
+    };
+    const hit = payload.adresser?.[0]?.representasjonspunkt;
+    if (typeof hit?.lat !== "number" || typeof hit?.lon !== "number")
+      return null;
+    return { latitude: hit.lat, longitude: hit.lon };
+  } catch (err) {
+    console.warn(`[invite-screening] Geocoding failed for "${addressText}":`, err);
+    return null;
+  }
+}
+
 function buildInviteRequestRiskIndicator(
   type: InviteRequestProffRiskIndicator["type"],
   severity: InviteRequestProffRiskIndicator["severity"],
@@ -31454,11 +34385,11 @@ function buildInviteRequestRiskIndicator(
   };
 }
 
-function buildInviteRequestProffAnalysis(input: {
+async function buildInviteRequestProffAnalysis(input: {
   organizationNumber: string;
   companyName: string;
   brregLookup: InviteRequestBrregLookupResult;
-}): InviteRequestProffAnalysis {
+}): Promise<InviteRequestProffAnalysis> {
   const nowIso = new Date().toISOString();
   const company =
     input.brregLookup.company ||
@@ -31509,34 +34440,88 @@ function buildInviteRequestProffAnalysis(input: {
   ) {
     riskIndicators.push(
       buildInviteRequestRiskIndicator(
-        "tax_debt",
+        "new_registration",
         "medium",
         "Foretaket er nylig registrert og bør vurderes manuelt.",
         registrationDate.toISOString(),
       ),
     );
-    adminFlags.taxDebt = true;
   }
 
-  if (!company.website) {
+  // Ikke flagg manglende nettside/bransje for fallback-selskaper (disse har alltid tomme felt)
+  if (!company.website && input.brregLookup.lookupStatus === "verified") {
     riskIndicators.push(
       buildInviteRequestRiskIndicator(
-        "payment_default",
+        "missing_website",
         "low",
         "Ingen nettside er registrert på foretaket.",
       ),
     );
   }
 
-  if (!company.industry) {
+  if (!company.industry && input.brregLookup.lookupStatus === "verified") {
     riskIndicators.push(
       buildInviteRequestRiskIndicator(
-        "debt_collection",
-        "medium",
+        "missing_industry",
+        "low",
         "Næringskode mangler i registrene og bør gjennomgås.",
       ),
     );
-    adminFlags.debtCollection = true;
+  }
+
+  // Hent regnskapstall og geokoding i parallell
+  const addressText = [
+    company.businessAddress.adresse,
+    company.businessAddress.postnummer,
+    company.businessAddress.poststed,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  // Hopp over geokoding for fallback-adresser ("Ukjent adresse") og tomme adresser
+  const isRealAddress =
+    addressText &&
+    !addressText.startsWith("Ukjent") &&
+    input.brregLookup.lookupStatus === "verified";
+
+  const [financials, geo] = await Promise.all([
+    fetchInviteRequestFinancials(input.organizationNumber),
+    isRealAddress ? geocodeInviteRequestAddress(addressText) : null,
+  ]);
+
+  // Legg til økonomiske risikoindikatorer basert på regnskapstall
+  if (financials) {
+    if (financials.equity !== null && financials.equity < 0) {
+      riskIndicators.push(
+        buildInviteRequestRiskIndicator(
+          "negative_equity",
+          "high",
+          `Negativ egenkapital (${(financials.equity / 1000).toFixed(0)} kNOK) i ${financials.year}.`,
+        ),
+      );
+      adminFlags.highRisk = true;
+    } else if (
+      financials.equityRatio !== null &&
+      financials.equityRatio < 0.1
+    ) {
+      riskIndicators.push(
+        buildInviteRequestRiskIndicator(
+          "low_equity_ratio",
+          "medium",
+          `Lav soliditet (${(financials.equityRatio * 100).toFixed(0)}%) i ${financials.year}.`,
+        ),
+      );
+    }
+
+    if (financials.operatingMargin !== null && financials.operatingMargin < -0.3) {
+      riskIndicators.push(
+        buildInviteRequestRiskIndicator(
+          "operating_loss",
+          "medium",
+          `Stort driftsunderskudd (${(financials.operatingMargin * 100).toFixed(0)}% margin) i ${financials.year}.`,
+        ),
+      );
+    }
   }
 
   const severityScore: Record<
@@ -31569,24 +34554,64 @@ function buildInviteRequestProffAnalysis(input: {
       : riskScore >= 20
         ? "review"
         : "approve";
-  const summary =
-    approvalRecommendation === "approve"
-      ? "Org.nr er validert og screeningen viser ingen røde flagg."
-      : approvalRecommendation === "review"
-        ? "Org.nr er validert, men screeningen anbefaler manuell vurdering før godkjenning."
-        : "Screeningen fant alvorlige forhold. Forespørselen bør som hovedregel avvises.";
+
+  // Beregn ekte kredittkarakter basert på regnskapstall
+  let creditRating: string;
+  if (approvalRecommendation === "reject") {
+    creditRating = "C";
+  } else if (financials) {
+    // Terskel for "akseptabelt" underskudd er relativt til omsetning
+    const revenueAbs = Math.abs(financials.revenue ?? 0);
+    const netResult = financials.netResult ?? 0;
+    const acceptableLoss = revenueAbs > 0 ? revenueAbs * 0.05 : 500000;
+    if (
+      (financials.equityRatio ?? 0) >= 0.4 &&
+      (financials.operatingMargin ?? 0) >= 0.1 &&
+      netResult > 0
+    ) {
+      creditRating = "AAA";
+    } else if (
+      (financials.equityRatio ?? 0) >= 0.25 &&
+      netResult >= 0
+    ) {
+      creditRating = "AA";
+    } else if (
+      (financials.equity ?? 0) > 0 &&
+      netResult >= -acceptableLoss
+    ) {
+      creditRating = "A";
+    } else {
+      creditRating = "BB";
+    }
+  } else {
+    creditRating = approvalRecommendation === "review" ? "A" : "AA";
+  }
+
+  const summaryParts: string[] = [];
+  if (approvalRecommendation === "approve") {
+    summaryParts.push("Org.nr er validert og screeningen viser ingen røde flagg.");
+  } else if (approvalRecommendation === "review") {
+    summaryParts.push("Org.nr er validert, men screeningen anbefaler manuell vurdering før godkjenning.");
+  } else {
+    summaryParts.push("Screeningen fant alvorlige forhold. Forespørselen bør som hovedregel avvises.");
+  }
+  if (financials) {
+    summaryParts.push(
+      `Regnskapstall fra ${financials.year}: omsetning ${(financials.revenue ?? 0).toLocaleString("nb-NO")} kr, ` +
+      `egenkapital ${(financials.equity ?? 0).toLocaleString("nb-NO")} kr.`,
+    );
+  }
 
   return {
     organizationNumber: input.organizationNumber,
     companyName: company.name || input.companyName,
     status: company.operationalStatus,
     employees: company.employees || undefined,
-    creditRating:
-      approvalRecommendation === "reject"
-        ? "C"
-        : approvalRecommendation === "review"
-          ? "A"
-          : "AAA",
+    creditRating,
+    financials,
+    latitude: geo?.latitude ?? null,
+    longitude: geo?.longitude ?? null,
+    address: addressText || undefined,
     riskIndicators,
     keyPersons: [],
     businessSegments: company.industry ? [company.industry] : [],
@@ -31617,7 +34642,7 @@ function buildInviteRequestProffAnalysis(input: {
         : "fallback",
     riskLevel,
     riskScore,
-    summary,
+    summary: summaryParts.join(" "),
     brregVerified: input.brregLookup.lookupStatus === "verified",
     approvalRecommendation,
     adminFlags,
@@ -31716,7 +34741,7 @@ async function ensureInviteRequestAccessProvisioning(
       [userId, subscriptionPlanId],
     );
 
-    if (existingSubscription.rowCount === 0) {
+    if (!existingSubscription.rows.length) {
       await pool.query(
         `INSERT INTO user_subscriptions
           (user_id, plan_id, status, started_at, auto_renew)
@@ -41475,6 +44500,10 @@ async function ensureAcademyCohortSettingsTable(): Promise<void> {
 // fra "DB nede" (503 retryable vs 200 []).
 app.get("/api/prototype-tester-requests", async (req, res) => {
   try {
+    // Staff-only: denne lista er applikanters PII (navn/e-post/firma/enhet).
+    // Manglet auth tidligere → hvem som helst kunne dumpe alle søknader.
+    const admin = requireAdminSession(req, res);
+    if (!admin) return;
     const tableCheck = await pool.query(
       `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'prototype_tester_requests')`,
     );
@@ -41491,7 +44520,25 @@ app.get("/api/prototype-tester-requests", async (req, res) => {
         email: r.email,
         company: r.company || "",
         profession: r.profession || "",
-        testingAreas: r.testing_areas || [],
+        // testing_areas kan være array (jsonb), JSON-streng, komma-streng eller
+        // (ved skadet data) et objekt — normaliser ALLTID til string[] så
+        // frontend ikke krasjer på .slice/.map.
+        testingAreas: ((v: any): string[] => {
+          if (Array.isArray(v)) return v.filter((s: unknown): s is string => typeof s === "string");
+          if (typeof v === "string") {
+            const t = v.trim();
+            if (!t) return [];
+            try {
+              const p = JSON.parse(t);
+              if (Array.isArray(p)) return p.filter((s: unknown): s is string => typeof s === "string");
+            } catch { /* ikke JSON */ }
+            return t.split(",").map((s) => s.trim()).filter(Boolean);
+          }
+          if (v && typeof v === "object") {
+            return Object.values(v).filter((s: unknown): s is string => typeof s === "string");
+          }
+          return [];
+        })(r.testing_areas),
         experience: r.experience || "",
         feedback: r.feedback || "",
         availableTime: r.available_time || "",
@@ -41511,6 +44558,10 @@ app.get("/api/prototype-tester-requests", async (req, res) => {
 
 app.post("/api/prototype-tester-requests/:id/process", async (req, res) => {
   try {
+    // Staff-only: prosessering (godkjenn/avslå) er en admin-handling.
+    // Manglet auth → hvem som helst kunne endre status på vilkårlig søknad.
+    const admin = requireAdminSession(req, res);
+    if (!admin) return;
     const { id } = req.params;
     const { status, notes } = req.body;
     const tableCheck = await pool.query(
@@ -41522,8 +44573,8 @@ app.post("/api/prototype-tester-requests/:id/process", async (req, res) => {
         .json({ error: "not_found", message: "Prototype tester requests table not found", retryable: false });
     }
     const result = await pool.query(
-      `UPDATE prototype_tester_requests SET status = $1, admin_notes = $2, processed_at = NOW(), updated_at = NOW() WHERE id = $3 RETURNING *`,
-      [status, notes || null, id],
+      `UPDATE prototype_tester_requests SET status = $1, admin_notes = $2, processed_by = $3, processed_at = NOW(), updated_at = NOW() WHERE id = $4 RETURNING *`,
+      [status, notes || null, admin.email || admin.userId, id],
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "not_found", message: "Request not found", retryable: false });
@@ -41548,6 +44599,11 @@ app.post("/api/prototype-tester-requests/:id/process", async (req, res) => {
 // Business lifecycle profile by email
 app.get("/api/business-lifecycle/profile-by-email/:email", async (req, res) => {
   try {
+    // Staff-only: slår opp en vilkårlig e-post og returnerer sammenslått PII
+    // (firmanavn/orgnr/adresse/telefon m.m.). Kun admin-invite-konsollen kaller
+    // dette. Manglet auth → åpen e-post→PII-oppslag for hvem som helst.
+    const admin = requireAdminSession(req, res);
+    if (!admin) return;
     const { email } = req.params;
     // Aggregate profile from invite_requests + vendors + creatorhub_users
     const invite = (await hasTable("invite_requests"))
@@ -41582,6 +44638,67 @@ app.get("/api/business-lifecycle/profile-by-email/:email", async (req, res) => {
     res.status(500).json({ error: "Could not fetch business profile" });
   }
 });
+
+// ============================================================
+// GDPR: last ned mine data (self-scopet). To web-knapper (BusinessInfo-
+// Settings + wcag-util/ResumeBuilder) kalte tidligere endepunkter som
+// IKKE eksisterte -> 404 (QA 2026-07-06). Ett ekte, session-scopet
+// endepunkt + alias for begge stiene. Bruker session.userId - path-
+// param ignoreres, sa en bruker kan aldri eksportere en ANNENS data.
+// ============================================================
+const handleUserDataExport = async (
+  req: express.Request,
+  res: express.Response,
+) => {
+  const session = await resolveActiveSessionFromRequest(req);
+  if (!session?.userId) {
+    return res.status(401).json({ error: "Innlogging kreves" });
+  }
+  try {
+    const email = session.email ?? "";
+    const [userRow, businessProfile, vendor] = await Promise.all([
+      pool.query(
+        `SELECT id, email, name, first_name, role, created_at
+           FROM users WHERE id = $1`,
+        [session.userId],
+      ),
+      (await hasTable("invite_requests")) && email
+        ? pool.query(
+            `SELECT company_name, organization_number, business_address,
+                    profession, website, phone_number, status, created_at
+               FROM invite_requests WHERE email = $1
+               ORDER BY created_at DESC LIMIT 1`,
+            [email],
+          )
+        : Promise.resolve({ rows: [] as Array<Record<string, unknown>> }),
+      email ? getVendorByEmail(email).catch(() => null) : Promise.resolve(null),
+    ]);
+    const payload = {
+      exported_at: new Date().toISOString(),
+      description:
+        "Dine personlige data (GDPR art. 20 dataportabilitet). Self-scopet til innlogget bruker.",
+      account: userRow.rows[0] ?? null,
+      business_profile: businessProfile.rows[0] ?? null,
+      vendor_profile: vendor
+        ? {
+            business_name: (vendor as any).business_name,
+            category: (vendor as any).category,
+            location: (vendor as any).location,
+            website: (vendor as any).website,
+            status: (vendor as any).status,
+            created_at: (vendor as any).created_at,
+          }
+        : null,
+    };
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    return res.json({ data: payload });
+  } catch (e) {
+    console.error("[gdpr] user data-export failed", e);
+    return res.status(500).json({ error: "Kunne ikke eksportere data" });
+  }
+};
+app.get("/api/users/:id/export-data", handleUserDataExport);
+app.get("/api/business-lifecycle/export-data/:id", handleUserDataExport);
 
 // ============================================================
 // CLIENT SUBMISSIONS API → flyttet til ./submissions-routes.ts
@@ -41714,7 +44831,7 @@ const adminUsernameFromEmail = (email: string): string => {
 function normalizeAdminRoleId(value: unknown): string {
   const raw = toAdminString(value)?.toLowerCase().replace(/\s+/g, "_") || "";
   if (!raw) return "user";
-  return adminRoleCatalogById.has(raw) ? raw : raw;
+  return adminRoleCatalogById.has(raw) ? raw : "user";
 }
 
 const inferAdminRoleFromProfession = (profession: unknown): string => {
@@ -41735,7 +44852,9 @@ const normalizeAdminProfession = (
   profession: unknown,
   roleId?: string | null,
 ): string | null => {
-  const directProfession = toAdminString(profession)?.toLowerCase() || null;
+  // Kanoniser via delt normalizeProfession (frontend/shared/profession-types):
+  // 'MusicProducer'/'musicproducer' → 'music_producer', 'Fotograf' → 'photographer' osv.
+  const directProfession = normalizeCanonicalProfession(toAdminString(profession)) || null;
   if (directProfession) return directProfession;
   if (roleId === "vendor") return "vendor";
   if (roleId === "enterprise_admin") return "enterprise";
@@ -42607,10 +45726,26 @@ async function buildSessionUserFromActiveSession(session: ActiveSessionData) {
         accountUser.role || inferAdminRoleFromProfession(accountUser.profession),
       )
     : "user";
+  // The users table is the source of truth for ADMIN privilege. If the DB says
+  // this account is admin/super_admin but the session lost it (e.g. a Google
+  // login that demoted the role to 'couple' because the same person also owns a
+  // couple/vendor profile), trust the DB — otherwise an admin is locked out by
+  // a marketplace-shadowed or stale session role. Never elevates a non-admin:
+  // accountRoleId comes straight from the DB row.
+  const accountIsAdminRole = ADMIN_SESSION_ROLES.has(accountRoleId);
+  const sessionIsAdminRole = ADMIN_SESSION_ROLES.has(sessionRoleId);
   const roleId =
-    sessionRoleId === "user" && accountRoleId !== "user"
-      ? accountRoleId
-      : sessionRoleId || accountRoleId;
+    // DB-rollen 'super_admin' er høyeste tier og skal aldri skygges av en
+    // sesjon som bare sier 'admin' (sesjoner minter rollen ved login og
+    // blir stående etter en DB-oppgradering). Uten denne så iPad-appens
+    // isSuperAdmin aldri super_admin → SuperAdmin-konsollen forble skjult.
+    accountRoleId === "super_admin" && sessionIsAdminRole
+      ? "super_admin"
+      : accountIsAdminRole && !sessionIsAdminRole
+        ? accountRoleId
+        : sessionRoleId === "user" && accountRoleId !== "user"
+          ? accountRoleId
+          : sessionRoleId || accountRoleId;
   const roleEntry = buildAdminRoleEntry(roleId);
   const permissions = (() => {
     const normalized = normalizeSessionPermissions(session.permissions);
@@ -43067,6 +46202,12 @@ const ADMIN_STATS_PROFESSION_KEYS = [
   "videographer",
   "musicproducer",
   "vendor",
+  "user",
+  "education",
+  "enterprise",
+  "prototype_tester",
+  "couple",
+  "other",
 ] as const;
 
 type AdminStatsProfessionKey = (typeof ADMIN_STATS_PROFESSION_KEYS)[number];
@@ -43144,6 +46285,12 @@ function initializeAdminStatsProfessionBreakdown(): AdminStatsProfessionBreakdow
     videographer: 0,
     musicproducer: 0,
     vendor: 0,
+    user: 0,
+    education: 0,
+    enterprise: 0,
+    prototype_tester: 0,
+    couple: 0,
+    other: 0,
   };
 }
 
@@ -43156,6 +46303,12 @@ function initializeAdminStatsProfessionMetrics(): Record<
     videographer: { activeProjects: 0, totalRevenue: 0, avgRating: null },
     musicproducer: { activeProjects: 0, totalRevenue: 0, avgRating: null },
     vendor: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    user: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    education: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    enterprise: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    prototype_tester: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    couple: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    other: { activeProjects: 0, totalRevenue: 0, avgRating: null },
   };
 }
 
@@ -43182,11 +46335,31 @@ function normalizeAdminStatsProfession(
   if (
     normalized === "vendor" ||
     normalized === "leverandor" ||
-    normalized === "leverandør"
+    normalized === "leverandør" ||
+    normalized === "editingvendor"
   ) {
     return "vendor";
   }
-  return null;
+  if (normalized === "user" || normalized === "member") {
+    return "user";
+  }
+  if (
+    normalized === "education" ||
+    normalized === "educationinstitution" ||
+    normalized === "faglaerer"
+  ) {
+    return "education";
+  }
+  if (normalized === "enterprise" || normalized === "bedrift") {
+    return "enterprise";
+  }
+  if (normalized === "prototypetester") {
+    return "prototype_tester";
+  }
+  if (normalized === "couple" || normalized === "par") {
+    return "couple";
+  }
+  return "other";
 }
 
 function roundAdminMetric(value: number, decimals = 1): number {
@@ -43200,7 +46373,8 @@ function safeAdminCurrency(value: unknown): number {
 }
 
 function escapeAdminCsv(value: unknown): string {
-  const text = String(value ?? "");
+  const raw = String(value ?? "");
+  const text = /^[=+\-@|\t\r]/.test(raw) ? `'${raw}` : raw;
   return `"${text.replace(/"/g, '""')}"`;
 }
 
@@ -43554,10 +46728,11 @@ async function getAdminSubscriptionSnapshot(): Promise<{
   if (await hasTable("user_subscriptions")) {
     const subscriptionRows = await queryExistingTableRows(
       "user_subscriptions",
-      `SELECT plan_id, COUNT(*)::int AS count
-         FROM user_subscriptions
-        WHERE LOWER(COALESCE(status, 'active')) = 'active'
-        GROUP BY plan_id
+      `SELECT s.plan_id, COUNT(*)::int AS count
+         FROM user_subscriptions s
+         JOIN users u ON u.id = s.user_id
+        WHERE LOWER(COALESCE(s.status, 'active')) = 'active'
+        GROUP BY s.plan_id
         ORDER BY count DESC, plan_id ASC`,
     );
 
@@ -44666,12 +47841,40 @@ app.post("/api/enterprise/team/:organizationId/invite", async (req, res) => {
   const { organizationId } = req.params;
   const { email, role } = req.body;
   try {
+    // Krev innlogging + at kalleren er admin/eier i DENNE orgen — ellers kunne
+    // hvem som helst invitere seg selv inn i en vilkårlig org (privilege esc).
+    const session = getActiveSessionFromRequest(req);
+    if (!session?.userId) {
+      return res.status(401).json({ error: "auth_required" });
+    }
+    let callerEmail: string | null = null;
+    try {
+      const u = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [session.userId]);
+      callerEmail = u.rows[0]?.email ? String(u.rows[0].email).toLowerCase() : null;
+    } catch { /* e-post-fallback valgfri */ }
+    const membership = await pool.query(
+      `SELECT role FROM enterprise_team_members
+        WHERE organization_id = $1
+          AND status = 'active'
+          AND (user_id = $2 OR ($3::text IS NOT NULL AND LOWER(email) = $3))
+        LIMIT 1`,
+      [organizationId, session.userId, callerEmail],
+    );
+    const callerRole = String(membership.rows[0]?.role || "");
+    if (!["admin", "owner"].includes(callerRole)) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+    // Whitelist inviterte roller — ingen kan invitere en 'owner'/vilkårlig rolle.
+    const requestedRole = role || "member";
+    if (!["member", "admin"].includes(requestedRole)) {
+      return res.status(400).json({ error: "invalid_role" });
+    }
     const result = await pool.query(
       `INSERT INTO enterprise_team_members (organization_id, email, role, status, invited_at)
        VALUES ($1, $2, $3, 'invited', NOW())
        ON CONFLICT DO NOTHING
        RETURNING id, email, role, status`,
-      [organizationId, email, role || "member"],
+      [organizationId, email, requestedRole],
     );
     if (result.rowCount === 0) {
       return res.json({ success: true, message: "Member already exists" });
@@ -44737,7 +47940,7 @@ function mapProjectRow(r: any) {
     clientPhone: r.client_phone || "",
     eventDate: r.event_date || r.date || "",
     location: r.location || "",
-    projectType: r.category || r.profession || "",
+    projectType: r.category || r.project_type || r.profession || "",
     profession: r.profession || "",
     status: r.status || "draft",
     priority: r.priority || "medium",
@@ -44777,7 +47980,12 @@ app.post(
   async (req, res) => {
     try {
       const { projectId, shotId } = req.params;
-      const userId = getUserIdFromAuth(req);
+      // Session-only ownership identity. Previously compatResolveUserId let a
+      // caller pass x-user-id/body/query userId to link assets into another
+      // tenant's project. (Also fixes a latent ReferenceError: isUuid is not
+      // defined in this module — session.userId is already a valid uuid.)
+      const session = getActiveSessionFromRequest(req);
+      const userId = session?.userId;
       if (!userId) {
         return res.status(401).json({ error: "unauthorized" });
       }
@@ -44899,6 +48107,13 @@ app.get("/api/photo-enhancement/contracts", async (_req, res) => {
 app.post(
   "/api/wedding/timeline/project/:projectId/events",
   async (req, res) => {
+    const access = await requireProjectAccess(
+      { pool, requireUserSession },
+      req,
+      res,
+      { level: "edit" },
+    );
+    if (!access) return;
     try {
       const { projectId } = req.params;
       const eventData = req.body;
@@ -44908,7 +48123,7 @@ app.post(
         "SELECT id, wedding_date FROM wedding_timelines WHERE project_id = $1 LIMIT 1",
         [projectId],
       );
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res
           .status(404)
           .json({ error: "Ingen tidslinje funnet for prosjektet" });
@@ -44963,6 +48178,13 @@ app.post(
 app.put(
   "/api/wedding/timeline/project/:projectId/events/:eventId",
   async (req, res) => {
+    const access = await requireProjectAccess(
+      { pool, requireUserSession },
+      req,
+      res,
+      { level: "edit" },
+    );
+    if (!access) return;
     try {
       const { projectId, eventId } = req.params;
       const data = req.body;
@@ -44972,7 +48194,7 @@ app.put(
         "SELECT id, wedding_date FROM wedding_timelines WHERE project_id = $1 LIMIT 1",
         [projectId],
       );
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
       const rawDate2 = tlResult.rows[0].wedding_date;
@@ -45021,9 +48243,9 @@ app.put(
         params.push(data.canClientEdit);
       }
 
-      params.push(eventId);
+      params.push(eventId, tlResult.rows[0].id);
       const result = await pool.query(
-        `UPDATE wedding_timeline_events SET ${updates.join(", ")} WHERE id = $${idx} RETURNING *`,
+        `UPDATE wedding_timeline_events SET ${updates.join(", ")} WHERE id = $${idx} AND timeline_id = $${idx + 1} RETURNING *`,
         params,
       );
 
@@ -45043,11 +48265,21 @@ app.put(
 app.delete(
   "/api/wedding/timeline/project/:projectId/events/:eventId",
   async (req, res) => {
+    const access = await requireProjectAccess(
+      { pool, requireUserSession },
+      req,
+      res,
+      { level: "edit" },
+    );
+    if (!access) return;
     try {
-      const { eventId } = req.params;
+      const { projectId, eventId } = req.params;
       const result = await pool.query(
-        "DELETE FROM wedding_timeline_events WHERE id = $1 RETURNING id",
-        [eventId],
+        `DELETE FROM wedding_timeline_events
+          WHERE id = $1
+            AND timeline_id IN (SELECT id FROM wedding_timelines WHERE project_id = $2)
+          RETURNING id`,
+        [eventId, projectId],
       );
       if (result.rowCount === 0) {
         return res.status(404).json({ error: "Hendelse ikke funnet" });
@@ -45064,6 +48296,13 @@ app.delete(
 app.get(
   "/api/projects/:projectId/wedding-timeline/client-access",
   async (req, res) => {
+    const access = await requireProjectAccess(
+      { pool, requireUserSession },
+      req,
+      res,
+      { level: "owner" },
+    );
+    if (!access) return;
     try {
       const { projectId } = req.params;
       const regenerate = req.query.regenerate === "true";
@@ -45073,7 +48312,7 @@ app.get(
         [projectId],
       );
 
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Ingen tidslinje funnet" });
       }
 
@@ -45083,7 +48322,7 @@ app.get(
 
       // Generate new codes if missing or regenerate requested
       if (!accessCode || regenerate) {
-        accessCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+        accessCode = crypto.randomBytes(3).toString("hex").toUpperCase();
         accessToken = crypto.randomUUID();
 
         await pool.query(
@@ -45125,7 +48364,7 @@ app.put(
         "SELECT id FROM wedding_timelines WHERE wedding_id = $1 OR project_id = $1 OR id = $1 LIMIT 1",
         [weddingId],
       );
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
       const timelineId = tlResult.rows[0].id;
@@ -45156,7 +48395,7 @@ app.post(
         "SELECT id, wedding_date FROM wedding_timelines WHERE wedding_id = $1 OR project_id = $1 OR id = $1 LIMIT 1",
         [weddingId],
       );
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
       const timelineId = tlResult.rows[0].id;
@@ -45439,7 +48678,7 @@ app.all("/api/evendi/*", async (req, res, next) => {
     console.error("Evendi proxy error:", error.message);
     res
       .status(502)
-      .json({ error: "Kunne ikke nå Evendi API", details: error.message });
+      .json({ error: "Kunne ikke nå Evendi API", details: "internal_error" });
   }
 });
 
@@ -45456,21 +48695,124 @@ app.get("/api/notifications/active", (req, res) => {
 
 // /api/maintenance/* — ekstraktert til ./maintenance-routes.ts via setupMaintenanceRoutes.
 
+// ── Durabel media-lagring (B2) for Audio Showcase ──────────────────────────
+// Laster opp til Backblaze B2 (S3-kompat) → varig. Serveres via proxy-stream
+// (/api/showcase-media/:key) så URL-en aldri utløper + same-origin (waveform,
+// ingen CORS). Faller tilbake til lokal disk-store hvis B2 ikke er konfigurert.
+let _showcaseB2Cache: { client: any; bucket: string } | null | undefined;
+async function getShowcaseB2(): Promise<{ client: any; bucket: string } | null> {
+  if (_showcaseB2Cache !== undefined) return _showcaseB2Cache;
+  const keyId = process.env.B2_APPLICATION_KEY_ID;
+  const appKey = process.env.B2_APPLICATION_KEY;
+  const bucket = process.env.B2_BUCKET_NAME;
+  const region = process.env.B2_REGION;
+  if (!keyId || !appKey || !bucket || !region) { _showcaseB2Cache = null; return null; }
+  try {
+    const { S3Client } = await import("@aws-sdk/client-s3");
+    const endpoint = process.env.B2_ENDPOINT || `https://s3.${region}.backblazeb2.com`;
+    _showcaseB2Cache = { client: new S3Client({ region, endpoint, credentials: { accessKeyId: keyId, secretAccessKey: appKey } }), bucket };
+  } catch { _showcaseB2Cache = null; }
+  return _showcaseB2Cache;
+}
+async function uploadShowcaseMediaToB2(buffer: Buffer, mime: string, name: string): Promise<string | null> {
+  const b2 = await getShowcaseB2();
+  if (!b2) return null;
+  try {
+    const { PutObjectCommand } = await import("@aws-sdk/client-s3");
+    const ext = fileExtensionFromName(name, mime);
+    const key = `audioshowcase-${crypto.randomUUID()}${ext}`;
+    await b2.client.send(new PutObjectCommand({ Bucket: b2.bucket, Key: key, Body: buffer, ContentType: mime }));
+    return `/api/showcase-media/${key}`;
+  } catch (e) {
+    console.error("B2 showcase upload failed, faller tilbake til lokal:", e);
+    return null;
+  }
+}
+
+// Proxy-stream fra B2 (varig URL + same-origin).
+app.get("/api/showcase-media/:key", async (req, res) => {
+  const b2 = await getShowcaseB2();
+  if (!b2) return res.status(404).json({ error: "not_found" });
+  const key = String(req.params.key || "").replace(/[^a-zA-Z0-9._-]/g, "");
+  if (!key.startsWith("audioshowcase-")) return res.status(400).json({ error: "bad_key" });
+  try {
+    const { GetObjectCommand } = await import("@aws-sdk/client-s3");
+    const obj: any = await b2.client.send(new GetObjectCommand({ Bucket: b2.bucket, Key: key }));
+    res.setHeader("Content-Type", obj.ContentType || "application/octet-stream");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    if (obj.ContentLength) res.setHeader("Content-Length", String(obj.ContentLength));
+    if (obj.Body && typeof obj.Body.pipe === "function") obj.Body.pipe(res);
+    else { const buf = Buffer.from(await obj.Body.transformToByteArray()); res.end(buf); }
+  } catch (e) {
+    res.status(404).json({ error: "not_found" });
+  }
+});
+
+const _uploadRateBuckets = new Map<string, number[]>();
+function _uploadRateLimited(key: string): boolean {
+  const now = Date.now();
+  const arr = (_uploadRateBuckets.get(key) ?? []).filter((t) => now - t < 60_000);
+  arr.push(now);
+  _uploadRateBuckets.set(key, arr);
+  return arr.length > 30;
+}
+
 app.post("/api/upload/audio", audioUpload.single("file"), async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "?";
+  if (_uploadRateLimited(`upload:${session.userId}:${ip}`)) return res.status(429).json({ success: false, error: "too_many_requests" });
   try {
     if (!req.file)
       return res
         .status(400)
         .json({ success: false, error: "Missing audio file" });
-    const stored = await storeAudioFile(
-      req.file.buffer,
-      req.file.originalname,
-      req.file.mimetype,
-    );
-    res.json({ success: true, url: stored.url });
+    const durable = await uploadShowcaseMediaToB2(req.file.buffer, req.file.mimetype, req.file.originalname);
+    const url = durable || (await storeAudioFile(req.file.buffer, req.file.originalname, req.file.mimetype)).url;
+    res.json({ success: true, url, durable: Boolean(durable) });
   } catch (error) {
     console.error("Audio upload error:", error);
-    res.status(500).json({ success: false, error: "Failed to upload audio" });
+    res.status(500).json({ success: false, error: "internal_error" });
+  }
+});
+
+// Generisk bilde-opplasting (profilbilde/cover for Audio Showcase) — B2 (varig)
+// m/ fallback til lokal disk. Erstatter data-URL-inlining.
+// Generisk fil-opplasting for chat-vedlegg (dokumenter i tillegg til bilder).
+// Allowlist — aldri kjørbare filer.
+const CHAT_FILE_MIME_ALLOW = /^(image\/|application\/pdf$|application\/msword$|application\/vnd\.openxmlformats-officedocument\.|application\/vnd\.ms-excel$|application\/vnd\.ms-powerpoint$|text\/(plain|csv)$|application\/zip$|audio\/|video\/)/;
+app.post("/api/upload/file", showcaseMediaUpload.single("file"), async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "?";
+  if (_uploadRateLimited(`upload:${session.userId}:${ip}`)) return res.status(429).json({ success: false, error: "too_many_requests" });
+  try {
+    if (!req.file) return res.status(400).json({ success: false, error: "Missing file" });
+    const mime = String(req.file.mimetype || "");
+    if (!CHAT_FILE_MIME_ALLOW.test(mime)) return res.status(400).json({ success: false, error: "Filtypen støttes ikke" });
+    const durable = await uploadShowcaseMediaToB2(req.file.buffer, mime, req.file.originalname || "fil");
+    const url = durable || (await storeAudioFile(req.file.buffer, req.file.originalname || "fil", mime)).url;
+    res.json({ success: true, url, durable: Boolean(durable) });
+  } catch (error) {
+    console.error("File upload error:", error);
+    res.status(500).json({ success: false, error: "internal_error" });
+  }
+});
+
+app.post("/api/upload/image", showcaseMediaUpload.single("file"), async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "?";
+  if (_uploadRateLimited(`upload:${session.userId}:${ip}`)) return res.status(429).json({ success: false, error: "too_many_requests" });
+  try {
+    if (!req.file) return res.status(400).json({ success: false, error: "Missing image file" });
+    if (!String(req.file.mimetype || "").startsWith("image/")) return res.status(400).json({ success: false, error: "Not an image" });
+    const durable = await uploadShowcaseMediaToB2(req.file.buffer, req.file.mimetype, req.file.originalname || "image");
+    const url = durable || (await storeAudioFile(req.file.buffer, req.file.originalname || "image", req.file.mimetype)).url;
+    res.json({ success: true, url, durable: Boolean(durable) });
+  } catch (error) {
+    console.error("Image upload error:", error);
+    res.status(500).json({ success: false, error: "internal_error" });
   }
 });
 
@@ -59544,6 +62886,7 @@ const generateCaptionPayload = async (
 };
 
 app.post("/api/video/generate-captions", async (req, res) => {
+  if (!requireUserSession(req, res)) return;
   try {
     const videoPath =
       readString(req.body?.video_path) || readString(req.body?.videoPath);
@@ -59566,6 +62909,7 @@ app.post("/api/video/generate-captions", async (req, res) => {
 });
 
 app.post("/api/capcut-features/auto-captions", async (req, res) => {
+  if (!requireUserSession(req, res)) return;
   try {
     const videoPath =
       readString(req.body?.videoPath) || readString(req.body?.video_path);
@@ -59711,6 +63055,7 @@ app.get("/api/video-ai/models", async (req, res) => {
 });
 
 app.post("/api/video-ai/enhance-url", async (req, res) => {
+  if (!requireUserSession(req, res)) return;
   const startedAt = Date.now();
   try {
     const videoUrl = readString(req.body?.videoUrl) || "";
@@ -59744,6 +63089,22 @@ app.post("/api/video-ai/enhance-url", async (req, res) => {
         reason: model.reason,
         model,
       });
+    }
+
+    // SSRF guard before HEAD fetch
+    try {
+      const _ssrfParsed = new URL(videoUrl);
+      if (_ssrfParsed.protocol !== "http:" && _ssrfParsed.protocol !== "https:") {
+        return res.status(400).json({ error: "Invalid videoUrl" });
+      }
+      const _h = _ssrfParsed.hostname.toLowerCase();
+      if (_h === "localhost" || _h === "127.0.0.1" || _h === "::1" || _h === "0.0.0.0" ||
+          /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)/.test(_h) ||
+          _h === "metadata.google.internal" || _h.endsWith(".internal") || _h.endsWith(".local")) {
+        return res.status(400).json({ error: "Invalid videoUrl" });
+      }
+    } catch {
+      return res.status(400).json({ error: "Invalid videoUrl" });
     }
 
     let contentType = "video/mp4";
@@ -59963,7 +63324,22 @@ const FASTER_WHISPER_URL =
   process.env.FASTER_WHISPER_URL || "http://localhost:5000";
 const USE_FREE_SERVICES = process.env.USE_FASTER_WHISPER === "true";
 
+const _ttsRateBuckets = new Map<string, number[]>();
+function _ttsRateLimited(key: string): boolean {
+  const now = Date.now();
+  const arr = (_ttsRateBuckets.get(key) ?? []).filter((t) => now - t < 60_000);
+  if (arr.length >= 20) return true;
+  arr.push(now);
+  _ttsRateBuckets.set(key, arr);
+  return false;
+}
+
 app.post("/api/ai/tts", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  if (_ttsRateLimited(`tts:${session.userId}`)) {
+    return res.status(429).json({ error: "rate_limited" });
+  }
   try {
     const { text, voice, model, speed, format, language } = req.body || {};
 
@@ -64142,6 +67518,12 @@ function normalizeInterfacePreferencesRecord(
 
 // Helper: get userId from header, body, or query
 function getPricingUserId(req: any): string {
+  // SECURITY: prefer the validated (non-spoofable) session identity over the
+  // client-supplied x-user-id header / body.userId / query.userId. Without this,
+  // any caller could read/write another user's pricing/quote/billing data by
+  // passing a victim's id. Falls back to the legacy values only when unauthenticated.
+  const sessionUserId = getActiveSessionFromRequest(req)?.userId;
+  if (sessionUserId) return sessionUserId;
   return (
     req.headers["x-user-id"] || req.body?.userId || req.query?.userId || ""
   );
@@ -64158,6 +67540,7 @@ setupWeddingWalkthroughRoutes({ app, pool, requireUserSession, getPricingUserId 
 
 // Slice 9X.37 — Plan-B-lokasjoner ved dårlig vær.
 setupWeddingLocationAlternativesRoutes({ app, pool, requireUserSession, getPricingUserId });
+setupWeddingProductionMapRoutes({ app, pool, requireUserSession });
 
 // Slice 9X.40 — Bryllupsdag-utlegg (parkering, lunsj, gaver).
 setupWeddingExpensesRoutes({ app, pool, requireUserSession, getPricingUserId });
@@ -64184,7 +67567,96 @@ setupWeddingAssistantSubcontractRoutes({ app, pool });
 setupWeddingAssistantCollabRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.53 — Prototype-tester NDA + program-vilkår-flyt (adskilt fra Role Room).
-setupPrototypeTesterInvitesRoutes({ app, pool, getPricingUserId, requireUserSession, requireAdminSession });
+setupPrototypeTesterInvitesRoutes({
+  app, pool, getPricingUserId, requireUserSession, requireAdminSession: requireResolvedAdminSession,
+  lookupBrregCompany: lookupInviteRequestBrregCompany,
+  // Oppretter (gjenbruker) en brukerkonto for en tester ved aksept, så hvert
+  // teammedlem faktisk har en konto (matchende e-post) å logge inn med (Google
+  // OAuth / e-post-match). Gjenbruker den velprøvde upsertAdminAccountUser.
+  provisionTesterAccount: async (
+    email: string,
+    name: string,
+    profession?: string | null,
+    company?: string | null,
+    organizationNumber?: string | null,
+  ) => {
+    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+    const acct = await upsertAdminAccountUser({
+      email: String(email || "").trim().toLowerCase(),
+      firstName: parts[0] || null,
+      lastName: parts.length > 1 ? parts.slice(1).join(" ") : null,
+      // Slice 9X.58 — sett medlemmets profesjon (f.eks. videograf) så de får
+      // riktig dashboard-orchestrator. undefined → ikke rør (master beholder sin).
+      profession:
+        typeof profession === "string" && profession.trim()
+          ? profession.trim().toLowerCase()
+          : undefined,
+      // Firma fanget ved invitasjon → forhåndsutfylt tester-profil (company_name)
+      // + grunnlag for kunde-konvertering. undefined → ikke rør eksisterende.
+      businessName:
+        typeof company === "string" && company.trim()
+          ? company.trim()
+          : undefined,
+      organizationNumber:
+        typeof organizationNumber === "string" && organizationNumber.trim()
+          ? organizationNumber.trim()
+          : undefined,
+      isActive: true,
+    });
+    // #3 — ekte entitlement: gi testeren (master/medlem) et reelt full-tilgangs-
+    // abonnement under prototype-programmet. 'tester_all_access' ble aldri lest;
+    // solo_pro er en EKTE plan (automation, pitch deck, osv.) som faktisk gjenkjennes.
+    const userId = acct?.id ? String(acct.id) : null;
+    if (userId && (await hasTable("user_subscriptions"))) {
+      const TESTER_PLAN = "solo_pro";
+      const existing = await pool.query(
+        `SELECT id FROM user_subscriptions
+          WHERE user_id = $1 AND plan_id = $2 AND status IN ('active', 'trial') LIMIT 1`,
+        [userId, TESTER_PLAN],
+      );
+      if (!existing.rows.length) {
+        await pool.query(
+          `INSERT INTO user_subscriptions (user_id, plan_id, status, started_at, auto_renew)
+           VALUES ($1, $2, 'active', NOW(), true)`,
+          [userId, TESTER_PLAN],
+        );
+      }
+    }
+    return acct;
+  },
+  sendInviteEmail: sendCreatorHubPrototypeTesterInviteEmail,
+  previewInviteEmail: previewCreatorHubPrototypeTesterInviteEmail,
+  sendAccessActivatedEmail: sendCreatorHubTesterAccessActivatedEmail,
+  issueSigningCode: async ({
+    recipientEmail,
+    recipientName,
+    inviteId,
+    ipAddress,
+  }) => sendVerificationCode(
+    pool,
+    {
+      email: recipientEmail,
+      purpose: "prototype_tester_sign",
+      ipAddress,
+    },
+    async ({ code, expiresMinutes }) => {
+      const delivery = await sendCreatorHubPrototypeTesterSigningCodeEmail({
+        recipientEmail,
+        recipientName,
+        signingCode: code,
+        codeExpiresMinutes: expiresMinutes,
+        inviteId,
+      });
+      return { sent: delivery.sent };
+    },
+  ),
+  verifySigningCode: ({ recipientEmail, code }) => verifyCode(pool, {
+    email: recipientEmail,
+    purpose: "prototype_tester_sign",
+    code,
+  }),
+  sendReceiptEmail: sendCreatorHubPrototypeTesterReceiptEmail,
+});
 
 // /api/invite-requests + /api/invites/admin/requests + /api/proff lookups —
 // 10 endpoints flyttet ut fra index.ts. Sikkerhetsstacken
@@ -64193,7 +67665,7 @@ setupPrototypeTesterInvitesRoutes({ app, pool, getPricingUserId, requireUserSess
 setupInviteRequestsRoutes({
   app,
   pool,
-  getActiveSessionFromRequest,
+  getActiveSessionFromRequest: resolveActiveSessionFromRequest,
   isValidNorwegianOrgNumber,
   getTableColumns,
   hasTable,
@@ -64203,7 +67675,43 @@ setupInviteRequestsRoutes({
   upsertInviteRequestProffScreening,
   ensureInviteRequestAccessProvisioning,
   ensureCommunityAccessForApprovedInvite,
-  createInviteFromApprovedRequest,
+  createInviteFromApprovedRequest: (
+    routePool,
+    requestId,
+    email,
+    fullName,
+    invitedBy,
+    testingAreas,
+    baseUrl,
+    grantedPlan,
+    grantedFeatures,
+    teamSize,
+    memberProfession,
+    memberCompany,
+    memberOrganizationNumber,
+    memberBusinessAddress,
+  ) =>
+    createInviteFromApprovedRequest(
+      routePool,
+      requestId,
+      email,
+      fullName,
+      invitedBy,
+      testingAreas,
+      baseUrl,
+      grantedPlan,
+      grantedFeatures,
+      teamSize,
+      memberProfession,
+      memberCompany,
+      memberOrganizationNumber,
+      memberBusinessAddress,
+      sendCreatorHubPrototypeTesterApprovalEmail,
+    ),
+  sendAccessRequestReceivedEmail:
+    sendCreatorHubAccessRequestReceivedEmail,
+  sendAccessRequestRejectedEmail:
+    sendCreatorHubAccessRequestRejectedEmail,
 });
 
 // /api/submissions — 6 endpoints (couple → vendor messaging gjennom Evendi).
@@ -64215,9 +67723,13 @@ setupSubmissionsRoutes({
   compatStoreSet,
   dbCompatSubmissionKey,
   recordAnalyticsEvent,
-  getUserIdFromAuth,
+  compatResolveUserId,
   readString,
 });
+
+// /api/contact-forms/* + /api/public/contact-form/* — egendefinerte kontaktskjemaer
+// (drag-and-drop bygger) → innsendinger blir forespørsler i client_submissions.
+setupContactFormsRoutes({ app, pool, requireUserSession });
 
 // /api/google-wallet/* — 6 endpoints (membership-cards CRUD + send-to-wallet).
 // Bruker compat-storens membership-card-lager.
@@ -64250,6 +67762,7 @@ setupBrandingRoutes({
   app,
   pool,
   requireUserSession,
+  requireAdminSession,
   brandingLogoUpload,
   getStoredBusinessBrandingInfo,
   persistBusinessBrandingInfo,
@@ -64275,6 +67788,67 @@ setupVendorTypesRoutes({
   compatStoreSet,
   dbCompatVendorOverrideKey,
   requireAdminSession,
+});
+
+// /api/editing/* — Foto & Video redigerings-marketplace (fotograf hyrer
+// ekstern redigeringsvendor; sikker B2-filflyt + Creatorhub Vendor Standard).
+setupEditingJobsRoutes({
+  app,
+  pool,
+  // Async: løs også persisterte sesjoner (robust mot backend-restart der
+  // in-memory activeSessions tømmes). Sender 401 selv ved manglende sesjon.
+  requireUserSession: async (req, res) => {
+    const session = await resolveActiveSessionFromRequest(req);
+    if (!session) {
+      res.status(401).json({ error: "auth_required" });
+      return null;
+    }
+    return session;
+  },
+  activeSessions,
+  persistSession,
+});
+
+// Partner Program — superadmin søknads-/godkjennings-ruter (godkjenning oppretter
+// users-rad + vendor-profil + magic-link portal-tilgang).
+setupEditingPartnerApplicationsAdminRoutes({ app, pool, activeSessions });
+setupSuperadminImpersonationRoutes({
+  app, pool, activeSessions,
+  readSessionToken: readActiveSessionToken,
+  persistSession: (token, session) => persistAuthSession(pool, token, session),
+  revokeSession: async (token) => {
+    await Promise.all([
+      deletePersistedAuthSession(pool, token),
+      invalidateSession(pool, token),
+    ]);
+  },
+});
+setupSuperadminDebugRoutes({ app, pool, activeSessions, readSessionToken: readActiveSessionToken });
+
+// Support-ticket fra innebygd support-chat-knapp → e-post til daniel@creatorhubn.com
+app.post("/api/support/ticket", async (req, res) => {
+  const token = readActiveSessionToken(req);
+  const sess = token ? activeSessions.get(token) : null;
+  if (!sess) return res.status(401).json({ error: "auth_required" });
+  const msg = String(req.body?.message || "").trim();
+  if (!msg) return res.status(400).json({ error: "message_required" });
+  try {
+    await sendTransactionalEmail({
+      to: "daniel@creatorhubn.com",
+      subject: `[Support] Fra ${sess.email || sess.userId}`,
+      html: `<p><b>Fra:</b> ${sess.email || "?"} (${sess.role || "user"})</p><p>${msg.replace(/\n/g, "<br>")}</p>`,
+      text: `Fra: ${sess.email || "?"}\n\n${msg}`,
+      replyTo: sess.email || null,
+      fromLabel: "CreatorHub Support",
+      kind: "support_ticket",
+      sentByUserId: sess.userId,
+      pool,
+    });
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[support/ticket]", e);
+    res.status(500).json({ error: "send_failed" });
+  }
 });
 
 // /api/meeting-notes/* — 7 endpoints (AI-process, writing-assist, CRUD,
@@ -64379,6 +67953,182 @@ setupSalesRoutes({
   isMissingColumnError,
 });
 
+// /api/leadgrid/sales-leadership/* — 18 endpoints (provisjons-modeller,
+// konkurranse-maler, premie-katalog, fulfillment). Forutsetter mig 0354.
+registerLeadgridSalesManagementRoutes({ app, pool, requireUserSession });
+registerSalesLeadershipRoutes({ app, pool, requireUserSession });
+
+// /api/leadgrid/manual-invoice — manuell faktura for org uten Stripe (mig 0407,
+// super-admin): opprett + HTML-e-post + PDF-nedlasting.
+registerLeadgridManualInvoiceRoutes({ app, pool, requireUserSession });
+
+// /api/leadgrid/mileage/* — kjøregodtgjørelse-godkjenning (Salgssjef-cockpit).
+// Egen Leadgrid-tabell (mig 0405): selger sender krav → leder godkjenner/eksporterer.
+registerLeadgridMileageApprovalRoutes({ app, pool, requireUserSession });
+
+// /api/leadgrid/approvals/* + /coaching/* — cockpit-persistering (mig 0406):
+// godkjenningskø (deals/rabatt) + coaching 1-til-1. Var demo-only mock.
+registerLeadgridCockpitRoutes({ app, pool, requireUserSession });
+
+// /api/leadgrid/pondus/quiz — Pondus-baseline-quiz (mig 0410): selger tar
+// selvtest → dimensjons-profil; leder ser org-profiler (coaching/anbefaling).
+registerLeadgridPondusQuizRoutes({ app, pool, requireUserSession });
+
+// /api/leadgrid/sales-teams + /api/leadgrid/lead-assignments — 6 endpoints
+// (team-struktur + «Send oppdrag»-tildelinger, synk for iPad
+// LeadgridSalesTeamStore/AssignToTeamMemberSheet). Forutsetter mig 0361.
+registerLeadgridSalesTeamsRoutes({ app, pool, requireUserSession });
+
+// Tilbudssending (funn #7, produktrevisjonen) — opprett+send tilbud m/
+// branded PDF-lenke, offentlig /p/:token m/ open-tracking som fyrer
+// proposal.opened-workflow-eventet. Forutsetter mig 0363.
+registerLeadgridProposalsRoutes({ app, pool, requireUserSession });
+
+// Leadgrid Academy fase 1 (mig 0368) — org-scopet opplæring: offisielle
+// Leadgrid-kurs (Pondus-Akademiet seedet) + org-egne kurs, med progresjon
+// per bruker og presignert R2-video. iPad PondusAcademy binder mot dette.
+registerLeadgridAcademyRoutes({ app, pool, requireUserSession });
+
+// Org-modus-velger (mig 0365) — super_admin kan bytte mellom solo-modus
+// og valgfri org; alle Leadgrid-org-oppslag (leadgrid-org-resolver.ts)
+// respekterer valget.
+registerLeadgridOrgOverrideRoutes({ app, pool, requireUserSession });
+
+// Workflow wait-scheduler (mig 0366) — gjenopptar workflows med
+// wait-actions når resume_at passeres (låser opp auto_followup_7_days).
+registerWorkflowResumeCron(pool);
+
+// /api/leadgrid/routes/* — 10 endpoints (route adherence + MeMapPin tap-
+// actions: positions/my-route/assignments/visits/team-nearby/adherence-
+// report/leads-at-position/cleanup). Forutsetter mig 0358.
+registerRoutesAdherenceRoutes({ app, pool, requireUserSession });
+
+// /api/leadgrid/kartverket/* — 3 endpoints (reverse-geocoding +
+// kommune-info + kommune-grense GeoJSON). Ingen DB — proxier Geonorge
+// gratis-API-ene med 60s in-memory-cache. Brukes av MePinActionsSheet
+// (adresse i HUD) + Team-fanen (ekte kommunegrenser).
+registerLeadgridKartverketRoutes({ app, requireUserSession });
+
+// Dørsalg-modus: husstandsadresser fra Kartverket (EGEN modus — blandes
+// aldri med bedrifts-leads; ren proxy, ingen lagring).
+registerLeadgridAdresseRoutes({ app, requireUserSession });
+
+// Dørsalg-modus: husstands-status vunnet/avslått per org (mig 0397).
+// Utfallet på døra er org-data — adressene selv lagres fortsatt aldri.
+registerLeadgridDorsalgRoutes({ app, pool, requireUserSession });
+
+// Dørsalg brief-møter (mig 0398): leder samler teamet før felt —
+// opprett m/ gjentakelse + inviter selgere (bjelle-varsel).
+registerLeadgridBriefRoutes({ app, pool, requireUserSession });
+
+// Entur (kollektiv/mobilitet, NLOD): lead-tilgjengelighet + «raskere
+// alternativ» i nav-modus. Krever ET-Client-Name (env ENTUR_CLIENT_NAME).
+registerLeadgridEnturRoutes({ app, requireUserSession });
+
+// Bilparkering (Statens vegvesen Parkeringsregister, NLOD): nærmeste
+// p-områder for en lead + «Åpne parkering»-app-lenker.
+
+// NVDB v4 (Nasjonal vegdatabank, NLOD): fartsgrense (skilt i nav) + bom-
+// stasjoner (ekte takst i kjøregodtgjørelse). Krever X-Client (env NVDB_CLIENT).
+registerLeadgridNvdbRoutes({ app, requireUserSession });
+
+// Statens vegvesen Kjøretøyoppslag (Autosys): «Min bil» via regnr → tekniske
+// data (drivstoff/merke). Krever VEGVESEN_KJORETOY_APIKEY.
+registerLeadgridVehicleRoutes({ app, requireUserSession });
+
+// Leadgrid Go — elektronisk kjørebok (auto trip-logg + Skatteetaten-CSV).
+// Personlig (user_id-scopet, IDOR-trygt). Tabell leadgrid_trips (mig 0372).
+registerLeadgridTripsRoutes({ app, pool, requireUserSession });
+
+// Kvalitet-avdelingen — verifiseringskø for vunnede salg + samtale-maler
+// (mig 0377). Roller: kvalitet/admin/salgssjef.
+registerLeadgridQualityRoutes({ app, pool, requireUserSession });
+registerLeadgridDoffinRoutes({
+  app,
+  pool,
+  requireUserSession: async (req, res) => {
+    const session = requireUserSession(req, res);
+    return session ? { userId: session.userId } : null;
+  },
+});
+// Fler-stopp besøksruter — salgssjef tildeler rute til selger (push → Kart).
+registerLeadgridRuteRoutes({
+  app,
+  pool,
+  requireUserSession: async (req, res) => {
+    const session = requireUserSession(req, res);
+    return session ? { userId: session.userId } : null;
+  },
+});
+registerLeadgridOversiktRoutes({
+  app,
+  pool,
+  requireUserSession: async (req, res) => {
+    const session = requireUserSession(req, res);
+    return session ? { userId: session.userId } : null;
+  },
+});
+registerLeadgridCanvasRoutes({
+  app,
+  pool,
+  requireUserSession: async (req, res) => {
+    const session = requireUserSession(req, res);
+    return session ? { userId: session.userId } : null;
+  },
+});
+registerLeadgridCpvRoutes({
+  app,
+  pool,
+  requireUserSession: async (req, res) => {
+    const session = requireUserSession(req, res);
+    return session ? { userId: session.userId } : null;
+  },
+});
+registerLeadgridParkeringRoutes({
+  app,
+  requireUserSession: async (req, res) => {
+    const session = requireUserSession(req, res);
+    return session ? { userId: session.userId } : null;
+  },
+});
+// AI-møtebrief — «aldri uforberedt til møte» (Brreg+regnskap+Doffin+case).
+registerLeadgridMotebriefRoutes({
+  app,
+  pool,
+  requireUserSession: async (req, res) => {
+    const session = requireUserSession(req, res);
+    return session ? { userId: session.userId } : null;
+  },
+});
+
+// Leadbook Eksempler — org-egne salgssamtale-caser + leder-tilbakemeldinger
+// m/ dialog og visningstall (mig 0379-0382). Fylles fra Kvalitet-flagget
+// eller manuelt av leder.
+registerLeadgridLeadbookExamplesRoutes({ app, pool, requireUserSession });
+
+// Utstyrsregister — org-eid utstyr (nettbrett/telefon/laptop/klær/ID-kort)
+// m/ tildeling, varsling og hendelseslogg (mig 0385).
+registerLeadgridEquipmentRoutes({ app, pool, requireUserSession });
+
+// Krasjrapportering — MetricKit-diagnostikk fra iPad-appen (mig 0387).
+registerLeadgridCrashRoutes({ app, pool, requireUserSession });
+
+// «Kom i gang» fra Leadgrid-login: e-post → lead (offentlig, dedupet).
+registerLeadgridSignupInterestRoutes({ app, pool });
+registerLeadgridDemoRequestRoutes({ app, pool });
+registerLeadgridAppWaitlistRoutes({
+  app, pool, activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+
+// /api/leadgrid/pondus/* — 10 endpoints (Leadgrid Pondus-maler:
+// SuperAdmin publiserer maler, alle innloggede leser publiserte).
+// Forutsetter mig 0355.
+registerPondusRoutes({ app, pool, requireUserSession });
+// Pondus usage-tracking (mig 0364) — «Bruk mal»-logging + aggregerte
+// stats som gir Leadbook-KPI-ene ekte tall.
+registerPondusUsageRoutes({ app, pool, requireUserSession });
+
 // /api/external-data/* — 7 unike endpoints (2 SSB-indikatorer +
 // 5 Kartverket-proxies). Selvstendig modul. 2 SSB-dups slettet i samme
 // commit (Express bruker first-registered).
@@ -64391,7 +68141,13 @@ setupInspirationsRoutes({ app, pool, requireUserSession });
 // /api/cms/* — 11 endpoints (admin fields/content-types CRUD + stats +
 // public content GET + write). Dep-injiserer ensureCmsSchema (initialiserer
 // cms_fields/types/content-tabeller ved første kall) + requireUserSession.
-setupCmsRoutes({ app, pool, ensureCmsSchema, requireUserSession });
+setupCmsRoutes({
+  app,
+  pool,
+  ensureCmsSchema,
+  requireUserSession,
+  requireAdminSession,
+});
 
 // /api/payments/* + /api/google-pay/process-payment — 10 endpoints
 // (kompat-fallback for betalings-flyt: history, receipt/invoice HTML-docs,
@@ -64454,6 +68210,7 @@ setupProjectTypesRoutes({
 setupSettingsRoutes({
   app,
   requireUserSession,
+  getActiveSessionFromRequest,
   readQueryString,
   legacySettingsStore,
   legacySettingKey,
@@ -64551,7 +68308,7 @@ setupEmailsRoutes({
 setupTelemetryRoutes({
   app,
   pool,
-  getUserIdFromAuth,
+  compatResolveUserId,
   ingestErgonomicsBatch,
   ingestErgonomicsReflect,
   summariseErgonomicsSession,
@@ -64573,6 +68330,13 @@ setupVideoSyncRoutes({
   runVideoSyncJob,
 });
 
+// /api/training-monitoring/* (4) + /api/video-sync/model-versions +
+// /api/video-sync/training-data/stats — driver Admin Room
+// FineTuningMonitoringPanel. Backes av ml_models / ml_model_versions /
+// ml_training_data (migrasjon 247_model_training.sql) — defensiv mot
+// manglende tabeller.
+setupAdminTrainingMonitoringRoutes({ app, pool, requireAdminSession });
+
 // /api/user-preferences/* — 2 endpoints (speed-dial-orden GET/POST).
 // 2 dups slettet i samme commit (alternative compat-store-impl som var
 // uns på grunn av Express first-registered).
@@ -64592,7 +68356,7 @@ setupOnboardingRoutes({ app, pool, resolveActiveSessionFromRequest });
 
 // /api/worklog/* — 3 endpoints (POST/PATCH/DELETE). Multi-tabell-
 // fallback: worklogs → worklog_entries → project_milestones.
-setupWorklogRoutes({ app, pool, getUserIdFromAuth });
+setupWorklogRoutes({ app, pool, compatResolveUserId });
 
 // /api/travel-log — 3 endpoints (GET liste, POST create, DELETE).
 // Kjørebok-data for photographers reise-utlegg.
@@ -64618,7 +68382,35 @@ setupWeddingProjectsRoutes({
 
 // /api/prototype-testing/feedback — 3 endpoints (GET liste, POST,
 // PUT admin-update). DB-backed feedback-flow for UniversalChatWidget.
-setupPrototypeTestingRoutes({ app, pool, isMissingRelationError, requireUserSession });
+setupPrototypeTestingRoutes({
+  app,
+  pool,
+  isMissingRelationError,
+  requireUserSession,
+  getActiveSessionFromRequest,
+  adminRoles: ADMIN_SESSION_ROLES,
+});
+
+setupChatWidgetAnalyticsRoutes({
+  app,
+  pool,
+  requireUserSession,
+  adminRoles: ADMIN_SESSION_ROLES,
+});
+
+setupPrototypeReportRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  adminRoles: ADMIN_SESSION_ROLES,
+});
+
+setupPrototypeTeamAdminRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  adminRoles: ADMIN_SESSION_ROLES,
+});
 
 // /api/vendor-onboarding/* — 3 endpoints (validate-org, upload-logo,
 // complete). Drizzle ORM mot vendorOnboardingProfiles + vendors.
@@ -64670,6 +68462,45 @@ setupPhotographerProjectsRoutes({
   createWeddingTimelineFromProject,
   escapeHtml,
 });
+// Team Workspace deling/medlemskap (Fase 1) — project_team_members + canAccessProject.
+setupProjectTeamRoutes({ app, pool, requireUserSession, escapeHtml });
+// External project participants are tenant-bound Enterprise records. Their
+// routes use persisted server sessions, never client-supplied user IDs.
+setupWorkspaceProjectParticipantsRoutes({
+  app,
+  pool,
+  resolveAuthoritativeSessionFromRequest,
+});
+setupWorkspaceParticipantDocumentRoutes({
+  app,
+  pool,
+  resolveAuthoritativeSessionFromRequest,
+  deliveryAdapter: createWorkspaceParticipantDocumentEmailDeliveryAdapter({}),
+});
+setupWorkspaceParticipantCompensationRoutes({
+  app,
+  pool,
+  resolveAuthoritativeSessionFromRequest,
+});
+setupWorkspaceParticipantClearanceRoutes({
+  app,
+  pool,
+  resolveAuthoritativeSessionFromRequest,
+});
+// Team Workspace egne panel-data (board-tasks/checklist/deliverables/shot-list GET)
+// — project_id-scopet, UAVHENGIG av Role Room.
+setupProjectWorkspaceRoutes({ app, pool, requireUserSession });
+// Webklienter veksler vanlig Authorization-header mot en 30 sekunders,
+// engangs WebSocket-billett. Session-tokenet skal aldri inn i WS-URL-en.
+setupUserEventsTicketRoute({
+  app,
+  pool,
+  requireUserSession,
+  requireAdminSession,
+});
+setupLeadgridRealtimeTicketRoute({ app, pool, requireUserSession });
+// Pro Tools Companion (native desktop-agent) + EaseVerse/Sound Room-kobling.
+setupProToolsCompanionRoutes({ app, pool, requireUserSession });
 setupPhotographerMiscRoutes({
   app,
   pool,
@@ -64883,15 +68714,28 @@ setupWeddingRoutes({
 setupWeddingTimelineRoutes({
   app,
   pool,
-  getUserIdFromAuth,
+  requireUserSession,
   resolveMeetingNotesProjectContext,
 });
+setupWorkflowOrchestrationRoutes({ app, pool, requireUserSession });
+
 setupProjectsRoutes({
   app,
   pool,
   mapProjectRow,
-  getUserIdFromAuth,
   compatResolveUserId,
+  // Generic project routes must be able to resolve a durable session after a
+  // Render restart or when a request lands on another instance. The historic
+  // synchronous guard only checked this process' activeSessions Map, which
+  // made valid Role Room owners receive a misleading 404 from /files.
+  requireUserSession: async (req, res) => {
+    const session = await resolveActiveSessionFromRequest(req);
+    if (!session) {
+      res.status(401).json({ error: "auth_required" });
+      return null;
+    }
+    return session;
+  },
   compatStoreSet,
   buildGalleryShareUrl,
   bootstrapCaptureSessionForProject,
@@ -64957,7 +68801,11 @@ setupMaintenanceRoutes({
   normalizeTaskType, normalizePriority,
   toDateOnly, addMonths, resolveScheduledDate, mapMaintenanceRow,
 });
-setupSplitSheetsRoutes({ app, pool, getSplitSheetUserId });
+setupSplitSheetsRoutes({ app, pool, getSplitSheetUserId, requireAdminSession });
+setupSplitSheetSigningRoutes({ app, pool, getSplitSheetUserId });
+setupEquipmentValueRoutes({ app });
+setupSoftwareExpensesRoutes({ app, pool, requireUserSession, getGoogleOAuthClient });
+setupMicrosoftOauthRoutes({ app, pool, requireUserSession });
 // role-room/vendor-links — historisk wedged inn mellom equipment-routes (13228);
 // flyttet hit som del av equipment chunk 3-ekstraksjon for å fjerne stray-setup.
 setupRoleRoomVendorLinksRoutes({ app });
@@ -64990,9 +68838,11 @@ setupEquipmentCatalogRoutes({
   parseLimitParam,
   readString,
   resolveAuthenticSupplierEquipmentImage,
+  scoreCatalogImageMatch,
 });
 setupEquipmentFirmwareRoutes({
   app, pool, db, schema,
+  requireUserSession,
   buildEquipmentImageAttachmentMap,
   buildInventoryRecommendedMemoryCards,
   ensureEquipmentImageEnvelope,
@@ -65169,6 +69019,7 @@ setupPlatformRoutes({
 setupAdminMiscRoutes({
   app,
   requireUserSession,
+  requireAdminSession,
   pool,
   isEvendiSmokeAuthorized,
   runEvendiSmoke,
@@ -65214,12 +69065,19 @@ setupFirmwareRoutes({
 });
 setupClientPortalRoutes({ app, pool, activeSessions });
 setupEquipmentRootRoutes({ app, pool, db, parseSettings, requireUserSession });
+setupEquipmentAdminRoutes({ app, requireAdminSession, db });
 
 // Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
 // Slice 9X.55 — Send med requireAdminSession så admin-endepunktene (CRUD)
 // faktisk er beskyttet. User-endepunktene (inbox/seen/act) trenger ikke
 // admin og hopper sjekken inne i route-filen.
 setupAdminNotificationsRoutes({ app, pool, getPricingUserId, requireAdminSession });
+setupAdminInboundAlertsRoutes({ app, pool, requireAdminSession });
+
+// Task #121b — Admin Room Marketing-fane: in-app banner/modal/toast/email
+// announcements + view-/dismiss-/click-stats. Backer AnnouncementCreator +
+// AnnouncementsTab i MarketingSEODashboard som ellers kalte en orphan API.
+setupAdminAnnouncementsRoutes({ app, pool, getPricingUserId, requireAdminSession });
 
 // Slice 9X.57 — Konvertering: team-prototype-testere → Enterprise.
 // 3 mnd gratis + 25 % rabatt i 12 mnd, trigger 14 dager før program slutter.
@@ -65248,7 +69106,10 @@ setInterval(() => {
 }, 60 * 60 * 1000); // hver time
 
 // Slice 9X.58 — Admin config-check (Stripe + Gmail + schema-tilstand)
-setupAdminConfigCheckRoutes({ app, pool, requireAdminSession });
+setupAdminConfigCheckRoutes({ app, pool, requireAdminSession: requireResolvedAdminSession });
+
+// Slice 9X.126 — Admin development-tools (placeholder-scan via grep-pipeline)
+setupAdminDevelopmentToolsRoutes({ app, requireAdminSession });
 
 // Slice 9X.49 — Brief-notater + AI-sammendrag.
 setupWeddingAssistantBriefNotesRoutes({ app, pool, requireUserSession, getPricingUserId });
@@ -65275,7 +69136,9 @@ setInterval(() => {
 
 app.get("/api/clients", async (req, res) => {
   try {
-    const userId = req.query.userId as string;
+    // Session-only: the spoofable ?userId previously scoped the client/couple list
+    // (client emails + project names = PII) to an arbitrary tenant. Bind to session.
+    const userId = getActiveSessionFromRequest(req)?.userId || null;
     if (!userId) return res.json([]);
     // Get real clients from projects
     const result = await pool.query(
@@ -65505,7 +69368,10 @@ async function ensureQuotesCompatibilitySchema() {
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_voucher_id VARCHAR;
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_voucher_url TEXT;
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_synced_at TIMESTAMP;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS share_token VARCHAR(64);
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS share_expires_at TIMESTAMPTZ;
       CREATE INDEX IF NOT EXISTS idx_quotes_contract_id ON quotes(contract_id);
+      CREATE INDEX IF NOT EXISTS idx_quotes_share_token ON quotes(share_token);
     `,
       )
       .then(() => undefined);
@@ -66932,15 +70798,13 @@ function getSplitSheetUserId(req: any): string {
       ? activeSessions.get(bearerToken)?.userId
       : "";
 
+  // Identity is resolved ONLY from the authenticated Bearer session. The app is
+  // Bearer-token-only (no cookies), so spoofable client-supplied fallbacks
+  // (x-user-id / x-userid / x-user headers, req.body.userId, req.query.userId)
+  // must NOT be trusted — they previously allowed anyone to impersonate any user
+  // and bypass the length-based write guards on PUT/DELETE (IDOR).
   const rawUserId =
-    req.session?.user?.id ||
-    req.user?.id ||
-    sessionUserId ||
-    req.headers["x-user-id"] ||
-    req.body?.userId ||
-    req.query?.userId ||
-    req.headers["x-userid"] ||
-    req.headers["x-user"];
+    req.session?.user?.id || req.user?.id || sessionUserId;
 
   if (typeof rawUserId === "string" && rawUserId.trim().length > 0) {
     return rawUserId.trim();
@@ -67710,6 +71574,7 @@ const listSplitSheetEaseVerseLinksHandler = async (req: any, res: any) => {
         INNER JOIN split_sheets s ON s.id = l.split_sheet_id
         WHERE l.split_sheet_id = $1
           AND s.user_id = $2
+          AND COALESCE(s.metadata->>'source', '') <> 'workspace-participant-compensation'
         ORDER BY linked_at DESC
       `,
       [id, userId],
@@ -67744,13 +71609,19 @@ const linkSplitSheetEaseVerseHandler = async (req: any, res: any) => {
     }
 
     const splitSheet = await pool.query(
-      `SELECT id FROM split_sheets WHERE id = $1 AND user_id = $2`,
+      `SELECT id, metadata FROM split_sheets WHERE id = $1 AND user_id = $2`,
       [id, userId],
     );
     if (splitSheet.rows.length === 0) {
       return res
         .status(404)
         .json({ success: false, error: "Split sheet not found" });
+    }
+    if (isWorkspaceParticipantCompensationMetadata(splitSheet.rows[0].metadata)) {
+      return res.status(409).json({
+        success: false,
+        error: "managed_compensation_uses_participant_contract",
+      });
     }
 
     const duplicate = await pool.query(
@@ -67836,13 +71707,19 @@ const unlinkSplitSheetEaseVerseHandler = async (req: any, res: any) => {
     );
 
     const splitSheet = await pool.query(
-      `SELECT id FROM split_sheets WHERE id = $1 AND user_id = $2`,
+      `SELECT id, metadata FROM split_sheets WHERE id = $1 AND user_id = $2`,
       [id, userId],
     );
     if (splitSheet.rows.length === 0) {
       return res
         .status(404)
         .json({ success: false, error: "Split sheet not found" });
+    }
+    if (isWorkspaceParticipantCompensationMetadata(splitSheet.rows[0].metadata)) {
+      return res.status(409).json({
+        success: false,
+        error: "managed_compensation_uses_participant_contract",
+      });
     }
 
     let query = `
@@ -68032,12 +71909,14 @@ const handleCreateGoogleMeet = async (
   res: express.Response,
 ) => {
   try {
-    const preferredUserId =
-      readString(req.headers["x-user-id"]) ??
-      readString(req.body?.userId) ??
-      null;
+    // Session-only: preferredUserId selects WHOSE stored Google Workspace OAuth is
+    // used to mint the Meet/calendar event. The spoofable x-user-id/body.userId let a
+    // caller borrow a victim's connected Google account (and an empty value dropped the
+    // user_id filter in resolveRoleRoomGoogleCredentialSource entirely, borrowing an
+    // arbitrary tenant's account). Bind to the authenticated session.
+    const preferredUserId = getActiveSessionFromRequest(req)?.userId ?? null;
     if (!preferredUserId) {
-      return res.status(400).json({
+      return res.status(401).json({
         error:
           "Du må være logget inn med en koblet Google Workspace-bruker for å starte Google Meet.",
       });
@@ -68148,6 +72027,7 @@ app.get("/api/system/metrics", (req, res) => {
 
 
 app.post("/api/deployment/feedback-deploy", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
   try {
     const body = (req.body || {}) as Record<string, unknown>;
     const feedbackId =
@@ -68667,7 +72547,7 @@ async function syncContractLifecycleArtifacts(params: {
           LIMIT 1`,
         [customerId, subject, `${message}\n\n[ref:${externalRef}]`],
       );
-      if (existingActivity.rowCount === 0) {
+      if (!existingActivity.rows.length) {
         await pool.query(
           `INSERT INTO crm_activities (
              id, customer_id, deal_id, type, subject, description, direction, outcome, created_at, updated_at
@@ -68703,7 +72583,7 @@ async function syncContractLifecycleArtifacts(params: {
           LIMIT 1`,
         [contract.projectId, `[ref:${externalRef}]`],
       );
-      if (existingMilestone.rowCount === 0) {
+      if (!existingMilestone.rows.length) {
         await pool.query(
           `INSERT INTO project_milestones (
              id, project_id, user_id, title, description, category, type, status, priority, location, internal_notes, client_visible
@@ -68754,7 +72634,7 @@ async function syncContractLifecycleArtifacts(params: {
             LIMIT 1`,
           [link.conversation_id, externalRef],
         );
-        if (existingMessage.rowCount === 0) {
+        if (!existingMessage.rows.length) {
           await pool.query(
             `INSERT INTO communication_messages (
                id, channel_id, sender_id, message_type, content, metadata, is_read, is_priority, is_system_generated, created_at, updated_at
@@ -69862,6 +73742,27 @@ setupShowcaseMiscRoutes({
   dbCompatUserKvKey,
 });
 
+// Selection-deadline reminders: daily sweep finner galleries med
+// selectionDeadline 3 eller 1 dag unna og sender e-post-påminnelse til
+// klienten. Idempotent via gallery_settings.reminderSentFor. Bruker
+// .unref() så loopen aldri holder prosessen i live.
+setInterval(() => {
+  void runDeadlineReminderSweep(pool).then((r) => {
+    if (r.sent > 0 || r.errors > 0) {
+      console.log(`[showcase-deadline-sweep] scanned=${r.scanned} sent=${r.sent} errors=${r.errors}`);
+    }
+  });
+}, 24 * 60 * 60 * 1000).unref();
+// Kjør en sweep 60s etter startup så reminders som er forfalt mens
+// serveren var nede sendes umiddelbart.
+setTimeout(() => {
+  void runDeadlineReminderSweep(pool).then((r) => {
+    if (r.sent > 0 || r.errors > 0) {
+      console.log(`[showcase-deadline-sweep] startup scanned=${r.scanned} sent=${r.sent} errors=${r.errors}`);
+    }
+  });
+}, 60_000).unref();
+
 // ── Showcase collections — flyttet til ./showcase-collections-routes.ts
 setupShowcaseCollectionsRoutes({
   app,
@@ -69961,6 +73862,64 @@ setupShowcaseAnalyticsRoutes({ app, pool, requireUserSession });
 // ── Showcase pricing — flyttet til ./showcase-pricing-routes.ts
 //   GET /pricing + GET /pricing/:profession.
 setupShowcasePricingRoutes({ app, resolveShowcasePricing });
+
+// ── Fotograf Stripe Connect — kobling administreres i Universal Dashboard
+//   settings-panel + onboarding. Bildekjøp betales til fotografens egen konto.
+setupPhotographerStripeConnectRoutes({
+  app,
+  pool,
+  requireUserSession,
+  getStripe: getCreatorHubStripeClient,
+  getReturnBaseUrl: () =>
+    process.env.PUBLIC_APP_URL ||
+    process.env.CREATORHUB_PUBLIC_URL ||
+    "https://creatorhubn.com",
+});
+
+// ── Klient-omtaler — kundene anmelder fotografen; eier modererer. ───────────
+setupPhotographerReviewsRoutes({ app, pool, requireUserSession });
+
+// ── Audio Showcase — profesjonelt mix/master-review-rom (spec MVP). ─────────
+setupAudioShowcaseRoutes({
+  app, pool, requireUserSession,
+  sendInviteEmail: async (to, { inviterName, projectTitle, inviteUrl }) => {
+    const subject = `${inviterName} inviterer deg til å samarbeide på «${projectTitle}»`;
+    const html = `<div style="font-family:system-ui,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+      <h2 style="margin:0 0 8px">${inviterName} inviterer deg</h2>
+      <p style="margin:0 0 16px;color:#555">til å samarbeide på låten <strong>«${projectTitle}»</strong>. Fyll ut profilen din (rolle, bidrag, profilbilde) og se mix/master-review.</p>
+      <a href="${inviteUrl}" style="display:inline-block;background:#FF6B35;color:#150d05;font-weight:700;text-decoration:none;padding:12px 22px;border-radius:999px">Åpne invitasjonen</a>
+      <p style="margin:16px 0 0;color:#888;font-size:12px">Eller lim inn lenken: ${inviteUrl}</p></div>`;
+    const text = `${inviterName} inviterer deg til å samarbeide på «${projectTitle}». Åpne invitasjonen: ${inviteUrl}`;
+    await sendAudioReviewEmail({ to, subject, html, text, kind: "audio_review_invite" });
+  },
+  sendEmail: async ({ to, subject, html, text, kind }) => {
+    await sendAudioReviewEmail({ to, subject, html, text, kind: kind || "audio_showcase" });
+  },
+  // Avtale-PDF arver produsentens branding fra Universal Dashboard → settings.
+  getBrandingForUser: async (userId) => {
+    try {
+      const b = await getStoredBusinessBrandingInfo(userId);
+      return { businessName: b?.businessName || "", logoUrl: b?.customLogo || "", accentColor: b?.brandingColor || "" };
+    } catch { return null; }
+  },
+  // Gjenbruk eksisterende YouTube-tilkobling (Google) for video-publisering.
+  getYoutubeClient: async (userId, req) => {
+    try { const { youtube } = await buildAuthorizedYoutubeClient(pool, userId, req); return { youtube }; }
+    catch { return null; }
+  },
+  // Google Calendar (samme tilkobling) for å legge økter i produsentens kalender.
+  // Returnerer også innvilgede scopes + e-post slik at UI kan vise om kalender-
+  // tilgang er gitt og tilby «koble til på nytt» når den mangler.
+  getGoogleCalendar: async (userId, req) => {
+    try {
+      const { calendar, authorized } = await buildAuthorizedGoogleCalendar(pool, userId, req);
+      return { calendar, scopes: authorized.connection.storedScopes || [], email: authorized.connection.googleEmail || null };
+    } catch { return null; }
+  },
+  // Opplasting av eget Canvas-klipp (memoryStorage, 250 MB).
+  uploadClip: showcaseMediaUpload,
+});
+setupSoundRoomOperatingSystemRoutes({ app, pool, requireUserSession });
 
 
 
@@ -70088,10 +74047,19 @@ setupShowcaseGooglePhotosRoutes({
 // Vendor update (showcase actions)
 app.post("/api/vendor/update", async (req, res) => {
   try {
+    // Krev innlogging — endepunktet var HELT åpent (anonym kunne overskrive en
+    // vilkårlig vendor via body.vendorId). NB: dette er en DELT showcase-flate
+    // (Northtone/demo) der enhver innlogget bruker kurerer featured-produkter på
+    // et FAST merke — derfor bevisst INGEN eierskaps-gate (ville brutt showcase-
+    // flyten). Residual: delt skrive-tilgang bør flyttes til egen
+    // vendor_showcase_features-tabell (produktbeslutning).
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const vendorId = readString(req.body?.vendorId);
     const vendorName = readString(req.body?.vendorName) || vendorId;
     const vendorType = readString(req.body?.vendorType) || "vendor";
-    const userId = readString(req.body?.userId) || vendorId;
+    // Eier av en NYOPPRETTET vendor = kalleren (ikke spoofbar body.userId).
+    const userId = session.userId;
     const featuredProductId = readString(req.body?.featuredProductId);
     const featuredOrderId = readString(req.body?.featuredOrderId);
 
@@ -72322,10 +76290,11 @@ async function requestMeetingWritingAssist(params: {
 app.get("/api/notebooklm/workspace/status", async (req, res) => {
   try {
     await ensureMeetingNotesCompatibilitySchema();
-    const userId =
-      readString(req.query.userId) ||
-      getUserIdFromAuth(req) ||
-      compatResolveUserId(req);
+    // Session-only: the query.userId fallback let a caller read another tenant's
+    // NotebookLM workspace status by passing ?userId=<victim>.
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const userId = session.userId;
     const status = await getNotebookLmWorkspaceStatus(pool, {
       userId,
       meetingId: readString(req.query.meetingId),
@@ -72349,10 +76318,11 @@ app.get("/api/notebooklm/workspace/status", async (req, res) => {
 app.post("/api/notebooklm/workspace/sync", async (req, res) => {
   try {
     await ensureMeetingNotesCompatibilitySchema();
-    const userId =
-      readString(req.body?.userId) ||
-      getUserIdFromAuth(req) ||
-      compatResolveUserId(req);
+    // Session-only: the body.userId fallback let a caller sync/overwrite another
+    // tenant's NotebookLM workspace by passing userId=<victim>.
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const userId = session.userId;
     await syncNotebookLmWorkspaceForScope(pool, {
       userId,
       meetingId: readString(req.body?.meetingId),
@@ -72575,6 +76545,12 @@ app.post(
       if (!assetId) {
         return res.status(400).json({ error: "Missing asset id" });
       }
+      // Guard mot path traversal: assetId brukes direkte i path.join for
+      // fillagring. Express dekoder %2f/%2e ETTER segment-routing, så en
+      // rå ":assetId" kan inneholde "../" hvis vi ikke validerer formatet.
+      if (!/^[A-Za-z0-9._-]{1,128}$/.test(assetId) || assetId.includes("..")) {
+        return res.status(400).json({ error: "Invalid asset id" });
+      }
       const file = req.file as
         | {
             originalname: string;
@@ -72677,7 +76653,7 @@ app.post(
 const dashboardCompatRouter = createDashboardCompatRouter();
 app.use(dashboardCompatRouter);
 
-const communicationRouter = createCommunicationRouter(db, pool);
+const communicationRouter = createCommunicationRouter(db, pool, activeSessions);
 app.use(communicationRouter);
 
 const lightroomRouter = createLightroomRouter(pool);
@@ -72696,9 +76672,9 @@ app.use("/api/lightroom-routes", lightroomRouter);
 // user id is supplied; empty arrays for anonymous sessions.
 app.get("/import/leads", async (req, res) => {
   try {
-    const queryUserId = readString(req.query.userId);
-    const headerUserId = readString(req.headers["x-user-id"]);
-    const userId = queryUserId || headerUserId;
+    // Session-only: the spoofable ?userId / x-user-id previously scoped the sales-lead
+    // list (name, email, phone, budget = PII) to an arbitrary tenant. Bind to session.
+    const userId = getActiveSessionFromRequest(req)?.userId || null;
     if (!userId || userId === "guest") {
       return res.json({ leads: [] });
     }
@@ -72772,18 +76748,66 @@ app.post("/import/lead/:leadId", async (req, res) => {
   }
 });
 
+// Skalering nivå 3a: real-time-observability — antall WebSocket-klienter
+// koblet til /ws/leadgrid + sum av channel-abonnementer.
+app.get("/api/leadgrid/realtime/health", (_req, res) => {
+  res.json(leadgridRealtime.snapshot());
+});
+
 // Catch-all for unhandled API routes
 app.all("/api/*", (req, res) => {
   res.status(404).json({ message: "Endpoint not implemented", path: req.path });
 });
 
+// Sentry error-middleware: må mountes ETTER alle routes, slik at den
+// fanger errors fra alle endepunkter. No-op hvis Sentry ikke initialisert.
+app.use(buildSentryErrorMiddleware());
+
 // Create HTTP server for WebSocket support
 const httpServer = createServer(app);
-createWebSocketServer(httpServer, db);
+createWebSocketServer(httpServer, db, pool, activeSessions);
 // G25/J1: dance realtime presence + cursor sync på /ws/dance/realtime
 createDanceRealtimeServer(httpServer);
+// Leadgrid Canvas multi-penn: strøk-relay for delte notater.
+createCanvasRealtimeServer(httpServer, pool, activeSessions);
 attachCaptureWebSocket(httpServer, pool, activeSessions);
 attachUserEventsWebSocket(httpServer, pool, activeSessions);
+// Skalering nivå 3a: real-time WebSocket-push til iPad (Leadgrid).
+// Selger slipper å polle follow-up-queue når Intelligence Engine rescorer.
+leadgridRealtime.attach(httpServer, pool, activeSessions);
+
+// RT-1: Final fallback. Hver av de fire opcoderne over registrerer
+// sin egen 'upgrade'-listener for sin path. Et upgrade-request mot en
+// UKJENT path når slutten av kjeden uten å bli claimed — Node lukker
+// IKKE socketen automatisk, så den lekker en fd og en ESTABLISHED-
+// connection inntil OS TCP-timeout (mange minutter).
+// Denne reaper-listenern må registreres SIST og destroyer alle ikke-
+// claimed upgrade-paths.
+httpServer.on("upgrade", (req, socket) => {
+  try {
+    const p = new URL(
+      req.url ?? "/",
+      `http://${req.headers.host ?? "localhost"}`,
+    ).pathname;
+    const known =
+      p === "/ws" ||
+      p.startsWith("/ws/") ||
+      p === "/ws/dance/realtime" ||
+      p === "/ws/leadgrid" ||
+      /^\/api\/capture\/ws\/sessions\/[0-9a-f-]{36}$/.test(p) ||
+      p === "/api/ipad/ws/events";
+    if (!known && !socket.destroyed && socket.writable) {
+      socket.write(
+        "HTTP/1.1 404 Not Found\r\n" +
+          "Connection: close\r\n" +
+          "Content-Length: 0\r\n\r\n",
+      );
+      socket.destroy();
+    }
+  } catch {
+    try { socket.destroy(); } catch { /* noop */ }
+  }
+});
 
 // Drive batch upload worker: periodic sweep of ``queued`` +
 // ``running`` batches. Tick interval set conservatively so one
@@ -72800,8 +76824,54 @@ const driveBatchWorker = startDriveBatchWorker(
 // here. Exposed on the module scope for tests that need to reach in.
 void driveBatchWorker;
 
+// Initialize distributed fanout before accepting traffic. When scaling is
+// explicitly enabled in Render, startup fails closed if Redis is absent or
+// unreachable instead of silently losing events between instances.
+async function startHttpServer(): Promise<void> {
+  await initializeRealtimeUserEventFanout(deliverUserEventLocally);
+httpServer.on("close", () => {
+  void closeRealtimeUserEventFanout();
+});
+
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
+  const proToolsSyncWorker = startProToolsSyncWorker(pool);
+  void proToolsSyncWorker;
+  // iPad-bearer hydrering — last alle ikke-revokerte ipad_tokens inn i
+  // activeSessions ved boot. Uten dette mister vi alle iPad-sessions ved
+  // hver Render-redeploy → 401 på alle iPad-kall til Daniel re-logger.
+  void (async () => {
+    try {
+      const r = await pool.query<{
+        token: string; user_id: string; email: string | null; role: string | null;
+      }>(
+        `SELECT t.token, t.user_id, u.email, u.role
+           FROM ipad_tokens t
+           JOIN users u ON u.id::text = t.user_id
+          WHERE t.revoked_at IS NULL
+            AND COALESCE(
+                  (to_jsonb(u)->>'is_active')::boolean,
+                  TRUE
+                ) = TRUE`,
+      );
+      let hydrated = 0;
+      for (const row of r.rows) {
+        if (!activeSessions.has(row.token)) {
+          activeSessions.set(row.token, {
+            userId: row.user_id,
+            email: row.email ?? "",
+            name: row.email ?? row.user_id,
+            role: row.role ?? "member",
+            loginAt: new Date().toISOString(),
+          });
+          hydrated++;
+        }
+      }
+      console.log(`🔑 Hydrated ${hydrated} iPad-bearer-sessions fra ipad_tokens`);
+    } catch (e) {
+      console.warn("[boot] ipad_tokens hydrering feilet:", (e as Error).message);
+    }
+  })();
   // Slice 9X.79 — SmartFlyt scheduler-loop (poller every 60s)
   void (async () => {
     try {
@@ -72877,6 +76947,8 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   // refresh-e tokens innen 7 dager av expiry. Hindrer at en konto som
   // ikke brukes regelmessig ender opp med expired token. Disabled hvis
   // META_APP_ID/SECRET ikke er satt.
+  // Jobb-kø (0400): handlers + worker (claim/heartbeat/stale-reclaim).
+  startBackgroundJobs(pool);
   startTokenRefreshWorker(pool);
   // LinkedIn-insights polling: 1-time sweep mot /v2/socialActions for
   // post-level engagement (likes + comments). LinkedIn har ingen webhooks
@@ -72896,4 +76968,13 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   if (isStoryArcV2Enabled() && STORY_ARC_V2_STARTUP_WARMUP_ENABLED) {
     void runStoryArcV2StartupWarmup();
   }
+});
+}
+
+void startHttpServer().catch((error) => {
+  console.error(
+    "[boot] Realtime fanout initialization failed:",
+    error instanceof Error ? error.message : "unknown error",
+  );
+  process.exit(1);
 });

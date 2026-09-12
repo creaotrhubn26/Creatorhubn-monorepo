@@ -2,6 +2,62 @@
 <html lang="nb">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Participant signing links are bearer credentials. Consume and redact the
+      // token before analytics, pixels, fonts, or other subresources can see
+      // the page URL. The React portal reads this non-enumerable in-memory value.
+      (function consumeParticipantDocumentTokenFromUrl() {
+        try {
+          var participantMatch = /^\/participant-document\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i.exec(window.location.pathname);
+          if (participantMatch) {
+            var privateRouteKey = Symbol.for('creatorhub.workspace-participant-document.private-route.v1');
+            var participantReferrer = document.createElement('meta');
+            participantReferrer.name = 'referrer';
+            participantReferrer.content = 'no-referrer';
+            document.head.appendChild(participantReferrer);
+
+            Object.defineProperty(window, privateRouteKey, {
+              value: true,
+              configurable: false,
+              enumerable: false,
+              writable: false,
+            });
+
+            var participantUrl = new URL(window.location.href);
+            var participantHash = new URLSearchParams(participantUrl.hash.replace(/^#/, ''));
+            var participantToken = participantHash.get('token') || '';
+            participantUrl.searchParams.delete('token');
+            participantUrl.hash = '';
+            window.history.replaceState(
+              window.history.state,
+              '',
+              participantUrl.pathname + participantUrl.search,
+            );
+
+            if (/^[A-Za-z0-9_-]{43}$/.test(participantToken)) {
+              var credentialBridgeKey = Symbol.for('creatorhub.workspace-participant-document.credential.v1');
+              var participantCredential = Object.freeze({
+                documentId: participantMatch[1].toLowerCase(),
+                token: participantToken,
+              });
+              participantToken = '';
+              Object.defineProperty(window, credentialBridgeKey, {
+                value: function takeParticipantDocumentCredentialOnce() {
+                  var credential = participantCredential;
+                  participantCredential = null;
+                  return credential;
+                },
+                configurable: true,
+                enumerable: false,
+                writable: false,
+              });
+            }
+            return;
+          }
+        } catch (_) { /* portalen validerer manglende token server-side */ }
+      })();
+    </script>
+    <meta name="google-site-verification" content="FH16rVFnGmHRYKc_8u3tyarrRAVh_3N0Si_Xqnuv2T0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
@@ -24,6 +80,20 @@
     <meta name="googlebot" content="index,follow" />
     <meta name="theme-color" content="#17120f" />
     <link rel="canonical" href="https://creatorhubn.com/" />
+    <script>
+      (function applyPrivateDocumentIndexingPolicy() {
+        try {
+          if (!window[Symbol.for('creatorhub.workspace-participant-document.private-route.v1')]) return;
+          var robots = document.querySelector('meta[name="robots"]');
+          var googlebot = document.querySelector('meta[name="googlebot"]');
+          var canonical = document.querySelector('link[rel="canonical"]');
+          if (robots) robots.setAttribute('content', 'noindex,nofollow,noarchive');
+          if (googlebot) googlebot.setAttribute('content', 'noindex,nofollow,noarchive');
+          if (canonical) canonical.setAttribute('href', window.location.origin + '/participant-document');
+          document.title = 'CreatorHub · personlig prosjektdokument';
+        } catch (_) { /* fail closed at the HTTP X-Robots-Tag layer where configured */ }
+      })();
+    </script>
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="CreatorHub Norge" />
     <meta property="og:title" content="CreatorHub Norge | Plattform for skapere, team og Academy" />
@@ -42,23 +112,23 @@
     />
     <meta name="twitter:image" content="https://creatorhubn.com/landing_backdrop_with_logo.png" />
     <meta name="google-site-verification" content="4EH878wtJ-QoYJgc0EZbysxeX2ucoYhfSdLHSJ2C_zg" />
+    <meta name="tiktok-developers-site-verification" content="q87vGxhQah3w3SKohAfLMKRZvWtzPkTB" />
     <script>
       // Host-aware SEO overrides: when this document is served on
-      // theroleroom.com (Vercel filesystem precedence defeats our
-      // host-based rewrite rules, so the single index.html is shared
+      // theroleroom.com (the same Netlify bundle serves several brands,
+      // so the single index.html can be shared
       // across both domains), rewrite the title, canonical, and
       // Open Graph tags in-place before the React app mounts. Google's
-      // crawler executes JS and will index the updated tags; social
-      // sharing crawlers that do not execute JS fall back to the
-      // generic CreatorHub tags, which is acceptable since theroleroom
-      // landings are served separately via /theroleroom.html on direct
-      // navigation. This script runs synchronously in the <head> so
-      // the final tags are in the DOM before any scrapers look.
+      // crawler executes JS and will index the updated tags. The production
+      // build also creates and host-routes a Role Room-specific HTML shell,
+      // so clients that do not execute JavaScript receive the same metadata.
+      // This script remains as a synchronous defence-in-depth override for
+      // any path that reaches the shared shell.
       (function () {
         var host = (location.hostname || '').toLowerCase();
         if (!/^(www\.)?theroleroom\.com$/.test(host)) return;
-        var title = 'The Role Room | Casting, crew og produksjonsplanlegging';
-        var description = 'The Role Room er produksjonsflaten i CreatorHub for casting, team, talentportal og koordinering av opptaksdager.';
+        var title = 'The Role Room — Fra klasserom til kino, ett system for film- og innholdsproduksjon';
+        var description = 'Operativsystemet som følger deg fra utdanning til bransje — fra idé via casting og gjennomføring til produksjonen er distribuert og sett av publikum. LTI 1.3/Feide-integrasjon kobler filmutdanning rett på samme system.';
         var origin = 'https://theroleroom.com';
         var image = origin + '/role-room-assets/landing_backdrop_with_logo.webp';
         document.title = title;
@@ -69,6 +139,38 @@
         setAttr('meta[name="description"]', 'content', description);
         setAttr('link[rel="canonical"]', 'href', origin + '/');
         setAttr('meta[property="og:site_name"]', 'content', 'The Role Room');
+        setAttr('meta[property="og:title"]', 'content', title);
+        setAttr('meta[property="og:description"]', 'content', description);
+        setAttr('meta[property="og:url"]', 'content', origin + '/');
+        setAttr('meta[property="og:image"]', 'content', image);
+        setAttr('meta[name="twitter:title"]', 'content', title);
+        setAttr('meta[name="twitter:description"]', 'content', description);
+        setAttr('meta[name="twitter:image"]', 'content', image);
+      })();
+    </script>
+    <script>
+      // Host-aware SEO override for leadgrid.no (2026-08-20) — samme mønster
+      // som theroleroom.com over. Bots dekkes nå av
+      // netlify/edge-functions/host-routes.ts (server-side, treffer også
+      // ikke-JS-crawlere), men ekte menneskelige besøkende på leadgrid.no
+      // fikk ALDRI en client-side title-patch her — fanen viste "CreatorHub
+      // Norge" permanent (ingen JS-korreksjon fantes for dette hostet i det
+      // hele tatt). Tekst matcher den geo-prerenderte /geo/leadgrid/landing.html.
+      (function () {
+        var host = (location.hostname || '').toLowerCase();
+        if (!/^(leadgrid\.no|www\.leadgrid\.no|leadgrid\.theroleroom\.com)$/.test(host)) return;
+        var title = 'Leadgrid — Gjør kartet om til kunder';
+        var description = 'Kartbasert CRM for lokale muligheter. Leadgrid hjelper team med å finne, organisere, følge opp og vinne lokale leads — alt i ett visuelt system.';
+        var origin = 'https://leadgrid.no';
+        var image = origin + '/leadgrid/backdrop2.png';
+        document.title = title;
+        function setAttr(selector, attr, value) {
+          var el = document.querySelector(selector);
+          if (el) el.setAttribute(attr, value);
+        }
+        setAttr('meta[name="description"]', 'content', description);
+        setAttr('link[rel="canonical"]', 'href', origin + '/');
+        setAttr('meta[property="og:site_name"]', 'content', 'Leadgrid');
         setAttr('meta[property="og:title"]', 'content', title);
         setAttr('meta[property="og:description"]', 'content', description);
         setAttr('meta[property="og:url"]', 'content', origin + '/');
@@ -321,7 +423,11 @@
         var isAcademyRoute = /^\/academy(?:$|[/-])/.test(pathname);
         // NextRole-rutene viser NextRole-mark; ellers academy- eller CreatorHub-favicon.
         var isNextRoleRoute = /^\/(nextrole|resume-builder|cv)\b/.test(pathname);
-        var faviconHref = isNextRoleRoute
+        // The Role Room = eget vertsnavn (theroleroom.com) → Role Room-ikon.
+        var isRoleRoomHost = /(^|\.)theroleroom\.com$/i.test(window.location.hostname || '');
+        var faviconHref = isRoleRoomHost
+          ? '/theroleroom-app-icon-1024.png'
+          : isNextRoleRoute
           ? '/NextRole_Iconapp.png'
           : isAcademyRoute
           ? '/academy-favicon.svg'
@@ -347,12 +453,15 @@
     </script>
 
     <script>
+      (function bootstrapThirdPartyServicesUnlessPrivateDocument() {
+      if (window[Symbol.for('creatorhub.workspace-participant-document.private-route.v1')]) return;
       window.dataLayer = window.dataLayer || [];
       window.gtag = window.gtag || function () {
         window.dataLayer.push(arguments);
       };
 
       var ROLE_ROOM_ANALYTICS_HOSTS = ['theroleroom.com', 'www.theroleroom.com'];
+      var LEADGRID_ANALYTICS_HOSTS = ['leadgrid.no', 'www.leadgrid.no', 'leadgrid.theroleroom.com'];
       function resolveStaticAnalyticsValue(rawValue, fallback) {
         if (typeof rawValue !== 'string') {
           return fallback;
@@ -372,13 +481,33 @@
         return trimmedValue;
       }
 
-      var GOOGLE_TAG_MANAGER_ID = 'GTM-MFWW7X83';
-      var CREATORHUB_GOOGLE_TAG_MANAGER_ID = 'GTM-MFWW7X83';
+      var GOOGLE_TAG_MANAGER_ID = 'GTM-KC38RPNZ';
+      var CREATORHUB_GOOGLE_TAG_MANAGER_ID = 'GTM-KC38RPNZ';
       var ROLE_ROOM_GOOGLE_TAG_MANAGER_ID = 'GTM-TNWTVHSP';
       var CREATORHUB_GA_MEASUREMENT_ID = 'G-6E5MJT8REW';
       var ROLE_ROOM_GA_MEASUREMENT_ID = 'G-9T7K5TJVFX';
+      // Leadgrid: egen GA4-property + GTM-container (opprettet 18.07.2026,
+      // container 'leadgrid.no' under Creatorhub Norge-kontoen, v1 publisert).
+      // Egen Clarity/TikTok finnes ikke ennå — tom streng = lastes ikke
+      // (ensure*Loaded-guardene sjekker falsy ID).
+      var LEADGRID_GA_MEASUREMENT_ID = 'G-3MS91ZHVKS';
+      var LEADGRID_GOOGLE_TAG_MANAGER_ID = 'GTM-W8QZL75L';
+      var LEADGRID_CLARITY_PROJECT_ID = 'xnzezvwkbm';
+      var LEADGRID_TIKTOK_PIXEL_CODE = '';
       var CREATORHUB_CLARITY_PROJECT_ID = 'wqg9kj1vxt';
       var ROLE_ROOM_CLARITY_PROJECT_ID = 'wqgcu06tz0';
+      // TikTok Pixel — kommer fra TikTok Business UI etter at Daniel oppretter
+      // pixel via Agent eller manuelt. Pixel Code er typisk 20-tegns alfanum.
+      // Sett til '' for å deaktivere. Per-host som GA/GTM-pattern over.
+      var CREATORHUB_TIKTOK_PIXEL_CODE = '';
+      var ROLE_ROOM_TIKTOK_PIXEL_CODE = '';
+      // Meta Pixel (Facebook/Instagram-annonsering) — dataset-ID fra Events
+      // Manager (business.facebook.com/events_manager2). Tom streng = lastes
+      // ikke. NB: gates på MARKEDSFØRINGS-samtykke (ikke analytics) siden
+      // pixelen brukes til annonsemåling/remarketing.
+      var LEADGRID_META_PIXEL_ID = '929515126829909';
+      var CREATORHUB_META_PIXEL_ID = '1886226702029036';
+      var ROLE_ROOM_META_PIXEL_ID = '1254983913516214';
       var analyticsConfig = resolveAnalyticsConfig();
       var analyticsBootstrapState = {
         tagManagerLoaded: false,
@@ -388,16 +517,33 @@
         initialPageViewSent: false,
         clarityRequested: false,
         clarityLoaded: false,
+        tiktokRequested: false,
+        tiktokLoaded: false,
+        metaPixelRequested: false,
+        metaPixelLoaded: false,
       };
 
       function resolveAnalyticsConfig() {
         var hostname = (window.location.hostname || '').trim().toLowerCase();
         var isRoleRoomHost = ROLE_ROOM_ANALYTICS_HOSTS.indexOf(hostname) >= 0;
+        var isLeadgridHost = LEADGRID_ANALYTICS_HOSTS.indexOf(hostname) >= 0;
+        if (isLeadgridHost) {
+          return {
+            site: 'leadgrid',
+            measurementId: LEADGRID_GA_MEASUREMENT_ID,
+            tagManagerId: LEADGRID_GOOGLE_TAG_MANAGER_ID,
+            clarityProjectId: LEADGRID_CLARITY_PROJECT_ID,
+            tiktokPixelCode: LEADGRID_TIKTOK_PIXEL_CODE,
+            metaPixelId: LEADGRID_META_PIXEL_ID,
+          };
+        }
         return {
           site: isRoleRoomHost ? 'role-room' : 'creatorhub',
           measurementId: isRoleRoomHost ? ROLE_ROOM_GA_MEASUREMENT_ID : CREATORHUB_GA_MEASUREMENT_ID,
           tagManagerId: isRoleRoomHost ? ROLE_ROOM_GOOGLE_TAG_MANAGER_ID : CREATORHUB_GOOGLE_TAG_MANAGER_ID,
           clarityProjectId: isRoleRoomHost ? ROLE_ROOM_CLARITY_PROJECT_ID : CREATORHUB_CLARITY_PROJECT_ID,
+          tiktokPixelCode: isRoleRoomHost ? ROLE_ROOM_TIKTOK_PIXEL_CODE : CREATORHUB_TIKTOK_PIXEL_CODE,
+          metaPixelId: isRoleRoomHost ? ROLE_ROOM_META_PIXEL_ID : CREATORHUB_META_PIXEL_ID,
         };
       }
 
@@ -434,6 +580,10 @@
 
       function hasAnalyticsConsent(consentSettings) {
         return !!(consentSettings && consentSettings.analytics);
+      }
+
+      function hasMarketingConsent(consentSettings) {
+        return !!(consentSettings && consentSettings.marketing);
       }
 
       function applyAnalyticsConsent(consentSettings) {
@@ -538,6 +688,88 @@
         return true;
       }
 
+      function ensureTiktokPixelLoaded(consentSettings) {
+        // TikTok Pixel — fyrer pageview + støtter ttq.track() per host.
+        // Per-host pixel-code: ROLE_ROOM_TIKTOK_PIXEL_CODE for theroleroom.com,
+        // CREATORHUB_TIKTOK_PIXEL_CODE for creatorhubn.com. Begge er '' inntil
+        // Daniel oppretter pixel via Agent (klient_ads_configs + provision-pixel)
+        // eller manuelt via TikTok Business UI. Bytt verdi over.
+        var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        var isOnline = navigator.onLine !== false;
+        if (
+          isLocalhost ||
+          !isOnline ||
+          !hasAnalyticsConsent(consentSettings) ||
+          !analyticsConfig.tiktokPixelCode
+        ) {
+          return false;
+        }
+        if (analyticsBootstrapState.tiktokLoaded || analyticsBootstrapState.tiktokRequested) {
+          return true;
+        }
+        analyticsBootstrapState.tiktokRequested = true;
+        (function (w, d, t) {
+          w.TiktokAnalyticsObject = t;
+          var ttq = w[t] = w[t] || [];
+          ttq.methods = ['page', 'track', 'identify', 'instances', 'debug', 'on', 'off', 'once', 'ready', 'alias', 'group', 'enableCookie', 'disableCookie', 'holdConsent', 'revokeConsent', 'grantConsent'];
+          ttq.setAndDefer = function (t, e) { t[e] = function () { t.push([e].concat(Array.prototype.slice.call(arguments, 0))); }; };
+          for (var i = 0; i < ttq.methods.length; i++) ttq.setAndDefer(ttq, ttq.methods[i]);
+          ttq.instance = function (t) {
+            for (var e = ttq._i[t] || [], n = 0; n < ttq.methods.length; n++) ttq.setAndDefer(e, ttq.methods[n]);
+            return e;
+          };
+          ttq.load = function (e, n) {
+            var r = 'https://analytics.tiktok.com/i18n/pixel/events.js';
+            ttq._i = ttq._i || {}; ttq._i[e] = []; ttq._i[e]._u = r;
+            ttq._t = ttq._t || {}; ttq._t[e] = +new Date();
+            ttq._o = ttq._o || {}; ttq._o[e] = n || {};
+            var s = d.createElement('script'); s.type = 'text/javascript'; s.async = true;
+            s.src = r + '?sdkid=' + e + '&lib=ttq';
+            s.onload = function () { analyticsBootstrapState.tiktokLoaded = true; };
+            s.onerror = function () { analyticsBootstrapState.tiktokRequested = false; };
+            var first = d.getElementsByTagName('script')[0];
+            first.parentNode.insertBefore(s, first);
+          };
+          ttq.load(analyticsConfig.tiktokPixelCode);
+          ttq.page();
+        })(window, document, 'ttq');
+        return true;
+      }
+
+      function ensureMetaPixelLoaded(consentSettings) {
+        // Meta Pixel (Facebook/Instagram) — annonsemåling/remarketing.
+        // Gates på MARKEDSFØRINGS-samtykke (strengere enn analytics) og
+        // per-host dataset-ID (tom = deaktivert). Localhost skippes.
+        var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        var isOnline = navigator.onLine !== false;
+        if (
+          isLocalhost ||
+          !isOnline ||
+          !hasMarketingConsent(consentSettings) ||
+          !analyticsConfig.metaPixelId
+        ) {
+          return false;
+        }
+        if (analyticsBootstrapState.metaPixelLoaded || analyticsBootstrapState.metaPixelRequested) {
+          return true;
+        }
+        analyticsBootstrapState.metaPixelRequested = true;
+        (function (f, b, e, v, n, t, s) {
+          if (f.fbq) return;
+          n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); };
+          if (!f._fbq) f._fbq = n;
+          n.push = n; n.loaded = true; n.version = '2.0'; n.queue = [];
+          t = b.createElement(e); t.async = true; t.src = v;
+          t.onload = function () { analyticsBootstrapState.metaPixelLoaded = true; };
+          t.onerror = function () { analyticsBootstrapState.metaPixelRequested = false; };
+          s = b.getElementsByTagName(e)[0];
+          s.parentNode.insertBefore(t, s);
+        })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+        window.fbq('init', analyticsConfig.metaPixelId);
+        window.fbq('track', 'PageView');
+        return true;
+      }
+
       function ensureGoogleAnalyticsLoaded(consentSettings) {
         var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         var isOnline = navigator.onLine !== false;
@@ -589,13 +821,17 @@
             ensureGoogleTagManagerLoaded(consentSettings);
             ensureGoogleAnalyticsLoaded(consentSettings);
             ensureClarityLoaded(consentSettings);
+            ensureTiktokPixelLoaded(consentSettings);
           }
+          ensureMetaPixelLoaded(consentSettings);
           return true;
         };
         window.__creatorhubLoadAnalytics = function (consentSettings) {
           var resolvedConsent = consentSettings || readStoredConsent();
           ensureGoogleTagManagerLoaded(resolvedConsent);
           ensureClarityLoaded(resolvedConsent);
+          ensureTiktokPixelLoaded(resolvedConsent);
+          ensureMetaPixelLoaded(resolvedConsent);
           return ensureGoogleAnalyticsLoaded(resolvedConsent);
         };
 
@@ -605,6 +841,11 @@
           ensureGoogleTagManagerLoaded(storedConsent);
           ensureGoogleAnalyticsLoaded(storedConsent);
           ensureClarityLoaded(storedConsent);
+          ensureTiktokPixelLoaded(storedConsent);
+        }
+
+        if (!isLocalhost && isOnline && hasMarketingConsent(storedConsent)) {
+          ensureMetaPixelLoaded(storedConsent);
         }
 
         if (isOnline) {
@@ -613,19 +854,32 @@
           });
         }
       })();
+      })();
     </script>
 
     <!-- Google Fonts - Optimized: Only Roboto with essential weights -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
-      rel="stylesheet"
-    />
+    <script>
+      (function loadCreatorHubFontsUnlessPrivateDocument() {
+        if (window[Symbol.for('creatorhub.workspace-participant-document.private-route.v1')]) return;
+        var origins = ['https://fonts.googleapis.com', 'https://fonts.gstatic.com'];
+        origins.forEach(function (href, index) {
+          var preconnect = document.createElement('link');
+          preconnect.rel = 'preconnect';
+          preconnect.href = href;
+          if (index === 1) preconnect.crossOrigin = 'anonymous';
+          document.head.appendChild(preconnect);
+        });
+        var stylesheet = document.createElement('link');
+        stylesheet.rel = 'stylesheet';
+        stylesheet.href = 'https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap';
+        document.head.appendChild(stylesheet);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
     <script>
+      if (!window[Symbol.for('creatorhub.workspace-participant-document.private-route.v1')]) {
       // Catch module loading errors
       window.addEventListener('error', function(e) {
         console.error('[MODULE ERROR]', e.message, e.filename, e.lineno);
@@ -650,6 +904,7 @@
           window.location.reload();
         }
       });
+      }
     </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -50,7 +50,8 @@ export const insertThemeSchema = createInsertSchema(themes).omit({
 });
 
 export const insertUserThemePreferenceSchema = createInsertSchema(userThemePreferences).omit({
-  id: true,
+  // `id` is generatedAlwaysAsIdentity → not part of the insert schema, so it is
+  // not an omittable key (omitting it was always a runtime no-op).
   createdAt: true,
   updatedAt: true,
 });

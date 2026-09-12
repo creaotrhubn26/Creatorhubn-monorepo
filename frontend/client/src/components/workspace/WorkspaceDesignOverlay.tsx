@@ -1,0 +1,1461 @@
+/**
+ * WorkspaceDesignOverlay — CreatorHub Design (Nivå 3 + Fase B): live-overlay på den EKTE
+ * Team Workspace-ruten. Moduser:
+ *  - Annotate: hover-highlight + klikk ekte shell-elementer → pins med fri-tekst intent.
+ *  - Tweaks:   juster aksent live (--ws-accent* på :root) + lagre til workspace (PUT).
+ *  - Edit:     klikk element → property-inspector (typografi/utseende/spacing) som skriver
+ *              live til elementets stil (forhåndsvisning) og fanges i Handoff-bundelen.
+ *  - Handoff:  pakk pins + edits + token-kontekst til en Claude Code-bundle (fil-peker +
+ *              computed styles) for STRUKTURELLE endringer (det token/nav/copy-data ikke dekker).
+ * Aktiveres med ?design=1. Bruker INGEN window.alert/confirm/prompt (blokkerer extension).
+ * Selvstendig: inline styles, ingen MUI (unngår å arve dark-temaet).
+ */
+import React from 'react';
+import { uniqueSelector, ANIM_PRESETS, ANIM_KEYFRAMES, buildInsertNode, buildEditsCss, buildAnimCss, sanitizeHtmlComponent, formatSourceValue, type ElementEdits, type InsertSpec } from './elementEdits';
+
+import DevicesOutlinedIcon from '@mui/icons-material/DevicesOutlined';
+import TabletMacOutlinedIcon from '@mui/icons-material/TabletMacOutlined';
+import PhoneIphoneOutlinedIcon from '@mui/icons-material/PhoneIphoneOutlined';
+import UndoOutlinedIcon from '@mui/icons-material/UndoOutlined';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
+import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
+import MonitorHeartOutlinedIcon from '@mui/icons-material/MonitorHeartOutlined';
+import TouchAppOutlinedIcon from '@mui/icons-material/TouchAppOutlined';
+import InsightsOutlinedIcon from '@mui/icons-material/InsightsOutlined';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import NorthOutlinedIcon from '@mui/icons-material/NorthOutlined';
+import SouthOutlinedIcon from '@mui/icons-material/SouthOutlined';
+import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
+import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import CloseIcon from '@mui/icons-material/Close';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+
+// Kompakt inline-ikon: konsistent størrelse, sentrert med teksten. «Ic» holder JSX ren.
+const ICO = { fontSize: 15, verticalAlign: 'text-bottom' } as const;
+
+// rgb()/rgba() → #rrggbb for native fargevelger (<input type=color> krever hex).
+const rgbToHex = (c: string): string => {
+  if (/^#[0-9a-f]{6}$/i.test(c || '')) return c;
+  const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c || '');
+  if (!m) return '#000000';
+  const h = (n: number) => Math.max(0, Math.min(255, +n)).toString(16).padStart(2, '0');
+  return `#${h(+m[1])}${h(+m[2])}${h(+m[3])}`;
+};
+
+type ElDesc = {
+  tag: string; id?: string; cls?: string; text?: string;
+  style: Record<string, string>; rect: { x: number; y: number; w: number; h: number };
+};
+type Note = { id: number; d: ElDesc; intent: string };
+type Edits = Record<string, Record<string, string>>; // selector → { cssProp: value }
+
+const PANEL = '#FBFAF6', INK = '#171C28', INK2 = '#5C6270', LINE = '#E7E3D8', ACC = '#EE7A08';
+
+function hexVars(hex: string): Record<string, string> {
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return {};
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  const dark = '#' + [r, g, b].map((x) => Math.round(x * 0.9).toString(16).padStart(2, '0')).join('');
+  return { '--ws-accent': hex, '--ws-accent-hover': dark, '--ws-accent-soft': `rgba(${r},${g},${b},0.14)`, '--ws-accent-border': `rgba(${r},${g},${b},0.42)` };
+}
+
+function describe(el: Element): ElDesc {
+  const cs = getComputedStyle(el as HTMLElement);
+  const r = el.getBoundingClientRect();
+  const cn = typeof (el as HTMLElement).className === 'string' ? (el as HTMLElement).className : '';
+  return {
+    tag: el.tagName.toLowerCase(),
+    id: (el as HTMLElement).id || undefined,
+    cls: cn.trim().split(/\s+/).filter(Boolean).slice(0, 3).join('.') || undefined,
+    text: (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 48) || undefined,
+    style: { color: cs.color, background: cs.backgroundColor, fontSize: cs.fontSize, fontWeight: cs.fontWeight, borderRadius: cs.borderRadius, padding: cs.padding },
+    rect: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) },
+  };
+}
+
+const selOf = (d: ElDesc) => `${d.tag}${d.id ? '#' + d.id : ''}${d.cls ? '.' + d.cls : ''}`;
+
+// Singleton-vakt: hvis både et globalt mount (App.tsx/casting-main) og et per-side mount er aktivt
+// samtidig, skal KUN ett overlay rendres (ellers dobbelt UI). Modulnivå-flagg, claim ved mount.
+let overlayActive = false;
+
+// ── Design-rådgiver (heuristisk, WCAG-forankret) ─────────────────────────────────────────────
+type Suggestion = { id: string; severity: 'high' | 'med' | 'low'; text: string; fixLabel?: string; fixField?: string; fixProp?: string; fixValue?: string; fixUnit?: string };
+function parseRgb(s: string): [number, number, number, number] | null {
+  const m = s.match(/rgba?\(([^)]+)\)/i);
+  if (!m) return null;
+  const p = m[1].split(',').map((x) => parseFloat(x.trim()));
+  return [p[0] || 0, p[1] || 0, p[2] || 0, p[3] == null ? 1 : p[3]];
+}
+function relLum(r: number, g: number, b: number): number {
+  const a = [r, g, b].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+  return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
+}
+function contrast(a: [number, number, number], b: [number, number, number]): number {
+  const l1 = relLum(a[0], a[1], a[2]), l2 = relLum(b[0], b[1], b[2]);
+  const hi = Math.max(l1, l2), lo = Math.min(l1, l2);
+  return (hi + 0.05) / (lo + 0.05);
+}
+function effectiveBg(el: Element): [number, number, number] {
+  let n: Element | null = el;
+  while (n) { const bg = parseRgb(getComputedStyle(n).backgroundColor); if (bg && bg[3] > 0.1) return [bg[0], bg[1], bg[2]]; n = n.parentElement; }
+  return [255, 255, 255];
+}
+/** Analyser et element → konkrete, forklarbare design-forslag (kontrast/lesbarhet/klikkmål). */
+function analyzeElement(el: HTMLElement): Suggestion[] {
+  const cs = getComputedStyle(el);
+  const out: Suggestion[] = [];
+  const fg = parseRgb(cs.color), bg = effectiveBg(el);
+  const fontPx = parseFloat(cs.fontSize) || 0;
+  const hasText = !!(el.textContent && el.textContent.trim().length > 1) && el.children.length === 0;
+  if (fg && hasText) {
+    const ratio = contrast([fg[0], fg[1], fg[2]], bg);
+    const bold = parseInt(cs.fontWeight, 10) >= 700;
+    const large = fontPx >= 24 || (fontPx >= 18.66 && bold);
+    const min = large ? 3 : 4.5;
+    if (ratio < min) {
+      const white = contrast([255, 255, 255], bg), black = contrast([17, 17, 17], bg);
+      const better = white > black ? '#ffffff' : '#111111';
+      out.push({ id: 'contrast', severity: 'high', text: `Lav kontrast (${ratio.toFixed(1)}:1, WCAG krever ${min}:1) — teksten kan bli vanskelig å lese.`, fixLabel: `Sett tekst → ${better}`, fixField: 'color', fixProp: 'color', fixValue: better });
+    }
+  }
+  if (fontPx && fontPx < 14 && hasText && (el.textContent || '').trim().length > 25) {
+    out.push({ id: 'fontsize', severity: 'med', text: `Liten skrift (${Math.round(fontPx)}px) for brødtekst — vurder ≥15px for lesbarhet.`, fixLabel: 'Sett 15px', fixField: 'fontSize', fixProp: 'font-size', fixValue: '15', fixUnit: 'px' });
+  }
+  const interactive = /^(a|button)$/i.test(el.tagName) || el.getAttribute('role') === 'button';
+  if (interactive) {
+    const r = el.getBoundingClientRect();
+    if (r.height && r.height < 40) out.push({ id: 'tap', severity: 'med', text: `Lite klikkmål (${Math.round(r.height)}px høyt) — a11y anbefaler ≥44px for touch.`, fixLabel: 'Øk padding', fixField: 'padding', fixProp: 'padding', fixValue: '12px 18px' });
+  }
+  return out;
+}
+
+export default function WorkspaceDesignOverlay({
+  onClose,
+  targetFile = 'frontend/client/src/components/workspace/WorkspaceShell.tsx',
+  workspace = 'creatorhub',
+}: { onClose?: () => void; targetFile?: string; workspace?: string }) {
+  const [owns, setOwns] = React.useState(false);
+  React.useEffect(() => {
+    if (overlayActive) return; // et annet overlay eier allerede skjermen
+    overlayActive = true; setOwns(true);
+    return () => { overlayActive = false; };
+  }, []);
+  const [mode, setMode] = React.useState<'annotate' | 'tweaks' | 'edit'>('annotate');
+  const [notes, setNotes] = React.useState<Note[]>([]);
+  const [hover, setHover] = React.useState<ElDesc | null>(null);
+  const [accent, setAccent] = React.useState('#ff8c00');
+  const [bundle, setBundle] = React.useState<string | null>(null);
+  const [saveMsg, setSaveMsg] = React.useState('');
+  // Edit-modus
+  const [sel, setSel] = React.useState<HTMLElement | null>(null);
+  const [selDesc, setSelDesc] = React.useState<ElDesc | null>(null);
+  const [insp, setInsp] = React.useState<Record<string, string>>({});
+  const [edits, setEdits] = React.useState<Edits>({});
+  const [editsTablet, setEditsTablet] = React.useState<Edits>({}); // stil for ≤900px
+  const [editsMobile, setEditsMobile] = React.useState<Edits>({}); // stil for ≤600px
+  const [device, setDevice] = React.useState<'all' | 'tablet' | 'mobile'>('all'); // aktiv breakpoint for redigering
+  const [textEdits, setTextEdits] = React.useState<Record<string, string>>({});
+  const [animEdits, setAnimEdits] = React.useState<Record<string, string>>({});
+  const [bindEdits, setBindEdits] = React.useState<Record<string, string>>({}); // selektor → datakilde-nøkkel
+  const [intxEdits, setIntxEdits] = React.useState<Record<string, { action: string; target: string }>>({}); // interaksjoner
+  const [insertEdits, setInsertEdits] = React.useState<Record<string, InsertSpec[]>>({});
+  const [srcEdits, setSrcEdits] = React.useState<Record<string, string>>({}); // selektor → bytt-bilde-URL
+  const [imgUrl, setImgUrl] = React.useState('');
+  const [hrefEdits, setHrefEdits] = React.useState<Record<string, string>>({}); // selektor → lenke-mål
+  const [bgEdits, setBgEdits] = React.useState<Record<string, string>>({}); // selektor → bakgrunnsbilde-URL
+  const [hrefUrl, setHrefUrl] = React.useState('');
+  const [bgUrl, setBgUrl] = React.useState('');
+  const [advOpen, setAdvOpen] = React.useState(false); // «Avansert»-gruppe (animasjon/interaksjon/innsett) kollapset som standard
+  const [grpInnhold, setGrpInnhold] = React.useState(true);  // Innhold (tekst/bilde/lenke/bakgrunn/skjul/bind)
+  const [grpStil, setGrpStil] = React.useState(true);        // Stil (typografi/utseende)
+  const [grpLayout, setGrpLayout] = React.useState(false);   // Layout (spacing/auto-layout) — kollapset som standard
+  // Insert-skjema
+  const [insType, setInsType] = React.useState('heading');
+  const [insText, setInsText] = React.useState('');
+  const [insUrl, setInsUrl] = React.useState('');
+  const [insSource, setInsSource] = React.useState(''); // dynamisk infographic-kilde (metric-nøkkel)
+  const [sources, setSources] = React.useState<Array<{ key: string; value: unknown; label?: unknown; live?: boolean; ok?: boolean }>>([]);
+  // «Plassér datakilde»: velg en kilde → klikk på siden → tallet settes inn der. Ref så den delegerte
+  // klikk-lytteren (bundet på [mode]) alltid ser gjeldende valg uten å re-subscribe.
+  const [placingSource, setPlacingSource] = React.useState<{ key: string; label: string; value: unknown } | null>(null);
+  const placingRef = React.useRef<{ key: string; label: string; value: unknown } | null>(null);
+  placingRef.current = placingSource;
+  const [lastPlaced, setLastPlaced] = React.useState<{ id: string; x: number; y: number } | null>(null);
+  const [insPos, setInsPos] = React.useState<'before' | 'after'>('after');
+  const [components, setComponents] = React.useState<Record<string, InsertSpec[]>>({}); // gjenbrukbare komponenter
+  const [compName, setCompName] = React.useState('');
+  const [pickComp, setPickComp] = React.useState('');
+  const [htmlComps, setHtmlComps] = React.useState<Record<string, string>>({}); // klonede HTML-komponenter
+  const [htmlCompName, setHtmlCompName] = React.useState('');
+  const [pickHtmlComp, setPickHtmlComp] = React.useState('');
+  const [slotBindings, setSlotBindings] = React.useState<Record<string, string>>({}); // data-slot → kilde (ved gjenbruk)
+  // Varianter / A-B
+  type VariantData = { elementEdits?: Edits; elementEditsTablet?: Edits; elementEditsMobile?: Edits; elementText?: Record<string, string>; elementAnim?: Record<string, string>; elementInserts?: Record<string, InsertSpec[]>; elementBindings?: Record<string, string> };
+  const [variants, setVariants] = React.useState<Record<string, VariantData>>({});
+  const [variantMode, setVariantMode] = React.useState<'off' | 'active' | 'ab'>('off');
+  const [variantActive, setVariantActive] = React.useState('');
+  const [variantAb, setVariantAb] = React.useState<string[]>([]);
+  const [variantGoal, setVariantGoal] = React.useState(''); // konverterings-mål (selektor)
+  const [abConv, setAbConv] = React.useState<Record<string, number>>({});
+  const [newVariantName, setNewVariantName] = React.useState('');
+  const [editingVariant, setEditingVariant] = React.useState<string | null>(null);
+  const [abStats, setAbStats] = React.useState<Record<string, number>>({});
+  const [abPersistent, setAbPersistent] = React.useState(false);
+  const [reloadKey, setReloadKey] = React.useState(0);
+  // Versjonshistorikk
+  const [versions, setVersions] = React.useState<Array<{ id: string; at: number; label: string }>>([]);
+  const [versionLabel, setVersionLabel] = React.useState('');
+  const [versionMsg, setVersionMsg] = React.useState('');
+  const fetchVersions = async () => {
+    try { const r = await fetch(`/api/admin/design/history?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' }); const d = await r.json().catch(() => ({})); if (d && Array.isArray(d.snapshots)) setVersions(d.snapshots); } catch { /* ignorer */ }
+  };
+  const createVersion = async () => {
+    setVersionMsg('Lagrer versjon…');
+    try { const r = await fetch('/api/admin/design/history/snapshot', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: workspace, label: versionLabel }) }); if (r.ok) { setVersionLabel(''); setVersionMsg('Versjon lagret'); fetchVersions(); } else setVersionMsg('Avvist (krever admin)'); } catch { setVersionMsg('Nettverksfeil'); }
+  };
+  const restoreVersion = async (id: string) => {
+    setVersionMsg('Gjenoppretter…');
+    try { const r = await fetch('/api/admin/design/history/restore', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ws: workspace, id }) }); if (r.ok) { setVersionMsg('Gjenopprettet — laster på nytt.'); setReloadKey((k) => k + 1); fetchVersions(); } else setVersionMsg('Gjenoppretting feilet'); } catch { setVersionMsg('Nettverksfeil'); }
+  };
+  const nextId = React.useRef(1);
+  const route = typeof window !== 'undefined' ? window.location.pathname : '/workspace';
+
+  const inOverlay = (t: EventTarget | null) => t instanceof Element && !!t.closest('[data-chd]');
+
+  // Velg et element for redigering (fanger computed style → insp). Gjenbrukes av klikk OG
+  // forelder/barn-navigasjonen (klikk lander ofte på en nested node — pilene treffer riktig nivå).
+  const selectElement = (el: HTMLElement | null) => {
+    if (!el || el === document.body || el === document.documentElement || inOverlay(el)) return;
+    const cs = getComputedStyle(el);
+    setSel(el); setSelDesc(describe(el));
+    setInsp({
+      fontSize: String(Math.round(parseFloat(cs.fontSize)) || ''),
+      fontWeight: cs.fontWeight, color: cs.color, background: cs.backgroundColor,
+      borderRadius: String(Math.round(parseFloat(cs.borderRadius)) || 0),
+      padding: cs.padding, display: cs.display, flexDirection: cs.flexDirection,
+      gap: parseFloat(cs.gap) ? String(Math.round(parseFloat(cs.gap))) : '',
+      justifyContent: cs.justifyContent, alignItems: cs.alignItems, opacity: cs.opacity,
+      text: el.children.length === 0 ? (el.textContent || '') : ' ',
+    });
+  };
+
+  React.useEffect(() => {
+    if (mode !== 'annotate' && mode !== 'edit') { setHover(null); return; }
+    const onMove = (e: MouseEvent) => {
+      const t = e.target as Element;
+      if (inOverlay(t)) { setHover(null); return; }
+      setHover(describe(t));
+    };
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as Element;
+      if (inOverlay(t)) return;             // klikk i panelet → la knappene virke
+      e.preventDefault(); e.stopPropagation(); // ellers: fang klikket (blokker shell-nav)
+      if (mode === 'annotate') {
+        setNotes((n) => [...n, { id: nextId.current++, d: describe(t), intent: '' }]);
+      } else if (placingRef.current) {
+        // «Plassér datakilde»-modus: klikket peker ut ankeret → sett inn et live-tall rett etter det.
+        const p = placingRef.current, anchor = t as HTMLElement, anchorKey = uniqueSelector(anchor);
+        const id = `ins-${nextId.current++}`;
+        const spec: InsertSpec = { id, type: 'text', pos: 'after', source: p.key, label: p.label };
+        const node = buildInsertNode({ ...spec, text: formatSourceValue(p.value, p.label) });
+        if (node && anchor.parentNode) anchor.parentNode.insertBefore(node, anchor.nextSibling);
+        setInsertEdits((m) => ({ ...m, [anchorKey]: [...(m[anchorKey] || []), spec] }));
+        setPlacingSource(null);
+        setLastPlaced({ id, x: 0, y: 0 });
+        setSaveMsg(`Plassert «${p.label}» — «Lagre endringer» for å publisere.`);
+      } else {
+        selectElement(t as HTMLElement);
+      }
+    };
+    document.addEventListener('mousemove', onMove, true);
+    document.addEventListener('click', onClick, true);
+    return () => { document.removeEventListener('mousemove', onMove, true); document.removeEventListener('click', onClick, true); };
+  }, [mode]);
+
+  const applyAccent = (hex: string) => {
+    setAccent(hex);
+    const vars = hexVars(hex), root = document.documentElement;
+    Object.keys(vars).forEach((k) => root.style.setProperty(k, vars[k]));
+  };
+  const saveAccent = async () => {
+    setSaveMsg('Lagrer…');
+    try {
+      const r = await fetch(`/api/admin/design/tokens/${encodeURIComponent(workspace)}`, {
+        method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accent }),
+      });
+      setSaveMsg(r.ok ? 'Lagret til workspace' : 'Avvist (krever admin)');
+    } catch { setSaveMsg('Nettverksfeil'); }
+  };
+
+  // Edit: skriv en css-prop live til valgt element + registrer i edits (for Handoff).
+  const applyStyle = (field: string, cssProp: string, rawValue: string, unit = '') => {
+    setInsp((s) => ({ ...s, [field]: rawValue }));
+    if (!sel || !selDesc) return;
+    const value = rawValue === '' ? '' : rawValue + unit;
+    sel.style.setProperty(cssProp, value);
+    const key = uniqueSelector(sel); // unik strukturell sti → kan re-applikeres ved last
+    // Ruter til aktiv breakpoint: base (alle), nettbrett (≤900) el. mobil (≤600).
+    const setter = device === 'tablet' ? setEditsTablet : device === 'mobile' ? setEditsMobile : setEdits;
+    setter((e) => ({ ...e, [key]: { ...(e[key] || {}), [cssProp]: value } }));
+  };
+
+  // Bytt bildekilde på et valgt <img> (f.eks. logo): sett src live + lagre selektor→URL.
+  const applyImageSrc = (url: string) => {
+    setImgUrl(url);
+    if (!sel || sel.tagName !== 'IMG') return;
+    const key = uniqueSelector(sel);
+    if (url) { sel.setAttribute('src', url); setSrcEdits((s) => ({ ...s, [key]: url })); }
+    else { setSrcEdits((s) => { const n = { ...s }; delete n[key]; return n; }); }
+  };
+  // Endre målet på en eksisterende lenke (<a>): sett href live + lagre.
+  const applyHref = (url: string) => {
+    setHrefUrl(url);
+    if (!sel || sel.tagName !== 'A') return;
+    const key = uniqueSelector(sel);
+    if (url) { sel.setAttribute('href', url); setHrefEdits((s) => ({ ...s, [key]: url })); }
+    else { setHrefEdits((s) => { const n = { ...s }; delete n[key]; return n; }); }
+  };
+  // Sett/fjern bakgrunnsbilde på valgt element (URL validert server-side; url() bygges trygt i runtime).
+  const applyBg = (url: string) => {
+    setBgUrl(url);
+    if (!sel) return;
+    const key = uniqueSelector(sel);
+    if (url) { sel.style.background = `url("${url}") center / cover no-repeat`; setBgEdits((s) => ({ ...s, [key]: url })); }
+    else { sel.style.background = ''; setBgEdits((s) => { const n = { ...s }; delete n[key]; return n; }); }
+  };
+  // Skjul et element (display:none i base-edits) / vis igjen (fjern regelen).
+  const hideElement = () => {
+    if (!sel) return;
+    const key = uniqueSelector(sel);
+    sel.style.setProperty('display', 'none');
+    setEdits((e) => ({ ...e, [key]: { ...(e[key] || {}), display: 'none' } }));
+    setSaveMsg('Element skjult — se «Skjulte elementer» for å vise igjen.');
+  };
+  const showElement = (key: string) => {
+    setEdits((e) => { const props = { ...(e[key] || {}) }; delete props.display; const n = { ...e }; if (Object.keys(props).length) n[key] = props; else delete n[key]; return n; });
+    try { document.querySelectorAll(key).forEach((el) => (el as HTMLElement).style.removeProperty('display')); } catch { /* ugyldig selektor */ }
+  };
+  // Alle skjulte selektorer (avledet fra edits der display==='none') — for gjenopprettings-lista.
+  const hiddenKeys = Object.entries(edits).filter(([, p]) => (p as Record<string, string>)?.display === 'none').map(([k]) => k);
+
+  // Synk felt (bilde/lenke/bakgrunn) med valgt element (forhåndsutfyll evt. eksisterende override).
+  React.useEffect(() => {
+    if (!sel) { setImgUrl(''); setHrefUrl(''); setBgUrl(''); return; }
+    try {
+      const key = uniqueSelector(sel);
+      setImgUrl(sel.tagName === 'IMG' ? (srcEdits[key] || '') : '');
+      setHrefUrl(sel.tagName === 'A' ? (hrefEdits[key] || '') : '');
+      setBgUrl(bgEdits[key] || '');
+    } catch { setImgUrl(''); setHrefUrl(''); setBgUrl(''); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel]);
+
+  // Finjuster et nyplassert tall: transform:translate flytter det VISUELT uten å reflow'e naboer.
+  // Lagres på den stabile [data-chd-insert="id"]-selektoren (overlever last).
+  const nudgePlaced = (dx: number, dy: number) => {
+    setLastPlaced((lp) => {
+      if (!lp) return lp;
+      const x = lp.x + dx, y = lp.y + dy, selc = `[data-chd-insert="${lp.id}"]`, value = `translate(${x}px, ${y}px)`;
+      const node = document.querySelector(selc) as HTMLElement | null;
+      if (node) node.style.transform = value;
+      setEdits((e) => ({ ...e, [selc]: { ...(e[selc] || {}), transform: value } }));
+      return { ...lp, x, y };
+    });
+  };
+
+  // Edit: gjør elementet klikkbart (scroll til seksjon / naviger). Registreres; virker ved last.
+  const applyInteraction = (action: string, target: string) => {
+    if (!sel) return;
+    const key = uniqueSelector(sel);
+    if (!action) { setIntxEdits((m) => { const n = { ...m }; delete n[key]; return n; }); return; }
+    setIntxEdits((m) => ({ ...m, [key]: { action, target: target || '' } }));
+  };
+
+  // Edit: bind elementets tekst til en datakilde (metric) — live via textContent + registrer.
+  const applyBinding = (sourceKey: string) => {
+    if (!sel) return;
+    const key = uniqueSelector(sel);
+    if (sourceKey) {
+      const src = sources.find((s) => s.key === sourceKey);
+      if (src && src.value != null) sel.textContent = String(src.value);
+      setBindEdits((b) => ({ ...b, [key]: sourceKey }));
+    } else {
+      setBindEdits((b) => { const n = { ...b }; delete n[key]; return n; });
+    }
+  };
+
+  // Edit: overstyr elementets TEKST (kun løvnoder). Live via textContent + registrer for lagring.
+  const applyText = (value: string) => {
+    setInsp((s) => ({ ...s, text: value }));
+    if (!sel) return;
+    sel.textContent = value;
+    setTextEdits((t) => ({ ...t, [uniqueSelector(sel)]: value }));
+  };
+
+  // Edit: sett en animasjons-preset på elementet (live via inline animation) + registrer for lagring.
+  const applyAnim = (key: string) => {
+    setInsp((s) => ({ ...s, anim: key }));
+    if (!sel) return;
+    if (key && ANIM_PRESETS[key]) sel.style.animation = ANIM_PRESETS[key].anim;
+    else sel.style.animation = '';
+    setAnimEdits((a) => {
+      const next = { ...a };
+      if (key && ANIM_PRESETS[key]) next[uniqueSelector(sel)] = key; else delete next[uniqueSelector(sel)];
+      return next;
+    });
+  };
+
+  // Live-preview av animasjoner krever keyframes i dokumentet — injiser dem én gang i Edit-modus.
+  React.useEffect(() => {
+    const ID = 'chd-anim-keyframes-live';
+    if (document.getElementById(ID)) return;
+    const s = document.createElement('style'); s.id = ID; s.textContent = ANIM_KEYFRAMES; document.head.appendChild(s);
+  }, []);
+
+  // «Koble til»-picker: hent registeret av datakilder (marketing-metrics) i Edit-modus. Hver kilde
+  // kommer MED sin gjeldende verdi → editoren viser at dataen faktisk kommer gjennom (infographic + binding).
+  React.useEffect(() => {
+    if (mode !== 'edit') return;
+    let live = true;
+    fetch(`/api/admin/design/sources?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (live && d && Array.isArray(d.sources)) setSources(d.sources); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [mode, workspace]);
+
+  // Auto-forslag på kilde for et data-slot: 1) gjenbruk gammel source= hvis den finnes ennå,
+  // 2) fuzzy-match slot-teksten mot kilde-nøkkel/-etikett. Tomt = ingen god match.
+  const suggestSource = (spec: InsertSpec): string => {
+    const m = (spec.src || '').match(/[?&]source=([A-Za-z0-9_-]+)/);
+    const old = m && m[1];
+    if (old && sources.find((s) => s.key === old)) return old;
+    const hay = (spec.text || '').toLowerCase().trim();
+    if (!hay) return '';
+    const hit = sources.find((s) => {
+      const k = s.key.toLowerCase(), l = String(s.label || '').toLowerCase();
+      return k.includes(hay) || l.includes(hay) || hay.includes(k) || (l && hay.includes(l));
+    });
+    return hit ? hit.key : '';
+  };
+  // AI-slot-mapping: la Claude foreslå kilde for ALLE slots på én gang (semantisk match).
+  const [aiMapLoading, setAiMapLoading] = React.useState(false);
+  const aiMapSlots = async () => {
+    const specs = components[pickComp] || [];
+    const slots = specs.filter((s) => s.type === 'infographic').map((s) => ({ id: s.id, label: s.text || 'infographic' }));
+    if (!slots.length) return;
+    setAiMapLoading(true);
+    try {
+      const resp = await fetch('/api/admin/design/map-slots', {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slots, sources: sources.map((s) => ({ key: s.key, label: s.label, type: s.live ? 'live' : 'manual' })) }),
+      });
+      const d = await resp.json().catch(() => ({}));
+      if (d && d.mapping) setSlotBindings((b) => ({ ...b, ...d.mapping }));
+    } catch { /* ignorer */ }
+    finally { setAiMapLoading(false); }
+  };
+
+  // Slot-deteksjon: når en komponent velges for innsetting, finn data-slots (infographics) og
+  // auto-foreslå kilde for hver → veiviseren fylles ut.
+  React.useEffect(() => {
+    if (insType !== 'component' || !pickComp) { setSlotBindings({}); return; }
+    const specs = components[pickComp] || [];
+    const init: Record<string, string> = {};
+    specs.filter((s) => s.type === 'infographic').forEach((s) => { init[s.id] = suggestSource(s); });
+    setSlotBindings(init);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [insType, pickComp, components, sources]);
+
+  // Insert: legg et nytt element (overskrift/tekst/knapp/bilde/infographic/skille) ved ankeret.
+  const b64url = (obj: unknown) => btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const infographicSrc = () => {
+    // Dynamisk kilde: server slår opp `metrics[<kilde>]` for workspacet → alltid gjeldende verdi.
+    if (insSource.trim()) {
+      return `/api/infographics/render.png?tpl=auto&source=${encodeURIComponent(insSource.trim())}&ws=${encodeURIComponent(workspace)}&accent=${encodeURIComponent(accent)}`;
+    }
+    const d = b64url({ value: insText || '75%', label: insUrl || 'Merkevare' });
+    return `/api/infographics/render.png?tpl=auto&d=${d}&accent=${encodeURIComponent(accent)}`;
+  };
+  // Lagre anker-innsettingene som en navngitt, gjenbrukbar komponent.
+  const saveComponent = () => {
+    if (!sel) return;
+    const name = compName.trim();
+    const specs = insertEdits[uniqueSelector(sel)] || [];
+    if (!name || !specs.length) return;
+    setComponents((c) => ({ ...c, [name]: specs }));
+    setCompName('');
+  };
+  // Klon det VALGTE elementet (outerHTML) som en gjenbrukbar HTML-komponent (DOMPurify-sanert).
+  const saveHtmlComponent = () => {
+    if (!sel) return;
+    const name = htmlCompName.trim();
+    if (!name) return;
+    setHtmlComps((c) => ({ ...c, [name]: sanitizeHtmlComponent(sel.outerHTML) }));
+    setHtmlCompName('');
+    setSaveMsg(`HTML-komponent «${name}» opprettet — trykk «Lagre endringer».`);
+  };
+  const addInsert = () => {
+    if (!sel || !sel.parentNode) return;
+    // HTML-komponent: bygg container-div m/ DOMPurify-sanert innerHTML ved ankeret.
+    if (insType === 'htmlcomponent') {
+      const html = htmlComps[pickHtmlComp];
+      if (!html) return;
+      const id = `ins-${nextId.current++}`;
+      const div = document.createElement('div');
+      div.setAttribute('data-chd-insert', id);
+      div.innerHTML = sanitizeHtmlComponent(html);
+      if (insPos === 'before') sel.parentNode.insertBefore(div, sel); else sel.parentNode.insertBefore(div, sel.nextSibling);
+      const spec: InsertSpec = { id, type: 'htmlcomponent', pos: insPos, component: pickHtmlComp };
+      const key = uniqueSelector(sel);
+      setInsertEdits((m) => ({ ...m, [key]: [...(m[key] || []), spec] }));
+      return;
+    }
+    // Komponent: ekspander bibliotekets spec-liste til KOPIER (ferske id-er) ved ankeret.
+    if (insType === 'component') {
+      const specs = components[pickComp];
+      if (!specs || !specs.length) return;
+      const key = uniqueSelector(sel);
+      const instanceId = `ins-${nextId.current++}`;
+      // Live-preview: ekspander master-spec'ene nå (infographic-slots får VALGT kilde).
+      specs.forEach((child) => {
+        const c = { ...child };
+        if (child.type === 'infographic' && slotBindings[child.id]) {
+          c.src = `/api/infographics/render.png?tpl=auto&source=${encodeURIComponent(slotBindings[child.id])}&ws=${encodeURIComponent(workspace)}&accent=${encodeURIComponent(accent)}`;
+        }
+        const node = buildInsertNode({ ...c, id: `${instanceId}__${child.id}` });
+        if (node && sel!.parentNode) { if (insPos === 'before') sel!.parentNode.insertBefore(node, sel); else sel!.parentNode.insertBefore(node, sel!.nextSibling); }
+      });
+      // Lagre en LIVE-lenket REFERANSE (ikke kopi): { component, slots }. Endrer du komponenten →
+      // alle instanser oppdateres ved neste last. Slots = per-instans datakobling.
+      const refSpec: InsertSpec = { id: instanceId, type: 'component', pos: insPos, component: pickComp, slots: { ...slotBindings } };
+      setInsertEdits((m) => ({ ...m, [key]: [...(m[key] || []), refSpec] }));
+      return;
+    }
+    const id = `ins-${nextId.current++}`;
+    const spec: InsertSpec = {
+      id, type: insType, pos: insPos,
+      text: insText || undefined,
+      href: insType === 'button' ? (insUrl || undefined) : undefined,
+      src: insType === 'image' ? (insUrl || undefined) : insType === 'infographic' ? infographicSrc() : undefined,
+    };
+    const node = buildInsertNode(spec);
+    if (node) {
+      if (insPos === 'before') sel.parentNode.insertBefore(node, sel);
+      else sel.parentNode.insertBefore(node, sel.nextSibling);
+    }
+    const key = uniqueSelector(sel);
+    setInsertEdits((m) => ({ ...m, [key]: [...(m[key] || []), spec] }));
+    setInsText(''); setInsUrl(''); setInsSource('');
+  };
+
+  // Last eksisterende lagrede per-element-edits ved mount → nye edits akkumuleres oppå (så
+  // «Lagre» sender hele kartet; JSONB-merge er grunn og erstatter hele elementEdits-nøkkelen).
+  React.useEffect(() => {
+    let live = true;
+    fetch(`/api/design/tokens?ws=${encodeURIComponent(workspace)}&raw=1`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (live && d && d.raw === true && d.tokens) {
+          if (d.tokens.elementEdits) setEdits(d.tokens.elementEdits as ElementEdits);
+          if (d.tokens.elementEditsTablet) setEditsTablet(d.tokens.elementEditsTablet as ElementEdits);
+          if (d.tokens.elementEditsMobile) setEditsMobile(d.tokens.elementEditsMobile as ElementEdits);
+          if (d.tokens.elementText && typeof d.tokens.elementText === 'object') setTextEdits(d.tokens.elementText as Record<string, string>);
+          if (d.tokens.elementAnim && typeof d.tokens.elementAnim === 'object') setAnimEdits(d.tokens.elementAnim as Record<string, string>);
+          if (d.tokens.elementInserts && typeof d.tokens.elementInserts === 'object') setInsertEdits(d.tokens.elementInserts as Record<string, InsertSpec[]>);
+          if (d.tokens.elementSrc && typeof d.tokens.elementSrc === 'object') setSrcEdits(d.tokens.elementSrc as Record<string, string>);
+          if (d.tokens.elementHref && typeof d.tokens.elementHref === 'object') setHrefEdits(d.tokens.elementHref as Record<string, string>);
+          if (d.tokens.elementBg && typeof d.tokens.elementBg === 'object') setBgEdits(d.tokens.elementBg as Record<string, string>);
+          if (d.tokens.elementBindings && typeof d.tokens.elementBindings === 'object') setBindEdits(d.tokens.elementBindings as Record<string, string>);
+          if (d.tokens.elementInteractions && typeof d.tokens.elementInteractions === 'object') setIntxEdits(d.tokens.elementInteractions as Record<string, { action: string; target: string }>);
+          if (d.tokens.designComponents && typeof d.tokens.designComponents === 'object') setComponents(d.tokens.designComponents as Record<string, InsertSpec[]>);
+          if (d.tokens.htmlComponents && typeof d.tokens.htmlComponents === 'object') setHtmlComps(d.tokens.htmlComponents as Record<string, string>);
+          if (d.tokens.designVariants && typeof d.tokens.designVariants === 'object') setVariants(d.tokens.designVariants as Record<string, VariantData>);
+          const vc = d.tokens.variantConfig as { mode?: string; active?: string; ab?: string[]; goal?: string } | undefined;
+          if (vc) { setVariantMode((['off', 'active', 'ab'].includes(vc.mode || '') ? vc.mode : 'off') as 'off' | 'active' | 'ab'); setVariantActive(vc.active || ''); setVariantAb(Array.isArray(vc.ab) ? vc.ab : []); setVariantGoal(vc.goal || ''); }
+        }
+      })
+      .catch(() => {});
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace, reloadKey]);
+
+  // ── Varianter / A-B ──────────────────────────────────────────────────────────────────────────
+  const currentMaps = (): VariantData => ({ elementEdits: edits, elementEditsTablet: editsTablet, elementEditsMobile: editsMobile, elementText: textEdits, elementAnim: animEdits, elementInserts: insertEdits, elementBindings: bindEdits });
+  const buildSaveBody = (): Record<string, unknown> => {
+    const vcfg = { mode: variantMode, active: variantActive, ab: variantAb, goal: variantGoal };
+    if (editingVariant) {
+      // Redigerer en variant → skriv maps'ene tilbake til DEN varianten (rør ikke base).
+      const updated = { ...variants, [editingVariant]: currentMaps() };
+      setVariants(updated);
+      return { designVariants: updated, variantConfig: vcfg };
+    }
+    return { ...currentMaps(), elementInteractions: intxEdits, elementSrc: srcEdits, elementHref: hrefEdits, elementBg: bgEdits, designComponents: components, htmlComponents: htmlComps, designVariants: variants, variantConfig: vcfg };
+  };
+  const saveAsVariant = () => {
+    const name = newVariantName.trim();
+    if (!name) return;
+    setVariants((v) => ({ ...v, [name]: currentMaps() }));
+    setNewVariantName('');
+    setSaveMsg(`Variant «${name}» opprettet — trykk «Lagre endringer» for å persistere.`);
+  };
+  const editVariant = (name: string) => {
+    const v = variants[name];
+    if (!v) return;
+    setEdits((v.elementEdits as Edits) || {}); setEditsTablet((v.elementEditsTablet as Edits) || {}); setEditsMobile((v.elementEditsMobile as Edits) || {}); setTextEdits(v.elementText || {}); setAnimEdits(v.elementAnim || {}); setInsertEdits(v.elementInserts || {}); setBindEdits(v.elementBindings || {});
+    setEditingVariant(name);
+    // Live-preview av variantens stil/animasjon (tekst/inserts vises fullt etter lagring+last).
+    const css = [buildEditsCss((v.elementEdits as ElementEdits) || {}), buildAnimCss((v.elementAnim as Record<string, string>) || {})].filter(Boolean).join('\n');
+    let tag = document.getElementById('chd-element-edits') as HTMLStyleElement | null;
+    if (!tag) { tag = document.createElement('style'); tag.id = 'chd-element-edits'; document.head.appendChild(tag); }
+    tag.textContent = css;
+  };
+  const exitVariant = () => { setEditingVariant(null); setReloadKey((k) => k + 1); };
+  const deleteVariant = (name: string) => {
+    setVariants((v) => { const n = { ...v }; delete n[name]; return n; });
+    if (variantActive === name) setVariantActive('');
+    setVariantAb((ab) => ab.filter((x) => x !== name));
+    if (editingVariant === name) exitVariant();
+  };
+  const fetchAbStats = async () => {
+    try { const r = await fetch(`/api/admin/design/ab-stats?ws=${encodeURIComponent(workspace)}`, { credentials: 'same-origin' }); const d = await r.json().catch(() => ({})); if (d && d.exposures) setAbStats(d.exposures); if (d && d.conversions) setAbConv(d.conversions); setAbPersistent(!!(d && d.persistent)); } catch { /* ignorer */ }
+  };
+
+  // Persister per-element-edits til workspacet (gjelder alle brukere ved neste last).
+  const saveEdits = async () => {
+    setSaveMsg('Lagrer endringer…');
+    try {
+      const r = await fetch(`/api/admin/design/tokens/${encodeURIComponent(workspace)}`, {
+        method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildSaveBody()),
+      });
+      const n = new Set([...Object.keys(edits), ...Object.keys(textEdits), ...Object.keys(animEdits)]).size;
+      setSaveMsg(r.ok ? `Lagret ${n} element` : 'Avvist (krever admin)');
+    } catch { setSaveMsg('Nettverksfeil'); }
+  };
+
+  // Redigerings-styring: fjern alle edits (stil/tekst/anim) for ett element, eller nullstill alt.
+  // Endrer state → «Lagre endringer» persisterer (full effekt ved neste last).
+  const deleteEdit = (key: string) => {
+    setEdits((e) => { const n = { ...e }; delete n[key]; return n; });
+    setEditsTablet((e) => { const n = { ...e }; delete n[key]; return n; });
+    setEditsMobile((e) => { const n = { ...e }; delete n[key]; return n; });
+    setTextEdits((t) => { const n = { ...t }; delete n[key]; return n; });
+    setAnimEdits((a) => { const n = { ...a }; delete n[key]; return n; });
+    setInsertEdits((i) => { const n = { ...i }; delete n[key]; return n; });
+    setBindEdits((b) => { const n = { ...b }; delete n[key]; return n; });
+    setIntxEdits((x) => { const n = { ...x }; delete n[key]; return n; });
+    // Fjern også de innsatte nodene fra DOM umiddelbart (inkl. komponent-instansens barn-noder).
+    (insertEdits[key] || []).forEach((s) => document.querySelectorAll(`[data-chd-insert="${s.id}"], [data-chd-insert^="${s.id}__"]`).forEach((n) => n.remove()));
+  };
+  const resetAllEdits = () => { setEdits({}); setEditsTablet({}); setEditsMobile({}); setTextEdits({}); setAnimEdits({}); setInsertEdits({}); setBindEdits({}); setIntxEdits({}); };
+  const editKeys = Array.from(new Set([...Object.keys(edits), ...Object.keys(editsTablet), ...Object.keys(editsMobile), ...Object.keys(textEdits), ...Object.keys(animEdits), ...Object.keys(insertEdits), ...Object.keys(bindEdits), ...Object.keys(intxEdits)]));
+  // Design-forslag for valgt element (recomputes ved nytt valg + etter en fiks endrer insp).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const suggestions = React.useMemo(() => (sel ? analyzeElement(sel) : []), [sel, insp]);
+  // Elementer med id på siden (scroll-mål for interaksjoner).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const pageIds = React.useMemo(() => Array.from(document.querySelectorAll('[id]')).map((e) => (e as HTMLElement).id).filter((id) => /^[A-Za-z][\w-]*$/.test(id)).slice(0, 200), [sel]);
+
+  // Data-helse-skann: samle ALLE data-koblinger på siden (tekst-bindinger + infographic-kilder +
+  // komponent-slots) og sjekk hver mot kilde-registeret → ok / mangler (kilde borte) / tom (ingen verdi).
+  const [healthOpen, setHealthOpen] = React.useState(false);
+  const dataHealth = React.useMemo(() => {
+    const items: Array<{ label: string; key: string }> = [];
+    for (const [selc, key] of Object.entries(bindEdits)) items.push({ label: `Tekst · ${selc.length > 34 ? selc.slice(0, 34) + '…' : selc}`, key });
+    for (const specs of Object.values(insertEdits)) {
+      for (const s of specs) {
+        if (s.type === 'infographic' && s.src) { const m = s.src.match(/[?&]source=([A-Za-z0-9_-]+)/); if (m) items.push({ label: `Infographic · ${s.text || s.id}`, key: m[1] }); }
+        if (s.type === 'component' && s.slots) for (const [cid, key] of Object.entries(s.slots)) items.push({ label: `Komponent-slot · ${cid}`, key: key as string });
+      }
+    }
+    return items.map((it) => {
+      const src = sources.find((s) => s.key === it.key);
+      const status: 'ok' | 'missing' | 'empty' = !src ? 'missing' : (src.value == null ? 'empty' : 'ok');
+      return { ...it, status, value: src?.value ?? null, live: !!src?.live };
+    });
+  }, [bindEdits, insertEdits, sources]);
+  const healthOk = dataHealth.filter((h) => h.status === 'ok').length;
+
+  // AI-forslag + forhåndsvisning: én forhåndsvisning om gangen (apply live UTEN å registrere;
+  // «Bruk» commiter via applyStyle, «Angre» gjenoppretter den forrige inline-verdien).
+  const [aiSug, setAiSug] = React.useState<Array<{ text: string; apply?: { prop: string; value: string } }>>([]);
+  const [aiLoading, setAiLoading] = React.useState(false);
+  const [aiMsg, setAiMsg] = React.useState('');
+  const [preview, setPreview] = React.useState<{ key: string; prop: string; value: string; prevInline: string } | null>(null);
+  const revertActive = () => { if (preview && sel) { if (preview.prevInline) sel.style.setProperty(preview.prop, preview.prevInline); else sel.style.removeProperty(preview.prop); } };
+  const doPreview = (key: string, prop: string, value: string) => {
+    if (!sel) return;
+    revertActive();
+    const prevInline = sel.style.getPropertyValue(prop);
+    sel.style.setProperty(prop, value);
+    setPreview({ key, prop, value, prevInline });
+  };
+  const commitPreview = () => { if (preview) { applyStyle(preview.prop, preview.prop, preview.value, ''); setPreview(null); } };
+  const revertPreview = () => { revertActive(); setPreview(null); };
+
+  const fetchAiSuggestions = async () => {
+    if (!sel) return;
+    setAiLoading(true); setAiMsg(''); setAiSug([]);
+    const cs = getComputedStyle(sel); const r = sel.getBoundingClientRect();
+    try {
+      const resp = await fetch('/api/admin/design/suggest', {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace, accent, element: {
+          tag: sel.tagName.toLowerCase(), role: sel.getAttribute('role') || '', text: (sel.textContent || '').slice(0, 200),
+          color: cs.color, background: cs.backgroundColor, fontSize: cs.fontSize, fontWeight: cs.fontWeight,
+          borderRadius: cs.borderRadius, padding: cs.padding, width: Math.round(r.width), height: Math.round(r.height),
+        } }),
+      });
+      const d = await resp.json().catch(() => ({}));
+      if (!resp.ok) { setAiMsg(d.error || 'Avvist (krever admin)'); return; }
+      if (d.error) setAiMsg(d.error);
+      setAiSug(Array.isArray(d.suggestions) ? d.suggestions : []);
+    } catch { setAiMsg('Nettverksfeil'); }
+    finally { setAiLoading(false); }
+  };
+  // Før/etter-sammenligning: «Vis original» skrur MIDLERTIDIG av alle ulagrede/lagrede visuelle
+  // endringer (runtime-<style> + in-session inline-stil + animasjon + innsatte noder) via et snapshot,
+  // så du ser siden slik den var — klikk igjen for å få endringene tilbake. Ingenting lagres/mistes.
+  const [origMode, setOrigMode] = React.useState(false);
+  const restoreRef = React.useRef<null | (() => void)>(null);
+  const toggleOriginal = () => {
+    if (restoreRef.current) { restoreRef.current(); restoreRef.current = null; setOrigMode(false); return; }
+    const restores: Array<() => void> = [];
+    const tag = document.getElementById('chd-element-edits');
+    if (tag) { const prev = tag.textContent; tag.textContent = ''; restores.push(() => { tag.textContent = prev; }); }
+    const stripInline = (keys: string[], propsFor: (sel: string) => string[]) => {
+      for (const sel of keys) {
+        let els: NodeListOf<Element>; try { els = document.querySelectorAll(sel); } catch { continue; }
+        els.forEach((n) => { const h = n as HTMLElement; for (const p of propsFor(sel)) { const cur = h.style.getPropertyValue(p); if (cur) { h.style.removeProperty(p); restores.push(() => h.style.setProperty(p, cur)); } } });
+      }
+    };
+    for (const m of [edits, editsTablet, editsMobile]) stripInline(Object.keys(m), (sel) => Object.keys(m[sel] || {}));
+    stripInline(Object.keys(animEdits), () => ['animation']);
+    document.querySelectorAll('[data-chd-insert]').forEach((n) => { const h = n as HTMLElement; const prev = h.style.display; h.style.display = 'none'; restores.push(() => { h.style.display = prev; }); });
+    restoreRef.current = () => { restores.reverse().forEach((r) => r()); };
+    setOrigMode(true);
+  };
+  // Rydd opp: gjenopprett hvis man forlater edit-modus eller lukker mens original vises.
+  React.useEffect(() => { if (mode !== 'edit' && restoreRef.current) { restoreRef.current(); restoreRef.current = null; setOrigMode(false); } }, [mode]);
+  React.useEffect(() => () => { if (restoreRef.current) restoreRef.current(); }, []);
+
+  // Forhåndsvis/Bruk/Angre-knapper for et forslag med en konkret (prop, value)-endring.
+  const renderSugActions = (key: string, prop?: string, value?: string) => {
+    if (!prop || !value) return null;
+    if (preview?.key === key) return (
+      <div style={{ display: 'flex', gap: 6, marginTop: 5 }}>
+        <button data-chd onClick={commitPreview} style={{ ...cta, padding: '3px 9px', fontSize: 11 }}>Bruk</button>
+        <button data-chd onClick={revertPreview} style={{ ...btn(false), padding: '3px 9px', fontSize: 11 }}>Angre</button>
+      </div>
+    );
+    return <button data-chd onClick={() => doPreview(key, prop, value)} style={{ ...btn(false), marginTop: 5, padding: '3px 9px', fontSize: 11 }}>Forhåndsvis</button>;
+  };
+
+  const buildBundle = () => setBundle(JSON.stringify({
+    tool: 'creatorhub-design-handoff', targetFile, route, workspace,
+    tokenContext: hexVars(accent),
+    instruction: 'Bygg inn disse endringene i WorkspaceShell. Merkevare/nav/copy administreres allerede som data — ikke hardkod dem. `edits` er direkte stil-endringer fra Edit-modus; `notes` er annoteringer.',
+    edits: Object.entries(edits).map(([element, changes]) => ({ element, changes })),
+    notes: notes.map((n) => ({ element: selOf(n.d), text: n.d.text, computed: n.d.style, intent: n.intent || '(ingen intent skrevet)' })),
+  }, null, 2));
+
+  const setIntent = (id: number, v: string) => setNotes((n) => n.map((x) => (x.id === id ? { ...x, intent: v } : x)));
+  const removeNote = (id: number) => setNotes((n) => n.filter((x) => x.id !== id));
+
+  // Tastatur-snarveier (WCAG 2.1.1 Keyboard): A/T/E = modus, Esc = av-velg/lukk,
+  // ⌘/Ctrl+↵ = Send til Claude Code. Ignorerer taster mens man skriver i felt.
+  const buildBundleRef = React.useRef(buildBundle);
+  buildBundleRef.current = buildBundle;
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (bundle) { if (e.key === 'Escape') { e.preventDefault(); setBundle(null); } return; }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); buildBundleRef.current(); return; }
+      if (typing) return;
+      if (e.key === 'Escape') { e.preventDefault(); if (mode === 'edit' && sel) { setSel(null); setSelDesc(null); } else onClose?.(); }
+      else if (e.key.toLowerCase() === 'a') setMode('annotate');
+      else if (e.key.toLowerCase() === 't') setMode('tweaks');
+      else if (e.key.toLowerCase() === 'e') setMode('edit');
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [mode, sel, bundle, onClose]);
+
+  // Dialog-fokus (WCAG 2.4.3): flytt fokus inn i Handoff-modalen når den åpnes.
+  const dialogRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => { if (bundle && dialogRef.current) dialogRef.current.focus(); }, [bundle]);
+
+  const btn = (active: boolean): React.CSSProperties => ({
+    padding: '6px 12px', borderRadius: 8, border: `1px solid ${active ? ACC : LINE}`,
+    background: active ? 'rgba(238,122,8,0.10)' : '#fff', color: active ? '#8a4708' : INK2,
+    fontWeight: 700, fontSize: 13, cursor: 'pointer',
+  });
+  const cta: React.CSSProperties = { padding: '7px 13px', borderRadius: 8, border: 0, background: ACC, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' };
+  const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 7, padding: '6px 8px', fontSize: 12.5, fontFamily: 'monospace' };
+  const flabel: React.CSSProperties = { fontSize: 11.5, color: INK2, fontWeight: 600, marginBottom: 3, display: 'block' };
+  const section: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: '#9AA1AE', margin: '4px 0 2px' };
+  const highlight = mode === 'edit' ? (selDesc?.rect || null) : (hover?.rect || null);
+
+  if (!owns) return null; // et annet overlay-instans eier skjermen (singleton)
+
+  return (
+    <div data-chd style={{ position: 'fixed', inset: 0, zIndex: 2147483000, pointerEvents: 'none', fontFamily: 'system-ui, sans-serif' }}>
+      {/* Fokus-synlighet (WCAG 2.4.7) — inline styles kan ikke :focus-visible, så vi injiserer. */}
+      <style>{`[data-chd] button:focus-visible,[data-chd] input:focus-visible,[data-chd] textarea:focus-visible,[data-chd][tabindex]:focus-visible{outline:2px solid ${ACC};outline-offset:2px;border-radius:8px}`}</style>
+      {/* Hover/selection-highlight */}
+      {(mode === 'annotate' || mode === 'edit') && hover && (
+        <div style={{ position: 'fixed', left: hover.rect.x, top: hover.rect.y, width: hover.rect.w, height: hover.rect.h,
+          border: `2px dashed ${ACC}`, borderRadius: 6, background: 'rgba(238,122,8,0.05)', pointerEvents: 'none' }} />
+      )}
+      {mode === 'edit' && selDesc && (
+        <div style={{ position: 'fixed', left: selDesc.rect.x - 1, top: selDesc.rect.y - 1, width: selDesc.rect.w + 2, height: selDesc.rect.h + 2,
+          border: `2px solid ${ACC}`, borderRadius: 6, pointerEvents: 'none', boxShadow: '0 0 0 3px rgba(238,122,8,0.18)' }} />
+      )}
+      {/* Pins */}
+      {notes.map((n, i) => (
+        <div key={n.id} style={{ position: 'fixed', left: n.d.rect.x - 6, top: n.d.rect.y - 6, width: 22, height: 22, borderRadius: 11,
+          background: ACC, color: '#fff', fontWeight: 800, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 1px 4px rgba(0,0,0,.3)', pointerEvents: 'none' }}>{i + 1}</div>
+      ))}
+
+      {/* Toppbar */}
+      <div data-chd role="toolbar" aria-label="CreatorHub Design — verktøy" style={{ position: 'fixed', top: 12, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'auto',
+        display: 'flex', alignItems: 'center', gap: 8, background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12,
+        padding: '7px 10px', boxShadow: '0 8px 30px rgba(0,0,0,.18)' }}>
+        <span style={{ fontWeight: 800, color: INK, fontSize: 13, marginRight: 4 }}>CreatorHub Design</span>
+        <button data-chd style={btn(mode === 'annotate')} aria-pressed={mode === 'annotate'} title="Annotate (A)" onClick={() => setMode('annotate')}>Annotate</button>
+        <button data-chd style={btn(mode === 'tweaks')} aria-pressed={mode === 'tweaks'} title="Tweaks (T)" onClick={() => setMode('tweaks')}>Tweaks</button>
+        <button data-chd style={btn(mode === 'edit')} aria-pressed={mode === 'edit'} title="Edit (E)" onClick={() => setMode('edit')}>Edit</button>
+        <button data-chd style={cta} title="Send til Claude Code (⌘/Ctrl+↵)" onClick={buildBundle}>Send til Claude Code</button>
+        <button data-chd style={{ ...btn(false), border: 0 }} onClick={onClose} aria-label="Lukk CreatorHub Design (Esc)" title="Lukk (Esc)"><CloseIcon sx={ICO} /></button>
+      </div>
+
+      {/* Høyrepanel */}
+      <div data-chd role="region" aria-label={mode === 'annotate' ? 'Annoteringer' : mode === 'tweaks' ? 'Tweaks — merkevare' : 'Edit — egenskaper'}
+        style={{ position: 'fixed', top: 62, right: 12, bottom: 12, width: 320, pointerEvents: 'auto',
+        background: PANEL, border: `1px solid ${LINE}`, borderRadius: 14, boxShadow: '0 8px 30px rgba(0,0,0,.18)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '12px 14px', borderBottom: `1px solid ${LINE}`, color: INK, fontWeight: 800, fontSize: 14 }}>
+          {mode === 'annotate' ? `Annoteringer (${notes.length})` : mode === 'tweaks' ? 'Tweaks — merkevare' : 'Edit — egenskaper'}
+        </div>
+
+        {mode === 'annotate' && (
+          <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {notes.length === 0 && <p style={{ color: INK2, fontSize: 13, margin: 0 }}>Klikk et element i shell-en for å annotere. Beskriv endringen — den pakkes til Claude Code.</p>}
+            {notes.map((n, i) => (
+              <div key={n.id} style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: 10, background: '#fff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <span style={{ width: 18, height: 18, borderRadius: 9, background: ACC, color: '#fff', fontWeight: 800, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
+                  <code style={{ fontSize: 11.5, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selOf(n.d)}</code>
+                  <button data-chd onClick={() => removeNote(n.id)} style={{ marginLeft: 'auto', border: 0, background: 'transparent', color: INK2, cursor: 'pointer', fontSize: 14 }}><CloseIcon sx={ICO} /></button>
+                </div>
+                {n.d.text && <div style={{ fontSize: 11.5, color: INK2, marginBottom: 6 }}>«{n.d.text}»</div>}
+                <textarea data-chd value={n.intent} onChange={(e) => setIntent(n.id, e.target.value)}
+                  placeholder="Hva skal endres?" rows={2} aria-label="Beskriv endringen for Claude Code"
+                  style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${LINE}`, borderRadius: 7, padding: 7, fontSize: 12.5, resize: 'vertical', fontFamily: 'inherit' }} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {mode === 'tweaks' && (
+          <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <label style={{ fontSize: 13, color: INK, fontWeight: 700 }}>Aksent (live)</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input data-chd type="color" aria-label="Aksent — fargevelger" value={accent} onChange={(e) => applyAccent(e.target.value)} style={{ width: 44, height: 34, border: 'none', background: 'none', cursor: 'pointer' }} />
+              <input data-chd type="text" aria-label="Aksent — hex-verdi" value={accent} onChange={(e) => applyAccent(e.target.value)}
+                style={{ flex: 1, border: `1px solid ${LINE}`, borderRadius: 7, padding: '7px 9px', fontSize: 13, fontFamily: 'monospace' }} />
+            </div>
+            <p style={{ fontSize: 12, color: INK2, margin: 0 }}>Endrer <code>--ws-accent*</code> på :root umiddelbart — hele skallet re-farges. «Lagre» skriver til workspace-tokens (samme som N1).</p>
+            <button data-chd style={cta} onClick={saveAccent}>Lagre til workspace</button>
+            {saveMsg && <div style={{ fontSize: 12.5, color: INK2 }}>{saveMsg}</div>}
+          </div>
+        )}
+
+        {mode === 'edit' && (
+          <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: INK2 }}>Skjerm:</span>
+              {(['all', 'tablet', 'mobile'] as const).map((d) => (
+                <button key={d} data-chd onClick={() => setDevice(d)}
+                  style={{ ...(device === d ? cta : btn(false)), padding: '3px 8px', fontSize: 11 }}>
+                  {d === 'all' ? <><DevicesOutlinedIcon sx={ICO} /> Alle</> : d === 'tablet' ? <><TabletMacOutlinedIcon sx={ICO} /> Nettbrett</> : <><PhoneIphoneOutlinedIcon sx={ICO} /> Mobil</>}
+                </button>
+              ))}
+            </div>
+            {device !== 'all' && <div style={{ fontSize: 10.5, color: '#b45309' }}>Redigerer {device === 'tablet' ? '≤900px' : '≤600px'} — stil-endringer lagres bak en media query (gjelder kun denne skjermbredden).</div>}
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: INK2 }}>Forhåndsvis:</span>
+              {([{ k: 'mobile', label: 'Mobil', w: 390, h: 844 }, { k: 'tablet', label: 'Nettbrett', w: 834, h: 1112 }] as const).map((p) => (
+                <button key={p.k} data-chd onClick={() => { try { window.open(window.location.href, `chd_preview_${p.k}`, `width=${p.w},height=${p.h}`); } catch { /* popup blokkert */ } }}
+                  style={{ ...btn(false), padding: '3px 8px', fontSize: 11 }}
+                  title={`Åpne siden i et ${p.w}×${p.h}-vindu — media queries og responsive endringer vises som på ekte enhet (viser lagret tilstand)`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            {(editKeys.length > 0 || origMode) && (
+              <button data-chd onClick={toggleOriginal}
+                style={{ ...(origMode ? cta : btn(false)), padding: '6px 10px', fontSize: 12 }}
+                title="Sammenlign siden med og uten dine ulagrede endringer">
+                {origMode ? <><UndoOutlinedIcon sx={ICO} /> Vis mine endringer</> : <><VisibilityOutlinedIcon sx={ICO} /> Vis original</>}
+              </button>
+            )}
+            {dataHealth.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <button data-chd onClick={() => setHealthOpen((v) => !v)}
+                  style={{ ...btn(false), padding: '6px 10px', fontSize: 12, ...(dataHealth.length > healthOk ? { borderColor: '#b45309', color: '#b45309' } : {}) }}
+                  title="Verifiser alle data-koblinger på siden">
+                  <MonitorHeartOutlinedIcon sx={ICO} /> Data-helse: {healthOk}/{dataHealth.length}{dataHealth.length > healthOk ? ` · ${dataHealth.length - healthOk} avvik` : ' OK'}
+                </button>
+                {healthOpen && (
+                  <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {dataHealth.map((h, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'baseline', fontSize: 11 }}>
+                        <span style={{ color: h.status === 'ok' ? '#15803d' : '#b45309', flexShrink: 0 }}>{h.status === 'ok' ? <CheckCircleOutlineIcon sx={{ fontSize: 13, color: '#15803d' }} /> : <WarningAmberOutlinedIcon sx={{ fontSize: 13, color: '#b45309' }} />}</span>
+                        <span style={{ flex: 1, color: INK, wordBreak: 'break-all' }}>{h.label}</span>
+                        <span style={{ color: INK2, flexShrink: 0, textAlign: 'right' }}>{h.status === 'ok' ? `${h.key}${h.live ? ' (live)' : ''}: ${String(h.value)}` : h.status === 'missing' ? `«${h.key}» mangler` : `«${h.key}» tom`}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {hiddenKeys.length > 0 && (
+              <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ fontWeight: 800, fontSize: 12, color: INK }}>Skjulte elementer ({hiddenKeys.length})</div>
+                {hiddenKeys.map((k) => (
+                  <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <span style={{ flex: 1, fontSize: 10.5, color: INK2, wordBreak: 'break-all' }}>{k.length > 46 ? k.slice(0, 46) + '…' : k}</span>
+                    <button data-chd onClick={() => showElement(k)} style={{ ...btn(false), padding: '2px 8px', fontSize: 11 }}>Vis igjen</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontWeight: 800, fontSize: 12, color: INK }}>Plassér datakilde på siden</div>
+              {placingSource ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 6, padding: '6px 8px' }}>
+                  <span style={{ flex: 1, fontSize: 11.5, color: '#9a3412' }}><TouchAppOutlinedIcon sx={ICO} /> Klikk der du vil ha «{placingSource.label}» på siden</span>
+                  <button data-chd onClick={() => setPlacingSource(null)} style={{ ...btn(false), padding: '3px 8px', fontSize: 11 }}>Avbryt</button>
+                </div>
+              ) : (
+                <>
+                  <p style={{ fontSize: 11, color: INK2, margin: 0 }}>Velg et tall og klikk hvor det skal vises. Samme kilde kan plasseres flere steder — endrer du kilden, følger alle plasseringer med.</p>
+                  {sources.length === 0 && <div style={{ fontSize: 11, color: INK2 }}>Ingen datakilder for dette workspacet ennå.</div>}
+                  {sources.map((s) => (
+                    <div key={s.key} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ flex: 1, fontSize: 11.5, color: INK }}>{s.live ? <InsightsOutlinedIcon sx={ICO} /> : <EditOutlinedIcon sx={ICO} />} {String(s.label || s.key)}</span>
+                      <span style={{ fontSize: 11, color: INK2, fontVariantNumeric: 'tabular-nums' }}>{formatSourceValue(s.value)}</span>
+                      <button data-chd onClick={() => setPlacingSource({ key: s.key, label: String(s.label || s.key), value: s.value })} style={{ ...cta, padding: '3px 9px', fontSize: 11 }}>Plassér</button>
+                    </div>
+                  ))}
+                </>
+              )}
+              {lastPlaced && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, borderTop: `1px solid ${LINE}`, paddingTop: 6 }}>
+                  <span style={{ fontSize: 11, color: INK2, marginRight: 2 }}>Finjuster plassering:</span>
+                  {([[-4, 0, ArrowBackIcon], [4, 0, ArrowForwardIcon], [0, -4, ArrowUpwardIcon], [0, 4, ArrowDownwardIcon]] as const).map(([dx, dy, Icon], i) => (
+                    <button key={i} data-chd onClick={() => nudgePlaced(dx, dy)} aria-label={`Nudge ${['venstre', 'høyre', 'opp', 'ned'][i]}`} style={{ ...btn(false), padding: '3px 8px' }}><Icon sx={{ fontSize: 15, display: 'block' }} /></button>
+                  ))}
+                  <span style={{ flex: 1 }} />
+                  <button data-chd onClick={() => setLastPlaced(null)} style={{ ...btn(false), padding: '2px 8px', fontSize: 11 }}>Ferdig</button>
+                </div>
+              )}
+            </div>
+            {(editKeys.length > 0 || Object.keys(variants).length > 0 || editingVariant) && (
+              <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ fontWeight: 800, fontSize: 12, color: INK }}>Varianter / A-B</div>
+                {editingVariant ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 11.5, color: '#7c3aed', flex: 1 }}><EditOutlinedIcon sx={ICO} /> Redigerer «{editingVariant}» — «Lagre endringer» oppdaterer denne varianten. Skjerm-veksleren øverst lagrer egne nettbrett/mobil-endringer i varianten.</span>
+                    <button data-chd onClick={exitVariant} style={{ ...btn(false), padding: '3px 8px', fontSize: 11 }}>Ferdig</button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input data-chd style={{ ...field, flex: 1 }} placeholder="Nytt variant-navn" value={newVariantName} onChange={(e) => setNewVariantName(e.target.value)} />
+                      <button data-chd onClick={saveAsVariant} style={{ ...btn(false), padding: '3px 9px', fontSize: 11, whiteSpace: 'nowrap' }}>Lagre som variant</button>
+                    </div>
+                    {Object.keys(variants).map((n) => (
+                      <div key={n} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <span style={{ flex: 1, fontSize: 11, color: INK, wordBreak: 'break-word' }}>{n}{abStats[n] != null ? ` · ${abStats[n]} visn.` : ''}</span>
+                        <button data-chd onClick={() => editVariant(n)} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5 }}>Rediger</button>
+                        <button data-chd onClick={() => deleteVariant(n)} aria-label={`Slett ${n}`} style={{ border: `1px solid ${LINE}`, background: '#fff', borderRadius: 5, cursor: 'pointer', width: 20, height: 20, fontSize: 11, color: INK2, flexShrink: 0 }}><CloseIcon sx={ICO} /></button>
+                      </div>
+                    ))}
+                    {Object.keys(variants).length > 0 && (
+                      <>
+                        <label style={flabel}>Hva besøkende ser</label>
+                        <select data-chd style={field} value={variantMode} onChange={(e) => setVariantMode(e.target.value as 'off' | 'active' | 'ab')}>
+                          <option value="off">Av (base/standard)</option>
+                          <option value="active">Aktiv variant</option>
+                          <option value="ab">A/B-test</option>
+                        </select>
+                        {variantMode === 'active' && (
+                          <select data-chd style={field} value={variantActive} onChange={(e) => setVariantActive(e.target.value)}>
+                            <option value="">— Velg variant —</option>
+                            {Object.keys(variants).map((n) => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        )}
+                        {variantMode === 'ab' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {Object.keys(variants).map((n) => {
+                              const exp = abStats[n] ?? 0, conv = abConv[n] ?? 0;
+                              const rate = exp > 0 ? Math.round((conv / exp) * 1000) / 10 : null;
+                              return (
+                                <label key={n} style={{ fontSize: 11, color: INK, display: 'flex', gap: 5, alignItems: 'center' }}>
+                                  <input type="checkbox" data-chd checked={variantAb.includes(n)} onChange={(e) => setVariantAb((ab) => e.target.checked ? [...ab, n] : ab.filter((x) => x !== n))} />
+                                  <span style={{ flex: 1 }}>{n}</span>
+                                  {(exp > 0 || conv > 0) && <span style={{ color: INK2 }}>{exp} visn · {conv} konv{rate != null ? ` · ${rate}%` : ''}</span>}
+                                </label>
+                              );
+                            })}
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2 }}>
+                              <span style={{ fontSize: 10.5, color: INK2, flex: 1, wordBreak: 'break-all' }}>Konverterings-mål: {variantGoal ? <code>{variantGoal.length > 30 ? variantGoal.slice(0, 30) + '…' : variantGoal}</code> : '(ikke satt)'}</span>
+                              {sel && <button data-chd onClick={() => setVariantGoal(uniqueSelector(sel))} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5 }}>Sett valgt</button>}
+                              {variantGoal && <button data-chd onClick={() => setVariantGoal('')} aria-label="Fjern mål" style={{ border: `1px solid ${LINE}`, background: '#fff', borderRadius: 5, cursor: 'pointer', width: 20, height: 20, fontSize: 11, color: INK2 }}><CloseIcon sx={ICO} /></button>}
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <button data-chd onClick={fetchAbStats} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5 }}>Hent A/B-stats</button>
+                              {(Object.keys(abStats).length > 0 || Object.keys(abConv).length > 0) && (
+                                <span style={{ fontSize: 10, color: abPersistent ? '#15803d' : '#b45309' }}>{abPersistent ? <><FiberManualRecordIcon sx={{ fontSize: 9, verticalAlign: 'middle' }} /> lagret (overlever restart)</> : <><RadioButtonUncheckedIcon sx={{ fontSize: 9, verticalAlign: 'middle' }} /> kun denne økten (før migrasjon)</>}</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        <div style={{ fontSize: 10.5, color: INK2 }}>«Lagre endringer» persisterer varianter + visning.</div>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+            <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span style={{ fontWeight: 800, fontSize: 12, color: INK }}>Versjonshistorikk</span>
+                <button data-chd onClick={fetchVersions} style={{ marginLeft: 'auto', ...btn(false), padding: '3px 8px', fontSize: 11 }}>Vis versjoner</button>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input data-chd style={{ ...field, flex: 1 }} placeholder="Versjons-navn (valgfritt)" value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} />
+                <button data-chd onClick={createVersion} style={{ ...cta, padding: '3px 9px', fontSize: 11, whiteSpace: 'nowrap' }}>Lag versjon</button>
+              </div>
+              {versionMsg && <span style={{ fontSize: 11, color: INK2 }}>{versionMsg}</span>}
+              {versions.map((v) => (
+                <div key={v.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11 }}>
+                  <span style={{ flex: 1, color: INK, wordBreak: 'break-word' }}>{v.label || '(uten navn)'}<span style={{ color: INK2 }}> · {new Date(v.at).toLocaleString('no-NO', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span></span>
+                  <button data-chd onClick={() => restoreVersion(v.id)} style={{ ...btn(false), padding: '2px 7px', fontSize: 10.5 }}>Gjenopprett</button>
+                </div>
+              ))}
+              <span style={{ fontSize: 10.5, color: INK2 }}>Gjenoppretting tar automatisk en «før»-versjon først, så den er reversibel.</span>
+            </div>
+            {editKeys.length > 0 && (
+              <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 800, fontSize: 12.5, color: INK }}>Lagrede endringer ({editKeys.length})</span>
+                  <button data-chd onClick={resetAllEdits} title="Nullstill alle" style={{ marginLeft: 'auto', ...btn(false), padding: '3px 8px', fontSize: 11 }}>Nullstill alle</button>
+                </div>
+                {editKeys.map((k) => {
+                  const parts: string[] = [];
+                  if (edits[k]) parts.push(`${Object.keys(edits[k]).length} stil`);
+                  if (textEdits[k] != null) parts.push('tekst');
+                  if (animEdits[k]) parts.push(String(animEdits[k]));
+                  if (insertEdits[k]?.length) parts.push(`+${insertEdits[k].length} innsatt`);
+                  if (bindEdits[k]) parts.push(`bind: ${bindEdits[k]}`);
+                  if (intxEdits[k]) parts.push(`klikk: ${intxEdits[k].action}`);
+                  return (
+                    <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <code style={{ flex: 1, fontSize: 10, color: INK2, wordBreak: 'break-all', lineHeight: 1.3 }}>{k}</code>
+                      <span style={{ fontSize: 10.5, color: INK2, flexShrink: 0 }}>{parts.join(' · ')}</span>
+                      <button data-chd onClick={() => deleteEdit(k)} aria-label={`Slett endringer for ${k}`}
+                        style={{ flexShrink: 0, border: `1px solid ${LINE}`, background: '#fff', borderRadius: 6, cursor: 'pointer', width: 22, height: 22, lineHeight: 1, color: INK2 }}><CloseIcon sx={ICO} /></button>
+                    </div>
+                  );
+                })}
+                <button data-chd style={{ ...cta, marginTop: 2 }} onClick={saveEdits}>Lagre endringer</button>
+                {saveMsg && <span style={{ fontSize: 11.5, color: INK2 }}>{saveMsg}</span>}
+              </div>
+            )}
+            {!selDesc && <p style={{ color: INK2, fontSize: 13, margin: 0 }}>Klikk et element i shell-en for å redigere egenskapene. Endringene forhåndsvises live og pakkes til Claude Code.</p>}
+            {selDesc && (
+              <>
+                {/* Element-navigasjon: klikk lander ofte på en nested node → pilene treffer riktig nivå. */}
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button data-chd onClick={() => selectElement(sel?.parentElement || null)}
+                    disabled={!sel?.parentElement || sel.parentElement === document.body}
+                    style={{ ...btn(false), padding: '2px 7px', fontSize: 11 }} title="Velg forelder-elementet"><NorthOutlinedIcon sx={ICO} /> Forelder</button>
+                  <button data-chd onClick={() => selectElement((sel?.firstElementChild as HTMLElement) || null)}
+                    disabled={!sel?.firstElementChild}
+                    style={{ ...btn(false), padding: '2px 7px', fontSize: 11 }} title="Velg første barn-element"><SouthOutlinedIcon sx={ICO} /> Barn</button>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#7c3aed' }}>{sel ? `<${sel.tagName.toLowerCase()}>` : ''}</span>
+                </div>
+                {sel && (() => {
+                  const chain: HTMLElement[] = []; let n: HTMLElement | null = sel;
+                  while (n && n !== document.body && chain.length < 4) { chain.unshift(n); n = n.parentElement; }
+                  return chain.length > 1 ? (
+                    <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', fontSize: 10.5 }}>
+                      {chain.map((el, i) => (
+                        <React.Fragment key={i}>
+                          {i > 0 && <span style={{ color: INK2 }}>›</span>}
+                          <button data-chd onClick={() => selectElement(el)}
+                            style={{ border: 'none', background: el === sel ? '#ede9fe' : 'transparent', color: el === sel ? '#7c3aed' : INK2, borderRadius: 4, padding: '1px 5px', cursor: 'pointer', fontSize: 10.5 }}>
+                            {el.tagName.toLowerCase()}{el.id ? `#${el.id}` : ''}</button>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
+                <code style={{ fontSize: 10.5, color: INK2, background: '#fff', border: `1px solid ${LINE}`, borderRadius: 6, padding: '4px 7px', wordBreak: 'break-all' }}>{selOf(selDesc)}</code>
+
+                {suggestions.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <div style={section}>Forslag ({suggestions.length})</div>
+                    {suggestions.map((s) => (
+                      <div key={s.id} style={{ border: `1px solid ${LINE}`, borderLeft: `3px solid ${s.severity === 'high' ? '#dc2626' : s.severity === 'med' ? '#d97706' : '#2563eb'}`, borderRadius: 6, padding: '6px 8px' }}>
+                        <div style={{ fontSize: 11.5, color: INK, lineHeight: 1.35 }}>{s.text}</div>
+                        {renderSugActions('h:' + s.id, s.fixProp, s.fixValue ? s.fixValue + (s.fixUnit || '') : undefined)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* AI-forslag: rikere, kontekstuelle råd fra Claude — hver forhåndsvisbar før bruk. */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <span style={{ ...section, margin: 0 }}>AI-forslag</span>
+                    <button data-chd onClick={fetchAiSuggestions} disabled={aiLoading}
+                      style={{ marginLeft: 'auto', ...btn(false), padding: '3px 9px', fontSize: 11 }}>{aiLoading ? 'Tenker…' : 'Hent forslag'}</button>
+                  </div>
+                  {aiMsg && <div style={{ fontSize: 11, color: INK2 }}>{aiMsg}</div>}
+                  {aiSug.map((s, i) => (
+                    <div key={i} style={{ border: `1px solid ${LINE}`, borderLeft: '3px solid #7c3aed', borderRadius: 6, padding: '6px 8px' }}>
+                      <div style={{ fontSize: 11.5, color: INK, lineHeight: 1.35 }}>{s.text}</div>
+                      {s.apply && <div style={{ fontSize: 10, color: INK2, marginTop: 2 }}>{s.apply.prop}: {s.apply.value}</div>}
+                      {renderSugActions('ai:' + i, s.apply?.prop, s.apply?.value)}
+                    </div>
+                  ))}
+                </div>
+
+                {sel && sel.children.length === 0 && (
+                  <>
+                    <button data-chd onClick={() => setGrpInnhold((v) => !v)} title="Vis/skjul Innhold"
+                      style={{ ...section, display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 0, padding: '4px 0', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                      {grpInnhold ? <ExpandMoreIcon sx={ICO} /> : <ChevronRightIcon sx={ICO} />} Innhold
+                    </button>
+                    {grpInnhold && (<>
+                    <div style={section}>Tekst</div>
+                    <textarea data-chd aria-label="Element-tekst" value={insp.text ?? ''} onChange={(e) => applyText(e.target.value)}
+                      style={{ ...field, minHeight: 52, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.4 }} />
+
+                    {sel && sel.tagName === 'IMG' && (
+                      <>
+                        <div style={section}>Bytt bilde (logo)</div>
+                        <input data-chd aria-label="Bilde-URL" placeholder="/logo.png eller https://…" value={imgUrl}
+                          onChange={(e) => applyImageSrc(e.target.value)} style={field} />
+                        <p style={{ fontSize: 10.5, color: INK2, margin: 0 }}>Lim inn en URL (relativ sti eller https). Bildet byttes live; «Lagre endringer» publiserer det for alle.</p>
+                      </>
+                    )}
+
+                    {sel && sel.tagName === 'A' && (
+                      <>
+                        <div style={section}>Lenke-mål</div>
+                        <input data-chd aria-label="Lenke-URL" placeholder="/side eller https://…" value={hrefUrl}
+                          onChange={(e) => applyHref(e.target.value)} style={field} />
+                      </>
+                    )}
+
+                    <div style={section}>Bakgrunnsbilde</div>
+                    <input data-chd aria-label="Bakgrunnsbilde-URL" placeholder="/hero.jpg eller https://… (tøm for å fjerne)" value={bgUrl}
+                      onChange={(e) => applyBg(e.target.value)} style={field} />
+
+                    <button data-chd onClick={hideElement} style={{ ...btn(false), padding: '5px 10px', fontSize: 11.5, alignSelf: 'flex-start' }}
+                      title="Skjul dette elementet (display:none). Vises igjen fra «Skjulte elementer»-lista."><VisibilityOffOutlinedIcon sx={ICO} /> Skjul dette elementet</button>
+
+                    <div style={section}>Bind til datakilde</div>
+                    <select data-chd aria-label="Bind tekst til datakilde" style={field}
+                      value={sel ? (bindEdits[uniqueSelector(sel)] || '') : ''} onChange={(e) => applyBinding(e.target.value)}>
+                      <option value="">— Ingen (fritekst) —</option>
+                      {sources.map((s) => <option key={s.key} value={s.key}>{s.live ? 'live · ' : 'manuell · '}{s.key}{s.label ? ` · ${String(s.label)}` : ''}{s.live && s.value != null ? ` = ${String(s.value)}` : ''}</option>)}
+                    </select>
+                    {sel && bindEdits[uniqueSelector(sel)] && (() => {
+                      const bound = sources.find((s) => s.key === bindEdits[uniqueSelector(sel)]);
+                      return bound
+                        ? <div style={{ fontSize: 11, color: '#15803d' }}><CheckCircleOutlineIcon sx={ICO} /> Bundet — data kommer gjennom{bound.live ? ' (live fra DB)' : ''}: <b>{String(bound.value ?? '—')}</b></div>
+                        : <div style={{ fontSize: 11, color: '#b45309' }}><WarningAmberOutlinedIcon sx={ICO} /> Kilden er ikke definert lenger.</div>;
+                    })()}
+                    {sources.length === 0 && <div style={{ fontSize: 10.5, color: INK2 }}>Ingen datakilder ennå — definer metrics i Design-tokens.</div>}
+                  </>
+                )}
+
+                </>)}
+                <button data-chd onClick={() => setGrpStil((v) => !v)} title="Vis/skjul Stil"
+                  style={{ ...section, display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 0, padding: '4px 0', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                  {grpStil ? <ExpandMoreIcon sx={ICO} /> : <ChevronRightIcon sx={ICO} />} Stil
+                </button>
+                {grpStil && (<>
+                <div style={section}>Typografi</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ flex: 1 }}><label style={flabel}>Størrelse (px)</label>
+                    <input data-chd aria-label="Font-størrelse i piksler" type="number" style={field} value={insp.fontSize ?? ''} onChange={(e) => applyStyle('fontSize', 'font-size', e.target.value, 'px')} /></div>
+                  <div style={{ flex: 1 }}><label style={flabel}>Vekt</label>
+                    <input data-chd aria-label="Font-vekt" style={field} value={insp.fontWeight ?? ''} onChange={(e) => applyStyle('fontWeight', 'font-weight', e.target.value)} /></div>
+                </div>
+                <label style={flabel}>Skrifttype</label>
+                <select data-chd aria-label="Skrifttype" style={field} value={insp.fontFamily ?? ''} onChange={(e) => applyStyle('fontFamily', 'font-family', e.target.value)}>
+                  {([['Standard (arv)', ''], ['System', 'system-ui, sans-serif'], ['Arial', 'Arial, sans-serif'], ['Helvetica', 'Helvetica, Arial, sans-serif'], ['Verdana', 'Verdana, sans-serif'], ['Trebuchet', 'Trebuchet MS, sans-serif'], ['Georgia', 'Georgia, serif'], ['Times', 'Times New Roman, serif'], ['Courier', 'Courier New, monospace'], ['Impact', 'Impact, sans-serif']] as const).map(([lbl, val]) => <option key={lbl} value={val}>{lbl}</option>)}
+                </select>
+                <label style={flabel}>Tekstfarge</label>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input data-chd type="color" aria-label="Tekstfarge-velger" value={rgbToHex(insp.color ?? '')} onChange={(e) => applyStyle('color', 'color', e.target.value)}
+                    style={{ width: 30, height: 28, padding: 0, border: `1px solid ${LINE}`, borderRadius: 5, background: 'none', cursor: 'pointer', flexShrink: 0 }} />
+                  <input data-chd aria-label="Tekstfarge" style={field} value={insp.color ?? ''} onChange={(e) => applyStyle('color', 'color', e.target.value)} />
+                </div>
+
+                <div style={section}>Utseende</div>
+                <label style={flabel}>Bakgrunn</label>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input data-chd type="color" aria-label="Bakgrunnsfarge-velger" value={rgbToHex(insp.background ?? '')} onChange={(e) => applyStyle('background', 'background-color', e.target.value)}
+                    style={{ width: 30, height: 28, padding: 0, border: `1px solid ${LINE}`, borderRadius: 5, background: 'none', cursor: 'pointer', flexShrink: 0 }} />
+                  <input data-chd aria-label="Bakgrunnsfarge" style={field} value={insp.background ?? ''} onChange={(e) => applyStyle('background', 'background-color', e.target.value)} />
+                </div>
+                <label style={flabel}>Radius ({insp.borderRadius || 0}px)</label>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input data-chd type="range" aria-label="Radius-slider" min={0} max={40} value={parseFloat(insp.borderRadius || '0') || 0} onChange={(e) => applyStyle('borderRadius', 'border-radius', e.target.value, 'px')} style={{ flex: 1 }} />
+                  <input data-chd aria-label="Radius i piksler" type="number" style={{ ...field, width: 62, flexShrink: 0 }} value={insp.borderRadius ?? ''} onChange={(e) => applyStyle('borderRadius', 'border-radius', e.target.value, 'px')} />
+                </div>
+                <label style={flabel}>Gjennomsiktighet ({Math.round((parseFloat(insp.opacity ?? '1') || 1) * 100)}%)</label>
+                <input data-chd type="range" aria-label="Gjennomsiktighet-slider" min={0} max={1} step={0.05} value={parseFloat(insp.opacity ?? '1') || 1} onChange={(e) => applyStyle('opacity', 'opacity', e.target.value)} style={{ width: '100%' }} />
+
+                </>)}
+                <button data-chd onClick={() => setGrpLayout((v) => !v)} title="Vis/skjul Layout"
+                  style={{ ...section, display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 0, padding: '4px 0', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                  {grpLayout ? <ExpandMoreIcon sx={ICO} /> : <ChevronRightIcon sx={ICO} />} Layout
+                </button>
+                {grpLayout && (<>
+                <div style={section}>Spacing</div>
+                <label style={flabel}>Padding</label>
+                <input data-chd aria-label="Padding" style={field} value={insp.padding ?? ''} onChange={(e) => applyStyle('padding', 'padding', e.target.value)} />
+
+                <div style={section}>Auto-layout</div>
+                <label style={{ ...flabel, display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input type="checkbox" data-chd checked={insp.display === 'flex'} onChange={(e) => applyStyle('display', 'display', e.target.checked ? 'flex' : 'block')} />
+                  Aktiver auto-layout (flex)
+                </label>
+                {insp.display === 'flex' && (
+                  <>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ flex: 1 }}><label style={flabel}>Retning</label>
+                        <select data-chd aria-label="Retning" style={field} value={insp.flexDirection || 'row'} onChange={(e) => applyStyle('flexDirection', 'flex-direction', e.target.value)}>
+                          <option value="row">Rad →</option>
+                          <option value="column">Kolonne ↓</option>
+                        </select></div>
+                      <div style={{ flex: 1 }}><label style={flabel}>Mellomrom (px)</label>
+                        <input data-chd aria-label="Gap" type="number" style={field} value={insp.gap ?? ''} onChange={(e) => applyStyle('gap', 'gap', e.target.value, 'px')} /></div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ flex: 1 }}><label style={flabel}>Fordeling</label>
+                        <select data-chd aria-label="Fordeling" style={field} value={insp.justifyContent || 'flex-start'} onChange={(e) => applyStyle('justifyContent', 'justify-content', e.target.value)}>
+                          <option value="flex-start">Start</option>
+                          <option value="center">Senter</option>
+                          <option value="flex-end">Slutt</option>
+                          <option value="space-between">Mellomrom</option>
+                          <option value="space-around">Rundt</option>
+                        </select></div>
+                      <div style={{ flex: 1 }}><label style={flabel}>Justering</label>
+                        <select data-chd aria-label="Justering" style={field} value={insp.alignItems || 'stretch'} onChange={(e) => applyStyle('alignItems', 'align-items', e.target.value)}>
+                          <option value="stretch">Strekk</option>
+                          <option value="flex-start">Start</option>
+                          <option value="center">Senter</option>
+                          <option value="flex-end">Slutt</option>
+                        </select></div>
+                    </div>
+                  </>
+                )}
+
+                </>)}
+                <button data-chd onClick={() => setAdvOpen((v) => !v)} title="Vis/skjul avanserte seksjoner"
+                  style={{ ...section, display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 0, padding: '4px 0', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                  {advOpen ? <ExpandMoreIcon sx={ICO} /> : <ChevronRightIcon sx={ICO} />} Avansert
+                </button>
+                {advOpen && (<>
+                <div style={section}>Animasjon</div>
+                <select data-chd aria-label="Animasjon" style={field}
+                  value={sel ? (animEdits[uniqueSelector(sel)] || '') : ''}
+                  onChange={(e) => applyAnim(e.target.value)}>
+                  <option value="">Ingen</option>
+                  {Object.entries(ANIM_PRESETS).map(([k, p]) => <option key={k} value={k}>{p.label}</option>)}
+                </select>
+
+                <div style={section}>Interaksjon (klikk)</div>
+                {(() => {
+                  const cur = sel ? intxEdits[uniqueSelector(sel)] : undefined;
+                  const action = cur?.action || '';
+                  return (
+                    <>
+                      <select data-chd aria-label="Interaksjon" style={field} value={action} onChange={(e) => applyInteraction(e.target.value, '')}>
+                        <option value="">Ingen</option>
+                        <option value="scroll">Scroll til seksjon</option>
+                        <option value="link">Naviger til lenke</option>
+                      </select>
+                      {action === 'scroll' && (
+                        <select data-chd aria-label="Mål-seksjon" style={field} value={cur?.target || ''} onChange={(e) => applyInteraction('scroll', e.target.value)}>
+                          <option value="">— Velg mål-seksjon (id) —</option>
+                          {pageIds.map((id) => <option key={id} value={`#${id}`}>#{id}</option>)}
+                        </select>
+                      )}
+                      {action === 'link' && (
+                        <input data-chd style={field} placeholder="Lenke (/… eller https://…)" value={cur?.target || ''} onChange={(e) => applyInteraction('link', e.target.value)} />
+                      )}
+                    </>
+                  );
+                })()}
+
+                <div style={section}>Sett inn nytt element (ved dette ankeret)</div>
+                <select data-chd aria-label="Element-type" style={field} value={insType} onChange={(e) => setInsType(e.target.value)}>
+                  <option value="heading">Overskrift</option>
+                  <option value="text">Tekst</option>
+                  <option value="button">Knapp</option>
+                  <option value="image">Bilde</option>
+                  <option value="infographic">Infographic</option>
+                  <option value="divider">Skille</option>
+                  <option value="component">Komponent (fra bibliotek)</option>
+                  <option value="htmlcomponent">HTML-komponent (klonet seksjon)</option>
+                </select>
+                {insType === 'component' && (
+                  <select data-chd aria-label="Velg komponent" style={field} value={pickComp} onChange={(e) => setPickComp(e.target.value)}>
+                    <option value="">— Velg komponent —</option>
+                    {Object.keys(components).map((n) => <option key={n} value={n}>{n} ({components[n].length} elementer)</option>)}
+                  </select>
+                )}
+                {insType === 'htmlcomponent' && (
+                  <select data-chd aria-label="Velg HTML-komponent" style={field} value={pickHtmlComp} onChange={(e) => setPickHtmlComp(e.target.value)}>
+                    <option value="">— Velg HTML-komponent —</option>
+                    {Object.keys(htmlComps).map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                )}
+                {insType === 'component' && pickComp && (components[pickComp] || []).some((s) => s.type === 'infographic') && (() => {
+                  const slots = (components[pickComp] || []).filter((s) => s.type === 'infographic');
+                  const connected = slots.filter((s) => slotBindings[s.id] && sources.find((x) => x.key === slotBindings[s.id])).length;
+                  return (
+                    <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 800, fontSize: 12, color: INK }}>Koble data-slots ({connected}/{slots.length} koblet)</span>
+                        <button data-chd onClick={aiMapSlots} disabled={aiMapLoading} title="La AI foreslå kilde for alle slots"
+                          style={{ marginLeft: 'auto', ...btn(false), padding: '3px 8px', fontSize: 11 }}>{aiMapLoading ? 'Tenker…' : <><AutoAwesomeOutlinedIcon sx={ICO} /> AI-foreslå</>}</button>
+                      </div>
+                      {slots.map((slot) => {
+                        const chosen = slotBindings[slot.id] || '';
+                        const bound = sources.find((s) => s.key === chosen);
+                        return (
+                          <div key={slot.id} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <span style={{ fontSize: 11, color: INK2 }}>Slot: {slot.text || 'infographic'}</span>
+                            <select data-chd aria-label={`Kilde for ${slot.text || 'slot'}`} style={field} value={chosen}
+                              onChange={(e) => setSlotBindings((b) => ({ ...b, [slot.id]: e.target.value }))}>
+                              <option value="">— Velg kilde —</option>
+                              {sources.map((s) => <option key={s.key} value={s.key}>{s.live ? 'live · ' : 'manuell · '}{s.key}{s.live && s.value != null ? ` = ${String(s.value)}` : ''}</option>)}
+                            </select>
+                            {chosen && (bound
+                              ? <div style={{ fontSize: 10.5, color: '#15803d' }}><CheckCircleOutlineIcon sx={ICO} /> Verifisert{bound.live ? ' (live fra DB)' : ''}: {String(bound.value ?? '—')}</div>
+                              : <div style={{ fontSize: 10.5, color: '#b45309' }}><WarningAmberOutlinedIcon sx={ICO} /> ikke verifisert — kilden finnes ikke</div>)}
+                          </div>
+                        );
+                      })}
+                      {connected < slots.length && <div style={{ fontSize: 10.5, color: '#b45309' }}>Koble alle slots for en fullstendig komponent.</div>}
+                    </div>
+                  );
+                })()}
+                {insType !== 'divider' && insType !== 'component' && insType !== 'htmlcomponent' && (
+                  <input data-chd style={field}
+                    placeholder={insType === 'infographic' ? 'Verdi (f.eks. 75%)' : insType === 'image' ? 'Alt-tekst' : 'Tekst'}
+                    value={insText} onChange={(e) => setInsText(e.target.value)} />
+                )}
+                {(insType === 'button' || insType === 'image') && (
+                  <input data-chd style={field} placeholder={insType === 'button' ? 'Lenke (/… eller https://…)' : 'Bilde-URL (/… eller https://…)'}
+                    value={insUrl} onChange={(e) => setInsUrl(e.target.value)} />
+                )}
+                {insType === 'infographic' && (
+                  <input data-chd style={field} placeholder="Etikett" value={insUrl} onChange={(e) => setInsUrl(e.target.value)} />
+                )}
+                {insType === 'infographic' && (
+                  <>
+                    <label style={flabel}>Koble til datakilde</label>
+                    <select data-chd aria-label="Koble til datakilde" style={field} value={insSource} onChange={(e) => setInsSource(e.target.value)}>
+                      <option value="">— Statisk verdi (ingen kobling) —</option>
+                      {sources.map((s) => <option key={s.key} value={s.key}>{s.live ? 'live · ' : 'manuell · '}{s.key}{s.label ? ` · ${String(s.label)}` : ''}{s.live && s.value != null ? ` = ${String(s.value)}` : ''}</option>)}
+                    </select>
+                    {insSource && (() => {
+                      const bound = sources.find((s) => s.key === insSource);
+                      return bound
+                        ? <div style={{ fontSize: 11, color: '#15803d' }}><CheckCircleOutlineIcon sx={ICO} /> Data kommer gjennom{bound.live ? ' (live fra DB)' : ''}: <b>{String(bound.value ?? '—')}</b>{bound.label ? ` — ${String(bound.label)}` : ''}</div>
+                        : <div style={{ fontSize: 11, color: '#b45309' }}><WarningAmberOutlinedIcon sx={ICO} /> «{insSource}» er ikke definert. Legg den til i Design-tokens → metrics.</div>;
+                    })()}
+                    {sources.length === 0 && <div style={{ fontSize: 10.5, color: INK2 }}>Ingen kilder ennå — definer marketing-metrics i CreatorHub Design → Design-tokens, så dukker de opp her.</div>}
+                  </>
+                )}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <select data-chd aria-label="Posisjon" style={{ ...field, flex: 1 }} value={insPos} onChange={(e) => setInsPos(e.target.value as 'before' | 'after')}>
+                    <option value="after">Etter ankeret</option>
+                    <option value="before">Før ankeret</option>
+                  </select>
+                  <button data-chd style={cta} onClick={addInsert}>Legg til</button>
+                </div>
+                {sel && (insertEdits[uniqueSelector(sel)]?.length ?? 0) > 0 && insType !== 'component' && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input data-chd style={{ ...field, flex: 1 }} placeholder="Komponent-navn" value={compName} onChange={(e) => setCompName(e.target.value)} />
+                    <button data-chd style={btn(false)} onClick={saveComponent} title="Lagre dette ankerets innsettinger som gjenbrukbar komponent">Lagre som komponent</button>
+                  </div>
+                )}
+                {sel && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input data-chd style={{ ...field, flex: 1 }} placeholder="Klon-navn" value={htmlCompName} onChange={(e) => setHtmlCompName(e.target.value)} />
+                    <button data-chd style={btn(false)} onClick={saveHtmlComponent} title="Klon det valgte elementet (med all styling) som gjenbrukbar HTML-komponent">Klon som HTML-komponent</button>
+                  </div>
+                )}
+
+                </>)}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+                  <button data-chd style={cta} onClick={saveEdits}>Lagre endringer ({new Set([...Object.keys(edits), ...Object.keys(textEdits), ...Object.keys(animEdits)]).size})</button>
+                  {saveMsg && <span style={{ fontSize: 12, color: INK2 }}>{saveMsg}</span>}
+                </div>
+                <p style={{ fontSize: 11.5, color: INK2, margin: '8px 0 0' }}>
+                  «Lagre endringer» persisterer per-element-stilene til workspacet — de gjelder alle
+                  brukere ved neste last. Best-effort: en endring kan drive hvis sidelayouten endres
+                  mye senere. «Send til Claude Code» pakker dem i stedet til en bundle for permanent kode.
+                </p>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Handoff-bundle */}
+      {bundle && (
+        <div data-chd style={{ position: 'fixed', inset: 0, pointerEvents: 'auto', background: 'rgba(10,12,20,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Handoff-bundle til Claude Code" tabIndex={-1}
+            style={{ width: 620, maxWidth: '92vw', maxHeight: '84vh', background: PANEL, border: `1px solid ${LINE}`, borderRadius: 14, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '13px 16px', borderBottom: `1px solid ${LINE}`, fontWeight: 800, color: INK, display: 'flex', alignItems: 'center' }}>
+              Handoff-bundle → Claude Code
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: INK2, fontWeight: 500 }}>{targetFile}</span>
+            </div>
+            <pre style={{ margin: 0, flex: 1, overflow: 'auto', padding: 14, fontSize: 12, color: INK, background: '#fff' }}>{bundle}</pre>
+            <div style={{ padding: 12, borderTop: `1px solid ${LINE}`, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button data-chd style={btn(false)} onClick={() => setBundle(null)}>Lukk</button>
+              <button data-chd style={cta} onClick={() => navigator.clipboard?.writeText(bundle).catch(() => {})}>Kopier bundle</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

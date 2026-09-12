@@ -217,10 +217,33 @@ private struct WKWebViewRepresentable: UIViewRepresentable {
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void,
         ) {
             if let url = navigationAction.request.url,
-               url.scheme == DeepLinkRouter.scheme
-            {
+               url.scheme == DeepLinkRouter.scheme {
                 if let intent = DeepLinkRouter.parse(url) {
                     Task { @MainActor in self.onDeepLink(intent) }
+                }
+                decisionHandler(.cancel)
+                return
+            }
+            decisionHandler(.allow)
+        }
+
+        // MARK: - HTTP error status (4xx / 5xx)
+
+        // WKWebView treats an HTTP error like 404/500 as a *successful*
+        // navigation and renders the response body — e.g. Express's bare
+        // "Cannot GET <path>". Catch main-frame error statuses here and
+        // surface the retry UI instead of the raw error page.
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationResponse: WKNavigationResponse,
+            decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void,
+        ) {
+            if navigationResponse.isForMainFrame,
+               let http = navigationResponse.response as? HTTPURLResponse,
+               http.statusCode >= 400 {
+                Task { @MainActor in
+                    self.errorBinding.wrappedValue =
+                        "Siden svarte med HTTP \(http.statusCode). Sjekk at du er logget inn og prøv igjen."
                 }
                 decisionHandler(.cancel)
                 return
@@ -233,14 +256,25 @@ private struct WKWebViewRepresentable: UIViewRepresentable {
         func webView(_ webView: WKWebView,
                      didFail navigation: WKNavigation!,
                      withError error: Error) {
-            Task { @MainActor in
-                self.errorBinding.wrappedValue = error.localizedDescription
-            }
+            reportLoadFailure(error)
         }
 
         func webView(_ webView: WKWebView,
                      didFailProvisionalNavigation navigation: WKNavigation!,
                      withError error: Error) {
+            reportLoadFailure(error)
+        }
+
+        /// Surface a real load failure — but ignore cancellations, which
+        /// includes the `.cancel` we issue ourselves for HTTP error
+        /// statuses above (so the precise "HTTP 404" message isn't
+        /// clobbered by a generic "cancelled").
+        private func reportLoadFailure(_ error: Error) {
+            let ns = error as NSError
+            let isCancellation =
+                (ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled) ||
+                (ns.domain == "WebKitErrorDomain" && ns.code == 102) // frame load interrupted by policy change
+            if isCancellation { return }
             Task { @MainActor in
                 self.errorBinding.wrappedValue = error.localizedDescription
             }

@@ -33,6 +33,7 @@ import {
   Tab,
   Tooltip,
   Grid,
+  InputAdornment,
 } from '@mui/material';
 import {
   Business,
@@ -49,10 +50,12 @@ import {
   Done,
   Close,
   Refresh,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useTheming } from '../../utils/theming-helper';
+import { AdminButton, StatusChip, AdminTableContainer, AdminLoading, AdminEmpty, useIsMobile } from './design-system';
 
 interface EnterpriseInquiry {
   id: string;
@@ -101,8 +104,10 @@ interface EnterpriseInquiriesPanelProps {
 
 export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: EnterpriseInquiriesPanelProps) {
   const theming = useTheming('photographer');
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [search, setSearch] = useState('');
   const [selectedInquiry, setSelectedInquiry] = useState<EnterpriseInquiry | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [adminNotes, setAdminNotes] = useState('');
@@ -127,7 +132,14 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
     pricePerUser: 299,
   };
 
-  const inquiries: EnterpriseInquiry[] = data?.inquiries || [];
+  const inquiries: EnterpriseInquiry[] = Array.isArray(data?.inquiries) ? data.inquiries : [];
+  const filteredInquiries = search.trim()
+    ? inquiries.filter((i) =>
+        [i.company_name, i.contact_email, i.industry, i.org_number]
+          .filter(Boolean)
+          .some((field) => (field as string).toLowerCase().includes(search.toLowerCase())),
+      )
+    : inquiries;
   const stats: InquiryStats = data?.stats || { total: 0, pending: 0, reviewing: 0, approved: 0, rejected: 0, converted: 0 };
 
   // Update mutation
@@ -179,7 +191,16 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
           return (
             <Grid item xs={6} sm={4} md={2} key={key}>
               <Card sx={{ textAlign: 'center', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
-                onClick={() => setStatusFilter(key)}>
+                role="button"
+                tabIndex={0}
+                aria-label={`Filtrer på ${config?.label}`}
+                onClick={() => setStatusFilter(key)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setStatusFilter(key);
+                  }
+                }}>
                 <CardContent sx={{ py: 1.5 }}>
                   <Typography variant="h4" sx={{ color: `${config?.color}.main` }}>{value}</Typography>
                   <Typography variant="caption" color="text.secondary">{config?.label}</Typography>
@@ -190,7 +211,16 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
         })}
         <Grid item xs={6} sm={4} md={2}>
           <Card sx={{ textAlign: 'center', cursor: 'pointer', bgcolor: 'primary.main', color: 'white' }}
-            onClick={() => setStatusFilter('all')}>
+            role="button"
+            tabIndex={0}
+            aria-label="Vis alle forespørsler"
+            onClick={() => setStatusFilter('all')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setStatusFilter('all');
+              }
+            }}>
             <CardContent sx={{ py: 1.5 }}>
               <Typography variant="h4">{stats.total}</Typography>
               <Typography variant="caption">Totalt</Typography>
@@ -200,7 +230,7 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
       </Grid>
 
       {/* Actions Bar */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
         <Alert severity="info" sx={{ flex: 1, mr: 2 }}>
           Enterprise-priser: Basispris {pricingConfig.basePrice} kr/mnd (inkl. {pricingConfig.includedUsers} brukere) + {pricingConfig.pricePerUser} kr/mnd per ekstra bruker.
           {onNavigateToPricing && (
@@ -214,8 +244,26 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
         </Button>
       </Box>
 
+      {/* Search */}
+      <Box sx={{ mb: 2 }}>
+        <TextField
+          size="small"
+          fullWidth
+          placeholder="Søk etter bedrift, e-post eller bransje …"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Box>
+
       {/* Table */}
-      <TableContainer component={Paper}>
+      <AdminTableContainer ariaLabel="Enterprise-forespørsler">
         <Table>
           <TableHead>
             <TableRow>
@@ -231,15 +279,15 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7} align="center"><CircularProgress /></TableCell>
+                <TableCell colSpan={7} align="center"><AdminLoading /></TableCell>
               </TableRow>
-            ) : inquiries.length === 0 ? (
+            ) : filteredInquiries.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} align="center">
-                  <Typography color="text.secondary">Ingen forespørsler funnet</Typography>
+                  <AdminEmpty title="Ingen forespørsler funnet" />
                 </TableCell>
               </TableRow>
-            ) : inquiries.map((inquiry) => (
+            ) : filteredInquiries.map((inquiry) => (
               <TableRow key={inquiry.id} hover>
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -265,18 +313,16 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
                   )}
                 </TableCell>
                 <TableCell>
-                  <Chip
+                  <StatusChip
                     icon={STATUS_CONFIG[inquiry.status]?.icon}
-                    label={STATUS_CONFIG[inquiry.status]?.label}
-                    color={STATUS_CONFIG[inquiry.status]?.color}
-                    size="small"
+                    status={inquiry.status}
                   />
                 </TableCell>
                 <TableCell>
                   <Typography variant="caption">{formatDate(inquiry.created_at)}</Typography>
                 </TableCell>
                 <TableCell>
-                  <IconButton size="small" onClick={() => handleViewDetails(inquiry)}>
+                  <IconButton size="small" aria-label="Vis detaljer" onClick={() => handleViewDetails(inquiry)}>
                     <Visibility />
                   </IconButton>
                 </TableCell>
@@ -284,10 +330,10 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
             ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
 
       {/* Detail Dialog */}
-      <Dialog open={showDetailDialog} onClose={() => setShowDetailDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={showDetailDialog} onClose={() => setShowDetailDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Business color="primary" />
           {selectedInquiry?.company_name}
@@ -347,15 +393,15 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowDetailDialog(false)}>Lukk</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setShowDetailDialog(false)}>Lukk</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleUpdateStatus}
-            disabled={updateMutation.isPending}
-            startIcon={updateMutation.isPending ? <CircularProgress size={16} /> : <CheckCircle />}
+            loading={updateMutation.isPending}
+            startIcon={<CheckCircle />}
           >
             Oppdater
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

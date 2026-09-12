@@ -1,7 +1,8 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { getEvendiBookings, getEvendiAnalyticsSummary, evendiQueryKeys, type EvendiBooking, type EvendiAnalyticsSummary } from '@/lib/evendi-api';
 import { useAuth } from '@/hooks/useAuth';
 import type { 
@@ -41,7 +42,7 @@ import { AcademyIcon } from '../shared/CreatorHubIcons';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 // Google Drive Integration
 // Toast Notifications
-import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
+import { useVisualEditorOptional } from '../admin/visual-editor/VisualEditorContext';
 // New context imports
 import { useProject } from '../../contexts/ProjectContext';
 import { useSettings, type UserSettings } from '../../contexts/SettingsContext';
@@ -109,7 +110,6 @@ import {
   Skeleton,
   ImageList,
   ImageListItem,
-  ImageListItemBar,
   SpeedDial,
   SpeedDialAction,
   SpeedDialIcon,
@@ -223,6 +223,8 @@ import {
   MovieCreation,
   TrendingUp as TimelineIcon,
   ForumOutlined as CommentResolverIcon,
+  ShowChart as TrendingUpIcon,
+  RestartAlt as RestartAltIcon,
   Layers,
   VolumeUp,
   Subtitles,
@@ -251,6 +253,23 @@ import {
   NoteAdd,
   AutoAwesome,
   PlaylistAdd,
+  Description as DescriptionIcon,
+  Extension as ExtensionIcon,
+  RocketLaunch as RocketLaunchIcon,
+  MenuBook as MenuBookIcon,
+  CheckCircle as CheckCircleIcon,
+  WarningAmber as WarningAmberIcon,
+  PhotoCamera as PhotoCameraIcon,
+  Videocam as VideocamIcon,
+  MusicNote as MusicNoteIcon,
+  BusinessCenter as BusinessCenterIcon,
+  ContentCut as ContentCutIcon,
+  CameraAlt as CameraAltIcon,
+  GrassOutlined as GrassIcon,
+  School as SchoolIcon,
+  LocationOn as LocationOnIcon,
+  GpsFixed as GpsFixedIcon,
+  Folder,
 } from '@mui/icons-material';
 import { ProjectSelectorModal } from '../shared/ProjectSelectorModal';
 import ProjectTimeline from '../project/ProjectTimeline';
@@ -263,6 +282,9 @@ import ContextualActionBar from './showcase/ContextualActionBar';
 import QuickPreview from './showcase/QuickPreview';
 import ActivityFeed from './showcase/ActivityFeed';
 import CommentResolverPanel from './showcase/CommentResolverPanel';
+import MySharedGalleriesPanel from './showcase/MySharedGalleriesPanel';
+import EngagementFeedPanel from './showcase/EngagementFeedPanel';
+import MultiRoundManagerPanel from './showcase/MultiRoundManagerPanel';
 import ShareToCommunityDialog from '../community/ShareToCommunityDialog';
 import SmartCollections from './showcase/SmartCollections';
 import ComparisonView from './showcase/ComparisonView';
@@ -276,6 +298,7 @@ const VideographerVideoSuite = React.lazy(() => import('../videographer/Videogra
 const PhotographerPhotoSuite = React.lazy(() => import('../photographer/PhotographerPhotoSuite'));
 const VideoShowcaseEnhanced = React.lazy(() => import('./VideoShowcaseEnhanced'));
 import ShowcaseCard, { formatFileSize } from './ShowcaseCard';
+import { CINE, withAlpha, glassPanelSx, posterCardSx, scrimGradient, scrimGradientTop, metaLabelSx, CINE_MOTION, CINE_FONT } from './showcaseCinematic';
 
 
 // Helper functions for timecode conversion
@@ -774,7 +797,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   // Additional state for real-time features
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [showcaseItems, setShowcaseItems] = useState<ShowcaseItem[]>([]);
-  
+  // Round 40 (defensive): realtime item_* events arrive over a global fan-out
+  // with no server-verified project binding. Keep a live ref of owned item ids
+  // so the realtime handlers can reject events for items this showcase does not
+  // hold (cross-tenant noise / crafted mutations) without stale-closure bugs.
+  const showcaseItemIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    showcaseItemIdsRef.current = new Set(showcaseItems.map((i) => String(i.id)));
+  }, [showcaseItems]);
+
   // Academy navigation state
   const [showAcademy, setShowAcademy] = useState(false);
   // Dashboard navigation state
@@ -1017,7 +1048,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     features
 } = useEnhancedMasterIntegration();
 
-  const visualEditor = useVisualEditor();
+  // Optional: showcase rendres også utenfor VisualEditorProvider (/workspace
+  // m.fl.) — den kastende hooken tar da ned hele flaten til app-router-boundaryen.
+  const visualEditor = useVisualEditorOptional();
   
   // Comprehensive Feature System for Universal Showcase
   const showcaseAccess = features.checkFeatureAccess('universal-showcase');
@@ -1179,21 +1212,32 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
   // Real-time event handling
   useEffect(() => {
+    // Round 40: these events reach us over a global fan-out with no
+    // server-verified project binding, so a crafted item_* event from another
+    // authenticated tenant could otherwise inject selections or splat arbitrary
+    // fields onto this showcase's state. Act ONLY on items this showcase owns,
+    // and never spread the raw, unauthenticated-origin `updates` object —
+    // mirror a whitelist of benign display fields instead.
+    const SAFE_UPDATE_KEYS = ['title', 'caption', 'description', 'status', 'rating', 'tags', 'order', 'category'];
+
     const handleItemSelected = (event: any) => {
-      if (event.data.itemId) {
-        setSelectedItems(prev => [...prev, event.data.itemId.toString()]);
-        showInfoToast(`${event.data.userName} selected an item`);
-  }
-};
+      const itemId = event?.data?.itemId != null ? String(event.data.itemId) : '';
+      if (!itemId || !showcaseItemIdsRef.current.has(itemId)) return;
+      setSelectedItems(prev => (prev.includes(itemId) ? prev : [...prev, itemId]));
+      showInfoToast(`${event?.data?.userName ?? 'Someone'} selected an item`);
+    };
 
     const handleItemUpdated = (event: any) => {
-      if (event.data.itemId) {
-        showInfoToast(`${event.data.userName} updated an item`);
-        // Refresh the item data
-        setShowcaseItems(prev => prev.map(item => 
-          item.id === event.data.itemId.toString() ? { ...item, ...event.data.updates } : item
-        ));
-      }
+      const itemId = event?.data?.itemId != null ? String(event.data.itemId) : '';
+      if (!itemId || !showcaseItemIdsRef.current.has(itemId)) return;
+      const incoming = (event?.data?.updates && typeof event.data.updates === 'object') ? event.data.updates : {};
+      const safe: Record<string, any> = {};
+      for (const k of SAFE_UPDATE_KEYS) if (k in incoming) safe[k] = incoming[k];
+      showInfoToast(`${event?.data?.userName ?? 'Someone'} updated an item`);
+      if (Object.keys(safe).length === 0) return;
+      setShowcaseItems(prev => prev.map(item =>
+        String(item.id) === itemId ? { ...item, ...safe } : item
+      ));
     };
 
     const handleUserJoined = (event: any) => {
@@ -1364,7 +1408,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   // Activity Feed State
   const [activityFeedOpen, setActivityFeedOpen] = useState(false);
   const [commentResolverOpen, setCommentResolverOpen] = useState(false);
-  
+  const [engagementFeedOpen, setEngagementFeedOpen] = useState(false);
+  const [multiRoundManagerOpen, setMultiRoundManagerOpen] = useState(false);
+
+
   // Smart Collections State
   const [showSmartCollections, setShowSmartCollections] = useState(false);
 
@@ -1799,9 +1846,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     try {
       // Try to determine project type from showcase metadata or fetch from API
       // First, try to fetch project from wedding projects API
-      const weddingRes = await fetch(`/api/wedding-projects/${item.projectId}`, { credentials: 'include' });
-      if (weddingRes.ok) {
-        const data = await weddingRes.json();
+      // apiRequest vedlegger session-token automatisk. Wrap i try slik at
+      // 401/404 ikke kaster — vi prøver flere kilder uansett.
+      let data: any = null;
+      try {
+        data = await apiRequest(`/api/wedding-projects/${item.projectId}`);
+      } catch { /* fall-through til andre forsøk */ }
+      if (data) {
         if (data.success && data.project) {
           setSelectedProjectForOverview({
             ...data.project,
@@ -1813,7 +1864,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       }
       
       // Try Story Arc projects
-      const storyArcRes = await fetch(`/api/story-arc/projects/${item.projectId}`, { credentials: 'include' });
+      const storyArcRes = await fetch(`/api/story-arc/projects/${item.projectId}`, { credentials: 'include', headers: await getAuthHeader() });
       if (storyArcRes.ok) {
         const data = await storyArcRes.json();
         if (data.success && data.project) {
@@ -4021,10 +4072,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   }
       
       // Show enhanced success message with detailed project context
-      let successMessage = `✅ ${imageIds.length} bilde${imageIds.length !== 1 ? 'r' : ','} er sendt til Google Photos for redigering!`;
+      let successMessage = `${imageIds.length} bilde${imageIds.length !== 1 ? 'r' : ','} er sendt til Google Photos for redigering.`;
       
       if (projectInfo) {
-        successMessage += `\n\n📁 Prosjekt: ${projectInfo?.name}`;
+        successMessage += `\n\nProsjekt: ${projectInfo?.name}`;
         if (projectInfo?.clientName) {
           successMessage += `\n👤 Klient: ${projectInfo.clientName}`;
     }
@@ -4032,9 +4083,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           successMessage += `\n📅 Dato: ${new Date(projectInfo.eventDate).toLocaleDateString('')}`;
     }
         if (projectInfo?.location) {
-          successMessage += `\n📍 Sted: ${projectInfo.location}`;
+          successMessage += `\nSted: ${projectInfo.location}`;
     }
-        successMessage += `\n\n🎯 Bildene er nå tilgjengelige i Google Photos med full prosjektkontext for redigering.`;
+        successMessage += `\n\nBildene er nå tilgjengelige i Google Photos med full prosjektkontekst for redigering.`;
   }
       
         showToastWithActions(
@@ -4372,10 +4423,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         pricePerImage = pricingData.projectPricing.per_image;
       } else if (pricingData.pricing?.perImage) {
         pricePerImage = pricingData.pricing.perImage;
-      } else {
-        // Use default fallback pricing
-        pricePerImage = 50; // Default NOK 50 per image
       }
+      // else: keep the 150 NOK default declared above (matches modal display fallback)
     } catch (error) {
       console.warn('Could not fetch per-image pricing, using fallback:', error);
     }
@@ -4494,7 +4543,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         body: JSON.stringify({
           showcaseId: items[0]?.id, // Use first showcase item ID as reference
           selectedImages: Array.from(selectedImages),
-          clientEmail: 'kunde@example.com', // This should come from authenticated user
+          clientEmail: clientEmail || user?.email || effectiveUserId,
           pricingOption: 'per_image'
   })
   });
@@ -5565,6 +5614,75 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     || items.find((item: ShowcaseItem) => Boolean(item.isFeatured ?? item.featured))
     || items[0];
 
+  // ── Cinematic detail view (QuickPreview) — comments wiring ───────────────
+  // The fullscreen detail experience keeps the comment thread always visible
+  // in its sidebar. We key a dedicated query off the item currently shown in
+  // QuickPreview (independent of the legacy showComments flow above).
+  const quickPreviewItem = filteredItems[quickPreviewIndex];
+  const {
+    data: quickPreviewComments = [],
+    isLoading: quickPreviewCommentsLoading,
+    refetch: refetchQuickPreviewComments,
+  } = useQuery<any[]>({
+    queryKey: [`/api/showcase/qp/${quickPreviewItem?.id}/comments`],
+    queryFn: async () => {
+      if (!quickPreviewItem?.id) return [];
+      const response = await fetch(`/api/showcase/${quickPreviewItem.id}/comments`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!quickPreviewItem?.id && quickPreviewOpen,
+  });
+
+  const handleQuickPreviewAddComment = useCallback(async (itemId: string, text: string) => {
+    if (!text.trim()) return;
+    try {
+      const response = await fetch(`/api/showcase/${itemId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          showcaseItemId: itemId,
+          userId: effectiveUserId,
+          userName: (user as any)?.name || user?.email || 'Du',
+          userEmail: user?.email || '',
+          comment: text,
+          commentType: 'general',
+          isPrivate: false,
+        }),
+      });
+      if (response.ok) await refetchQuickPreviewComments();
+    } catch (error) {
+      console.error('Failed to add comment:', error);
+    }
+  }, [effectiveUserId, user, refetchQuickPreviewComments]);
+
+  const handleQuickPreviewLikeComment = useCallback(async (commentId: string) => {
+    try {
+      const response = await fetch(`/api/showcase/comments/${commentId}/like`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: effectiveUserId }),
+      });
+      if (response.ok) await refetchQuickPreviewComments();
+    } catch (error) {
+      console.error('Failed to like comment:', error);
+    }
+  }, [effectiveUserId, refetchQuickPreviewComments]);
+
+  // Opens the cinematic detail view (QuickPreview) on a given item — the default
+  // "view" action for cards, masonry and list rows. Falls back to the legacy
+  // selectedItem dialog only if the item is not in the current filtered set.
+  const openQuickPreview = useCallback((item: ShowcaseItem) => {
+    // Keep selectedItem in sync so comment/audio/analysis context that keys off it
+    // stays coherent (no legacy modal is gated on it — see audit), then open the
+    // cinematic detail view.
+    setSelectedItem(item);
+    const idx = filteredItems.findIndex((i: ShowcaseItem) => i.id === item.id);
+    if (idx === -1) return;
+    setQuickPreviewIndex(idx);
+    setQuickPreviewOpen(true);
+  }, [filteredItems]);
+
   const toggleFavorite = (itemId: string) => {
     setFavorites(prev => {
       const newFavorites = new Set(prev);
@@ -5801,6 +5919,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     user: any;
     profession: string;
 }) => {
+    const [mySharedGalleriesOpen, setMySharedGalleriesOpen] = useState(false);
     const [shareForm, setShareForm] = useState({
       selectedShowcase: '',
       clientEmail: prefilledClient?.email || '',
@@ -5809,7 +5928,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       photographerName: user?.name || '',
       photographerCompany: '',
       projectState: 'in_review' as 'delivered' | 'in_review',
-      projectId: null as string | null
+      projectId: null as string | null,
+      selectionDeadline: '' as string,
     });
     // Multi-client distribution: liste av ekstra mottakere ut over
     // primær clientEmail/clientName-paret. Hver rad blir et eget
@@ -5850,11 +5970,27 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           .filter((r) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email) && r.name),
       ];
 
+      // Helper for å sette deadline via PATCH /deadline som fallback hvis
+      // share-endpointet ikke aksepterte selectionDeadline-feltet direkte.
+      // Idempotent — backend resetter reminderSentFor automatisk.
+      const patchDeadlineIfNeeded = async (galleryId?: string) => {
+        if (!shareForm.selectionDeadline || !galleryId) return;
+        try {
+          await apiRequest(`/api/showcase/galleries/${galleryId}/deadline`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deadline: shareForm.selectionDeadline }),
+          });
+        } catch (deadlineErr) {
+          console.warn('[share] kunne ikke sette deadline:', deadlineErr);
+        }
+      };
+
       if (recipients.length === 0) return;
       if (recipients.length === 1) {
-        // Single-recipient — uendret oppførsel.
+        // Single-recipient.
         try {
-          await shareShowcaseMutation.mutateAsync({
+          const shareResult: any = await shareShowcaseMutation.mutateAsync({
             showcaseId: shareForm.selectedShowcase,
             clientEmail: recipients[0].email,
             clientName: recipients[0].name,
@@ -5863,7 +5999,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             photographerCompany: shareForm.photographerCompany,
             projectState: shareForm.projectState,
             projectId: showcase.projectId || shareForm.projectId,
+            selectionDeadline: shareForm.selectionDeadline || null,
           });
+          await patchDeadlineIfNeeded(shareResult?.galleryId);
           onClose();
         } catch (error) {
           console.error('Error sharing showcase:', error);
@@ -5872,7 +6010,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       }
 
       // Batch-flow: send sekvensielt for å unngå rate-limits på email-
-      // tjenesten. Hver mottaker får sin egen accessToken/galleri-row.
+      // tjenesten. Hver mottaker får sin egen accessToken/galleri-row +
+      // sin egen deadline (alle får samme dato).
       setBatchProgress({
         sending: true,
         total: recipients.length,
@@ -5884,7 +6023,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       const succeeded: Array<{ email: string }> = [];
       for (const r of recipients) {
         try {
-          await shareShowcaseMutation.mutateAsync({
+          const shareResult: any = await shareShowcaseMutation.mutateAsync({
             showcaseId: shareForm.selectedShowcase,
             clientEmail: r.email,
             clientName: r.name,
@@ -5893,7 +6032,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             photographerCompany: shareForm.photographerCompany,
             projectState: shareForm.projectState,
             projectId: showcase.projectId || shareForm.projectId,
+            selectionDeadline: shareForm.selectionDeadline || null,
           });
+          await patchDeadlineIfNeeded(shareResult?.galleryId);
           succeeded.push({ email: r.email });
         } catch (error) {
           failed.push({
@@ -5914,11 +6055,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     };
 
     return (
+      <>
       <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Image color="primary" />
-            <Typography variant="h6">Share {getTerm('showcase')} with {getTerm('client')}</Typography>
+            <Typography variant="h6" sx={{ flex: 1 }}>Share {getTerm('showcase')} with {getTerm('client')}</Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setMySharedGalleriesOpen(true)}
+            >
+              Mine delte lenker
+            </Button>
           </Box>
         </DialogTitle>
         <DialogContent>
@@ -6059,20 +6208,38 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               rows={3}
               value={shareForm.message}
               onChange={(e) => setShareForm(prev => ({ ...prev, message: e.target.value }))}
-              placeholder="Add a personal message to include with the showcase..."
+              placeholder="Skriv en personlig melding som inkluderes i showcaset…"
+              sx={{ mb: 3 }}
+            />
+
+            {/* Selection deadline — utløser automatiske reminders 3 og 1 dag før. */}
+            <TextField
+              fullWidth
+              type="date"
+              label="Frist for klient-utvalg (valgfritt)"
+              value={shareForm.selectionDeadline}
+              onChange={(e) => setShareForm(prev => ({ ...prev, selectionDeadline: e.target.value }))}
+              InputLabelProps={{ shrink: true }}
+              helperText="Klient får automatisk påminnelse på e-post 3 dager og 1 dag før fristen."
               sx={{ mb: 3 }}
             />
 
             {/* Project Linking - Show when no project is linked */}
             {shareForm.selectedShowcase && !shareForm.projectId && (
               <Box sx={{ mb: 3 }}>
-                <Paper sx={{ p: 2, bgcolor: 'info.light', border: '1px solid', borderColor: 'info.main' }}>
+                <Paper sx={{
+                  p: 2,
+                  bgcolor: 'rgba(7, 10, 16, 0.6)',
+                  border: '1px solid rgba(82, 121, 204, 0.32)',
+                  borderRadius: '10px',
+                  color: '#edf0f7',
+                }}>
                   <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Info fontSize="small" />
-                    Link to Project (Optional)
+                    Koble til prosjekt (valgfritt)
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Link this showcase to a project to enable project state management and timeline tracking.
+                  <Typography variant="body2" sx={{ mb: 2, color: 'rgba(237,240,247,0.7)' }}>
+                    Koble dette showcaset til et prosjekt for å aktivere prosjekt-state-styring og timeline-sporing.
                   </Typography>
                   <Button 
                     variant="outlined" 
@@ -6151,21 +6318,33 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
             {/* Info message when no project is linked */}
             {shareForm.selectedShowcase && !shareForm.projectId && (
-              <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.100' }}>
-                <Typography variant="body2" color="text.secondary">
+              <Paper sx={{
+                p: 2,
+                mb: 2,
+                bgcolor: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '10px',
+              }}>
+                <Typography variant="body2" sx={{ color: 'rgba(237,240,247,0.7)' }}>
                   <Info fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
-                  No project linked. Project state management is only available when a project is linked.
+                  Ingen prosjekt koblet til. Prosjekt-state-styring er kun tilgjengelig når et prosjekt er koblet.
                 </Typography>
               </Paper>
             )}
 
             {/* Preview */}
             {shareForm.selectedShowcase && (
-              <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Preview: </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {shareForm.message || 'Your showcase is ready! Click the link below to view your photos.'}
+              <Paper sx={{
+                p: 2,
+                bgcolor: 'rgba(7, 10, 16, 0.6)',
+                border: '1px solid rgba(245,166,35,0.22)',
+                borderRadius: '10px',
+              }}>
+                <Typography variant="subtitle2" gutterBottom sx={{ color: '#edf0f7' }}>
+                  Forhåndsvisning
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(237,240,247,0.7)' }}>
+                  {shareForm.message || 'Showcaset ditt er klart. Klikk lenken under for å se bildene.'}
                 </Typography>
               </Paper>
             )}
@@ -6221,6 +6400,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           </Button>
         </DialogActions>
       </Dialog>
+      <MySharedGalleriesPanel
+        open={mySharedGalleriesOpen}
+        onClose={() => setMySharedGalleriesOpen(false)}
+      />
+    </>
   );
 };
 
@@ -6291,9 +6475,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           <Box sx={{ mt: 2 }}>
             {/* Contract Summary */}
             <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(255,186,108,0.08)', border: '1px solid #ff6f00' }}>
-              <Typography variant="h6" color="#ff6f00" gutterBottom>
-                📊 Contract Summary
-              </Typography>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
+                <DescriptionIcon sx={{ color: '#ff6f00' }} />
+                <Typography variant="h6" color="#ff6f00">
+                  Contract Summary
+                </Typography>
+              </Stack>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                 <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
                   <Typography variant="body2" color="text.secondary">
@@ -6379,7 +6566,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
                 <TextField
                   fullWidth
-                  label="Price per Image (NOK)"
+                  label="Pris per bilde (NOK)"
                   type="number"
                   value={overageForm.pricePerImage}
                   onChange={(e) => setOverageForm(prev => ({ ...prev, pricePerImage: parseInt(e.target.value) || 300 }))}
@@ -6394,7 +6581,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   rows={3}
                   value={overageForm.customMessage}
                   onChange={(e) => setOverageForm(prev => ({ ...prev, customMessage: e.target.value }))}
-                  placeholder="Add any custom message to include in the email..."
+                  placeholder="Legg til en melding som inkluderes i e-posten…"
                 />
               </Box>
             </Box>
@@ -6460,9 +6647,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         description: "Klikk på 'Last ned' for å få CreatorHub Norge Lightroom plugin",
         content: (
           <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography variant="h6" gutterBottom>
-              📸 CreatorHub Norge Lightroom Plugin v2.0
-            </Typography>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'center', mb: 1 }}>
+              <ExtensionIcon />
+              <Typography variant="h6">
+                CreatorHub Norge Lightroom Plugin v2.0
+              </Typography>
+            </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Direkte integrasjon mellom Lightroom, Google Drive og CreatorHub showcase
             </Typography>
@@ -6659,9 +6849,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
             {/* Benefits Section */}
             <Box sx={{ mt: 4, p: 3, bgcolor: 'rgba(255, 140, 0, 0.05)', borderRadius: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                🚀 Fordeler med CreatorHub Norge Plugin
-              </Typography>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
+                <RocketLaunchIcon />
+                <Typography variant="h6">
+                  Fordeler med CreatorHub Norge Plugin
+                </Typography>
+              </Stack>
               <Box component="ul" sx={{ pl: 2 }}>
                 <li>
                   <Typography variant="body2">
@@ -6702,15 +6895,25 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Box>
 
             {/* Profession-specific Categories */}
-            <Box sx={{ mt: 3, p: 3, bgcolor: 'rgba(33, 150, 243, 0.05)', borderRadius: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                📁 Tilgjengelige Kategorier for {professionConfig.title}
-              </Typography>
+            <Box sx={{
+              mt: 3,
+              p: 3,
+              bgcolor: 'rgba(82, 121, 204, 0.10)',
+              border: '1px solid rgba(82, 121, 204, 0.28)',
+              borderRadius: '10px',
+            }}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
+                <Folder fontSize="small" />
+                <Typography variant="h6">
+                  Tilgjengelige kategorier for {professionConfig.title}
+                </Typography>
+              </Stack>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                 {professionCategories.map((category, index) => (
                   <Chip
                     key={index}
-                    label={`📁 ${category}`}
+                    icon={<Folder sx={{ fontSize: 14 }} />}
+                    label={category}
                     variant="outlined"
                     size="small"
                     sx={{ mb: 1 }}
@@ -7160,10 +7363,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           <Box sx={{ mt: 2 }}>
             {/* Selected Item Preview */}
             {item && (
-              <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(255, 140, 0, 0.05)', border: '1px solid rgba(255, 140, 0, 0.2)' }}>
-                <Typography variant="subtitle2" gutterBottom sx={{ color: '#ff8c00', fontWeight: 600}}>
-                  📄 Valgt innhold
-                </Typography>
+              <Paper sx={{
+                p: 2,
+                mb: 3,
+                bgcolor: 'rgba(7, 10, 16, 0.6)',
+                border: '1px solid rgba(245,166,35,0.22)',
+                borderRadius: '10px',
+              }}>
+                <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mb: 1 }}>
+                  <DescriptionIcon fontSize="small" sx={{ color: '#f5a623' }} />
+                  <Typography variant="subtitle2" sx={{ color: '#f5a623', fontWeight: 600 }}>
+                    Valgt innhold
+                  </Typography>
+                </Stack>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Box 
                     component="img" 
@@ -7272,12 +7484,36 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                         onChange={(e) => setNewCourseData(prev => ({ ...prev, category: e.target.value }))}
                         label="Kategori"
                       >
-                        <MenuItem value="photography">📸 Fotografering</MenuItem>
-                        <MenuItem value="videography">🎥 Videografi</MenuItem>
-                        <MenuItem value="music-production">🎵 Musikkproduksjon</MenuItem>
-                        <MenuItem value="business">💼 Business & Marketing</MenuItem>
-                        <MenuItem value="editing">✂️ Redigering</MenuItem>
-                        <MenuItem value="equipment">📷 Utstyr</MenuItem>
+                        <MenuItem value="photography">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <PhotoCameraIcon fontSize="small" /><span>Fotografering</span>
+                          </Stack>
+                        </MenuItem>
+                        <MenuItem value="videography">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <VideocamIcon fontSize="small" /><span>Videografi</span>
+                          </Stack>
+                        </MenuItem>
+                        <MenuItem value="music-production">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <MusicNoteIcon fontSize="small" /><span>Musikkproduksjon</span>
+                          </Stack>
+                        </MenuItem>
+                        <MenuItem value="business">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <BusinessCenterIcon fontSize="small" /><span>Business & Marketing</span>
+                          </Stack>
+                        </MenuItem>
+                        <MenuItem value="editing">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <ContentCutIcon fontSize="small" /><span>Redigering</span>
+                          </Stack>
+                        </MenuItem>
+                        <MenuItem value="equipment">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <CameraAltIcon fontSize="small" /><span>Utstyr</span>
+                          </Stack>
+                        </MenuItem>
                       </Select>
                     </FormControl>
                   </Grid>
@@ -7289,9 +7525,21 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                         onChange={(e) => setNewCourseData(prev => ({ ...prev, difficulty: e.target.value as 'beginner' | 'intermediate' | 'advanced' }))}
                         label="Vanskelighetsgrad"
                       >
-                        <MenuItem value="beginner">🌱 Nybegynner</MenuItem>
-                        <MenuItem value="intermediate">📈 Middels</MenuItem>
-                        <MenuItem value="advanced">🎓 Avansert</MenuItem>
+                        <MenuItem value="beginner">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <GrassIcon fontSize="small" /><span>Nybegynner</span>
+                          </Stack>
+                        </MenuItem>
+                        <MenuItem value="intermediate">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <TrendingUpIcon fontSize="small" /><span>Middels</span>
+                          </Stack>
+                        </MenuItem>
+                        <MenuItem value="advanced">
+                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                            <SchoolIcon fontSize="small" /><span>Avansert</span>
+                          </Stack>
+                        </MenuItem>
                       </Select>
                     </FormControl>
                   </Grid>
@@ -7308,10 +7556,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 </Grid>
 
                 {/* Preview */}
-                <Paper sx={{ p: 2, mt: 3, bgcolor: 'rgba(255, 140, 0, 0.05)', border: '1px solid rgba(255, 140, 0, 0.2)' }}>
-                  <Typography variant="subtitle2" gutterBottom sx={{ color: '#ff8c00' }}>
-                    📚 Kursforhåndsvisning
-                  </Typography>
+                <Paper sx={{
+                  p: 2,
+                  mt: 3,
+                  bgcolor: 'rgba(7, 10, 16, 0.6)',
+                  border: '1px solid rgba(245,166,35,0.22)',
+                  borderRadius: '10px',
+                }}>
+                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mb: 0.5 }}>
+                    <MenuBookIcon fontSize="small" sx={{ color: '#f5a623' }} />
+                    <Typography variant="subtitle2" sx={{ color: '#f5a623' }}>
+                      Kursforhåndsvisning
+                    </Typography>
+                  </Stack>
                   <Typography variant="h6">{newCourseData.title || 'Kurstittel'}</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     {newCourseData.description || 'Kursbeskrivelse...'}
@@ -7598,8 +7855,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         setShowAcademy(true);
         break;
       case 'open-visual-editor':
-        visualEditor.setSidebarOpen(true);
-        visualEditor.setActiveTab('templates');
+        visualEditor?.setSidebarOpen(true);
+        visualEditor?.setActiveTab('templates');
         setShowDashboard(true);
         break;
       case 'open-settings':
@@ -7803,9 +8060,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   Frist: {proofingSession.deadline ? new Date(proofingSession.deadline).toLocaleDateString('no-NO') : 'Ikke satt'}
                 </Typography>
                 {showDeadlineWarning && (
-                  <Typography variant="body2" sx={{ color: '#ff4444' }}>
-                    ⚠️ Mindre enn 24 timer igjen!
-                  </Typography>
+                  <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                    <WarningAmberIcon sx={{ color: '#ff4444', fontSize: 18 }} />
+                    <Typography variant="body2" sx={{ color: '#ff4444' }}>
+                      Mindre enn 24 timer igjen
+                    </Typography>
+                  </Stack>
                 )}
               </Box>
             </Stack>
@@ -7913,6 +8173,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             { icon: <Collections sx={{ fontSize: 20 }} />, label: 'Categories', filterVal: null },
             { icon: <FavoriteBorder sx={{ fontSize: 20 }} />, label: 'Favorites', filterVal: 'favorites' },
             { icon: <PhotoLibrary sx={{ fontSize: 20 }} />, label: profession === 'photographer' ? 'Your photos' : profession === 'videographer' ? 'Your videos' : 'Your tracks', filterVal: 'mine' },
+            // Media-type-filtre (flyttet hit fra admin-tools — filteret støtter
+            // item.fileType direkte). Vises på tvers av profesjoner.
+            { icon: <CameraAlt sx={{ fontSize: 20 }} />, label: 'Foto', filterVal: 'photo' },
+            { icon: <VideoLibrary sx={{ fontSize: 20 }} />, label: 'Video', filterVal: 'video' },
+            { icon: <MusicNote sx={{ fontSize: 20 }} />, label: 'Lyd', filterVal: 'audio' },
           ].map((navItem) => {
             const isActive = filter === navItem.filterVal || (filter === 'all' && navItem.filterVal === 'all');
             return (
@@ -8154,7 +8419,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  placeholder="Sok showcase, prosjekt, kategori..."
+                  placeholder="Søk i showcase, prosjekt, kategori…"
                   variant="outlined"
                   size="small"
                   sx={{
@@ -8614,8 +8879,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               </Typography>
           </Box>
           
-          <Stack direction="row" spacing={2}>
-            {/* Autocomplete Search */}
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            {/* Autocomplete Search — CINE: frosted field, warm hairline, accent on focus */}
             <Autocomplete
               freeSolo
               options={items.map(item => item.title || '')}
@@ -8628,51 +8893,88 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  placeholder="Search..."
+                  placeholder="Søk…"
                   variant="outlined"
                   size="small"
                   sx={{
                     '& .MuiOutlinedInput-root': {
-                      color: textPrimary,
-                      borderColor: 'rgba(255, 107, 53, 0.3)',
-                      '&:hover': {
-                        borderColor: accentColor
-                      }
-                    }
+                      color: CINE.textPrimary,
+                      fontFamily: CINE_FONT,
+                      bgcolor: CINE.surface,
+                      backdropFilter: 'blur(12px)',
+                      borderRadius: '10px',
+                      transition: `border-color ${CINE_MOTION.fast} ${CINE_MOTION.ease}, box-shadow ${CINE_MOTION.fast} ${CINE_MOTION.ease}`,
+                      '& fieldset': { borderColor: CINE.border },
+                      '&:hover fieldset': { borderColor: CINE.borderStrong },
+                      '&.Mui-focused fieldset': {
+                        borderColor: withAlpha(CINE.accent, 0.55),
+                        boxShadow: `0 0 0 3px ${withAlpha(CINE.accent, 0.12)}`,
+                      },
+                    },
+                    '& .MuiInputBase-input::placeholder': { color: CINE.textMuted, opacity: 1 },
                   }}
                   InputProps={{
                     ...params.InputProps,
-                    startAdornment: <Search sx={{ color: textSecondary, mr: 1 }} />
+                    startAdornment: <Search sx={{ color: CINE.textMuted, mr: 1, fontSize: 18 }} />
                   }}
                 />
               )}
             />
-            
-            {/* Filter Button with Badge */}
+
+            {/* Filter Button with Badge — CINE: frosted square control */}
             <IconButton
               onClick={(e) => setSortMenuAnchorEl(e.currentTarget)}
               sx={{
-                color: textSecondary,
-                borderColor: 'rgba(255, 107, 53, 0.3)',
-                border: '1px solid',
+                color: CINE.textSecondary,
+                bgcolor: CINE.surface,
+                backdropFilter: 'blur(12px)',
+                border: `1px solid ${CINE.border}`,
+                borderRadius: '10px',
+                transition: `color ${CINE_MOTION.fast} ${CINE_MOTION.ease}, border-color ${CINE_MOTION.fast} ${CINE_MOTION.ease}, background-color ${CINE_MOTION.fast} ${CINE_MOTION.ease}`,
                 '&:hover': {
-                  borderColor: accentColor,
-                  bgcolor: 'rgba(255, 107, 53, 0.1)'
+                  color: CINE.textPrimary,
+                  borderColor: withAlpha(CINE.accent, 0.5),
+                  bgcolor: withAlpha(CINE.accent, 0.1)
                 }
               }}
             >
-              <Badge badgeContent={selectedItems.length} color="primary" max={99}>
-                <FilterList />
+              <Badge
+                badgeContent={selectedItems.length}
+                max={99}
+                sx={{ '& .MuiBadge-badge': { bgcolor: CINE.accent, color: '#0B0B0C', fontWeight: 700 } }}
+              >
+                <FilterList sx={{ fontSize: 18 }} />
               </Badge>
             </IconButton>
-            
-            {/* View Mode Toggle */}
+
+            {/* View Mode Toggle — CINE: frosted segmented control, accent on active */}
             <ToggleButtonGroup
               value={viewMode}
               exclusive
               onChange={(_, newMode) => newMode && setViewMode(newMode)}
               size="small"
-              sx={{ ml: 1 }}
+              sx={{
+                ml: 0.5,
+                bgcolor: CINE.surface,
+                backdropFilter: 'blur(12px)',
+                borderRadius: '10px',
+                p: '2px',
+                gap: '2px',
+                border: `1px solid ${CINE.border}`,
+                '& .MuiToggleButtonGroup-grouped': {
+                  border: 0,
+                  borderRadius: '8px !important',
+                  color: CINE.textMuted,
+                  px: 1.25,
+                  transition: `color ${CINE_MOTION.fast} ${CINE_MOTION.ease}, background-color ${CINE_MOTION.fast} ${CINE_MOTION.ease}`,
+                  '&:hover': { color: CINE.textPrimary, bgcolor: withAlpha(CINE.textPrimary, 0.06) },
+                  '&.Mui-selected': {
+                    color: CINE.accent,
+                    bgcolor: withAlpha(CINE.accent, 0.16),
+                    '&:hover': { bgcolor: withAlpha(CINE.accent, 0.22) },
+                  },
+                },
+              }}
             >
               {/* Slice 9X.81 — norske aria-labels + title for tooltip på desktop */}
               <ToggleButton value="grid" aria-label="Vis som rutenett" title="Rutenett">
@@ -8685,20 +8987,26 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 <PhotoLibrary sx={{ fontSize: 18 }} />
               </ToggleButton>
             </ToggleButtonGroup>
-            
-            {/* Filter Chips Display */}
+
+            {/* Filter Chips Display — CINE: subtle accent-tinted chips */}
             {filterChips.length > 0 && (
-              <Stack direction="row" spacing={1} sx={{ ml: 2 }}>
+              <Stack direction="row" spacing={1} sx={{ ml: 1.5 }}>
                 {filterChips.map((chip) => (
                   <Chip
                     key={chip.id}
                     label={chip.label}
                     size="small"
+                    variant="outlined"
                     onDelete={() => setFilterChips(prev => prev.filter(c => c.id !== chip.id))}
                     sx={{
-                      bgcolor: 'rgba(255, 107, 53, 0.1)',
-                      color: textPrimary,
-                      borderColor: accentColor
+                      bgcolor: withAlpha(CINE.accent, 0.1),
+                      color: CINE.textPrimary,
+                      fontFamily: CINE_FONT,
+                      border: `1px solid ${withAlpha(CINE.accent, 0.35)}`,
+                      '& .MuiChip-deleteIcon': {
+                        color: CINE.textMuted,
+                        '&:hover': { color: CINE.accent },
+                      },
                     }}
                   />
                 ))}
@@ -9311,6 +9619,39 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               </IconButton>
             </Tooltip>
 
+            {/* Klient-engasjement Button */}
+            <Tooltip title="Klient-aktivitet (views, kommentarer, downloads)">
+              <IconButton
+                size="small"
+                onClick={() => setEngagementFeedOpen(true)}
+                sx={{
+                  color: 'rgba(255,255,255,0.7)','&:hover': {
+                    color: accentColor,
+                    bgcolor: `${accentColor}20`
+                  }
+                }}
+              >
+                <TrendingUpIcon />
+              </IconButton>
+            </Tooltip>
+
+            {/* Multi-round Manager */}
+            <Tooltip title="Runde-håndtering — start ny runde etter klient-feedback">
+              <IconButton
+                size="small"
+                onClick={() => setMultiRoundManagerOpen(true)}
+                sx={{
+                  color: 'rgba(255,255,255,0.7)','&:hover': {
+                    color: accentColor,
+                    bgcolor: `${accentColor}20`
+                  }
+                }}
+              >
+                <RestartAltIcon />
+              </IconButton>
+            </Tooltip>
+
+
             {/* Comparison View Button */}
             <Tooltip title="Compare Items">
               <IconButton
@@ -9401,15 +9742,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               height: { xs: 'auto', md: 420 },
             }}>
               {/* Large Featured Photo */}
-              <Box sx={{ 
+              <Box sx={{
                 position: 'relative',
                 borderRadius: '12px',
                 overflow: 'hidden',
                 cursor: 'pointer',
-                bgcolor: '#1a1f2e',
+                bgcolor: CINE.surfaceElevated,
                 '&:hover .hero-overlay-actions': { opacity: 1 },
               }}
-                onClick={() => handleItemSelectWithBroadcast(currentFeaturedItem as any)}
+                onClick={() => { handleItemSelectWithBroadcast(currentFeaturedItem as any); openQuickPreview(currentFeaturedItem as any); }}
               >
                 {/* Slice 9X.81 — width/height + loading=lazy + aspect-ratio på parent
                     eliminerer CLS når bildet laster. fetchpriority='high' for LCP. */}
@@ -9472,12 +9813,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 borderRadius: '12px',
                 overflow: 'hidden',
                 cursor: 'pointer',
-                bgcolor: '#1a1f2e',
+                bgcolor: CINE.surfaceElevated,
                 display: { xs: 'none', md: 'block' },
               }}
                 onClick={() => {
                   const secondItem = filteredItems[1] || currentFeaturedItem;
                   handleItemSelectWithBroadcast(secondItem as any);
+                  openQuickPreview(secondItem as any);
                 }}
               >
                 <img
@@ -9633,6 +9975,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           
           {/* Enhanced Video Showcase for Videographers */}
           {profession === 'videographer' && filter === 'video' && filteredItems.filter(item => item.type === 'video').length > 0 && (
+            <ErrorBoundary componentName="showcase-video-enhanced">
             <React.Suspense fallback={<CircularProgress />}>
               <VideoShowcaseEnhanced
                 item={filteredItems.filter(item => item.type === 'video')[0] as any}
@@ -9643,6 +9986,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 }}
               />
             </React.Suspense>
+            </ErrorBoundary>
           )}
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -9788,14 +10132,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               </Box>
 
               {/* Main content card */}
-              <Paper elevation={0} sx={{ 
-                textAlign: 'center', 
+              <Paper elevation={0} sx={{
+                ...glassPanelSx(accentColor),
+                textAlign: 'center',
                 maxWidth: 560,
                 width: '100%',
-                background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.02) 100%)',
-                backdropFilter: 'blur(20px)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: 4,
                 p: { xs: 3, sm: 4, md: 5 },
                 position: 'relative',
                 zIndex: 1,
@@ -9911,9 +10252,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 </Box>
               </Paper>
             </Box>
-          ) : showcasesError ? (
-            <Box sx={{ 
-              textAlign: 'center', 
+          ) : (showcasesError && items.length === 0) ? (
+            <Box sx={{
+              textAlign: 'center',
               py: 8,
               color: 'rgba(255,255,255,0.7)'
         }}>
@@ -9948,67 +10289,134 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               }}>
                 {Array.from({ length: 12 }).map((_, idx) => (
                   <Zoom key={idx} in={isLoadingSkeleton} style={{ transitionDelay: `${idx * 50}ms` }}>
-                    <Box>
-                      <Skeleton variant="rectangular" height={200} sx={{ borderRadius: 2, mb: 1 }} />
-                      <Skeleton variant="text" width="80%" />
-                      <Skeleton variant="text" width="60%" />
+                    {/* Cinematic poster-shaped placeholder — mirrors ShowcaseCard's
+                        surface (posterCardSx) so loading reads as the real grid, not
+                        a light-theme flash. */}
+                    <Box sx={{ ...posterCardSx(accentColor, true), cursor: 'default', minHeight: 220 }}>
+                      <Skeleton
+                        variant="rectangular"
+                        height={220}
+                        animation="wave"
+                        sx={{ bgcolor: withAlpha(CINE.textPrimary, 0.05), borderRadius: 0 }}
+                      />
+                      <Box sx={{ position: 'absolute', left: 0, right: 0, bottom: 0, p: 1.5, background: 'linear-gradient(180deg, rgba(4,6,11,0) 0%, rgba(4,6,11,0.6) 100%)' }}>
+                        <Skeleton variant="text" width="70%" animation="wave" sx={{ bgcolor: withAlpha(CINE.textPrimary, 0.08) }} />
+                        <Skeleton variant="text" width="45%" animation="wave" sx={{ bgcolor: withAlpha(CINE.textPrimary, 0.05) }} />
+                      </Box>
                     </Box>
                   </Zoom>
                 ))}
               </Box>
             </Fade>
           ) : viewMode === 'masonry' ? (
-            <ImageList variant="masonry" cols={showcaseSettings.gridColumns} gap={8}>
-              {filteredItems.slice(1, (showcaseSettings.maxItemsPerPage as number) === 999 ? filteredItems.length : (showcaseSettings.maxItemsPerPage as number)).map((item: ShowcaseItem) => (
-                <ImageListItem key={item.id} sx={{ cursor: 'pointer' }} onClick={() => setSelectedItem(item)}>
+            (() => {
+              // CINE: masonry-fliser deler poster-språket med ShowcaseCard —
+              // varm flate, hårfin kant, scrim-tittel, løft + aksent-glød på hover.
+              const reduced = showcaseSettings.animationSpeed === 'disabled';
+              return (
+            <ImageList variant="masonry" cols={showcaseSettings.gridColumns} gap={12}>
+              {filteredItems.slice(1, (showcaseSettings.maxItemsPerPage as number) === 999 ? filteredItems.length : (showcaseSettings.maxItemsPerPage as number)).map((item: ShowcaseItem) => {
+                const embed = detectStreamingEmbed(item.fileUrl || item.thumbnailUrl || '');
+                return (
+                <ImageListItem
+                  key={item.id}
+                  onClick={() => openQuickPreview(item)}
+                  sx={{
+                    position: 'relative',
+                    cursor: 'pointer',
+                    overflow: 'hidden',
+                    borderRadius: '14px',
+                    bgcolor: CINE.surfaceSolid,
+                    border: `1px solid ${CINE.border}`,
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.4)',
+                    transition: reduced ? 'none' : `transform ${CINE_MOTION.base} ${CINE_MOTION.ease}, box-shadow ${CINE_MOTION.base} ${CINE_MOTION.ease}, border-color ${CINE_MOTION.base} ${CINE_MOTION.ease}`,
+                    '& .cine-img': { transition: reduced ? 'none' : `transform ${CINE_MOTION.slow} ${CINE_MOTION.ease}`, display: 'block', width: '100%' },
+                    '& .cine-meta': { opacity: reduced ? 1 : 0, transform: reduced ? 'none' : 'translateY(8px)', transition: reduced ? 'none' : `opacity ${CINE_MOTION.base} ${CINE_MOTION.ease}, transform ${CINE_MOTION.base} ${CINE_MOTION.ease}` },
+                    '&:hover, &:focus-visible': reduced ? {
+                      borderColor: withAlpha(accentColor, 0.5),
+                      outline: 'none',
+                    } : {
+                      transform: 'translateY(-6px)',
+                      borderColor: withAlpha(accentColor, 0.5),
+                      boxShadow: `0 22px 48px rgba(0,0,0,0.6), 0 0 0 1px ${withAlpha(accentColor, 0.25)}, 0 0 40px ${withAlpha(accentColor, 0.18)}`,
+                      outline: 'none',
+                      '& .cine-img': { transform: `scale(${CINE_MOTION.hoverZoom})` },
+                      '& .cine-meta': { opacity: 1, transform: 'translateY(0)' },
+                    },
+                    '@media (hover: none)': { '& .cine-meta': { opacity: 1, transform: 'none' } },
+                  }}
+                >
                   {/* Slice 9X.81 — Spotify/SoundCloud/YouTube/Vimeo detekteres
                       automatisk fra fileUrl; render iframe-embed istedenfor
                       img/video når matchet. */}
-                  {(() => {
-                    const embed = detectStreamingEmbed(item.fileUrl || item.thumbnailUrl || '');
-                    if (embed) {
-                      return <StreamingEmbed url={item.fileUrl || item.thumbnailUrl || ''} title={item.title || ''} />;
-                    }
-                    if (item.type === 'image') {
-                      return (
-                        <img
-                          src={item.thumbnailUrl || ''}
-                          alt={item.title || ''}
-                          loading="lazy"
-                          width={400}
-                          height={400}
-                          style={{ borderRadius: 8, width: '100%', height: 'auto', display: 'block' }}
-                        />
-                      );
-                    }
-                    return (
-                      <Box sx={{ position: 'relative', bgcolor: 'rgba(0,0,0,0.8)', aspectRatio: '16/9', borderRadius: 2 }}>
-                        <video src={item.thumbnailUrl || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />
-                      </Box>
-                    );
-                  })()}
-                  <ImageListItemBar
-                    title={item.title || ''}
-                    subtitle={formatFileSize(item.fileSize || 0)}
-                    actionIcon={
-                      <IconButton
-                        sx={{ color: 'white' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleFavorite(item.id);
-                        }}
-                      >
-                        {favorites.has(item.id) ? <Favorite sx={{ color: accentColor }} /> : <FavoriteBorder />}
-                      </IconButton>
-                    }
-                  />
+                  {embed ? (
+                    <StreamingEmbed url={item.fileUrl || item.thumbnailUrl || ''} title={item.title || ''} />
+                  ) : item.type === 'image' ? (
+                    <img
+                      className="cine-img"
+                      src={item.thumbnailUrl || ''}
+                      alt={item.title || ''}
+                      loading="lazy"
+                      width={400}
+                      height={400}
+                      style={{ width: '100%', height: 'auto' }}
+                    />
+                  ) : (
+                    <Box sx={{ position: 'relative', bgcolor: CINE.bgDeep, aspectRatio: '16/9' }}>
+                      <video className="cine-img" src={item.thumbnailUrl || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </Box>
+                  )}
+
+                  {/* Warm bottom scrim so the title stays legible over any media */}
+                  {!embed && (
+                    <Box sx={{ position: 'absolute', inset: 0, background: scrimGradient, pointerEvents: 'none' }} />
+                  )}
+
+                  {/* Favorite — frosted accent control, top-right */}
+                  {!embed && (
+                    <IconButton
+                      size="small"
+                      aria-label={favorites.has(item.id) ? 'Fjern favoritt' : 'Marker som favoritt'}
+                      onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}
+                      sx={{
+                        position: 'absolute', top: 8, right: 8,
+                        bgcolor: 'rgba(6,8,13,0.55)', backdropFilter: 'blur(8px)',
+                        border: `1px solid ${withAlpha(accentColor, 0.4)}`,
+                        color: '#fff',
+                        '&:hover': { bgcolor: withAlpha(accentColor, 0.85) },
+                      }}
+                    >
+                      {favorites.has(item.id) ? <Favorite sx={{ fontSize: 16, color: accentColor }} /> : <FavoriteBorder sx={{ fontSize: 16 }} />}
+                    </IconButton>
+                  )}
+
+                  {/* Title + meta on the scrim */}
+                  {!embed && (
+                    <Box className="cine-meta" sx={{ position: 'absolute', left: 0, right: 0, bottom: 0, p: 1.25, pointerEvents: 'none' }}>
+                      <Typography noWrap sx={{ fontFamily: CINE_FONT, fontWeight: 700, color: '#fff', fontSize: '0.9rem', textShadow: '0 1px 8px rgba(0,0,0,0.6)' }}>
+                        {item.title || ''}
+                      </Typography>
+                      <Typography sx={{ ...metaLabelSx, color: 'rgba(255,255,255,0.78)', mt: 0.25 }}>
+                        {formatFileSize(item.fileSize || 0)}
+                      </Typography>
+                    </Box>
+                  )}
                 </ImageListItem>
-              ))}
+                );
+              })}
             </ImageList>
+              );
+            })()
           ) : (
             <Box sx={{
               display: 'grid',
-              gridTemplateColumns: { xs: 'repeat(1, 1fr)', sm: 'repeat(2, 1fr)', md: `repeat(${showcaseSettings.gridColumns}, 1fr)` },
+              // List view = single column (distinct from the multi-column grid) so
+              // the grid/list toggle visibly changes layout. Constrained width keeps
+              // the single-column cards from blowing up on wide screens.
+              gridTemplateColumns: viewMode === 'list'
+                ? '1fr'
+                : { xs: 'repeat(1, 1fr)', sm: 'repeat(2, 1fr)', md: `repeat(${showcaseSettings.gridColumns}, 1fr)` },
+              ...(viewMode === 'list' ? { maxWidth: 760, mx: 'auto' } : {}),
               gap: 2,
             }}>
               {filteredItems.slice(1, (showcaseSettings.maxItemsPerPage as number) === 999 ? filteredItems.length : (showcaseSettings.maxItemsPerPage as number)).map((item: ShowcaseItem) => (
@@ -10027,6 +10435,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   showComments={showComments}
                   setShowComments={setShowComments}
                   setSelectedItem={setSelectedItem}
+                  onOpenPreview={openQuickPreview}
                   handleDownload={handleDownload}
                   showcaseSettings={showcaseSettings}
                   analytics={analytics}
@@ -10059,12 +10468,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           zIndex: 12,
           display: 'flex',
           gap: 2,
-          bgcolor: 'rgba(6, 31, 46, 0.95)',
-          backdropFilter: 'blur(20px)',
+          bgcolor: CINE.surfaceElevated,
+          backdropFilter: 'blur(22px)',
                 borderRadius: 3,
           p: 2,
-          border: '1px solid rgba(255, 107, 53, 0.3)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+          border: `1px solid ${withAlpha(CINE.accent, 0.3)}`,
+          boxShadow: '0 24px 60px rgba(0,0,0,0.55)'
         }}>
           <Typography variant="body1" sx={{ 
             color: '#fff', 
@@ -10206,12 +10615,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Paper>
             
             {/* Price Calculation */}
-            <Paper sx={{ p: 2, mb: 3, bgcolor: 'success.light', color: 'success.contrastText' }}>
-              <Typography variant="h6">
+            <Paper sx={{
+              p: 2,
+              mb: 3,
+              bgcolor: 'rgba(74, 212, 138, 0.08)',
+              border: '1px solid rgba(74, 212, 138, 0.32)',
+              borderRadius: '10px',
+              color: '#edf0f7',
+            }}>
+              <Typography variant="h6" sx={{ color: '#4ad48a' }}>
                 Totalpris: {calculatePrice()} NOK
               </Typography>
-              <Typography variant="body2">
-                {selectedImages.size > (pricingData?.projectPricing?.contracted_images || 0) 
+              <Typography variant="body2" sx={{ color: 'rgba(237,240,247,0.8)' }}>
+                {selectedImages.size > (pricingData?.projectPricing?.contracted_images || 0)
                   ? `Inkluderer ${Math.max(0, selectedImages.size - (pricingData?.projectPricing?.contracted_images || 0))} ekstra ${profession === 'photographer' ? 'bilder' : 'elementer'}`
                   : 'Alle valgte elementer er inkludert i kontrakten'
                 }
@@ -10220,12 +10636,26 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             
             {/* Package Options */}
             {pricingData?.pricing?.packages && (
-              <Paper sx={{ p: 2, mb: 3 }}>
-                <Typography variant="h6" gutterBottom>Pakketilbud</Typography>
+              <Paper sx={{
+                p: 2,
+                mb: 3,
+                bgcolor: 'rgba(7, 10, 16, 0.6)',
+                border: '1px solid rgba(245,166,35,0.22)',
+                borderRadius: '10px',
+                color: '#edf0f7',
+              }}>
+                <Typography variant="h6" gutterBottom sx={{ color: '#edf0f7' }}>Pakketilbud</Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                   {pricingData.pricing.packages.map((pkg: { id: string; name: string; price: number; description: string; images?: number; minutes?: number; tracks?: number; savings?: number }) => (
                     <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }} key={pkg.id}>
-                      <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                      <Paper sx={{
+                        p: 2,
+                        textAlign: 'center',
+                        bgcolor: 'rgba(7, 10, 16, 0.6)',
+                        border: '1px solid rgba(245,166,35,0.22)',
+                        borderRadius: '10px',
+                        color: '#edf0f7',
+                      }}>
                         <Typography variant="subtitle1" fontWeight="bold">
                           {profession === 'photographer' || profession === 'enterprise' ? `${pkg.images} bilder` : `${pkg.minutes || pkg.tracks} ${profession === 'videographer' ? 'minutter' : 'låter'}`}
                         </Typography>
@@ -10285,8 +10715,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Paper>
             
             {/* Enhancement Presets */}
-            <Paper sx={{ p: 2, mb: 3 }}>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Paper sx={{
+              p: 2,
+              mb: 3,
+              bgcolor: 'rgba(7, 10, 16, 0.6)',
+              border: '1px solid rgba(245,166,35,0.22)',
+              borderRadius: '10px',
+              color: '#edf0f7',
+            }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#edf0f7' }}>
                 <AutoFixHigh />
                 Forhåndsinnstillinger
               </Typography>
@@ -10315,8 +10752,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             
             {/* Custom Enhancement Options - Only visible when custom is selected */}
             {selectedPhotoPreset === 'custom' && (
-              <Paper sx={{ p: 2, mb: 3 }}>
-                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Paper sx={{
+                p: 2,
+                mb: 3,
+                bgcolor: 'rgba(7, 10, 16, 0.6)',
+                border: '1px solid rgba(245,166,35,0.22)',
+                borderRadius: '10px',
+                color: '#edf0f7',
+              }}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#edf0f7' }}>
                   <Tune />
                   Tilpassede innstillinger
                 </Typography>
@@ -10393,8 +10837,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             
             {/* Progress Indicator */}
             {isEnhancing && (
-              <Paper sx={{ p: 2, mb: 3, bgcolor: 'primary.light' }}>
-                <Typography variant="h6" gutterBottom>Forbedrer bilder...</Typography>
+              <Paper sx={{
+                p: 2,
+                mb: 3,
+                bgcolor: 'rgba(82, 121, 204, 0.10)',
+                border: '1px solid rgba(82, 121, 204, 0.32)',
+                borderRadius: '10px',
+                color: '#edf0f7',
+              }}>
+                <Typography variant="h6" gutterBottom sx={{ color: '#edf0f7' }}>Forbedrer bilder…</Typography>
                 <LinearProgress 
                   variant="determinate" 
                   value={enhancementProgress}
@@ -12639,9 +13090,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           </FormControl>
 
           {selectedPreset === '4k-master' && (
-            <Paper sx={{ p: 2, mb: 2, bgcolor: 'info.light' }}>
-              <Typography variant="body2">
-                4K Master: ProRes 422 Q, 3840x2160, 23.98fps - For arkiv og fremtidig redigering
+            <Paper sx={{
+              p: 2,
+              mb: 2,
+              bgcolor: 'rgba(82, 121, 204, 0.10)',
+              border: '1px solid rgba(82, 121, 204, 0.32)',
+              borderRadius: '10px',
+              color: '#edf0f7',
+            }}>
+              <Typography variant="body2" sx={{ color: 'rgba(237,240,247,0.85)' }}>
+                4K Master: ProRes 422 Q, 3840×2160, 23.98 fps — for arkiv og fremtidig redigering
               </Typography>
             </Paper>
           )}
@@ -13100,6 +13558,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
       {/* FASE 2: Client Authentication Dialog , *, /}
       {showAuthDialog && (
+        <ErrorBoundary componentName="showcase-client-auth-dialog">
         <React.Suspense fallback={<div>Laster autentisering...</div>}>
           <ClientAuthDialog
             open={showAuthDialog}
@@ -13112,10 +13571,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             maxAttempts={authSessionData?.maxLoginAttempts || 3}
           />
         </React.Suspense>
+        </ErrorBoundary>
       )}
 
       {/* CreatorHub Video Suite Dialog */}
       {showAdvancedVideoSuite && profession === 'videographer' && (
+        <ErrorBoundary componentName="showcase-video-suite">
         <React.Suspense fallback={<div>Laster CreatorHub Video Suite...</div>}>
           <VideographerVideoSuite
             selectedVideoFiles={selectedVideoItems.map((item) => ({
@@ -13128,10 +13589,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             onClose={() => setShowAdvancedVideoSuite(false)}
           />
         </React.Suspense>
+        </ErrorBoundary>
       )}
 
       {/* CreatorHub Photo Suite Dialog */}
       {showAdvancedPhotoSuite && profession === 'photographer' && (
+        <ErrorBoundary componentName="showcase-photo-suite">
         <React.Suspense fallback={<div>Laster CreatorHub Photo Suite...</div>}>
           <PhotographerPhotoSuite
             selectedPhotoFiles={selectedPhotoItems.map((item) => ({
@@ -13144,6 +13607,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             selectedProject={selectedProject}
           />
         </React.Suspense>
+        </ErrorBoundary>
       )}
 
       {/* Google Photos Integration Dialog */}
@@ -13386,6 +13850,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         onFavorite={toggleFavorite}
         onEdit={(item) => setSelectedItem(item)}
         favorites={favorites}
+        clientMode={clientMode}
+        clientSelections={clientSelections}
+        onSelect={handleClientSelection}
+        comments={quickPreviewComments}
+        commentsLoading={quickPreviewCommentsLoading}
+        onAddComment={handleQuickPreviewAddComment}
+        onLikeComment={handleQuickPreviewLikeComment}
       />
       
       {/* Activity Feed */}
@@ -13400,6 +13871,18 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       <CommentResolverPanel
         open={commentResolverOpen}
         onClose={() => setCommentResolverOpen(false)}
+      />
+
+      {/* Klient-engasjement på tvers av delte galleries */}
+      <EngagementFeedPanel
+        open={engagementFeedOpen}
+        onClose={() => setEngagementFeedOpen(false)}
+      />
+
+      {/* Multi-round revisions */}
+      <MultiRoundManagerPanel
+        open={multiRoundManagerOpen}
+        onClose={() => setMultiRoundManagerOpen(false)}
       />
 
       {/* Comparison View */}
@@ -13526,7 +14009,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         <DialogContent>
           {evendiResult ? (
             <Box sx={{ textAlign: 'center', py: 3 }}>
-              <Typography variant="h6" sx={{ color: '#4CAF50', mb: 2 }}>✅ Leveranse opprettet!</Typography>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'center', mb: 2 }}>
+                <CheckCircleIcon sx={{ color: '#4CAF50' }} />
+                <Typography variant="h6" sx={{ color: '#4CAF50' }}>Leveranse opprettet</Typography>
+              </Stack>
               <Box sx={{ bgcolor: 'rgba(233, 30, 99, 0.1)', borderRadius: 2, p: 3, mb: 2, border: '1px solid rgba(233, 30, 99, 0.3)' }}>
                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mb: 1 }}>Tilgangskode</Typography>
                 <Typography variant="h4" sx={{ color: '#E91E63', fontFamily: 'monospace', letterSpacing: 4, fontWeight: 700 }}>
@@ -14378,6 +14864,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       <audio ref={audioPlayerRef} style={{ display: 'none' }} />
 
       {/* Client Auth Dialog */}
+      <ErrorBoundary componentName="showcase-client-auth-dialog-2">
       <React.Suspense fallback={<CircularProgress />}>
         {showAuthDialog && (
           <ClientAuthDialog
@@ -14391,6 +14878,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           />
         )}
       </React.Suspense>
+      </ErrorBoundary>
 
       {/* Push Notification Settings */}
       {showPushSettings && (

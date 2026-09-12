@@ -11,29 +11,28 @@ import {
   Card as MuiCard,
   CardContent,
   Switch,
-  Button,
   List,
   ListItem,
   ListItemIcon,
   ListItemText,
   ListItemSecondaryAction,
-  Chip,
   Tabs,
   Tab,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   TextField,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
+import { AdminButton, StatusChip, AdminLoading, AdminTableContainer, useIsMobile } from './design-system';
 import {
   AutoAwesome,
   Schedule,
@@ -110,7 +109,8 @@ export default function AutomationsPanel({
   const [tabValue, setTabValue] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAutomation, setSelectedAutomation] = useState<any>(null);
-  
+  const isMobile = useIsMobile();
+
   const queryClient = useQueryClient();
 
   // Get auth from master integration
@@ -118,11 +118,13 @@ export default function AutomationsPanel({
 
   // Theming system
   const theming = useTheming('prototype_tester');
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
 
   // Fetch automation data
   const { data: automationsData, isLoading } = useQuery({
     queryKey: ['/api/admin/automations'],
     retry: 1,
+    staleTime: 15000,
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/automations', { headers });
@@ -172,9 +174,9 @@ export default function AutomationsPanel({
 
   if (isLoading) {
     return (
-      <Box sx={{ p: 3 }}>
-        <Typography variant="h6" sx={{ color: theming.colors.primary }}>Laster automatiseringer...</Typography>
-      </Box>
+      <ThemeProvider theme={adminDarkTheme}>
+      <AdminLoading label="Laster automatiseringer..." />
+      </ThemeProvider>
     );
 }
 
@@ -186,8 +188,8 @@ export default function AutomationsPanel({
     successRate: 100
 };
 
-  const automations = automationsData?.automations || [];
-  const workflows = automationsData?.workflows || [];
+  const automations = Array.isArray(automationsData?.automations) ? automationsData.automations : [];
+  const workflows = Array.isArray(automationsData?.workflows) ? automationsData.workflows : [];
 
   const getAutomationIcon = (type: string) => {
     switch (type) {
@@ -199,32 +201,32 @@ export default function AutomationsPanel({
   }
 };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): 'success' | 'warning' | 'error' | 'neutral' => {
     switch (status) {
       case 'success': return 'success';
       case 'warning': return 'warning';
       case 'error': return 'error';
-      default: return 'default';
+      default: return 'neutral';
   }
 };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <SmartToy color="primary" sx={{ fontSize: 32 }} />
-          <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 600, color: themeColors.primary }}>
             Automatiseringer
           </Typography>
         </Box>
-        <Button 
-          variant="contained"
+        <AdminButton
+          tone="primary"
           startIcon={<Add />}
           onClick={() => setDialogOpen(true)}
-          sx={theming.getThemedButtonSx()}
         >
           Ny Automatisering
-        </Button>
+        </AdminButton>
       </Box>
 
       {/* Summary Cards */}
@@ -235,7 +237,7 @@ export default function AutomationsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <AutoAwesome color="primary" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.totalAutomations}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -253,7 +255,7 @@ export default function AutomationsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <PlayArrow color="success" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.activeAutomations}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -271,7 +273,7 @@ export default function AutomationsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Timeline color="info" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.totalRuns.toLocaleString('no-NO')}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -289,7 +291,7 @@ export default function AutomationsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Refresh color="warning" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.successRate}%
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -312,12 +314,12 @@ export default function AutomationsPanel({
               '& .MuiTab-root': {
                 color: 'text.secondary',
                 '&.Mui-selected': {
-                  color: theming.colors.primary,
+                  color: themeColors.primary,
                   fontWeight: 600,
                 },
               },
               '& .MuiTabs-indicator': {
-                backgroundColor: theming.colors.primary,
+                backgroundColor: themeColors.primary,
               },
             }}
           >
@@ -350,10 +352,9 @@ export default function AutomationsPanel({
                         <Typography variant="subtitle1" sx={{ fontWeight: 500}}>
                           {automation.name}
                         </Typography>
-                        <Chip 
+                        <StatusChip
                           label={automation.status}
-                          color={getStatusColor(automation.status)}
-                          size="small"
+                          tone={getStatusColor(automation.status)}
                         />
                       </Box>
                   }
@@ -370,9 +371,10 @@ export default function AutomationsPanel({
                   />
                   <ListItemSecondaryAction>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <IconButton 
-                        size="small" 
+                      <IconButton
+                        size="small"
                         onClick={() => handleEditAutomation(automation)}
+                        aria-label="Rediger automatisering"
                       >
                         <Edit />
                       </IconButton>
@@ -389,7 +391,7 @@ export default function AutomationsPanel({
           </TabPanel>
 
           <TabPanel value={tabValue} index={1}>
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Arbeidsflyter">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -407,17 +409,16 @@ export default function AutomationsPanel({
                       <TableCell>{workflow.steps} trinn</TableCell>
                       <TableCell>{workflow.completedToday}</TableCell>
                       <TableCell>
-                        <Chip 
+                        <StatusChip
                           label={workflow.status === 'active' ? 'Aktiv' : 'Inaktiv'}
-                          color={workflow.status === 'active' ? 'success' : 'default'}
-                          size="small"
+                          tone={workflow.status === 'active' ? 'success' : 'neutral'}
                         />
                       </TableCell>
                       <TableCell>
-                        <IconButton size="small">
+                        <IconButton size="small" aria-label="Rediger arbeidsflyt">
                           <Edit />
                         </IconButton>
-                        <IconButton size="small">
+                        <IconButton size="small" aria-label="Slett arbeidsflyt">
                           <Delete />
                         </IconButton>
                       </TableCell>
@@ -425,13 +426,13 @@ export default function AutomationsPanel({
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </TabPanel>
 
           <TabPanel value={tabValue} index={2}>
             <Box sx={{ textAlign: 'center', py: 4 }}>
               <Webhook sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" sx={{ color: themeColors.primary }}>
                 Webhook-administrasjon
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -443,7 +444,7 @@ export default function AutomationsPanel({
       </MuiCard>
 
       {/* Create/Edit Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           {selectedAutomation ? 'Rediger Automatisering' : 'Ny Automatisering'}
         </DialogTitle>
@@ -471,17 +472,15 @@ export default function AutomationsPanel({
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>
+          <AdminButton tone="ghost" onClick={() => setDialogOpen(false)}>
             Avbryt
-          </Button>
-          <Button 
-            variant="contained"
-            sx={theming.getThemedButtonSx()}
-          >
+          </AdminButton>
+          <AdminButton tone="primary">
             {selectedAutomation ? 'Oppdater' : 'Opprett'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }

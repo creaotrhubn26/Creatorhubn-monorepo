@@ -1,6 +1,9 @@
 import { Box, Container, Stack, Typography } from '@mui/material';
 import FormatQuoteIcon from '@mui/icons-material/FormatQuote';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Founder POV-pillar — signatur-side med Daniels uttalte meninger om
@@ -36,6 +39,12 @@ const THESES: { headline: string; takeaway: string; argument: string }[] = [
 ];
 
 export function FounderPovPage() {
+  const cmsBlocks = useCmsBlocks('vart-syn');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"

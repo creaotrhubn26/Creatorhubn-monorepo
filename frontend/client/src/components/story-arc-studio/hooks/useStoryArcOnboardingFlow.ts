@@ -1,6 +1,7 @@
 import { useCallback, useState, type ChangeEvent, type Dispatch, type SetStateAction } from 'react';
 import type { ProjectToEditorData } from '../../../utils/story-arc-project-integration';
 import { isRecord, toErrorMessage } from '../storyArcStudioNormalizers';
+import { getAuthHeader } from '@/lib/queryClient';
 
 export interface RecentStoryArcProject {
   id: string;
@@ -111,6 +112,7 @@ export function useStoryArcOnboardingFlow({
         {
           method: 'POST',
           credentials: 'include',
+          headers: await getAuthHeader(),
         }
       );
       if (!response.ok) {
@@ -167,7 +169,7 @@ export function useStoryArcOnboardingFlow({
       const response = await fetch('/api/story-arc/projects', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await getAuthHeader()) },
         body: JSON.stringify({
           storyArcName: projectName,
           templateType: 'wedding',

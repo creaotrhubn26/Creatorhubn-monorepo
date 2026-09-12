@@ -11,7 +11,9 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_API_BASE: &str = "https://creatorhubn.com";
+// www, ikke apex: apex 301/308-redirecter til www (Netlify), og reqwest
+// fjerner Authorization-headeren på cross-host-redirects.
+const DEFAULT_API_BASE: &str = "https://www.creatorhubn.com";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -47,13 +49,6 @@ pub fn config_dir() -> PathBuf {
 pub fn ensure_config_dir() -> Result<(), String> {
     let dir = config_dir();
     std::fs::create_dir_all(&dir).map_err(|e| format!("Create config dir: {}", e))
-}
-
-/// Legacy single-project config path. Beholdt for migration —
-/// projects.rs leser denne ved første kall hvis projects.json ikke
-/// finnes ennå.
-pub fn config_path() -> PathBuf {
-    config_dir().join("config.json")
 }
 
 /// Returnerer den aktive prosjekt-config-en. Delegerer til projects-

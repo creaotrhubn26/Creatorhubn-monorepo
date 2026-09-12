@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { AdminButton } from './design-system';
 import {
   Box,
   Card,
@@ -267,7 +268,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
   ]);
 
   // Hent systemhendelser i sanntid
-  const { data: systemEvents = [], isLoading: eventsLoading } = useQuery({
+  const { data: systemEventsData = [], isLoading: eventsLoading } = useQuery({
     queryKey: ['/api/admin/system-events'],
     refetchInterval: 5000,
     queryFn: async () => {
@@ -279,7 +280,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
   });
 
   // Hent protokollregler
-  const { data: protocolRules = [] } = useQuery({
+  const { data: protocolRulesData = [] } = useQuery({
     queryKey: ['/api/admin/protocol-rules'],
     queryFn: async () => {
       const authHeaders = await getAuthHeader();
@@ -311,6 +312,12 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
       });
     }, // Oppdater hver 10. sekund
   });
+
+  const systemEvents: SystemEvent[] = useMemo(
+    () => (Array.isArray(systemEventsData) ? systemEventsData : []),
+    [systemEventsData]
+  );
+  const protocolRules: ProtocolRule[] = Array.isArray(protocolRulesData) ? protocolRulesData : [];
 
   const getSeverityColor = (severity: string) => {
     const colors: Record<string, string> = {
@@ -346,15 +353,15 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
     return icons[category] || <Info />;
 };
 
-  const filteredEvents = systemEvents.filter((event: SystemEvent) => {
+  const filteredEvents = useMemo(() => systemEvents.filter((event: SystemEvent) => {
     const matchesSeverity = filterSeverity === 'all' || event.severity === filterSeverity;
     const matchesCategory = filterCategory === 'all' || event.category === filterCategory;
-    const matchesSearch = searchTerm.trim() === '' || 
+    const matchesSearch = searchTerm.trim() === '' ||
       event.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
       event.source.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     return matchesSeverity && matchesCategory && matchesSearch;
-});
+}), [systemEvents, filterSeverity, filterCategory, searchTerm]);
 
   const toggleEventExpansion = (eventId: string) => {
     const newExpanded = new Set(expandedEvents);
@@ -366,16 +373,16 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
     setExpandedEvents(newExpanded);
 };
 
-  const criticalEventsCount = systemEvents.filter((e: SystemEvent) => e.severity === 'critical' && !e.resolved).length;
-  const highEventsCount = systemEvents.filter((e: SystemEvent) => e.severity === 'high' && !e.resolved).length;
-  const unresolvedCount = systemEvents.filter((e: SystemEvent) => !e.resolved).length;
+  const criticalEventsCount = useMemo(() => systemEvents.filter((e: SystemEvent) => e.severity === 'critical' && !e.resolved).length, [systemEvents]);
+  const highEventsCount = useMemo(() => systemEvents.filter((e: SystemEvent) => e.severity === 'high' && !e.resolved).length, [systemEvents]);
+  const unresolvedCount = useMemo(() => systemEvents.filter((e: SystemEvent) => !e.resolved).length, [systemEvents]);
 
   return (
     <Box sx={{ p: 2 }}>
       {/* Header med oversikt */}
       <Card sx={{ mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
         <CardContent>
-          <Typography variant="h4" sx={{ color: 'white', mb: 2, display: 'flex', alignItems: 'center' }}>
+          <Typography variant="h4" component="h2" sx={{ color: 'white', mb: 2, display: 'flex', alignItems: 'center' }}>
             <SystemSecurityUpdate sx={{ mr: 2 }} />
             Omfattende Protokollstyring
           </Typography>
@@ -455,13 +462,14 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
             <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
               <Timeline sx={{ mr: 1 }} />
               Live Systemhendelser
-              <Button
+              <AdminButton
+                tone="ghost"
                 startIcon={<Refresh />}
                 onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/admin/system-events'] })}
                 sx={{ ml: 'auto' }}
               >
                 Oppdater
-              </Button>
+              </AdminButton>
             </Typography>
             
             {/* Filtere */}
@@ -469,6 +477,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
               <Grid item xs={12} md={3}>
                 <TextField
                   fullWidth
+                  aria-label="Søk i hendelser"
                   placeholder="Søk i hendelser..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -581,7 +590,10 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
                           </Box>
                       }
                       />
-                      <IconButton onClick={() => toggleEventExpansion(event.id)}>
+                      <IconButton
+                        aria-label={expandedEvents.has(event.id) ? 'Skjul hendelsesdetaljer' : 'Vis hendelsesdetaljer'}
+                        onClick={() => toggleEventExpansion(event.id)}
+                      >
                         {expandedEvents.has(event.id) ? <ExpandLess /> : <ExpandMore />}
                       </IconButton>
                     </ListItem>
@@ -644,7 +656,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                         <Typography variant="h6">{rule.name}</Typography>
                         <FormControlLabel
-                          control={<Switch checked={rule.enabled} />}
+                          control={<Switch checked={rule.enabled} inputProps={{ 'aria-label': `Aktiver protokollregel ${rule.name}` }} />}
                           label=""
                         />
                       </Box>
@@ -706,7 +718,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
                           </Typography>
                         </Box>
                         <FormControlLabel
-                          control={<Switch checked={channelConfig.enabled} />}
+                          control={<Switch checked={channelConfig.enabled} inputProps={{ 'aria-label': `Aktiver varslingskanal ${channelType}` }} />}
                           label=""
                         />
                       </Box>

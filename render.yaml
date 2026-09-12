@@ -4,21 +4,37 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    plan: free
+    # Standard (2 GB) — full-res RAW enhance + RawTherapee/Lensfun lens
+    # correction OOM-kill the 512 MB free/starter instance. Do not downgrade.
+    plan: standard
     branch: main
-    autoDeploy: true
+    autoDeployTrigger: off
     healthCheckPath: /api/health
-    # Migrate-on-deploy lever i `backend/package.json`'s ``start``-script
-    # (``./migrate.sh && node server.js``), ikke som preDeployCommand —
-    # preDeployCommand krever Standard-plan ($25/md), denne servicen
-    # er på Starter. Hvis vi oppgraderer til Standard, flytt
-    # migreringen tilbake hit som ``preDeployCommand: cd /app/backend
-    # && ./migrate.sh`` og fjern prefix fra start-scriptet, slik at
-    # migrasjonen aborterer deployen før live-trafikken swappes
-    # istedenfor å feile på første container-restart.
+    # GitHub Actions owns the production sequence: advisory-locked migration,
+    # exact-commit Render deploy, then public version, health and route smoke.
+    # Keep Render auto-deploy off so a failed migration cannot ship code.
     envVars:
       - key: DATABASE_URL
         sync: false
+      # The login is switched by a database-bound default role configured by
+      # the one-time ownership bootstrap. Backend boot verifies both values.
+      - key: DATABASE_LOGIN_ROLE
+        value: creatorhub_runtime_login
+      - key: DATABASE_OWNER_ROLE
+        value: creatorhub_schema_owner
+      # Internal URL for the existing Render Key Value instance named "redis"
+      # in the same Production environment and Oregon region. Configure the
+      # value in Render; never commit its connection credentials.
+      - key: REALTIME_REDIS_URL
+        sync: false
+      # Scaling is fail-closed: the backend must not accept traffic without
+      # cross-instance fanout once this guard is enabled.
+      - key: REALTIME_DISTRIBUTED_FANOUT_REQUIRED
+        value: "true"
+      # Set false only after the ticket-capable Capture build is the enforced
+      # minimum supported version.
+      - key: REALTIME_ALLOW_LEGACY_TOKEN
+        value: "true"
       - key: OPENAI_API_KEY
         sync: false
       # Anthropic Claude for The Role Room Agent (generation tasks).
@@ -141,6 +157,26 @@ services:
         sync: false
       - key: ROLE_ROOM_AGENT_CHECKOUT_CANCEL_URL
         sync: false
+      # Organization-owned storage add-ons. The 1 TiB offer stays hidden
+      # until high-download limits are enforced end-to-end.
+      - key: ROLE_ROOM_STORAGE_PRICE_EXTRA_100_GIB_MONTHLY
+        value: "price_1UE6FRApjenweKvPVb4iriwW"
+      - key: ROLE_ROOM_STORAGE_PRICE_EXTRA_1_TIB_MONTHLY
+        value: "price_1UE6FSApjenweKvPtozJY97b"
+      - key: ROLE_ROOM_STORAGE_1_TIB_CHECKOUT_ENABLED
+        value: "false"
+      - key: ROLE_ROOM_STORAGE_BILLING_PORTAL_CONFIGURATION_ID
+        value: "bpc_1UE6FSApjenweKvPbpPJLsLl"
+      - key: ROLE_ROOM_STORAGE_PAYMENT_GRACE_DAYS
+        value: "7"
+      # Affiliate transfers are explicitly gated until one real organization
+      # has completed Connect KYC and the first production batch is reconciled.
+      - key: ROLE_ROOM_AFFILIATE_PAYOUTS_ENABLED
+        value: "false"
+      - key: ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET
+        generateValue: true
+      - key: ROLE_ROOM_STRIPE_CONNECT_WEBHOOK_SECRET
+        sync: false
       - key: CLOUDFLARE_R2_ACCOUNT_ID
         sync: false
       - key: CLOUDFLARE_R2_ACCESS_KEY_ID
@@ -153,6 +189,17 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      # Dedicated Leadgrid OAuth. Leave both credentials unset to retain the
+      # shared fallback. Set ID + secret together; partial configuration fails
+      # closed. Set LEADGRID_PUBLIC_URL to https://leadgrid.no at cutover.
+      - key: LEADGRID_GOOGLE_CLIENT_ID
+        sync: false
+      - key: LEADGRID_GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: LEADGRID_PUBLIC_URL
+        sync: false
+      - key: LEADGRID_DISCOVERY_ENABLED
+        value: "true"
       - key: GOOGLE_REDIRECT_URI
         sync: false
       - key: ROLE_ROOM_GOOGLE_REDIRECT_URI
@@ -188,6 +235,17 @@ services:
       # GMAIL_USER er navn på avsender-konto (matcher GMAIL_APP_PASSWORD).
       # Brukes som fallback hvis GOOGLE_ADMIN_EMAIL ikke er satt.
       - key: GMAIL_USER
+        sync: false
+      # CreatorHub project-document delivery is isolated from Role Room mail.
+      - key: CREATORHUB_RESEND_API_KEY
+        sync: false
+      - key: CREATORHUB_RESEND_FROM_EMAIL
+        sync: false
+      - key: WORKSPACE_PARTICIPANT_DOCUMENT_TOKEN_SECRET
+        sync: false
+      - key: CREATORHUB_GMAIL_USER
+        sync: false
+      - key: CREATORHUB_GMAIL_APP_PASSWORD
         sync: false
       # ── NextRole ────────────────────────────────────────────────
       # Custom from-adresse for transaksjonelle NextRole-e-poster.
@@ -258,6 +316,16 @@ services:
         sync: false
       - key: PHOTO_ENHANCER_GFPGAN_URL
         value: https://creatorhub-gfpgan-runner.onrender.com/enhance
+      # Lens correction (RawTherapee + Lensfun, applied during RAW→raster).
+      # Needs the 2 GB `standard` plan above; the raised child-memory cap
+      # lets RawTherapee process full-res RAW (Dockerfile default is 256,
+      # overridden here at runtime). OMP_NUM_THREADS keeps its footprint sane.
+      - key: PHOTO_ENHANCER_LENSFUN_ENABLED
+        value: "true"
+      - key: PHOTO_ENHANCER_RAW_CHILD_MAX_MEMORY_MB
+        value: "1500"
+      - key: OMP_NUM_THREADS
+        value: "1"
       # ── Audition reminders (Twilio + Gmail fallback) ──────────────
       # Branded SMS for The Role Room and CreatorHub. Each brand has
       # its own Messaging Service SID with an alphanumeric sender ID
@@ -353,14 +421,15 @@ services:
   - type: cron
     name: creatorhub-nextrole-cron
     runtime: docker
+    repo: https://github.com/creaotrhubn26/Creatorhubn-monorepo
     dockerfilePath: ./Dockerfile.cron
     dockerContext: .
-    plan: free
+    plan: starter
     schedule: "0 9 * * *"
     branch: main
     envVars:
       - key: BACKEND_URL
-        value: "https://creatorhub-backend.onrender.com"
+        value: "https://creatorhub-backend-rtbl.onrender.com"
       - key: NEXTROLE_CRON_SECRET
         fromService:
           name: creatorhub-backend
@@ -373,6 +442,16 @@ services:
           name: creatorhub-backend
           type: web
           envVarKey: ROLE_ROOM_RECONCILE_CRON_TOKEN
+      - key: ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET
+        fromService:
+          name: creatorhub-backend
+          type: web
+          envVarKey: ROLE_ROOM_AFFILIATE_PAYOUT_CRON_SECRET
+      - key: ROLE_ROOM_AFFILIATE_PAYOUTS_ENABLED
+        fromService:
+          name: creatorhub-backend
+          type: web
+          envVarKey: ROLE_ROOM_AFFILIATE_PAYOUTS_ENABLED
 
   - type: web
     name: creatorhub-gfpgan-runner

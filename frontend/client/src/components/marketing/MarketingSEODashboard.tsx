@@ -157,16 +157,22 @@ export default function MarketingSEODashboard() {
   const theming = useTheming('photographer');
 
   // SEO data queries
+  // Endepunktene svarer wrappet ({ keywords: [...] } osv.), ikke bare et array.
+  // `select` normaliserer til array — tåler begge former og hindrer «X.filter is
+  // not a function»-krasjet som tripper Market Intelligence-error-boundaryen.
   const { data: keywords = [], isLoading: keywordsLoading } = useQuery<SeoKeyword[]>({
     queryKey: ['/api/seo/keywords', ],
+    select: (d: any) => (Array.isArray(d) ? d : (d?.keywords ?? [])),
 });
 
   const { data: pages = [], isLoading: pagesLoading } = useQuery<SeoPage[]>({
     queryKey: ['/api/seo/pages', ],
+    select: (d: any) => (Array.isArray(d) ? d : (d?.pages ?? [])),
 });
 
   const { data: backlinks = [], isLoading: backlinksLoading } = useQuery<SeoBacklink[]>({
     queryKey: ['/api/seo/backlinks'],
+    select: (d: any) => (Array.isArray(d) ? d : (d?.backlinks ?? [])),
   });
 
   const { data: crawlData, isLoading: crawlLoading } = useQuery({

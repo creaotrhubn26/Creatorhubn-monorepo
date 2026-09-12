@@ -292,7 +292,7 @@ const ClientRequestModal: React.FC<ClientRequestModalProps> = ({
           sx={{
             textTransform: 'none',
             fontWeight: 700,
-            bgcolor: '#22d3ee',
+            bgcolor: 'var(--role-cyan, #22d3ee)',
             color: '#0b1226',
             '&:hover': { bgcolor: '#06b6d4' },
           }}

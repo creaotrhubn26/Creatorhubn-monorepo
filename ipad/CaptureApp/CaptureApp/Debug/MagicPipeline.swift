@@ -1,4 +1,3 @@
-#if DEBUG
 import Foundation
 import CoreImage
 import UIKit
@@ -119,8 +118,10 @@ final class MagicPipeline {
     }
 
     private func autoProcess(assetId: UUID, source: String, destination: URL) async {
-        // Feel of a real remote enhancer: ~1.5s round-trip.
-        try? await Task.sleep(for: .milliseconds(1500))
+        // P4 (E5): INGEN kunstig forsinkelse — auto-graderingen skal lande så raskt
+        // CoreImage rendrer (mål < 1 s fra preview-nedlasting til gradert thumbnail),
+        // så klienten ser den ferdige looken live. (Den gamle 1,5 s-sleepen var kun
+        // en «feel of a remote enhancer»-simulering og forsinket on-set-previewen.)
         guard let image = UIImage(contentsOfFile: source) else { return }
 
         // Subject classification — face detect first because it's fast and
@@ -154,6 +155,19 @@ final class MagicPipeline {
         }.value
         guard ok, !Task.isCancelled else { return }
         try? await store.attachEnhancedKey(id: assetId, key: destination.path)
+    }
+
+    /// Render a recipe against a source JPEG and return the result as a
+    /// UIImage — for the native Redigering tab's live Før/Etter preview.
+    /// Reuses the exact disk pipeline (no duplicated colour logic) via a
+    /// throwaway temp file. Heavy; call off the main actor and ideally on
+    /// slider-release rather than every drag tick.
+    nonisolated static func renderPreview(source: String, recipe: MagicRecipe) -> UIImage? {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("magic-preview-\(UUID().uuidString).jpg")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        guard renderToDisk(source: source, destination: tmp, recipe: recipe) else { return nil }
+        return UIImage(contentsOfFile: tmp.path)
     }
 
     nonisolated private static func renderToDisk(source: String, destination: URL, recipe: MagicRecipe) -> Bool {
@@ -204,9 +218,13 @@ final class MagicPipeline {
         //    red-eye. These analyse the scene, so they give us a clean
         //    colour-neutral baseline before we apply subject-specific
         //    recipe adjustments on top.
+        // Auto-enhance gates på recipe: for RÅ/kamera-JPEG-fangst gir det en ren
+        // baseline, men på ferdig-gradede/leverte bilder dobbelt-prosesserer det
+        // (over-metter + flytter farge). Rødøye-korreksjon beholdes uansett —
+        // den er korrigerende, ikke stilistisk.
         var current = straightened
         let autoFilters = straightened.autoAdjustmentFilters(options: [
-            .enhance: true,
+            .enhance: effectiveRecipe.autoEnhance,
             .redEye: true
         ])
         for filter in autoFilters {
@@ -227,22 +245,15 @@ final class MagicPipeline {
             if let out = f.outputImage { current = out }
         }
 
-        if effectiveRecipe.shadowLift > 0 || effectiveRecipe.highlightRecovery > 0 {
-            // CIHighlightShadowAdjust handles both axes in one pass.
-            // **Audit fix 2026-05-04**: per Apple Core Image Filter
-            // Reference, `inputHighlightAmount` is range [0, 1] = "by
-            // how much to dampen highlights": 0 = no dampening (no
-            // recovery), 1 = max dampening (full recovery). Default
-            // is 1 so the filter does something out-of-the-box, but
-            // *identity* (image unchanged) is at 0. Pre-audit code
-            // used `-recipe.highlightRecovery` which Core Image
-            // clamped to 0 → no dampening → the slider was DEAD at
-            // every value. Sky/glaze highlights never recovered.
-            // Fixed: pass the slider directly so 0 = identity, 1 = max.
+        if effectiveRecipe.shadowLift > 0 {
+            // Kun skygge-løft her. Høylys-gjenoppretting flyttet til en SEN
+            // CIToneCurve (se nedenfor) for å MATCHE RAWExportPipeline (leveransen)
+            // — før brukte previewen CIHighlightShadowAdjust.inputHighlightAmount
+            // tidlig, som ga en annen høylys-rulloff enn det leverte RAW-bildet.
             let f = CIFilter(name: "CIHighlightShadowAdjust")!
             f.setValue(current, forKey: kCIInputImageKey)
             f.setValue(effectiveRecipe.shadowLift, forKey: "inputShadowAmount")
-            f.setValue(effectiveRecipe.highlightRecovery, forKey: "inputHighlightAmount")
+            f.setValue(0.0, forKey: "inputHighlightAmount")   // 0 = identitet (ingen høylys-endring her)
             if let out = f.outputImage { current = out }
         }
 
@@ -342,6 +353,24 @@ final class MagicPipeline {
             }
         }
 
+        // Høylys-gjenoppretting via CIToneCurve — SAMME filter, kurve OG posisjon
+        // som RAWExportPipeline.applyToneAdjustments (leveransen), så samme slider
+        // gir samme høylys-rulloff i preview og levert bilde. Kjøres etter tone/
+        // hud-frekvens (som i RAW), før ansikts-kjeden. Kurven bøyer kun topp-15 %
+        // ned; knekk ved 65 % (ARRI/Reinhard-shoulder), klipper til 0.92·(1−0.08r).
+        if effectiveRecipe.highlightRecovery > 0 {
+            let r = effectiveRecipe.highlightRecovery
+            if let tc = CIFilter(name: "CIToneCurve") {
+                tc.setValue(current, forKey: kCIInputImageKey)
+                tc.setValue(CIVector(x: 0, y: 0), forKey: "inputPoint0")
+                tc.setValue(CIVector(x: 0.50, y: 0.50), forKey: "inputPoint1")
+                tc.setValue(CIVector(x: 0.65, y: 0.65), forKey: "inputPoint2")
+                tc.setValue(CIVector(x: 0.85, y: 0.85 - 0.07 * r), forKey: "inputPoint3")
+                tc.setValue(CIVector(x: 1.00, y: 0.92 - 0.08 * r), forKey: "inputPoint4")
+                if let out = tc.outputImage { current = out }
+            }
+        }
+
         // Phase 7B — eye-region sharpen + catch-light boost. Detection
         // sees the fully-toned image so the masked filters apply on top
         // of all upstream adjustments. No-op when no faces detected.
@@ -352,6 +381,10 @@ final class MagicPipeline {
 
         // Phase 7F — face↔body skin-tone unify.
         current = SkinToneUnifyFilter.apply(recipe: effectiveRecipe, to: current)
+        // Hud-tone-guard — forankrer a* mot ~11 (grønn/oransje-guard).
+        current = SkinToneGuardFilter.apply(recipe: effectiveRecipe, to: current)
+        // Film-korn-finish.
+        current = FilmGrainFilter.apply(recipe: effectiveRecipe, to: current)
 
         guard !Task.isCancelled,
               let cgImage = ColorManagement.renderCGImage(
@@ -411,11 +444,11 @@ final class MagicPipeline {
         // "strawberry_ice_cream" / "french_bulldog" / "sports_car";
         // pre-fix exact matching missed almost every compound. Now
         // any label containing a hint substring counts.
-        if Self.matchesAny(labels, in: Self.aviationHints)  { return .aviation }
-        if Self.matchesAny(labels, in: Self.vehicleHints)   { return .vehicle }
-        if Self.matchesAny(labels, in: Self.foodHints)      { return .food }
+        if Self.matchesAny(labels, in: Self.aviationHints) { return .aviation }
+        if Self.matchesAny(labels, in: Self.vehicleHints) { return .vehicle }
+        if Self.matchesAny(labels, in: Self.foodHints) { return .food }
         if Self.matchesAny(labels, in: Self.landscapeHints) { return .landscape }
-        if Self.matchesAny(labels, in: Self.productHints)   { return .product }
+        if Self.matchesAny(labels, in: Self.productHints) { return .product }
 
         // No confident scene match — try faces with a strict floor.
         return faceFallback(cgImage: cgImage)
@@ -427,8 +460,8 @@ final class MagicPipeline {
     /// "sports_car" that won't match a flat set of base nouns.
     private static func matchesAny(_ labels: [String], in hints: Set<String>) -> Bool {
         for label in labels {
-            for hint in hints {
-                if label.contains(hint) { return true }
+            for hint in hints where label.contains(hint) {
+                return true
             }
         }
         return false
@@ -475,7 +508,7 @@ final class MagicPipeline {
         "coffee", "tea_cup", "teacup",
         "fruit", "vegetable", "tomato", "apple", "orange", "banana", "lemon",
         "strawberry", "broccoli", "carrot", "cucumber", "pepper", "mushroom",
-        "egg", "omelet", "bacon",
+        "egg", "omelet", "bacon"
     ]
     private static let landscapeHints: Set<String> = [
         "landscape", "mountain", "beach", "seashore", "valley", "lake", "river",
@@ -486,4 +519,3 @@ final class MagicPipeline {
         "laptop", "smartphone", "camera", "headphone", "sunglasses"
     ]
 }
-#endif

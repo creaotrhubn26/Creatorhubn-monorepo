@@ -85,7 +85,7 @@ export async function buildSubcontractTerms(
        WHERE a.id = $1 LIMIT 1`,
     [assistantId],
   );
-  if (r.rowCount === 0) return null;
+  if (!r.rows.length) return null;
   const row = r.rows[0];
   const primaryName = row.p_company || [row.p_first_name, row.p_last_name].filter(Boolean).join(" ") || "Hovedfotograf";
 
@@ -202,12 +202,17 @@ export function setupWeddingAssistantSubcontractRoutes(deps: WeddingAssistantSub
   app.get("/api/wedding/assistant-invite/:token/contract", async (req, res) => {
     try {
       await ensureSchema(pool);
+      // KUN invite-token — ikke `OR id = $1`. Assistent-UUID er ikke en
+      // hemmelighet på linje med invite-token; fallback på id lot hvem som
+      // helst med en assistent-ID lese full kontrakt-PII (fotografens
+      // e-post/org.nr, brudeparets navn, kompensasjon). Signerings-ruten
+      // under bruker allerede token-only.
       const r = await pool.query(
         `SELECT id, subcontract_terms, subcontract_signed_at, subcontract_signer_name
-           FROM wedding_assistants WHERE invite_token = $1 OR id = $1 LIMIT 1`,
+           FROM wedding_assistants WHERE invite_token = $1 LIMIT 1`,
         [req.params.token],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: "Invitasjon finnes ikke" });
+      if (!r.rows.length) return res.status(404).json({ error: "Invitasjon finnes ikke" });
       const row = r.rows[0];
       let terms = row.subcontract_terms;
       if (!terms) {

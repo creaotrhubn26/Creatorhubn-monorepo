@@ -89,7 +89,7 @@ export default function GroupManagement() {
   const fetchGroups = async () => {
     try {
       setLoading(true);
-      const response = await apiRequest('/api/community/admin/groups,', {
+      const response = await apiRequest('/api/community/admin/groups', {
         method: 'GET',
       }) as { success: boolean; groups: CommunityGroup[] };
 
@@ -265,11 +265,11 @@ export default function GroupManagement() {
                   <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                     Avg Members/Group
                   </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#9c27b0' }}>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#ce93d8' }}>
                     {groups.length > 0 ? Math.round(totalMembers / groups.length) : 0}
                   </Typography>
                 </Box>
-                <TrendingUp sx={{ fontSize: 40, color: '#9c27b0', opacity: 0.5 }} />
+                <TrendingUp sx={{ fontSize: 40, color: '#ce93d8', opacity: 0.5 }} />
               </Box>
             </CardContent>
           </Card>

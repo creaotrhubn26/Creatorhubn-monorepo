@@ -284,6 +284,7 @@ final class LiveSetDashboardModelTests: XCTestCase {
             estimatedDuration: nil, priority: priority, shotType: nil,
             locationName: nil, notes: nil, scouted: nil,
             isCompleted: isCompleted, capturedAssetId: capturedAssetId,
+            completedBy: nil,
         )
     }
 

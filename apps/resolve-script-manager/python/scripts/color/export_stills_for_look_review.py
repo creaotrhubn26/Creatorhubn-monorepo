@@ -119,6 +119,8 @@ def _frame_to_tc(frame: int, timeline) -> str:
         fps = float(timeline.GetSetting("timelineFrameRate") or 25)
     except (TypeError, ValueError):
         fps = 25.0
+    if fps <= 0:  # GetSetting kan returnere "0" (truthy → slapp forbi `or 25`) → ZeroDivisionError
+        fps = 25.0
     total_seconds = frame / fps
     hours = int(total_seconds // 3600)
     minutes = int((total_seconds % 3600) // 60)

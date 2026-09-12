@@ -15,7 +15,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  Button,
   Typography,
   Chip,
   List,
@@ -51,6 +50,7 @@ import {
 import { useTheming } from '../../utils/theming-helper';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton } from './design-system';
 
 export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = ({ 
   file: initialFile, 
@@ -182,8 +182,8 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
     <Box sx={{ p: 3 }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <LearnIcon sx={{ fontSize: 40, color: theming.colors.primary }} />
+        <Typography variant="h4" component="h2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <LearnIcon aria-hidden sx={{ fontSize: 40, color: theming.colors.primary }} />
           Code Explainer & Learning Center
         </Typography>
         <Typography variant="body1" color="text.secondary">
@@ -217,15 +217,15 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
           </Alert>
 
           {initialErrors.length > 0 && (
-            <Button
-              variant="contained"
+            <AdminButton
+              tone="primary"
               onClick={handleExplainErrors}
-              disabled={isLoading}
+              loading={isLoading}
               startIcon={<LearnIcon />}
               sx={{ mb: 3 }}
             >
               Explain {initialErrors.length} Errors
-            </Button>
+            </AdminButton>
           )}
 
           {/* Error Explanations */}
@@ -362,17 +362,19 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
             value={file}
             onChange={(e) => setFile(e.target.value)}
             placeholder="Enter file path (e.g., client/src/components/OpenAIChat.tsx)"
+            aria-label="Filsti for avhengighetsanalyse"
             sx={{ mb: 2 }}
           />
 
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
             onClick={handleAnalyzeDependencies}
-            disabled={!file || isLoading}
+            disabled={!file}
+            loading={isLoading}
             startIcon={<DependencyIcon />}
           >
             Analyze Dependencies
-          </Button>
+          </AdminButton>
 
           {dependencyAnalysis && (
             <Box sx={{ mt: 3 }}>
@@ -564,17 +566,19 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
             value={file}
             onChange={(e) => setFile(e.target.value)}
             placeholder="Enter file path"
+            aria-label="Filsti for filforklaring"
             sx={{ mb: 2 }}
           />
 
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
             onClick={handleExplainFile}
-            disabled={!file || isLoading}
+            disabled={!file}
+            loading={isLoading}
             startIcon={<IdeaIcon />}
           >
             Explain This File
-          </Button>
+          </AdminButton>
 
           {fileExplanation && (
             <Paper sx={{ p: 3, mt: 3 }}>
@@ -609,6 +613,7 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search concepts (e.g., hooks, types, material-ui)"
+            aria-label="Søk i konseptbiblioteket"
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -621,11 +626,20 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
           <Grid container spacing={2}>
             {filteredConcepts.map((concept) => (
               <Grid item xs={12} md={6} key={concept.id}>
-                <Card 
-                  sx={{ 
+                <Card
+                  sx={{
                     cursor: 'pointer','&:hover': { boxShadow: 4 }
                 }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Vis konsept: ${concept.name}`}
                   onClick={() => setSelectedConcept(concept)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedConcept(concept);
+                    }
+                }}
                 >
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -668,9 +682,9 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
                   </Box>
               }
                 action={
-                  <Button size="small" onClick={() => setSelectedConcept(null)}>
+                  <AdminButton tone="ghost" size="small" onClick={() => setSelectedConcept(null)}>
                     Close
-                  </Button>
+                  </AdminButton>
               }
               />
               <CardContent>

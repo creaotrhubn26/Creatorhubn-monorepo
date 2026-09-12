@@ -19,8 +19,36 @@
  */
 
 import type express from "express";
+import { canAccessProject } from "./project-team-routes";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+// Eierskaps-sjekk for et bryllup (eier / tildelt fotograf / prosjekt-team).
+// /calculate leser timeline-destinasjoner via wedding_id og ekko-er venue-
+// adressene i responsen — uten denne gaten kunne enhver innlogget hente et
+// vilkårlig bryllups lokasjons-adresser. Speiler prod-predikatet.
+async function callerOwnsWedding(
+  pool: any,
+  weddingId: string,
+  userId: string,
+): Promise<boolean> {
+  if (!userId || !weddingId) return false;
+  try {
+    const r = await pool.query(
+      `SELECT user_id, photographer_id, project_id FROM wedding_timelines WHERE id = $1 LIMIT 1`,
+      [weddingId],
+    );
+    const row = r.rows[0];
+    if (!row) return false;
+    if (row.user_id && String(row.user_id) === userId) return true;
+    if (row.photographer_id && String(row.photographer_id) === userId) return true;
+    if (row.project_id && (await canAccessProject(pool, userId, String(row.project_id)))) return true;
+    return false;
+  } catch (e) {
+    console.error("[mileage] callerOwnsWedding error:", e);
+    return false;
+  }
+}
 
 export interface WeddingMileageRoutesDeps {
   app: express.Application;
@@ -307,7 +335,7 @@ export function setupWeddingMileageRoutes(deps: WeddingMileageRoutesDeps): void 
            LIMIT 1`,
         [uid],
       );
-      if (r.rowCount === 0) {
+      if (!r.rows.length) {
         return res.json({
           vehicle: null,
           // Selv uten bil kan vi vise hva hjemmeadressen vil bli
@@ -449,6 +477,9 @@ export function setupWeddingMileageRoutes(deps: WeddingMileageRoutesDeps): void 
       const uid = getPricingUserId(req);
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });
       const weddingId = req.params.weddingId;
+      if (!(await callerOwnsWedding(pool, weddingId, uid))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
       const includeReturnTrip = Boolean(req.body?.includeReturnTrip ?? true);
       // legOverrides: [{ fromSeq, toSeq, distanceKm, tollKr? }] — manuell
       // overstyring per etappe når Stine ser at estimert km ikke stemmer.
@@ -619,7 +650,7 @@ export function setupWeddingMileageRoutes(deps: WeddingMileageRoutesDeps): void 
            WHERE r.wedding_id = $1 AND r.photographer_id = $2`,
         [req.params.weddingId, uid],
       );
-      if (r.rowCount === 0) return res.json({ report: null });
+      if (!r.rows.length) return res.json({ report: null });
       const x = r.rows[0];
       res.json({
         report: {
@@ -660,7 +691,7 @@ export function setupWeddingMileageRoutes(deps: WeddingMileageRoutesDeps): void 
            WHERE r.wedding_id = $1 AND r.photographer_id = $2`,
         [req.params.weddingId, uid],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: "Ingen rapport funnet — generer først" });
+      if (!r.rows.length) return res.status(404).json({ error: "Ingen rapport funnet — generer først" });
       const x = r.rows[0];
       const fmtKr = (n: number) => `${n.toFixed(2).replace(".", ",")} kr`;
       const destinations: any[] = Array.isArray(x.destinations) ? x.destinations : [];

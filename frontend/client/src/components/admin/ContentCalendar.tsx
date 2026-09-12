@@ -3,7 +3,7 @@
  * Monthly content planning and scheduling interface
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
@@ -16,7 +16,6 @@ import {
   CardContent,
   Typography,
   IconButton,
-  Button,
   Chip,
   Tooltip,
   Dialog,
@@ -37,6 +36,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isTod
 import { nb } from 'date-fns/locale';
 import MarketingWorkflowIntegration from './MarketingWorkflowIntegration';
 import EventCreatorDialog from './EventCreatorDialog';
+import { AdminButton } from './design-system';
 
 interface CalendarEvent {
   id: number;
@@ -71,7 +71,7 @@ const eventTypeConfig = {
   social: {
     icon: <PublicIcon />,
     label: 'Sosiale Medier',
-    color: '#9c27b0',
+    color: '#ce93d8',
   },
   campaign: {
     icon: <CampaignIcon />,
@@ -118,18 +118,20 @@ export default function ContentCalendar() {
     },
   });
 
+  const safeEvents = Array.isArray(events) ? events : [];
+
   // Get calendar dates
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const calendarDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
   // Group events by date
-  const eventsByDate = events.reduce((acc: Record<string, CalendarEvent[]>, event: CalendarEvent) => {
+  const eventsByDate = useMemo(() => safeEvents.reduce((acc: Record<string, CalendarEvent[]>, event: CalendarEvent) => {
     const dateKey = event.scheduled_date;
     if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(event);
     return acc;
-  }, {});
+  }, {}), [safeEvents]);
 
   const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
   const handleNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
@@ -148,58 +150,54 @@ export default function ContentCalendar() {
   return (
     <Box>
       {/* Header */}
-      <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
+      <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2} mb={3}>
         <Box display="flex" alignItems="center" gap={2}>
           {professionIcon && (
             <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
               {professionIcon}
             </Box>
           )}
-          <Typography variant="h5" sx={{ fontWeight: 600}}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 600}}>
             {enhancedProfessionConfig?.displayName || professionConfig?.displayName
               ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Innholdskalender`
               : 'Innholdskalender'}
           </Typography>
-          <Button
+          <AdminButton
             size="small"
-            variant="outlined"
+            tone="ghost"
             onClick={handleToday}
-            sx={{ borderColor: '#ff8c00', color: '#ff8c00' }}
           >
             I dag
-          </Button>
+          </AdminButton>
         </Box>
 
         <Box display="flex" alignItems="center" gap={2}>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="ghost"
             startIcon={<CampaignIcon />}
             onClick={() => setWorkflowDialogOpen(true)}
-            sx={{ borderColor: '#ff8c00', color: '#ff8c00' }}
           >
             Marketing Workflow
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<AddIcon />}
             onClick={handleCreateEvent}
-            sx={{
-              bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' }}}
           >
             Ny hendelse
-          </Button>
+          </AdminButton>
         </Box>
       </Box>
 
       {/* Month Navigation */}
       <Box display="flex" alignItems="center" justifyContent="center" gap={2} mb={3}>
-        <IconButton onClick={handlePrevMonth}>
+        <IconButton onClick={handlePrevMonth} aria-label="Forrige måned">
           <ChevronLeft />
         </IconButton>
         <Typography variant="h6" sx={{ minWidth: 200, textAlign: 'center' }}>
           {format(currentMonth, 'MMMM yyyy', { locale: nb })}
         </Typography>
-        <IconButton onClick={handleNextMonth}>
+        <IconButton onClick={handleNextMonth} aria-label="Neste måned">
           <ChevronRight />
         </IconButton>
       </Box>
@@ -243,6 +241,15 @@ export default function ContentCalendar() {
                 <Grid item xs={12 / 7} key={day.toString()}>
                   <Box
                     onClick={() => handleDateClick(day)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={format(day, 'd. MMMM yyyy', { locale: nb })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleDateClick(day);
+                      }
+                    }}
                     sx={{
                       minHeight: 120,
                       p: 1,
@@ -310,7 +317,7 @@ export default function ContentCalendar() {
           <Card>
             <CardContent>
               <Typography variant="h4" sx={{ color: '#ff8c00', fontWeight: 600}}>
-                {events.filter((e: CalendarEvent) => e.status === 'planned').length}
+                {safeEvents.filter((e: CalendarEvent) => e.status === 'planned').length}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Planlagt
@@ -322,7 +329,7 @@ export default function ContentCalendar() {
           <Card>
             <CardContent>
               <Typography variant="h4" sx={{ color: '#2196f3', fontWeight: 600}}>
-                {events.filter((e: CalendarEvent) => e.status === 'in-progress').length}
+                {safeEvents.filter((e: CalendarEvent) => e.status === 'in-progress').length}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Pågår
@@ -334,7 +341,7 @@ export default function ContentCalendar() {
           <Card>
             <CardContent>
               <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 600}}>
-                {events.filter((e: CalendarEvent) => e.status === 'ready').length}
+                {safeEvents.filter((e: CalendarEvent) => e.status === 'ready').length}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Klar
@@ -346,7 +353,7 @@ export default function ContentCalendar() {
           <Card>
             <CardContent>
               <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 600}}>
-                {events.filter((e: CalendarEvent) => e.status ==='published').length}
+                {safeEvents.filter((e: CalendarEvent) => e.status ==='published').length}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Publisert

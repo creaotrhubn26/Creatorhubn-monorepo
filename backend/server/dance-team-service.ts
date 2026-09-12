@@ -1004,6 +1004,14 @@ async function sendInvitePinEmail(input: {
   if (!mailer) return { sent: false, reason: 'mailer_not_configured' };
 
   const expiresMin = Math.floor(INVITE_PIN_TTL_MS / 60000);
+  // Escape brukerstyrte navn (team-/rolle-label) før interpolasjon i e-post-HTML.
+  const esc = (s: unknown): string =>
+    String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   const subject = `Din PIN for ${input.teamLabel} på CreatorHub`;
   const text = [
     `Hei!`,
@@ -1023,7 +1031,7 @@ async function sendInvitePinEmail(input: {
     <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; color: #1a1a1a;">
       <h2 style="margin: 0 0 12px; font-weight: 700;">Bekreft invitasjonen</h2>
       <p style="margin: 0 0 20px; color: #555; line-height: 1.5;">
-        Du er invitert til <strong>${input.teamLabel}</strong> som <strong>${input.roleLabel}</strong>.
+        Du er invitert til <strong>${esc(input.teamLabel)}</strong> som <strong>${esc(input.roleLabel)}</strong>.
       </p>
       <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 12px; padding: 20px; text-align: center; margin: 20px 0;">
         <div style="font-size: 11px; color: #6d28d9; letter-spacing: 1.5px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">Din PIN-kode</div>
@@ -1032,7 +1040,7 @@ async function sendInvitePinEmail(input: {
       </div>
       <p style="margin: 20px 0; color: #555; line-height: 1.5;">
         Lim PIN-koden inn på siden du ble sendt til,
-        eller åpne lenken på nytt: <a href="${input.inviteUrl}" style="color: #6d28d9;">${input.inviteUrl}</a>
+        eller åpne lenken på nytt: <a href="${esc(input.inviteUrl)}" style="color: #6d28d9;">${esc(input.inviteUrl)}</a>
       </p>
       <p style="margin: 32px 0 0; color: #999; font-size: 12px;">
         Hvis du ikke har bedt om denne, kan du trygt ignorere denne e-posten.

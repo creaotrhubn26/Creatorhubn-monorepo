@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Documentation Intelligence Evidence Record",
+  "type": "object",
+  "required": [
+    "claim",
+    "source_type",
+    "authority_tier",
+    "confidence"
+  ],
+  "properties": {
+    "claim": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "official_docs",
+        "api_reference",
+        "release_notes",
+        "changelog",
+        "migration_guide",
+        "manual",
+        "firmware_notes",
+        "security_advisory",
+        "support_kb",
+        "official_repository",
+        "standard",
+        "engineering_blog",
+        "issue",
+        "pull_request",
+        "archived_official_docs",
+        "secondary"
+      ]
+    },
+    "authority_tier": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "vendor": {
+      "type": "string"
+    },
+    "product": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "version_scope": {
+      "type": "string"
+    },
+    "region": {
+      "type": "string"
+    },
+    "document_revision": {
+      "type": "string"
+    },
+    "publication_date": {
+      "type": "string"
+    },
+    "section_or_symbol": {
+      "type": "string"
+    },
+    "evidence_summary": {
+      "type": "string"
+    },
+    "interpretation": {
+      "type": "string"
+    },
+    "project_impact": {
+      "type": "string"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "verified",
+        "strong_evidence",
+        "probable",
+        "unverified",
+        "contradicted"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

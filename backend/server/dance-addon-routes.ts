@@ -137,7 +137,7 @@ export function createDanceAddonRouter(
       }
       res.status(201).json({ success: true, data: r.subscription });
     } catch (err) {
-      res.status(500).json({ error: 'trial_start_failed', detail: String(err) });
+      res.status(500).json({ error: 'trial_start_failed', detail: "internal_error" });
     }
   });
 
@@ -179,7 +179,7 @@ export function createDanceAddonRouter(
       }
       res.status(201).json({ success: true, data: r.subscription });
     } catch (err) {
-      res.status(500).json({ error: 'grant_failed', detail: String(err) });
+      res.status(500).json({ error: 'grant_failed', detail: "internal_error" });
     }
   });
 

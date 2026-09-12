@@ -1,0 +1,196 @@
+name: Owned channels signal sync (GSC/GA4)
+
+# Daglig synk av GSC/GA4-data (inkl. AI-referrals) til normalized_signals
+# for alle produsenter med tilkoblet Google-OAuth. Token-gated via
+# CRON_TRIGGER_TOKEN (samme secret som cockpit-cron).
+
+on:
+  schedule:
+    # 04:45 UTC daglig — før arbeidsdagen, utenom andre cron-topper
+    - cron: '45 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: owned-channels-sync
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /api/integrations/sync/owned-channels
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN GitHub-secret er ikke satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $CRON_TRIGGER_TOKEN" \
+            "$BACKEND_URL/api/integrations/sync/owned-channels")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Synk feilet (HTTP $CODE)"
+            exit 1
+          fi
+      - name: POST /api/integrations/sync/leadgrid-sales
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $CRON_TRIGGER_TOKEN" \
+            "$BACKEND_URL/api/integrations/sync/leadgrid-sales")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Salgsdata-synk feilet (HTTP $CODE)"
+            exit 1
+          fi
+      - name: POST /api/integrations/sync/brreg-market
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $CRON_TRIGGER_TOKEN" \
+            "$BACKEND_URL/api/integrations/sync/brreg-market")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::BRREG-synk feilet (HTTP $CODE)"
+            exit 1
+          fi
+      - name: POST /api/integrations/sync/sales-triggers
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $CRON_TRIGGER_TOKEN" \
+            "$BACKEND_URL/api/integrations/sync/sales-triggers")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Salgstrigger-synk feilet (HTTP $CODE)"
+            exit 1
+          fi
+      - name: POST /api/integrations/sync/ssb-territory
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $CRON_TRIGGER_TOKEN" \
+            "$BACKEND_URL/api/integrations/sync/ssb-territory")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::SSB-synk feilet (HTTP $CODE)"
+            exit 1
+          fi
+      - name: POST /api/integrations/sync/konkurs-watch
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $CRON_TRIGGER_TOKEN" \
+            "$BACKEND_URL/api/integrations/sync/konkurs-watch")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Konkursvakten feilet (HTTP $CODE)"
+            exit 1
+          fi
+      - name: POST /api/integrations/sync/media-watch
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $CRON_TRIGGER_TOKEN" \
+            "$BACKEND_URL/api/integrations/sync/media-watch")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Bransjevakten feilet (HTTP $CODE)"
+            exit 1
+          fi
+      - name: POST /api/integrations/sync/prospect-segments
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $CRON_TRIGGER_TOKEN" \
+            "$BACKEND_URL/api/integrations/sync/prospect-segments")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Segment-synk feilet (HTTP $CODE)"
+            exit 1
+          fi
+      - name: POST /api/integrations/sync/auto-enrichment
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $CRON_TRIGGER_TOKEN" \
+            "$BACKEND_URL/api/integrations/sync/auto-enrichment")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Auto-berikelsen feilet (HTTP $CODE)"
+            exit 1
+          fi
+      - name: POST /api/integrations/sync/company-financials
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $CRON_TRIGGER_TOKEN" \
+            "$BACKEND_URL/api/integrations/sync/company-financials")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Benchmark-synk feilet (HTTP $CODE)"
+            exit 1
+          fi
+      - name: POST /api/integrations/sync/ssb-momentum
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $CRON_TRIGGER_TOKEN" \
+            "$BACKEND_URL/api/integrations/sync/ssb-momentum")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Momentum-synk feilet (HTTP $CODE)"
+            exit 1
+          fi

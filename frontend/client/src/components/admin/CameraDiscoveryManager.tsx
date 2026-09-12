@@ -10,19 +10,15 @@ import {
   Card,
   CardContent,
   Typography,
-  Button,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Chip,
   Switch,
   FormControlLabel,
   Alert,
-  CircularProgress,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -35,6 +31,8 @@ import {
   Divider,
   Grid,
   LinearProgress,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   Refresh,
@@ -45,8 +43,10 @@ import {
   AutoAwesome,
   Warning,
   Info,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { cameraDiscoveryService } from '../../data/camera-discovery-system';
+import { AdminButton, AdminTableContainer, useIsMobile } from './design-system';
 
 interface CameraDiscoveryManagerProps {
   onCamerasApproved?: (cameras: any[]) => void;
@@ -61,9 +61,11 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [stats, setStats] = useState<any>(null);
   const [autoUpdate, setAutoUpdate] = useState(true);
+  const [search, setSearch] = useState("");
   
   // Theming system
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
 
   // Load initial data
   useEffect(() => {
@@ -139,8 +141,8 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
-        <CameraAlt sx={{ mr: 1, verticalAlign: 'middle' }} />
+      <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
+        <CameraAlt aria-hidden="true" sx={{ mr: 1, verticalAlign: 'middle' }} />
         Camera Discovery Manager
       </Typography>
 
@@ -206,21 +208,21 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
               }
                 label="Auto Update"
               />
-              <Button 
-                variant="contained"
-                startIcon={isDiscovering ? <CircularProgress size={20} /> : <Refresh />}
+              <AdminButton
+                tone="primary"
+                loading={isDiscovering}
+                startIcon={<Refresh />}
                 onClick={handleDiscoverCameras}
                 disabled={isDiscovering}
-                sx={theming.getThemedButtonSx()}
               >
                 {isDiscovering ? 'Discovering...' : 'Discover Cameras'}
-              </Button>
+              </AdminButton>
             </Box>
           </Box>
 
           {isDiscovering && (
             <Alert severity="info" sx={{ mb: 2 }}>
-              <AutoAwesome sx={{ mr: 1 }} />
+              <AutoAwesome aria-hidden="true" sx={{ mr: 1 }} />
               Discovering new cameras from all enabled sources...
             </Alert>
           )}
@@ -236,48 +238,62 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
             </Typography>
             {discoveredCameras.length > 0 && (
               <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button
-                  variant="outlined"
+                <AdminButton
+                  tone="secondary"
                   onClick={handleSelectAll}
                   size="small"
                 >
                   {selectedCameras.length === discoveredCameras.length ? 'Deselect All' : 'Select All'}
-                </Button>
-                <Button 
-                  variant="contained"
-                  color="success"
+                </AdminButton>
+                <AdminButton
+                  tone="primary"
                   startIcon={<Check />}
                   onClick={() => setShowApprovalDialog(true)}
                   disabled={selectedCameras.length === 0}
                 >
                   Approve Selected ({selectedCameras.length})
-                </Button>
-                <Button
-                  variant="outlined"
-                  color="error"
+                </AdminButton>
+                <AdminButton
+                  tone="danger"
                   startIcon={<Close />}
                   onClick={handleRejectSelected}
                   disabled={selectedCameras.length === 0}
                 >
                   Reject Selected
-                </Button>
+                </AdminButton>
               </Box>
             )}
           </Box>
 
           {discoveredCameras.length === 0 ? (
             <Alert severity="info">
-              <Info sx={{ mr: 1 }} />
+              <Info aria-hidden="true" sx={{ mr: 1 }} />
               No new cameras discovered. Click "Discover Cameras" to search for new models.
             </Alert>
           ) : (
-            <TableContainer component={Paper}>
+            <>
+            <TextField
+              size="small"
+              placeholder="Søk kameraer …"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              sx={{ mb: 2 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <AdminTableContainer ariaLabel="Oppdagede kameraer">
               <Table>
                 <TableHead>
                   <TableRow>
                     <TableCell padding="checkbox">
                       <input
                         type="checkbox"
+                        aria-label="Velg alle kameraer"
                         checked={selectedCameras.length === discoveredCameras.length}
                         onChange={handleSelectAll}
                       />
@@ -292,11 +308,16 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {discoveredCameras.map((camera) => (
+                  {discoveredCameras.filter((camera) =>
+                    `${camera.brand ?? ''} ${camera.model ?? ''} ${camera.category ?? ''}`
+                      .toLowerCase()
+                      .includes(search.toLowerCase())
+                  ).map((camera) => (
                     <TableRow key={camera.id}>
                       <TableCell padding="checkbox">
                         <input
                           type="checkbox"
+                          aria-label={`Velg kamera ${camera.brand} ${camera.model}`}
                           checked={selectedCameras.includes(camera.id)}
                           onChange={() => handleCameraSelect(camera.id)}
                         />
@@ -355,13 +376,14 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
+            </>
           )}
         </CardContent>
       </Card>
 
       {/* Approval Dialog */}
-      <Dialog open={showApprovalDialog} onClose={() => setShowApprovalDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={showApprovalDialog} onClose={() => setShowApprovalDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           Approve Selected Cameras
         </DialogTitle>
@@ -382,22 +404,21 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
               ))}
           </List>
           <Alert severity="warning" sx={{ mt: 2 }}>
-            <Warning sx={{ mr: 1 }} />
+            <Warning aria-hidden="true" sx={{ mr: 1 }} />
             These cameras will be permanently added to the database and will be available for all users.
           </Alert>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowApprovalDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setShowApprovalDialog(false)}>
             Cancel
-          </Button>
-          <Button 
-            onClick={handleApproveSelected} 
-            variant="contained" 
-            color="success"
+          </AdminButton>
+          <AdminButton
+            onClick={handleApproveSelected}
+            tone="primary"
             startIcon={<Check />}
           >
             Approve & Add to Database
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

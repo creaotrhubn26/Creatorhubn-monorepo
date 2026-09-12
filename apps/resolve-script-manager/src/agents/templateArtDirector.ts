@@ -197,7 +197,7 @@ export async function generateTemplateSpec(userPrompt: string): Promise<
   const response = await invoke<ClaudeResponse>("claude_chat", {
     messages: [{ role: "user", content: userPrompt }],
     system: SYSTEM_PROMPT,
-    model: "claude-opus-4-7",
+    model: "claude-opus-4-8",
     maxTokens: 2048,
     tools: [TOOL_DEFINITION],
   });

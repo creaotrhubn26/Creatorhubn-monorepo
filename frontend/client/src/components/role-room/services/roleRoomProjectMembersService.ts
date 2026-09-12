@@ -6,6 +6,8 @@
  * Permanent sletting er IKKE støttet ennå — backend returnerer 501.
  */
 
+import { roleRoomAgentDefaultHeaders } from './roleRoomAgentService';
+
 export interface ProjectMember {
   userId: string;
   role: string | null;
@@ -28,10 +30,13 @@ export interface ProjectMembersResponse {
 }
 
 async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
+  // The Role Room-endepunktene autentiserer på Bearer-token (apiKeyAuth) — bare
+  // cookies gir 401. roleRoomAgentDefaultHeaders() legger på token + x-role-room-
+  // user-id fra sesjonen (samme mønster som tab-config-tjenesten).
   const res = await fetch(url, {
     ...init,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders(), ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => '');

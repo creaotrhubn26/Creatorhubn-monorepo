@@ -9,17 +9,16 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button,
   Typography,
   List,
   ListItem,
   Box,
-  Chip,
   Divider,
   Alert,
   Link,
 } from '@mui/material';
 import { CheckCircle as CheckCircleIcon, Warning as WarningIcon, NewReleases as NewReleasesIcon } from '@mui/icons-material';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 
 export interface APIVersionInfo {
   service: string;
@@ -50,13 +49,14 @@ export const APIVersionReleaseNotesDialog: React.FC<APIVersionReleaseNotesDialog
   onUpdate,
   updating = false,
 }) => {
+  const isMobile = useIsMobile();
   if (!versionInfo) return null;
 
   const hasUpdate = versionInfo.currentVersion !== versionInfo.latestVersion;
   const hasBreakingChanges = versionInfo.breakingChanges && versionInfo.breakingChanges.length > 0;
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth fullScreen={isMobile}>
       <DialogTitle>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <NewReleasesIcon color="primary" />
@@ -95,9 +95,9 @@ export const APIVersionReleaseNotesDialog: React.FC<APIVersionReleaseNotesDialog
           </Box>
 
           {hasUpdate ? (
-            <Chip label="Update Available" color="warning" size="small" />
+            <StatusChip tone="warning" label="Update Available" />
           ) : (
-            <Chip label="Up to Date" color="success" size="small" icon={<CheckCircleIcon />} />
+            <StatusChip tone="success" label="Up to Date" />
           )}
         </Box>
 
@@ -177,18 +177,17 @@ export const APIVersionReleaseNotesDialog: React.FC<APIVersionReleaseNotesDialog
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose} disabled={updating}>
+        <AdminButton tone="ghost" onClick={onClose} disabled={updating}>
           Cancel
-        </Button>
+        </AdminButton>
         {hasUpdate && (
-          <Button
+          <AdminButton
+            tone="primary"
             onClick={() => onUpdate(versionInfo.service, versionInfo.latestVersion)}
-            variant="contained"
-            color="primary"
-            disabled={updating}
+            loading={updating}
           >
-            {updating ? 'Updating...' : 'Update Now'}
-          </Button>
+            Update Now
+          </AdminButton>
         )}
       </DialogActions>
     </Dialog>

@@ -5,6 +5,8 @@
  * retry-logikk og persistent lagring på samme måte som upload-systemet
  */
 
+import { apiRequest } from '@/lib/queryClient';
+
 export interface DownloadTask {
   id: string;
   url: string;
@@ -347,9 +349,9 @@ class BackgroundDownloadService {
         tasks: Array.from(this.tasks.entries()),
         timestamp: Date.now(),
       };
-      fetch('/api/user/kv', {
-        method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ key: 'background_downloads', value: data })
+      apiRequest('/api/user/kv', {
+        method: 'POST',
+        body: JSON.stringify({ key: 'background_downloads', value: data }),
       }).catch(() => {});
       localStorage.setItem(this.storageKey, JSON.stringify(data));
     } catch (error) {
@@ -372,8 +374,7 @@ class BackgroundDownloadService {
       }
     };
 
-    fetch('/api/user/kv/background_downloads', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
+    apiRequest('/api/user/kv/background_downloads')
       .then((j) => {
         if (j?.data?.tasks) {
           this.tasks = new Map(j.data.tasks || []);

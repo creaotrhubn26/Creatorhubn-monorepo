@@ -164,7 +164,7 @@ function SlideRow({ slide, deckId, onUpdated }: SlideRowProps) {
           sx={{ textTransform: 'none', fontWeight: 700, color: '#a78bfa', borderColor: 'rgba(196,181,253,0.42)' }}
           className="no-print"
         >
-          {generating ? 'Genererer…' : 'Generer via Claude'}
+          {generating ? 'Genererer…' : 'Generer via CI'}
         </Button>
       </Stack>
       {error ? <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert> : null}

@@ -3951,7 +3951,7 @@ function AcademyDashboard() {
             <br />
             1. Faktura opprettes i din Fiken konto
             <br />
-            2. Sendes automatisk til CreatorHub Norge AS
+            2. Sendes automatisk til Creatorhub AS
             <br />
             3. Betalingsfrist: 30 dager
             <br />
@@ -3962,7 +3962,7 @@ function AcademyDashboard() {
             <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
               Mottaker:
             </Typography>
-            <Typography variant="body2">CreatorHub Norge AS</Typography>
+            <Typography variant="body2">Creatorhub AS</Typography>
             <Typography variant="body2">daniel@creatorhubn.com</Typography>
             <Typography variant="body2">Oslo, Norge</Typography>
           </Box>

@@ -20,7 +20,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Paper,
@@ -47,6 +46,7 @@ import {
   Select,
   MenuItem,
 } from '@mui/material';
+import { AdminButton, AdminTableContainer, useIsMobile } from './design-system';
 import {
   CheckCircle as CheckIcon,
   CheckCircle,
@@ -96,6 +96,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
   const [showTutorial, setShowTutorial] = useState(true);
   const [tutorialStep, setTutorialStep] = useState(0);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
+  const isMobile = useIsMobile();
 
   const handleValidateUrl = async () => {
     if (!url) return;
@@ -367,17 +368,18 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
   return (
     <Box>
       {/* Tutorial Dialog */}
-      <Dialog 
-        open={showTutorial} 
+      <Dialog
+        open={showTutorial}
         onClose={handleTutorialClose}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <TutorialIcon color="primary" />
           SEO Schema Optimization Tutorial
           <Box sx={{ flexGrow: 1 }} />
-          <Button size="small" onClick={handleTutorialClose}>
+          <Button size="small" onClick={handleTutorialClose} aria-label="Lukk veiledning">
             <CloseIcon />
           </Button>
         </DialogTitle>
@@ -407,20 +409,21 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                     </Alert>
                   )}
                   <Box sx={{ mb: 2 }}>
-                    <Button
-                      variant="contained"
+                    <AdminButton
+                      tone="primary"
                       onClick={() => setTutorialStep(index + 1)}
                       sx={{ mt: 1, mr: 1 }}
                     >
                       {index === tutorialSteps.length - 1 ? 'Finish' : 'Continue'}
-                    </Button>
-                    <Button
+                    </AdminButton>
+                    <AdminButton
+                      tone="ghost"
                       onClick={() => setTutorialStep(index - 1)}
                       sx={{ mt: 1, mr: 1 }}
                       disabled={index === 0}
                     >
                       Back
-                    </Button>
+                    </AdminButton>
                   </Box>
                 </StepContent>
               </Step>
@@ -439,16 +442,16 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleTutorialClose}>
+          <AdminButton tone="ghost" onClick={handleTutorialClose}>
             Close Tutorial
-          </Button>
-          <Button 
-            variant="contained" 
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleTutorialClose}
             startIcon={<PlayIcon />}
           >
             Start Optimizing!
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -459,7 +462,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <AssessmentIcon />
               <Box>
-                <Typography variant="h5">
+                <Typography variant="h5" component="h2">
                   Schema.org Validator
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -547,15 +550,16 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                   />
                 </Grid>
                 <Grid item xs={12} md={3}>
-                  <Button
+                  <AdminButton
                     fullWidth
-                    variant="contained"
+                    tone="primary"
                     onClick={handleValidateUrl}
-                    disabled={!url || isValidating}
+                    disabled={!url}
+                    loading={isValidating}
                     sx={{ height: '56px' }}
                   >
                     {isValidating ? 'Validating...' : 'Validate'}
-                  </Button>
+                  </AdminButton>
                 </Grid>
               </Grid>
             </Box>
@@ -576,13 +580,14 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
 }`}
                 sx={{ mb: 2, fontFamily: 'monospace' }}
               />
-              <Button
-                variant="contained"
+              <AdminButton
+                tone="primary"
                 onClick={handleValidateJson}
-                disabled={!jsonLd || isValidating}
+                disabled={!jsonLd}
+                loading={isValidating}
               >
                 {isValidating ? 'Validating...' : 'Validate JSON-LD'}
-              </Button>
+              </AdminButton>
             </Box>
           )}
 
@@ -783,7 +788,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                 
                 <Divider sx={{ my: 2 }} />
                 
-                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2 }}>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
                   <Button
                     variant="outlined"
                     color="info"
@@ -1003,9 +1008,9 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                 </Grid>
 
                 <Typography variant="subtitle2" gutterBottom>
-                  Applied Fixes ({autoFixResult.appliedFixes.length}):
+                  Applied Fixes ({(Array.isArray(autoFixResult.appliedFixes) ? autoFixResult.appliedFixes : []).length}):
                 </Typography>
-                <TableContainer component={Paper} sx={{ mb: 2 }}>
+                <AdminTableContainer ariaLabel="Applied fixes" sx={{ mb: 2 }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -1016,7 +1021,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {autoFixResult.appliedFixes.map((fix: any, index: number) => (
+                      {(Array.isArray(autoFixResult.appliedFixes) ? autoFixResult.appliedFixes : []).map((fix: any, index: number) => (
                         <TableRow key={index}>
                           <TableCell><code>{fix.field}</code></TableCell>
                           <TableCell>
@@ -1047,21 +1052,21 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
 
                 <Typography variant="subtitle2" gutterBottom>
                   Improvements:
                 </Typography>
                 <Box component="ul" sx={{ pl: 2 }}>
-                  {autoFixResult.improvements.map((improvement: string, index: number) => (
+                  {(Array.isArray(autoFixResult.improvements) ? autoFixResult.improvements : []).map((improvement: string, index: number) => (
                     <li key={index}>
                       <Typography variant="body2">{improvement}</Typography>
                     </li>
                   ))}
                 </Box>
 
-                <Button
-                  variant="contained"
+                <AdminButton
+                  tone="primary"
                   onClick={() => {
                     navigator.clipboard.writeText(JSON.stringify(autoFixResult.fixedSchema, null, 2));
                     setSnackbar({ open: true, message: 'Fixed schema copied to clipboard!', severity: 'success' });
@@ -1070,7 +1075,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                   sx={{ mt: 2 }}
                 >
                   Copy Fixed Schema
-                </Button>
+                </AdminButton>
               </CardContent>
             </Card>
           )}
@@ -1098,7 +1103,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                 <CardContent>
                   <Grid container spacing={2} alignItems="center">
                     <Grid item xs={12} md={6}>
-                      <Typography variant="h6" gutterBottom>
+                      <Typography variant="h6" component="h3" gutterBottom>
                         Validation Score
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1153,7 +1158,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
               {validation.detectedSchemas && validation.detectedSchemas.length > 0 && (
                 <Accordion defaultExpanded>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Typography variant="h6">
+                    <Typography variant="h6" component="h3">
                       Detected Schemas ({validation.detectedSchemas.length})
                     </Typography>
                   </AccordionSummary>
@@ -1193,7 +1198,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                         <strong>How to Fix:</strong> Copy the suggested fix code and add it to your JSON-LD. Critical errors must be fixed for schema to work.
                       </Typography>
                     </Alert>
-                    <TableContainer component={Paper}>
+                    <AdminTableContainer ariaLabel="Schema errors">
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1254,7 +1259,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                           ))}
                         </TableBody>
                       </Table>
-                    </TableContainer>
+                    </AdminTableContainer>
                   </AccordionDetails>
                 </Accordion>
               )}
@@ -1279,7 +1284,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                         <strong>Impact:</strong> Your schema will work without these, but you'll miss opportunities for enhanced search visibility.
                       </Typography>
                     </Alert>
-                    <TableContainer component={Paper}>
+                    <AdminTableContainer ariaLabel="Schema warnings">
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1314,7 +1319,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                           ))}
                         </TableBody>
                       </Table>
-                    </TableContainer>
+                    </AdminTableContainer>
                   </AccordionDetails>
                 </Accordion>
               )}
@@ -1366,7 +1371,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
               {/* External Validation Links */}
               <Card sx={{ mt: 2, bgcolor: 'info.light' }}>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
+                  <Typography variant="h6" component="h3" gutterBottom>
                     External Validation Tools
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>

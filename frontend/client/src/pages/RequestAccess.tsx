@@ -21,9 +21,14 @@ import {
   PhotoCamera,
   VideoCall,
 } from '@mui/icons-material';
+import BlockRenderer from '../components/role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../components/role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../components/role-room/cms/blockSchema';
 const InviteRequestForm = React.lazy(() => import('@/components/InviteRequestForm'));
 
 export default function RequestAccess() {
+  const cmsBlocks = useCmsBlocks('request-access');
+
   const features = [
     {
       icon: <PhotoCamera sx={{ fontSize: 40, color: '#FF8A00',}} />,
@@ -50,6 +55,10 @@ export default function RequestAccess() {
   const securityFeatures = [
     'GDPR-kompatibel databehandling', 'Automatisk backup til Google Drive','Sikker filhåndtering og lagring','Norske servere og personvern'
   ];
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
 
   return (
     <Box

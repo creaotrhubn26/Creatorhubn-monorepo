@@ -26,6 +26,8 @@ import {
   FormControlLabel,
   CircularProgress,
   Tooltip,
+  TextField,
+  InputAdornment,
   useTheme,
 } from '@mui/material';
 import {
@@ -43,7 +45,15 @@ import {
   Stop,
   Timeline,
   SystemUpdate,
+  Search as SearchIcon,
 } from '@mui/icons-material';
+import {
+  AdminCard,
+  AdminButton,
+  StatusChip,
+  AdminLoading,
+  AdminTableContainer,
+} from './design-system';
 
 // Function to fetch LSP diagnostics for compilation errors
 const fetchLSPDiagnostics = async (): Promise<any[]> => {
@@ -129,6 +139,7 @@ export function LSDMonitoringPanel(): JSX.Element {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [search, setSearch] = useState("");
 
   // ============================================================================
   // API QUERIES
@@ -351,7 +362,7 @@ export function LSDMonitoringPanel(): JSX.Element {
 
   // Combine all diagnostics including compilation errors
   const allDiagnostics = React.useMemo(() => {
-    const current = currentDiagnostics?.diagnostics || [];
+    const current = Array.isArray(currentDiagnostics?.diagnostics) ? currentDiagnostics.diagnostics : [];
     return [...current, ...compilationErrors];
 }, [currentDiagnostics, compilationErrors]);
 
@@ -495,10 +506,33 @@ export function LSDMonitoringPanel(): JSX.Element {
   const renderDiagnosticsTable = () => {
     if (!currentDiagnostics?.diagnostics) return null;
 
-    const diagnostics = currentDiagnostics.diagnostics as LSDDiagnosticResult[];
+    const diagnostics = Array.isArray(currentDiagnostics.diagnostics)
+      ? (currentDiagnostics.diagnostics as LSDDiagnosticResult[])
+      : [];
+
+    const filteredDiagnostics = diagnostics.filter((d) =>
+      `${d.name ?? ''} ${d.category ?? ''} ${d.filePath ?? ''} ${d.message ?? ''}`
+        .toLowerCase()
+        .includes(search.toLowerCase())
+    );
 
     return (
-      <TableContainer component={Paper}>
+      <Box>
+      <TextField
+        size="small"
+        placeholder="Søk i diagnostikk (fil, type, melding) …"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ mb: 2, width: { xs: '100%', sm: 360 } }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
+      <AdminTableContainer ariaLabel="Detaljerte diagnostikk-resultater">
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -511,7 +545,7 @@ export function LSDMonitoringPanel(): JSX.Element {
             </TableRow>
           </TableHead>
           <TableBody>
-            {diagnostics.map((diagnostic) => (
+            {filteredDiagnostics.map((diagnostic) => (
               <TableRow key={diagnostic.id}>
                 <TableCell>
                   <Box display="flex" alignItems="center">
@@ -525,13 +559,12 @@ export function LSDMonitoringPanel(): JSX.Element {
                   <Typography variant="body2">{diagnostic.name}</Typography>
                 </TableCell>
                 <TableCell>
-                  <Chip 
+                  <StatusChip
                     label={diagnostic.status.toUpperCase()}
-                    color={
-                      diagnostic.status === 'healthy' ? 'success' : 
+                    tone={
+                      diagnostic.status === 'healthy' ? 'success' :
                       diagnostic.status === 'warning' ? 'warning' : 'error'
                   }
-                    size="small"
                   />
                 </TableCell>
                 <TableCell>
@@ -549,12 +582,11 @@ export function LSDMonitoringPanel(): JSX.Element {
                   )}
                 </TableCell>
                 <TableCell>
-                  <Chip 
+                  <StatusChip
                     label={diagnostic.businessImpact}
-                    size="small"
-                    color={
+                    tone={
                       diagnostic.businessImpact === 'blocking' ? 'error' :
-                      diagnostic.businessImpact === 'degraded' ? 'warning' : 'default'
+                      diagnostic.businessImpact === 'degraded' ? 'warning' : 'neutral'
                   }
                   />
                 </TableCell>
@@ -567,7 +599,8 @@ export function LSDMonitoringPanel(): JSX.Element {
             ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
+      </Box>
     );
 };
 
@@ -578,7 +611,7 @@ export function LSDMonitoringPanel(): JSX.Element {
   return (
     <Box>
       {/* Header */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={3}>
         <Box display="flex" alignItems="center">
           <MonitorHeart sx={{ mr: 2, fontSize: 32, color: theme.palette.primary.main }} />
           <Box>
@@ -605,6 +638,7 @@ export function LSDMonitoringPanel(): JSX.Element {
           
           <Tooltip title="Refresh All Data">
             <IconButton
+              aria-label="Oppdater alle data"
               onClick={() => {
                 refetchDiagnostics();
                 queryClient.invalidateQueries({ queryKey: ['/api/admin/lsd-monitoring'] });
@@ -616,24 +650,23 @@ export function LSDMonitoringPanel(): JSX.Element {
           </Tooltip>
 
           {monitoringStatus?.isActive ? (
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon=<Stop />
+            <AdminButton
+              tone="danger"
+              startIcon={<Stop />}
               onClick={() => stopMonitoringMutation.mutate()}
-              disabled={stopMonitoringMutation.isPending}
+              loading={stopMonitoringMutation.isPending}
             >
               Stop Monitoring
-            </Button>
+            </AdminButton>
           ) : (
-            <Button variant="contained"
-              color="primary"
-              startIcon=<PlayArrow />
+            <AdminButton
+              tone="primary"
+              startIcon={<PlayArrow />}
               onClick={() => startMonitoringMutation.mutate()}
-              disabled={startMonitoringMutation.isPending}
+              loading={startMonitoringMutation.isPending}
             >
               Start Monitoring
-            </Button>
+            </AdminButton>
           )}
         </Box>
       </Box>
@@ -660,41 +693,28 @@ export function LSDMonitoringPanel(): JSX.Element {
       )}
 
       {/* System Overview */}
-      <Paper sx={{ p: 3, mb:  3 }}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-          System Overview
-        </Typography>
+      <AdminCard title="System Overview" sx={{ mb: 3 }}>
         {snapshotLoading ? (
-          <Box display="flex" justifyContent="center" p={4}>
-            <CircularProgress />
-          </Box>
+          <AdminLoading />
         ) : (
           renderSystemOverview()
         )}
-      </Paper>
+      </AdminCard>
 
       {/* Dependencies Status */}
-      <Paper sx={{ p: 3, mb:  3 }}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-          Dependencies Status
-        </Typography>
+      <AdminCard title="Dependencies Status" sx={{ mb: 3 }}>
         {snapshotLoading ? (
-          <Box display="flex" justifyContent="center" p={4}>
-            <CircularProgress />
-          </Box>
+          <AdminLoading />
         ) : (
           <Alert severity="info">
             Dependencies monitoring is currently being implemented.
           </Alert>
         )}
-      </Paper>
+      </AdminCard>
 
       {/* Diagnostics Summary */}
       {currentDiagnostics?.summary && (
-        <Paper sx={{ p: 3, mb:  3 }}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            Current Diagnostics Summary
-          </Typography>
+        <AdminCard title="Current Diagnostics Summary" sx={{ mb: 3 }}>
           <Grid container spacing={2}>
             <Grid item xs={6} sm={3}>
               <Box textAlign="center">
@@ -729,30 +749,26 @@ export function LSDMonitoringPanel(): JSX.Element {
               </Box>
             </Grid>
           </Grid>
-        </Paper>
+        </AdminCard>
       )}
 
       {/* Detailed Diagnostics Table */}
-      <Paper sx={{ p:  3 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-            Detailed Diagnostics
-          </Typography>
+      <AdminCard
+        title="Detailed Diagnostics"
+        action={
           <Typography variant="body2" color="textSecondary">
-            {currentDiagnostics?.timestamp && 
+            {currentDiagnostics?.timestamp &&
               `Last updated: ${new Date(currentDiagnostics.timestamp).toLocaleString('no-NO')}`
           }
           </Typography>
-        </Box>
-        
+        }
+      >
         {diagnosticsLoading ? (
-          <Box display="flex" justifyContent="center" p={4}>
-            <CircularProgress />
-          </Box>
+          <AdminLoading />
         ) : (
           renderDiagnosticsTable()
         )}
-      </Paper>
+      </AdminCard>
     </Box>
   );
 }

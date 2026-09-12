@@ -8,7 +8,7 @@ import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegr
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 import { isProfessionFeatureAvailable } from '../../../../shared/profession-feature-matrix';
-import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
+import { useVisualEditorOptional } from '../admin/visual-editor/VisualEditorContext';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { getProfessionIcon } from '@/utils/profession-icons';
@@ -346,8 +346,11 @@ export function EnhancedGearTab({
   // Master Integration System
   const { features, analytics, performance } = useEnhancedMasterIntegration();
   
-  // Toast notification system
-  const { addToast } = useVisualEditor();
+  // Toast notification system — optional: EnhancedGearTab rendres også utenfor
+  // VisualEditorProvider (f.eks. i Utstyr/gear-fanen). Uten provider blir toast
+  // en no-op i stedet for at hele fanen kræsjer inn i error-boundaryen.
+  const editor = useVisualEditorOptional();
+  const addToast = editor?.addToast ?? (() => {});
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
@@ -1199,18 +1202,21 @@ export function EnhancedGearTab({
       : [];
   const workspaceChromeSx = {
     '& .MuiCard-root': {
-      border: '1px solid rgba(255,255,255,0.10)',
+      border: '1px solid rgba(255,255,255,0.12)',
       borderRadius: { xs: 3, md: 4 },
-      background: 'rgba(255,255,255,0.04)',
+      background: 'rgba(255,255,255,0.08)',
       boxShadow: '0 18px 48px rgba(255,255,255,0.07)',
       backdropFilter: 'blur(14px)',
+      color: '#fff',
     },
     '& .MuiAccordion-root': {
-      border: '1px solid rgba(255,255,255,0.10)',
+      border: '1px solid rgba(255,255,255,0.12)',
       borderRadius: { xs: 3, md: 4 },
       overflow: 'hidden',
-      background: 'rgba(255,255,255,0.04)',
+      background: 'rgba(255,255,255,0.08)',
       boxShadow: '0 18px 48px rgba(255,255,255,0.07)',
+      backdropFilter: 'blur(8px)',
+      color: '#fff',
       '&:before': {
         display: 'none',
       },
@@ -1225,9 +1231,11 @@ export function EnhancedGearTab({
   } as const;
   const workspaceDialogPaperSx = {
     borderRadius: { xs: 3, md: 4 },
-    border: '1px solid rgba(255,255,255,0.10)',
-    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(255,255,255,0.08)',
     boxShadow: '0 30px 90px rgba(255,255,255,0.18)',
+    backdropFilter: 'blur(8px)',
+    color: '#fff',
     overflow: 'hidden',
   } as const;
 
@@ -1304,7 +1312,10 @@ export function EnhancedGearTab({
             p: { xs: 2.5, md: 3.5 },
             borderRadius: 4,
             border: `1px solid ${config.color}22`,
-            background: `radial-gradient(circle at top right, ${config.color}18, transparent 38%), rgba(255,255,255,0.04)`,
+            background: `radial-gradient(circle at top right, ${config.color}18, transparent 38%), rgba(255,255,255,0.08)`,
+            borderColor: 'rgba(255,255,255,0.12)',
+            backdropFilter: 'blur(8px)',
+            color: '#fff',
             ...theming.getThemedCardSx(),
           }}
         >
@@ -1374,10 +1385,11 @@ export function EnhancedGearTab({
                     sx={{
                       height: '100%',
                       borderRadius: 4,
-                      border: '1px solid',
-                      borderColor: 'divider',
+                      border: '1px solid rgba(255,255,255,0.12)',
                       overflow: 'hidden',
-                      background: 'rgba(255,255,255,0.04)',
+                      background: 'rgba(255,255,255,0.08)',
+                      backdropFilter: 'blur(8px)',
+                      color: '#fff',
                       transition: 'transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease',
                       '&:hover': {
                         transform: 'translateY(-4px)',
@@ -1482,10 +1494,11 @@ export function EnhancedGearTab({
               elevation={0}
               sx={{
                 borderRadius: 4,
-                border: '1px solid',
-                borderColor: 'divider',
+                border: '1px solid rgba(255,255,255,0.12)',
                 overflow: 'hidden',
-                background: 'rgba(255,255,255,0.04)',
+                background: 'rgba(255,255,255,0.08)',
+                backdropFilter: 'blur(8px)',
+                color: '#fff',
               }}
             >
               <Box
@@ -2001,7 +2014,7 @@ export function EnhancedGearTab({
           <CircularProgress />
         </Box>
       ) : userEquipment.length === 0 ? (
-        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)' }}>
+        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)', color: '#fff' }}>
           <Camera sx={{ fontSize: 64, color: config.color, opacity: 0.3, mb: 2 }} />
           <Typography variant="h6" color="text.secondary" gutterBottom>
             Ingen utstyr registrert
@@ -2360,7 +2373,7 @@ export function EnhancedGearTab({
           <CircularProgress />
         </Box>
       ) : maintenanceSchedule.length === 0 ? (
-        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)' }}>
+        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)', color: '#fff' }}>
           <Schedule sx={{ fontSize: 64, color: config.color, opacity: 0.3, mb: 2 }} />
           <Typography variant="h6" color="text.secondary" gutterBottom>
             Ingen planlagt vedlikehold
@@ -2460,7 +2473,7 @@ export function EnhancedGearTab({
           <CircularProgress />
         </Box>
       ) : equipmentRentals.length === 0 ? (
-        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)' }}>
+        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)', color: '#fff' }}>
           <ShoppingCart sx={{ fontSize: 64, color: config.color, opacity: 0.3, mb: 2 }} />
           <Typography variant="h6" color="text.secondary" gutterBottom>
             Ingen aktive utleier
@@ -2570,7 +2583,7 @@ export function EnhancedGearTab({
         <Grid container spacing={3}>
           {/* Price Trends Overview */}
           <Grid item xs={12} md={4}>
-            <Card sx={{ p: 3, height: '100%', bgcolor: 'rgba(255,255,255,0.04)' }}>
+            <Card sx={{ p: 3, height: '100%', bgcolor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)', color: '#fff' }}>
               <ShoppingCart sx={{ color: config.color, fontSize: 32, mb: 2 }} />
               <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: theming.colors.primary }}>
                 Pristrender
@@ -2588,7 +2601,7 @@ export function EnhancedGearTab({
           </Grid>
 
           <Grid item xs={12} md={4}>
-            <Card sx={{ p: 3, height: '100%', bgcolor: 'rgba(255,255,255,0.04)' }}>
+            <Card sx={{ p: 3, height: '100%', bgcolor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)', color: '#fff' }}>
               <TrendingUp sx={{ color: '#4caf50', fontSize: 32, mb: 2 }} />
               <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: theming.colors.primary }}>
                 Gjennomsnittlig rating
@@ -2607,7 +2620,7 @@ export function EnhancedGearTab({
           </Grid>
 
           <Grid item xs={12} md={4}>
-            <Card sx={{ p: 3, height: '100%', bgcolor: 'rgba(255,255,255,0.04)' }}>
+            <Card sx={{ p: 3, height: '100%', bgcolor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)', color: '#fff' }}>
               <AttachMoney sx={{ color: config.color, fontSize: 32, mb: 2 }} />
               <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: theming.colors.primary }}>
                 Prisspenn
@@ -2722,7 +2735,7 @@ export function EnhancedGearTab({
           <CircularProgress />
         </Box>
       ) : lensDatabase.length === 0 ? (
-        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.04)' }}>
+        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)', color: '#fff' }}>
           <Camera sx={{ fontSize: 64, color: config.color, opacity: 0.3, mb: 2 }} />
           <Typography variant="h6" color="text.secondary" gutterBottom>
             Laster objektivdatabase...
@@ -2802,7 +2815,7 @@ export function EnhancedGearTab({
       <Grid container spacing={3}>
         {/* Software Updates Section */}
         <Grid item xs={12}>
-          <Card sx={{ bgcolor: 'rgba(255,255,255,0.04)', mb: 3 }}>
+          <Card sx={{ bgcolor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)', color: '#fff', mb: 3 }}>
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary }}>
@@ -3046,8 +3059,9 @@ export function EnhancedGearTab({
           p: { xs: 2.5, md: 3.5 },
           borderRadius: { xs: 4, md: 5 },
           border: `1px solid ${config.color}26`,
-          background: `radial-gradient(circle at top right, ${config.color}16, transparent 34%), radial-gradient(circle at bottom left, ${config.color}10, transparent 28%), rgba(255,255,255,0.04)`,
+          background: `radial-gradient(circle at top right, ${config.color}16, transparent 34%), radial-gradient(circle at bottom left, ${config.color}10, transparent 28%), rgba(255,255,255,0.08)`,
           boxShadow: '0 24px 70px rgba(255,255,255,0.08)',
+          backdropFilter: 'blur(8px)',
           overflow: 'hidden',
           ...theming.getThemedCardSx(),
         }}

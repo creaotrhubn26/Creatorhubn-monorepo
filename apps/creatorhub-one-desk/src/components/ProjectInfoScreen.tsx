@@ -33,6 +33,7 @@ import {
 } from "../api";
 import MountsSection from "./MountsSection";
 import CopyProgressView from "./CopyProgressView";
+import ResumeBanner from "./ResumeBanner";
 import IPadPairingSection from "./IPadPairingSection";
 import CaptureMirrorSection from "./CaptureMirrorSection";
 
@@ -181,6 +182,10 @@ export default function ProjectInfoScreen({ config, onLoggedOut, onSwitchProject
             </Box>
           )}
         </Stack>
+
+        {/* Resume-banner — vises kun hvis det finnes interrupted backup-økter
+            etter app-crash eller forced quit. Skjult når listen er tom. */}
+        <ResumeBanner />
 
         {error && (
           <Alert

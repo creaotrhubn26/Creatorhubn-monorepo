@@ -1,24 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   Grid,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Chip,
   LinearProgress,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
-  TrendingUp as TrendingIcon,
   Speed as SpeedIcon,
   Error as ErrorIcon,
   CheckCircle as SuccessIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { harRecorder } from '../../utils/harRecorder';
 import { useWireMockTestHistory } from '../../hooks/useWireMockTestHistory';
@@ -27,6 +26,7 @@ import {
   formatBytes,
   type WireMockTestResult as AnalyticsWireMockTestResult,
 } from '../../utils/wireMockAnalytics';
+import { AdminCard, AdminEmpty, AdminTableContainer } from './design-system';
 
 interface EndpointStats {
   endpoint: string;
@@ -43,6 +43,7 @@ export const WireMockBehaviorAnalytics: React.FC = () => {
   // Use test history hook for comprehensive analytics
   const { history } = useWireMockTestHistory();
 
+  const [search, setSearch] = useState("");
   const [endpointStats, setEndpointStats] = useState<EndpointStats[]>([]);
   const [globalStats, setGlobalStats] = useState({
     totalRequests: 0,
@@ -120,15 +121,7 @@ export const WireMockBehaviorAnalytics: React.FC = () => {
   };
 
   return (
-    <Card>
-      <CardContent>
-        <Box display="flex" alignItems="center" gap={1} mb={3}>
-          <TrendingIcon />
-          <Typography variant="h6">
-            📊 WireMock Behavior Analytics
-          </Typography>
-        </Box>
-
+    <AdminCard title="📊 WireMock Behavior Analytics">
         {/* Global Statistics */}
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid item xs={6} sm={3}>
@@ -179,11 +172,25 @@ export const WireMockBehaviorAnalytics: React.FC = () => {
         </Typography>
 
         {endpointStats.length === 0 ? (
-          <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-            <Typography>No data yet. Run WireMock tests to see analytics.</Typography>
-          </Box>
+          <AdminEmpty description="No data yet. Run WireMock tests to see analytics." />
         ) : (
-          <TableContainer sx={{ maxHeight: 400 }}>
+          <>
+          <TextField
+            size="small"
+            fullWidth
+            placeholder="Søk i endepunkter …"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            sx={{ mb: 1.5 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+          <AdminTableContainer ariaLabel="Endpoint performance" sx={{ maxHeight: 400 }}>
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
@@ -198,7 +205,9 @@ export const WireMockBehaviorAnalytics: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {endpointStats.map((stat, index) => (
+                {endpointStats.filter(stat =>
+                  `${stat.endpoint} ${stat.method}`.toLowerCase().includes(search.toLowerCase())
+                ).map((stat, index) => (
                   <TableRow key={index} hover>
                     <TableCell>
                       <Chip
@@ -263,9 +272,9 @@ export const WireMockBehaviorAnalytics: React.FC = () => {
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
+          </>
         )}
-      </CardContent>
-    </Card>
+    </AdminCard>
   );
 };

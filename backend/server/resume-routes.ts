@@ -465,7 +465,7 @@ async function uniqueSlug(
       `SELECT 1 FROM resumes WHERE user_id = $1 AND slug = $2 LIMIT 1`,
       [userId, slug],
     );
-    if (r.rowCount === 0) return slug;
+    if (!r.rows.length) return slug;
     n += 1;
     slug = `${slugify(base)}-${n}`;
     if (n > 999) return `${slug}-${Date.now()}`;

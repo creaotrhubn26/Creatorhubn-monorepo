@@ -32,7 +32,6 @@ import {
   Checkbox,
   Alert,
   Tooltip,
-  Paper,
   Divider,
   ButtonGroup,
   Badge,
@@ -40,7 +39,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Avatar,
@@ -103,6 +101,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import TaskListVisualizer from './TaskListVisualizer';
 import MonacoEditor from '@monaco-editor/react';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface APIEndpoint {
   id: string;
@@ -164,6 +163,7 @@ export default function VisualCMSDashboard() {
   // Theming system
   const theming = useTheming('prototype_tester');
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // State management
   const [selectedView, setSelectedView] = useState<
@@ -228,7 +228,7 @@ export default function VisualCMSDashboard() {
       mockedCount:  20,
       healthyCount:  41,
       status: 'mixed',
-      color: '#9c27b0',
+      color: '#ce93d8',
       icon: <WorkflowIcon />,
   },
     {
@@ -527,7 +527,7 @@ export default function VisualCMSDashboard() {
     <Box sx={{ p:  3 }}>
       {/* Header */}
       <Box sx={{ mb:  4 }}>
-        <Typography variant="h4" sx={{  mb: 1, fontWeight: 600}}>
+        <Typography variant="h4" component="h2" sx={{  mb: 1, fontWeight: 600}}>
           Visual CMS Editor
         </Typography>
         <Typography variant="subtitle1" color="text.secondary">
@@ -627,13 +627,16 @@ export default function VisualCMSDashboard() {
         <Grid container spacing={3}>
           {/* API Categories Overview */}
           <Grid item xs={12}>
-            <Typography variant="h5" sx={{  mb:  2  }}>
+            <Typography variant="h5" component="h3" sx={{  mb:  2  }}>
               API Bank Status
             </Typography>
             <Grid container spacing={2}>
               {apiCategories.map((category) => (
                 <Grid item xs={12} sm={6} md={3} key={category.id}>
                   <Card
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Åpne ${category.name}`}
                     sx={{
                       cursor: 'pointer',
                       transition: 'all 0.2',
@@ -644,6 +647,13 @@ export default function VisualCMSDashboard() {
                     onClick={() => {
                       setSelectedCategory(category.id);
                       setSelectedView('api-bank');
+                  }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedCategory(category.id);
+                        setSelectedView('api-bank');
+                    }
                   }}
                   >
                     <CardContent sx={theming.getThemedCardSx()}>
@@ -682,7 +692,7 @@ export default function VisualCMSDashboard() {
 
           {/* Workflow Status */}
           <Grid item xs={12} md={8}>
-            <Typography variant="h5" sx={{  mb:  2  }}>
+            <Typography variant="h5" component="h3" sx={{  mb:  2  }}>
               Deployment Workflow
             </Typography>
             <Card sx={theming.getThemedCardSx()}>
@@ -724,7 +734,7 @@ export default function VisualCMSDashboard() {
 
           {/* Quick Actions */}
           <Grid item xs={12} md={4}>
-            <Typography variant="h5" sx={{  mb:  2  }}>
+            <Typography variant="h5" component="h3" sx={{  mb:  2  }}>
               Quick Actions
             </Typography>
             <Stack spacing={2}>
@@ -817,6 +827,7 @@ export default function VisualCMSDashboard() {
         onClose={() => setDeploymentDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Deploy til Produksjon</DialogTitle>
         <DialogContent>
@@ -850,9 +861,10 @@ export default function VisualCMSDashboard() {
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeploymentDialogOpen(false)}>Avbryt</Button>
-          <Button variant="contained"
-            color="success"
+          <AdminButton tone="ghost" onClick={() => setDeploymentDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
+            loading={startDeploymentWorkflow.isPending}
             startIcon={<LaunchIcon />}
             onClick={() => {
               startDeploymentWorkflow.mutate();
@@ -860,7 +872,7 @@ export default function VisualCMSDashboard() {
           }}
           >
             Deploy til Produksjon
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

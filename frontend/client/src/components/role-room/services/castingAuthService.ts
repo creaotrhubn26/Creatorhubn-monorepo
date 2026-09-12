@@ -90,8 +90,8 @@ export const castingAuthService = {
     const userRole = await this.getUserRole(projectId, userId);
     if (!userRole) return false;
     
-    // Director, producer, production manager, and content producer can edit production
-    return ['director', 'producer', 'production_manager', 'content_producer'].includes(userRole.role) ||
+    // Director, producer, production manager, 1st AD, and content producer can edit production
+    return ['director', 'producer', 'production_manager', 'first_ad', 'second_ad', 'content_producer'].includes(userRole.role) ||
            await this.hasPermission(projectId, 'canEditProduction', userId);
   },
 
@@ -114,7 +114,9 @@ export const castingAuthService = {
     const userRole = await this.getUserRole(projectId, userId);
     if (!userRole) return false;
     
-    // Director, producer, and production manager can manage crew
+    // Director, producer, and production manager can manage the crew roster.
+    // A 1st AD can edit production-day assignments through canEditProduction,
+    // but does not own the project-wide crew roster by default.
     return ['director', 'producer', 'production_manager'].includes(userRole.role) ||
            await this.hasPermission(projectId, 'canManageCrew', userId);
   },
@@ -298,6 +300,42 @@ export const castingAuthService = {
           canRunTableRead: false,
           canComment: false,
           canRequestChanges: false,
+          canViewEconomy: false,
+        };
+      case 'production_coordinator':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canCoordinateProduction: true,
+          canEditShots: false,
+          canEditShotLists: false,
+          canManageCrew: false,
+          canManageLocations: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: false,
+          canViewEconomy: false,
+        };
+      case 'first_ad':
+      case 'second_ad':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: true,
+          canEditShots: false,
+          canEditShotLists: false,
+          canManageCrew: false,
+          canManageLocations: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: true,
           canViewEconomy: false,
         };
       case 'camera_team':

@@ -11,7 +11,7 @@
  */
 
 export type AgentKind =
-  | "wedding" | "music_video" | "corporate"
+  | "wedding" | "music_video" | "corporate" | "ad_film"
   | "event" | "documentary" | "screen_recording"
   | "podcast" | "short_film";
 

@@ -127,7 +127,7 @@ export default function NoProjectsScreen({ onRefresh, onLogout }: Props) {
             variant="outlined"
             size="large"
             startIcon={<OpenInNewIcon />}
-            onClick={() => void openUrl("https://creatorhubn.com/projects/new")}
+            onClick={() => void openUrl("https://www.creatorhubn.com/workspace?new=1")}
           >
             Opprett prosjekt på creatorhubn.com
           </Button>
@@ -149,7 +149,7 @@ export default function NoProjectsScreen({ onRefresh, onLogout }: Props) {
             <Link
               component="button"
               onClick={() =>
-                void openUrl("https://creatorhubn.com/projects/new")
+                void openUrl("https://www.creatorhubn.com/workspace?new=1")
               }
             >
               wizarden på creatorhubn.com

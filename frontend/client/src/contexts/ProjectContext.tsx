@@ -5,6 +5,7 @@
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { apiRequest, getStoredAuthToken } from '@/lib/queryClient';
 
 // Project data interface
 export interface ProjectData {
@@ -225,7 +226,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch('/api/projects', {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -251,7 +252,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
         },
         body: JSON.stringify(projectData),
     });
@@ -330,7 +331,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}`, {
         method: 'PUT',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(projectData),
     });
@@ -356,7 +357,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -380,7 +381,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -403,7 +404,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/settings`, {
         method: 'PUT',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(settings),
     });
@@ -434,7 +435,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/metadata`, {
         method: 'PUT',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(metadata),
     });
@@ -465,7 +466,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/integrations`, {
         method: 'PUT',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify({ [integration]: status }),
     });
@@ -496,7 +497,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/sync`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -517,7 +518,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch('/api/projects/sync', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -538,7 +539,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/share`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(shareData),
     });
@@ -558,7 +559,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/shares`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -579,7 +580,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch('/api/project-templates', {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify({ projectId, ...templateData }),
     });
@@ -599,7 +600,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/project-templates/${templateId}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -620,7 +621,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch('/api/project-templates', {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -641,7 +642,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects?status=${status}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -662,7 +663,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects?profession=${profession}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -683,7 +684,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/duplicate`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify({ newName }),
     });
@@ -707,7 +708,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/archive`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -731,7 +732,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/restore`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -755,7 +756,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/stats`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -776,7 +777,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/export?format=${format}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -797,7 +798,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch('/api/projects/import', {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(projectData),
     });
@@ -822,7 +823,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/collaborators`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(collaboratorData),
     });
@@ -842,7 +843,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/collaborators/${collaboratorId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -861,7 +862,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/collaborators`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -882,7 +883,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/collaborators/${collaboratorId}/permissions`, {
         method: 'PUT',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(permissions),
     });
@@ -902,7 +903,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/collaborators/invite`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify({ email, role }),
     });
@@ -926,19 +927,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         formData.append('metadata', JSON.stringify(metadata));
     }
 
-      const response = await fetch(`/api/projects/${projectId}/files`, {
+      // apiRequest treffer backend-host + vedlegger session-token automatisk.
+      // Tidligere sendte vi user.id som Bearer — det er feil token.
+      return await apiRequest(`/api/projects/${projectId}/files`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${user?.id}`,
-      },
         body: formData,
-    });
-
-      if (!response.ok) {
-        throw new Error('Failed to upload project file');
-    }
-
-      return await response.json();
+      });
   } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to upload project file';
       setError(errorMessage);
@@ -948,18 +942,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const getProjectFiles = useCallback(async (projectId: string) => {
     try {
-      const response = await fetch(`/api/projects/${projectId}/files`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${user?.id}`,
-      },
-    });
-
-      if (!response.ok) {
-        throw new Error('Failed to get project files');
-    }
-
-      return await response.json();
+      return await apiRequest(`/api/projects/${projectId}/files`);
   } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to get project files';
       setError(errorMessage);
@@ -969,16 +952,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const deleteProjectFile = useCallback(async (projectId: string, fileId: string) => {
     try {
-      const response = await fetch(`/api/projects/${projectId}/files/${fileId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${user?.id}`,
-      },
-    });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete project file');
-    }
+      await apiRequest(`/api/projects/${projectId}/files/${fileId}`, { method: 'DELETE' });
   } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete project file';
       setError(errorMessage);
@@ -988,17 +962,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const updateProjectFile = useCallback(async (projectId: string, fileId: string, updates: any) => {
     try {
-      const response = await fetch(`/api/projects/${projectId}/files/${fileId}`, {
+      await apiRequest(`/api/projects/${projectId}/files/${fileId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
-      },
         body: JSON.stringify(updates),
-    });
-
-      if (!response.ok) {
-        throw new Error('Failed to update project file');
-    }
+      });
   } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update project file';
       setError(errorMessage);
@@ -1008,18 +975,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   const shareProjectFile = useCallback(async (projectId: string, fileId: string, shareData: any) => {
     try {
-      const response = await fetch(`/api/projects/${projectId}/files/${fileId}/share`, {
+      return await apiRequest(`/api/projects/${projectId}/files/${fileId}/share`, {
         method: 'POST',
-        headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
-      },
         body: JSON.stringify(shareData),
-    });
-
-      if (!response.ok) {
-        throw new Error('Failed to share project file');
-    }
-      return await response.json();
+      });
   } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to share project file';
       setError(errorMessage);
@@ -1033,7 +992,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/status`, {
         method: 'PUT',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify({ status }),
     });
@@ -1058,7 +1017,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/milestones`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(milestone),
     });
@@ -1078,7 +1037,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/milestones/${milestoneId}`, {
         method: 'PUT',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(updates),
     });
@@ -1098,7 +1057,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/milestones/${milestoneId}/complete`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1117,7 +1076,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/timeline`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1139,7 +1098,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/comments`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(comment),
     });
@@ -1159,7 +1118,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/comments`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1180,7 +1139,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/comments/${commentId}`, {
         method: 'PUT',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(updates),
     });
@@ -1200,7 +1159,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/comments/${commentId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1220,7 +1179,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/backup`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1241,7 +1200,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/backup/${backupId}/restore`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1260,7 +1219,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/backups`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1281,7 +1240,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/backups/${backupId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1301,7 +1260,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/events`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify({ eventType, eventData }),
     });
@@ -1323,7 +1282,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       try {
         const response = await fetch(`/api/projects/${projectId}/events/latest`, {
           headers: {
-            'Authorization': `Bearer ${user?.id}`,
+            'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
         },
       });
         
@@ -1354,7 +1313,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/events?limit=${limit}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1385,7 +1344,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
       });
 
@@ -1406,7 +1365,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/performance`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1427,7 +1386,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/reports`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify({ reportType }),
     });
@@ -1449,7 +1408,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/health-score`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1472,7 +1431,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/notifications`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(notification),
     });
@@ -1497,7 +1456,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/notifications?${params}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1518,7 +1477,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/notifications/${notificationId}/read`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1537,7 +1496,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/notifications/${notificationId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1567,7 +1526,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/search?${params}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1592,7 +1551,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects?${params}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1613,7 +1572,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects?clientId=${clientId}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1637,7 +1596,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects?${params}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1659,7 +1618,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch('/api/projects/validate', {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(projectData),
     });
@@ -1681,7 +1640,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/health`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1702,7 +1661,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/dependencies`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1723,7 +1682,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/conflicts`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1745,7 +1704,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/cache`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(data),
     });
@@ -1765,7 +1724,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/cache`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1786,7 +1745,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/cache`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1805,7 +1764,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/cache/refresh`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1825,7 +1784,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/draft`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(draftData),
     });
@@ -1845,7 +1804,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/draft`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1866,7 +1825,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/draft`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1885,7 +1844,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/sync/offline`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1905,7 +1864,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/integrations/${integrationType}`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(config),
     });
@@ -1925,7 +1884,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/integrations/${integrationType}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1944,7 +1903,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/integrations`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1965,7 +1924,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/integrations/${integrationType}/test`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -1987,7 +1946,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/transform`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(transformation),
     });
@@ -2009,7 +1968,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/migrate`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify({ fromVersion, toVersion }),
     });
@@ -2029,7 +1988,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/version`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -2051,7 +2010,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/rollback`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify({ toVersion }),
     });
@@ -2072,7 +2031,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/optimize`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -2093,7 +2052,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/analyze`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -2114,7 +2073,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/cleanup`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -2136,7 +2095,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/permissions`, {
         method: 'PUT',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(permissions),
     });
@@ -2156,7 +2115,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/permissions`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -2177,7 +2136,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/access`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json','Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify({ userId, action }),
     });
@@ -2200,7 +2159,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/audit`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -2222,7 +2181,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/compliance`, {
         method: 'POST',
         headers: {
-          'Content-Type' : 'application/json', 'Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json', 'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify({ standards }),
     });
@@ -2244,7 +2203,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/compliance/report`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 
@@ -2265,7 +2224,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/compliance`, {
         method: 'PUT',
         headers: {
-          'Content-Type' : 'application/json', 'Authorization': `Bearer ${user?.id}`,
+          'Content-Type' : 'application/json', 'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
         body: JSON.stringify(complianceData),
     });
@@ -2285,7 +2244,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/projects/${projectId}/audit-trail`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${user?.id}`,
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`,
       },
     });
 

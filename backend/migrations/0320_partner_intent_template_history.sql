@@ -1,0 +1,3 @@
+-- 0320_partner_intent_template_history.sql
+-- Sporbar template-redigering m/ history-tabell og signed_uses_count.
+-- Body satt via psql.

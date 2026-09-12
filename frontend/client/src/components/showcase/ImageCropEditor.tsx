@@ -125,7 +125,20 @@ export const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="lg"
+      PaperProps={{
+        sx: {
+          bgcolor: 'rgba(15,23,42,0.96)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          color: '#fff',
+        },
+      }}
+    >
       <DialogTitle>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <CropIcon />
@@ -277,7 +290,7 @@ export const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
                   control={<Switch checked={focalPointMode} onChange={(event) => setFocalPointMode(event.target.checked)} />}
                   label="Set focal point by clicking image"
                 />
-                <Typography variant="caption" display="block" color="text.secondary">
+                <Typography variant="caption" display="block" sx={{ color: 'rgba(255,255,255,0.65)' }}>
                   Focal point: {focalPoint.x.toFixed(1)}%, {focalPoint.y.toFixed(1)}%
                 </Typography>
               </Paper>

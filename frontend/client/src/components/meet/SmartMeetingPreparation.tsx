@@ -5,11 +5,12 @@
  */
 
 import { useTheming } from '../../utils/theming-helper';
+import { getStoredAuthToken } from '@/lib/queryClient';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import React, { useState, useEffect } from 'react';
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Box,
   Card as MuiCard,
@@ -177,7 +178,7 @@ export default function SmartMeetingPreparation({
     try {
       const response = await fetch(`/api/google-meet/prepare/${meetingId}`, {
         headers: {
-          'Authorization': `Bearer ${userId}`
+          'Authorization': `Bearer ${getStoredAuthToken() || userId}`
       }
     });
 

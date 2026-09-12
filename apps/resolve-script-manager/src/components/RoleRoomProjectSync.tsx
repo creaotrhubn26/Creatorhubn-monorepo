@@ -246,13 +246,17 @@ export function RoleRoomProjectSync() {
         takeNumber?: number;
       }> = [];
       const concurrency = 4;
-      const queue = [...usable];
+      // Unik sekvens-prefiks per klipp: fileName kan kollidere (to takes med samme
+      // scene+take_number gir identisk navn) → uten prefiks skrev to parallelle
+      // nedlastinger til SAMME dest-sti og det ene opptaket ble stille overskrevet.
+      const queue = usable.map((u, i) => ({ ...u, _seq: i }));
       let done = 0;
       const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
         while (queue.length > 0) {
           const next = queue.shift();
           if (!next) break;
-          const dest = `${stagingDir}/${next.fileName}`;
+          const safeName = String(next.fileName).replace(/[^\w.\-]+/g, '_');
+          const dest = `${stagingDir}/${next._seq}_${safeName}`;
           try {
             await downloadClip(next.downloadUrl as string, dest);
             downloaded.push({

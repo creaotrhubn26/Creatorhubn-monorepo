@@ -26,7 +26,9 @@ import {
   Divider,
   TextField,
   Stack,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from '../admin/adminDarkTheme';
 import {
   Add,
   Settings,
@@ -528,13 +530,16 @@ export default function VendorTypeManager({
 
   if (isLoading) {
     return (
-      <Box sx={{ p: 3, textAlign: 'center' }}>
-        <Typography>Laster vendor typer...</Typography>
-      </Box>
+      <ThemeProvider theme={adminDarkTheme}>
+        <Box sx={{ p: 3, textAlign: 'center' }}>
+          <Typography>Laster vendor typer...</Typography>
+        </Box>
+      </ThemeProvider>
     );
 }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box component="main" role="main" aria-label="Vendor Type Manager" sx={{ p: 3 }}>
       {/* Header */}
       <Paper component="header" sx={{ p: 3, mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
@@ -841,7 +846,7 @@ export default function VendorTypeManager({
               )}
 
               {/* Add New Category */}
-              <Paper sx={{ p: 2, mb: 3, bgcolor: 'grey.50' }}>
+              <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(255,255,255,0.04)' }}>
                 <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600}}>
                   Legg til ny kategori
                 </Typography>
@@ -1018,5 +1023,6 @@ export default function VendorTypeManager({
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }

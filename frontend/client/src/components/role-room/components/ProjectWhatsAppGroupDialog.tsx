@@ -393,7 +393,7 @@ const ProjectWhatsAppGroupDialog: FC<ProjectWhatsAppGroupDialogProps> = ({
                                     size="small"
                                     onClick={() => handleResend(row.crewId)}
                                     disabled={Boolean(resendingFor)}
-                                    sx={{ color: '#7dd3fc' }}
+                                    sx={{ color: 'var(--role-cyan, #7dd3fc)' }}
                                   >
                                     {resendingFor === row.crewId ? (
                                       <CircularProgress size={14} />

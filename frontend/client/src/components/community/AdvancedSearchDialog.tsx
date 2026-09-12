@@ -253,7 +253,7 @@ export default function AdvancedSearchDialog({
           transition: 'transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease',
           '&:hover': {
             transform: 'translateY(-1px)',
-            borderColor: 'rgba(245, 166, 35, 0.2)',
+            borderColor: 'rgba(255, 140, 0, 0.2)',
             bgcolor: 'rgba(255,255,255,0.05)',
           },
         }}
@@ -542,7 +542,7 @@ export default function AdvancedSearchDialog({
         {/* Results */}
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress sx={{ color: '#f5a623' }} />
+            <CircularProgress sx={{ color: '#ff8c00' }} />
           </Box>
         ) : results.length === 0 ? (
           <Box sx={{ ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX, textAlign: 'center', py: 4 }}>

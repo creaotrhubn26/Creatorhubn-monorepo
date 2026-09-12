@@ -14,7 +14,6 @@ import {
   Button,
   Grid,
   Alert,
-  Chip,
   Divider,
   List,
   ListItem,
@@ -24,7 +23,10 @@ import {
   Stack,
   IconButton,
   Tooltip,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
+import { AdminButton, StatusChip } from './design-system';
 import {
   Payment as PaymentIcon,
   CardMembership as CardMembershipIcon,
@@ -48,6 +50,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
   
   // Theming system
   const theming = useTheming('prototype_tester');
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
 
   // Register component with MasterIntegrationProvider
   useEffect(() => {
@@ -170,7 +173,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
       case 'ERROR':
         return 'error';
       default:
-        return 'default';
+        return 'neutral';
   }
 };
 
@@ -192,14 +195,15 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
 };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box className={className}>
-      <Typography variant="h4" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+      <Typography variant="h4" component="h2" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
         <PaymentIcon color="primary" />
         Google Payments Configuration
       </Typography>
 
       <Alert severity="info" sx={{ mb: 3 }}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+        <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
           CreatorHub Norge Payments Profile ID: {paymentsProfileId}
         </Typography>
         <Typography variant="body2">
@@ -212,7 +216,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
         <Grid item xs={12} sm={6}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                 <PaymentIcon color="primary" />
                 Google Pay Integration
               </Typography>
@@ -220,8 +224,8 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
                 Payment processing and subscription management
               </Typography>
               <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-                <Chip label="Merchant ID: 7115-4985-8029" color="primary" size="small" />
-                <Chip label="Status: Active" color="success" size="small" />
+                <StatusChip label="Merchant ID: 7115-4985-8029" tone="brand" />
+                <StatusChip label="Status: Active" tone="success" />
               </Stack>
               <Button
                 variant="outlined"
@@ -238,7 +242,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
         <Grid item xs={12} sm={6}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                 <CardMembershipIcon color="primary" />
                 Google Wallet Integration
               </Typography>
@@ -246,8 +250,8 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
                 Digital membership cards and passes
               </Typography>
               <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-                <Chip label="Issuer ID: 7115-4985-8029" color="primary" size="small" />
-                <Chip label="Status: Active" color="success" size="small" />
+                <StatusChip label="Issuer ID: 7115-4985-8029" tone="brand" />
+                <StatusChip label="Status: Active" tone="success" />
               </Stack>
               <Button
                 variant="outlined"
@@ -264,19 +268,18 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
 
       <Card sx={{ mb: 3 }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+            <Typography variant="h6" component="h3" sx={{ color: themeColors.primary }}>
               Configuration Details
             </Typography>
-            <Button
-              variant="contained"
+            <AdminButton
+              tone="primary"
               startIcon={<RefreshIcon />}
               onClick={testConfiguration}
-              disabled={isLoading}
-              sx={theming.getThemedButtonSx()}
+              loading={isLoading}
             >
               {isLoading ? 'Testing...' : 'Test Configuration'}
-            </Button>
+            </AdminButton>
           </Box>
 
           <List>
@@ -288,13 +291,12 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
                   </ListItemIcon>
                   <ListItemText
                     primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
                         {item.icon}
                         <Typography variant="subtitle1">{item.label}</Typography>
-                        <Chip
+                        <StatusChip
                           label={item.value}
-                          color={getStatusColor(item.status) as any}
-                          size="small"
+                          tone={getStatusColor(item.status) as any}
                         />
                       </Box>
                   }
@@ -304,6 +306,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
                     size="small"
                     onClick={() => copyToClipboard(item.value)}
                     title="Copy to clipboard"
+                    aria-label="Kopier til utklippstavle"
                   >
                     <CopyIcon />
                   </IconButton>
@@ -318,7 +321,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
       {Object.keys(configStatus).length > 0 && (
         <Card sx={theming.getThemedCardSx()}>
           <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" component="h3" gutterBottom sx={{ color: themeColors.primary }}>
               Test Results
             </Typography>
             <Grid container spacing={2}>
@@ -328,10 +331,9 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
                     <Typography variant="body2" color="text.secondary" gutterBottom>
                       {key.replace(/([A-Z])/g, ' $1').trim()}
                     </Typography>
-                    <Chip
+                    <StatusChip
                       label={value as string}
-                      color={getStatusColor(value as string) as any}
-                      size="small"
+                      tone={getStatusColor(value as string) as any}
                     />
                   </Paper>
                 </Grid>
@@ -349,6 +351,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
         </Typography>
       </Alert>
     </Box>
+    </ThemeProvider>
   );
 }
 

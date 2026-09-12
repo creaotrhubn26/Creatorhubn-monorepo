@@ -92,12 +92,12 @@ Skrivestil:
       const userPrompt = [
         `Skriv søknadstekst for: ${app_.scheme_label}`,
         `Prosjekt: ${app_.project_name}`,
-        `Søker: ${app_.applicant_company ?? "CreatorHub Norge AS"}`,
+        `Søker: ${app_.applicant_company ?? "Creatorhub AS"}`,
         `Beløp: ${app_.amount_requested ? `${app_.amount_requested} ${app_.currency}` : "ikke satt"}`,
         "",
         `Format-krav: ${schemeGuide}`,
         "",
-        app_.description ? `Eksisterende utkast (utvid eller forbedre):\n${app_.description}` : "Skriv et førsteutkast.",
+        app_.description ? `Eksisterende utkast (utvid eller forbedre):\n${String(app_.description).slice(0, 20000)}` : "Skriv et førsteutkast.",
         "",
         planContext ? `Forretningskontekst:\n${planContext}` : "",
       ].filter(Boolean).join("\n");
@@ -193,7 +193,7 @@ Skrivestil:
           asString(body.status, "draft"),
           asNumberOrNull(body.amountRequested),
           asString(body.currency, "NOK"),
-          asString(body.description),
+          (asString(body.description) ?? "").slice(0, 20000),
           asJsonbArray(body.milestones),
           asJsonbArray(body.budgetBreakdown),
           asString(body.contactPerson),
@@ -236,7 +236,7 @@ Skrivestil:
     if ("status" in body) push("status", asString(body.status, "draft"));
     if ("amountRequested" in body) push("amount_requested", asNumberOrNull(body.amountRequested));
     if ("currency" in body) push("currency", asString(body.currency, "NOK"));
-    if ("description" in body) push("description", asString(body.description));
+    if ("description" in body) push("description", (asString(body.description) ?? "").slice(0, 20000));
     if ("milestones" in body) sets.push(`milestones = '${asJsonbArray(body.milestones).replace(/'/g, "''")}'::jsonb`);
     if ("budgetBreakdown" in body) sets.push(`budget_breakdown = '${asJsonbArray(body.budgetBreakdown).replace(/'/g, "''")}'::jsonb`);
     if ("contactPerson" in body) push("contact_person", asString(body.contactPerson));

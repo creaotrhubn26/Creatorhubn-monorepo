@@ -128,6 +128,11 @@ import {
 } from './icons/CastingIcons';
 import type { CrewMember, CrewRole, CrewStatus, ProductionDay, SceneBreakdown, CrewAssignment } from '../models/casting';
 import { castingService } from '../services/castingService';
+import { useProjectMemberAvailability } from '../hooks/useProjectMemberAvailability';
+import {
+  memberToVirtualCrew,
+  isVirtualCrewId,
+} from '../utils/crewAvailabilitySync';
 import { roleRoomAnalytics } from '../services/roleRoomAnalytics';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
@@ -248,7 +253,7 @@ const DEPT_COLORS: Record<DeptKey, string> = {
   art: '#ec4899',
   wardrobe: '#a78bfa',
   makeup_hair: '#fb7185',
-  transport: '#22d3ee',
+  transport: 'var(--role-cyan, #22d3ee)',
   other: '#64748b',
 };
 
@@ -267,7 +272,7 @@ const DEPT_ICONS: Record<DeptKey, React.ElementType> = {
 
 const ROLE_TO_DEPT: Record<CrewRole, DeptKey> = {
   director: 'production', producer: 'production', casting_director: 'production',
-  production_manager: 'production', production_assistant: 'production',
+  production_manager: 'production', production_coordinator: 'production', production_assistant: 'production',
   script_supervisor: 'production', location_manager: 'production',
   camera_operator: 'camera', camera_assistant: 'camera',
   cinematographer: 'camera', drone_pilot: 'camera',
@@ -342,6 +347,14 @@ function AvailabilityWeekDots({ member, hasConflict }: { member: CrewMember; has
       {hasConflict && (
         <Tooltip title="Dobbeltbooket!" arrow>
           <WarningAmberIcon sx={{ fontSize: 12, color: '#ef4444', ml: 0.3 }} />
+        </Tooltip>
+      )}
+      {Boolean((member as { availabilitySynced?: boolean }).availabilitySynced) && (
+        <Tooltip title="Tilgjengelighet synket fra medlemmets egen kalender" arrow>
+          <Box sx={{
+            width: 6, height: 6, borderRadius: '50%', ml: 0.3, flexShrink: 0,
+            bgcolor: '#a030c0', boxShadow: '0 0 4px rgba(160,48,192,0.9)',
+          }} />
         </Tooltip>
       )}
     </Box>
@@ -551,7 +564,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
             checked={isAllSelected}
             indeterminate={selectedIds.size > 0 && !isAllSelected}
             onChange={onSelectAll}
-            sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked,&.MuiCheckbox-indeterminate': { color: '#b86bff' }, p: 0.5 }}
+            sx={{ color: 'rgba(255,255,255,0.5)', '&.Mui-checked,&.MuiCheckbox-indeterminate': { color: 'var(--role-accent, #b86bff)' }, p: 0.5 }}
           />
           <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>Velg alle</Typography>
         </Box>
@@ -560,7 +573,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
           size="small" variant="outlined"
           startIcon={<AssignIcon sx={{ fontSize: 15 }} />}
           onClick={onAssignDay}
-          sx={{ borderColor: 'rgba(184,107,255,0.45)', color: '#b86bff', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
+          sx={{ borderColor: 'rgba(184,107,255,0.45)', color: 'var(--role-accent, #b86bff)', fontSize: 12, textTransform: 'none', whiteSpace: 'nowrap',
             '&:hover': { bgcolor: 'rgba(184,107,255,0.12)' } }}
         >
           Tilordne dag
@@ -609,7 +622,7 @@ function CrewBulkBar({ selectedIds, isAllSelected, onSelectAll, onDelete, onChan
             label={selectedIds.size}
             size="small"
             onDelete={onDeselect}
-            sx={{ bgcolor: 'rgba(184,107,255,0.15)', color: '#b86bff', fontWeight: 700, height: 22, fontSize: 12 }}
+            sx={{ bgcolor: 'rgba(184,107,255,0.15)', color: 'var(--role-accent, #b86bff)', fontWeight: 700, height: 22, fontSize: 12 }}
           />
           <Tooltip title="Synkroniser">
             <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.4)' }}><SyncIcon sx={{ fontSize: 18 }} /></IconButton>
@@ -654,7 +667,7 @@ function InviteCrewDialog({ open, onClose, onInvite, getRoleLabel, crewRoles }: 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth
       PaperProps={{ sx: { bgcolor: '#1c2128', color: '#fff', border: '1px solid rgba(184,107,255,0.32)' } }}>
-      <DialogTitle sx={{ color: '#b86bff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+      <DialogTitle sx={{ color: 'var(--role-accent, #b86bff)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
         <PersonAddIcon /> Inviter crewmedlem
       </DialogTitle>
       <DialogContent>
@@ -677,7 +690,7 @@ function InviteCrewDialog({ open, onClose, onInvite, getRoleLabel, crewRoles }: 
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }}>Avbryt</Button>
         <Button variant="contained" onClick={handleSubmit} disabled={!name.trim()}
-          sx={{ bgcolor: '#b86bff', color: '#160a24', fontWeight: 700, '&:hover': { bgcolor: '#a855f7' } }}>
+          sx={{ bgcolor: 'var(--role-accent, #b86bff)', color: '#160a24', fontWeight: 700, '&:hover': { bgcolor: '#a855f7' } }}>
           Send invitasjon
         </Button>
       </DialogActions>
@@ -827,7 +840,7 @@ function AssignShootDayDialog({
       PaperProps={{ sx: { bgcolor: '#1c2128', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 3 } }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1 }}>
-        <CalendarMonthIcon sx={{ color: '#00d4ff' }} />
+        <CalendarMonthIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
         Tilordne {member.name} til innspillingsdager
       </DialogTitle>
       <DialogContent dividers sx={{ borderColor: 'rgba(255,255,255,0.1)', p: 0 }}>
@@ -835,7 +848,7 @@ function AssignShootDayDialog({
           <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', mb: 0.5 }}>Enhet</Typography>
           <RadioGroup row value={unit} onChange={e => setUnit(e.target.value as 'A' | 'B')}>
             {(['A', 'B'] as const).map(u => (
-              <FormControlLabel key={u} value={u} control={<Radio size="small" sx={{ color: '#00d4ff', '&.Mui-checked': { color: '#00d4ff' } }} />}
+              <FormControlLabel key={u} value={u} control={<Radio size="small" sx={{ color: 'var(--role-cyan, #00d4ff)', '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' } }} />}
                 label={<Typography sx={{ fontSize: 13, color: '#fff' }}>{u}-enhet</Typography>} />
             ))}
           </RadioGroup>
@@ -934,7 +947,7 @@ function DOODOverviewPanel({ open, onClose, crewMembers, productionDays, assignm
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2.5, pt: 2, pb: 1, flexShrink: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <DoodIcon sx={{ color: '#00d4ff', fontSize: 22 }} />
+          <DoodIcon sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: 22 }} />
           <Box>
             <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Days Out Of Days</Typography>
             <Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>
@@ -1056,7 +1069,7 @@ function CallsheetDrawer({ open, onClose, projectId, crew, selectedDay: initialD
     >
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, px: 2, pt: 2, pb: 1, flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <CallsheetIcon sx={{ color: '#00d4ff' }} />
+          <CallsheetIcon sx={{ color: 'var(--role-cyan, #00d4ff)' }} />
           <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Callsheet-generator</Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1142,12 +1155,12 @@ export function CrewManagementPanel({
     return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'Ukjent bruker';
   }, [user]);
   const noteActorId = user?.id !== undefined && user?.id !== null ? String(user.id) : undefined;
-  const roleTabAccent = '#b86bff';
+  const roleTabAccent = 'var(--role-accent, #b86bff)';
   const roleTabAccentHover = '#a855f7';
   const roleTabAccentSoft = 'rgba(184,107,255,0.18)';
   const roleSurface = 'rgba(20,14,48,0.84)';
   const roleSurfaceMuted = 'rgba(33,24,70,0.72)';
-  const roleBorder = 'rgba(184,107,255,0.32)';
+  const roleBorder = 'var(--role-border, rgba(184,107,255,0.32))';
   const roleText = '#ffffff';
   const roleTextMuted = 'rgba(255,255,255,0.92)';
   const rolePanelBackdrop = "url('/role-room-assets/role_panel_backdrop.webp')";
@@ -1188,6 +1201,51 @@ export function CrewManagementPanel({
     };
     loadCrew();
   }, [projectId]);
+
+  // ─── Auto-vis brukere lagt til i prosjektet + synk tilgjengeligheten deres ──
+  // Medlemmer som deler produksjonsteam-prosjektet (medlemskatalogen) dukker
+  // automatisk opp som crew-rader, med tilgjengelighet hentet fra deres egen
+  // kalender (role_room_member_availability). Delt hook = samme kilde som resten
+  // av The Role Room synker mot. Manuelt opprettede crew-rader med samme e-post
+  // beriker vi i stedet for å duplisere.
+  const { members: projectMembers, availabilityByUser, emailToUser } =
+    useProjectMemberAvailability(projectId);
+
+  // Manuelle crew-rader beriket med kalender + virtuelle rader for lagt-til
+  // medlemmer. Kun display-avledet: `crewMembers` (persistert kilde) er urørt,
+  // så redigering/lagring/sletting nedenfor treffer aldri synket data.
+  const enrichedCrew = useMemo<CrewMember[]>(() => {
+    if (projectMembers.length === 0) return crewMembers;
+
+    const usedUserIds = new Set<string>();
+    const rows: CrewMember[] = crewMembers.map((member) => {
+      let userId = typeof (member as { memberUserId?: unknown }).memberUserId === 'string'
+        ? (member as { memberUserId?: string }).memberUserId
+        : undefined;
+      if (!userId && isVirtualCrewId(member.id)) userId = member.id.slice('member:'.length);
+      if (!userId) {
+        const em = (member.contactInfo?.email || '').toLowerCase().trim();
+        if (em) userId = emailToUser.get(em);
+      }
+      if (userId) usedUserIds.add(userId);
+      const overlay = userId ? availabilityByUser.get(userId) : undefined;
+      if (!overlay) return member;
+      return {
+        ...member,
+        availabilityCells: overlay.cells.length ? overlay.cells : member.availabilityCells,
+        availability: overlay.range ? { ...member.availability, ...overlay.range } : member.availability,
+        availabilitySynced: true,
+      } as CrewMember;
+    });
+
+    for (const m of projectMembers) {
+      if (usedUserIds.has(m.userId)) continue;
+      const overlay = availabilityByUser.get(m.userId);
+      rows.push({ ...memberToVirtualCrew(m, overlay), availabilitySynced: Boolean(overlay) } as CrewMember);
+    }
+    return rows;
+  }, [crewMembers, projectMembers, availabilityByUser, emailToUser]);
+
   const [editingCrewMember, setEditingCrewMember] = useState<CrewMember | null>(null);
   const [formData, setFormData] = useState<Partial<CrewMember>>({
     name: '',
@@ -1495,6 +1553,7 @@ export function CrewManagementPanel({
       'producer',
       'casting_director',
       'production_manager',
+      'production_coordinator',
       'cinematographer',
       'camera_operator',
       'camera_assistant',
@@ -1528,6 +1587,7 @@ export function CrewManagementPanel({
         'wardrobe',
         'producer',
         'production_manager',
+        'production_coordinator',
         'gaffer',
         'grip',
         'director',
@@ -1559,6 +1619,7 @@ export function CrewManagementPanel({
         'vfx_artist',
         'motion_graphics',
         'production_manager',
+        'production_coordinator',
         'casting_director',
         'makeup_artist',
         'wardrobe',
@@ -1579,6 +1640,7 @@ export function CrewManagementPanel({
       producer: 'Produsent',
       casting_director: 'Castingansvarlig',
       production_manager: 'Produksjonsleder',
+      production_coordinator: 'Produksjonskoordinator',
       cinematographer: 'Filmfotograf',
       camera_operator: 'Kameraoperatør',
       camera_assistant: 'Kameraassistent',
@@ -1609,6 +1671,7 @@ export function CrewManagementPanel({
     producer:              '/role-room-assets/roleroom_producer.webp',
     casting_director:      '/role-room-assets/roleroom_casting_director.webp',
     production_manager:    '/role-room-assets/roleroom_photo_director.webp',
+    production_coordinator:'/role-room-assets/roleroom_photo_director.webp',
     cinematographer:       '/role-room-assets/roleroom_filmfotograf.webp',
     camera_operator:       '/role-room-assets/roleroom_photographer.webp',
     camera_assistant:      '/role-room-assets/roleroom_photo_assistant.webp',
@@ -1675,7 +1738,7 @@ export function CrewManagementPanel({
         .map(a => a.crewMemberId),
     );
 
-    crewMembers.forEach(member => {
+    enrichedCrew.forEach(member => {
       roleCount[member.role] = (roleCount[member.role] || 0) + 1;
       if (member.rate) totalRate += member.rate;
       if (isAvailableNow(member)) availableCount++;
@@ -1690,7 +1753,7 @@ export function CrewManagementPanel({
     const busyCount = assignedTodaySet.size;
 
     return {
-      total: crewMembers.length,
+      total: enrichedCrew.length,
       roleCount,
       totalDailyRate: totalRate,
       availableNow: availableCount,
@@ -1701,11 +1764,11 @@ export function CrewManagementPanel({
       assignedToday: assignedTodaySet.size,
       totalConflicts: conflicts.length,
     };
-  }, [crewMembers, crewAssignments, todayStr]);
+  }, [enrichedCrew, crewAssignments, todayStr]);
 
   // Filtered and sorted crew members
   const filteredAndSortedCrew = useMemo(() => {
-    let result = [...crewMembers];
+    let result = [...enrichedCrew];
 
     // Search filter (debounced – avoids re-filtering on every keystroke)
     if (debouncedSearch.trim()) {
@@ -1769,7 +1832,7 @@ export function CrewManagementPanel({
     });
 
     return result;
-  }, [crewMembers, debouncedSearch, filterRole, filterDept, filterStatus, filterAvailable, filterAssignedToday, crewAssignments, todayStr, sortField, sortDirection]);
+  }, [enrichedCrew, debouncedSearch, filterRole, filterDept, filterStatus, filterAvailable, filterAssignedToday, crewAssignments, todayStr, sortField, sortDirection]);
 
   // Conflict map: crewMemberId → has double-booking conflict (O(assignments) once per assignment change)
   const conflictMap = useMemo<Map<string, boolean>>(() => {
@@ -2325,6 +2388,7 @@ export function CrewManagementPanel({
       producer: '#ef4444', // Red for leadership
       casting_director: '#673ab7',
       production_manager: '#3f51b5',
+      production_coordinator: '#0284c7',
       cinematographer: '#8b5cf6', // Purple for camera
       camera_operator: '#8b5cf6', // Purple for camera
       camera_assistant: '#a78bfa',
@@ -2676,8 +2740,13 @@ export function CrewManagementPanel({
   // Keyboard shortcuts
   const handleOpenDialog = useCallback((crewMember?: CrewMember) => {
     if (crewMember) {
-      setEditingCrewMember(crewMember);
-      setFormData(crewMember);
+      // Rediger den PERSISTERTE raden, ikke den kalender-berikede visningen —
+      // ellers ville synket tilgjengelighet lekket inn i lagret data. Virtuelle
+      // «lagt til i prosjekt»-rader finnes ikke i crewMembers og materialiseres
+      // (med sin kalender-snapshot) ved første lagring.
+      const original = crewMembers.find((m) => m.id === crewMember.id) ?? crewMember;
+      setEditingCrewMember(original);
+      setFormData(original);
     } else {
       setEditingCrewMember(null);
       // Set profession-specific default role
@@ -2696,7 +2765,7 @@ export function CrewManagementPanel({
       });
     }
     setDialogOpen(true);
-  }, [profession]);
+  }, [profession, crewMembers]);
 
   useEffect(() => {
     if (!externalCreateSignal || externalCreateSignal === externalCreateSignalRef.current) {
@@ -3487,7 +3556,7 @@ export function CrewManagementPanel({
               { icon: <ScheduleIcon />, count: stats.busyCount, label: 'Opptatt', color: '#f59e0b' },
               { icon: <HourglassIcon />, count: stats.pendingCount, label: 'Venter på svar', color: '#c084fc' },
               { icon: <PersonAddIcon />, count: stats.invitedCount, label: 'Invitert', color: '#60a5fa' },
-              { icon: <WalletIcon />, count: `${stats.totalDailyRate.toLocaleString('nb-NO')} kr`, label: 'Total est. kostnad', color: '#22d3ee' },
+              { icon: <WalletIcon />, count: `${stats.totalDailyRate.toLocaleString('nb-NO')} kr`, label: 'Total est. kostnad', color: 'var(--role-cyan, #22d3ee)' },
             ]}
           />
         </Box>
@@ -3926,7 +3995,7 @@ export function CrewManagementPanel({
 
         {/* CENTER: crew list */}
         <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', border: `1px solid ${roleBorder}`, borderRadius: 2, bgcolor: roleSurfaceMuted, backdropFilter: 'blur(6px)', p: 1 }}>
-          {crewMembers.length === 0 ? (
+          {enrichedCrew.length === 0 ? (
             <RoleRoomEmptyState
               iconSrc={crewPng}
               title="Ingen teammedlemmer ennå"
@@ -3996,7 +4065,7 @@ export function CrewManagementPanel({
                     aria-label="Velg alle crewmedlemmer"
                     sx={{
                       color: 'rgba(255,255,255,0.87)',
-                      '&.Mui-checked': { color: '#00d4ff' },
+                      '&.Mui-checked': { color: 'var(--role-cyan, #00d4ff)' },
                     }}
                   />
                 </TableCell>
@@ -4005,7 +4074,7 @@ export function CrewManagementPanel({
                     active={sortField === 'name'}
                     direction={sortField === 'name' ? sortDirection : 'asc'}
                     onClick={() => handleSort('name')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#00d4ff' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #00d4ff)' } }}
                   >
                     Navn
                   </TableSortLabel>
@@ -4015,7 +4084,7 @@ export function CrewManagementPanel({
                     active={sortField === 'role'}
                     direction={sortField === 'role' ? sortDirection : 'asc'}
                     onClick={() => handleSort('role')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#00d4ff' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #00d4ff)' } }}
                   >
                     Rolle
                   </TableSortLabel>
@@ -4026,7 +4095,7 @@ export function CrewManagementPanel({
                     active={sortField === 'rate'}
                     direction={sortField === 'rate' ? sortDirection : 'asc'}
                     onClick={() => handleSort('rate')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#00d4ff' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #00d4ff)' } }}
                   >
                     Fast honorar
                   </TableSortLabel>
@@ -4036,7 +4105,7 @@ export function CrewManagementPanel({
                     active={sortField === 'availability'}
                     direction={sortField === 'availability' ? sortDirection : 'asc'}
                     onClick={() => handleSort('availability')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#00d4ff' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: 'var(--role-cyan, #00d4ff)' } }}
                   >
                     Tilgjengelighet
                   </TableSortLabel>
@@ -4760,8 +4829,8 @@ export function CrewManagementPanel({
                         <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 2, bgcolor: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.12)' }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                              <DoodIcon sx={{ fontSize: 14, color: '#00d4ff' }} />
-                              <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#00d4ff', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                              <DoodIcon sx={{ fontSize: 14, color: 'var(--role-cyan, #00d4ff)' }} />
+                              <Typography sx={{ fontSize: 11, fontWeight: 700, color: 'var(--role-cyan, #00d4ff)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                                 Innspillingsdager
                               </Typography>
                             </Box>
@@ -5097,7 +5166,7 @@ export function CrewManagementPanel({
               size="small"
               onClick={handleUndoDelete}
               startIcon={<UndoIcon />}
-              sx={{ color: '#00d4ff', fontWeight: 600 }}
+              sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 600 }}
             >
               Angre
             </Button>
@@ -5268,7 +5337,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: '#00d4ff', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5277,7 +5346,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#00d4ff' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
               }}
             />
 
@@ -5287,7 +5356,7 @@ export function CrewManagementPanel({
                 sx={{
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                  '&.Mui-focused': { color: '#00d4ff' },
+                  '&.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
                 }}
               >
                 Rolle
@@ -5320,7 +5389,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#00d4ff', borderWidth: 2 },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
                   '& .MuiSelect-select': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5374,7 +5443,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: '#00d4ff', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5383,7 +5452,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#00d4ff' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
               }}
             />
 
@@ -5415,7 +5484,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: '#00d4ff', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5424,7 +5493,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#00d4ff' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
               }}
             />
 
@@ -5454,7 +5523,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: '#00d4ff', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5463,7 +5532,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#00d4ff' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
               }}
             />
 
@@ -5488,7 +5557,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: '#00d4ff', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5497,7 +5566,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#00d4ff' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
               }}
             />
 
@@ -5620,7 +5689,7 @@ export function CrewManagementPanel({
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                       '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                       '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                      '&.Mui-focused fieldset': { borderColor: '#00d4ff', borderWidth: 2 },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
                       '& input': {
                         py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                       },
@@ -5633,7 +5702,7 @@ export function CrewManagementPanel({
                       color: 'rgba(255,255,255,0.87)',
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                     },
-                    '& .MuiInputLabel-root.Mui-focused': { color: '#00d4ff' },
+                    '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
                     '& .MuiFormHelperText-root': { 
                       color: 'rgba(255,255,255,0.87)',
                       fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' },
@@ -5647,7 +5716,7 @@ export function CrewManagementPanel({
                     sx={{
                       color: 'rgba(255,255,255,0.87)',
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                      '&.Mui-focused': { color: '#00d4ff' },
+                      '&.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
                     }}
                   >
                     Invitasjonsstatus
@@ -5686,7 +5755,7 @@ export function CrewManagementPanel({
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                       '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
                       '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.5)' },
-                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#00d4ff', borderWidth: 2 },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
                       '& .MuiSelect-select': {
                         py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                       },
@@ -5732,7 +5801,7 @@ export function CrewManagementPanel({
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                       '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                       '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                      '&.Mui-focused fieldset': { borderColor: '#00d4ff', borderWidth: 2 },
+                      '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
                       '& textarea': {
                         py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                       },
@@ -5741,7 +5810,7 @@ export function CrewManagementPanel({
                       color: 'rgba(255,255,255,0.87)',
                       fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                     },
-                    '& .MuiInputLabel-root.Mui-focused': { color: '#00d4ff' },
+                    '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
                   }}
                 />
                 {(() => {
@@ -5810,7 +5879,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: '#00d4ff', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5819,7 +5888,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#00d4ff' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
               }}
             />
 
@@ -5845,7 +5914,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: '#00d4ff', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5854,7 +5923,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#00d4ff' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
               }}
             />
 
@@ -5872,7 +5941,7 @@ export function CrewManagementPanel({
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused fieldset': { borderColor: '#00d4ff', borderWidth: 2 },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #00d4ff)', borderWidth: 2 },
                   '& textarea': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -5881,7 +5950,7 @@ export function CrewManagementPanel({
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#00d4ff' },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--role-cyan, #00d4ff)' },
               }}
             />
             <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem' }}>

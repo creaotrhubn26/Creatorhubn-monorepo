@@ -41,6 +41,7 @@ import {
   ThumbUp,
   ThumbDown,
 } from '@mui/icons-material';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface DemoStep {
   id: string;
@@ -68,6 +69,7 @@ interface VerificationDemo {
 }
 
 export default function VerificationSystemDemo() {
+  const isMobile = useIsMobile();
   const [isRunning, setIsRunning] = useState(false);
   
   // Theming system
@@ -335,7 +337,7 @@ export default function VerificationSystemDemo() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+      <Typography variant="h4" component="h2" gutterBottom sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
         🔍 Verification System Demo
       </Typography>
 
@@ -371,15 +373,15 @@ export default function VerificationSystemDemo() {
                     <Typography variant="caption" color="text.secondary">
                       Reported by: {scenario.userEmail} ({scenario.profession})
                     </Typography>
-                    <Button
-                      variant="contained"
+                    <AdminButton
+                      tone="primary"
                       startIcon={theming.getThemedIcon('play')}
                       onClick={() => startDemo(scenario)}
                       disabled={isRunning}
-                      sx={{ ...theming.getThemedButtonSx(), bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
+                      sx={theming.getThemedButtonSx()}
                     >
                       Start Demo
-                    </Button>
+                    </AdminButton>
                   </Box>
                 </CardContent>
               </Card>
@@ -479,7 +481,7 @@ export default function VerificationSystemDemo() {
       )}
 
       {/* User Validation Dialog */}
-      <Dialog open={showUserValidation} maxWidth="md" fullWidth>
+      <Dialog open={showUserValidation} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ bgcolor: '#ff8c00', color: 'white'}}>
           🔍 User Validation Required
         </DialogTitle>
@@ -530,13 +532,14 @@ export default function VerificationSystemDemo() {
               value={userValidationData.rating}
               onChange={(_, value) => setUserValidationData(prev => ({ ...prev, rating: value || 0 }))}
               size="large"
+              aria-label="Vurder kvaliteten på fiksen"
             />
           </Box>
         </DialogContent>
         <DialogActions sx={{ p:  3 }}>
-          <Button onClick={handleUserValidation} variant="contained" disabled={userValidationData.rating === 0} sx={theming.getThemedButtonSx()}>
+          <AdminButton tone="primary" onClick={handleUserValidation} disabled={userValidationData.rating === 0} sx={theming.getThemedButtonSx()}>
             Submit Validation
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

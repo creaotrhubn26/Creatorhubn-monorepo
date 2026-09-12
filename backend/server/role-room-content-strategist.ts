@@ -166,6 +166,7 @@ function buildUserPrompt(
   brand: BrandProfile,
   weekStarting: string,
   retryNotes: string[],
+  focus?: string,
 ): string {
   const lines: string[] = [
     `BRAND: ${brand.businessName} — ${brand.tagline}`,
@@ -206,6 +207,12 @@ function buildUserPrompt(
     `  }, … 7 total`,
     "]",
   ];
+  if (focus && focus.trim()) {
+    lines.push(
+      "",
+      `CAMPAIGN FOCUS THIS WEEK: ${focus.trim()} — sentrer minst 3 av de 7 konseptene rundt dette produktet/temaet, i merkevarens stil.`,
+    );
+  }
   if (retryNotes.length > 0) {
     lines.push("", "PREVIOUS ATTEMPT FAILED — fix these issues:");
     retryNotes.forEach((note) => lines.push(`  - ${note}`));
@@ -390,6 +397,8 @@ export function validateConcepts(raw: unknown): ValidationResult {
 export interface GenerateWeekOptions {
   /** Stop trying after this many Claude calls (default 3). */
   maxAttempts?: number;
+  /** Valgfritt kampanje-fokus (f.eks. et katalog-produkt å sentrere uken rundt). */
+  focus?: string;
 }
 
 export async function generateWeekPlan(
@@ -403,7 +412,7 @@ export async function generateWeekPlan(
   let retryNotes: string[] = [];
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const userPrompt = buildUserPrompt(brand, weekStarting, retryNotes);
+    const userPrompt = buildUserPrompt(brand, weekStarting, retryNotes, options.focus);
     const response = await client.messages.create({
       model: "claude-sonnet-4-5-20250929",
       max_tokens: 8000,

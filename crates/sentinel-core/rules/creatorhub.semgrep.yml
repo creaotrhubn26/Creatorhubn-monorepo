@@ -1,0 +1,51 @@
+# CreatorHub Sentinel — portable Semgrep mirror of the Rust rule pack.
+#
+# The Rust engine (crates/sentinel-core) is the source of truth and the thing
+# the CI gate runs — it needs no toolchain beyond `cargo`. This file mirrors the
+# same rules in Semgrep so they can also run inside an existing Semgrep pipeline,
+# in an IDE (semgrep-vscode), or as a cross-check. Keep the two in sync: every
+# CH-* id here must match a rule in src/lib.rs.
+#
+# Run:  semgrep --config crates/sentinel-core/rules/creatorhub.semgrep.yml frontend/client/src
+
+rules:
+  # CH-SEC-001 — frontend fetch() to /api sends the cookie but attaches no
+  # bearer/session header. Backend reads the token ONLY from headers
+  # (Authorization / x-session-token / x-auth-token), never the cookie, so these
+  # calls 401. Confirmed when the call has no `headers` key at all; a call that
+  # does pass `headers` may attach auth via a variable → treat as suspected
+  # (Semgrep can't cheaply prove that, so this pattern targets the confirmed,
+  # header-less shape only).
+  - id: CH-SEC-001-missing-bearer
+    languages: [typescript, tsx]
+    severity: ERROR
+    message: >
+      fetch() to /api with credentials:'include' but no Authorization/x-session-token
+      header. Backend auth is header-only, so this request 401s. Attach the session
+      token via the shared auth-header helper.
+    paths:
+      include:
+        - "frontend/**"
+    patterns:
+      - pattern: fetch($URL, { credentials: 'include', ... })
+      - metavariable-regex:
+          metavariable: $URL
+          regex: .*(/api/|`/api/).*
+      - pattern-not: fetch($URL, { ..., headers: $H, ... })
+
+  # CH-BUG-001 — spreading a useState value that was initialised to null/undefined
+  # directly into an array literal. `[...null]` throws "not iterable" at runtime;
+  # tsc misses it when the state type is `any`/loosely typed. Object spread
+  # ({...null} → {}) is safe and deliberately NOT matched.
+  - id: CH-BUG-001-null-array-spread
+    languages: [typescript, tsx]
+    severity: ERROR
+    message: >
+      Spreading a possibly-null state value into an array. [...value] throws
+      "value is not iterable" when the initial state is null/undefined. Guard with
+      `value ?? []` or initialise the state to [].
+    patterns:
+      - pattern: |
+          const [$V, $S] = useState(null);
+          ...
+          [..., ...$V, ...]

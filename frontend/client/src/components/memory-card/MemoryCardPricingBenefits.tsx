@@ -68,7 +68,7 @@ const MemoryCardPricingBenefits: React.FC<MemoryCardPricingBenefitsProps> = ({
   onClose
 }) => {
   // Theming system
-  const theming = useTheming('photographer');
+  const theming = useTheming('workspace');
   const [expandedBenefit, setExpandedBenefit] = useState<string | null>(null);
 
   const pricingBenefits = [
@@ -87,23 +87,23 @@ const MemoryCardPricingBenefits: React.FC<MemoryCardPricingBenefitsProps> = ({
 
   const getImpactIcon = (impact: string) => {
     switch (impact) {
-      case 'critical': return theming.getThemedIcon(',');
+      case 'critical': return <TrendingUp fontSize="small" />;
       case 'high': return theming.getThemedIcon('trendingUp');
       case 'medium': return theming.getThemedIcon('info');
       case 'low': return theming.getThemedIcon('checkCircle');
-      default: return theming.getThemedIcon(', ');
+      default: return <Info fontSize="small" />;
   }
 };
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
-      case 'performance': return theming.getThemedIcon(', ');
+      case 'performance': return <Info fontSize="small" />;
       case 'reliability': return theming.getThemedIcon('security');
       case 'workflow': return <Lightbulb />;
       case 'cost': return <PriceCheck />;
       case 'safety': return theming.getThemedIcon('storage');
       case 'professional': return theming.getThemedIcon('star');
-      default: return theming.getThemedIcon(', ');
+      default: return <Info fontSize="small" />;
   }
 };
 
@@ -112,7 +112,7 @@ const MemoryCardPricingBenefits: React.FC<MemoryCardPricingBenefitsProps> = ({
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
         <Typography variant="h5" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
           <Memory />
-          Why Memory Card Pricing is Beneficial
+          Hvorfor minnekort-priser er nyttige
         </Typography>
         {showAsDialog && (
           <IconButton onClick={onClose}>
@@ -164,7 +164,7 @@ const MemoryCardPricingBenefits: React.FC<MemoryCardPricingBenefitsProps> = ({
 
       {/* Detailed Benefits */}
       <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-        Key Benefits of Memory Card Pricing Knowledge
+        Nøkkelfordeler ved pris-innsikt
       </Typography>
 
       <Stack spacing={2}>
@@ -215,7 +215,7 @@ const MemoryCardPricingBenefits: React.FC<MemoryCardPricingBenefitsProps> = ({
                   {benefit.technicalDetails && (
                     <Alert severity="info" sx={{ mt:  2 }}>
                       <Typography variant="body2">
-                        <strong>Technical Insight: </strong> {benefit.technicalDetails}
+                        <strong>Teknisk innsikt: </strong> {benefit.technicalDetails}
                       </Typography>
                     </Alert>
                   )}
@@ -236,7 +236,7 @@ const MemoryCardPricingBenefits: React.FC<MemoryCardPricingBenefitsProps> = ({
           <Grid container spacing={2}>
             <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" gutterBottom>
-                Immediate Benefits: </Typography>
+                Umiddelbare fordeler: </Typography>
               <List dense>
                 <ListItem>
                   <ListItemIcon><CheckCircle sx={{ color: 'white'}} /></ListItemIcon>
@@ -254,7 +254,7 @@ const MemoryCardPricingBenefits: React.FC<MemoryCardPricingBenefitsProps> = ({
             </Grid>
             <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" gutterBottom>
-                Long-term Benefits: </Typography>
+                Langsiktige fordeler: </Typography>
               <List dense>
                 <ListItem>
                   <ListItemIcon><CheckCircle sx={{ color: 'white'}} /></ListItemIcon>
@@ -350,7 +350,7 @@ const MemoryCardPricingBenefits: React.FC<MemoryCardPricingBenefitsProps> = ({
           
           <Alert severity="success" sx={{ mt:  2 }}>
             <Typography variant="body2">
-              <strong>Savings: </strong>, 3,360 NOK (40% reduction) + Peace of mind + Professional reliability
+              <strong>Besparelse: </strong>, 3,360 NOK (40 % reduksjon) + trygghet + profesjonell pålitelighet
             </Typography>
           </Alert>
         </CardContent>
@@ -362,7 +362,7 @@ const MemoryCardPricingBenefits: React.FC<MemoryCardPricingBenefitsProps> = ({
     return (
       <Dialog open={true} onClose={onClose} maxWidth="lg" fullWidth>
         <DialogTitle>
-          Why Memory Card Pricing is Beneficial
+          Hvorfor minnekort-priser er nyttige
         </DialogTitle>
         <DialogContent>
           {content}

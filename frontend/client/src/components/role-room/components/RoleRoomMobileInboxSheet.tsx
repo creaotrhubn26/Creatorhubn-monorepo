@@ -32,6 +32,7 @@ import {
 import { Close as CloseIcon, Inbox as InboxIcon } from '@mui/icons-material';
 
 import type { RoleRoomViewportMode } from '../hooks/useRoleRoomViewportMode';
+import { resolveInboxCategory } from '../inboxCategories';
 
 export interface InboxItem {
   id: string;
@@ -40,6 +41,7 @@ export interface InboxItem {
   read: boolean;
   createdAt?: string;
   eventType?: string | null;
+  inboxType?: string | null;
 }
 
 interface RoleRoomMobileInboxSheetProps {
@@ -121,52 +123,57 @@ export const RoleRoomMobileInboxSheet: React.FC<RoleRoomMobileInboxSheetProps> =
         </Box>
       ) : (
         <List disablePadding sx={{ flex: 1, overflowY: 'auto', pb: 'var(--rr-safe-bottom, 0px)' }}>
-          {items.map((item) => (
-            <ListItemButton
-              key={item.id}
-              onClick={() => onItemClick?.(item.id)}
-              sx={{
-                alignItems: 'flex-start',
-                minHeight: 'var(--rr-touch-target-min, 44px)',
-                px: 2,
-                py: 1.25,
-                bgcolor: item.read ? 'transparent' : 'rgba(99,102,241,0.06)',
-              }}
-            >
-              <Box
-                aria-hidden
+          {items.map((item) => {
+            // Samme kategori-konfig som desktop — ikon + farge + menneskelig navn,
+            // i stedet for en nøytral prikk uten kontekst.
+            const category = resolveInboxCategory(item.inboxType, item.eventType);
+            const CategoryIcon = category.Icon;
+            return (
+              <ListItemButton
+                key={item.id}
+                onClick={() => onItemClick?.(item.id)}
                 sx={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  bgcolor: item.read ? 'transparent' : '#6366f1',
-                  mt: 1,
-                  mr: 1.5,
-                  flexShrink: 0,
+                  alignItems: 'flex-start',
+                  minHeight: 'var(--rr-touch-target-min, 44px)',
+                  px: 2,
+                  py: 1.25,
+                  borderLeft: `3px solid ${item.read ? 'transparent' : category.color}`,
+                  bgcolor: item.read ? 'transparent' : 'rgba(99,102,241,0.06)',
                 }}
-              />
-              <ListItemText
-                primary={item.title}
-                primaryTypographyProps={{ fontWeight: item.read ? 500 : 700 }}
-                secondary={
-                  <>
-                    {item.message ? <span>{item.message}</span> : null}
-                    {item.createdAt ? (
+              >
+                <Box sx={{ position: 'relative', mt: 0.4, mr: 1.5, flexShrink: 0 }}>
+                  <CategoryIcon sx={{ fontSize: 20, color: category.color }} />
+                  {!item.read ? (
+                    <Box
+                      aria-hidden
+                      sx={{
+                        position: 'absolute', top: -3, right: -3, width: 8, height: 8,
+                        borderRadius: '50%', bgcolor: '#6366f1', border: '2px solid #fff',
+                      }}
+                    />
+                  ) : null}
+                </Box>
+                <ListItemText
+                  primary={item.title}
+                  primaryTypographyProps={{ fontWeight: item.read ? 500 : 700 }}
+                  secondary={
+                    <>
+                      {item.message ? <span>{item.message}</span> : null}
                       <Typography
                         component="span"
                         variant="caption"
-                        color="text.secondary"
-                        sx={{ display: 'block', mt: 0.25 }}
+                        sx={{ display: 'block', mt: 0.25, color: category.color, fontWeight: 700 }}
                       >
-                        {formatTimestamp(item.createdAt)}
+                        {category.label}
+                        {item.createdAt ? ` · ${formatTimestamp(item.createdAt)}` : ''}
                       </Typography>
-                    ) : null}
-                  </>
-                }
-                secondaryTypographyProps={{ component: 'div' }}
-              />
-            </ListItemButton>
-          ))}
+                    </>
+                  }
+                  secondaryTypographyProps={{ component: 'div' }}
+                />
+              </ListItemButton>
+            );
+          })}
         </List>
       )}
     </Box>

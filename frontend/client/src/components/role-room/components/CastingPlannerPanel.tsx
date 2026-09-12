@@ -3,10 +3,11 @@ import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, star
 import { flushSync } from 'react-dom';
 import { Z_INDEX } from '../config/zIndex';
 import { lazyWithRetry } from '@/utils/lazyWithRetry';
-import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
+import { TOUCH_TARGET_SIZE, MOBILE_TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import { useToast } from './ToastStack';
+import { resolveInboxCategory } from '../inboxCategories';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
-import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck } from '../config/professionMode';
+import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck, isEducationMode as isEducationModeCheck, isStudentMode as isStudentModeCheck } from '../config/professionMode';
 import { getRoleRoomCanonicalPath, shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import {
   Box,
@@ -41,6 +42,7 @@ import {
   Tooltip,
   Alert,
   Badge,
+  Snackbar,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -86,6 +88,7 @@ import {
   Login as LoginIcon,
   Logout as LogoutIcon,
   SwapHoriz as SwapHorizIcon,
+  Backpack as StudentHomeIcon,
   School as TutorialIcon,
   Folder,
   Timeline as TimelineIcon,
@@ -139,6 +142,10 @@ import {
 } from './icons/CastingIcons';
 
 import type { CastingProject, Role, Candidate, ContactInfo, Schedule, UserRole, UserRoleType } from '../models/casting';
+import {
+  getCalendarDepartmentForProductionRole,
+  type ProductionCalendarDepartment,
+} from '../config/productionRoleCatalog';
 import { RichTextEditor } from './RichTextEditor';
 import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { AuditionSchedulePanel } from './AuditionSchedulePanel';
@@ -156,6 +163,32 @@ import {
 } from '../services/castingApiService';
 import { consentService } from '../services/consentService';
 import { castingAuthService } from '../services/castingAuthService';
+import { roleRoomProjectTabConfigService } from '../services/roleRoomProjectTabConfigService';
+import { ProjectTabAccessDialog } from './ProjectTabAccessDialog';
+import {
+  presetForRole,
+  hasRolePreset,
+  visibleTabKeys as accessVisibleTabKeys,
+  manageableTabKeys as accessManageableTabKeys,
+  TAB_INDEX_TO_KEY,
+} from '../models/studioAccessModel';
+import type { TabAccessMap } from '../models/studioAccessModel';
+import {
+  isDirectorSurface,
+  type DirectorSurface,
+} from './director/directorWorkspaceModel';
+import {
+  isCinematographerSurface,
+  type CinematographerSurface,
+} from './cinematographer/cinematographerWorkspaceModel';
+import {
+  isFirstAssistantDirectorSurface,
+  type FirstAssistantDirectorSurface,
+} from './assistant-director/firstAssistantDirectorWorkspaceModel';
+import {
+  isRoleRoomWorkspaceLens,
+  type RoleRoomWorkspaceLens,
+} from './production/productionWorkspaceLens';
 import { useProducerAccess } from '../hooks/useProducerAccess';
 import { producerWorkflowService } from '../services/producerWorkflowService';
 import {
@@ -178,6 +211,9 @@ import { evaluateProjectOwnership } from '../utils/projectOwnership';
 import { CommandPalette, type CommandPaletteItem } from './CommandPalette';
 import { PlannerBreadcrumb, type PlannerBreadcrumbSegment } from './PlannerBreadcrumb';
 import { WorkspaceModeBadge, type WorkspaceMode } from './WorkspaceModeBadge';
+import PlannerMinDag from './PlannerMinDag';
+import PlannerDeliverablesBoard from './PlannerDeliverablesBoard';
+import PlannerProjectHealthBadge from './PlannerProjectHealthBadge';
 import {
   ContentProducerWorkflowStepper,
   type WorkflowStepKey,
@@ -221,11 +257,23 @@ const StoryLogicPanel = lazyWithRetry(() => import('./screenplay/StoryLogicPanel
 const RoleManagementPanel = lazyWithRetry(() => import('./RoleManagementPanel').then(m => ({ default: m.RoleManagementPanel })));
 const CandidateManagementPanel = lazyWithRetry(() => import('./CandidateManagementPanel').then(m => ({ default: m.CandidateManagementPanel })));
 const DashboardPanel = lazyWithRetry(() => import('./DashboardPanel').then(m => ({ default: m.DashboardPanel })));
+const DirectorWorkspace = lazyWithRetry(() => import('./director/DirectorWorkspace').then(m => ({ default: m.DirectorWorkspace })));
+const CinematographerWorkspace = lazyWithRetry(() => import('./cinematographer/CinematographerWorkspace').then(m => ({ default: m.CinematographerWorkspace })));
+const FirstAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-director/FirstAssistantDirectorWorkspace').then(m => ({ default: m.FirstAssistantDirectorWorkspace })));
+const SecondAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-director/SecondAssistantDirectorWorkspace').then(m => ({ default: m.SecondAssistantDirectorWorkspace })));
+const ProductionManagementWorkspace = lazyWithRetry(() => import('./production-management/ProductionManagementWorkspace').then(m => ({ default: m.ProductionManagementWorkspace })));
+const ProductionCoordinationWorkspace = lazyWithRetry(() => import('./production-coordination/ProductionCoordinationWorkspace').then(m => ({ default: m.ProductionCoordinationWorkspace })));
+const CallSheetGenerator = lazyWithRetry(() => import('./CallSheetGenerator').then(m => ({ default: m.CallSheetGenerator })));
 const SharingPanel = lazyWithRetry(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
 const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
 
 // Dance vertical opt-in — full workspace replacement when professionMode = dance_*.
 const DanceWorkspace = lazy(() => import('../dance/DanceWorkspace').then(m => ({ default: m.DanceWorkspace })));
+const EducationWorkspace = lazy(() => import('../education/EducationWorkspace').then(m => ({ default: m.EducationWorkspace })));
+const StudentWorkspace = lazy(() => import('../education/StudentWorkspace').then(m => ({ default: m.StudentWorkspace })));
+// Student-ankomststripe i produksjons-modus (edu=1 + assignment=<id>) — se
+// EduAssignmentArrivalStripe.tsx for detaljer. Lazy som søsknene over.
+const EduAssignmentArrivalStripe = lazy(() => import('../education/EduAssignmentArrivalStripe').then(m => ({ default: m.EduAssignmentArrivalStripe })));
 
 // Import ErrorBoundary for robustness
 import { ErrorBoundary } from './ErrorBoundary';
@@ -239,6 +287,7 @@ const ConsentContractDialog = lazy(() => import('./ConsentContractDialog').then(
 const ProjectEconomyHub = lazy(() => retryDynamicImport(() => import('./ProjectEconomyHub'), 'ProjectEconomyHub'));
 const ClientEconomyPanel = lazy(() => retryDynamicImport(() => import('./producer/ClientEconomyPanel'), 'ClientEconomyPanel'));
 const AdsManagementPanel = lazy(() => retryDynamicImport(() => import('./producer/AdsManagementPanel'), 'AdsManagementPanel'));
+const ProducerBudgetTabs = lazy(() => retryDynamicImport(() => import('./producer/ProducerBudgetTabs'), 'ProducerBudgetTabs'));
 const ProductionCalendarPanel = lazy(() => import('./ProductionCalendarPanel'));
 const CrewCalendarPanel = lazy(() => import('./production/CrewCalendarPanel').then(m => ({ default: m.CrewCalendarPanel })));
 const ProducerTimelinePanel = lazy(() => import('./producer/ProducerTimelinePanel'));
@@ -299,6 +348,16 @@ import NewProjectCreationModal from './Planning/NewProjectCreationModal';
 import RoleRoomBrandMark from './shared/RoleRoomBrandMark';
 import RoleRoomBillingAccountDialog from './RoleRoomBillingAccountDialog';
 import SelectionMeetPlannerCard from './SelectionMeetPlannerCard';
+import SelfTapePreviewModal from './selftape/SelfTapePreviewModal';
+import {
+  availabilityChipStyle,
+  canQueryCastingRoleSelftapes,
+  listCastingRoleSelftapes,
+  selftapeAvailability,
+  type CastingRoleSelftape,
+} from '../services/roleRoomSelfTapesService';
+import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 
 interface CastingPlannerPanelProps {
   onClose?: () => void;
@@ -316,35 +375,9 @@ interface TabPanelProps {
 }
 
 // Helper function to map CrewRole to Department for calendar
-const mapRoleToDepartment = (role: string): 'regi' | 'produksjon' | 'kamera' | 'lys' | 'grip' | 'lyd' | 'art' | 'hmu' | 'kostyme' | 'personal' => {
-  const roleMap: Record<string, 'regi' | 'produksjon' | 'kamera' | 'lys' | 'grip' | 'lyd' | 'art' | 'hmu' | 'kostyme' | 'personal'> = {
-    director: 'regi',
-    producer: 'produksjon',
-    casting_director: 'produksjon',
-    production_manager: 'produksjon',
-    camera_operator: 'kamera',
-    camera_assistant: 'kamera',
-    cinematographer: 'kamera',
-    drone_pilot: 'kamera',
-    gaffer: 'lys',
-    grip: 'grip',
-    sound_engineer: 'lyd',
-    audio_mixer: 'lyd',
-    video_editor: 'produksjon',
-    colorist: 'produksjon',
-    vfx_artist: 'art',
-    motion_graphics: 'art',
-    production_assistant: 'produksjon',
-    script_supervisor: 'regi',
-    location_manager: 'produksjon',
-    production_designer: 'art',
-    makeup_artist: 'hmu',
-    wardrobe: 'kostyme',
-    stylist: 'kostyme',
-    collaborator: 'produksjon',
-    other: 'personal',
-  };
-  return roleMap[role] || 'personal';
+const mapRoleToDepartment = (role: string): ProductionCalendarDepartment => {
+  if (role === 'other') return 'personal';
+  return getCalendarDepartmentForProductionRole(role);
 };
 
 // Helper function to get an icon for each crew role — used in crew calendars & team displays
@@ -355,6 +388,7 @@ const getCrewRoleIcon = (role: string): ReactElement => {
     producer: <BusinessIcon {...iconProps} />,
     casting_director: <SupervisorAccountIcon {...iconProps} />,
     production_manager: <SupervisorAccountIcon {...iconProps} />,
+    production_coordinator: <SupervisorAccountIcon {...iconProps} />,
     camera_operator: <CameraAltIcon {...iconProps} />,
     camera_assistant: <CameraAltIcon {...iconProps} />,
     cinematographer: <CameraAltIcon {...iconProps} />,
@@ -696,10 +730,35 @@ export function CastingPlannerPanel({
   // mode and avoids spinning up production data fetches we don't need.
   const __activeProfessionMode = getActiveProfessionModeForDance();
   if (isDanceModeCheck(__activeProfessionMode)) {
+    // Lokal ErrorBoundary (./ErrorBoundary) tar children/fallback, ikke componentName. CH-ARCH-003.
     return (
+      <ErrorBoundary>
       <Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster dans-modus…</Box>}>
         <DanceWorkspace />
       </Suspense>
+      </ErrorBoundary>
+    );
+  }
+  // Utdanningsinstitusjon-modus — samme parallell-workspace-mønster som dans:
+  // render EducationWorkspace og avslutt før produksjons-hooks/state kjører.
+  if (isEducationModeCheck(__activeProfessionMode)) {
+    return (
+      <ErrorBoundary>
+      <Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster utdannings-modus…</Box>}>
+        <EducationWorkspace />
+      </Suspense>
+      </ErrorBoundary>
+    );
+  }
+  // Student-modus — «Min side» (foreløpig super-admin-preview), samme
+  // parallell-workspace-mønster som dans/utdanning.
+  if (isStudentModeCheck(__activeProfessionMode)) {
+    return (
+      <ErrorBoundary>
+      <Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster student-modus…</Box>}>
+        <StudentWorkspace />
+      </Suspense>
+      </ErrorBoundary>
     );
   }
 
@@ -708,6 +767,48 @@ export function CastingPlannerPanel({
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
   const useCompactHeaderLayout = isTablet;
+  // Fanger «?edu=1» ÉN gang ved første render (lazy useState-initializer,
+  // kjører før SPA-en ev. skriver om URL-en via pushState og dropper
+  // parameteret). Signalet betyr: en education-student åpnet produksjonen
+  // fra «Min side» (openProductionInRoleRoom med asStudent) → vis en «Min
+  // side»-knapp i headeren så de har en vei tilbake (viktig på iPad/iPhone
+  // der ny-fane-navigasjon ikke brukes for dem).
+  const [isEduStudentSession] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return new URLSearchParams(window.location.search).get('edu') === '1';
+    } catch {
+      return false;
+    }
+  });
+  // Dyp-lenke-intent (project/tab/view) fanget ÉN gang ved mount — samme
+  // lazy-initializer-mønster som «?edu=1» over — FØR URL-sync-effekten
+  // (pushState) rekker å skrive currentProject='' og strippe params.
+  // Prosjekt-lista kan være tom ved mount (LTI-token ikke satt da
+  // getProjects() kjørte); vi anvender intent når prosjektet dukker opp i
+  // lista (ikke bare on mount, jf. apply-effekten lenger ned).
+  const [deepLinkProjectId] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    try { return new URLSearchParams(window.location.search).get('project') ?? ''; }
+    catch { return ''; }
+  });
+  const [deepLinkTabSlug] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try { return new URLSearchParams(window.location.search).get('tab'); }
+    catch { return null; }
+  });
+  const [deepLinkView] = useState<StoryArcView | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const v = new URLSearchParams(window.location.search).get('view');
+      return (v === 'main' || v === 'story-logic' || v === 'story-writer'
+        || v === 'shot-list' || v === 'planning') ? v : null;
+    } catch { return null; }
+  });
+  // resolved = intent er anvendt (eller avklart) → URL-sync får igjen skrive.
+  // refetched = vi har trigget ÉN refetch for å hente en tom liste på nytt.
+  const deepLinkResolvedRef = useRef(false);
+  const deepLinkRefetchedRef = useRef(false);
   // Utvidet fra max-width 1720 til 1920 i Sprint 6.7 — dense-header
   // (Flere handlinger-meny i stedet for individuelle ikoner) gjelder nå
   // på alle vanlige desktop-størrelser inkludert 1080p og 1440p. Kun
@@ -760,7 +861,6 @@ export function CastingPlannerPanel({
     base = Math.max(useCompactHeaderLayout ? TOUCH_TARGET_SIZE : 38, base);
     return base;
   }, [quickTier3, quickTier4, quickTier5, quickTier6, quickTier7, isHiDpi, useCompactHeaderLayout, useDenseDesktopHeader]);
-  const MOBILE_TOUCH_TARGET_SIZE = 48;
   const safeHeaderActionButtonSizePx = isMobile
     ? Math.max(navActionButtonSizePx, MOBILE_TOUCH_TARGET_SIZE)
     : navActionButtonSizePx;
@@ -962,7 +1062,7 @@ export function CastingPlannerPanel({
     },
     videographer: {
       name: branding.tokens.labels.professionVideographerName,
-      color: '#8b5cf6',
+      color: 'var(--role-violet, #8b5cf6)',
       icon: VideocamIcon,
       terminology: {
         project: branding.tokens.labels.termVideoProject,
@@ -1024,6 +1124,10 @@ type RoleRoomWorkspaceSortState = {
 type RoleRoomProjectWorkspaceState = {
   projectId: string;
   activeTab: number;
+  workspaceLens?: RoleRoomWorkspaceLens;
+  directorSurface?: DirectorSurface;
+  cinematographerSurface?: CinematographerSurface;
+  firstAssistantDirectorSurface?: FirstAssistantDirectorSurface;
   storyArcView: StoryArcView;
   storyArcFocus?: StoryArcNavigationFocus | null;
   contentProducerPlannerSurface?: ContentProducerPlannerSurface;
@@ -1073,6 +1177,10 @@ type RoleRoomProjectWorkspaceState = {
     projectId: string | null;
     lastRealProjectId?: string | null;
     activeTab: number;
+    workspaceLens?: RoleRoomWorkspaceLens;
+    directorSurface?: DirectorSurface;
+    cinematographerSurface?: CinematographerSurface;
+    firstAssistantDirectorSurface?: FirstAssistantDirectorSurface;
     storyArcView: StoryArcView;
     storyArcFocus?: StoryArcNavigationFocus | null;
     contentProducerPlannerSurface?: ContentProducerPlannerSurface;
@@ -1098,6 +1206,45 @@ type RoleRoomProjectWorkspaceState = {
     }
     return 0;
   });
+  const [workspaceLensPreference, setWorkspaceLensPreference] = useState<RoleRoomWorkspaceLens | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client') return null;
+    const lens = params.get('lens');
+    return isRoleRoomWorkspaceLens(lens) ? lens : null;
+  });
+  const [directorSurface, setDirectorSurface] = useState<DirectorSurface>(() => {
+    if (typeof window === 'undefined') return 'today';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client') return 'today';
+    const surface = params.get('surface');
+    return isDirectorSurface(surface) ? surface : 'today';
+  });
+  const [cinematographerSurface, setCinematographerSurface] = useState<CinematographerSurface>(() => {
+    if (typeof window === 'undefined') return 'today';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client') return 'today';
+    const surface = params.get('surface');
+    return isCinematographerSurface(surface) ? surface : 'today';
+  });
+  const [firstAssistantDirectorSurface, setFirstAssistantDirectorSurface] = useState<FirstAssistantDirectorSurface>(() => {
+    if (typeof window === 'undefined') return 'today';
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client') return 'today';
+    const surface = params.get('surface');
+    return isFirstAssistantDirectorSurface(surface) ? surface : 'today';
+  });
+  const [productionWorkflowIntent, setProductionWorkflowIntent] = useState<{
+    view: 'stripboard' | 'schedule';
+    signal: number;
+  } | null>(null);
+  const [directorSceneId, setDirectorSceneId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('portal') === 'client') return null;
+    const sceneId = params.get('scene');
+    return sceneId?.trim() || null;
+  });
   const [lastNonLiveTab, setLastNonLiveTab] = useState(0);
   const [isBrowserFullscreen, setIsBrowserFullscreen] = useState<boolean>(() => (
     typeof document !== 'undefined' ? Boolean(document.fullscreenElement) : false
@@ -1122,6 +1269,13 @@ type RoleRoomProjectWorkspaceState = {
   const [selectionCompareCandidateIds, setSelectionCompareCandidateIds] = useState<string[]>([]);
   const [selectionDecisionLog, setSelectionDecisionLog] = useState<SelectionDecisionLogEntry[]>([]);
   const [selectionSelfTapeIndexByCandidate, setSelectionSelfTapeIndexByCandidate] = useState<Record<string, number>>({});
+  // Self-Tape Studio-integrasjon: Map[talent_id, CastingRoleSelftape[]]
+  // Hentes per rolle ved mount/role-endring. Brukes til 📹-badge på kort
+  // i både Kandidater-Kanban og Utvelgelse-fanen.
+  const [selftapesByTalent, setSelftapesByTalent] = useState<Map<string, CastingRoleSelftape[]>>(
+    new Map(),
+  );
+  const [selftapePreview, setSelftapePreview] = useState<CastingRoleSelftape | null>(null);
   const [selectionBoardMode, setSelectionBoardMode] = useState(false);
   const [selectionShortcutsOpen, setSelectionShortcutsOpen] = useState(false);
   const [selectionNotesDraft, setSelectionNotesDraft] = useState('');
@@ -1150,6 +1304,9 @@ type RoleRoomProjectWorkspaceState = {
   const [calendarViewMode, setCalendarViewMode] = useState<'production' | 'crew' | 'productionDay'>('production');
   const [projects, setProjects] = useState<CastingProject[]>([]);
   const [currentProject, setCurrentProject] = useState<CastingProject | null>(null);
+  const [canonicalProductionDataProjectId, setCanonicalProductionDataProjectId] = useState<string | null>(null);
+  const [canonicalCallSheetDayId, setCanonicalCallSheetDayId] = useState<string | null>(null);
+  const [callSheetDeliveryRefreshSignal, setCallSheetDeliveryRefreshSignal] = useState(0);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
@@ -1182,6 +1339,11 @@ type RoleRoomProjectWorkspaceState = {
   const [quickContactIds, setQuickContactIds] = useState<Set<string>>(new Set());
   const [quickContactsLoaded, setQuickContactsLoaded] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<Awaited<ReturnType<typeof castingAuthService.getUserRole>> | null>(null);
+  // RBAC: effektivt tilgangskart (fane-nøkkel → nivå) for innlogget bruker på
+  // dette prosjektet. null mens det lastes → ingen begrensning (bakover-kompat).
+  const [effectiveTabAccess, setEffectiveTabAccess] = useState<TabAccessMap | null>(null);
+  const [tilgangerDialogOpen, setTilgangerDialogOpen] = useState(false);
+  const [tilgangerProjectId, setTilgangerProjectId] = useState<string | null>(null);
   
   // Permissions state for role-based tab visibility
   const [permissions, setPermissions] = useState<{
@@ -1247,6 +1409,12 @@ type RoleRoomProjectWorkspaceState = {
     const normalizedLoginAs = String(sessionAdminUser?.loginAs || '').trim().toLowerCase();
     const normalizedRequestedRole = String(sessionAdminUser?.requestedRole || '').trim().toLowerCase();
     const normalizedRole = String(sessionAdminUser?.role || '').trim().toLowerCase();
+    if (
+      ['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRequestedRole)
+      || ['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRole)
+    ) {
+      return 'cinematographer';
+    }
     const isProducerLogin = normalizedLoginAs === 'content_producer'
       || normalizedRequestedRole === 'content_producer'
       || normalizedRequestedRole === 'client'
@@ -1309,8 +1477,17 @@ type RoleRoomProjectWorkspaceState = {
       if (normalizedRequestedRole === 'client') {
         return 'client_reviewer';
       }
+      if (['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRequestedRole)) {
+        return 'camera_team';
+      }
       if (['film_photographer', 'photographer', 'photo_director', 'photo_assistant'].includes(normalizedRequestedRole)) {
         return 'content_producer';
+      }
+      if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalizedRequestedRole)) {
+        return 'first_ad';
+      }
+      if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalizedRequestedRole)) {
+        return 'second_ad';
       }
       if (
         [
@@ -1318,6 +1495,7 @@ type RoleRoomProjectWorkspaceState = {
           'producer',
           'casting_director',
           'production_manager',
+          'production_coordinator',
           'camera_team',
           'writer',
           'script_editor',
@@ -1334,12 +1512,16 @@ type RoleRoomProjectWorkspaceState = {
     if (normalizedRole === 'admin') return 'producer';
     if (normalizedRole === 'content_producer') return 'content_producer';
     if (normalizedRole === 'client_reviewer' || normalizedRole === 'client') return 'client_reviewer';
+    if (['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRole)) return 'camera_team';
+    if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalizedRole)) return 'first_ad';
+    if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalizedRole)) return 'second_ad';
     if (
       [
         'director',
         'producer',
         'casting_director',
         'production_manager',
+        'production_coordinator',
         'camera_team',
         'writer',
         'script_editor',
@@ -1411,12 +1593,29 @@ type RoleRoomProjectWorkspaceState = {
   const selectionGoogleStatusRequestRef = useRef(0);
   const [producerMediaFocus, setProducerMediaFocus] = useState<ClientPortalWorkspaceFocus | null>(null);
   const lastProducerMediaFocusRef = useRef<ClientPortalWorkspaceFocus | null>(null);
+  // Stabil identitet: en ny inline-callback her hver render får ProducerMedia-
+  // Panels emit-effekt (som har callbacken i dep-listen) til å re-fyre hver
+  // parent-render og pushe identisk fokus opp igjen → render-løkke i klient-
+  // portalen. useCallback bryter det. Den funksjonelle guarden returnerer
+  // samme referanse ved uendret fokus så React hopper over re-render.
+  const handleProducerMediaFocusChange = useCallback((focus: ClientPortalWorkspaceFocus) => {
+    setProducerMediaFocus((previous) => (
+      previous?.workspace === focus.workspace
+      && previous?.sectionId === focus.sectionId
+      && previous?.pageId === focus.pageId
+      && previous?.artifactId === focus.artifactId
+        ? previous
+        : focus
+    ));
+  }, []);
 
   const handleOpenTechnicalTeamDashboard = useCallback(() => {
     setTeamDashboardDefaultSegment('technical');
     setTeamDashboardOpenSignal((current) => current + 1);
     setStoryArcView('shot-list');
-    setActiveTab(STORY_ARC_TAB_INDEX);
+    // #426-vakt: klikk-handler som mounter den lazy Story-Arc-fanen — byttet må
+    // være en transition, ellers suspender fanen under synkron input → #426.
+    startTransition(() => setActiveTab(STORY_ARC_TAB_INDEX));
   }, []);
   const [projectSelectorOpen, setProjectSelectorOpen] = useState(false);
   const [projectSelectorQuery, setProjectSelectorQuery] = useState('');
@@ -1451,10 +1650,40 @@ type RoleRoomProjectWorkspaceState = {
     archiveNotification: archiveProducerInboxNotification,
     resolveNotification: resolveProducerInboxNotification,
   } = useProducerNotifications(currentProject?.id, producerInboxOpen ? 15000 : 30000);
+  // Innboks-scope: «alle» eller kun klient-handlinger (det klienten venter på
+  // / har gjort). Klient-handlinger kjennetegnes av at hendelsen kom fra
+  // klient-siden (event_type client_*, eller created_by_role client_reviewer).
+  const [producerInboxScope, setProducerInboxScope] = useState<'all' | 'unread' | 'client' | 'due'>('all');
   const visibleProducerInboxItems = useMemo(
     () => producerInboxItems.filter((item) => !item.archived_at),
     [producerInboxItems],
   );
+  const isClientActionInboxItem = useCallback(
+    (item: { event_type?: string | null; created_by_role?: string | null }) =>
+      Boolean(item.event_type?.startsWith('client_')) || item.created_by_role === 'client_reviewer',
+    [],
+  );
+  const clientActionInboxCount = useMemo(
+    () => visibleProducerInboxItems.filter(isClientActionInboxItem).length,
+    [visibleProducerInboxItems, isClientActionInboxItem],
+  );
+  // Triage-teller: hvor mange forfaller (frist satt, ikke løst).
+  const dueInboxCount = useMemo(
+    () => visibleProducerInboxItems.filter((item) => item.due_at && !item.resolved_at).length,
+    [visibleProducerInboxItems],
+  );
+  const filteredProducerInboxItems = useMemo(() => {
+    switch (producerInboxScope) {
+      case 'unread':
+        return visibleProducerInboxItems.filter((item) => !item.read);
+      case 'client':
+        return visibleProducerInboxItems.filter(isClientActionInboxItem);
+      case 'due':
+        return visibleProducerInboxItems.filter((item) => item.due_at && !item.resolved_at);
+      default:
+        return visibleProducerInboxItems;
+    }
+  }, [producerInboxScope, visibleProducerInboxItems, isClientActionInboxItem]);
   const openProducerInbox = useCallback(() => {
     if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
@@ -1495,6 +1724,23 @@ type RoleRoomProjectWorkspaceState = {
     // Hold React-state synket så useBeforeUnloadIfDirty re-evaluerer.
     setHasAnyUnsavedChanges(Object.keys(unsavedProjectSwitchStateRef.current).length > 0);
   }, []);
+
+  // Stabile onUnsavedStateChange-handlere per kilde. Inline-varianter ga ny
+  // identitet hver render; siden barna (ProducerMediaPanel/StoryboardTabView/
+  // ManuscriptPanel) har callbacken i dep-listen til en useEffect, rev den
+  // effekten seg ned + kjørte på nytt hver parent-render (kalte setter to
+  // ganger per render). Ingen løkke i dag (setUnsavedProjectSwitchSource er
+  // stabil + idempotent), men unødvendig churn — stabil identitet fjerner den
+  // for alle konsumenter samtidig.
+  const handleProjectRoomUnsavedChange = useCallback((hasUnsaved: boolean, reason?: string) => {
+    setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
+  }, [setUnsavedProjectSwitchSource]);
+  const handleStoryLogicUnsavedChange = useCallback((hasUnsaved: boolean, reason?: string) => {
+    setUnsavedProjectSwitchSource('story_logic', hasUnsaved, reason);
+  }, [setUnsavedProjectSwitchSource]);
+  const handleManuscriptUnsavedChange = useCallback((hasUnsaved: boolean, reason?: string) => {
+    setUnsavedProjectSwitchSource('manuscript', hasUnsaved, reason);
+  }, [setUnsavedProjectSwitchSource]);
 
   useBeforeUnloadIfDirty({
     isDirty: hasAnyUnsavedChanges,
@@ -1572,6 +1818,11 @@ type RoleRoomProjectWorkspaceState = {
     const projectWorkspaceState = currentProject?.id
       ? persisted?.projectStates?.[currentProject.id] ?? null
       : null;
+    const urlParams = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search)
+      : new URLSearchParams();
+    const urlLens = urlParams.get('lens');
+    const urlRoleSurface = urlParams.get('surface');
     workspaceRestoreProjectIdRef.current = currentProject?.id ?? null;
     if (typeof window !== 'undefined') {
       window.setTimeout(() => {
@@ -1592,6 +1843,34 @@ type RoleRoomProjectWorkspaceState = {
     setSelectedCandidate(null);
     setSelectedSchedule(null);
     setSelectionPhaseFilter('screening');
+    setWorkspaceLensPreference(
+      isRoleRoomWorkspaceLens(urlLens)
+        ? urlLens
+        : projectWorkspaceState?.workspaceLens
+          ?? (persisted?.projectId === (currentProject?.id ?? null) ? persisted.workspaceLens ?? null : null),
+    );
+    setDirectorSurface(
+      isDirectorSurface(urlRoleSurface)
+        ? urlRoleSurface
+        : projectWorkspaceState?.directorSurface
+          ?? (persisted?.projectId === (currentProject?.id ?? null) ? persisted.directorSurface ?? 'today' : 'today'),
+    );
+    setCinematographerSurface(
+      isCinematographerSurface(urlRoleSurface)
+        ? urlRoleSurface
+        : projectWorkspaceState?.cinematographerSurface
+          ?? (persisted?.projectId === (currentProject?.id ?? null)
+            ? persisted.cinematographerSurface ?? 'today'
+            : 'today'),
+    );
+    setFirstAssistantDirectorSurface(
+      isFirstAssistantDirectorSurface(urlRoleSurface)
+        ? urlRoleSurface
+        : projectWorkspaceState?.firstAssistantDirectorSurface
+          ?? (persisted?.projectId === (currentProject?.id ?? null)
+            ? persisted.firstAssistantDirectorSurface ?? 'today'
+            : 'today'),
+    );
     setSelectionNotesTagExclusions([]);
     setSelectionNotesSaving(false);
     setSelectionGoogleStatus(null);
@@ -1757,6 +2036,7 @@ type RoleRoomProjectWorkspaceState = {
     options?: {
       storyArcView?: StoryArcView;
       storyArcFocus?: StoryArcNavigationFocus | null;
+      directorSurface?: DirectorSurface;
     },
   ) => {
     const commitTab = (nextTab: number) => {
@@ -1765,8 +2045,32 @@ type RoleRoomProjectWorkspaceState = {
         flushSync(() => setActiveTab(nextTab));
         return;
       }
-      setActiveTab(nextTab);
+      // #426-vakt: nesten alle faner er lazy() (kodesplittet). Setter vi
+      // activeTab synkront (fra <Tabs onChange>, ⌘K-paletten, dyplenker),
+      // suspender den nye fanen midt i en synkron input-oppdatering → React
+      // #426, som blanker HELE workspacet. startTransition markerer byttet som
+      // ikke-hastende så Suspense får vise fallback trygt. (Live-Set-exit over
+      // beholder flushSync — det MÅ committe synkront ifm. fullskjerm-exit.)
+      startTransition(() => setActiveTab(nextTab));
     };
+
+    const inferredDirectorSurface: DirectorSurface | null = options?.directorSurface
+      ?? (tabIndex === 0
+        ? 'today'
+        : tabIndex === STORY_ARC_TAB_INDEX
+          ? 'scenes'
+          : tabIndex === STORYBOARD_TAB_INDEX || tabIndex === SHOT_LIST_TAB_INDEX
+            ? 'visual-plan'
+            : tabIndex >= ROLES_TAB_INDEX && tabIndex <= SELECTION_TAB_INDEX
+              ? 'casting'
+              : tabIndex === LIVE_SET_TAB_INDEX
+                ? 'on-set'
+                : tabIndex === PRODUCER_REVIEWS_TAB_INDEX || tabIndex === PRODUCER_EXPORT_TAB_INDEX
+                  ? 'post'
+                  : null);
+    if (inferredDirectorSurface) {
+      setDirectorSurface(inferredDirectorSurface);
+    }
 
     if (tabIndex === SHOT_LIST_TAB_INDEX) {
       setStoryArcView('shot-list');
@@ -1792,6 +2096,155 @@ type RoleRoomProjectWorkspaceState = {
     }
     commitTab(tabIndex);
   }, [activeTab, currentProject, exitLiveSetFullscreen, requestLiveSetFullscreen, toast]);
+
+  const handleDirectorNavigate = useCallback((surface: DirectorSurface) => {
+    setWorkspaceLensPreference('director');
+    setDirectorSurface(surface);
+
+    switch (surface) {
+      case 'today':
+        navigateToTab(0, { directorSurface: surface });
+        return;
+      case 'scenes':
+        navigateToTab(0, { directorSurface: surface });
+        return;
+      case 'casting':
+        navigateToTab(SELECTION_TAB_INDEX, { directorSurface: surface });
+        return;
+      case 'visual-plan':
+        navigateToTab(STORYBOARD_TAB_INDEX, { directorSurface: surface });
+        return;
+      case 'on-set':
+        navigateToTab(LIVE_SET_TAB_INDEX, { directorSurface: surface });
+        return;
+      case 'post':
+        // Coverage review og manusets post-overlevering bor foreløpig i
+        // manusarbeidsflaten. En egen post-komposisjon kobles på samme target.
+        navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main', directorSurface: surface });
+        return;
+    }
+  }, [navigateToTab]);
+
+  const handleOpenDirectorSceneManuscript = useCallback((sceneId: string) => {
+    setDirectorSceneId(sceneId);
+    navigateToTab(STORY_ARC_TAB_INDEX, {
+      storyArcView: 'story-writer',
+      storyArcFocus: { sceneId },
+      directorSurface: 'scenes',
+    });
+  }, [navigateToTab]);
+
+  const handleOpenDirectorSceneStoryboard = useCallback((sceneId: string) => {
+    setDirectorSceneId(sceneId);
+    navigateToTab(STORY_ARC_TAB_INDEX, {
+      storyArcView: 'main',
+      storyArcFocus: { sceneId },
+      directorSurface: 'scenes',
+    });
+  }, [navigateToTab]);
+
+  const handleOpenDirectorSceneShotList = useCallback((sceneId: string) => {
+    setDirectorSceneId(sceneId);
+    navigateToTab(STORY_ARC_TAB_INDEX, {
+      storyArcView: 'shot-list',
+      storyArcFocus: { sceneId },
+      directorSurface: 'scenes',
+    });
+  }, [navigateToTab]);
+
+  const handleOpenDirectorWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('director');
+    setDirectorSurface('today');
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleCinematographerNavigate = useCallback((surface: CinematographerSurface) => {
+    setWorkspaceLensPreference('cinematography');
+    setCinematographerSurface(surface);
+
+    switch (surface) {
+      case 'today':
+        navigateToTab(0);
+        return;
+      case 'scenes':
+        navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'main' });
+        return;
+      case 'shot-plan':
+        navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'shot-list' });
+        return;
+      case 'lighting-equipment':
+        navigateToTab(EQUIPMENT_TAB_INDEX);
+        return;
+      case 'camera-crew':
+        setTeamDashboardDefaultSegment('technical');
+        navigateToTab(TEAM_TAB_INDEX);
+        return;
+      case 'on-set':
+        navigateToTab(LIVE_SET_TAB_INDEX);
+        return;
+    }
+  }, [navigateToTab]);
+
+  const handleOpenCinematographerWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('cinematography');
+    setCinematographerSurface('today');
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleFirstAssistantDirectorNavigate = useCallback((surface: FirstAssistantDirectorSurface) => {
+    setWorkspaceLensPreference('assistant-direction');
+    setFirstAssistantDirectorSurface(surface);
+
+    switch (surface) {
+      case 'today':
+        navigateToTab(0);
+        return;
+      case 'stripboard':
+        setProductionWorkflowIntent((previous) => ({
+          view: 'stripboard',
+          signal: (previous?.signal ?? 0) + 1,
+        }));
+        navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
+        return;
+      case 'shooting-plan':
+        navigateToTab(CALENDAR_TAB_INDEX);
+        return;
+      case 'call-sheet':
+        setProductionWorkflowIntent((previous) => ({
+          view: 'schedule',
+          signal: (previous?.signal ?? 0) + 1,
+        }));
+        navigateToTab(STORY_ARC_TAB_INDEX, { storyArcView: 'story-writer' });
+        return;
+      case 'cast-crew':
+        navigateToTab(TEAM_TAB_INDEX);
+        return;
+      case 'on-set':
+        navigateToTab(LIVE_SET_TAB_INDEX);
+        return;
+    }
+  }, [navigateToTab]);
+
+  const handleOpenFirstAssistantDirectorWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('assistant-direction');
+    setFirstAssistantDirectorSurface('today');
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleOpenProductionManagementWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('production-management');
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleOpenProductionCoordinationWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('production-coordination');
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleOpenFullWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('full');
+    navigateToTab(0);
+  }, [navigateToTab]);
 
   const openContentProducerPlannerSurface = useCallback((
     surface: ContentProducerPlannerSurface,
@@ -1823,10 +2276,11 @@ type RoleRoomProjectWorkspaceState = {
     focus?: Omit<ProducerWorkflowFocusPayload, 'projectId' | 'panel'>,
   ) => {
     if (isContentProducerMode) {
-      if (tabIndex === PRODUCER_MEDIA_TAB_INDEX) {
-        openContentProducerPlannerSurface('project_room');
-        return;
-      }
+      // NB: media/prosjektrom rutes IKKE herfra — det har sin egen dedikerte
+      // `navigateToProducerMediaWorkspace` (ClientPortalWorkspaceFocus, ikke
+      // ProducerWorkflowFocusPayload). Denne funksjonen kalles kun med
+      // ECONOMY/REVIEWS/TIMELINE (verifisert alle kall-steder), så en
+      // PRODUCER_MEDIA_TAB_INDEX-gren her var død kode — fjernet.
       if (tabIndex === PRODUCER_REVIEWS_TAB_INDEX) {
         openContentProducerPlannerSurface('approval', {
           focusPanel: 'reviews',
@@ -2550,9 +3004,20 @@ type RoleRoomProjectWorkspaceState = {
       owner: branding.tokens.labels.roleOwnerLabel,
       admin: branding.tokens.labels.roleAdminLabel,
       director: branding.tokens.labels.roleDirectorLabel,
+      cinematographer: 'Filmfotograf (DoP)',
+      director_of_photography: 'Filmfotograf (DoP)',
+      dop: 'Filmfotograf (DoP)',
+      dp: 'Filmfotograf (DoP)',
       producer: branding.tokens.labels.roleProducerLabel,
       casting_director: branding.tokens.labels.roleCastingDirectorLabel,
       production_manager: branding.tokens.labels.roleProductionManagerLabel,
+      production_coordinator: 'Produksjonskoordinator',
+      first_ad: 'Innspillingsleder / 1st AD',
+      first_assistant_director: 'Innspillingsleder / 1st AD',
+      '1st_ad': 'Innspillingsleder / 1st AD',
+      second_ad: '2. regiassistent / 2nd AD',
+      second_assistant_director: '2. regiassistent / 2nd AD',
+      '2nd_ad': '2. regiassistent / 2nd AD',
       camera_team: branding.tokens.labels.roleCameraTeamLabel,
       agency: branding.tokens.labels.roleAgencyLabel,
       content_producer: 'Innholdsprodusent',
@@ -2575,6 +3040,9 @@ type RoleRoomProjectWorkspaceState = {
       if (normalizedRequestedRole === 'client') {
         return 'client_reviewer';
       }
+      if (['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedRequestedRole)) {
+        return 'camera_team';
+      }
       return 'content_producer';
     }
     if (normalizedLoginAs === 'production_team' && normalizedRequestedRole) {
@@ -2589,6 +3057,9 @@ type RoleRoomProjectWorkspaceState = {
         'producer',
         'casting_director',
         'production_manager',
+        'production_coordinator',
+        'first_ad',
+        'second_ad',
         'camera_team',
         'writer',
         'script_editor',
@@ -2609,8 +3080,12 @@ type RoleRoomProjectWorkspaceState = {
     if (normalized === 'producer') return 'producer';
     if (normalized === 'content_producer') return 'content_producer';
     if (normalized === 'client_reviewer') return 'client_reviewer';
+    if (['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalized)) return 'camera_team';
     if (normalized === 'casting_director') return 'casting_director';
     if (normalized === 'production_manager') return 'production_manager';
+    if (normalized === 'production_coordinator') return 'production_coordinator';
+    if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalized)) return 'first_ad';
+    if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalized)) return 'second_ad';
     if (normalized === 'camera_team' || normalized === 'camera_operator') return 'camera_team';
     if (normalized === 'writer') return 'writer';
     if (normalized === 'script_editor') return 'script_editor';
@@ -2669,11 +3144,16 @@ type RoleRoomProjectWorkspaceState = {
     }
 
     const permissionState = buildPermissionStateFromRole(userRole);
+    const rolePermissions = {
+      ...castingAuthService.getDefaultPermissions(userRole.role),
+      ...(userRole.permissions ?? {}),
+    };
     const hasEditAccess = permissionState.canEditCasting
       || permissionState.canEditProduction
       || permissionState.canEditShotLists
       || permissionState.canManageCrew
-      || permissionState.canManageLocations;
+      || permissionState.canManageLocations
+      || rolePermissions.canCoordinateProduction === true;
     const hasDecisionAccess = permissionState.canApprove || permissionState.canRequestChanges;
 
     if (
@@ -2709,8 +3189,37 @@ type RoleRoomProjectWorkspaceState = {
     return 'Begrenset tilgang';
   }, [buildPermissionStateFromRole]);
 
+  const normalizedRequestedProjectRole = String(adminUser?.requestedRole || '').trim().toLowerCase();
+  const hasCinematographerPersona = [
+    'cinematographer',
+    'director_of_photography',
+    'dop',
+    'dp',
+  ].includes(normalizedRequestedProjectRole);
+  const hasFirstAssistantDirectorPersona = [
+    'first_ad',
+    'first_assistant_director',
+    '1st_ad',
+  ].includes(normalizedRequestedProjectRole);
+  const hasSecondAssistantDirectorPersona = [
+    'second_ad',
+    'second_assistant_director',
+    '2nd_ad',
+  ].includes(normalizedRequestedProjectRole);
+  const hasProductionManagerPersona = [
+    'production_manager',
+    'production manager',
+  ].includes(normalizedRequestedProjectRole);
+  const hasProductionCoordinatorPersona = [
+    'production_coordinator',
+    'production coordinator',
+  ].includes(normalizedRequestedProjectRole);
   const accountRoleLabel = adminUser?.role ? getHeaderRoleLabel(adminUser.role) : '';
-  const projectRoleLabel = currentUserRole?.role ? getHeaderRoleLabel(currentUserRole.role) : '';
+  const projectRoleLabel = currentUserRole?.role
+    ? currentUserRole.role === 'camera_team' && hasCinematographerPersona
+      ? 'Filmfotograf (DoP)'
+      : getHeaderRoleLabel(currentUserRole.role)
+    : '';
   const headerRoleLabel = projectRoleLabel && accountRoleLabel && projectRoleLabel !== accountRoleLabel
     ? `${accountRoleLabel} (konto) • ${projectRoleLabel} (prosjekt)`
     : projectRoleLabel || accountRoleLabel;
@@ -2724,6 +3233,77 @@ type RoleRoomProjectWorkspaceState = {
   );
   const isScopedRoleRoomLogin = typeof adminUser?.loginAs === 'string'
     && adminUser.loginAs.trim().length > 0;
+  // En vanlig eier/admin får fortsatt full prosjektflate som standard. En
+  // eksplisitt prosjektrolle lander i sin egen arbeidsflate; eier/admin kan
+  // åpne rolleflatene som en bevisst forhåndsvisning.
+  const normalizedCurrentProjectRole = String(currentUserRole?.role || '').trim().toLowerCase();
+  const isAssignedDirectorProjectRole = normalizedCurrentProjectRole === 'director'
+    && (!isRoleRoomAdminSession || mappedSessionProjectRole === 'director');
+  const isAssignedCinematographerProjectRole = (
+    ['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedCurrentProjectRole)
+    || (normalizedCurrentProjectRole === 'camera_team' && hasCinematographerPersona)
+  ) && (!isRoleRoomAdminSession || hasCinematographerPersona);
+  const isAssignedFirstAssistantDirectorProjectRole = [
+    'first_ad',
+    'first_assistant_director',
+    '1st_ad',
+  ].includes(normalizedCurrentProjectRole)
+    && (!isRoleRoomAdminSession || hasFirstAssistantDirectorPersona);
+  const isAssignedSecondAssistantDirectorProjectRole = [
+    'second_ad',
+    'second_assistant_director',
+    '2nd_ad',
+  ].includes(normalizedCurrentProjectRole)
+    && (!isRoleRoomAdminSession || hasSecondAssistantDirectorPersona);
+  const isAssignedProductionManagerProjectRole = normalizedCurrentProjectRole === 'production_manager'
+    && (!isRoleRoomAdminSession || hasProductionManagerPersona || mappedSessionProjectRole === 'production_manager');
+  const isAssignedProductionCoordinatorProjectRole = normalizedCurrentProjectRole === 'production_coordinator'
+    && (!isRoleRoomAdminSession || hasProductionCoordinatorPersona || mappedSessionProjectRole === 'production_coordinator');
+  const canUseDirectorWorkspace = isAssignedDirectorProjectRole || isRoleRoomAdminSession;
+  const canUseCinematographerWorkspace = isAssignedCinematographerProjectRole || isRoleRoomAdminSession;
+  const canUseFirstAssistantDirectorWorkspace = isAssignedFirstAssistantDirectorProjectRole || isRoleRoomAdminSession;
+  const canUseAssistantDirectorWorkspace = canUseFirstAssistantDirectorWorkspace || isAssignedSecondAssistantDirectorProjectRole;
+  const canUseProductionManagementWorkspace = isAssignedProductionManagerProjectRole || isRoleRoomAdminSession;
+  const hasProductionCoordinationGrant = currentUserRole
+    ? Boolean({
+        ...castingAuthService.getDefaultPermissions(currentUserRole.role),
+        ...(currentUserRole.permissions ?? {}),
+      }.canCoordinateProduction)
+    : false;
+  const canUseProductionCoordinationWorkspace = isAssignedProductionCoordinatorProjectRole
+    || isAssignedProductionManagerProjectRole
+    || hasProductionCoordinationGrant
+    || isRoleRoomAdminSession;
+  const effectiveWorkspaceLens: RoleRoomWorkspaceLens = (
+    canUseDirectorWorkspace
+    && (workspaceLensPreference === 'director' || (workspaceLensPreference === null && isAssignedDirectorProjectRole))
+  )
+    ? 'director'
+    : canUseCinematographerWorkspace
+      && (
+        workspaceLensPreference === 'cinematography'
+        || (workspaceLensPreference === null && isAssignedCinematographerProjectRole)
+      )
+      ? 'cinematography'
+      : canUseAssistantDirectorWorkspace
+        && (
+          workspaceLensPreference === 'assistant-direction'
+          || (workspaceLensPreference === null && (isAssignedFirstAssistantDirectorProjectRole || isAssignedSecondAssistantDirectorProjectRole))
+        )
+        ? 'assistant-direction'
+        : canUseProductionManagementWorkspace
+          && (
+            workspaceLensPreference === 'production-management'
+            || (workspaceLensPreference === null && isAssignedProductionManagerProjectRole)
+          )
+          ? 'production-management'
+          : canUseProductionCoordinationWorkspace
+            && (
+              workspaceLensPreference === 'production-coordination'
+              || (workspaceLensPreference === null && isAssignedProductionCoordinatorProjectRole)
+            )
+            ? 'production-coordination'
+            : 'full';
   const getProjectRoleDetails = useCallback((project: CastingProject): {
     roleLabel: string;
     accessLabel: string;
@@ -3092,6 +3672,10 @@ type RoleRoomProjectWorkspaceState = {
       const nextStoryArcView = stored.storyArcView;
       const nextStoryArcFocus = normalizeStoryArcNavigationFocus(stored.storyArcFocus);
       const nextContentProducerPlannerSurface = stored.contentProducerPlannerSurface;
+      const nextWorkspaceLens = stored.workspaceLens;
+      const nextDirectorSurface = stored.directorSurface;
+      const nextCinematographerSurface = stored.cinematographerSurface;
+      const nextFirstAssistantDirectorSurface = stored.firstAssistantDirectorSurface;
       const nextProducerMediaFocus = stored.producerMediaFocus;
       const nextContentProducerResumeTarget = stored.contentProducerResumeTarget;
       const storedRecord = stored as RoleRoomWorkspaceState & Record<string, unknown>;
@@ -3229,6 +3813,14 @@ type RoleRoomProjectWorkspaceState = {
         return {
           projectId,
           activeTab: Number.isFinite(record.activeTab) ? record.activeTab : 0,
+          workspaceLens: isRoleRoomWorkspaceLens(record.workspaceLens) ? record.workspaceLens : undefined,
+          directorSurface: isDirectorSurface(record.directorSurface) ? record.directorSurface : 'today',
+          cinematographerSurface: isCinematographerSurface(record.cinematographerSurface)
+            ? record.cinematographerSurface
+            : 'today',
+          firstAssistantDirectorSurface: isFirstAssistantDirectorSurface(record.firstAssistantDirectorSurface)
+            ? record.firstAssistantDirectorSurface
+            : 'today',
           storyArcView: projectStoryArcViewValid ? projectStoryArcView : 'main',
           storyArcFocus: normalizeStoryArcNavigationFocus(record.storyArcFocus),
           contentProducerPlannerSurface: projectPlannerSurfaceValid ? projectPlannerSurface : 'overview',
@@ -3269,6 +3861,14 @@ type RoleRoomProjectWorkspaceState = {
         projectId: lastRealProjectId,
         lastRealProjectId,
         activeTab: Number.isFinite(stored.activeTab) ? stored.activeTab : 0,
+        workspaceLens: isRoleRoomWorkspaceLens(nextWorkspaceLens) ? nextWorkspaceLens : undefined,
+        directorSurface: isDirectorSurface(nextDirectorSurface) ? nextDirectorSurface : 'today',
+        cinematographerSurface: isCinematographerSurface(nextCinematographerSurface)
+          ? nextCinematographerSurface
+          : 'today',
+        firstAssistantDirectorSurface: isFirstAssistantDirectorSurface(nextFirstAssistantDirectorSurface)
+          ? nextFirstAssistantDirectorSurface
+          : 'today',
         storyArcView: storyArcViewValid ? nextStoryArcView : 'main',
         storyArcFocus: nextStoryArcFocus,
         contentProducerPlannerSurface: plannerSurfaceValid ? nextContentProducerPlannerSurface : 'overview',
@@ -3294,23 +3894,60 @@ type RoleRoomProjectWorkspaceState = {
       if (cancelled || !stored) {
         return;
       }
+      // 2026-06-13: Hvis URL er ren rot (ingen tab/project/surface/view i
+      // query), IKKE auto-restore backend workspace state. Uten dette blir
+      // brukere fast i sist åpne prosjekt selv når de bevisst går til
+      // theroleroom.com/ for å se dashboard. Deep-links (med ?project=...)
+      // restorerer fortsatt fordi de har URL-params.
+      const sp = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams();
+      const urlAsksForRestore =
+        !!sp.get('tab') || !!sp.get('project') || !!sp.get('surface') || !!sp.get('view') || !!sp.get('lens');
+      if (!urlAsksForRestore) {
+        return;
+      }
       // URL-seedet ref (?project=<id>) skal overstyre stored=null. Uten
       // dette mister deep-links sin prosjekt-ID når hydrate-effekten kjører
       // ETTER seed-effekten og overskriver lastRealProjectId med null fra
       // siste lagrede tom-state. Daniels TROLL-deep-link havnet i tom-state
       // selv om URL var korrekt og DB hadde 8 roller/8 kandidater klar.
+      // 2026-07-19: OG omvendt — når URL-en HAR ?project=, skal den vinne
+      // over stored (reprodusert: navigasjon til ?project=medside ble
+      // kastet til sist lagrede prosjekt). Prioritet: URL > stored > null.
+      const urlProjectParam = sp.get('project');
       const existing = persistedWorkspaceStateRef.current;
       persistedWorkspaceStateRef.current = {
         ...stored,
-        lastRealProjectId: stored.lastRealProjectId ?? existing?.lastRealProjectId ?? null,
-        projectId: stored.projectId ?? existing?.projectId ?? null,
+        lastRealProjectId: urlProjectParam ?? stored.lastRealProjectId ?? existing?.lastRealProjectId ?? null,
+        projectId: urlProjectParam ?? stored.projectId ?? existing?.projectId ?? null,
       };
-      setStoryArcView(stored.storyArcView);
-      setStoryArcFocus(stored.storyArcFocus ?? null);
-      setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
+      // 2026-07-19: Eksplisitte URL-params VINNER over lagret tilstand.
+      // Før overstyrte restore både ?tab= og ?surface= — en delelenke til
+      // tab=producer-media landet i sist lagrede fane (tidslinje) i stedet.
+      // Lagret tilstand fyller kun dimensjonene URL-en ikke spesifiserer.
+      const urlHasTab = !!sp.get('tab');
+      const urlHasSurface = !!sp.get('surface');
+      const urlHasView = !!sp.get('view');
+      const urlHasLens = isRoleRoomWorkspaceLens(sp.get('lens'));
+      if (!urlHasLens) {
+        setWorkspaceLensPreference(stored.workspaceLens ?? null);
+      }
+      if (!urlHasView) {
+        setStoryArcView(stored.storyArcView);
+        setStoryArcFocus(stored.storyArcFocus ?? null);
+      }
+      if (!urlHasSurface) {
+        setDirectorSurface(stored.directorSurface ?? 'today');
+        setCinematographerSurface(stored.cinematographerSurface ?? 'today');
+        setFirstAssistantDirectorSurface(stored.firstAssistantDirectorSurface ?? 'today');
+        setContentProducerPlannerSurface(stored.contentProducerPlannerSurface ?? 'overview');
+      }
       lastProducerMediaFocusRef.current = stored.producerMediaFocus ?? null;
       setContentProducerResumeTarget(stored.contentProducerResumeTarget ?? null);
-      setActiveTab(stored.activeTab);
+      if (!urlHasTab) {
+        setActiveTab(stored.activeTab);
+      }
     };
 
     void hydrateWorkspaceState();
@@ -3969,7 +4606,7 @@ type RoleRoomProjectWorkspaceState = {
     { color: '#14b8a6', icon: SelectionTabIcon },
     { color: '#4caf50', icon: LocationIcon },
     { color: '#9c27b0', icon: CalendarIcon },
-    { color: '#00d4ff', icon: GroupsIcon },
+    { color: 'var(--role-cyan, #00d4ff)', icon: GroupsIcon },
     { color: '#9333ea', icon: EquipmentIcon },
     { color: '#ef4444', icon: VideocamIcon },
     { color: '#60a5fa', icon: PermMediaIcon },
@@ -3978,6 +4615,142 @@ type RoleRoomProjectWorkspaceState = {
     { color: '#c084fc', icon: FactCheckIcon },
     { color: '#fbbf24', icon: ImportExportIcon },
   ], [professionConfig?.color]);
+  // ── RBAC: hent effektivt tilgangskart for prosjektet ────────────────
+  // Lederen delegerer tilgang pr. rolle/bruker via "Tilganger"-dialogen. my-tabs
+  // returnerer en overstyring (tabAccess) hvis satt, ellers null → vi bruker
+  // rollens preset fra studioAccessModel. null-tilstand = ingen begrensning.
+  // Avled effektiv tilgang fra my-tabs-svaret. Sikkerhetsventil: gating slår kun
+  // inn ved (a) eksplisitt overstyring fra lederen, eller (b) en gjenkjent rolle
+  // med preset. Ukjent/legacy rolle → null (ingen begrensning) så vi aldri låser
+  // ute eksisterende medlemmer.
+  const deriveEffectiveAccess = useCallback(
+    (res: Awaited<ReturnType<typeof roleRoomProjectTabConfigService.getMyTabs>>): TabAccessMap | null => {
+      if (res.tabAccess) return res.tabAccess;
+      if (res.role === 'leder') return null;
+      const roleForPreset = res.role === 'camera_team' && hasCinematographerPersona
+        ? 'dop'
+        : res.role;
+      if (hasRolePreset(roleForPreset)) return presetForRole(roleForPreset);
+      return null;
+    },
+    [hasCinematographerPersona],
+  );
+
+  useEffect(() => {
+    const pid = currentProject?.id ?? null;
+    if (!pid) { setEffectiveTabAccess(null); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await roleRoomProjectTabConfigService.getMyTabs(pid);
+        if (!cancelled) setEffectiveTabAccess(deriveEffectiveAccess(res));
+      } catch {
+        if (!cancelled) setEffectiveTabAccess(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentProject?.id, deriveEffectiveAccess]);
+
+  // The canonical project response is intentionally compact and may omit
+  // production days and screenplay scenes. Hydrate those shared resources once
+  // per project so Director, 1st AD and 2nd AD all plan from the same day →
+  // scene → character graph (instead of each workspace seeing a partial shell).
+  useEffect(() => {
+    const projectId = currentProject?.id;
+    if (!projectId) {
+      setCanonicalProductionDataProjectId(null);
+      return;
+    }
+    let cancelled = false;
+    setCanonicalProductionDataProjectId(null);
+
+    void Promise.allSettled([
+      castingService.getProductionDays(projectId),
+      castingService.getSceneBreakdowns(projectId),
+    ]).then(([daysResult, scenesResult]) => {
+      if (cancelled) return;
+      const productionDays = daysResult.status === 'fulfilled' ? daysResult.value : null;
+      const sceneBreakdowns = scenesResult.status === 'fulfilled' ? scenesResult.value : null;
+      setCanonicalProductionDataProjectId(projectId);
+      if (!productionDays && !sceneBreakdowns) return;
+
+      const hydrate = (project: CastingProject): CastingProject => project.id !== projectId
+        ? project
+        : {
+          ...project,
+          ...(productionDays ? { productionDays } : {}),
+          ...(sceneBreakdowns ? { sceneBreakdowns } : {}),
+        };
+      setCurrentProject((project) => project ? hydrate(project) : project);
+      setProjects((items) => items.map(hydrate));
+    });
+
+    return () => { cancelled = true; };
+  }, [currentProject?.id]);
+
+  const rbacManageableTabKeys = useMemo(
+    () => accessManageableTabKeys(effectiveTabAccess),
+    [effectiveTabAccess],
+  );
+  const rbacAccessibleTabKeys = useMemo(
+    () => accessVisibleTabKeys(effectiveTabAccess),
+    [effectiveTabAccess],
+  );
+
+  /** Kan innlogget bruker skrive i denne fanen? (null-tilgang = ja, bakover-kompat) */
+  const canManageTab = useCallback((tabIndex: number): boolean => {
+    if (!effectiveTabAccess) return true;
+    const key = TAB_INDEX_TO_KEY[tabIndex];
+    if (!key) return true;
+    return rbacManageableTabKeys.has(key);
+  }, [effectiveTabAccess, rbacManageableTabKeys]);
+
+  const canAccessTab = (tabIndex: number): boolean => {
+    if (!effectiveTabAccess) return true;
+    const key = TAB_INDEX_TO_KEY[tabIndex];
+    if (!key) return true;
+    return rbacAccessibleTabKeys.has(key);
+  };
+
+  const isCinematographerSurfaceAvailable = (surface: CinematographerSurface): boolean => {
+    switch (surface) {
+      case 'today':
+        return true;
+      case 'scenes':
+        return canAccessTab(STORY_ARC_TAB_INDEX);
+      case 'shot-plan':
+        return canAccessTab(STORY_ARC_TAB_INDEX) && canAccessTab(SHOT_LIST_TAB_INDEX);
+      case 'lighting-equipment':
+        return canAccessTab(EQUIPMENT_TAB_INDEX);
+      case 'camera-crew':
+        return canAccessTab(TEAM_TAB_INDEX);
+      case 'on-set':
+        return canAccessTab(LIVE_SET_TAB_INDEX);
+    }
+  };
+
+  const isFirstAssistantDirectorSurfaceAvailable = (surface: FirstAssistantDirectorSurface): boolean => {
+    switch (surface) {
+      case 'today':
+        return true;
+      case 'stripboard':
+      case 'call-sheet':
+        return canAccessTab(STORY_ARC_TAB_INDEX);
+      case 'shooting-plan':
+        return canAccessTab(CALENDAR_TAB_INDEX);
+      case 'cast-crew':
+        return canAccessTab(TEAM_TAB_INDEX);
+      case 'on-set':
+        return canAccessTab(LIVE_SET_TAB_INDEX);
+    }
+  };
+
+  const isViewerLeaderOf = useCallback((p: CastingProject | null): boolean => {
+    const uid = getUserId();
+    if (!uid || !p) return false;
+    return [p.ownerId, p.createdBy].some((c) => c != null && String(c) === String(uid));
+  }, [getUserId]);
+
   const visibleTabValues = useMemo<number[]>(() => {
     if (isExternalClientPortalMode) {
       return [
@@ -4008,7 +4781,7 @@ type RoleRoomProjectWorkspaceState = {
       return reviewerTabs;
     }
 
-    return [
+    const baseTabs = [
       0,
       STORY_ARC_TAB_INDEX,
       STORYBOARD_TAB_INDEX,
@@ -4028,7 +4801,21 @@ type RoleRoomProjectWorkspaceState = {
       PRODUCER_EXPORT_TAB_INDEX,
       LIVE_SET_TAB_INDEX,
     ];
-  }, [canViewProducerEconomy, isClientReviewerMode, isContentProducerMode, isExternalClientPortalMode]);
+
+    // RBAC-filter: hvis lederen har delegert tilgang (eller rollen har et
+    // preset), skjul faner brukeren ikke har Se/Administrere på. Oversikt (0)
+    // holdes alltid synlig som landingsflate. Ingen effektiv tilgang lastet →
+    // vis alt (bakover-kompat).
+    if (effectiveTabAccess) {
+      return baseTabs.filter((idx) => {
+        if (idx === 0) return true;
+        const key = TAB_INDEX_TO_KEY[idx];
+        if (!key) return true;
+        return rbacAccessibleTabKeys.has(key);
+      });
+    }
+    return baseTabs;
+  }, [canViewProducerEconomy, isClientReviewerMode, isContentProducerMode, isExternalClientPortalMode, effectiveTabAccess, rbacAccessibleTabKeys]);
 
   useEffect(() => {
     if (!visibleTabValues.includes(activeTab)) {
@@ -4174,6 +4961,10 @@ type RoleRoomProjectWorkspaceState = {
           [currentProject.id]: {
             projectId: currentProject.id,
             activeTab: displayedActiveTab,
+            workspaceLens: effectiveWorkspaceLens,
+            directorSurface,
+            cinematographerSurface,
+            firstAssistantDirectorSurface,
             storyArcView: displayedActiveTab === STORY_ARC_TAB_INDEX
               ? storyArcView
               : previousProjectState?.storyArcView ?? 'main',
@@ -4204,6 +4995,10 @@ type RoleRoomProjectWorkspaceState = {
       projectId: lastRealProjectId,
       lastRealProjectId,
       activeTab: displayedActiveTab,
+      workspaceLens: effectiveWorkspaceLens,
+      directorSurface,
+      cinematographerSurface,
+      firstAssistantDirectorSurface,
       storyArcView: displayedActiveTab === STORY_ARC_TAB_INDEX ? storyArcView : 'main',
       storyArcFocus: displayedActiveTab === STORY_ARC_TAB_INDEX ? storyArcFocus : null,
       contentProducerPlannerSurface: isContentProducerMode ? contentProducerPlannerSurface : undefined,
@@ -4221,8 +5016,12 @@ type RoleRoomProjectWorkspaceState = {
     buildWorkspaceSortingForCurrentSurface,
     contentProducerPlannerSurface,
     contentProducerResumeTarget,
+    cinematographerSurface,
     currentProject,
+    directorSurface,
+    firstAssistantDirectorSurface,
     displayedActiveTab,
+    effectiveWorkspaceLens,
     getWorkspaceSurfaceKey,
     isContentProducerMode,
     isRestorableWorkspaceProject,
@@ -4250,6 +5049,10 @@ type RoleRoomProjectWorkspaceState = {
     const nextProjectState: RoleRoomProjectWorkspaceState = {
       projectId: project.id,
       activeTab: displayedActiveTab,
+      workspaceLens: effectiveWorkspaceLens,
+      directorSurface,
+      cinematographerSurface,
+      firstAssistantDirectorSurface,
       storyArcView: displayedActiveTab === STORY_ARC_TAB_INDEX
         ? storyArcView
         : previousProjectState?.storyArcView ?? 'main',
@@ -4279,6 +5082,10 @@ type RoleRoomProjectWorkspaceState = {
       projectId: lastRealProjectId,
       lastRealProjectId,
       activeTab: previousState?.activeTab ?? displayedActiveTab,
+      workspaceLens: effectiveWorkspaceLens,
+      directorSurface,
+      cinematographerSurface,
+      firstAssistantDirectorSurface,
       storyArcView: previousState?.storyArcView ?? storyArcView,
       storyArcFocus: previousState?.storyArcFocus ?? storyArcFocus,
       contentProducerPlannerSurface: previousState?.contentProducerPlannerSurface ?? contentProducerPlannerSurface,
@@ -4297,7 +5104,11 @@ type RoleRoomProjectWorkspaceState = {
     authLoaded,
     contentProducerPlannerSurface,
     contentProducerResumeTarget,
+    cinematographerSurface,
+    directorSurface,
+    firstAssistantDirectorSurface,
     displayedActiveTab,
+    effectiveWorkspaceLens,
     getWorkspaceSurfaceKey,
     isContentProducerMode,
     isRestorableWorkspaceProject,
@@ -4464,7 +5275,7 @@ type RoleRoomProjectWorkspaceState = {
     projects,
   ]);
 
-  // URL-state sync for activeTab + project + storyArcView + plannerSurface.
+  // URL-state sync for aktiv fane, prosjekt og den valgte arbeidslinsen.
   // Each navigation writes `?tab=<slug>&project=<id>&view=<storyArcView>
   // &surface=<plannerSurface>` via pushState so the browser back button
   // walks through the in-app navigation instead of jumping straight to
@@ -4480,21 +5291,66 @@ type RoleRoomProjectWorkspaceState = {
     // desiredProject='' BEFORE seed-effekten leser URL, og ?project=<id>
     // i delelenke strippes før det får materialisert seg som state.
     if (!bootstrapComplete) return;
+    // Ikke la sync-en strippe en dyp-lenke (project/view/tab) før den er
+    // anvendt. Vent til prosjektet er valgt (resolved). Når resolved settes
+    // følger det alltid et state-bytte (currentProject/tab/view) som
+    // re-trigger denne effekten, så URL-en skrives korrekt straks etter.
+    if (deepLinkProjectId && !deepLinkResolvedRef.current) return;
     const params = new URLSearchParams(window.location.search);
     const tabId = TAB_IDS[activeTab];
     const desiredTabSlug = tabId ? tabId.replace(/^tabpanel-/, '') : String(activeTab);
     const desiredProject = currentProject?.id ?? '';
     const desiredView = storyArcView !== 'main' ? storyArcView : '';
-    const desiredSurface = contentProducerPlannerSurface !== 'overview' ? contentProducerPlannerSurface : '';
+    const desiredLens = effectiveWorkspaceLens === 'director'
+      ? 'director'
+      : effectiveWorkspaceLens === 'cinematography'
+        ? 'cinematography'
+      : effectiveWorkspaceLens === 'assistant-direction'
+          ? 'assistant-direction'
+          : effectiveWorkspaceLens === 'production-management'
+            ? 'production-management'
+          : effectiveWorkspaceLens === 'production-coordination'
+            ? 'production-coordination'
+          : workspaceLensPreference === 'full'
+            && (
+              isAssignedDirectorProjectRole
+              || isAssignedCinematographerProjectRole
+              || isAssignedFirstAssistantDirectorProjectRole
+              || isAssignedSecondAssistantDirectorProjectRole
+              || isAssignedProductionManagerProjectRole
+              || isAssignedProductionCoordinatorProjectRole
+            )
+            ? 'full'
+            : '';
+    const desiredSurface = effectiveWorkspaceLens === 'director'
+      ? directorSurface
+      : effectiveWorkspaceLens === 'cinematography'
+        ? cinematographerSurface
+      : effectiveWorkspaceLens === 'assistant-direction'
+          ? firstAssistantDirectorSurface
+          : effectiveWorkspaceLens === 'production-management'
+            ? ''
+          : effectiveWorkspaceLens === 'production-coordination'
+            ? ''
+          : contentProducerPlannerSurface !== 'overview'
+            ? contentProducerPlannerSurface
+            : '';
+    const desiredScene = effectiveWorkspaceLens === 'director'
+      ? directorSceneId ?? ''
+      : '';
     const currentTabParam = params.get('tab') ?? '';
     const currentProjectParam = params.get('project') ?? '';
     const currentViewParam = params.get('view') ?? '';
     const currentSurfaceParam = params.get('surface') ?? '';
+    const currentLensParam = params.get('lens') ?? '';
+    const currentSceneParam = params.get('scene') ?? '';
     if (
       currentTabParam === desiredTabSlug
       && currentProjectParam === desiredProject
       && currentViewParam === desiredView
       && currentSurfaceParam === desiredSurface
+      && currentLensParam === desiredLens
+      && currentSceneParam === desiredScene
     ) return;
     if (desiredTabSlug) params.set('tab', desiredTabSlug);
     else params.delete('tab');
@@ -4504,11 +5360,34 @@ type RoleRoomProjectWorkspaceState = {
     else params.delete('view');
     if (desiredSurface) params.set('surface', desiredSurface);
     else params.delete('surface');
+    if (desiredLens) params.set('lens', desiredLens);
+    else params.delete('lens');
+    if (desiredScene) params.set('scene', desiredScene);
+    else params.delete('scene');
     const nextSearch = params.toString() ? `?${params.toString()}` : '';
     const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
     if (nextUrl === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
     window.history.pushState({ rrStateSync: true }, '', nextUrl);
-  }, [bootstrapComplete, activeTab, currentProject?.id, storyArcView, contentProducerPlannerSurface, isExternalClientPortalMode]);
+  }, [
+    bootstrapComplete,
+    activeTab,
+    currentProject?.id,
+    storyArcView,
+    contentProducerPlannerSurface,
+    cinematographerSurface,
+    directorSurface,
+    directorSceneId,
+    effectiveWorkspaceLens,
+    firstAssistantDirectorSurface,
+    isAssignedCinematographerProjectRole,
+    isAssignedDirectorProjectRole,
+    isAssignedFirstAssistantDirectorProjectRole,
+    isAssignedProductionManagerProjectRole,
+    isAssignedProductionCoordinatorProjectRole,
+    isAssignedSecondAssistantDirectorProjectRole,
+    isExternalClientPortalMode,
+    workspaceLensPreference,
+  ]);
 
   // Rehydrate activeTab + currentProject when the user hits browser
   // back/forward. Without this, pushing URLs only *writes* history
@@ -4564,7 +5443,24 @@ type RoleRoomProjectWorkspaceState = {
         || urlView === 'shot-list' || urlView === 'planning'
       ) ? urlView : 'main';
       setStoryArcView((previous) => (previous === nextView ? previous : nextView));
+      const urlLens = params.get('lens');
+      const nextLens = isRoleRoomWorkspaceLens(urlLens) ? urlLens : null;
+      setWorkspaceLensPreference((previous) => (previous === nextLens ? previous : nextLens));
+      const nextDirectorSceneId = params.get('scene')?.trim() || null;
+      setDirectorSceneId((previous) => (previous === nextDirectorSceneId ? previous : nextDirectorSceneId));
       const urlSurface = params.get('surface');
+      if (nextLens === 'director' && isDirectorSurface(urlSurface)) {
+        setDirectorSurface((previous) => (previous === urlSurface ? previous : urlSurface));
+        return;
+      }
+      if (nextLens === 'cinematography' && isCinematographerSurface(urlSurface)) {
+        setCinematographerSurface((previous) => (previous === urlSurface ? previous : urlSurface));
+        return;
+      }
+      if (nextLens === 'assistant-direction' && isFirstAssistantDirectorSurface(urlSurface)) {
+        setFirstAssistantDirectorSurface((previous) => (previous === urlSurface ? previous : urlSurface));
+        return;
+      }
       const nextSurface: ContentProducerPlannerSurface = (
         urlSurface === 'overview' || urlSurface === 'project_room' || urlSurface === 'approval'
         || urlSurface === 'delivery' || urlSurface === 'economy'
@@ -4665,8 +5561,14 @@ type RoleRoomProjectWorkspaceState = {
     };
   }, [currentProject, isContentProducerDemoProject, isContentProducerMode, permissionsLoading]);
 
-  const roleDialogAccentColor = '#b86bff';
-  const roleDialogAccentSoftColor = alpha(roleDialogAccentColor, 0.2);
+  const roleDialogAccentColor = 'var(--role-accent, #b86bff)';
+  // MUI alpha() runs decomposeColor() which cannot parse a CSS var() string and
+  // throws (minified error #9) — that crash white-screened the casting app. Derive
+  // translucent variants with CSS-native color-mix instead, which keeps the
+  // admin-rethemeable --role-accent variable live rather than baking in a hex.
+  const accentMix = (ratio: number): string =>
+    `color-mix(in srgb, var(--role-accent, #b86bff) ${Math.round(ratio * 100)}%, transparent)`;
+  const roleDialogAccentSoftColor = accentMix(0.2);
   const roleDialogBackdrop = `url(${rolesBackdrop4})`;
   const standaloneRoleRoomMode = shouldUseRoleRoomLocalFallback();
   const currentRoleRoomProfessionNamespace = 'roleRoom_castingProfession';
@@ -4938,7 +5840,7 @@ type RoleRoomProjectWorkspaceState = {
           : null;
 
     const nextRole =
-      normalizedRoleId === 'camera_operator'
+      ['cinematographer', 'director_of_photography', 'dop', 'dp', 'camera_operator'].includes(normalizedRoleId)
         ? 'camera_team'
         : normalizedRoleId === 'client'
           ? 'client_reviewer'
@@ -5325,7 +6227,7 @@ type RoleRoomProjectWorkspaceState = {
     if (isProducerWorkspaceSession) return 'videographer';
 
     const requestedRole = (adminUser.requestedRole || '').trim().toLowerCase();
-    if (['film_photographer', 'director', 'producer', 'casting_director', 'camera_team', 'camera_operator'].includes(requestedRole)) {
+    if (['film_photographer', 'director', 'producer', 'casting_director', 'camera_team', 'camera_operator', 'cinematographer', 'director_of_photography', 'dop', 'dp'].includes(requestedRole)) {
       return 'videographer';
     }
     if (['photographer', 'photo_director', 'photo_assistant', 'client'].includes(requestedRole)) {
@@ -5952,6 +6854,67 @@ type RoleRoomProjectWorkspaceState = {
     profession,
   ]);
 
+  // Anvend dyp-lenke-intent når prosjekt-lista blir tilgjengelig — ikke bare
+  // on mount. Lista kan lastes ETTER mount (LTI-token settler sent) eller ha
+  // vært tom ved første fetch. Kjører kun for dyp-lenke-sesjoner
+  // (deepLinkProjectId satt); vanlig produsent-navigasjon er uendret.
+  useEffect(() => {
+    if (!deepLinkProjectId || deepLinkResolvedRef.current) return;
+    if (isExternalClientPortalMode) { deepLinkResolvedRef.current = true; return; }
+    const found = projects.find((project) => project.id === deepLinkProjectId);
+    if (!found) {
+      // Lista kan ha blitt hentet før token var klar (tom respons). Trigg
+      // ÉN refetch. Hvis prosjektet fortsatt mangler etterpå, gi opp og
+      // slipp URL-sync fri (unngå permanent blokade). Apply-once via refs.
+      if (bootstrapComplete && !deepLinkRefetchedRef.current) {
+        deepLinkRefetchedRef.current = true;
+        void loadProjects();
+      } else if (deepLinkRefetchedRef.current) {
+        deepLinkResolvedRef.current = true;
+      }
+      return;
+    }
+    const applyTabView = () => {
+      if (deepLinkTabSlug) {
+        const byName = TAB_IDS.findIndex((id) => id === `tabpanel-${deepLinkTabSlug}`);
+        const parsed = byName >= 0 ? byName : parseInt(deepLinkTabSlug, 10);
+        if (Number.isFinite(parsed) && parsed >= 0) {
+          setActiveTab((previous) => (previous === parsed ? previous : parsed));
+        }
+      }
+      if (deepLinkView) {
+        setStoryArcView((previous) => (previous === deepLinkView ? previous : deepLinkView));
+      }
+    };
+    if (currentProject?.id === found.id) {
+      // loadProjects rakk å velge prosjektet allerede — bare tab/view.
+      applyTabView();
+      deepLinkResolvedRef.current = true;
+      return;
+    }
+    let cancelled = false;
+    void castingService.getProject(found.id).then((full) => {
+      if (cancelled) return;
+      setCurrentProject(full ?? found);
+      setCurrentProjectId(found.id);
+      applyTabView();
+      // Marker FØRST som resolved når prosjektet faktisk er valgt — ellers
+      // kunne URL-sync skrevet desiredProject='' (strippe) mens getProject
+      // fortsatt pågikk og currentProject var null.
+      deepLinkResolvedRef.current = true;
+    });
+    return () => { cancelled = true; };
+  }, [
+    projects,
+    currentProject?.id,
+    bootstrapComplete,
+    deepLinkProjectId,
+    deepLinkTabSlug,
+    deepLinkView,
+    isExternalClientPortalMode,
+    loadProjects,
+  ]);
+
   const handleQuickContactsChange = useCallback((ids: string[]) => {
     startTransition(() => {
       setQuickContactIds(new Set(ids));
@@ -6394,6 +7357,45 @@ type RoleRoomProjectWorkspaceState = {
     )),
     [currentProject?.roles],
   );
+
+  // Self-tape fetch — én gang per (project, role-set). Resultatet
+  // brukes til 📹-badge på kandidat-kort i både Kanban og Utvelgelse.
+  useEffect(() => {
+    if (!currentProject?.id || roles.length === 0) {
+      setSelftapesByTalent(new Map());
+      return;
+    }
+    let cancelled = false;
+    const fetchAll = async () => {
+      try {
+        const results = await Promise.all(
+          roles.map(async (r) => {
+            try {
+              if (!canQueryCastingRoleSelftapes(r, currentProject.id)) return [] as CastingRoleSelftape[];
+              const { selftapes } = await listCastingRoleSelftapes(r.id);
+              return selftapes;
+            } catch {
+              return [] as CastingRoleSelftape[];
+            }
+          }),
+        );
+        if (cancelled) return;
+        const map = new Map<string, CastingRoleSelftape[]>();
+        for (const list of results) {
+          for (const s of list) {
+            const existing = map.get(s.talent_id) ?? [];
+            existing.push(s);
+            map.set(s.talent_id, existing);
+          }
+        }
+        setSelftapesByTalent(map);
+      } catch (err) {
+        console.warn('[CastingPlannerPanel] selftape-fetch failed', err);
+      }
+    };
+    fetchAll();
+    return () => { cancelled = true; };
+  }, [currentProject?.id, roles]);
   const allCandidates = useMemo(
     () => (currentProject?.candidates ?? []).filter((candidate): candidate is Candidate => (
       !!candidate
@@ -6531,12 +7533,49 @@ type RoleRoomProjectWorkspaceState = {
     [contentProducerPlannerSurface, producerMediaFocus?.workspace],
   );
 
+  const [stepChangeToast, setStepChangeToast] = useState<string | null>(null);
+
   const completedWorkflowSteps = useMemo(
-    () => deriveCompletedWorkflowSteps(currentProject?.producerWorkflowStatus),
-    [currentProject?.producerWorkflowStatus],
+    () => deriveCompletedWorkflowSteps(
+      currentProject?.producerWorkflowStatus,
+      currentProject?.producerPhaseCompletion,
+    ),
+    [currentProject?.producerWorkflowStatus, currentProject?.producerPhaseCompletion],
   );
 
+  const handleTogglePhaseComplete = useCallback(async (step: 'delivery' | 'economy') => {
+    if (!currentProject) return;
+    const existing = currentProject.producerPhaseCompletion ?? {};
+    const isComplete = Boolean(existing[step]);
+    const nextCompletion = { ...existing, [step]: isComplete ? null : new Date().toISOString() };
+    const nextProject: CastingProject = {
+      ...currentProject,
+      producerPhaseCompletion: nextCompletion,
+      updatedAt: new Date().toISOString(),
+    };
+    // Optimistisk: oppdater lokalt umiddelbart.
+    setCurrentProject(nextProject);
+    setProjects((previous) => previous.map((project) => (project.id === nextProject.id ? nextProject : project)));
+    try {
+      // saveProject er offline-resilient (replay-kø) — trygt selv ved 401/offline.
+      await castingService.saveProject(nextProject);
+    } catch (saveError) {
+      console.warn('[content-producer] kunne ikke lagre fase-fullføring', saveError);
+    }
+  }, [currentProject]);
+
   const handleSelectWorkflowStep = useCallback((step: WorkflowStepKey) => {
+    // Lett bekreftelse på at man byttet steg — stepperen highlighter også, men
+    // en kort toast fanger oppmerksomheten hvis man er distrahert.
+    const stepToastLabels: Record<WorkflowStepKey, string> = {
+      brief: 'Brief',
+      story: 'Story',
+      storyboard: 'Storyboard',
+      approval: 'Klient',
+      delivery: 'Levering',
+      economy: 'Økonomi',
+    };
+    setStepChangeToast(`Nå i: ${stepToastLabels[step]}`);
     switch (step) {
       case 'brief':
         openContentProducerPlannerSurface('project_room', {
@@ -8230,8 +9269,8 @@ type RoleRoomProjectWorkspaceState = {
                   flexShrink: 0,
                   p: 0,
                   '&:hover, &:active': {
-                    borderColor: '#00d4ff',
-                    color: '#00d4ff',
+                    borderColor: 'var(--role-cyan, #00d4ff)',
+                    color: 'var(--role-cyan, #00d4ff)',
                     bgcolor: 'rgba(0, 212, 255, 0.1)',
                   },
                 }}
@@ -8444,7 +9483,7 @@ type RoleRoomProjectWorkspaceState = {
                           width: useDenseDesktopHeader ? 8 : 10,
                           height: useDenseDesktopHeader ? 8 : 10,
                           borderRadius: '50%',
-                          bgcolor: headerActiveProject ? '#22d3ee' : 'rgba(255,255,255,0.22)',
+                          bgcolor: headerActiveProject ? 'var(--role-cyan, #22d3ee)' : 'rgba(255,255,255,0.22)',
                           border: headerActiveProject ? '2px solid rgba(255,255,255,0.28)' : '1px solid rgba(255,255,255,0.1)',
                           boxShadow: headerActiveProject ? '0 0 12px rgba(34,211,238,0.45)' : 'none',
                           flexShrink: 0,
@@ -8542,7 +9581,7 @@ type RoleRoomProjectWorkspaceState = {
                       bgcolor: 'rgba(255,255,255,0.04)',
                       flexShrink: 0,
                       '&:hover': {
-                        color: '#7dd3fc',
+                        color: 'var(--role-cyan, #7dd3fc)',
                         bgcolor: 'rgba(96,165,250,0.12)',
                         borderColor: 'rgba(96,165,250,0.24)',
                       },
@@ -8614,7 +9653,7 @@ type RoleRoomProjectWorkspaceState = {
                       left: '8%',
                       right: '8%',
                       height: '3px',
-                      backgroundColor: '#00d4ff',
+                      backgroundColor: 'var(--role-cyan, #00d4ff)',
                       borderRadius: '3px 3px 0 0',
                       boxShadow: '0 0 10px rgba(0, 212, 255, 0.4)',
                     } : {},
@@ -8630,7 +9669,7 @@ type RoleRoomProjectWorkspaceState = {
                       boxShadow: `0 0 10px ${pinnedAccentColor}55`,
                     } : {},
                     '&:hover': {
-                      borderColor: isActive ? '#00d4ff' : 'rgba(255,255,255,0.16)',
+                      borderColor: isActive ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.16)',
                       background: isActive
                         ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.22) 0%, rgba(0, 180, 230, 0.16) 100%)'
                         : 'rgba(255,255,255,0.04)',
@@ -8652,7 +9691,7 @@ type RoleRoomProjectWorkspaceState = {
                           width: { xs: 10, sm: 12 },
                           height: { xs: 10, sm: 12 },
                           borderRadius: '50%',
-                          bgcolor: isActive ? '#00d4ff' : 'rgba(255,255,255,0.2)',
+                          bgcolor: isActive ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.2)',
                           border: isActive ? '2px solid rgba(255,255,255,0.3)' : '1px solid rgba(255,255,255,0.1)',
                           boxShadow: isActive ? '0 0 12px rgba(0, 212, 255, 0.45)' : 'none',
                           flexShrink: 0,
@@ -8762,7 +9801,7 @@ type RoleRoomProjectWorkspaceState = {
                       sx={{
                         color: isActive ? 'rgba(255,255,255,0.68)' : 'rgba(255,255,255,0.34)',
                         '&:hover, &:active': {
-                          color: isActive ? '#00d4ff' : 'rgba(255,255,255,0.88)',
+                          color: isActive ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.88)',
                           bgcolor: isActive ? 'rgba(0, 212, 255, 0.15)' : 'rgba(255,255,255,0.08)',
                         },
                         width: safeHeaderProjectActionSizePx,
@@ -8863,6 +9902,26 @@ type RoleRoomProjectWorkspaceState = {
               />
               {pinnedProjectIdSet.has(projectQuickActionsProject?.id ?? '') ? 'Løsne fra toppen' : 'Fest til toppen'}
             </MenuItem>
+            <MenuItem
+              onClick={() => {
+                // Lukk prosjektet: rydd state + URL slik at brukeren havner
+                // på dashboard og kan navigere fritt (Admin Room etc).
+                setCurrentProject(null);
+                setCurrentProjectId(null);
+                // #426-vakt: fane 0 (Dashboard) er lazy — bytt via transition.
+                startTransition(() => setActiveTab(0));
+                if (typeof window !== 'undefined') {
+                  try {
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                  } catch { /* ignore */ }
+                }
+                handleCloseProjectQuickActions();
+              }}
+              sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
+            >
+              <CloseIcon sx={{ fontSize: 18, color: '#fda4af' }} />
+              Lukk prosjekt
+            </MenuItem>
             {projectQuickActionsProject && canSwitchRoleRoomRole && !isTemplateProject(projectQuickActionsProject) ? (
               <MenuItem
                 onClick={() => {
@@ -8885,7 +9944,7 @@ type RoleRoomProjectWorkspaceState = {
                   }}
                   sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
                 >
-                  <EditIcon sx={{ fontSize: 18, color: '#7dd3fc' }} />
+                  <EditIcon sx={{ fontSize: 18, color: 'var(--role-cyan, #7dd3fc)' }} />
                   Rediger prosjekt
                 </MenuItem>
                 {projectQuickActionsProject && !isTemplateProject(projectQuickActionsProject) && !isProtectedDemoProject(projectQuickActionsProject) ? (
@@ -8906,6 +9965,20 @@ type RoleRoomProjectWorkspaceState = {
                       <ArchiveIcon sx={{ fontSize: 18, color: '#fbbf24' }} />
                     )}
                     {isArchivedWorkspaceProject(projectQuickActionsProject) ? 'Gjenopprett prosjekt' : 'Arkiver prosjekt'}
+                  </MenuItem>
+                ) : null}
+                {projectQuickActionsProject && isViewerLeaderOf(projectQuickActionsProject) ? (
+                  <MenuItem
+                    onClick={() => {
+                      if (!projectQuickActionsProject) return;
+                      setTilgangerProjectId(projectQuickActionsProject.id);
+                      setTilgangerDialogOpen(true);
+                      handleCloseProjectQuickActions();
+                    }}
+                    sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
+                  >
+                    <GroupsIcon sx={{ fontSize: 18, color: 'var(--role-cyan, #7dd3fc)' }} />
+                    Tilganger
                   </MenuItem>
                 ) : null}
                 <MenuItem
@@ -9020,7 +10093,7 @@ type RoleRoomProjectWorkspaceState = {
                     bgcolor: 'rgba(255,255,255,0.03)',
                     p: 0,
                     '&:hover': {
-                      color: '#7dd3fc',
+                      color: 'var(--role-cyan, #7dd3fc)',
                       bgcolor: 'rgba(96,165,250,0.12)',
                       borderColor: 'rgba(96,165,250,0.22)',
                     },
@@ -9030,6 +10103,22 @@ type RoleRoomProjectWorkspaceState = {
                 </IconButton>
               ) : (
                 <>
+                  {isEduStudentSession && (
+                    <IconButton
+                      onClick={() => window.location.assign(`${window.location.origin}/?mode=student`)}
+                      aria-label="Min side"
+                      title="Min side"
+                      sx={{
+                        color: '#8b5cf6',
+                        width: safeHeaderActionButtonSizePx,
+                        height: safeHeaderActionButtonSizePx,
+                        p: 0,
+                        '&:hover': { bgcolor: 'rgba(139,92,246,0.1)' },
+                      }}
+                    >
+                      <StudentHomeIcon sx={{ fontSize: navIconSizePx }} />
+                    </IconButton>
+                  )}
                   {canSwitchRoleRoomRole && (
                     <IconButton
                       onClick={openProfessionDialog}
@@ -9067,7 +10156,7 @@ type RoleRoomProjectWorkspaceState = {
                         aria-label={branding.tokens.labels.manageUsersLabel}
                         title={branding.tokens.labels.manageUsersLabel}
                         sx={{
-                          color: '#8b5cf6',
+                          color: 'var(--role-violet, #8b5cf6)',
                           width: safeHeaderActionButtonSizePx,
                           height: safeHeaderActionButtonSizePx,
                           p: 0,
@@ -9116,7 +10205,7 @@ type RoleRoomProjectWorkspaceState = {
               aria-label={branding.tokens.labels.loginLabel}
               title={branding.tokens.labels.loginLabel}
               sx={{
-                color: '#8b5cf6',
+                color: 'var(--role-violet, #8b5cf6)',
                 flexShrink: 0,
                 width: safeHeaderActionButtonSizePx,
                 height: safeHeaderActionButtonSizePx,
@@ -9152,6 +10241,18 @@ type RoleRoomProjectWorkspaceState = {
                 },
               }}
             >
+              {isEduStudentSession ? (
+                <MenuItem
+                  onClick={() => {
+                    handleCloseHeaderToolsMenu();
+                    window.location.assign(`${window.location.origin}/?mode=student`);
+                  }}
+                  sx={{ minHeight: headerMenuItemMinHeight, fontSize: isMobile ? '0.94rem' : '0.86rem', gap: 1.2, py: isMobile ? 1 : 0.5 }}
+                >
+                  <StudentHomeIcon sx={{ fontSize: 18, color: '#8b5cf6' }} />
+                  Min side
+                </MenuItem>
+              ) : null}
               {canSwitchRoleRoomRole ? (
                 <MenuItem
                   onClick={() => {
@@ -9320,6 +10421,82 @@ type RoleRoomProjectWorkspaceState = {
           onSelectStep={handleSelectWorkflowStep}
           hidden={isLiveSetImmersive}
         />
+      )}
+
+      {/* Fase-fullføring: Levering/Økonomi har ingen avledet «ferdig»-signal,
+          så Stig markerer dem manuelt herfra. Vises kun når et av disse
+          stegene er aktivt. Stepperen reflekterer flagget med et check-ikon. */}
+      {isContentProducerMode && currentProject && !isLiveSetImmersive
+        && (activeWorkflowStep === 'delivery' || activeWorkflowStep === 'economy')
+        && (() => {
+          const phaseStep: 'delivery' | 'economy' = activeWorkflowStep === 'delivery' ? 'delivery' : 'economy';
+          const stepLabel = phaseStep === 'delivery' ? 'Levering' : 'Økonomi';
+          const completedAt = currentProject.producerPhaseCompletion?.[phaseStep] ?? null;
+          return (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+                px: { xs: 1.5, sm: 2 },
+                py: 0.85,
+                bgcolor: completedAt ? 'rgba(34,197,94,0.08)' : 'rgba(15,23,42,0.4)',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+              }}
+            >
+              <Typography sx={{ fontSize: '0.8rem', color: completedAt ? '#86efac' : 'rgba(203,213,225,0.8)' }}>
+                {completedAt
+                  ? `✓ ${stepLabel} er markert som fullført ${new Date(completedAt).toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit' })}`
+                  : `${stepLabel}-steget vises som uferdig i oversikten til du markerer det fullført.`}
+              </Typography>
+              <Button
+                size="small"
+                variant={completedAt ? 'text' : 'contained'}
+                onClick={() => { void handleTogglePhaseComplete(phaseStep); }}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.74rem',
+                  flexShrink: 0,
+                  ...(completedAt
+                    ? { color: 'rgba(203,213,225,0.85)' }
+                    : { bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' } }),
+                }}
+              >
+                {completedAt ? 'Angre' : `Marker ${stepLabel.toLowerCase()} som fullført`}
+              </Button>
+            </Box>
+          );
+        })()}
+
+      {/* #121: kort bekreftelse ved steg-bytte i workflow-stepperen. */}
+      <Snackbar
+        open={stepChangeToast !== null}
+        autoHideDuration={1800}
+        onClose={() => setStepChangeToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={stepChangeToast ?? ''}
+        ContentProps={{
+          sx: {
+            bgcolor: 'rgba(15,23,42,0.96)',
+            color: '#e2e8f0',
+            border: '1px solid rgba(124,58,237,0.4)',
+            fontWeight: 700,
+            fontSize: '0.82rem',
+            minWidth: 'auto',
+          },
+        }}
+      />
+
+      {/* Student-ankomststripe (edu=1 + assignment=<id>) — tynt, ikke-blokkerende
+          oppgavekontekst-bånd over produksjonsverktøyet for bro-studenter.
+          Selvstyrt (leser egne URL-param + henter oppgave), returnerer null
+          når vilkårene ikke er oppfylt. Se EduAssignmentArrivalStripe.tsx. */}
+      {isEduStudentSession && (
+        <Suspense fallback={null}>
+          <EduAssignmentArrivalStripe />
+        </Suspense>
       )}
 
       {/* Tabs */}
@@ -9600,7 +10777,7 @@ type RoleRoomProjectWorkspaceState = {
                           lineHeight: 1,
                           letterSpacing: 0.35,
                           textTransform: 'uppercase',
-                          color: isSelected ? '#bae6fd' : '#7dd3fc',
+                          color: isSelected ? '#bae6fd' : 'var(--role-cyan, #7dd3fc)',
                           fontWeight: 800,
                         }}
                       >
@@ -9763,6 +10940,20 @@ type RoleRoomProjectWorkspaceState = {
 
       {/* Content */}
       <Box sx={{ flex: 1, overflow: 'hidden', bgcolor: '#0d1117', display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%' }}>
+        {currentProject && displayedActiveTab !== 0 && !canManageTab(displayedActiveTab) ? (
+          <Box
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 0.75,
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              bgcolor: 'rgba(56,189,248,0.08)',
+            }}
+          >
+            <VisibilityIcon sx={{ fontSize: 16, color: '#7dd3fc' }} />
+            <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.72)', fontWeight: 600 }}>
+              Skrivebeskyttet — du har «Se»-tilgang til denne fanen. Kontakt prosjektlederen for å administrere.
+            </Typography>
+          </Box>
+        ) : null}
         <ProjectProvider key={currentProject?.id ?? 'no-project'}>
           {producerProjectSwitchPending ? (
             <Box
@@ -9785,13 +10976,18 @@ type RoleRoomProjectWorkspaceState = {
           ) : null}
           {projectsLoading ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2 }}>
-              <CircularProgress size={40} sx={{ color: '#8b5cf6' }} />
+              <CircularProgress size={40} sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
               <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>
                 {branding.tokens.labels.loadingLabel || 'Loading...'}
               </Typography>
             </Box>
           ) : (
-          <ErrorBoundary>
+          // key={displayedActiveTab}: tab-baren ligger UTENFOR denne boundaryen,
+          // så uten key ville en krasj i én fane låse fallbacken selv når brukeren
+          // klikker en annen fane (activeTab endres, men hasError står igjen). Å
+          // key-e på aktiv fane remounter boundaryen ved fane-bytte → auto-reset,
+          // så en krasj isoleres til dén fanen. (Samme mønster som DanceWorkspace.)
+          <ErrorBoundary key={displayedActiveTab}>
           <Suspense fallback={<PanelSkeleton variant="panel" />}>
         <TabPanel value={activeTab} index={0}>
           {!currentProject && projects.length === 0 ? (
@@ -9799,33 +10995,340 @@ type RoleRoomProjectWorkspaceState = {
               workspaceName={branding.appName}
               onCreateProject={() => setProjectCreationModalOpen(true)}
             />
+          ) : currentProject && effectiveWorkspaceLens === 'director' ? (
+            <DirectorWorkspace
+              key={`director-${currentProject.id}`}
+              project={currentProject}
+              roles={roles}
+              candidates={allCandidates}
+              schedules={schedules}
+              activeSurface={directorSurface}
+              selectedSceneId={directorSceneId}
+              readOnly={!permissions.canEditProduction && !permissions.canEditCasting}
+              canComment={permissions.canComment || isRoleRoomAdminSession}
+              onNavigate={handleDirectorNavigate}
+              onSceneChange={setDirectorSceneId}
+              onOpenSceneManuscript={handleOpenDirectorSceneManuscript}
+              onOpenSceneStoryboard={handleOpenDirectorSceneStoryboard}
+              onOpenSceneShotList={handleOpenDirectorSceneShotList}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+            />
+          ) : currentProject && effectiveWorkspaceLens === 'cinematography' ? (
+            <CinematographerWorkspace
+              key={`cinematographer-${currentProject.id}`}
+              project={currentProject}
+              activeSurface={cinematographerSurface}
+              readOnly={!permissions.canEditShotLists || !canManageTab(SHOT_LIST_TAB_INDEX)}
+              isSurfaceAvailable={isCinematographerSurfaceAvailable}
+              onNavigate={handleCinematographerNavigate}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+            />
+          ) : currentProject && effectiveWorkspaceLens === 'assistant-direction' ? (
+            isAssignedSecondAssistantDirectorProjectRole ? (
+              <SecondAssistantDirectorWorkspace
+                key={`second-ad-${currentProject.id}`}
+                project={currentProject}
+                readOnly={!permissions.canEditProduction || !canManageTab(CALENDAR_TAB_INDEX)}
+                dataLoading={canonicalProductionDataProjectId !== currentProject.id}
+                deliveryRefreshSignal={callSheetDeliveryRefreshSignal}
+                onOpenCallSheet={(productionDayId) => setCanonicalCallSheetDayId(productionDayId ?? null)}
+                onOpenSchedule={() => handleFirstAssistantDirectorNavigate('shooting-plan')}
+                onOpenLiveSet={() => handleFirstAssistantDirectorNavigate('on-set')}
+                onOpenFullWorkspace={handleOpenFullWorkspace}
+                onSaved={(updatedDay) => {
+                  const apply = (project: CastingProject): CastingProject => ({
+                    ...project,
+                    productionDays: (project.productionDays ?? []).map((day) => day.id === updatedDay.id ? updatedDay : day),
+                  });
+                  setCurrentProject((project) => project ? apply(project) : project);
+                  setProjects((items) => items.map((project) => project.id === currentProject.id ? apply(project) : project));
+                }}
+              />
+            ) : (
+              <FirstAssistantDirectorWorkspace
+                key={`first-ad-${currentProject.id}`}
+                project={currentProject}
+                activeSurface={firstAssistantDirectorSurface}
+                readOnly={!permissions.canEditProduction || !canManageTab(CALENDAR_TAB_INDEX)}
+                isSurfaceAvailable={isFirstAssistantDirectorSurfaceAvailable}
+                onNavigate={handleFirstAssistantDirectorNavigate}
+                onOpenFullWorkspace={handleOpenFullWorkspace}
+              />
+            )
+          ) : currentProject && effectiveWorkspaceLens === 'production-management' ? (
+            <ProductionManagementWorkspace
+              key={`production-management-${currentProject.id}`}
+              project={currentProject}
+              readOnly={!permissions.canEditProduction || !canManageTab(CALENDAR_TAB_INDEX)}
+              dataLoading={canonicalProductionDataProjectId !== currentProject.id}
+              deliveryRefreshSignal={callSheetDeliveryRefreshSignal}
+              onOpenCallSheet={(productionDayId) => setCanonicalCallSheetDayId(productionDayId ?? null)}
+              onOpenSchedule={() => navigateToTab(CALENDAR_TAB_INDEX)}
+              onOpenCrew={() => navigateToTab(TEAM_TAB_INDEX)}
+              onOpenCoordination={handleOpenProductionCoordinationWorkspace}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+              onSaved={(updatedDay) => {
+                const apply = (project: CastingProject): CastingProject => ({
+                  ...project,
+                  productionDays: (project.productionDays ?? []).map((day) => day.id === updatedDay.id ? updatedDay : day),
+                });
+                setCurrentProject((project) => project ? apply(project) : project);
+                setProjects((items) => items.map((project) => project.id === currentProject.id ? apply(project) : project));
+              }}
+            />
+          ) : currentProject && effectiveWorkspaceLens === 'production-coordination' ? (
+            <ProductionCoordinationWorkspace
+              key={`production-coordination-${currentProject.id}`}
+              project={currentProject}
+              readOnly={!canUseProductionCoordinationWorkspace || !canManageTab(CALENDAR_TAB_INDEX)}
+              dataLoading={canonicalProductionDataProjectId !== currentProject.id}
+              onOpenCallSheet={(productionDayId) => setCanonicalCallSheetDayId(productionDayId ?? null)}
+              onOpenSchedule={() => navigateToTab(CALENDAR_TAB_INDEX)}
+              onOpenCrew={() => navigateToTab(TEAM_TAB_INDEX)}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+              onSaved={(updatedDay) => {
+                const apply = (project: CastingProject): CastingProject => ({
+                  ...project,
+                  productionDays: (project.productionDays ?? []).map((day) => day.id === updatedDay.id ? updatedDay : day),
+                });
+                setCurrentProject((project) => project ? apply(project) : project);
+                setProjects((items) => items.map((project) => project.id === currentProject.id ? apply(project) : project));
+              }}
+            />
           ) : (
-          <DashboardPanel
-            key={currentProject?.id ?? 'no-project'}
-            project={currentProject}
-            roles={roles}
-            candidates={allCandidates}
-            schedules={schedules}
-            onNavigateToTab={navigateToTab}
-            onCreateRole={handleCreateRole}
-            onCreateCandidate={handleCreateCandidate}
-            onCreateSchedule={handleCreateSchedule}
-            onOpenSharing={openSharingModal}
-            onUpdate={async () => {
-              if (currentProject) {
-                const updated = await castingService.getProject(currentProject.id);
-                if (updated) {
-                  setCurrentProject(updated);
-                }
-              }
-            }}
-            onEditCandidate={(candidate) => {
-              setSelectedCandidate(candidate);
-              openCandidateDialog();
-            }}
-            onCandidatesChange={loadProjects}
-            profession={profession}
-          />
+            <>
+              {currentProject && canUseProductionCoordinationWorkspace ? (
+                <Box
+                  data-testid="production-coordination-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 },
+                    mt: { xs: 1.5, sm: 2 },
+                    px: { xs: 1.5, sm: 2 },
+                    py: 1.25,
+                    display: 'flex',
+                    alignItems: { xs: 'stretch', sm: 'center' },
+                    justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    gap: 1,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(14,165,233,0.07)',
+                    border: '1px solid rgba(56,189,248,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#e0f2fe', fontWeight: 750, fontSize: '0.9rem' }}>
+                      Produksjonskoordinering
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(186,230,253,0.72)', fontSize: '0.76rem' }}>
+                      Følg opp oppgaver, crew, leverandører, dokumenter, callsheet og daglig overlevering.
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    startIcon={<FactCheckIcon />}
+                    onClick={handleOpenProductionCoordinationWorkspace}
+                    sx={{
+                      minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE,
+                      color: '#bae6fd',
+                      borderColor: 'rgba(56,189,248,0.42)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Åpne koordinatorflate
+                  </Button>
+                </Box>
+              ) : null}
+              {currentProject && canUseProductionManagementWorkspace ? (
+                <Box
+                  data-testid="production-management-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 },
+                    mt: { xs: 1.5, sm: 2 },
+                    px: { xs: 1.5, sm: 2 },
+                    py: 1.25,
+                    display: 'flex',
+                    alignItems: { xs: 'stretch', sm: 'center' },
+                    justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    gap: 1,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(20,184,166,0.07)',
+                    border: '1px solid rgba(45,212,191,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#ecfeff', fontWeight: 750, fontSize: '0.9rem' }}>
+                      Produksjonsledelse
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(204,251,241,0.7)', fontSize: '0.76rem' }}>
+                      Kontroller crew, logistikk, callsheet, avvik og dagskostnader i én arbeidsflate.
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    startIcon={<FactCheckIcon />}
+                    onClick={handleOpenProductionManagementWorkspace}
+                    sx={{
+                      minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE,
+                      color: '#99f6e4',
+                      borderColor: 'rgba(45,212,191,0.42)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Åpne produksjonsledelse
+                  </Button>
+                </Box>
+              ) : null}
+              {currentProject && canUseDirectorWorkspace ? (
+                <Box
+                  data-testid="director-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 },
+                    mt: { xs: 1.5, sm: 2 },
+                    px: { xs: 1.5, sm: 2 },
+                    py: 1.25,
+                    display: 'flex',
+                    alignItems: { xs: 'stretch', sm: 'center' },
+                    justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    gap: 1,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(168,85,247,0.08)',
+                    border: '1px solid rgba(168,85,247,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#f3eaff', fontWeight: 750, fontSize: '0.9rem' }}>
+                      Regissørrom
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(220,205,255,0.72)', fontSize: '0.76rem' }}>
+                      Se dagens scener, castingvalg og visuelle avklaringer i én arbeidsflate.
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    startIcon={<MovieIcon />}
+                    onClick={handleOpenDirectorWorkspace}
+                    sx={{
+                      minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE,
+                      color: '#e9d5ff',
+                      borderColor: 'rgba(184,107,255,0.42)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Åpne regissørvisning
+                  </Button>
+                </Box>
+              ) : null}
+              {currentProject && canUseCinematographerWorkspace ? (
+                <Box
+                  data-testid="cinematographer-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 },
+                    mt: 1,
+                    px: { xs: 1.5, sm: 2 },
+                    py: 1.25,
+                    display: 'flex',
+                    alignItems: { xs: 'stretch', sm: 'center' },
+                    justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    gap: 1,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(14,165,233,0.07)',
+                    border: '1px solid rgba(56,189,248,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#e0f2fe', fontWeight: 750, fontSize: '0.9rem' }}>
+                      Filmfotografens rom
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(186,230,253,0.72)', fontSize: '0.76rem' }}>
+                      Se bildedekning, kameraspesifikasjoner, lys og teknisk crew i én arbeidsflate.
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    startIcon={<CameraAltIcon />}
+                    onClick={handleOpenCinematographerWorkspace}
+                    sx={{
+                      minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE,
+                      color: '#bae6fd',
+                      borderColor: 'rgba(56,189,248,0.42)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Åpne filmfotografvisning
+                  </Button>
+                </Box>
+              ) : null}
+              {currentProject && canUseFirstAssistantDirectorWorkspace ? (
+                <Box
+                  data-testid="first-ad-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 },
+                    mt: 1,
+                    px: { xs: 1.5, sm: 2 },
+                    py: 1.25,
+                    display: 'flex',
+                    alignItems: { xs: 'stretch', sm: 'center' },
+                    justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    gap: 1,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(249,115,22,0.07)',
+                    border: '1px solid rgba(251,146,60,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#fff7ed', fontWeight: 750, fontSize: '0.9rem' }}>
+                      Innspillingsledelse · 1st AD
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(254,215,170,0.72)', fontSize: '0.76rem' }}>
+                      Se opptaksrekkefølge, manglende dagsgrunnlag og bekreftet cast og crew i én arbeidsflate.
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    startIcon={<AssignmentIcon />}
+                    onClick={handleOpenFirstAssistantDirectorWorkspace}
+                    sx={{
+                      minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE,
+                      color: '#fed7aa',
+                      borderColor: 'rgba(251,146,60,0.42)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Åpne 1st AD-visning
+                  </Button>
+                </Box>
+              ) : null}
+              <DashboardPanel
+                key={currentProject?.id ?? 'no-project'}
+                project={currentProject}
+                roles={roles}
+                candidates={allCandidates}
+                schedules={schedules}
+                onNavigateToTab={navigateToTab}
+                onCreateRole={handleCreateRole}
+                onCreateCandidate={handleCreateCandidate}
+                onCreateSchedule={handleCreateSchedule}
+                onOpenSharing={openSharingModal}
+                onUpdate={async () => {
+                  if (currentProject) {
+                    const updated = await castingService.getProject(currentProject.id);
+                    if (updated) {
+                      setCurrentProject(updated);
+                    }
+                  }
+                }}
+                onEditCandidate={(candidate) => {
+                  setSelectedCandidate(candidate);
+                  openCandidateDialog();
+                }}
+                onCandidatesChange={loadProjects}
+                profession={profession}
+              />
+            </>
           )}
         </TabPanel>
 
@@ -9906,7 +11409,7 @@ type RoleRoomProjectWorkspaceState = {
                     startTransition(() => setCandidateViewMode('list'));
                   }}
                   aria-label={branding.tokens.labels.listViewLabel}
-                  sx={{ color: candidateViewMode === 'list' ? '#00d4ff' : 'rgba(255,255,255,0.5)', bgcolor: candidateViewMode === 'list' ? 'rgba(0,212,255,0.15)' : 'transparent', borderRadius: 1 }}
+                  sx={{ color: candidateViewMode === 'list' ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.5)', bgcolor: candidateViewMode === 'list' ? 'rgba(0,212,255,0.15)' : 'transparent', borderRadius: 1 }}
                 >
                   <ViewListIcon sx={{ fontSize: 20 }} />
                 </IconButton>
@@ -9916,14 +11419,14 @@ type RoleRoomProjectWorkspaceState = {
                     startTransition(() => setCandidateViewMode('kanban'));
                   }}
                   aria-label={branding.tokens.labels.kanbanViewLabel}
-                  sx={{ color: candidateViewMode === 'kanban' ? '#00d4ff' : 'rgba(255,255,255,0.5)', bgcolor: candidateViewMode === 'kanban' ? 'rgba(0,212,255,0.15)' : 'transparent', borderRadius: 1 }}
+                  sx={{ color: candidateViewMode === 'kanban' ? 'var(--role-cyan, #00d4ff)' : 'rgba(255,255,255,0.5)', bgcolor: candidateViewMode === 'kanban' ? 'rgba(0,212,255,0.15)' : 'transparent', borderRadius: 1 }}
                 >
                   <GroupIcon sx={{ fontSize: 20 }} />
                 </IconButton>
               </Box>
             </Box>
             {candidateViewMode === 'kanban' ? (
-              <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} sx={{ color: '#00d4ff' }} /></Box>}>
+              <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} sx={{ color: 'var(--role-cyan, #00d4ff)' }} /></Box>}>
                 <KanbanPanel
                   key={currentProject?.id ?? 'no-project'}
                   project={currentProject}
@@ -9946,8 +11449,8 @@ type RoleRoomProjectWorkspaceState = {
                   display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1,
                   bgcolor: 'rgba(0,212,255,0.1)', borderRadius: 1, border: '1px dashed rgba(0,212,255,0.4)',
                 }}>
-                  <SwapHorizIcon sx={{ fontSize: 18, color: '#00d4ff' }} />
-                  <Typography variant="body2" sx={{ color: '#00d4ff', fontSize: '0.8rem' }}>
+                  <SwapHorizIcon sx={{ fontSize: 18, color: 'var(--role-cyan, #00d4ff)' }} />
+                  <Typography variant="body2" sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: '0.8rem' }}>
                     {branding.tokens.labels.draggingCandidateLabel.replace('{name}', draggedCandidate.name)}
                   </Typography>
                   <Button size="small" onClick={() => setDraggedCandidate(null)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)', textTransform: 'none', fontSize: '0.75rem' }}>
@@ -10199,7 +11702,7 @@ type RoleRoomProjectWorkspaceState = {
                     label="CASTING BOARD"
                     sx={{
                       bgcolor: 'rgba(14,116,144,0.24)',
-                      color: '#7dd3fc',
+                      color: 'var(--role-cyan, #7dd3fc)',
                       border: '1px solid rgba(125,211,252,0.46)',
                       fontWeight: 700,
                     }}
@@ -10602,6 +12105,11 @@ type RoleRoomProjectWorkspaceState = {
                               const isActive = selectedSelectionCandidateId === candidate.id;
                               const isCompared = selectionCompareCandidateIds.includes(candidate.id);
                               const auditionCount = auditionSchedulesByCandidate.get(candidate.id)?.length || 0;
+                              // Self-tape-badge: vises hvis kandidaten har talent_id med aktiv submission
+                              const candidateTalentId = (candidate as { talent_id?: string }).talent_id;
+                              const candidateSelftapes = candidateTalentId
+                                ? selftapesByTalent.get(candidateTalentId)
+                                : undefined;
                               const candidatePhoto = getCandidatePrimaryPhoto(candidate);
                               const assignedRoleIds = getCandidateAssignedRoles(candidate);
                               const assignedRoleNames = assignedRoleIds
@@ -10673,6 +12181,44 @@ type RoleRoomProjectWorkspaceState = {
                                         border: '1px solid rgba(125,211,252,0.45)',
                                       }}
                                     />
+                                    {/* 📹 Self-tape-badge (utvelgelse-fane) — tilstand-bevisst */}
+                                    {candidateSelftapes && candidateSelftapes.length > 0 ? (() => {
+                                      const tape = candidateSelftapes[0];
+                                      const availability = selftapeAvailability(tape);
+                                      const style = availabilityChipStyle(availability);
+                                      return (
+                                        <Box
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelftapePreview(tape);
+                                          }}
+                                          sx={{
+                                            position: 'absolute',
+                                            top: 6,
+                                            right: 6,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 0.3,
+                                            height: 20,
+                                            px: 0.7,
+                                            borderRadius: 999,
+                                            bgcolor: style.bg,
+                                            color: style.fg,
+                                            fontSize: '0.62rem',
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                            border: `1px solid ${style.border}`,
+                                            boxShadow: `0 0 8px ${style.border}`,
+                                            '&:hover': { filter: 'brightness(1.15)' },
+                                          }}
+                                          title={`${style.label} — klikk for å åpne`}
+                                        >
+                                          <PlayCircleOutlineIcon sx={{ fontSize: 12 }} />
+                                          {style.label}
+                                          {candidateSelftapes.length > 1 ? ` (${candidateSelftapes.length})` : ''}
+                                        </Box>
+                                      );
+                                    })() : null}
                                   </Box>
 
                                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.55 }}>
@@ -10697,7 +12243,7 @@ type RoleRoomProjectWorkspaceState = {
                                             ? '#6ee7b7'
                                             : phase === 'callbacks'
                                               ? '#d8b4fe'
-                                              : '#7dd3fc',
+                                              : 'var(--role-cyan, #7dd3fc)',
                                         border: '1px solid rgba(148,163,184,0.32)',
                                       }}
                                     />
@@ -10733,7 +12279,7 @@ type RoleRoomProjectWorkspaceState = {
                                           fontSize: '0.6rem',
                                           fontWeight: 700,
                                           bgcolor: 'rgba(14,165,233,0.2)',
-                                          color: '#7dd3fc',
+                                          color: 'var(--role-cyan, #7dd3fc)',
                                           border: '1px solid rgba(56,189,248,0.44)',
                                         }}
                                       />
@@ -10807,7 +12353,7 @@ type RoleRoomProjectWorkspaceState = {
                                         ? '#6ee7b7'
                                         : selectedSelectionSummary.phase === 'callbacks'
                                           ? '#d8b4fe'
-                                          : '#7dd3fc',
+                                          : 'var(--role-cyan, #7dd3fc)',
                                     border: '1px solid rgba(148,163,184,0.3)',
                                   }}
                                 />
@@ -10846,7 +12392,7 @@ type RoleRoomProjectWorkspaceState = {
                                     fontSize: '0.61rem',
                                     fontWeight: 700,
                                     bgcolor: 'rgba(14,165,233,0.2)',
-                                    color: '#7dd3fc',
+                                    color: 'var(--role-cyan, #7dd3fc)',
                                     border: '1px solid rgba(56,189,248,0.44)',
                                   }}
                                 />
@@ -10927,7 +12473,7 @@ type RoleRoomProjectWorkspaceState = {
                                     Vurderingssignal
                                   </Typography>
                                   {([
-                                    ['Sceneleveranse', selectedSelectionSignals.scenePerformance, '#22d3ee'],
+                                    ['Sceneleveranse', selectedSelectionSignals.scenePerformance, 'var(--role-cyan, #22d3ee)'],
                                     ['Kjemi', selectedSelectionSignals.chemistry, '#c084fc'],
                                     ['Tilgjengelighet', selectedSelectionSignals.availability, '#4ade80'],
                                     ['Risiko', selectedSelectionSignals.risk, '#fb7185'],
@@ -10991,7 +12537,7 @@ type RoleRoomProjectWorkspaceState = {
                               </Box>
 
                               <Box sx={{ borderRadius: 1.25, border: '1px solid rgba(56,189,248,0.3)', bgcolor: 'rgba(2,6,23,0.6)', p: 0.7, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                                <Typography sx={{ color: '#7dd3fc', fontWeight: 700, fontSize: '0.69rem' }}>
+                                <Typography sx={{ color: 'var(--role-cyan, #7dd3fc)', fontWeight: 700, fontSize: '0.69rem' }}>
                                   Utvelgelsesnotater
                                 </Typography>
                                 <Box
@@ -11140,7 +12686,7 @@ type RoleRoomProjectWorkspaceState = {
                               </Box>
 
                               <Box sx={{ borderRadius: 1.25, border: '1px solid rgba(56,189,248,0.3)', bgcolor: 'rgba(3,37,65,0.3)', p: 0.7 }}>
-                                <Typography sx={{ color: '#7dd3fc', fontWeight: 700, fontSize: '0.69rem', mb: 0.2 }}>
+                                <Typography sx={{ color: 'var(--role-cyan, #7dd3fc)', fontWeight: 700, fontSize: '0.69rem', mb: 0.2 }}>
                                   Anbefalt neste steg
                                 </Typography>
                                 <Typography sx={{ color: 'rgba(186,230,253,0.92)', fontSize: '0.69rem', lineHeight: 1.35 }}>
@@ -11654,6 +13200,7 @@ type RoleRoomProjectWorkspaceState = {
                         id: member.id,
                         name: member.name,
                         role: resolvedRole?.trim() || 'Crew-medlem',
+                        email: (member as { contactInfo?: { email?: string } }).contactInfo?.email,
                       };
                     })}
                     locations={(currentProject.locations || []).map((location) => ({
@@ -11872,6 +13419,7 @@ type RoleRoomProjectWorkspaceState = {
                 </Card>
 
                 <Card
+                  data-testid="story-writer-card"
                   sx={{
                     flex: '1 1 320px',
                     minWidth: { xs: '100%', sm: 320 },
@@ -11965,7 +13513,7 @@ type RoleRoomProjectWorkspaceState = {
                         mb: 2,
                       }}
                     >
-                      <ShotListIcon sx={{ fontSize: 38, color: '#7dd3fc' }} />
+                      <ShotListIcon sx={{ fontSize: 38, color: 'var(--role-cyan, #7dd3fc)' }} />
                     </Box>
                     <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', mb: 1 }}>
                       {profession ? getTerm('shotList') : branding.tokens.labels.shotList}
@@ -12432,6 +13980,10 @@ type RoleRoomProjectWorkspaceState = {
               ) : (
                 <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', pt: 1 }}>
                   {plannerAudience !== 'content_producer' || contentProducerPlannerSurface === 'overview' ? (
+                    <Box sx={{ height: '100%', overflowY: plannerAudience === 'content_producer' ? 'auto' : 'hidden' }}>
+                    {plannerAudience === 'content_producer' ? (
+                      <PlannerMinDag projects={projects} onOpenProject={handleSelectProjectFromSelector} />
+                    ) : null}
                     <ProducerPlannerStudio
                       key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:planner-studio`}
                       project={currentProject}
@@ -12490,6 +14042,7 @@ type RoleRoomProjectWorkspaceState = {
                       resumeCard={plannerAudience === 'content_producer' ? contentProducerResumeCard : null}
                       onResumeWorkspace={plannerAudience === 'content_producer' ? handleResumeContentProducerWorkspace : undefined}
                     />
+                    </Box>
                   ) : null}
 
                   {plannerAudience === 'content_producer' && contentProducerPlannerSurface === 'project_room' ? (
@@ -12514,19 +14067,8 @@ type RoleRoomProjectWorkspaceState = {
                         initialSectionId={producerMediaFocus?.sectionId}
                         initialPageId={producerMediaFocus?.pageId}
                         initialArtifactId={producerMediaFocus?.artifactId}
-                        onWorkspaceFocusChange={(focus) => {
-                          setProducerMediaFocus((previous) => (
-                            previous?.workspace === focus.workspace
-                            && previous?.sectionId === focus.sectionId
-                            && previous?.pageId === focus.pageId
-                            && previous?.artifactId === focus.artifactId
-                              ? previous
-                              : focus
-                          ));
-                        }}
-                        onUnsavedStateChange={(hasUnsaved, reason) => {
-                          setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
-                        }}
+                        onWorkspaceFocusChange={handleProducerMediaFocusChange}
+                        onUnsavedStateChange={handleProjectRoomUnsavedChange}
                         onProjectUpdated={async (updatedProject) => {
                           setCurrentProject(updatedProject);
                           await loadProjects();
@@ -12631,6 +14173,8 @@ type RoleRoomProjectWorkspaceState = {
                   ) : null}
 
                   {plannerAudience === 'content_producer' && contentProducerPlannerSurface === 'delivery' ? (
+                    <Box sx={{ height: '100%', overflowY: 'auto' }}>
+                    <PlannerDeliverablesBoard projectId={currentProject.id} />
                     <RoleRoomDiagnosticsProbe
                       name="ProducerExportHandoffPanel"
                       projectId={currentProject.id}
@@ -12663,6 +14207,7 @@ type RoleRoomProjectWorkspaceState = {
                         }}
                       />
                     </RoleRoomDiagnosticsProbe>
+                    </Box>
                   ) : null}
 
                   {plannerAudience === 'content_producer' && contentProducerPlannerSurface === 'economy' && canViewProducerEconomy ? (
@@ -12735,7 +14280,7 @@ type RoleRoomProjectWorkspaceState = {
                   {branding.tokens.labels.storyArcBackLabel}
                 </Button>
                 <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-                <StoryLogicIcon sx={{ color: '#8b5cf6' }} />
+                <StoryLogicIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#fff' }}>
                   {branding.tokens.labels.storyLogicHeader}
                 </Typography>
@@ -12747,9 +14292,7 @@ type RoleRoomProjectWorkspaceState = {
                     key={currentProject?.id ?? 'no-project'}
                     projectId={currentProject?.id}
                     onSave={handleStoryLogicSave}
-                    onUnsavedStateChange={(hasUnsaved, reason) => {
-                      setUnsavedProjectSwitchSource('story_logic', hasUnsaved, reason);
-                    }}
+                    onUnsavedStateChange={handleStoryLogicUnsavedChange}
                     onNavigateToStoryWriter={() => {
                       if (!confirmDiscardUnsavedIfNeeded(['story_logic'])) return;
                       startTransition(() => setStoryArcView('story-writer'));
@@ -12849,9 +14392,8 @@ type RoleRoomProjectWorkspaceState = {
                       }}
                       onManuscriptChange={handleManuscriptChange}
                       storyLogicData={storyLogicData}
-                      onUnsavedStateChange={(hasUnsaved, reason) => {
-                        setUnsavedProjectSwitchSource('manuscript', hasUnsaved, reason);
-                      }}
+                      productionWorkflowIntent={productionWorkflowIntent}
+                      onUnsavedStateChange={handleManuscriptUnsavedChange}
                       onSendToApproval={() => {
                         if (!confirmDiscardUnsavedIfNeeded(['manuscript'])) return;
                         if (isContentProducerMode) {
@@ -13029,19 +14571,8 @@ type RoleRoomProjectWorkspaceState = {
                       : undefined
                   )
                 }
-                onWorkspaceFocusChange={(focus) => {
-                  setProducerMediaFocus((previous) => (
-                    previous?.workspace === focus.workspace
-                    && previous?.sectionId === focus.sectionId
-                    && previous?.pageId === focus.pageId
-                    && previous?.artifactId === focus.artifactId
-                      ? previous
-                      : focus
-                  ));
-                }}
-                onUnsavedStateChange={(hasUnsaved, reason) => {
-                  setUnsavedProjectSwitchSource('project_room', hasUnsaved, reason);
-                }}
+                onWorkspaceFocusChange={handleProducerMediaFocusChange}
+                onUnsavedStateChange={handleProjectRoomUnsavedChange}
                 onProjectUpdated={async (updatedProject) => {
                   setCurrentProject(updatedProject);
                   await loadProjects();
@@ -13125,11 +14656,16 @@ type RoleRoomProjectWorkspaceState = {
             </Box>
           ) : (
             <>
-              {/* §5.3 ads-økonomi: faktisk annonsekostnad + 20 % påslag, budsjett-tak,
-                  godkjenningspolicy og hvilke sider/kontoer kunden har gitt admin til.
-                  KUN for innholdsprodusent-modus eller klient-review (per Daniels krav:
-                  produksjonsteam-økonomi handler om budsjett-pakker, ikke ads-fakturering). */}
-              {(isContentProducerMode || isClientReviewerMode) && (
+              {/* Produksjonsbudsjett vs. markedsføringsbudsjett i to topp-faner
+                  (Daniels krav): produksjon = fase-linjer/bemanning/avtaler,
+                  markedsføring = §5.3 ads-økonomi (annonsekostnad + 20 % påslag,
+                  budsjett-tak, godkjenningspolicy) + kampanje-styring. Markedsføring
+                  vises KUN i innholdsprodusent-/klient-review-modus; i
+                  produksjonsteam-modus faller ProducerBudgetTabs tilbake til ren
+                  produksjonsvisning uten fane-rad. */}
+            <Suspense fallback={null}>
+            <ProducerBudgetTabs
+              marketing={(isContentProducerMode || isClientReviewerMode) ? (
                 <>
                   <Suspense fallback={null}>
                     <ClientEconomyPanel
@@ -13139,14 +14675,15 @@ type RoleRoomProjectWorkspaceState = {
                   </Suspense>
                   {/* Kampanje-styring (se/opprett/pause/avslutt) — for produsent, ikke klient. */}
                   {!isClientReviewerMode && (
-                    <Box sx={{ mb: 2 }}>
+                    <Box sx={{ mt: 2 }}>
                       <Suspense fallback={null}>
                         <AdsManagementPanel projectId={currentProject.id} />
                       </Suspense>
                     </Box>
                   )}
                 </>
-              )}
+              ) : null}
+              production={(
             <RoleRoomDiagnosticsProbe
               name="ProjectEconomyHub"
               projectId={currentProject.id}
@@ -13194,6 +14731,9 @@ type RoleRoomProjectWorkspaceState = {
               } : undefined}
               />
             </RoleRoomDiagnosticsProbe>
+              )}
+            />
+            </Suspense>
             </>
           )}
         </TabPanel>
@@ -13520,6 +15060,48 @@ type RoleRoomProjectWorkspaceState = {
       )}
 
 
+      <Dialog
+        open={Boolean(currentProject && canonicalCallSheetDayId)}
+        onClose={() => setCanonicalCallSheetDayId(null)}
+        maxWidth="xl"
+        fullWidth
+        fullScreen={isMobile}
+        PaperProps={{
+          'data-testid': 'canonical-call-sheet-dialog',
+          sx: { height: { xs: '100%', sm: '92vh' }, bgcolor: '#f8fafc', overflow: 'hidden' },
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: '#07110f', color: '#f8fafc', py: 1.25 }}>
+          <Box>
+            <Typography component="span" sx={{ display: 'block', fontWeight: 800 }}>Callsheet og utsending</Typography>
+            <Typography component="span" sx={{ display: 'block', color: 'rgba(226,232,240,.72)', fontSize: '.78rem' }}>
+              {currentProject?.productionDays?.find((day) => day.id === canonicalCallSheetDayId)?.date || 'Valgt produksjonsdag'} · felles produksjonsdata
+            </Typography>
+          </Box>
+          <IconButton aria-label="Lukk callsheet" onClick={() => setCanonicalCallSheetDayId(null)} sx={{ color: '#f8fafc' }}><CloseIcon /></IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, overflow: 'auto' }}>
+          {currentProject && canonicalCallSheetDayId ? (
+            <ErrorBoundary>
+              <Suspense fallback={<Box sx={{ display: 'grid', placeItems: 'center', minHeight: 320 }}><CircularProgress /></Box>}>
+                <CallSheetGenerator
+                  projectId={currentProject.id}
+                  project={currentProject}
+                  canonicalDataReady={canonicalProductionDataProjectId === currentProject.id}
+                  productionDay={currentProject.productionDays?.find((day) => day.id === canonicalCallSheetDayId)}
+                  productionDayId={canonicalCallSheetDayId}
+                  scenes={currentProject.sceneBreakdowns || []}
+                  crew={currentProject.crew || []}
+                  locations={currentProject.locations || []}
+                  onDeliverySent={() => setCallSheetDeliveryRefreshSignal((signal) => signal + 1)}
+                />
+              </Suspense>
+            </ErrorBoundary>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+
       {/* Role Dialog - Optimized */}
       <Dialog
         open={!!roleDialogOpen}
@@ -13532,10 +15114,10 @@ type RoleRoomProjectWorkspaceState = {
         PaperProps={{
           sx: {
             '--dialog-accent-color': roleDialogAccentColor,
-            '--dialog-accent-soft': alpha(roleDialogAccentColor, 0.45),
-            '--dialog-accent-hover': alpha(roleDialogAccentColor, 0.15),
-            '--dialog-accent-selected': alpha(roleDialogAccentColor, 0.25),
-            '--dialog-accent-selected-hover': alpha(roleDialogAccentColor, 0.35),
+            '--dialog-accent-soft': accentMix(0.45),
+            '--dialog-accent-hover': accentMix(0.15),
+            '--dialog-accent-selected': accentMix(0.25),
+            '--dialog-accent-selected-hover': accentMix(0.35),
             '--dialog-surface': 'rgba(20,14,48,0.94)',
             '--dialog-surface-muted': 'rgba(33,24,70,0.74)',
             '--dialog-border-color': 'rgba(184,107,255,0.34)',
@@ -14117,10 +15699,10 @@ type RoleRoomProjectWorkspaceState = {
         PaperProps={{
           sx: {
             '--dialog-accent-color': roleDialogAccentColor,
-            '--dialog-accent-soft': alpha(roleDialogAccentColor, 0.45),
-            '--dialog-accent-hover': alpha(roleDialogAccentColor, 0.15),
-            '--dialog-accent-selected': alpha(roleDialogAccentColor, 0.25),
-            '--dialog-accent-selected-hover': alpha(roleDialogAccentColor, 0.35),
+            '--dialog-accent-soft': accentMix(0.45),
+            '--dialog-accent-hover': accentMix(0.15),
+            '--dialog-accent-selected': accentMix(0.25),
+            '--dialog-accent-selected-hover': accentMix(0.35),
             '--dialog-surface': 'rgba(20,14,48,0.94)',
             '--dialog-surface-muted': 'rgba(33,24,70,0.74)',
             '--dialog-border-color': 'rgba(184,107,255,0.34)',
@@ -14803,10 +16385,10 @@ type RoleRoomProjectWorkspaceState = {
         PaperProps={{
           sx: {
             '--dialog-accent-color': roleDialogAccentColor,
-            '--dialog-accent-soft': alpha(roleDialogAccentColor, 0.45),
-            '--dialog-accent-hover': alpha(roleDialogAccentColor, 0.15),
-            '--dialog-accent-selected': alpha(roleDialogAccentColor, 0.25),
-            '--dialog-accent-selected-hover': alpha(roleDialogAccentColor, 0.35),
+            '--dialog-accent-soft': accentMix(0.45),
+            '--dialog-accent-hover': accentMix(0.15),
+            '--dialog-accent-selected': accentMix(0.25),
+            '--dialog-accent-selected-hover': accentMix(0.35),
             '--dialog-surface': 'rgba(20,14,48,0.94)',
             '--dialog-surface-muted': 'rgba(33,24,70,0.74)',
             '--dialog-border-color': 'rgba(184,107,255,0.34)',
@@ -15234,7 +16816,7 @@ type RoleRoomProjectWorkspaceState = {
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
             <Badge color="error" badgeContent={producerInboxUnreadCount} invisible={producerInboxUnreadCount === 0}>
-              <InboxIcon sx={{ color: '#7dd3fc' }} />
+              <InboxIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />
             </Badge>
             <Box sx={{ minWidth: 0 }}>
               <Typography sx={{ fontWeight: 850, lineHeight: 1.15 }}>
@@ -15268,9 +16850,9 @@ type RoleRoomProjectWorkspaceState = {
           <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ sm: 'center' }}>
               <Typography sx={{ color: 'rgba(226,232,240,0.68)', fontSize: '0.82rem' }}>
-                {visibleProducerInboxItems.length === 0
-                  ? 'Ingen aktive meldinger akkurat nå.'
-                  : `${visibleProducerInboxItems.length} aktive meldinger · ${producerInboxUnreadCount} uleste`}
+                {filteredProducerInboxItems.length === 0
+                  ? (producerInboxScope === 'client' ? 'Ingen klient-handlinger akkurat nå.' : 'Ingen aktive meldinger akkurat nå.')
+                  : `${filteredProducerInboxItems.length} ${producerInboxScope === 'client' ? 'klient-handlinger' : 'aktive meldinger'} · ${producerInboxUnreadCount} uleste`}
               </Typography>
               {producerInboxUnreadCount > 0 ? (
                 <Button
@@ -15283,22 +16865,80 @@ type RoleRoomProjectWorkspaceState = {
               ) : null}
             </Stack>
 
-            {producerInboxLoading && visibleProducerInboxItems.length === 0 ? (
+            {/* Triage-filtre: fokuser på det som haster / klienten venter på. */}
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+              <Chip
+                size="small"
+                label="Alle"
+                onClick={() => setProducerInboxScope('all')}
+                variant={producerInboxScope === 'all' ? 'filled' : 'outlined'}
+                sx={{
+                  fontWeight: 800, cursor: 'pointer',
+                  bgcolor: producerInboxScope === 'all' ? 'rgba(56,189,248,0.9)' : 'transparent',
+                  color: producerInboxScope === 'all' ? '#0b1220' : 'rgba(226,232,240,0.86)',
+                  borderColor: 'rgba(148,163,184,0.32)',
+                }}
+              />
+              <Chip
+                size="small"
+                label={producerInboxUnreadCount > 0 ? `Ulest (${producerInboxUnreadCount})` : 'Ulest'}
+                onClick={() => setProducerInboxScope('unread')}
+                variant={producerInboxScope === 'unread' ? 'filled' : 'outlined'}
+                sx={{
+                  fontWeight: 800, cursor: 'pointer',
+                  bgcolor: producerInboxScope === 'unread' ? 'rgba(56,189,248,0.9)' : 'transparent',
+                  color: producerInboxScope === 'unread' ? '#0b1220' : 'rgba(226,232,240,0.86)',
+                  borderColor: producerInboxScope === 'unread' ? 'transparent' : 'rgba(56,189,248,0.45)',
+                }}
+              />
+              <Chip
+                size="small"
+                label={clientActionInboxCount > 0 ? `Klient-handlinger (${clientActionInboxCount})` : 'Klient-handlinger'}
+                onClick={() => setProducerInboxScope('client')}
+                variant={producerInboxScope === 'client' ? 'filled' : 'outlined'}
+                sx={{
+                  fontWeight: 800, cursor: 'pointer',
+                  bgcolor: producerInboxScope === 'client' ? 'rgba(168,85,247,0.92)' : 'transparent',
+                  color: producerInboxScope === 'client' ? '#fff' : 'rgba(226,232,240,0.86)',
+                  borderColor: producerInboxScope === 'client' ? 'transparent' : 'rgba(168,85,247,0.45)',
+                }}
+              />
+              {dueInboxCount > 0 ? (
+                <Chip
+                  size="small"
+                  label={`Forfaller (${dueInboxCount})`}
+                  onClick={() => setProducerInboxScope('due')}
+                  variant={producerInboxScope === 'due' ? 'filled' : 'outlined'}
+                  sx={{
+                    fontWeight: 800, cursor: 'pointer',
+                    bgcolor: producerInboxScope === 'due' ? 'rgba(251,191,36,0.92)' : 'transparent',
+                    color: producerInboxScope === 'due' ? '#0b1220' : 'rgba(226,232,240,0.86)',
+                    borderColor: producerInboxScope === 'due' ? 'transparent' : 'rgba(251,191,36,0.5)',
+                  }}
+                />
+              ) : null}
+            </Stack>
+
+            {producerInboxLoading && filteredProducerInboxItems.length === 0 ? (
               <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
                 <CircularProgress size={24} sx={{ color: '#38bdf8' }} />
               </Box>
             ) : null}
 
-            {!producerInboxLoading && visibleProducerInboxItems.length === 0 ? (
+            {!producerInboxLoading && filteredProducerInboxItems.length === 0 ? (
               <Box sx={{ p: 2.25, borderRadius: 2.4, border: '1px solid rgba(255,255,255,0.08)', bgcolor: 'rgba(255,255,255,0.04)' }}>
-                <Typography sx={{ color: '#fff', fontWeight: 800 }}>Innboksen er tom</Typography>
+                <Typography sx={{ color: '#fff', fontWeight: 800 }}>
+                  {producerInboxScope === 'client' ? 'Ingen klient-handlinger' : 'Innboksen er tom'}
+                </Typography>
                 <Typography sx={{ mt: 0.35, color: 'rgba(226,232,240,0.62)', fontSize: '0.82rem' }}>
-                  Klientbrief, godkjenninger, endringsønsker og leveransevarsler samles her når de oppstår.
+                  {producerInboxScope === 'client'
+                    ? 'Klient-svar, godkjenninger og endringsønsker dukker opp her når klienten handler.'
+                    : 'Klientbrief, godkjenninger, endringsønsker og leveransevarsler samles her når de oppstår.'}
                 </Typography>
               </Box>
             ) : null}
 
-            {visibleProducerInboxItems.map((item) => {
+            {filteredProducerInboxItems.map((item) => {
               const createdAtLabel = item.created_at
                 ? new Date(item.created_at).toLocaleString('nb-NO', {
                   day: '2-digit',
@@ -15308,13 +16948,17 @@ type RoleRoomProjectWorkspaceState = {
                 })
                 : '';
               const isResolved = Boolean(item.resolved_at);
+              const category = resolveInboxCategory(item.inbox_type, item.event_type);
+              const CategoryIcon = category.Icon;
               return (
                 <Box
                   key={item.id}
                   sx={{
                     p: 1.25,
                     borderRadius: 2.2,
-                    border: item.read ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(56,189,248,0.34)',
+                    border: item.read ? '1px solid rgba(255,255,255,0.08)' : `1px solid ${category.color}59`,
+                    // Fargekodet venstre-stripe = kategori, for rask visuell skanning.
+                    borderLeft: `3px solid ${category.color}`,
                     bgcolor: item.read ? 'rgba(15,23,42,0.52)' : 'rgba(8,47,73,0.32)',
                   }}
                 >
@@ -15323,8 +16967,9 @@ type RoleRoomProjectWorkspaceState = {
                       <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap" useFlexGap>
                         <Chip
                           size="small"
-                          label={item.inbox_type || item.event_type || 'Varsel'}
-                          sx={{ height: 21, bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe', fontWeight: 800 }}
+                          icon={<CategoryIcon sx={{ fontSize: '0.92rem !important', color: `${category.color} !important` }} />}
+                          label={category.label}
+                          sx={{ height: 21, bgcolor: category.bg, color: category.color, fontWeight: 800, '& .MuiChip-icon': { ml: 0.5 } }}
                         />
                         {!item.read ? <Chip size="small" label="Ulest" sx={{ height: 21, bgcolor: 'rgba(248,113,113,0.16)', color: '#fecaca', fontWeight: 800 }} /> : null}
                         {isResolved ? <Chip size="small" label="Løst" sx={{ height: 21, bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 800 }} /> : null}
@@ -15432,10 +17077,10 @@ type RoleRoomProjectWorkspaceState = {
                 px: 1.2,
                 bgcolor: 'rgba(0,212,255,0.14)',
                 border: '1px solid rgba(0,212,255,0.38)',
-                color: '#7dd3fc',
+                color: 'var(--role-cyan, #7dd3fc)',
                 '&:hover': {
                   bgcolor: 'rgba(0,212,255,0.22)',
-                  borderColor: '#22d3ee',
+                  borderColor: 'var(--role-cyan, #22d3ee)',
                 },
               }}
             >
@@ -15475,7 +17120,7 @@ type RoleRoomProjectWorkspaceState = {
                   bgcolor: 'rgba(255,255,255,0.03)',
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.14)' },
                   '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.28)' },
-                  '&.Mui-focused fieldset': { borderColor: '#22d3ee' },
+                  '&.Mui-focused fieldset': { borderColor: 'var(--role-cyan, #22d3ee)' },
                 },
                 '& .MuiInputBase-input::placeholder': {
                   color: 'rgba(255,255,255,0.58)',
@@ -15890,7 +17535,7 @@ type RoleRoomProjectWorkspaceState = {
                               height: 22,
                               maxWidth: 132,
                               bgcolor: isActive ? 'rgba(0,212,255,0.18)' : 'rgba(255,255,255,0.06)',
-                              color: isActive ? '#7dd3fc' : 'rgba(255,255,255,0.72)',
+                              color: isActive ? 'var(--role-cyan, #7dd3fc)' : 'rgba(255,255,255,0.72)',
                               border: isActive ? '1px solid rgba(0,212,255,0.28)' : '1px solid rgba(255,255,255,0.08)',
                               fontSize: '0.66rem',
                               fontWeight: 700,
@@ -16040,7 +17685,7 @@ type RoleRoomProjectWorkspaceState = {
                                 width: 10, 
                                 height: 10, 
                                 borderRadius: '50%', 
-                                bgcolor: isActive ? '#00d4ff' : isPinned ? pinnedAccentColor : 'rgba(255,255,255,0.3)',
+                                bgcolor: isActive ? 'var(--role-cyan, #00d4ff)' : isPinned ? pinnedAccentColor : 'rgba(255,255,255,0.3)',
                                 boxShadow: isActive ? '0 0 10px rgba(0,212,255,0.4)' : 'none',
                                 flexShrink: 0,
                               }} />
@@ -16204,7 +17849,7 @@ type RoleRoomProjectWorkspaceState = {
                                 textTransform: 'none',
                                 minHeight: 28,
                                 px: 1,
-                                color: isProtectedDemo && !canMutateProtectedDemoData ? '#fbcfe8' : '#7dd3fc',
+                                color: isProtectedDemo && !canMutateProtectedDemoData ? '#fbcfe8' : 'var(--role-cyan, #7dd3fc)',
                                 border: isProtectedDemo && !canMutateProtectedDemoData
                                   ? '1px solid rgba(244,114,182,0.32)'
                                   : '1px solid rgba(125,211,252,0.32)',
@@ -16398,7 +18043,7 @@ type RoleRoomProjectWorkspaceState = {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <KeyboardIcon sx={{ color: '#7dd3fc', fontSize: 21 }} />
+            <KeyboardIcon sx={{ color: 'var(--role-cyan, #7dd3fc)', fontSize: 21 }} />
             <Typography sx={{ fontWeight: 700, fontSize: { xs: '0.96rem', sm: '1.02rem' } }}>
               Utvelgelse-snarveier
             </Typography>
@@ -16578,12 +18223,12 @@ type RoleRoomProjectWorkspaceState = {
                 border: '1.5px solid rgba(0, 212, 255, 0.4)',
                 alignSelf: 'flex-start',
               }}>
-                <Folder sx={{ color: '#00d4ff', fontSize: { xs: '0.875rem', sm: '1rem' } }} />
+                <Folder sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: { xs: '0.875rem', sm: '1rem' } }} />
                 <Box>
                   <Typography variant="caption" sx={{
                     fontWeight: 700,
                     fontSize: '0.65rem',
-                    color: '#00d4ff',
+                    color: 'var(--role-cyan, #00d4ff)',
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px',
                     display: 'block',
@@ -16594,7 +18239,7 @@ type RoleRoomProjectWorkspaceState = {
                   <Typography variant="caption" sx={{
                     fontWeight: 700,
                     fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                    color: '#00d4ff',
+                    color: 'var(--role-cyan, #00d4ff)',
                     fontFamily: 'monospace',
                     letterSpacing: '0.3px',
                     display: 'block',
@@ -16657,7 +18302,7 @@ type RoleRoomProjectWorkspaceState = {
                     color: 'rgba(226,232,240,0.68)',
                     fontWeight: 800,
                   },
-                  '& .Mui-selected': { color: '#7dd3fc' },
+                  '& .Mui-selected': { color: 'var(--role-cyan, #7dd3fc)' },
                   '& .MuiTabs-indicator': { bgcolor: '#38bdf8' },
                 }}
               >
@@ -16709,7 +18354,7 @@ type RoleRoomProjectWorkspaceState = {
                     bgcolor: '#38bdf8',
                     color: '#082f49',
                     whiteSpace: 'nowrap',
-                    '&:hover': { bgcolor: '#7dd3fc' },
+                    '&:hover': { bgcolor: 'var(--role-cyan, #7dd3fc)' },
                   }}
                 >
                   Opprett nytt
@@ -16807,7 +18452,7 @@ type RoleRoomProjectWorkspaceState = {
                           <Typography sx={{ color: '#fff', fontWeight: 850, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                             {project.name}
                           </Typography>
-                          {isActive ? <Chip size="small" label="Aktivt" sx={{ height: 21, bgcolor: 'rgba(34,211,238,0.14)', color: '#7dd3fc', fontWeight: 800 }} /> : null}
+                          {isActive ? <Chip size="small" label="Aktivt" sx={{ height: 21, bgcolor: 'rgba(34,211,238,0.14)', color: 'var(--role-cyan, #7dd3fc)', fontWeight: 800 }} /> : null}
                         </Box>
                         <Typography sx={{ mt: 0.45, color: 'rgba(226,232,240,0.62)', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {[project.clientName, `Rolle: ${roleLabel}`, `Tilgang: ${accessLabel}`].filter(Boolean).join(' • ')}
@@ -16817,6 +18462,7 @@ type RoleRoomProjectWorkspaceState = {
                             Opprettet av {creatorLabel}
                           </Typography>
                         ) : null}
+                        <PlannerProjectHealthBadge project={project} />
                       </Box>
                       <Stack direction="row" spacing={0.65} alignItems="center" justifyContent={{ xs: 'flex-start', sm: 'flex-end' }} flexWrap="wrap" useFlexGap>
                         <Tooltip title={syncStatus.helper}>
@@ -17209,7 +18855,7 @@ type RoleRoomProjectWorkspaceState = {
             disabled={projectCopySubmitting || !projectCopyDialog?.name.trim()}
             variant="contained"
             startIcon={projectCopySubmitting ? <CircularProgress size={16} /> : <ContentCopyIcon />}
-            sx={{ bgcolor: '#38bdf8', color: '#07111f', fontWeight: 800, textTransform: 'none', '&:hover': { bgcolor: '#7dd3fc' } }}
+            sx={{ bgcolor: '#38bdf8', color: '#07111f', fontWeight: 800, textTransform: 'none', '&:hover': { bgcolor: 'var(--role-cyan, #7dd3fc)' } }}
           >
             Lag kopi
           </Button>
@@ -17481,6 +19127,32 @@ type RoleRoomProjectWorkspaceState = {
         currentProjectName={currentProject?.name ?? null}
         hidden={isLiveSetImmersive}
       />
+
+      {/* Self-tape preview modal — åpnes ved klikk på 📹-badge */}
+      <SelfTapePreviewModal
+        open={!!selftapePreview}
+        selftape={selftapePreview}
+        viewerLabel={adminUser?.display_name || adminUser?.email || 'Produksjon'}
+        onClose={() => setSelftapePreview(null)}
+      />
+
+      {/* RBAC: lederens "Tilganger"-delegering (Skjult/Se/Administrere pr. fane) */}
+      {tilgangerDialogOpen && tilgangerProjectId ? (
+        <ProjectTabAccessDialog
+          open={tilgangerDialogOpen}
+          projectId={tilgangerProjectId}
+          onClose={() => {
+            setTilgangerDialogOpen(false);
+            // Oppdater egen tilgang i tilfelle lederen endret sin egen rad.
+            const pid = currentProject?.id ?? null;
+            if (pid) {
+              void roleRoomProjectTabConfigService.getMyTabs(pid)
+                .then((res) => setEffectiveTabAccess(deriveEffectiveAccess(res)))
+                .catch(() => { /* behold eksisterende */ });
+            }
+          }}
+        />
+      ) : null}
     </>
     </ErrorBoundary>
   );

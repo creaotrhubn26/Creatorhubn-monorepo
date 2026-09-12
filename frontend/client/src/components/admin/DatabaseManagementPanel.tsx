@@ -1,5 +1,5 @@
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Container,
@@ -45,6 +45,7 @@ import {
   MenuItem,
   Switch,
   FormControlLabel,
+  InputAdornment,
 } from '@mui/material';
 import {
   Storage,
@@ -72,10 +73,12 @@ import {
   Security,
   Backup,
   Restore,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { AdminButton, AdminTableContainer, useIsMobile } from './design-system';
 
 interface DatabaseTable {
   table_name: string;
@@ -114,6 +117,7 @@ export default function DatabaseManagementPanel() {
   const [isOperationRunning, setIsOperationRunning] = useState(false);
   const [customSQL, setCustomSQL] = useState('');
   const [selectedTable, setSelectedTable] = useState<string>('');
+  const [search, setSearch] = useState("");
   const [showSQLDialog, setShowSQLDialog] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' | 'info' });
   const [page, setPage] = useState(0);
@@ -309,6 +313,9 @@ export default function DatabaseManagementPanel() {
 
   // Theming system
   const theming = useTheming('prototype_tester');
+
+  // Responsive: full-screen dialogs on mobile
+  const isMobile = useIsMobile();
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
@@ -693,7 +700,7 @@ export default function DatabaseManagementPanel() {
                 // Verify table creation using existing tables endpoint
                 const tablesResponse = await apiRequest('/api/admin/database/tables');
                 if (tablesResponse.success) {
-                  const testTables = tablesResponse.data.filter((table: any) => 
+                  const testTables = (Array.isArray(tablesResponse.data) ? tablesResponse.data : []).filter((table: any) =>
                     table.table_name.startsWith('script_test_table_')
                   );
                   setScriptProgress(prev => ({
@@ -1098,6 +1105,16 @@ export default function DatabaseManagementPanel() {
     return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 };
 
+  // Filtered database tables for the search field in the Tables tab
+  const filteredTables = useMemo(() => {
+    const list = Array.isArray(tables) ? tables : [];
+    const q = search.toLowerCase();
+    if (!q) return list;
+    return list.filter((table: DatabaseTable) =>
+      `${table.table_name ?? ''} ${table.table_schema ?? ''} ${table.table_type ?? ''}`.toLowerCase().includes(q)
+    );
+}, [tables, search]);
+
   return (
     <Container maxWidth="xl" sx={{ py: 3 }}>
       {/* Master Workflow Guidance Banner */}
@@ -1322,7 +1339,7 @@ export default function DatabaseManagementPanel() {
       {/* Header */}
       <Box sx={{ mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-          <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center', gap: 2, color: theming.colors.primary }}>
+          <Typography variant="h4" component="h2" sx={{ display: 'flex', alignItems: 'center', gap: 2, color: theming.colors.primary }}>
             <Storage color="primary" />
             Database Management
           </Typography>
@@ -1519,10 +1536,26 @@ export default function DatabaseManagementPanel() {
               </Button>
             </Box>
             
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Søk i tabeller (navn, skjema, type)…"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+              sx={{ mb: 2 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+
             {tablesLoading ? (
               <LinearProgress />
             ) : (
-              <TableContainer>
+              <AdminTableContainer ariaLabel="Database tables">
                 <Table>
                   <TableHead>
                     <TableRow>
@@ -1536,7 +1569,7 @@ export default function DatabaseManagementPanel() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {tables?.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((table: DatabaseTable) => (
+                    {filteredTables.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((table: DatabaseTable) => (
                       <TableRow key={table.table_name}>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1559,6 +1592,7 @@ export default function DatabaseManagementPanel() {
                           <Tooltip title="View Details">
                             <IconButton
                               size="small"
+                              aria-label="Vis detaljer"
                               onClick={() => setSelectedTable(table.table_name)}
                             >
                               {theming.getThemedIcon('visibility')}
@@ -1572,7 +1606,7 @@ export default function DatabaseManagementPanel() {
                 <TablePagination
                   rowsPerPageOptions={[5, 10, 25]}
                   component="div"
-                  count={tables?.length || 0}
+                  count={filteredTables.length}
                   rowsPerPage={rowsPerPage}
                   page={page}
                   onPageChange={(e, newPage) => setPage(newPage)}
@@ -1581,7 +1615,7 @@ export default function DatabaseManagementPanel() {
                     setPage(0);
                 }}
                 />
-              </TableContainer>
+              </AdminTableContainer>
             )}
           </Box>
         )}
@@ -1597,6 +1631,7 @@ export default function DatabaseManagementPanel() {
               value={customSQL}
               onChange={(e) => setCustomSQL(e.target.value)}
               placeholder="Enter your SQL query here..."
+              aria-label="SQL-spørring"
               variant="outlined"
               sx={{ mb: 2 }}
             />
@@ -2697,7 +2732,7 @@ export default function DatabaseManagementPanel() {
                     Missing Tables Details
                   </Typography>
                   
-                  <TableContainer>
+                  <AdminTableContainer ariaLabel="Missing tables details">
                     <Table>
                       <TableHead>
                         <TableRow>
@@ -2739,7 +2774,7 @@ export default function DatabaseManagementPanel() {
                         ))}
                       </TableBody>
                     </Table>
-                  </TableContainer>
+                  </AdminTableContainer>
                 </CardContent>
               </Card>
             )}
@@ -3078,7 +3113,7 @@ export default function DatabaseManagementPanel() {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {tableDetails?.columns?.map((column: any, index: number) => (
+                        {(Array.isArray(tableDetails?.columns) ? tableDetails.columns : []).map((column: any, index: number) => (
                           <TableRow key={index}>
                             <TableCell>{column.column_name}</TableCell>
                             <TableCell>{column.data_type}</TableCell>
@@ -3163,11 +3198,12 @@ export default function DatabaseManagementPanel() {
       </Card>
 
       {/* Script Recovery Dialog */}
-      <Dialog 
-        open={showRecoveryDialog} 
+      <Dialog
+        open={showRecoveryDialog}
         onClose={() => setShowRecoveryDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle sx={{ 
           bgcolor: (() => {
@@ -3294,17 +3330,17 @@ export default function DatabaseManagementPanel() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button 
+          <AdminButton
+            tone="ghost"
             onClick={() => {
               localStorage.removeItem('dbPanel_scriptProgress');
               localStorage.removeItem('dbPanel_wasInterrupted');
               setShowRecoveryDialog(false);
           }}
-            variant="outlined"
           >
             Discard Progress
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
             onClick={() => {
               const saved = localStorage.getItem('dbPanel_scriptProgress');
               const wasInterrupted = localStorage.getItem('dbPanel_wasInterrupted') === 'true';
@@ -3331,21 +3367,21 @@ export default function DatabaseManagementPanel() {
               localStorage.removeItem('dbPanel_wasInterrupted');
               setShowRecoveryDialog(false);
           }}
-            variant="contained"
-            color="primary"
+            tone="primary"
             startIcon={<Restore />}
           >
             Restore & View Progress
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Dry Run Reminder Dialog */}
-      <Dialog 
-        open={showDryRunReminder} 
+      <Dialog
+        open={showDryRunReminder}
         onClose={() => setShowDryRunReminder(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -3378,27 +3414,27 @@ export default function DatabaseManagementPanel() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button 
+          <AdminButton
+            tone="ghost"
             onClick={() => {
               setShowDryRunReminder(false);
               setPendingScript(null);
           }}
-            variant="outlined"
           >
             Cancel
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
+            tone="danger"
             onClick={() => {
               // Skip dry-run and proceed to execute
               setShowDryRunReminder(false);
               setShowSafetyWarning(true);
           }}
-            variant="outlined"
-            color="error"
           >
             Skip & Execute Anyway
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => {
               setDryRunMode(true);
               setShowDryRunReminder(false);
@@ -3408,21 +3444,20 @@ export default function DatabaseManagementPanel() {
             }
               setPendingScript(null);
           }}
-            variant="contained"
-            color="success"
             startIcon={<Visibility />}
           >
             Yes, Run Dry Run First
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Safety Warning Dialog */}
-      <Dialog 
-        open={showSafetyWarning} 
+      <Dialog
+        open={showSafetyWarning}
         onClose={() => setShowSafetyWarning(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -3455,16 +3490,17 @@ export default function DatabaseManagementPanel() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button 
+          <AdminButton
+            tone="ghost"
             onClick={() => {
               setShowSafetyWarning(false);
               setPendingScript(null);
           }}
-            variant="outlined"
           >
             Cancel
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
+            tone="secondary"
             onClick={() => {
               setDryRunMode(true);
               setShowSafetyWarning(false);
@@ -3473,19 +3509,16 @@ export default function DatabaseManagementPanel() {
             }
               setPendingScript(null);
           }}
-            variant="outlined"
-            color="primary"
           >
             Run as Dry Run Instead
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
+            tone="danger"
             onClick={confirmScriptExecution}
-            variant="contained"
-            color="error"
             startIcon={<Warning />}
           >
             Confirm Execute
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

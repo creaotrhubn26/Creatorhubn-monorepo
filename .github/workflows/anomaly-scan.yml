@@ -1,0 +1,60 @@
+name: Control Center anomaly-scan
+
+# Proaktiv anomali-deteksjon: ser etter feil-rate-spike + nye feiltyper i
+# error_log hvert 15. min og varsler super_admin (debounced). Token-gated via
+# CRON_TRIGGER_TOKEN (samme som cockpit-cron).
+#
+# Endepunkt: POST /api/control-center/anomaly/run
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: anomaly-scan
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
+jobs:
+  run-anomaly-scan:
+    name: Skann error_log for anomalier
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /api/control-center/anomaly/run
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN GitHub-secret er ikke satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-trigger-token: $CRON_TRIGGER_TOKEN" \
+            --max-time 120 \
+            "$BACKEND_URL/api/control-center/anomaly/run")
+          CODE=$(echo "$RES" | tail -1)
+          BODY=$(echo "$RES" | sed '$d')
+          echo "HTTP $CODE"
+          echo "Body: $BODY"
+          if [ "$CODE" = "401" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN matcher ikke Render-env."
+            exit 1
+          fi
+          if [ "$CODE" -ge 500 ]; then
+            echo "::error::Backend-feil ($CODE)"
+            exit 1
+          fi
+          SPIKE=$(echo "$BODY" | jq -r '.spike // false' 2>/dev/null || echo false)
+          if [ "$SPIKE" = "true" ]; then
+            echo "::warning::Feil-rate spike oppdaget — se Control Center «Anomali»/e-post."
+          fi
+          echo "::notice::Anomali-skann ferdig"

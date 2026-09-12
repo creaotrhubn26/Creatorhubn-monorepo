@@ -264,7 +264,7 @@ function ScheduleDetailsDrawerInner({
 
             {/* Timeslot */}
             <InfoRow
-              icon={<TimeIcon sx={{ color: '#00d4ff', fontSize: 18 }} />}
+              icon={<TimeIcon sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: 18 }} />}
               label="Tid"
               value={timeSlot}
             />
@@ -402,7 +402,7 @@ function ScheduleDetailsDrawerInner({
                 color: 'rgba(255,255,255,0.7)',
                 border: '1px solid rgba(255,255,255,0.15)',
                 borderRadius: 1.5,
-                '&:hover': { color: '#00d4ff', borderColor: '#00d4ff' },
+                '&:hover': { color: 'var(--role-cyan, #00d4ff)', borderColor: 'var(--role-cyan, #00d4ff)' },
                 ...focusStyle,
               }}
             >

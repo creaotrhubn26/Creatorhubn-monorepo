@@ -10,7 +10,6 @@ import {
   Card,
   CardContent,
   Typography,
-  Button,
   Grid,
   Chip,
   List,
@@ -18,7 +17,6 @@ import {
   ListItemText,
   ListItemIcon,
   Alert,
-  CircularProgress,
   Divider,
   Paper,
   Stack,
@@ -42,6 +40,7 @@ import {
   Build,
 } from '@mui/icons-material';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import { AdminButton, AdminLoading } from './design-system';
 
 export default function ProfessionTrendsIntegration() {
   const {
@@ -119,8 +118,8 @@ export default function ProfessionTrendsIntegration() {
     <Box sx={{ width: '100%'}}>
       {/* Header */}
       <Box sx={{ mb:  3 }}>
-        <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Link sx={{ fontSize: 32 }} />
+        <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Link sx={{ fontSize: 32 }} aria-hidden="true" />
           Profession-Trends Integration
         </Typography>
         <Typography variant="body1" color="text.secondary">
@@ -131,11 +130,11 @@ export default function ProfessionTrendsIntegration() {
       {/* Current User Info */}
       <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
             Current User Context
           </Typography>
           <Grid container spacing={2}>
-            <Grid item >
+            <Grid item xs={12}>
               <Typography variant="body2" color="text.secondary">
                 Current Profession: <strong>{currentProfession}</strong>
               </Typography>
@@ -156,8 +155,8 @@ export default function ProfessionTrendsIntegration() {
       {/* Profession Selector */}
       <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            <Search sx={{ mr: 1, verticalAlign: 'middle' }} />
+          <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Search sx={{ mr: 1, verticalAlign: 'middle' }} aria-hidden="true" />
             Test Different Professions
           </Typography>
           <Divider sx={{ mb: 2 }} />
@@ -195,25 +194,23 @@ export default function ProfessionTrendsIntegration() {
       {/* Google Trends Data */}
       <Grid container spacing={3}>
         {/* Trending Keywords */}
-        <Grid item >
+        <Grid item xs={12} md={4}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  2 }}>
-                <Typography variant="h6" sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Whatshot />
+                <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Whatshot aria-hidden="true" />
                   Trending Keywords
                 </Typography>
                 <Tooltip title="Refresh trend data" arrow>
-                  <IconButton onClick={loadTrendsForProfession} disabled={isLoading}>
+                  <IconButton onClick={loadTrendsForProfession} disabled={isLoading} aria-label="Oppdater trenddata">
                     <Refresh />
                   </IconButton>
                 </Tooltip>
               </Box>
               
               {isLoading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', p:  2 }}>
-                  <CircularProgress />
-                </Box>
+                <AdminLoading />
               ) : (
                 <List dense>
                   {getTrendingKeywords(selectedProfession).map((keyword: any, index: number) => (
@@ -239,11 +236,11 @@ export default function ProfessionTrendsIntegration() {
         </Grid>
 
         {/* SEO Insights */}
-        <Grid item >
+        <Grid item xs={12} md={4}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Analytics />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Analytics aria-hidden="true" />
                 SEO Insights
               </Typography>
               
@@ -254,7 +251,7 @@ export default function ProfessionTrendsIntegration() {
                       Market Overview
                     </Typography>
                     <Grid container spacing={2}>
-                      <Grid item >
+                      <Grid item xs={6}>
                         <Typography variant="body2" color="text.secondary">
                           Total Search Volume
                         </Typography>
@@ -262,7 +259,7 @@ export default function ProfessionTrendsIntegration() {
                           {getSEOInsights(selectedProfession)?.searchVolume.toLocaleString()}
                         </Typography>
                       </Grid>
-                      <Grid item >
+                      <Grid item xs={6}>
                         <Typography variant="body2" color="text.secondary">
                           Trend Direction
                         </Typography>
@@ -295,14 +292,13 @@ export default function ProfessionTrendsIntegration() {
                   </Box>
 
                   <Tooltip title="Apply top 3 SEO optimizations automatically" arrow placement="top">
-                    <Button variant="contained"
+                    <AdminButton tone="primary"
                       startIcon={<AutoFixHigh />}
                       onClick={handleApplySEOFixes}
                       fullWidth
-                      color="success"
                      sx={theming.getThemedButtonSx()}>
                       Apply SEO Fixes
-                    </Button>
+                    </AdminButton>
                   </Tooltip>
                 </Box>
               ) : (
@@ -315,11 +311,11 @@ export default function ProfessionTrendsIntegration() {
         </Grid>
 
         {/* SEO Suggestions */}
-        <Grid item >
+        <Grid item xs={12} md={4}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Lightbulb />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Lightbulb aria-hidden="true" />
                 SEO Suggestions
               </Typography>
               
@@ -357,13 +353,13 @@ export default function ProfessionTrendsIntegration() {
       {/* Integration Details */}
       <Card sx={{ mt:  3 ,  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Build />
+          <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Build aria-hidden="true" />
             How the Integration Works
           </Typography>
           <Divider sx={{ mb: 2 }} />
           <Grid container spacing={2}>
-            <Grid item >
+            <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" gutterBottom>
                 useDynamicProfessions Hook
               </Typography>
@@ -386,7 +382,7 @@ export default function ProfessionTrendsIntegration() {
                 </ListItem>
               </List>
             </Grid>
-            <Grid item >
+            <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" gutterBottom>
                 Connected Components
               </Typography>

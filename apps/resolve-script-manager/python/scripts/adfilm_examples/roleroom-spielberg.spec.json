@@ -1,0 +1,186 @@
+{
+  "title": "ROLEROOM-SPIELBERG — «Kvelden før», regissert som Spielberg",
+  "product": "The Role Room — call sheet-pipeline for produksjonsteam (Team-fanen → CrewManagementPanel → CallSheetGenerator → «Send til crew»)",
+  "fictional_production": "The Silent Echo",
+  "setting": "ÅRSTID: HØST (vått, oransje løv, bare greiner, gyllen morgendis — ALDRI snø/vinter, aldri sommer). Norge. PAL 25fps 1920x1080.",
+  "direction": "Spielberg-grammatikk: historien fortelles gjennom ANSIKTER og reaksjoner, ikke ting. Family stakes (gafferen med sovende barn, runneren som venter). Tydelig kausalitet: hennes klikk → deres lettelse (kryssklipp). Push-in mot beslutningen, makro på klikket, «the Spielberg face» etterpå. Akt 3 = gyllent motlys, god rays, svellende score som IKKE dør på action. Logo over bildet før svart endcard. Ingen VO-forteller — bildene forteller. Diegetisk lyd + score.",
+  "style": "cinematic 35mm film still in the style of a prestige Amblin production: warm practical lights against cool blue night, gentle atmospheric haze, soft backlight, deep blacks, shallow depth of field, grounded and natural, NOT sci-fi, no neon, subtle purple tint in the shadows. NO readable text anywhere in the image, no words, no letters, no logos.",
+  "cast": {
+    "ad": "kvinne i 30-årene, mørkt hår i løs knute, praktisk mørkegrønn jakke/genser — LÅST via ref.jpg",
+    "gaffer": "mann ~50, kort grått skjegg, grå t-skjorte — LÅST via e04_gaffer.jpg",
+    "runner": "ung kvinne ~22, lys hestehale, collegegenser — DEFINERES av sp07, ref for sp13",
+    "child": "sovende barn ~6 år på gafferens arm (kun sp05)"
+  },
+  "shots": [
+    {
+      "id": "sp01_window",
+      "act": 1,
+      "beat": "etablering: ett opplyst vindu i mørket",
+      "sound": "regn, fjern by, første pling svakt",
+      "motion": "slow gentle push-in toward the single lit office window in the dark building facade, rain streaks drifting through the streetlight, a wet orange leaf tumbles across the sidewalk, subtle camera drift, nothing else moves",
+      "prompt": "wide establishing shot at night: a dark Norwegian office building facade in autumn rain, ONE single window lit warm on the second floor where a small figure sits working, wet asphalt reflecting a lone streetlight, fallen orange leaves on the sidewalk, cool blue night with that one warm island of light, cinematic Amblin mood"
+    },
+    {
+      "id": "sp02_desk",
+      "act": 1,
+      "beat": "AD-en ved pulten, kaoset som ting",
+      "ui_key": "laptop_chaos",
+      "sound": "romtone kontor, tastatur, pling-eskalering starter",
+      "motion": "she types quickly, pauses, rubs her forehead, glances at the stack of papers, keeps typing, handheld micro-movement, the screen stays flat solid green, no content ever appears on it",
+      "prompt": "the production coordinator woman from the reference seen from behind and slightly to the side at her desk at night, an open laptop with a MATTE SOLID GREEN screen that emits NO light in front of her, messy stacks of printed schedules, cork board with pinned notes out of focus behind, cold coffee mug, one warm desk lamp against the cool blue office, autumn rain on the window behind"
+    },
+    {
+      "id": "sp03_face_chaos",
+      "act": 1,
+      "beat": "kaoset som virkning: øynene hennes",
+      "sound": "plinger tett, hver pling = mikro-rykk",
+      "motion": "extreme subtle: her eyes dart between two points off-screen, tiny flinches as if small sounds keep arriving, jaw tightens, she blinks slowly once, exhausted, face otherwise still, intimate handheld",
+      "prompt": "intimate close-up of the same woman's face from the reference, slightly low angle, lit by the cool glow of an unseen screen mixed with a warm desk lamp from the side, her eyes darting, tired but fighting, tiny tension in the jaw, night office bokeh behind, cinematic 85mm portrait, shallow focus on her eyes"
+    },
+    {
+      "id": "sp04_phone_buzz",
+      "act": 1,
+      "beat": "insert: telefonen som aldri gir seg",
+      "sound": "buzz-dobbel, pling",
+      "motion": "the phone vibrates and shuffles a few millimetres across the wood with each buzz, its glow pulsing on the desk surface, the coffee surface trembles slightly, macro stillness otherwise",
+      "prompt": "macro insert shot: a smartphone lying face-up on a wooden desk at night, screen glowing but angled steeply away from camera so nothing on it is readable, vibrating, next to a cold half-empty coffee cup and a pair of reading glasses, warm lamp light from one side, cool blue shadow from the other, extremely shallow depth of field"
+    },
+    {
+      "id": "sp05_gaffer_child",
+      "act": 1,
+      "beat": "family stakes: gafferen kan ikke svare",
+      "sound": "hjemme-ambiens, dempet buzz i lomma x2",
+      "motion": "he slowly carries the sleeping child up the stairs, careful steps, the phone glows faintly in his back pocket buzzing, he glances back at it over his shoulder but cannot answer, keeps climbing gently",
+      "prompt": "the middle-aged gaffer from the reference carrying his sleeping six-year-old child up a warm wooden staircase at home at night, the child's head resting on his shoulder, a phone glowing faintly in his back pocket, warm hallway lamp below, cool blue window light above, tender and quiet, cinematic Amblin family warmth, seen from three-quarter behind on the stairs"
+    },
+    {
+      "id": "sp06_two_devices",
+      "act": 1,
+      "beat": "hun svarer alle, alene",
+      "sound": "plinger + swoosh-er, tettere",
+      "motion": "she types on the laptop with one hand while scrolling the phone in the other, switches attention back and forth twice, shakes her head slightly, restless handheld energy, the laptop screen stays flat solid green, no content ever appears",
+      "prompt": "medium shot from the side: the same woman from the reference at her night desk holding her phone low in one hand (screen tilted toward her, away from camera) while her other hand types on the laptop with a MATTE SOLID GREEN screen that emits no light, papers everywhere, she is mid-motion between the two devices, warm desk lamp vs cool night office, documentary handheld feel"
+    },
+    {
+      "id": "sp07_runner_waits",
+      "act": 1,
+      "beat": "den andre som venter: runneren",
+      "sound": "stille kjøkken, kjøleskapsdur, én pling langt unna",
+      "motion": "she sits still at the kitchen table, looks at the dark phone lying in front of her, turns it over once, puts it back down, sighs, glances at the half-packed lunchbox, waiting",
+      "prompt": "a young film-set runner, woman about 22 with a light ponytail and a college sweater, sitting at a small kitchen table at night, a half-packed lunchbox and a thermos in front of her, her phone lying DARK and face-up on the table, she watches it waiting for word about tomorrow, single warm pendant lamp, cool blue kitchen shadows, Norwegian home, quiet suspense, cinematic"
+    },
+    {
+      "id": "sp08_lowest",
+      "act": 1,
+      "beat": "bunnpunkt: silhuett mot regnvinduet",
+      "sound": "kakofoni-topp → ticks",
+      "motion": "she leans forward, runs both hands slowly into her hair and holds her head, elbows on the desk, silhouetted against the rainy window, rain streaks run down the glass, she stays like that, heavy",
+      "prompt": "the same woman from the reference in silhouette from behind, hands in her hair, elbows on the desk, framed against a large office window with autumn rain running down the glass and blurred city lights beyond, one desk lamp far to the side, cool blue dominates, her dark shape small against the window, cinematic despair beat"
+    },
+    {
+      "id": "sp09_decision",
+      "act": 1,
+      "beat": "beslutningen: push-in",
+      "sound": "ticks fortsetter, plingene fjernere",
+      "motion": "slow steady push-in toward her face: she lifts her head out of her hands, straightens her back, eyes settle on one point on the screen, resolve hardens in her face, one calm breath, she reaches forward",
+      "prompt": "frontal medium close-up of the same woman from the reference at her night desk: she has just lifted her head, sitting upright now, eyes locked forward with quiet determination, warm lamp on one side of her face, cool screen glow on the other, the chaos of papers soft in the foreground bokeh, cinematic push-in framing with space around her head"
+    },
+    {
+      "id": "sp10_click",
+      "act": 1,
+      "beat": "klikket — filmens skudd",
+      "sound": "alt kaos dør PÅ klikket → stillhet",
+      "motion": "macro: her index finger descends slowly and presses the trackpad ONCE, a deliberate single press, holds for a beat, then lifts, nothing else moves, extremely shallow focus",
+      "prompt": "extreme macro close-up of a woman's index finger resting above a laptop trackpad at night, warm lamp light raking across the aluminium, everything beyond the finger dissolved in soft bokeh, the moment before a single decisive click, cinematic macro, shallow depth of field"
+    },
+    {
+      "id": "sp11_spielberg_face",
+      "act": 2,
+      "beat": "the Spielberg face: stillheten senker seg",
+      "sound": "STILLHET + ett hjerteslag, romtone-skifte",
+      "motion": "she slowly looks up from the screen, the tension drains from her face over several seconds, her shoulders drop, a slow blink, the faintest beginning of relief, she just sits in the new silence, camera holds",
+      "prompt": "intimate frontal close-up of the same woman from the reference looking up just past the camera, the cool screen glow fading from her face leaving the warm lamp side, tension visibly leaving her features, quiet wonder and relief arriving, night office soft behind her, cinematic hold on the face, 85mm"
+    },
+    {
+      "id": "sp12_gaffer_relief",
+      "act": 2,
+      "beat": "kausalitet 1: gafferen får svar",
+      "sound": "hjemme-ambiens, én myk pling, «Null seks førti, Ryen. Der ja.»",
+      "motion": "standing in the dim hallway he reads his phone held low, the screen glowing toward him only, he exhales slowly, nods once, a tired smile, then puts the phone in his pocket and switches off the hallway lamp",
+      "prompt": "the middle-aged gaffer from the reference standing in a dim home hallway at night just outside a child's bedroom door, reading his phone held LOW at natural angle with the screen facing him and away from camera, warm relief spreading on his face, soft warm night light, three-quarter view from behind his shoulder, tender Amblin domestic moment"
+    },
+    {
+      "id": "sp13_runner_relief",
+      "act": 2,
+      "beat": "kausalitet 2: runneren får svar",
+      "sound": "myk pling, matboks lukkes, lysbryter",
+      "motion": "her phone on the table lights up once, she grabs it and reads holding it close and low, breaks into a big relieved smile, snaps the lunchbox shut, stands and turns off the pendant lamp as she leaves",
+      "prompt": "the same young runner from the reference at her kitchen table at night: her phone on the table just lit up and she leans in reading it held low toward herself (screen away from camera), a wide relieved smile breaking on her face, the lunchbox ready to be closed, warm pendant light, cinematic joy in a small kitchen"
+    },
+    {
+      "id": "sp14_laptop_close",
+      "act": 2,
+      "beat": "hun lukker dagen",
+      "sound": "laptop-lukk = mykt klikk, rommet blir stille",
+      "motion": "she closes the laptop lid slowly with both hands, the room falls darker as its glow disappears, she leans back in the chair and looks toward the window, calm at last, city lights soft beyond the glass",
+      "prompt": "medium shot from the side: the same woman from the reference gently closing her laptop lid at the night desk, the last light folding away between the lid and keyboard, leaving only the warm desk lamp and blurred blue city lights in the rainy window behind, her posture finally loose and calm, cinematic end-of-day exhale"
+    },
+    {
+      "id": "sp15_sleep",
+      "act": 2,
+      "beat": "kvelden får slutte",
+      "sound": "by-natt svakt, pust, siste myke pianotone",
+      "motion": "her hand reaches to the bedside lamp and switches it off, the room falls to soft blue city night, she settles her head deeper into the pillow, eyes already closed, complete stillness",
+      "prompt": "quiet bedroom at night: the same woman from the reference lying in bed on her side, eyes closed and at peace, her hand on the bedside lamp switch, warm lamp about to yield to the soft blue city glow from the window, autumn rain silent on the glass, intimate cinematic calm"
+    },
+    {
+      "id": "sp16_dawn_arrivals",
+      "act": 3,
+      "beat": "morgenen: settet våkner",
+      "sound": "morgen-ambiens: fugler, grus, bildører, rolige stemmer",
+      "motion": "crew cars roll slowly into the misty lot one after another, headlights soft in the golden fog, doors open, silhouettes unload cases calmly, low sun flares gently through the autumn trees, unhurried and certain",
+      "prompt": "wide shot at dawn: film crew cars arriving on a gravel location lot in golden autumn morning mist, low sun breaking through orange and bare trees creating god rays, silhouettes unloading flight cases without hurry, breath visible in the cold air, warm gold against cool morning blue, cinematic Amblin dawn, lens flare"
+    },
+    {
+      "id": "sp17_gaffer_arrives",
+      "act": 3,
+      "beat": "gafferen vet nøyaktig hvor han skal",
+      "sound": "grus-skritt, «morn», kaffe-termos, rigg-klirr",
+      "motion": "he walks through the waking set with a thermos in hand, greets a colleague with a nod and a handshake, points calmly toward the light stands, keeps walking with easy certainty, golden mist drifting",
+      "prompt": "the middle-aged gaffer from the reference walking onto the misty morning set with a steel thermos, warm smile, nodding to crew members as he passes, golden dawn light and autumn leaves around the gravel lot, light stands and cases being set up behind him, confident calm, cinematic backlit morning"
+    },
+    {
+      "id": "sp18_ad_walk",
+      "act": 3,
+      "beat": "AD-en går gjennom settet sitt",
+      "sound": "settet i rolig arbeid rundt henne, score bygger",
+      "motion": "steadicam feel following her at a slight angle as she walks through the working set, crew members glance up and nod as she passes, she nods back, boom pole rises in background, golden mist and drifting leaves, unbroken confident walk",
+      "prompt": "the same woman from the reference walking through the working film set in golden autumn morning light, backlit by the low sun with gentle lens flare, crew in organized motion around her nodding as she passes, camera dolly and light stands in soft focus, orange leaves drifting, earned-calm hero walk, cinematic steadicam framing from a three-quarter front angle"
+    },
+    {
+      "id": "sp19_action_smile",
+      "act": 3,
+      "beat": "«action» — men vi er på ansiktet hennes",
+      "sound": "«Roll sound» «Rolling» «Speed» «Action» bak — score sveller",
+      "motion": "in the foreground she watches the set beyond the camera line, someone calls out behind, the set snaps into perfect quiet work, she lowers her tablet slowly to her side and a small private smile grows, her eyes shine, she keeps watching",
+      "prompt": "close medium shot: the same woman from the reference in the foreground at the edge of the working set at golden morning, watching the scene being shot somewhere past camera, a tablet lowered casually at her side seen edge-on only, behind her the blurred crew frozen in respectful quiet, low sun rim-lighting her hair, a small private smile of earned pride, cinematic emotional payoff, 50mm"
+    },
+    {
+      "id": "sp20_crane_wide",
+      "act": 3,
+      "beat": "svellet: hele settet som fungerer (logo over bildet)",
+      "sound": "score på topp, settet svakt under, hold",
+      "motion": "slow gentle rise and drift back revealing the whole working set in the golden mist, tiny figures each at their task, god rays through the autumn trees strengthen slightly, leaves drift across frame, majestic calm hold",
+      "prompt": "high wide crane-style shot of the entire film set working in golden autumn morning: camera crew, lights, video village, crafts table, people moving with purpose through drifting mist, god rays fanning through orange and bare trees at the edge of the gravel lot, long soft shadows, warm gold and cool blue in balance, cinematic Amblin finale wide"
+    }
+  ],
+  "endcard": {
+    "logo": "logo_correct.png fader inn OVER sp20-bildet siste ~2.5s, deretter svart kort",
+    "line_no": "Gode dager lages kvelden før."
+  },
+  "sound_design": {
+    "concept": "Score-drevet (Spielberg), ikke SFX-drevet: cue1 lav urolig puls under akt 1 som dør på klikket; stillhet + hjerteslag; cue2 varmt tema fra sp12 som bygger gjennom akt 3 og SVELLER over sp19–sp20 og endcard — dør ALDRI på «action»",
+    "reuse": "amb_office_night, amb_home_evening, amb_city_night, amb_morning_set, pings/buzz/swoosh/ticks, click, heartbeat, vo_gaffer, vo_rollsound/rolling/speed/action fra /tmp/roleroom-evening/sfx",
+    "new": "score_tension (~45s stable-audio), score_theme (~55s stable-audio)"
+  }
+}

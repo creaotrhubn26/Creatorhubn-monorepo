@@ -62,6 +62,7 @@ import {
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
 import { useTheming } from '../../utils/theming-helper';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 
 type StepStatus = 'pending' | 'active' | 'completed' | 'error';
 type ProcessStatus = 'initializing' | 'processing' | 'completed' | 'failed';
@@ -547,8 +548,8 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
             <Box>
-              <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TimelineIcon sx={{ color: theme.colors.primary }} />
+              <Typography variant="h5" component="h2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TimelineIcon aria-hidden sx={{ color: theme.colors.primary }} />
                 API Integration Process Monitor
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -598,7 +599,7 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
             </Alert>
           )}
 
-          <Typography variant="h6" sx={{ mb: 1 }}>
+          <Typography variant="h6" component="h3" sx={{ mb: 1 }}>
             Mandatory Fullstack Protocol (10 steps)
           </Typography>
           <Stepper orientation="vertical">
@@ -607,17 +608,16 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
                 <StepLabel icon={getStepIcon(step)}>
                   <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                     <Typography variant="subtitle1">{step.title}</Typography>
-                    <Chip
-                      size="small"
+                    <StatusChip
                       label={step.status.toUpperCase()}
-                      color={
+                      tone={
                         step.status === 'completed'
                           ? 'success'
                           : step.status === 'active'
-                            ? 'primary'
+                            ? 'brand'
                             : step.status === 'error'
                               ? 'error'
-                              : 'default'
+                              : 'neutral'
                       }
                     />
                   </Stack>
@@ -634,6 +634,7 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
                     <Tooltip title={expandedStep === step.id ? 'Hide step details' : 'Expand step details'}>
                       <IconButton
                         size="small"
+                        aria-label={expandedStep === step.id ? 'Skjul trinndetaljer' : 'Vis trinndetaljer'}
                         onClick={() => setExpandedStep(expandedStep === step.id ? null : step.id)}
                       >
                         {expandedStep === step.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
@@ -667,7 +668,7 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
 
           <Collapse in={showDevSteps}>
             <Divider sx={{ my: 3 }} />
-            <Typography variant="h6" sx={{ mb: 1 }}>
+            <Typography variant="h6" component="h3" sx={{ mb: 1 }}>
               Developer Workflow (4 steps)
             </Typography>
             <Stepper orientation="vertical">
@@ -704,41 +705,37 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
             Quick actions for {targetService.toUpperCase()}
           </Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-            <Button
-              size="small"
-              variant="outlined"
+            <AdminButton
+              tone="secondary"
               startIcon={<RefreshIcon />}
               onClick={() => startIntegrationMutation.mutate()}
-              disabled={startIntegrationMutation.isPending}
+              loading={startIntegrationMutation.isPending}
             >
               Restart process
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
+            </AdminButton>
+            <AdminButton
+              tone="secondary"
               startIcon={<ScienceIcon />}
               onClick={() => runTestsMutation.mutate()}
-              disabled={runTestsMutation.isPending}
+              loading={runTestsMutation.isPending}
             >
               Run tests
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
+            </AdminButton>
+            <AdminButton
+              tone="secondary"
               startIcon={<CloudDoneIcon />}
               onClick={() => refreshMutation.mutate()}
-              disabled={refreshMutation.isPending}
+              loading={refreshMutation.isPending}
             >
               Refresh integration
-            </Button>
-            <Button
-              size="small"
-              variant="text"
+            </AdminButton>
+            <AdminButton
+              tone="ghost"
               startIcon={realTimeUpdate ? <StopIcon /> : <PlayIcon />}
               onClick={() => setRealTimeUpdate((value) => !value)}
             >
               {realTimeUpdate ? 'Pause live' : 'Resume live'}
-            </Button>
+            </AdminButton>
           </Stack>
 
           {processQuery.isLoading && (
@@ -749,7 +746,7 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
         </CardContent>
       </Card>
 
-      <Dialog open={Boolean(selectedStep)} onClose={() => setSelectedStep(null)} fullWidth maxWidth="md">
+      <Dialog open={Boolean(selectedStep)} onClose={() => setSelectedStep(null)} fullScreen={useIsMobile()} fullWidth maxWidth="md">
         <DialogTitle>{selectedStep?.title ?? 'Step details'}</DialogTitle>
         <DialogContent dividers>
           {selectedStep && (
@@ -783,7 +780,7 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSelectedStep(null)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setSelectedStep(null)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

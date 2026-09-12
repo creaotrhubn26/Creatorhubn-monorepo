@@ -96,7 +96,7 @@ const codeSx: React.CSSProperties = {
   fontFamily: '"SF Mono", Menlo, monospace',
   fontSize: '0.85em',
   background: 'rgba(34,211,238,0.12)',
-  color: '#22d3ee',
+  color: 'var(--role-cyan, #22d3ee)',
   padding: '1px 5px',
   borderRadius: 3,
 };
@@ -106,7 +106,7 @@ const SECTIONS: GuideSection[] = [
     id: 'encryption',
     title: '1. Passord krypteres før de skrives til database',
     Icon: LockIcon,
-    iconColor: '#22d3ee',
+    iconColor: 'var(--role-cyan, #22d3ee)',
     oneLineSummary: 'AES-256-GCM — samme standard som banker og myndigheter bruker.',
     details: (
       <Stack spacing={1.4}>
@@ -118,7 +118,7 @@ const SECTIONS: GuideSection[] = [
           finansinstitusjoner verden over baserer sin transaksjons-sikkerhet på.
         </Typography>
         <Box sx={infoBoxSx}>
-          <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#22d3ee', mb: 0.4 }}>
+          <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--role-cyan, #22d3ee)', mb: 0.4 }}>
             Hva betyr det i praksis?
           </Typography>
           <Typography sx={{ fontSize: '0.82rem', color: 'rgba(226,232,240,0.78)', lineHeight: 1.6 }}>
@@ -345,7 +345,7 @@ const SECTIONS: GuideSection[] = [
     id: 'integrity',
     title: '6. Hva som gjør passord-integritet trygt hos oss',
     Icon: KeyIcon,
-    iconColor: '#22d3ee',
+    iconColor: 'var(--role-cyan, #22d3ee)',
     oneLineSummary: 'Oppsummering av sikkerhetsgarantiene vi gir klientene dine.',
     details: (
       <Stack spacing={1}>
@@ -380,7 +380,7 @@ const SECTIONS: GuideSection[] = [
           },
         ].map((item) => (
           <Stack key={item.title} direction="row" spacing={1} alignItems="flex-start" sx={{ p: 1.2, borderRadius: 1, bgcolor: 'rgba(34,211,238,0.04)' }}>
-            <CheckIcon sx={{ color: '#22d3ee', fontSize: 18, mt: 0.2 }} />
+            <CheckIcon sx={{ color: 'var(--role-cyan, #22d3ee)', fontSize: 18, mt: 0.2 }} />
             <Box>
               <Typography sx={{ fontSize: '0.86rem', fontWeight: 700, color: '#f8fafc' }}>
                 {item.title}
@@ -428,7 +428,7 @@ const VaultSecurityGuide: React.FC<VaultSecurityGuideProps> = ({ open, onClose }
                 justifyContent: 'center',
               }}
             >
-              <ShieldIcon sx={{ color: '#22d3ee', fontSize: 24 }} />
+              <ShieldIcon sx={{ color: 'var(--role-cyan, #22d3ee)', fontSize: 24 }} />
             </Box>
             <Stack spacing={0.2}>
               <Typography sx={{ fontWeight: 800, fontSize: '1.15rem', color: '#f8fafc' }}>
@@ -572,7 +572,7 @@ const VaultSecurityGuide: React.FC<VaultSecurityGuideProps> = ({ open, onClose }
             sx={{
               textTransform: 'none',
               fontWeight: 700,
-              bgcolor: '#22d3ee',
+              bgcolor: 'var(--role-cyan, #22d3ee)',
               color: '#0b1226',
               px: 2.4,
               '&:hover': { bgcolor: '#06b6d4' },

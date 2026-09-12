@@ -76,12 +76,13 @@ export function MusicLibrary({ open, onClose, projectId, agentContext }: Props) 
       const overlap = trackTags.filter(t => contextTagSet.has(t)).length;
       score = overlap / Math.max(contextTagSet.size, trackTags.length);
     }
-    // BPM-boost
+    // BPM-bonus (additiv) — en ren BPM-match uten tag-overlap skal
+    // fortsatt score > 0 (multiplikasjon ville holdt den på 0).
     const bpm = track.audioAnalysis?.bpm;
     if (bpm && agentContext.targetBpmRange) {
       const [minBpm, maxBpm] = agentContext.targetBpmRange;
       if (bpm >= minBpm && bpm <= maxBpm) {
-        score = score * 1.4; // 40% boost
+        score += 0.4; // fast BPM-bonus
       }
     }
     return Math.min(1, score);
@@ -257,7 +258,7 @@ export function MusicLibrary({ open, onClose, projectId, agentContext }: Props) 
     <div onClick={onClose}
          style={{
            position: "fixed", inset: 0, zIndex: 5800,
-           background: "rgba(8,4,20,0.92)", backdropFilter: "blur(10px)",
+           background: "rgba(8,4,20,0.92)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
            display: "flex", flexDirection: "column",
            color: ROLE_ROOM_BRAND.textPrimary,
          }}>
@@ -609,7 +610,7 @@ function TrackDetailPanel({ track, onClose }: {
     <div onClick={onClose}
          style={{
            position: "fixed", inset: 0, zIndex: 5900,
-           background: "rgba(8,4,20,0.85)", backdropFilter: "blur(10px)",
+           background: "rgba(8,4,20,0.85)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
            display: "flex", alignItems: "center", justifyContent: "center",
          }}>
       <div onClick={e => e.stopPropagation()}

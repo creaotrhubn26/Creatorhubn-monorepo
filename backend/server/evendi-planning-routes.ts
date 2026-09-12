@@ -54,7 +54,7 @@ export function setupEvendiPlanningRoutes(
         "SELECT client_email, name, title FROM legacy.projects WHERE id = $1",
         [projectId],
       );
-      if (proj.rowCount === 0)
+      if (!proj.rows.length)
         return res.status(404).json({ error: "Prosjekt ikke funnet" });
 
       const {
@@ -72,7 +72,7 @@ export function setupEvendiPlanningRoutes(
         "SELECT id, email, display_name FROM couple_profiles WHERE email = $1",
         [client_email],
       );
-      if (cp.rowCount === 0) {
+      if (!cp.rows.length) {
         // Auto-create couple_profile from project client info
         const newId = crypto.randomUUID();
         cp = await pool.query(
@@ -301,7 +301,7 @@ export function setupEvendiPlanningRoutes(
           [projectId],
         );
 
-        if (tlResult.rowCount === 0) {
+        if (!tlResult.rows.length) {
           return res.status(404).json({
             error: "Ingen tidslinje funnet. Opprett bryllupstidslinje først.",
             hint: "POST /api/wedding/timeline/project/:projectId",
@@ -327,7 +327,7 @@ export function setupEvendiPlanningRoutes(
             [timelineId, evt.title],
           );
 
-          if (existing.rowCount === 0) {
+          if (!existing.rows.length) {
             await pool.query(
               `INSERT INTO wedding_timeline_events
               (id, timeline_id, title, event_time, duration_minutes, description, location, status, can_client_edit, created_at, updated_at)
@@ -391,7 +391,7 @@ export function setupEvendiPlanningRoutes(
           "SELECT id FROM wedding_timelines WHERE project_id = $1 LIMIT 1",
           [projectId],
         );
-        if (tlResult.rowCount === 0) {
+        if (!tlResult.rows.length) {
           return res.status(404).json({ error: "Tidslinje ikke funnet" });
         }
 
@@ -409,7 +409,7 @@ export function setupEvendiPlanningRoutes(
             [coupleId, evt.title],
           );
 
-          if (existing.rowCount === 0) {
+          if (!existing.rows.length) {
             const eventTime = evt.event_time
               ? new Date(evt.event_time).toTimeString().substring(0, 5)
               : "";
@@ -455,7 +455,7 @@ export function setupEvendiPlanningRoutes(
         "SELECT * FROM wedding_timelines WHERE project_id = $1 LIMIT 1",
         [projectId],
       );
-      if (tl.rowCount === 0) {
+      if (!tl.rows.length) {
         return res.json({
           connected: false,
           message: "Ingen tidslinje koblet til prosjektet",

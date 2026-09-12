@@ -166,7 +166,7 @@ import {
   AccountTree as FlowChart,
 } from '@mui/icons-material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
+import { useVisualEditorOptional } from '../admin/visual-editor/VisualEditorContext';
 import UniversalCRMDashboard from '../crm/UniversalCRMDashboard';
 import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
 import EventTimelineEditor from '../timeline/EventTimelineEditor';
@@ -346,7 +346,8 @@ const EventsManagementPlatform: React.FC = () => {
   const theming = useTheming('photographer');
   
   // Toast notifications
-  const { addToast } = useVisualEditor();
+  // Optional: kan rendres utenfor VisualEditorProvider — kastende hook = krasj.
+  const addToast = useVisualEditorOptional()?.addToast ?? (() => {});
   const [events, setEvents] = useState<EventPlan[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<EventPlan | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);

@@ -254,8 +254,7 @@ export default function ProjectSelector({
               size="small"
               startIcon={<Add />}
               onClick={() => {
-                // Navigate to project creation
-                window.location.href ='/projects/new';
+                window.location.href = '/workspace?new=1';
               }}
             >
               Opprett Nytt Prosjekt

@@ -24,12 +24,13 @@ import {
   Card,
   CardContent,
   Grid,
-  Button,
   IconButton,
-  Chip,
   Alert,
+  ThemeProvider,
   Paper,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
+import { adminTokens } from './design-system';
 import {
   Group,
   Settings,
@@ -100,16 +101,17 @@ export default function CommunityManagementDashboard() {
   ];
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Container maxWidth="xl" sx={{ py: 0 }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Typography variant="h4" component="h1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
           {professionIcon && (
-            <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
+            <Box aria-hidden="true" sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
               {professionIcon}
             </Box>
           )}
-          <Group sx={{ fontSize: 40, color: '#ff8c00' }} />
+          <Group aria-hidden="true" sx={{ fontSize: 40, color: adminTokens.color.brand }} />
           {enhancedProfessionConfig?.displayName || professionConfig?.displayName
             ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Community Management`
             : 'Community Management'}
@@ -181,7 +183,7 @@ export default function CommunityManagementDashboard() {
             borderBottom: 1,
             borderColor: 'divider',
             '& .MuiTabs-indicator': {
-              backgroundColor: '#ff8c00',
+              backgroundColor: adminTokens.color.brand,
             }
           }}
         >
@@ -197,7 +199,7 @@ export default function CommunityManagementDashboard() {
                     textTransform: 'none',
                     minHeight: 64,
                     '&.Mui-selected': {
-                      color: '#ff8c00',
+                      color: adminTokens.color.brand,
                     }}}
               />
             );
@@ -233,6 +235,7 @@ export default function CommunityManagementDashboard() {
         <CommunityAnalytics />
       </TabPanel>
     </Container>
+    </ThemeProvider>
   );
 }
 

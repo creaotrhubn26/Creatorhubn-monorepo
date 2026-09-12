@@ -19,15 +19,19 @@ import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import StarRateRoundedIcon from '@mui/icons-material/StarRateRounded';
 import BlockOutlinedIcon from '@mui/icons-material/BlockOutlined';
 import ContentCopyOutlinedIcon from '@mui/icons-material/ContentCopyOutlined';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
+import EventOutlinedIcon from '@mui/icons-material/EventOutlined';
 import { useCallback, useEffect, useState } from 'react';
 
 import { palette, radius } from '../../theme';
 import {
   externalProviderLabel,
+  getSubmissionComments,
   listSharedSubmissions,
   publicSelftapeUrl,
   revokeSubmission,
   type SelftapeSharedItem,
+  type SubmissionEvent,
 } from '../../../services/roleRoomSelfTapesService';
 
 export default function SelfTapeSharedList() {
@@ -36,6 +40,27 @@ export default function SelfTapeSharedList() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  // Per-submission kommentar-strøm — lazy-load på utvidelse
+  const [commentsBySubmission, setCommentsBySubmission] = useState<Map<string, SubmissionEvent[]>>(new Map());
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [commentsBusy, setCommentsBusy] = useState<string | null>(null);
+
+  const loadComments = useCallback(async (submissionId: string) => {
+    if (commentsBySubmission.has(submissionId)) return;
+    setCommentsBusy(submissionId);
+    try {
+      const { events } = await getSubmissionComments(submissionId);
+      setCommentsBySubmission((prev) => {
+        const next = new Map(prev);
+        next.set(submissionId, events);
+        return next;
+      });
+    } catch (err) {
+      console.error('loadComments', err);
+    } finally {
+      setCommentsBusy(null);
+    }
+  }, [commentsBySubmission]);
 
   const reload = useCallback(async () => {
     try {
@@ -188,6 +213,100 @@ export default function SelfTapeSharedList() {
                   Begrunnelse: {s.revoke_reason}
                 </Typography>
               ) : null}
+
+              {/* Kommentar-historikk fra produsent */}
+              <Box sx={{ mt: 0.8 }}>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    const next = expandedId === s.id ? null : s.id;
+                    setExpandedId(next);
+                    if (next) loadComments(s.id);
+                  }}
+                  startIcon={<ChatBubbleOutlineIcon sx={{ fontSize: 14 }} />}
+                  sx={{
+                    color: palette.accentBright,
+                    textTransform: 'none',
+                    fontSize: '0.78rem',
+                    px: 0.6,
+                    py: 0.2,
+                    minWidth: 0,
+                    '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
+                  }}
+                >
+                  {expandedId === s.id ? 'Skjul produsent-kommentarer' : 'Vis produsent-kommentarer'}
+                </Button>
+                {expandedId === s.id ? (
+                  <Box sx={{ mt: 0.8, pl: 1.4, borderLeft: `2px solid ${palette.borderSubtle}` }}>
+                    {commentsBusy === s.id ? (
+                      <CircularProgress size={16} sx={{ color: palette.accentBright }} />
+                    ) : (() => {
+                      const events = commentsBySubmission.get(s.id) ?? [];
+                      const comments = events.filter((e) => e.event_type === 'production_comment');
+                      const deadlineEvents = events.filter((e) => e.event_type === 'deadline_set');
+                      const reminders = events.filter((e) => e.event_type === 'reminded');
+                      if (comments.length === 0 && deadlineEvents.length === 0 && reminders.length === 0) {
+                        return (
+                          <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem', fontStyle: 'italic' }}>
+                            Ingen kommentarer eller hendelser ennå.
+                          </Typography>
+                        );
+                      }
+                      return (
+                        <Stack spacing={0.8}>
+                          {deadlineEvents.slice(0, 1).map((e) => {
+                            const newDeadline = (e.details as { deadline_at?: string | null } | null)?.deadline_at;
+                            return (
+                              <Stack key={e.id} direction="row" alignItems="center" spacing={0.6}>
+                                <EventOutlinedIcon sx={{ fontSize: 12, color: palette.textMuted }} />
+                                <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
+                                  {newDeadline
+                                    ? `Frist satt til ${new Date(newDeadline).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+                                    : 'Frist fjernet'}
+                                  {' · '}
+                                  {formatWhen(e.created_at)}
+                                </Typography>
+                              </Stack>
+                            );
+                          })}
+                          {comments.map((e) => {
+                            const body = (e.details as { body?: string } | null)?.body ?? '';
+                            return (
+                              <Box
+                                key={e.id}
+                                sx={{
+                                  bgcolor: 'rgba(168,85,247,0.08)',
+                                  border: `1px solid ${palette.borderSubtle}`,
+                                  borderRadius: radius.sm,
+                                  px: 1.2,
+                                  py: 0.8,
+                                }}
+                              >
+                                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.3 }}>
+                                  <Typography sx={{ color: palette.accentBright, fontSize: '0.74rem', fontWeight: 700 }}>
+                                    {e.actor_label ?? 'Produksjon'}
+                                  </Typography>
+                                  <Typography sx={{ color: palette.textMuted, fontSize: '0.72rem' }}>
+                                    {formatWhen(e.created_at)}
+                                  </Typography>
+                                </Stack>
+                                <Typography sx={{ color: palette.textPrimary, fontSize: '0.84rem', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                                  {body}
+                                </Typography>
+                              </Box>
+                            );
+                          })}
+                          {reminders.slice(0, 1).map((e) => (
+                            <Typography key={e.id} sx={{ color: palette.textMuted, fontSize: '0.74rem' }}>
+                              Påminnelse mottatt {formatWhen(e.created_at)}
+                            </Typography>
+                          ))}
+                        </Stack>
+                      );
+                    })()}
+                  </Box>
+                ) : null}
+              </Box>
             </Box>
 
             {/* Actions */}

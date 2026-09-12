@@ -1,75 +1,381 @@
-name: Auto-migrate Neon-DB ved migrations-endring
+name: Production migrations and backend deploy
 
-# Trigger ./migrate.sh på prod-backend hver gang en ny migration-fil
-# pushes til main. Backend-endpointet er token-gated via MIGRATE_TRIGGER_TOKEN
-# (GitHub secret) — krever ikke admin-login.
-#
-# Workflowen er idempotent — hvis ingen nye migrasjoner finnes (alle er allerede
-# applied), skipper migrate.sh dem og returnerer exit 0.
+# This is the repository's canonical automated CreatorHub production path.
+# Render dashboard/API access remains an external administrative bypass and
+# must be access-controlled separately.
+# Production code is never deployed before the exact migration principal has
+# passed its ownership preflight and every pending migration is applied. The
+# matching frontend SHA is promoted only after the backend is live and healthy.
 
 on:
-  push:
-    branches:
-      - main
+  pull_request:
     paths:
-      - 'backend/migrations/**.sql'
+      - ".github/workflows/auto-migrate-on-push.yml"
+      - ".github/workflows/deploy-render-backend.yml"
+      - ".github/workflows/leadgrid-post-deploy-smoketest.yml"
+      - ".github/workflows/promote-brand.yml"
+      - ".claude/deploy-targets.json"
+      - "backend/migrate.sh"
+      - "backend/migrations/**"
+      - "backend/scripts/bootstrap-production-ownership.mjs"
+      - "backend/scripts/preflight-leadgrid-api-key-scope.mjs"
+      - "backend/scripts/run-production-migrations.mjs"
+      - "backend/scripts/setup-gmail-app-password.playwright.mjs"
+      - "backend/scripts/setup-google-ads-conversions.playwright.mjs"
+      - "backend/server/database-owner-role.ts"
+      - "backend/server/database-owner-role.test.ts"
+      - "backend/server/index.ts"
+      - "backend/tsconfig.json"
+      - "docs/ARKITEKTUR-OVERSIKT.md"
+      - "frontend/README.md"
+      - "plugins/creatorhub-engineering/skills/release-readiness/SKILL.md"
+      - "scripts/deploy/render-backend.mjs"
+      - "scripts/render-envs/README.md"
+      - "scripts/set-render-env-vars.sh"
+      - "render.yaml"
+      - "backend/render.yaml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      commit:
+        description: "Full current main commit SHA; blank uses the caller SHA"
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: auto-migrate-prod
-  cancel-in-progress: false
+  # PR checks must never occupy or replace the single production release slot.
+  group: ${{ github.event_name == 'pull_request' && format('creatorhub-pr-validation-{0}', github.event.pull_request.number) || 'creatorhub-production-database-and-backend' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+  RENDER_SERVICE_ID: srv-d76ob60ule4c73dv2p60
+  TARGET_SHA: ${{ inputs.commit || github.sha }}
+  MIGRATION_LOGIN_ROLE: creatorhub_migration_login
+  MIGRATION_OWNER_ROLE: creatorhub_schema_owner
+  MIGRATION_OWNED_SCHEMAS: public
 
 jobs:
-  trigger-migrate:
-    name: Trigger migrate.sh på Render-backend
+  validate:
+    name: Validate production deploy gate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
-      - name: List endrede migration-filer
-        run: |
-          echo "Triggered av commit $GITHUB_SHA"
-          echo "Sender POST til /api/admin-room/migrations/run"
-
-      - name: Trigger migrate.sh
+      - name: Reject non-main production callers
         env:
-          MIGRATE_TRIGGER_TOKEN: ${{ secrets.MIGRATE_TRIGGER_TOKEN }}
-          BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+          EVENT_NAME: ${{ github.event_name }}
+          SELECTED_REF: ${{ github.ref }}
+          SELECTED_SHA: ${{ github.sha }}
+        shell: bash
         run: |
-          if [ -z "$MIGRATE_TRIGGER_TOKEN" ]; then
-            echo "::error::MIGRATE_TRIGGER_TOKEN secret er ikke satt"
+          set -euo pipefail
+          if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::TARGET_SHA must be a full lowercase 40-character Git SHA"
             exit 1
           fi
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
-            -X POST \
-            -H "Content-Type: application/json" \
-            -H "X-Migrate-Trigger-Token: $MIGRATE_TRIGGER_TOKEN" \
-            -H "X-Migrate-Trigger-Source: github-actions/$GITHUB_SHA" \
-            -d '{}' \
-            "$BACKEND_URL/api/admin-room/migrations/run")
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          echo "HTTP $HTTP_CODE"
-          echo "Body: $BODY"
-          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            if [ "$HTTP_CODE" = "409" ]; then
-              echo "::warning::En migrate-run pågår allerede. Hopper over."
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            if [ "$SELECTED_REF" != "refs/heads/main" ]; then
+              echo "::error::Production callers must execute from refs/heads/main"
+              exit 1
+            fi
+            if [ "$SELECTED_SHA" != "$TARGET_SHA" ]; then
+              echo "::error::Production caller SHA must exactly match TARGET_SHA"
+              exit 1
+            fi
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Verify ownership bootstrap contract
+        run: node backend/scripts/bootstrap-production-ownership.mjs --self-test
+
+      - name: Verify migration fail-fast contract
+        run: node backend/scripts/run-production-migrations.mjs --self-test
+
+      - name: Verify Leadgrid Public API key preflight contract
+        run: node backend/scripts/preflight-leadgrid-api-key-scope.mjs --self-test
+
+      - name: Verify Render deploy contract
+        run: node scripts/deploy/render-backend.mjs --self-test
+
+      - name: Verify shell entrypoint
+        run: bash -n backend/migrate.sh
+
+  migrate_deploy:
+    name: Preflight, migrate, deploy Render, and smoke test
+    if: github.event_name != 'pull_request'
+    needs: validate
+    environment: Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact deploy commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Validate exact current main target
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::TARGET_SHA must be a full lowercase 40-character Git SHA"
+            exit 1
+          fi
+          checked_out=$(git rev-parse HEAD)
+          if [ "$checked_out" != "$TARGET_SHA" ]; then
+            echo "::error::Checkout mismatch: checkedOut=$checked_out target=$TARGET_SHA"
+            exit 1
+          fi
+          current_main=$(curl -fsS --connect-timeout 3 --max-time 15 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/ref/heads/main" \
+            | jq -er '.object.sha')
+          if [ "$current_main" != "$TARGET_SHA" ]; then
+            echo "::error::Release target is stale: target=$TARGET_SHA currentMain=$current_main"
+            exit 1
+          fi
+          echo "Validated exact current main commit: $TARGET_SHA"
+
+      - name: Validate production credentials
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::PRODUCTION_MIGRATION_DATABASE_URL is not configured in the Production environment"
+            exit 1
+          fi
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "::error::RENDER_API_KEY is not configured"
+            exit 1
+          fi
+          echo "::add-mask::$DATABASE_URL"
+          echo "::add-mask::$RENDER_API_KEY"
+          node -e 'const u=new URL(process.env.DATABASE_URL);if(!["postgres:","postgresql:"].includes(u.protocol)||!u.hostname||!u.username)process.exit(1)'
+
+      - name: Install pinned migration runtime
+        run: npm ci --prefix backend --workspaces=false --omit=dev --omit=optional --ignore-scripts
+
+      - name: Revalidate current main before production preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          current_main=$(curl -fsS --connect-timeout 3 --max-time 15 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/ref/heads/main" \
+            | jq -er '.object.sha')
+          if [ "$current_main" != "$TARGET_SHA" ]; then
+            echo "::error::Release target became stale before preflight: target=$TARGET_SHA currentMain=$current_main"
+            exit 1
+          fi
+
+      - name: Verify migration role and schema ownership
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: node backend/scripts/run-production-migrations.mjs --preflight-only
+
+      - name: Inventory legacy Leadgrid Public API keys before mutation
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: node backend/scripts/preflight-leadgrid-api-key-scope.mjs
+
+      - name: Assert Render auto-deploy is off
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: node scripts/deploy/render-backend.mjs assert-auto-deploy-off
+
+      - name: Verify Render runtime database roles
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: node scripts/deploy/render-backend.mjs assert-runtime-database-roles
+
+      - name: Verify Render Leadgrid storage contract
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: node scripts/deploy/render-backend.mjs assert-leadgrid-storage-runtime
+
+      - name: Verify Render CreatorHub storage contract
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: node scripts/deploy/render-backend.mjs assert-creatorhub-storage-runtime
+
+      - name: Revalidate current main before database mutation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          current_main=$(curl -fsS --connect-timeout 3 --max-time 15 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/ref/heads/main" \
+            | jq -er '.object.sha')
+          if [ "$current_main" != "$TARGET_SHA" ]; then
+            echo "::error::Release target became stale before migration: target=$TARGET_SHA currentMain=$current_main"
+            exit 1
+          fi
+
+      - name: Acquire canonical database lock and apply migrations
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: node backend/scripts/run-production-migrations.mjs
+
+      - name: Verify migration convergence
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: node backend/scripts/run-production-migrations.mjs --expect-zero
+
+      - name: Revalidate current main before Render deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          current_main=$(curl -fsS --connect-timeout 3 --max-time 15 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/ref/heads/main" \
+            | jq -er '.object.sha')
+          if [ "$current_main" != "$TARGET_SHA" ]; then
+            echo "::error::Release target became stale before Render deploy: target=$TARGET_SHA currentMain=$current_main"
+            exit 1
+          fi
+
+      - name: Deploy exact commit and verify production
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: node scripts/deploy/render-backend.mjs deploy-and-verify "$TARGET_SHA"
+
+  leadgrid_smoketest:
+    name: Verify Leadgrid before frontend promotion
+    if: github.event_name != 'pull_request'
+    needs: migrate_deploy
+    uses: ./.github/workflows/leadgrid-post-deploy-smoketest.yml
+    with:
+      expected_commit: ${{ inputs.commit || github.sha }}
+      run_daily_rescore: false
+
+  promote-frontend:
+    name: Promote exact release to CreatorHub frontend production
+    if: github.event_name != 'pull_request' && needs.leadgrid_smoketest.result == 'success'
+    needs: leadgrid_smoketest
+    environment: Production
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Fast-forward live/creatorhub and verify public Netlify release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          accept="Accept: application/vnd.github+json"
+          version="X-GitHub-Api-Version: 2026-03-10"
+
+          current_main=$(curl -fsS --connect-timeout 3 --max-time 15 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version" \
+            "$api/git/ref/heads/main" | jq -er '.object.sha')
+          if [ "$current_main" != "$TARGET_SHA" ]; then
+            echo "::error::Release target became stale before frontend promotion: target=$TARGET_SHA currentMain=$current_main"
+            exit 1
+          fi
+
+          live_sha=$(curl -fsS --connect-timeout 3 --max-time 15 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version" \
+            "$api/git/ref/heads/live/creatorhub" | jq -er '.object.sha')
+          if [[ ! "$live_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::live/creatorhub did not resolve to a full commit SHA"
+            exit 1
+          fi
+
+          comparison=$(curl -fsS --connect-timeout 3 --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version" \
+            "$api/compare/$live_sha...$TARGET_SHA")
+          merge_base=$(jq -er '.merge_base_commit.sha' <<<"$comparison")
+          status=$(jq -er '.status' <<<"$comparison")
+          if [ "$merge_base" != "$live_sha" ] || { [ "$status" != "ahead" ] && [ "$status" != "identical" ]; }; then
+            echo "::error::Refusing non-fast-forward CreatorHub promotion: live=$live_sha target=$TARGET_SHA status=$status mergeBase=$merge_base"
+            exit 1
+          fi
+
+          if [ "$live_sha" != "$TARGET_SHA" ]; then
+            payload=$(jq -cn --arg sha "$TARGET_SHA" '{sha: $sha, force: false}')
+            updated_sha=$(curl -fsS --connect-timeout 3 --max-time 20 \
+              -X PATCH -H "Authorization: Bearer $GH_TOKEN" \
+              -H "$accept" -H "$version" -H "Content-Type: application/json" \
+              --data "$payload" "$api/git/refs/heads/live/creatorhub" \
+              | jq -er '.object.sha')
+            if [ "$updated_sha" != "$TARGET_SHA" ]; then
+              echo "::error::GitHub returned an unexpected promoted SHA: updated=$updated_sha target=$TARGET_SHA"
+              exit 1
+            fi
+          fi
+
+          verified_live=$(curl -fsS --connect-timeout 3 --max-time 15 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version" \
+            "$api/git/ref/heads/live/creatorhub" | jq -er '.object.sha')
+          if [ "$verified_live" != "$TARGET_SHA" ]; then
+            echo "::error::CreatorHub production ref verification failed: live=$verified_live target=$TARGET_SHA"
+            exit 1
+          fi
+
+          public_build_url="https://www.creatorhubn.com/build-info.json"
+          for attempt in $(seq 1 120); do
+            if ! build_info=$(curl -fsS --connect-timeout 3 --max-time 15 \
+              -H "Accept: application/json" -H "Cache-Control: no-cache" \
+              "$public_build_url?expected=$TARGET_SHA&attempt=$attempt" 2>/dev/null); then
+              build_info='{}'
+            fi
+
+            app=$(jq -r '.app // ""' <<<"$build_info" 2>/dev/null || true)
+            surface=$(jq -r '.surface // ""' <<<"$build_info" 2>/dev/null || true)
+            source=$(jq -r '.source // ""' <<<"$build_info" 2>/dev/null || true)
+            published_sha=$(jq -r '.gitSha // ""' <<<"$build_info" 2>/dev/null || true)
+            published_branch=$(jq -r '.branch // ""' <<<"$build_info" 2>/dev/null || true)
+            netlify_context=$(jq -r '.netlify.context // ""' <<<"$build_info" 2>/dev/null || true)
+
+            echo "Netlify publish attempt=$attempt sha=${published_sha:0:8} branch=${published_branch:-<unknown>}"
+            if [ "$app" = "creatorhub-frontend" ] && \
+               [ "$surface" = "creatorhub" ] && \
+               [ "$source" = "netlify" ] && \
+               [ "$published_sha" = "$TARGET_SHA" ] && \
+               [ "$published_branch" = "live/creatorhub" ] && \
+               [ "$netlify_context" = "production" ]; then
+              echo "Promoted and publicly verified exact CreatorHub release $TARGET_SHA."
               exit 0
             fi
-            echo "::error::Migrate-trigger feilet (HTTP $HTTP_CODE)"
-            exit 1
-          fi
+            sleep 10
+          done
 
-      - name: Poll status til ferdig (maks 10 min)
-        env:
-          BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
-          MIGRATE_TRIGGER_TOKEN: ${{ secrets.MIGRATE_TRIGGER_TOKEN }}
-        run: |
-          # /status er admin-gated, men vi har ikke session-token i CI.
-          # Vi venter 90 sek statisk så backend rekker å starte og fullføre
-          # de fleste migrasjoner. Detaljert logging er tilgjengelig i Admin
-          # Room → RR Økonomi → Database-migrasjoner → "Vis logg".
-          echo "Venter 90 sek på at migrate.sh fullfører…"
-          sleep 90
-          echo "Migrate-run kan ses i Admin Room → RR Økonomi → Database-migrasjoner"
+          echo "::error::Netlify did not publish exact release $TARGET_SHA from live/creatorhub within 20 minutes"
+          echo "::error::If the ref already matched after an earlier failed build, retry or redeploy that commit in Netlify before rerunning this gate"
+          exit 1

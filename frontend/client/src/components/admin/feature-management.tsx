@@ -3,7 +3,7 @@ import { useProfessionConfigs as _useProfessionConfigs } from '@/hooks/useProfes
 import { useProfessionAdapter as _useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import _getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import {
@@ -17,7 +17,7 @@ import {
   Chip,
   Button,
   Alert,
-  CircularProgress,
+  CircularProgress as _CircularProgress,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -41,7 +41,10 @@ import {
   Paper,
   Divider,
   Snackbar,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
+import { AdminButton, AdminLoading, AdminError, useIsMobile } from './design-system';
 import {
   ExpandMore,
   Settings,
@@ -144,12 +147,15 @@ export default function FeatureManagement({
   onNotificationCreate
 }: FeatureManagementProps) {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // ⭐ Enhanced Master Integration
   const { lifecycle, analytics, performance, debugging, dataFlow, communication, auth } = useEnhancedMasterIntegration();
 
   // Theming system
   const theming = useTheming('prototype_tester');
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
@@ -285,8 +291,9 @@ export default function FeatureManagement({
       try {
         const headers = await auth.getAuthHeader();
         const data = await apiRequest('/api/admin/features', { headers });
-        analytics.trackEvent('features_fetched', { count: data.length });
-        return data;
+        const safeData = Array.isArray(data) ? data : [];
+        analytics.trackEvent('features_fetched', { count: safeData.length });
+        return safeData;
       } finally {
         endTiming();
       }
@@ -360,10 +367,16 @@ export default function FeatureManagement({
   }
 });
 
-  const categories = Array.from(new Set(features.map((f: Feature) => f.category))) as string[];
-  const _filteredFeatures = selectedCategory === 'all' 
-    ? features 
-    : features.filter((f: Feature) => f.category === selectedCategory);
+  const categories = useMemo(
+    () => Array.from(new Set(features.map((f: Feature) => f.category))) as string[],
+    [features]
+  );
+  const _filteredFeatures = useMemo(
+    () => selectedCategory === 'all'
+      ? features
+      : features.filter((f: Feature) => f.category === selectedCategory),
+    [features, selectedCategory]
+  );
 
   const getImpactColor = (impact: string) => {
     switch (impact) {
@@ -409,24 +422,15 @@ export default function FeatureManagement({
 };
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 2.5 }}>
-        <CircularProgress />
-        <Typography variant="h6" sx={{ ml: 2, color: theming.colors.primary }}>
-          Laster inn funksjoner...
-        </Typography>
-      </Box>
-    );
+    return <AdminLoading label="Laster inn funksjoner..." />;
 }
 
   if (error) {
     return (
-      <Alert severity="error" sx={{ m: 2 }}>
-        Feil ved lasting av funksjoner. Vennligst prøv igjen.
-        <Button onClick={() => window.location.reload()} sx={{ ml: 2 }}>
-          Last inn på nytt
-        </Button>
-      </Alert>
+      <AdminError
+        message="Feil ved lasting av funksjoner. Vennligst prøv igjen."
+        onRetry={() => window.location.reload()}
+      />
     );
 }
 
@@ -481,10 +485,11 @@ export default function FeatureManagement({
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+        <Typography variant="h4" component="h2" sx={{ fontWeight: 600, color: themeColors.primary }}>
           Funksjonsadministrasjon
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
@@ -495,15 +500,14 @@ export default function FeatureManagement({
           >
             Oppdater
           </Button>
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
             startIcon={<PowerSettingsNew />}
             onClick={() => initializeFeaturesMutation.mutate()}
-            disabled={initializeFeaturesMutation.isPending}
-            sx={theming.getThemedButtonSx()}
+            loading={initializeFeaturesMutation.isPending}
           >
             Initialiser funksjoner
-          </Button>
+          </AdminButton>
         </Box>
       </Box>
       
@@ -539,10 +543,10 @@ export default function FeatureManagement({
             <Grid item xs={12} md={3} key={category}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" sx={{ textTransform: 'capitalize', color: theming.colors.primary }}>
+                  <Typography variant="h6" sx={{ textTransform: 'capitalize', color: themeColors.primary }}>
                     {category}
                   </Typography>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
+                  <Typography variant="h4" sx={{ color: themeColors.primary, fontWeight: 700 }}>
                     {stats.enabled}
                   </Typography>
                   <Typography variant="body2">av {stats.total}</Typography>
@@ -590,7 +594,7 @@ export default function FeatureManagement({
           <Accordion key={category} defaultExpanded={selectedCategory === category}>
             <AccordionSummary expandIcon={<ExpandMore />}>
               <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                <Typography variant="h6" sx={{ textTransform: 'capitalize', flexGrow: 1, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ textTransform: 'capitalize', flexGrow: 1, color: themeColors.primary }}>
                   {category} ({stats.enabled}/{stats.total})
                 </Typography>
                 <Chip
@@ -604,6 +608,7 @@ export default function FeatureManagement({
                       checked={stats.percentage === 100}
                       onChange={(e) => handleCategoryToggle(category, e.target.checked)}
                       onClick={(e) => e.stopPropagation()}
+                      aria-label={`Aktiver eller deaktiver alle funksjoner i ${category}`}
                     />
                 }
                   label=""
@@ -625,13 +630,14 @@ export default function FeatureManagement({
                     >
                       <CardContent sx={theming.getThemedCardSx()}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                          <Typography variant="h6" sx={{ flexGrow: 1, color: theming.colors.primary }}>
+                          <Typography variant="h6" sx={{ flexGrow: 1, color: themeColors.primary }}>
                             {feature.name}
                           </Typography>
                           <Switch
                             checked={feature.enabled}
                             onChange={(e) => handleFeatureToggle(feature, e.target.checked)}
                             disabled={toggleFeatureMutation.isPending}
+                            aria-label={`Aktiver eller deaktiver ${feature.name}`}
                           />
                         </Box>
                         
@@ -711,7 +717,7 @@ export default function FeatureManagement({
                       <Card>
                         <CardContent>
                           <Typography variant="h6" color="textSecondary">Totalt Funksjoner</Typography>
-                          <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
+                          <Typography variant="h4" sx={{ color: themeColors.primary, fontWeight: 700 }}>
                             {stats.total}
                           </Typography>
                         </CardContent>
@@ -844,10 +850,11 @@ export default function FeatureManagement({
                           <Switch
                             checked={feature.enabled}
                             onChange={(e) => handleProfessionFeatureToggle(
-                              selectedProfession, 
-                              feature.featureId, 
+                              selectedProfession,
+                              feature.featureId,
                               e.target.checked
                             )}
+                            aria-label={`Aktiver eller deaktiver valgfri funksjon ${feature.featureId.replace(/_/g, ' ')}`}
                           />
                         </Box>
                       </CardContent>
@@ -901,7 +908,7 @@ export default function FeatureManagement({
                       <Card>
                         <CardContent>
                           <Typography variant="h6" color="textSecondary">Totalt Tabs</Typography>
-                          <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
+                          <Typography variant="h4" sx={{ color: themeColors.primary, fontWeight: 700 }}>
                             {stats.totalTabs}
                           </Typography>
                         </CardContent>
@@ -941,7 +948,7 @@ export default function FeatureManagement({
                       <Card>
                         <CardContent>
                           <Typography variant="h6" color="textSecondary">Standard Prosjekttype</Typography>
-                          <Typography variant="h4" sx={{ color: theming.colors.primary, mt: 1 }}>
+                          <Typography variant="h4" sx={{ color: themeColors.primary, mt: 1 }}>
                             {config.defaultProjectType}
                           </Typography>
                           <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
@@ -959,7 +966,7 @@ export default function FeatureManagement({
           )}
           
           {/* Tab List with Expand/Collapse */}
-          <Typography variant="h5" sx={{ mb: 2, fontWeight: 600}}>
+          <Typography variant="h5" component="h2" sx={{ mb: 2, fontWeight: 600}}>
             Dashboard Tabs
           </Typography>
           
@@ -989,6 +996,7 @@ export default function FeatureManagement({
                   {!tab.required && (
                     <Switch
                       checked={tab.enabled}
+                      aria-label={`Aktiver eller deaktiver tab ${tab.label}`}
                       onChange={(e) => {
                         e.stopPropagation();
                         setTabDialog({
@@ -1059,6 +1067,7 @@ export default function FeatureManagement({
                               {feature.optional && (
                                 <Switch
                                   checked={feature.enabled}
+                                  aria-label={`Aktiver eller deaktiver funksjon ${feature.label}`}
                                   onChange={async (e) => {
                                     const success = toggleTabFeature(
                                       selectedProfession,
@@ -1153,7 +1162,7 @@ export default function FeatureManagement({
           {selectedUserId && (
             <>
               {/* User Info Card */}
-              <Card sx={{ mb: 3, border: '2px solid', borderColor: theming.colors.primary }}>
+              <Card sx={{ mb: 3, border: '2px solid', borderColor: themeColors.primary }}>
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <Box>
@@ -1228,7 +1237,7 @@ export default function FeatureManagement({
                       <Card variant="outlined">
                         <CardContent>
                           <Typography variant="subtitle2" color="textSecondary">Tab Overrides</Typography>
-                          <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                          <Typography variant="h4" sx={{ color: themeColors.primary }}>
                             0
                           </Typography>
                           <Typography variant="caption" color="textSecondary">
@@ -1241,7 +1250,7 @@ export default function FeatureManagement({
                       <Card variant="outlined">
                         <CardContent>
                           <Typography variant="subtitle2" color="textSecondary">Feature Overrides</Typography>
-                          <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                          <Typography variant="h4" sx={{ color: themeColors.primary }}>
                             0
                           </Typography>
                           <Typography variant="caption" color="textSecondary">
@@ -1282,6 +1291,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr tab Bryllupstidslinje for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1313,6 +1323,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr tab Forretningsanalyse for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1344,6 +1355,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr tab Live Kameraer for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1375,6 +1387,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr tab AI Assistent for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1421,6 +1434,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr funksjon Ubegrenset Lagring for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1452,6 +1466,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr funksjon Prioritert Support for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1483,6 +1498,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr funksjon API Tilgang for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1514,6 +1530,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr funksjon Tilpasset Branding for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1537,7 +1554,7 @@ export default function FeatureManagement({
       )}
 
       {/* Confirmation Dialog */}
-      <Dialog open={confirmDialog.open} onClose={() => setConfirmDialog({ open: false, action: 'enable' })}>
+      <Dialog open={confirmDialog.open} fullScreen={isMobile} onClose={() => setConfirmDialog({ open: false, action: 'enable' })}>
         <DialogTitle>
           Bekreft funksjonsendring
         </DialogTitle>
@@ -1552,7 +1569,7 @@ export default function FeatureManagement({
                 {confirmDialog.feature.impact === 'critical' ? 'kritisk' : 'viktig'} funksjon.
               </Alert>
               
-              <Typography variant="h6" sx={{ mb: 1, color: theming.colors.primary }}>
+              <Typography variant="h6" sx={{ mb: 1, color: themeColors.primary }}>
                 {confirmDialog.feature.name}
               </Typography>
               <Typography variant="body2" sx={{ mb: 2 }}>
@@ -1577,25 +1594,24 @@ export default function FeatureManagement({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDialog({ open: false, action: 'enable' })}>
+          <AdminButton tone="ghost" onClick={() => setConfirmDialog({ open: false, action: 'enable' })}>
             Avbryt
-          </Button>
-          <Button
+          </AdminButton>
+          <AdminButton
             onClick={confirmFeatureToggle}
-            color={confirmDialog.action === 'enable' ? 'primary' : 'error'}
-            variant="contained"
-            disabled={toggleFeatureMutation.isPending}
-            sx={theming.getThemedButtonSx()}
+            tone={confirmDialog.action === 'enable' ? 'primary' : 'danger'}
+            loading={toggleFeatureMutation.isPending}
           >
             {confirmDialog.action === 'enable' ? 'Aktiver' : 'Deaktiver'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
       
       {/* Profession Feature Confirmation Dialog */}
-      <Dialog 
-        open={professionFeatureDialog.open} 
+      <Dialog
+        open={professionFeatureDialog.open}
         onClose={() => setProfessionFeatureDialog({ open: false, action: 'enable' })}
+        fullScreen={isMobile}
         maxWidth="sm"
         fullWidth
       >
@@ -1661,23 +1677,23 @@ export default function FeatureManagement({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setProfessionFeatureDialog({ open: false, action: 'enable' })}>
+          <AdminButton tone="ghost" onClick={() => setProfessionFeatureDialog({ open: false, action: 'enable' })}>
             Avbryt
-          </Button>
-          <Button
+          </AdminButton>
+          <AdminButton
             onClick={confirmProfessionFeatureToggle}
-            color={professionFeatureDialog.action === 'enable' ? 'primary' : 'warning'}
-            variant="contained"
+            tone={professionFeatureDialog.action === 'enable' ? 'primary' : 'secondary'}
           >
             {professionFeatureDialog.action === 'enable' ? 'Ja, Aktiver' : 'Ja, Deaktiver'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
       
       {/* Tab Toggle Confirmation Dialog */}
-      <Dialog 
-        open={tabDialog.open} 
+      <Dialog
+        open={tabDialog.open}
         onClose={() => setTabDialog({ open: false, action: 'enable' })}
+        fullScreen={isMobile}
         maxWidth="sm"
         fullWidth
       >
@@ -1757,10 +1773,10 @@ export default function FeatureManagement({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setTabDialog({ open: false, action: 'enable' })}>
+          <AdminButton tone="ghost" onClick={() => setTabDialog({ open: false, action: 'enable' })}>
             Avbryt
-          </Button>
-          <Button
+          </AdminButton>
+          <AdminButton
             onClick={async () => {
               const { professionId, tabId, action } = tabDialog;
               if (!professionId || !tabId) return;
@@ -1796,11 +1812,10 @@ export default function FeatureManagement({
                 console.error('tab_toggle_failed', error);
               }
             }}
-            color={tabDialog.action === 'enable' ? 'primary' : 'warning'}
-            variant="contained"
+            tone={tabDialog.action === 'enable' ? 'primary' : 'secondary'}
           >
             {tabDialog.action === 'enable' ? 'Ja, Aktiver Tab': 'Ja, Deaktiver Tab'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -1820,5 +1835,6 @@ export default function FeatureManagement({
         </Alert>
       </Snackbar>
     </Box>
+    </ThemeProvider>
   );
 }

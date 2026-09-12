@@ -73,8 +73,7 @@ function detectDevice(): DeviceInfo {
   const hasTouchScreen = 
     'ontouchstart' in window ||
     navigator.maxTouchPoints > 0 ||
-    // @ts-expect-error - legacy browser support
-    (navigator.msMaxTouchPoints || 0) > 0;
+    ((navigator as Navigator & { msMaxTouchPoints?: number }).msMaxTouchPoints || 0) > 0;
 
   // Apple Pencil support (typically iPad Pro and newer iPads)
   const hasPencilSupport = isIPad && hasTouchScreen;

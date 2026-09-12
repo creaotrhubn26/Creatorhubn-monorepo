@@ -231,6 +231,17 @@ export default function UniversalPrototypeFeedback({
   
   // Use open prop from parent if provided (controlled), otherwise use internal state (uncontrolled)
   const dialogOpen = open ?? isOpen;
+
+  // Global åpne-event: TesterStatusBanner (og evt. andre steder) dispatcher
+  // 'open-prototype-feedback' for å åpne dette skjemaet — uten en lytter var
+  // «Gi feedback»-knappen i banneret død. Åpner uansett hvor FAB-en er montert
+  // (dashboard + workspace), så testere når skjemaet fra begge.
+  useEffect(() => {
+    const openHandler = () => setIsOpen(true);
+    window.addEventListener('open-prototype-feedback', openHandler);
+    return () => window.removeEventListener('open-prototype-feedback', openHandler);
+  }, []);
+
   const [isRecording, setIsRecording] = useState(false);
   
   // Action tracking for intelligent context

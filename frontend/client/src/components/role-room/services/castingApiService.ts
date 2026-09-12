@@ -1988,8 +1988,11 @@ export const equipmentAvailabilityApi = {
 
 export const equipmentConflictsApi = {
   check: async (equipmentId: string, startDate: string, endDate: string): Promise<{ conflicts: EquipmentConflict[]; hasConflicts: boolean }> => {
+    // Backend er POST /equipment/:id/conflicts/check med body (ikke GET med
+    // query) — GET-varianten fantes aldri → 404, konflikt-sjekk kjørte aldri.
     const result = await apiRequest<{ conflicts: EquipmentConflict[]; has_conflicts: boolean }>(
-      `/equipment/${equipmentId}/conflicts?start_date=${startDate}&end_date=${endDate}`
+      `/equipment/${equipmentId}/conflicts/check`,
+      { method: 'POST', body: JSON.stringify({ start_date: startDate, end_date: endDate }) }
     );
     return { conflicts: result.conflicts, hasConflicts: result.has_conflicts };
   },
@@ -2878,6 +2881,8 @@ export const roleRoomAccessVaultApi = {
     platform: ProducerAccountAccessPlatform,
     payload: {
       label?: string;
+      accountLabel?: string;
+      ownerSide?: 'client' | 'producer';
       secretType?: string;
       username?: string;
       secretValue?: string;
@@ -2923,6 +2928,8 @@ export const roleRoomAccessVaultApi = {
     payload?: {
       requestReason?: string;
       expiresAt?: string | null;
+      /** Multi-secret: target spesifikk konto (default '' = enkelt-secret). */
+      accountLabel?: string;
       /** TOTP-kode fra Authenticator-app — sendes med hvis backend har
        *  returnert mfa_required tidligere og bruker har TOTP aktivert. */
       totpCode?: string;

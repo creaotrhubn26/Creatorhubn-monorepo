@@ -20,10 +20,18 @@ import {
   Description,
   DriveFolderUpload,
   Email,
+  History,
+  Insights,
+  Paid,
   PlayCircleOutline,
   Refresh,
+  TableChart,
   TaskAlt,
   VideoLibrary,
+  CampaignOutlined,
+  InsightsOutlined,
+  TravelExploreOutlined,
+  SellOutlined,
 } from '@mui/icons-material';
 import { creatorHubTheme } from '@/theme/creatorHubTheme';
 import { apiRequest } from '@/lib/queryClient';
@@ -50,7 +58,15 @@ type ActionKey =
   | 'create-youtube-playlist'
   | 'upload-youtube-video'
   | 'update-youtube-video'
-  | 'upload-youtube-thumbnail';
+  | 'upload-youtube-thumbnail'
+  | 'ads-list-customers'
+  | 'ads-list-ga4'
+  | 'ads-list-gsc'
+  | 'ads-list-gtm'
+  | 'load-youtube-analytics'
+  | 'load-youtube-revenue'
+  | 'load-drive-activity'
+  | 'export-sheets';
 
 type ActionState = {
   status: ActionStatus;
@@ -66,6 +82,7 @@ type DemoArtifacts = {
   youtubePlaylistId: string | null;
   youtubeVideoId: string | null;
   youtubeVideoUrl: string | null;
+  spreadsheetUrl: string | null;
 };
 
 type OverviewState = {
@@ -111,6 +128,14 @@ const ACTION_KEYS: ActionKey[] = [
   'upload-youtube-video',
   'update-youtube-video',
   'upload-youtube-thumbnail',
+  'ads-list-customers',
+  'ads-list-ga4',
+  'ads-list-gsc',
+  'ads-list-gtm',
+  'load-youtube-analytics',
+  'load-youtube-revenue',
+  'load-drive-activity',
+  'export-sheets',
 ];
 
 const initialActionStates = ACTION_KEYS.reduce<Record<ActionKey, ActionState>>((acc, key) => {
@@ -195,9 +220,9 @@ function formatActionStatusLabel(status: ActionStatus) {
 
 function getStageProgress(actions: Record<ActionKey, ActionState>, keys: ActionKey[]) {
   const actionableKeys = keys.filter((key) => key !== 'refresh-overview');
-  const completed = actionableKeys.filter((key) => actions[key].status === 'success').length;
-  const failed = actionableKeys.filter((key) => actions[key].status === 'error').length;
-  const running = actionableKeys.filter((key) => actions[key].status === 'running').length;
+  const completed = actionableKeys.filter((key) => actions[key]?.status === 'success').length;
+  const failed = actionableKeys.filter((key) => actions[key]?.status === 'error').length;
+  const running = actionableKeys.filter((key) => actions[key]?.status === 'running').length;
   return {
     completed,
     failed,
@@ -218,9 +243,9 @@ function PreviewJson({ value }: { value: unknown }) {
         mt: 1.5,
         p: 1.5,
         borderRadius: 2,
-        border: `1px solid ${alpha('#0f172a', 0.08)}`,
-        bgcolor: alpha('#0f172a', 0.03),
-        color: '#0f172a',
+        border: '1px solid rgba(255,255,255,0.16)',
+        bgcolor: 'rgba(0,0,0,0.4)',
+        color: alpha('#ffffff', 0.85),
         fontSize: '0.74rem',
         lineHeight: 1.55,
         overflowX: 'auto',
@@ -310,8 +335,10 @@ function StageSection({
       sx={{
         p: { xs: 2.25, md: 2.75 },
         borderRadius: 4,
-        border: `1px solid ${alpha('#0f172a', 0.08)}`,
-        bgcolor: '#ffffff',
+        border: '1px solid rgba(255,255,255,0.12)',
+        bgcolor: 'rgba(255,255,255,0.06)',
+        backdropFilter: 'blur(8px)',
+        color: '#fff',
       }}
     >
       <Stack spacing={2.25}>
@@ -320,10 +347,10 @@ function StageSection({
             <Typography variant="overline" sx={{ color: alpha(accent, 0.84), letterSpacing: 1.2 }}>
               {eyebrow}
             </Typography>
-            <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1.08, color: '#0f172a' }}>
+            <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1.08, color: '#fff' }}>
               {title}
             </Typography>
-            <Typography variant="body2" sx={{ mt: 0.8, color: alpha('#0f172a', 0.68) }}>
+            <Typography variant="body2" sx={{ mt: 0.8, color: alpha('#ffffff', 0.7) }}>
               {description}
             </Typography>
           </Box>
@@ -407,12 +434,19 @@ function ActionCard({
       sx={{
         p: 2,
         borderRadius: 3.5,
-        border: `1px solid ${alpha('#0f172a', 0.08)}`,
+        border: `1px solid ${
+          state.status === 'success'
+            ? alpha('#10b981', 0.45)
+            : state.status === 'error'
+              ? alpha('#ef4444', 0.45)
+              : 'rgba(255,255,255,0.12)'
+        }`,
         bgcolor: state.status === 'success'
-          ? alpha('#10b981', 0.03)
+          ? alpha('#10b981', 0.12)
           : state.status === 'error'
-            ? alpha('#ef4444', 0.035)
-            : alpha('#f8fafc', 0.82),
+            ? alpha('#ef4444', 0.12)
+            : 'rgba(255,255,255,0.06)',
+        color: '#fff',
       }}
     >
       <Stack spacing={1.5}>
@@ -434,10 +468,10 @@ function ActionCard({
           <Box
             sx={{ minWidth: 0 }}
           >
-            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#fff' }}>
               {title}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.7) }}>
               {description}
             </Typography>
           </Box>
@@ -470,7 +504,7 @@ function ActionCard({
             {isRunning ? 'Kjører…' : buttonLabel}
           </Button>
           {state.status === 'idle' && (
-            <Typography variant="caption" sx={{ color: alpha('#0f172a', 0.58) }}>
+            <Typography variant="caption" sx={{ color: alpha('#ffffff', 0.6) }}>
               Kjør handlingen direkte fra CreatorHub under opptaket.
             </Typography>
           )}
@@ -492,8 +526,8 @@ function ActionCard({
             sx={{
               mt: 0.25,
               borderRadius: 2.5,
-              border: `1px solid ${alpha('#0f172a', 0.08)}`,
-              bgcolor: alpha('#f8fafc', 0.74),
+              border: '1px solid rgba(255,255,255,0.12)',
+              bgcolor: 'rgba(255,255,255,0.04)',
               px: 1.5,
               py: 1.25,
               '& > summary': {
@@ -501,7 +535,7 @@ function ActionCard({
                 listStyle: 'none',
                 fontSize: '0.8rem',
                 fontWeight: 700,
-                color: '#0f172a',
+                color: alpha('#ffffff', 0.88),
               },
               '& > summary::-webkit-details-marker': {
                 display: 'none',
@@ -533,6 +567,7 @@ export default function GoogleVerificationDemoPage() {
     youtubePlaylistId: null,
     youtubeVideoId: null,
     youtubeVideoUrl: null,
+    spreadsheetUrl: null,
   });
 
   const setActionState = React.useCallback((key: ActionKey, next: ActionState) => {
@@ -1057,6 +1092,73 @@ export default function GoogleVerificationDemoPage() {
     );
   }, [artifacts.youtubeVideoId, runAction]);
 
+  const handleLoadYouTubeAnalytics = React.useCallback(async () => {
+    await runAction(
+      'load-youtube-analytics',
+      async () => apiRequest('/api/youtube/analytics'),
+      (value) => {
+        const count = Array.isArray((value as { rows?: unknown[] }).rows)
+          ? (value as { rows: unknown[] }).rows.length
+          : 0;
+        return `YouTube Analytics hentet. ${count} dager med statistikk ble lest (yt-analytics.readonly).`;
+      },
+    );
+  }, [runAction]);
+
+  const handleLoadYouTubeRevenue = React.useCallback(async () => {
+    await runAction(
+      'load-youtube-revenue',
+      async () => apiRequest('/api/youtube/analytics/revenue'),
+      (value) => {
+        const count = Array.isArray((value as { rows?: unknown[] }).rows)
+          ? (value as { rows: unknown[] }).rows.length
+          : 0;
+        return `YouTube-inntekter hentet. ${count} dager med inntektsdata ble lest (yt-analytics-monetary.readonly).`;
+      },
+    );
+  }, [runAction]);
+
+  const handleLoadDriveActivity = React.useCallback(async () => {
+    await runAction(
+      'load-drive-activity',
+      async () => apiRequest('/api/google-workspace/drive-activity'),
+      (value) => {
+        const count = Array.isArray((value as { activities?: unknown[] }).activities)
+          ? (value as { activities: unknown[] }).activities.length
+          : 0;
+        return `Drive-aktivitet hentet. ${count} hendelser i endringsloggen ble lest (drive.activity.readonly).`;
+      },
+    );
+  }, [runAction]);
+
+  const handleExportSheets = React.useCallback(async () => {
+    await runAction(
+      'export-sheets',
+      async () => {
+        const response = await apiRequest('/api/google-workspace/sheets/export', {
+          method: 'POST',
+          body: {
+            title: `CreatorHub Verification ${createTimestampLabel()}`,
+            rows: [
+              ['Prosjekt', 'Status', 'Frist'],
+              ['Kampanje vår', 'Aktiv', '2026-09-01'],
+              ['Produktfilm', 'Planlagt', '2026-10-15'],
+            ],
+          },
+        });
+
+        const url = typeof (response as { spreadsheetUrl?: unknown }).spreadsheetUrl === 'string'
+          ? (response as { spreadsheetUrl: string }).spreadsheetUrl
+          : null;
+        if (url) {
+          setArtifacts((current) => ({ ...current, spreadsheetUrl: url }));
+        }
+        return response;
+      },
+      () => 'Nytt Google Sheet ble opprettet i brukerens Drive med prosjektdata (spreadsheets).',
+    );
+  }, [runAction]);
+
   const sessionEmail = typeof (overview.publicSession as { body?: { email?: unknown } } | null)?.body?.email === 'string'
     ? (overview.publicSession as { body: { email: string } }).body.email
     : resolvedEmail;
@@ -1075,6 +1177,39 @@ export default function GoogleVerificationDemoPage() {
   const workspaceStorageTotal = typeof (overview.workspaceStorage as { totalStorageGB?: unknown } | null)?.totalStorageGB === 'number'
     ? (overview.workspaceStorage as { totalStorageGB: number }).totalStorageGB
     : null;
+
+  // ── Ads & marketing-handlinger (demonstrerer adwords/analytics.edit/
+  //    webmasters/tagmanager via live READ-kall mot den tilkoblede kontoen).
+  const marketingUserParam = `userId=${encodeURIComponent(resolvedUserId ?? '')}`;
+  const handleAdsListCustomers = React.useCallback(async () => {
+    await runAction(
+      'ads-list-customers',
+      async () => apiRequest(`/api/google-verification/marketing/ads-customers?${marketingUserParam}`),
+      (value) => `Google Ads: ${(value as { count?: number }).count ?? 0} tilgjengelig(e) konto(er) lest (adwords-scope).`,
+    );
+  }, [runAction, marketingUserParam]);
+  const handleAdsListGa4 = React.useCallback(async () => {
+    await runAction(
+      'ads-list-ga4',
+      async () => apiRequest(`/api/google-verification/marketing/ga4-accounts?${marketingUserParam}`),
+      (value) => `Google Analytics: ${(value as { count?: number }).count ?? 0} GA4-konto(er) lest (analytics.edit-scope).`,
+    );
+  }, [runAction, marketingUserParam]);
+  const handleAdsListGsc = React.useCallback(async () => {
+    await runAction(
+      'ads-list-gsc',
+      async () => apiRequest(`/api/google-verification/marketing/gsc-sites?${marketingUserParam}`),
+      (value) => `Search Console: ${(value as { count?: number }).count ?? 0} side(r) lest (webmasters-scope).`,
+    );
+  }, [runAction, marketingUserParam]);
+  const handleAdsListGtm = React.useCallback(async () => {
+    await runAction(
+      'ads-list-gtm',
+      async () => apiRequest(`/api/google-verification/marketing/gtm-accounts?${marketingUserParam}`),
+      (value) => `Tag Manager: ${(value as { count?: number }).count ?? 0} konto(er) lest (tagmanager-scope).`,
+    );
+  }, [runAction, marketingUserParam]);
+
   const verificationSections: StageDefinition[] = [
     {
       id: 'workspace',
@@ -1247,6 +1382,88 @@ export default function GoogleVerificationDemoPage() {
         },
       ],
     },
+    {
+      id: 'ads-marketing',
+      eyebrow: 'Stage 4',
+      title: 'Ads & marketing (Google Ads, Analytics, Search Console, Tag Manager)',
+      description: 'Demonstrerer markedsførings-scopene via live lese-kall mot den tilkoblede kontoen: Google Ads-konti (adwords), GA4-konti (analytics.edit), Search Console-sider (webmasters) og Tag Manager-konti (tagmanager). Krever en tilkoblet konto med disse rettighetene.',
+      accent: '#22c55e',
+      actions: [
+        {
+          key: 'ads-list-customers',
+          title: 'Google Ads-konti',
+          description: 'Les tilgjengelige Google Ads-konti (adwords-scope).',
+          buttonLabel: 'List Google Ads accounts',
+          icon: <CampaignOutlined />,
+          onRun: () => { void handleAdsListCustomers(); },
+        },
+        {
+          key: 'ads-list-ga4',
+          title: 'Analytics-konti',
+          description: 'List GA4-konti/properties (analytics.edit-scope).',
+          buttonLabel: 'List GA4 accounts',
+          icon: <InsightsOutlined />,
+          onRun: () => { void handleAdsListGa4(); },
+        },
+        {
+          key: 'ads-list-gsc',
+          title: 'Search Console-sider',
+          description: 'List verifiserte Search Console-sider (webmasters-scope).',
+          buttonLabel: 'List Search Console sites',
+          icon: <TravelExploreOutlined />,
+          onRun: () => { void handleAdsListGsc(); },
+        },
+        {
+          key: 'ads-list-gtm',
+          title: 'Tag Manager-konti',
+          description: 'List Google Tag Manager-konti (tagmanager-scope).',
+          buttonLabel: 'List Tag Manager accounts',
+          icon: <SellOutlined />,
+          onRun: () => { void handleAdsListGtm(); },
+        },
+      ],
+    },
+    {
+      id: 'analytics',
+      eyebrow: 'Stage 5',
+      title: 'Analytics and export',
+      description: 'Read-only innsikt + Sheets-eksport. Disse dekker de nyeste scope-ene: YouTube Analytics, Drive Activity og Google Sheets.',
+      accent: '#8b5cf6',
+      actions: [
+        {
+          key: 'load-youtube-analytics',
+          title: 'YouTube Analytics',
+          description: 'Hent kanal-/videostatistikk (visninger, seertid, abonnenter) for de siste 28 dagene.',
+          buttonLabel: 'Load YouTube Analytics',
+          icon: <Insights />,
+          onRun: () => { void handleLoadYouTubeAnalytics(); },
+        },
+        {
+          key: 'load-youtube-revenue',
+          title: 'YouTube Revenue',
+          description: 'Hent inntekter per dag (krever monetisert kanal — scopet yt-analytics-monetary.readonly).',
+          buttonLabel: 'Load YouTube Revenue',
+          icon: <Paid />,
+          onRun: () => { void handleLoadYouTubeRevenue(); },
+        },
+        {
+          key: 'load-drive-activity',
+          title: 'Drive Activity',
+          description: 'Les endringsloggen for Drive-filer (hvem endret hva når).',
+          buttonLabel: 'Load Drive Activity',
+          icon: <History />,
+          onRun: () => { void handleLoadDriveActivity(); },
+        },
+        {
+          key: 'export-sheets',
+          title: 'Google Sheets Export',
+          description: 'Opprett et nytt regneark i brukerens Drive og skriv inn prosjektdata.',
+          buttonLabel: 'Export to Sheets',
+          icon: <TableChart />,
+          onRun: () => { void handleExportSheets(); },
+        },
+      ],
+    },
   ];
   const overallActionKeys = verificationSections.flatMap((section) => section.actions.map((action) => action.key));
   const overallProgress = getStageProgress(actions, overallActionKeys);
@@ -1257,7 +1474,8 @@ export default function GoogleVerificationDemoPage() {
       sx={{
         minHeight: '100vh',
         py: { xs: 4, md: 6 },
-        background: `linear-gradient(180deg, ${alpha('#f59e0b', 0.08)} 0%, ${alpha('#fff7ed', 0.96)} 40%, #ffffff 100%)`,
+        background: `linear-gradient(180deg, ${alpha('#0f172a', 0.98)} 0%, ${alpha('#111827', 0.98)} 40%, #0b1220 100%)`,
+        color: '#fff',
       }}
     >
       <Container maxWidth="xl">
@@ -1404,6 +1622,14 @@ export default function GoogleVerificationDemoPage() {
                         </Link>
                       </Alert>
                     )}
+                    {section.id === 'analytics' && artifacts.spreadsheetUrl && (
+                      <Alert severity="success" variant="outlined" sx={{ borderRadius: 3 }}>
+                        Regnearket er klart i Google Sheets:{' '}
+                        <Link href={artifacts.spreadsheetUrl} target="_blank" rel="noreferrer" underline="hover">
+                          Åpne regneark
+                        </Link>
+                      </Alert>
+                    )}
                   </StageSection>
                 );
               })}
@@ -1415,15 +1641,17 @@ export default function GoogleVerificationDemoPage() {
                 sx={{
                   p: 2.5,
                   borderRadius: 4,
-                  border: `1px solid ${alpha('#0f172a', 0.08)}`,
-                  bgcolor: '#ffffff',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  bgcolor: 'rgba(255,255,255,0.06)',
+                  backdropFilter: 'blur(8px)',
+                  color: '#fff',
                 }}
               >
                 <Stack spacing={1.5}>
-                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: '#fff' }}>
                     Recording checklist
                   </Typography>
-                  <Typography variant="body2" sx={{ color: alpha('#0f172a', 0.68) }}>
+                  <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.7) }}>
                     Hold the recording inside the browser, keep the URL visible during OAuth, and run the stages in order.
                   </Typography>
                   <Stack spacing={1}>
@@ -1453,23 +1681,25 @@ export default function GoogleVerificationDemoPage() {
                 sx={{
                   p: 2.5,
                   borderRadius: 4,
-                  border: `1px solid ${alpha('#0f172a', 0.08)}`,
-                  bgcolor: '#ffffff',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  bgcolor: 'rgba(255,255,255,0.06)',
+                  backdropFilter: 'blur(8px)',
+                  color: '#fff',
                 }}
               >
                 <Stack spacing={1.5}>
-                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: '#fff' }}>
                     Raw diagnostics
                   </Typography>
-                  <Typography variant="body2" sx={{ color: alpha('#0f172a', 0.68) }}>
+                  <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.7) }}>
                     This stays available for debugging, but it is visually secondary so the recording stays clean.
                   </Typography>
                   <Box
                     component="details"
                     sx={{
                       borderRadius: 3,
-                      border: `1px solid ${alpha('#0f172a', 0.08)}`,
-                      bgcolor: alpha('#f8fafc', 0.82),
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      bgcolor: 'rgba(255,255,255,0.04)',
                       px: 1.5,
                       py: 1.25,
                       '& > summary': {
@@ -1477,7 +1707,7 @@ export default function GoogleVerificationDemoPage() {
                         listStyle: 'none',
                         fontSize: '0.84rem',
                         fontWeight: 700,
-                        color: '#0f172a',
+                        color: '#fff',
                       },
                       '& > summary::-webkit-details-marker': {
                         display: 'none',

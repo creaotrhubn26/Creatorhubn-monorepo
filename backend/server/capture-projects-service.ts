@@ -82,9 +82,13 @@ export interface ShotListItem {
   notes?: string;
   scouted?: boolean;
   isCompleted?: boolean;
-  /// Optional — set when the iPad has linked this shot to a captured
-  /// asset id (see Phase 2B Lag D follow-up — not yet implemented).
+  /// Lokal asset-id (on-device thumbnail).
   capturedAssetId?: string | null;
+  /// Backend asset-id (satt post-levering) → thumbnail via
+  /// `/api/capture/assets/:id/preview` for web/call-sheet/andre enheter.
+  capturedAssetBackendId?: string | null;
+  /// Hvem som tok shotet (team-attribusjon).
+  completedBy?: string | null;
   [key: string]: unknown;
 }
 

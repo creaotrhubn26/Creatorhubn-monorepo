@@ -1,31 +1,33 @@
 import type { Plugin } from 'vite';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, statSync } from 'fs';
 import { Buffer } from 'buffer';
 import { execSync } from 'node:child_process';
+import { resolveCreatorHubBuildSurface } from './client/src/lib/buildSurface';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const muiSystemAlias = [
-  path.resolve(__dirname, 'node_modules/@mui/system'),
-  path.resolve(__dirname, '../node_modules/@mui/material/node_modules/@mui/system'),
-  path.resolve(__dirname, '../node_modules/@mui/system'),
-].find((candidate) => existsSync(candidate)) || path.resolve(__dirname, 'node_modules/@mui/system');
-const backendProxyTarget =
-  process.env.VITE_API_PROXY_TARGET ||
-  process.env.API_PROXY_TARGET ||
-  'http://localhost:3003';
+const muiSystemAlias =
+  [
+    path.resolve(__dirname, 'node_modules/@mui/system'),
+    path.resolve(__dirname, '../node_modules/@mui/material/node_modules/@mui/system'),
+    path.resolve(__dirname, '../node_modules/@mui/system'),
+  ].find((candidate) => existsSync(candidate)) || path.resolve(__dirname, 'node_modules/@mui/system');
+const backendProxyTarget = process.env.VITE_API_PROXY_TARGET || process.env.API_PROXY_TARGET || 'http://localhost:3003';
 
 const readGitValue = (command: string): string | null => {
   try {
-    return execSync(command, {
-      cwd: __dirname,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim() || null;
+    return (
+      execSync(command, {
+        cwd: __dirname,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim() || null
+    );
   } catch {
     return null;
   }
@@ -36,25 +38,29 @@ const buildInfoPlugin = (): Plugin => ({
   generateBundle() {
     const gitSha =
       process.env.VITE_BUILD_GIT_SHA ||
-      process.env.VERCEL_GIT_COMMIT_SHA ||
+      process.env.COMMIT_REF ||
       process.env.RENDER_GIT_COMMIT ||
       readGitValue('git rev-parse HEAD');
     const branch =
       process.env.VITE_BUILD_BRANCH ||
-      process.env.VERCEL_GIT_COMMIT_REF ||
+      process.env.HEAD ||
+      process.env.BRANCH ||
       process.env.RENDER_GIT_BRANCH ||
       readGitValue('git rev-parse --abbrev-ref HEAD');
+    const siteName = process.env.SITE_NAME || null;
     const buildInfo = {
       app: 'creatorhub-frontend',
-      surface: 'the-role-room',
+      surface: resolveCreatorHubBuildSurface(branch, siteName),
       gitSha,
       shortSha: gitSha ? gitSha.slice(0, 7) : null,
       branch,
       builtAt: new Date().toISOString(),
-      source: process.env.VITE_BUILD_SOURCE || (process.env.VERCEL ? 'vercel' : 'local'),
-      vercel: {
-        env: process.env.VERCEL_ENV || null,
-        url: process.env.VERCEL_URL || null,
+      source: process.env.VITE_BUILD_SOURCE || (process.env.NETLIFY ? 'netlify' : 'local'),
+      netlify: {
+        context: process.env.CONTEXT || null,
+        deployId: process.env.DEPLOY_ID || null,
+        deployUrl: process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || process.env.URL || null,
+        siteName,
       },
     };
 
@@ -73,16 +79,13 @@ const customPathResolver = (): Plugin => {
     resolveId(source, importer) {
       // Only handle @/* imports
       if (!source.startsWith('@/')) return null;
-      
+
       const importPath = source.replace('@/', '');
-      
+
       // Try creatorhubvirtualstudio/src first
-      const virtualStudioBase = path.resolve(
-        __dirname,
-        'client/src/components/creatorhubvirtualstudio/src'
-      );
+      const virtualStudioBase = path.resolve(__dirname, 'client/src/components/creatorhubvirtualstudio/src');
       const virtualStudioPath = path.resolve(virtualStudioBase, importPath);
-      
+
       // Check if file exists with common extensions or as directory with index
       const extensions = ['.tsx', '.ts', '.jsx', '.js'];
       for (const ext of extensions) {
@@ -91,7 +94,7 @@ const customPathResolver = (): Plugin => {
           return fullPath;
         }
       }
-      
+
       // Check for directory with index file
       if (existsSync(virtualStudioPath)) {
         try {
@@ -107,18 +110,18 @@ const customPathResolver = (): Plugin => {
           // Ignore stat errors
         }
       }
-      
+
       // Fallback to client/src
       const fallbackBase = path.resolve(__dirname, 'client/src');
       const fallbackPath = path.resolve(fallbackBase, importPath);
-      
+
       for (const ext of extensions) {
         const fullPath = fallbackPath + ext;
         if (existsSync(fullPath)) {
           return fullPath;
         }
       }
-      
+
       // Check for directory with index file in fallback
       if (existsSync(fallbackPath)) {
         try {
@@ -134,7 +137,7 @@ const customPathResolver = (): Plugin => {
           // Ignore stat errors
         }
       }
-      
+
       // Return null to let Vite's default resolver handle it
       return null;
     },
@@ -146,12 +149,20 @@ export default defineConfig({
     // Fix for third-party modules that use process.env
     'process.env': {},
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
+    __CREATORHUB_BUILD_VERSION__: JSON.stringify(
+      process.env.VITE_BUILD_GIT_SHA ||
+        process.env.COMMIT_REF ||
+        process.env.RENDER_GIT_COMMIT ||
+        readGitValue('git rev-parse HEAD') ||
+        'unknown',
+    ),
     // Polyfill global for browser
     global: 'globalThis',
   },
   plugins: [
     buildInfoPlugin(),
     customPathResolver(), // Custom path resolver for @/* with fallback
+    tailwindcss(), // Tailwind v4 — utilities + theme only (preflight skippet i src/styles/tailwind.css)
     react({
       babel: {
         plugins: [
@@ -164,7 +175,7 @@ export default defineConfig({
   ],
   root: './client',
   resolve: {
-    dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled'],
+    dedupe: ['react', 'react-dom', 'three', '@emotion/react', '@emotion/styled'],
     alias: {
       // @/* is handled by customPathResolver plugin
       '@shared': path.resolve(__dirname, 'shared'),
@@ -194,6 +205,12 @@ export default defineConfig({
         if (id.includes('/Volumes/Samsung_T9_4TB1/')) return true;
         // Exclude rgthree dependencies
         if (id.startsWith('rgthree/')) return true;
+        // @tauri-apps/api er KUN tilgjengelig i Post Agent-klienten (Tauri), ikke
+        // i web-frontenden. mockup-video/tauriBridge importerer den dynamisk bak
+        // en isTauri()-guard, så den kjøres aldri i nettleser. Eksternaliser så
+        // Rollup ikke prøver å resolve den under web-bygget.
+        if (id === '@tauri-apps/api/core' || id === '@tauri-apps/api/event' || id.startsWith('@tauri-apps/api'))
+          return true;
         return false;
       },
       output: {
@@ -207,9 +224,7 @@ export default defineConfig({
         },
         // Optimize chunk file names
         chunkFileNames: (chunkInfo) => {
-          const facadeModuleId = chunkInfo.facadeModuleId
-            ? chunkInfo.facadeModuleId.split('/').pop()
-            : 'chunk';
+          const facadeModuleId = chunkInfo.facadeModuleId ? chunkInfo.facadeModuleId.split('/').pop() : 'chunk';
           return `js/[name]-[hash].js`;
         },
         entryFileNames: 'js/[name]-[hash].js',
@@ -251,11 +266,13 @@ export default defineConfig({
       'rgthree/common/rgthree_api.js',
       'rgthree/common/components/base_custom_element',
       'three-stdlib',
+      '@tauri-apps/api/core',
+      '@tauri-apps/api/event',
     ],
-    // Only scan files within the project directory
-    entries: [
-      './client/**/*.{js,jsx,ts,tsx}',
-    ],
+    // `entries` is resolved relative to Vite's `root` (`./client`). Scan the
+    // real browser entry points (including E2E harnesses) without pulling the
+    // intentionally archived/unused source tree into esbuild.
+    entries: ['./*.html'],
     esbuildOptions: {
       // Ignore external paths completely
       plugins: [

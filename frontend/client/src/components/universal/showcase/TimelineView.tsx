@@ -183,7 +183,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
     setChapters([...chapters, newChapter]);
     onChapterAdd?.(newChapter);
     setShowChapterDialog(false);
-    setNewChapterLabel(', ');
+    setNewChapterLabel('');
   };
 
   if (!open) return null;

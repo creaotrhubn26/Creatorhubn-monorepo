@@ -29,6 +29,7 @@ import { MusicLibrary } from "./MusicLibrary";
 import { MusicSuggestionModal } from "./MusicSuggestionModal";
 import { VoiceDuckingDialog } from "./VoiceDuckingDialog";
 import { MulticamSyncStudio } from "./MulticamSyncStudio";
+import { MusicVideoResolvePlan } from "./MusicVideoResolvePlan";
 import { SocialCutsStudio } from "./SocialCutsStudio";
 import { ReviewSessionsStudio } from "./ReviewSessionsStudio";
 import { CollaborationSidebar } from "./CollaborationSidebar";
@@ -113,6 +114,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
   const [duckingDialogOpen, setDuckingDialogOpen] = useState(false);
   const [duckingMusicPath, setDuckingMusicPath] = useState("");
   const [multicamOpen, setMulticamOpen] = useState(false);
+  const [musicVideoPlanOpen, setMusicVideoPlanOpen] = useState(false);
   const [socialCutsOpen, setSocialCutsOpen] = useState(false);
   const [reviewSessionsOpen, setReviewSessionsOpen] = useState(false);
   const [collaborationOpen, setCollaborationOpen] = useState(false);
@@ -231,10 +233,14 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
       setMultiAspectExporting(false);
     }
   };
-  // Project-id for persistence av lower-thirds. Hentes via tilstand
-  // som settes når user åpner agent fra HomeView; for nå fallback til
-  // hardkodet test-id slik at button funker uten Role Room-context.
-  const projectIdForStudio = "test-project-default";
+  // Project-id for persistence av lower-thirds/kommentarer. Utledes fra
+  // source-video-stien (samme konvensjon som CreativeEditorView) slik at
+  // hvert reelt prosjekt får sin egen bøtte i stedet for å dele én
+  // hardkodet test-id. Faller kun tilbake til placeholder hvis ingen
+  // source-path finnes.
+  const projectIdForStudio =
+    sourcePath?.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "")
+    || "test-project-default";
 
   // Poll for thread-count + unread mentions hver 15 sek (etter
   // projectIdForStudio er deklarert)
@@ -363,7 +369,8 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         messages: nextHistory,
         maxTokens: 800,
       });
-      setChatMessages(prev => [...prev, userMsg, { role: "assistant", content: reply }]);
+      // userMsg ble allerede lagt til over — append KUN assistant-svaret
+      setChatMessages(prev => [...prev, { role: "assistant", content: reply }]);
     } catch (err) {
       setChatError((err as Error).message);
       setChatMessages(prev => prev.slice(0, -1)); // rull tilbake user-melding
@@ -408,7 +415,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
       } | undefined;
       if (!v) throw new Error("Ingen analyse-output");
       setBeatAnalysis(v);
-      setBpm(Math.round(v.bpm));
+      setBpm(Math.min(220, Math.max(60, Math.round(v.bpm))));
       if (v.totalDurationSec > 0) {
         setSongLengthSec(Math.round(v.totalDurationSec));
       }
@@ -603,6 +610,23 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
               </span>
             )}
           </button>
+          {showBpmGrid && (
+            <button
+              onClick={() => setMusicVideoPlanOpen(true)}
+              disabled={!sourcePath}
+              title="Analyser musikken, vis alle planlagte Resolve-operasjoner og bygg en ny beat-timeline etter godkjenning"
+              style={{
+                background: "rgba(74,212,138,0.14)",
+                border: "1px solid rgba(74,212,138,0.42)",
+                color: "#4ad48a", padding: "5px 12px", fontSize: 11,
+                borderRadius: 4, cursor: sourcePath ? "pointer" : "not-allowed",
+                opacity: sourcePath ? 1 : 0.5, fontWeight: 600,
+                display: "inline-flex", alignItems: "center", gap: 5,
+              }}
+            >
+              <MusicNoteIcon sx={{ fontSize: 14 }} /> Music Video Editor
+            </button>
+          )}
           <button onClick={() => void exportResolveHandoff()}
                   disabled={handoffExporting || !sourcePath}
                   title="Eksporter agent-state som FCP7 XML + EDL for import i DaVinci Resolve"
@@ -797,7 +821,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
                 <span style={{ minWidth: 36 }}>BPM</span>
                 <input type="number" min={60} max={220}
                        value={bpm}
-                       onChange={e => setBpm(parseInt(e.target.value) || 120)}
+                       onChange={e => setBpm(Math.min(220, Math.max(60, parseInt(e.target.value) || 120)))}
                        style={inputStyle} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8,
@@ -805,7 +829,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
                 <span style={{ minWidth: 36 }}>Lengde</span>
                 <input type="number" min={30} max={600}
                        value={songLengthSec}
-                       onChange={e => setSongLengthSec(parseInt(e.target.value) || 210)}
+                       onChange={e => setSongLengthSec(Math.min(600, Math.max(30, parseInt(e.target.value) || 210)))}
                        style={inputStyle} />
                 <span style={{ fontSize: 10, color: "var(--text-3, #a89cb8)" }}>sek</span>
               </div>
@@ -1243,21 +1267,20 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
             </button>
           </div>
 
-          <button onClick={() => alert(`Auto-pilot for ${CFG.name} kommer i V2`)}
-                  disabled
-                  style={{
-                    padding: "9px 12px",
-                    background: "rgba(110,63,199,0.20)",
-                    border: "1px solid rgba(110,63,199,0.40)",
-                    color: "#fff", borderRadius: 6,
-                    cursor: "not-allowed", fontSize: 11.5, fontWeight: 600,
-                    opacity: 0.7,
+          {/* Auto-pilot er ikke tilgjengelig i denne bygget. Vis et diskret
+              «kommer snart»-hint i stedet for en permanent disablet knapp som
+              ser klikkbar ut. */}
+          <div style={{
+                    padding: "8px 12px",
+                    color: "var(--text-3, #a89cb8)",
+                    fontSize: 10.5, fontWeight: 500,
+                    opacity: 0.8,
                     display: "inline-flex", alignItems: "center", justifyContent: "center",
                     gap: 6,
                   }}>
-            <PlayArrowIcon sx={{ fontSize: 14 }} />
-            Start Auto-pilot (V2)
-          </button>
+            <PlayArrowIcon sx={{ fontSize: 13 }} />
+            Auto-pilot kommer i en senere versjon
+          </div>
         </div>
       </div>
 
@@ -1354,6 +1377,19 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         initialMusicPath={duckingMusicPath}
       />
 
+      {/* Music Video Editor — analyse, eksplisitt plan og trygg Resolve-bygging */}
+      {showBpmGrid && (
+        <MusicVideoResolvePlan
+          open={musicVideoPlanOpen}
+          onClose={() => setMusicVideoPlanOpen(false)}
+          sourcePath={sourcePath}
+          bpm={bpm}
+          selectedLookId={look.id}
+          selectedLookLabel={look.label}
+          genre={genre}
+        />
+      )}
+
       {/* Multi-cam Sync Studio — audio-waveform-korrelasjon */}
       {showMulticamButton && (
         <MulticamSyncStudio
@@ -1390,11 +1426,10 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         onClose={() => setCollaborationOpen(false)}
         projectId={projectIdForStudio}
         agentKind={config.kind}
-        currentTimeSec={0 /* TODO: wire fra video-player */}
-        onJumpToTime={(sec) => {
-          console.log("[collab] jump to:", sec);
-          // V2: actually jump editor playback til denne tiden
-        }}
+        /* Tids-forankring er ikke wiret til en video-player enda. Vi dropper
+           currentTimeSec/onJumpToTime bevisst, slik at sidebaren ikke tilbyr en
+           «Forankre ved 0:00»-kontroll som alltid lagrer 0:00, eller en
+           «Hopp til tid»-knapp som ikke gjør noe. Kommentarer (tekst) virker som før. */
       />
 
       {/* Marketing-preview upload — send proxy-render til klient-portal */}

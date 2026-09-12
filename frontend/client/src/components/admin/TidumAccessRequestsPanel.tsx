@@ -3,7 +3,6 @@ import {
   Alert,
   Autocomplete,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -17,25 +16,37 @@ import {
   InputLabel,
   MenuItem,
   Select,
+  Paper,
   Stack,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
   Typography,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
+import { TableVirtuoso } from 'react-virtuoso';
+import type { TableHeadProps } from '@mui/material/TableHead';
 import {
   Apartment,
   CheckCircle,
   HourglassTop,
   Mail,
   Phone,
-  TaskAlt,
 } from '@mui/icons-material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import {
+  AdminButton,
+  AdminError,
+  AdminLoading,
+  StatusChip,
+  useIsMobile,
+} from './design-system';
 
 type TidumAccessRequest = {
   requestId: number;
@@ -135,17 +146,18 @@ function findVendorForBrregCompany(vendors: TidumVendor[], company: TidumBrregCo
 
 function getStatusChip(status: string) {
   if (status === 'approved') {
-    return <Chip color="success" size="small" icon={<TaskAlt />} label="Godkjent" />;
+    return <StatusChip tone="success" label="Godkjent" />;
   }
 
   if (status === 'rejected') {
-    return <Chip color="error" size="small" label="Avvist" />;
+    return <StatusChip tone="error" label="Avvist" />;
   }
 
-  return <Chip color="warning" size="small" icon={<HourglassTop />} label="Venter" />;
+  return <StatusChip tone="warning" label="Venter" />;
 }
 
 export default function TidumAccessRequestsPanel() {
+  const isMobile = useIsMobile();
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRequest, setSelectedRequest] = useState<TidumAccessRequest | null>(null);
@@ -202,7 +214,7 @@ export default function TidumAccessRequestsPanel() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const brregOptions = brregSearchPayload?.items ?? [];
+  const brregOptions = Array.isArray(brregSearchPayload?.items) ? brregSearchPayload.items : [];
   const existingVendorForSelectedBrreg = useMemo(
     () => findVendorForBrregCompany(vendors, selectedBrregCompany),
     [selectedBrregCompany, vendors],
@@ -302,12 +314,30 @@ export default function TidumAccessRequestsPanel() {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ display: 'grid', gap: 3 }}>
       <Box>
-        <Typography variant="h5" sx={{ fontWeight: 700, color: '#181512' }}>
+        <Box
+          component="img"
+          src="/tidum-logo.png"
+          alt="Tidum"
+          sx={{
+            height: 40,
+            width: 'auto',
+            mb: 1,
+            display: 'block',
+            // Logoen er laget for lys bakgrunn; gi den en lys «plate» så den
+            // leser tydelig mot det mørke admin-skallet.
+            bgcolor: 'rgba(255,255,255,0.92)',
+            borderRadius: '10px',
+            px: 1,
+            py: 0.5,
+          }}
+        />
+        <Typography variant="h5" component="h2" sx={{ fontWeight: 700, color: '#ffffff' }}>
           Tidum tilgangsforespørsler
         </Typography>
-        <Typography sx={{ mt: 0.75, color: '#6f675d', maxWidth: 760 }}>
+        <Typography sx={{ mt: 0.75, color: 'rgba(255,255,255,0.6)', maxWidth: 760 }}>
           Alle tilgangsforespørsler fra Tidum speiles hit. Godkjenning i denne flaten sender
           status tilbake til Tidum og holder begge adminsystemene synket.
         </Typography>
@@ -315,18 +345,18 @@ export default function TidumAccessRequestsPanel() {
 
       <Grid container spacing={2}>
         {[
-          { label: 'Totalt', value: stats.total, icon: <Mail />, tone: '#7c3aed', background: '#f5f3ff' },
-          { label: 'Venter', value: stats.pending, icon: <HourglassTop />, tone: '#b45309', background: '#fff7ed' },
-          { label: 'Godkjent', value: stats.approved, icon: <CheckCircle />, tone: '#166534', background: '#ecfdf5' },
-          { label: 'Virksomheter', value: vendors.length, icon: <Apartment />, tone: '#1d4ed8', background: '#eff6ff' },
+          { label: 'Totalt', value: stats.total, icon: <Mail aria-hidden="true" />, tone: '#7c3aed', background: 'rgba(124,58,237,0.18)' },
+          { label: 'Venter', value: stats.pending, icon: <HourglassTop aria-hidden="true" />, tone: '#b45309', background: 'rgba(180,83,9,0.20)' },
+          { label: 'Godkjent', value: stats.approved, icon: <CheckCircle aria-hidden="true" />, tone: '#166534', background: 'rgba(22,101,52,0.22)' },
+          { label: 'Virksomheter', value: vendors.length, icon: <Apartment aria-hidden="true" />, tone: '#1d4ed8', background: 'rgba(29,78,216,0.20)' },
         ].map((item) => (
           <Grid item xs={12} sm={6} lg={3} key={item.label}>
-            <Card sx={{ borderRadius: '20px', border: '1px solid #eadfce', boxShadow: 'none' }}>
+            <Card sx={{ borderRadius: '20px', border: '1px solid rgba(255,255,255,0.12)', boxShadow: 'none' }}>
               <CardContent>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Box>
-                    <Typography sx={{ fontSize: '0.82rem', color: '#6f675d' }}>{item.label}</Typography>
-                    <Typography sx={{ fontSize: '2rem', fontWeight: 700, color: '#181512' }}>
+                    <Typography sx={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.6)' }}>{item.label}</Typography>
+                    <Typography sx={{ fontSize: '2rem', fontWeight: 700, color: '#ffffff' }}>
                       {item.value}
                     </Typography>
                   </Box>
@@ -350,7 +380,7 @@ export default function TidumAccessRequestsPanel() {
         ))}
       </Grid>
 
-      <Card sx={{ borderRadius: '24px', border: '1px solid #eadfce', boxShadow: 'none' }}>
+      <Card sx={{ borderRadius: '24px', border: '1px solid rgba(255,255,255,0.12)', boxShadow: 'none' }}>
         <CardContent sx={{ p: 3 }}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 3 }}>
             <TextField
@@ -376,29 +406,44 @@ export default function TidumAccessRequestsPanel() {
           </Stack>
 
           {error ? (
-            <Alert severity="error">
-              Kunne ikke laste Tidum-forespørsler. Sjekk at sync-secret og Tidum API-base er satt i
-              CreatorHub-backend.
-            </Alert>
+            <AdminError message="Kunne ikke laste Tidum-forespørsler. Sjekk at sync-secret og Tidum API-base er satt i CreatorHub-backend." />
           ) : null}
 
           {isLoading ? (
-            <Typography color="text.secondary">Laster Tidum-forespørsler…</Typography>
+            <AdminLoading label="Laster Tidum-forespørsler…" />
           ) : (
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Virksomhet</TableCell>
-                  <TableCell>Kontakt</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Opprettet</TableCell>
-                  <TableCell align="right">Handling</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredRequests.map((request) => (
-                  <TableRow key={request.requestId} hover>
+            <Paper style={{ height: 560, width: '100%' }} elevation={0}>
+              {/* Virtualisert (react-virtuoso) – tåler ubegrenset antall
+                  forespørsler uten å tynge DOM-en. Handlinger uendret. */}
+              <TableVirtuoso
+                data={filteredRequests}
+                components={{
+                  Scroller: React.forwardRef<HTMLDivElement>((props, ref) => (
+                    <TableContainer {...props} ref={ref} />
+                  )),
+                  Table: (props) => (
+                    <Table {...props} size="small" sx={{ borderCollapse: 'separate', tableLayout: 'fixed' }} />
+                  ),
+                  TableHead: React.forwardRef<HTMLTableSectionElement, TableHeadProps>((props, ref) => (
+                    <TableHead {...props} ref={ref} />
+                  )),
+                  TableRow: ({ item: _item, ...props }) => <TableRow {...props} hover />,
+                  TableBody: React.forwardRef<HTMLTableSectionElement>((props, ref) => (
+                    <TableBody {...props} ref={ref} />
+                  )),
+                }}
+                fixedHeaderContent={() => (
+                  <TableRow>
+                    <TableCell sx={{ width: 220 }}>Virksomhet</TableCell>
+                    <TableCell sx={{ width: 200 }}>Kontakt</TableCell>
+                    <TableCell sx={{ width: 160 }}>Type</TableCell>
+                    <TableCell sx={{ width: 130 }}>Status</TableCell>
+                    <TableCell sx={{ width: 150 }}>Opprettet</TableCell>
+                    <TableCell align="right" sx={{ width: 200 }}>Handling</TableCell>
+                  </TableRow>
+                )}
+                itemContent={(_index, request) => (
+                  <>
                     <TableCell>
                       <Typography sx={{ fontWeight: 600 }}>
                         {request.company || 'Ikke oppgitt'}
@@ -413,12 +458,12 @@ export default function TidumAccessRequestsPanel() {
                     <TableCell>
                       <Stack spacing={0.5}>
                         <Stack direction="row" spacing={1} alignItems="center">
-                          <Mail fontSize="small" />
+                          <Mail fontSize="small" aria-hidden="true" />
                           <Typography variant="body2">{request.email}</Typography>
                         </Stack>
                         {request.phone ? (
                           <Stack direction="row" spacing={1} alignItems="center">
-                            <Phone fontSize="small" />
+                            <Phone fontSize="small" aria-hidden="true" />
                             <Typography variant="body2">{request.phone}</Typography>
                           </Stack>
                         ) : null}
@@ -443,10 +488,9 @@ export default function TidumAccessRequestsPanel() {
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={1} justifyContent="flex-end">
-                        <Button
+                        <AdminButton
                           size="small"
-                          variant="outlined"
-                          color="error"
+                          tone="danger"
                           disabled={
                             decisionMutation.isPending || request.status === 'rejected'
                           }
@@ -458,21 +502,21 @@ export default function TidumAccessRequestsPanel() {
                           }
                         >
                           Avvis
-                        </Button>
-                        <Button
+                        </AdminButton>
+                        <AdminButton
                           size="small"
-                          variant="contained"
+                          tone="primary"
                           disabled={decisionMutation.isPending}
                           onClick={() => openApproveDialog(request)}
                         >
                           Godkjenn
-                        </Button>
+                        </AdminButton>
                       </Stack>
                     </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                  </>
+                )}
+              />
+            </Paper>
           )}
         </CardContent>
       </Card>
@@ -480,6 +524,7 @@ export default function TidumAccessRequestsPanel() {
       <Dialog
         open={Boolean(selectedRequest)}
         onClose={resetApprovalDialog}
+        fullScreen={isMobile}
         fullWidth
         maxWidth="md"
       >
@@ -508,10 +553,10 @@ export default function TidumAccessRequestsPanel() {
             </Grid>
           </Grid>
 
-          <Box sx={{ p: 2, borderRadius: '18px', border: '1px solid #eadfce', backgroundColor: '#fffdfa' }}>
+          <Box sx={{ p: 2, borderRadius: '18px', border: '1px solid rgba(255,255,255,0.12)', backgroundColor: 'rgba(255,255,255,0.04)' }}>
             <Stack spacing={1.5}>
               <Box>
-                <Typography sx={{ fontWeight: 700, color: '#181512' }}>
+                <Typography sx={{ fontWeight: 700, color: '#ffffff' }}>
                   Finn virksomhet i Brønnøysundregistrene
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -588,7 +633,7 @@ export default function TidumAccessRequestsPanel() {
               ) : null}
 
               {selectedBrregCompany ? (
-                <Box sx={{ p: 2, borderRadius: '16px', backgroundColor: '#f8f3ea' }}>
+                <Box sx={{ p: 2, borderRadius: '16px', backgroundColor: 'rgba(255,255,255,0.04)' }}>
                   <Stack spacing={1.25}>
                     <Stack
                       direction={{ xs: 'column', sm: 'row' }}
@@ -637,8 +682,8 @@ export default function TidumAccessRequestsPanel() {
 
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
                       {existingVendorForSelectedBrreg ? (
-                        <Button
-                          variant="contained"
+                        <AdminButton
+                          tone="primary"
                           onClick={() => {
                             setSelectedVendorId(String(existingVendorForSelectedBrreg.id));
                             setBrregVendorMessage(
@@ -647,15 +692,15 @@ export default function TidumAccessRequestsPanel() {
                           }}
                         >
                           Bruk eksisterende Tidum-leverandør
-                        </Button>
+                        </AdminButton>
                       ) : (
-                        <Button
-                          variant="contained"
-                          disabled={createVendorMutation.isPending}
+                        <AdminButton
+                          tone="primary"
+                          loading={createVendorMutation.isPending}
                           onClick={() => createVendorMutation.mutate(selectedBrregCompany)}
                         >
                           Opprett leverandør fra BRREG
-                        </Button>
+                        </AdminButton>
                       )}
                       {createVendorMutation.error ? (
                         <Alert severity="error" sx={{ flex: 1 }}>
@@ -713,16 +758,16 @@ export default function TidumAccessRequestsPanel() {
           </FormControl>
 
           {selectedRequest?.message ? (
-            <Box sx={{ p: 2, borderRadius: '16px', backgroundColor: '#faf8f4' }}>
+            <Box sx={{ p: 2, borderRadius: '16px', backgroundColor: 'rgba(255,255,255,0.04)' }}>
               <Typography sx={{ fontWeight: 700, mb: 0.75 }}>Melding fra søker</Typography>
               <Typography color="text.secondary">{selectedRequest.message}</Typography>
             </Box>
           ) : null}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button onClick={resetApprovalDialog}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={resetApprovalDialog}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             disabled={
               !selectedVendorId ||
               decisionMutation.isPending ||
@@ -740,9 +785,10 @@ export default function TidumAccessRequestsPanel() {
             }}
           >
             Godkjenn og synk
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }

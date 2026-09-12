@@ -49,6 +49,7 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
+import { AdminButton } from './design-system';
 
 interface ShowcaseSettings {
   // Button Visibility
@@ -514,8 +515,8 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
 
   return (
     <Box sx={{ p:  3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
-        <Typography variant="h4" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb:  3 }}>
+        <Typography variant="h4" component="h2" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
           {theming.getThemedIcon('settings')}
           Showcase Innstillinger
         </Typography>
@@ -563,7 +564,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
           {activeTab === 0 && (
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h3" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                   {theming.getThemedIcon('tune')}
                   Knapp-visning
                 </Typography>
@@ -765,7 +766,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
           {activeTab === 1 && (
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h3" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                   <ViewModule />
                   Layout & Visuell Design
                 </Typography>
@@ -835,7 +836,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
                     </Select>
                   </FormControl>
 
-                  {/* Card Border Radius , *, /}
+                  {/* Card Border Radius */}
                   <FormControl fullWidth>
                     <InputLabel>Kant-runding</InputLabel>
                     <Select
@@ -873,7 +874,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
           {activeTab === 2 && (
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h3" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                   <PhoneAndroid />
                   Mobil Responsivitet
                 </Typography>
@@ -955,7 +956,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
           {activeTab === 3 && (
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h3" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                   {theming.getThemedIcon('search')}
                   Søk & Filtrering
                 </Typography>
@@ -1051,7 +1052,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
           {activeTab === 4 && (
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h3" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                   {theming.getThemedIcon('dataUsage')}
                   Data-visning
                 </Typography>
@@ -1149,7 +1150,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
           {activeTab === 5 && (
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h3" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                   {theming.getThemedIcon('palette')}
                   Design & Tema
                 </Typography>
@@ -1234,7 +1235,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
           {activeTab === 6 && (
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h3" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                   {theming.getThemedIcon('touch')}
                   Interaksjon & Oppførsel
                 </Typography>
@@ -1325,7 +1326,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
           {activeTab === 7 && (
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h3" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                   {theming.getThemedIcon('speed')}
                   Ytelse
                 </Typography>
@@ -1409,7 +1410,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
           {activeTab === 8 && (
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h3" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                   {theming.getThemedIcon('security')}
                   Sikkerhet & Personvern
                   <Chip 
@@ -1496,6 +1497,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
                           Gjennomsiktighet: {settings.watermarkOpacity}%
                         </Typography>
                         <Slider
+                          aria-label="Vannmerke gjennomsiktighet"
                           value={settings.watermarkOpacity}
                           onChange={(_event, value) =>
                             updateSetting(
@@ -1707,7 +1709,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
           {activeTab === 9 && (
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h3" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                   {theming.getThemedIcon('notifications')}
                   Varsler & Notifikasjoner
                 </Typography>
@@ -1780,7 +1782,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
           {activeTab === 10 && (
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h3" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                   {theming.getThemedIcon('settings')}
                   Profesjons Suiter
                   {!isProfessionSuitesEnabled && (
@@ -2004,7 +2006,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
           {activeTab === 11 && (
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h3" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
                   {theming.getThemedIcon('settings')}
                   Avanserte Funksjoner
                 </Typography>
@@ -2085,7 +2087,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
         <Grid size={{ xs:  12, md:  4 }}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" sx={{  mb:  2  }}>
+              <Typography variant="h6" component="h3" sx={{  mb:  2  }}>
                 Forhåndsvisning
               </Typography>
               
@@ -2099,9 +2101,10 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
                           settings.cardShadow === 'subtle' ? '0 1px 3px rgba(0,0,0,0.12)' :
                           settings.cardShadow === 'medium' ? '0 4px 6px rgba(0,0,0,0.1)' :
                           '0 8px 15px rgba(0,0,0,0.2)',
-                width: settings.cardSize === 'small' ? 200 : 
+                width: settings.cardSize === 'small' ? 200 :
                        settings.cardSize === 'medium' ? 250 :
-                       settings.cardSize === 'large' ? 300 : 350 }}>
+                       settings.cardSize === 'large' ? 300 : 350,
+                maxWidth: '100%' }}>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.72)', mb: 1, display: 'block'}}>
                   Eksempel showcase-item ({settings.cardSize})
                 </Typography>
@@ -2195,7 +2198,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
 
           <Card sx={{ mt:  2 ,  ...theming.getThemedCardSx() }}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" sx={{  mb:  2  }}>
+              <Typography variant="h6" component="h3" sx={{  mb:  2  }}>
                 Handlinger
               </Typography>
               
@@ -2209,23 +2212,23 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
                   {loading ? 'Lagrer...' : 'Lagre innstillinger'}
                 </Button>
                 
-                <Button
-                  variant="outlined"
+                <AdminButton
+                  tone="secondary"
                   startIcon={<Refresh />}
                   onClick={resetSettings}
                   fullWidth
                 >
                   Tilbakestill
-                </Button>
-                
-                <Button
-                  variant="text"
+                </AdminButton>
+
+                <AdminButton
+                  tone="ghost"
                   startIcon={<Settings />}
                   onClick={() => setActiveTab(0)}
                   fullWidth
                 >
                   Gå til knapper
-                </Button>
+                </AdminButton>
               </Stack>
             </CardContent>
           </Card>

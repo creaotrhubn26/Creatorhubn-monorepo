@@ -27,6 +27,7 @@ import {
   Send,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton, StatusChip } from './design-system';
 
 interface FeedbackItem {
   id: string;
@@ -111,8 +112,8 @@ export default function FixValidationRequest({
     return (
       <Card sx={{ p:  3, maxWidth: 60, mx: 'auto', mt:  4, textAlign: 'center',  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <CheckCircle sx={{ fontSize:  64, color: 'success.main', mb:  2 }} />
-          <Typography variant="h5" gutterBottom sx={{  color: theming.colors.primary }}>
+          <CheckCircle aria-hidden="true" sx={{ fontSize:  64, color: 'success.main', mb:  2 }} />
+          <Typography variant="h5" component="h2" gutterBottom sx={{  color: theming.colors.primary }}>
             ✅ Validation Submitted Successfully!
           </Typography>
           <Typography variant="body1" color="text.secondary">
@@ -144,12 +145,12 @@ export default function FixValidationRequest({
   return (
     <Card sx={{ p:  3, maxWidth: 60, mx: 'auto', mt:  4 ,  ...theming.getThemedCardSx() }}>
       <CardContent sx={theming.getThemedCardSx()}>
-        <Typography variant="h5" gutterBottom sx={{  color: '#ff8c00', fontWeight: 'bold' }}>
+        <Typography variant="h5" component="h2" gutterBottom sx={{  color: '#ff8c00', fontWeight: 'bold' }}>
           🔍 Verify Fix for Your Feedback
         </Typography>
         
         <Paper sx={{ p: 2, mb: 3, bgcolor: 'grey.50',  ...theming.getThemedCardSx() }}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
             Original Issue: </Typography>
           <Typography variant="body1" sx={{ mb: 1 }}>
             <strong>{feedback.title}</strong>
@@ -164,14 +165,12 @@ export default function FixValidationRequest({
               size="small" 
               color="primary" 
             />
-            <Chip 
-              label={feedback.priority.toUpperCase()} 
-              size="small" 
-              sx={{ 
-                bgcolor: feedback.priority === 'critical' ? '#f44336' : 
-                        feedback.priority === 'high' ? '#ff9800' : '#4caf50',
-                color: 'white'
-          }} 
+            <StatusChip
+              label={feedback.priority.toUpperCase()}
+              tone={
+                feedback.priority === 'critical' ? 'error' :
+                feedback.priority === 'high' ? 'warning' : 'success'
+              }
             />
             {feedback.component && (
               <Chip label={feedback.component} size="small" variant="outlined" />
@@ -186,8 +185,8 @@ export default function FixValidationRequest({
         </Alert>
 
         <Box sx={{ mb:  3 }}>
-          <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-            {validation.userConfirmed ? <CheckCircle color="success" /> : <Error color="error" />}
+          <Typography variant="h6" component="h3" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+            {validation.userConfirmed ? <CheckCircle color="success" aria-hidden="true" /> : <Error color="error" aria-hidden="true" />}
             Did this fix resolve your original problem?
           </Typography>
           
@@ -232,7 +231,7 @@ export default function FixValidationRequest({
         />
 
         <Box sx={{ mb:  3 }}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
             Rate the fix quality: </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
             <Rating
@@ -249,18 +248,18 @@ export default function FixValidationRequest({
           </Box>
         </Box>
 
-        <Button variant="contained"
+        <AdminButton
+          tone="primary"
+          loading={submitValidationMutation.isPending}
           onClick={handleSubmit}
           disabled={submitValidationMutation.isPending || validation.userRating === 0}
           fullWidth
           size="large"
-          startIcon={submitValidationMutation.isPending ? <CircularProgress size={20} /> : <Send />}
-          sx={{
-            bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00'},
-            py: 1.5 }}
+          startIcon={<Send />}
+          sx={{ py: 1.5 }}
         >
           {submitValidationMutation.isPending ? 'Submitting...' : 'Submit Validation'}
-        </Button>
+        </AdminButton>
 
         <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block', textAlign: 'center'}}>
           Your validation helps us ensure fixes are working correctly and improve our development process.

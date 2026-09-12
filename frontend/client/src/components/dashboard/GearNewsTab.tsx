@@ -2,9 +2,9 @@
 import React, { useMemo, useState } from 'react';
 import {
   Article,
+  Business,
   CameraAlt,
   Close,
-  DirectionsBusiness,
   LibraryMusic,
   OpenInNew,
   Search,
@@ -39,6 +39,7 @@ import {
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useTheming } from '../../utils/theming-helper';
+import { apiRequest } from '@/lib/queryClient';
 
 interface GearNewsTabProps {
   profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
@@ -117,7 +118,7 @@ function getProfessionConfig(profession: GearNewsTabProps['profession']): Profes
     case 'vendor':
       return {
         title: 'Leverandør Nyheter',
-        icon: <DirectionsBusiness />,
+        icon: <Business />,
         color: '#2563eb',
         categories: ['AV-utstyr', 'Sceneteknikk', 'Lys', 'Lyd', 'Streaming', 'Installasjoner'],
         description: 'Siste nytt innen profesjonelt AV-utstyr og installasjoner',
@@ -145,7 +146,7 @@ export function GearNewsTab({ profession, className }: GearNewsTabProps) {
 
   const { data, isLoading } = useQuery<GearNewsApiResponse>({
     queryKey: ['/api/gear-news', profession],
-    queryFn: () => fetch(`/api/gear-news?profession=${profession}`).then((res) => res.json()),
+    queryFn: () => apiRequest(`/api/gear-news?profession=${profession}`),
     refetchInterval: 30 * 60 * 1000,
     staleTime: 10 * 60 * 1000,
   });

@@ -82,6 +82,7 @@ import {
 } from '../services/storyboardLibraryService';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import storyboardEmptyPng from './icons/Keep/roleroom_storyboard.png';
+import { StoryboardBoardPage } from './StoryboardBoardPage';
 
 interface StoryboardIntegrationViewProps {
   scene: SceneBreakdown;
@@ -106,10 +107,14 @@ interface StoryboardIntegrationViewProps {
   storyboardOnly?: boolean;
   activeFrameIndex?: number;
   onFrameSelect?: (index: number) => void;
+  /** Scenebytte fra Board Pro-flaten (eies av StoryboardTabView). */
+  onRequestSceneChange?: (sceneId: string) => void;
+  /** Prosjektets visningsnavn (Board Pro-topbaren). */
+  projectTitle?: string;
 }
 
 type ViewMode = 'script' | 'storyboard' | 'shotlist' | 'split';
-type StoryboardWorkspaceMode = 'thumbnail' | 'scene' | 'review' | 'moodboard';
+type StoryboardWorkspaceMode = 'thumbnail' | 'scene' | 'strip' | 'review' | 'moodboard';
 type StoryboardDetailLevel = 'idea' | 'blocking' | 'shot' | 'presentation';
 type StoryboardAssistFlag =
   | 'perspectiveGrid'
@@ -145,9 +150,77 @@ interface StoryboardFrame {
   assist?: StoryboardAssistSettings;
   variantGroupId?: string;
   variantLabel?: string;
+  // Intensjonslaget (STORYBOARD_DESIGN.md): DP-metadata + beat + status
+  shotType?: string;          // WS/MS/CU/OTS/POV/…
+  lensMm?: number;            // 14-135
+  beatTag?: StoryboardBeatTag;
+  frameStatus?: StoryboardFrameStatus;
+  location?: string;
+  timeOfDay?: string;
+  weather?: string;
+  transition?: string;        // Cut/Dissolve/…
+  focusDepth?: string;        // Shallow/Deep
+  tags?: string[];
+  continuityNotes?: string;
+  vfxNotes?: string;
+  productionNotes?: string;
+  frameComments?: StoryboardFrameComment[];
   createdAt?: string;
   updatedAt?: string;
 }
+
+interface StoryboardFrameComment {
+  id: string;
+  role: string;      // Director / DP / Producer / Editor / Artist
+  author: string;
+  text: string;
+  at: string;        // ISO
+}
+
+const COMMENT_ROLE_OPTIONS = ['Director', 'DP', 'Producer', 'Editor', 'Artist'];
+
+// Versjonslogg (mockup 1, Versions-panelet): lettvekts-snapshot per lagring —
+// metadata + thumbnails, ikke full frame-kopi. ponytail: compare/restore av
+// full snapshot kommer når backend får versjons-endepunkter.
+interface StoryboardVersionEntry {
+  v: number;
+  at: string;
+  author?: string;
+  summary: string;
+  frameCount: number;
+  totalDurationSec: number;
+  thumbnails: string[];
+}
+
+type SceneWithVersionLog = SceneBreakdown & { storyboardVersionLog?: StoryboardVersionEntry[] };
+
+type StoryboardBeatTag = 'ESTABLISHING' | 'TENSION' | 'BEAT' | 'ACTION' | 'DIALOGUE' | 'RESOLUTION';
+type StoryboardFrameStatus = 'planned' | 'in_review' | 'needs_work' | 'done';
+
+const BEAT_TAG_OPTIONS: StoryboardBeatTag[] = ['ESTABLISHING', 'TENSION', 'BEAT', 'ACTION', 'DIALOGUE', 'RESOLUTION'];
+const BEAT_TAG_STYLES: Record<StoryboardBeatTag, { bg: string; fg: string }> = {
+  ESTABLISHING: { bg: 'rgba(100,116,139,0.28)', fg: 'rgba(226,232,240,0.95)' },
+  TENSION: { bg: 'rgba(245,158,11,0.22)', fg: 'rgba(253,230,138,0.98)' },
+  BEAT: { bg: 'rgba(168,85,247,0.22)', fg: 'rgba(233,213,255,0.98)' },
+  ACTION: { bg: 'rgba(239,68,68,0.22)', fg: 'rgba(254,202,202,0.98)' },
+  DIALOGUE: { bg: 'rgba(16,185,129,0.2)', fg: 'rgba(209,250,229,0.98)' },
+  RESOLUTION: { bg: 'rgba(56,189,248,0.2)', fg: 'rgba(224,242,254,0.98)' },
+};
+const FRAME_STATUS_META: Record<StoryboardFrameStatus, { label: string; color: string }> = {
+  planned: { label: 'Planned', color: 'rgba(148,163,184,0.9)' },
+  in_review: { label: 'In Review', color: 'rgba(251,191,36,0.95)' },
+  needs_work: { label: 'Needs Work', color: 'rgba(239,68,68,0.92)' },
+  done: { label: 'Done', color: 'rgba(63,164,106,0.95)' },
+};
+const SHOT_TYPE_OPTIONS = ['EWS', 'WS', 'MWS', 'MS', 'MCU', 'CU', 'BCU', 'ECU', 'OTS', 'POV', 'INSERT', 'TWO-SHOT'];
+const LENS_MM_OPTIONS = [14, 18, 24, 28, 35, 50, 85, 135];
+const TRANSITION_OPTIONS = ['Cut', 'Dissolve', 'Match Cut', 'Smash Cut', 'Wipe', 'Fade'];
+const FOCUS_DEPTH_OPTIONS = ['Shallow', 'Deep'];
+
+const isBeatTag = (value: unknown): value is StoryboardBeatTag =>
+  typeof value === 'string' && (BEAT_TAG_OPTIONS as string[]).includes(value);
+const isFrameStatus = (value: unknown): value is StoryboardFrameStatus =>
+  value === 'planned' || value === 'in_review' || value === 'needs_work' || value === 'done';
 
 const DETAIL_LEVEL_OPTIONS: Array<{
   value: StoryboardDetailLevel;
@@ -164,6 +237,7 @@ const DETAIL_LEVEL_OPTIONS: Array<{
 const WORKSPACE_MODE_OPTIONS: Array<{ value: StoryboardWorkspaceMode; label: string }> = [
   { value: 'thumbnail', label: 'Thumbnails' },
   { value: 'scene', label: 'Scene' },
+  { value: 'strip', label: 'Board' },
   { value: 'review', label: 'Review' },
   { value: 'moodboard', label: 'Mood-board' },
 ];
@@ -509,6 +583,83 @@ const parseStoredStrokes = (value: unknown): PencilStroke[] | undefined => {
   }
 };
 
+// Rask polyline-rendering av vektor-strokes til thumbnail — frames som er
+// tegnet (drawingData.strokes) men mangler thumbnailUrl/imageUrl (f.eks.
+// seedet/migrert data) får bilde i grid/strip/timeline/filmstripe. Lettvekts
+// tilnærming av penselmotoren: trykk styrer bredde/alpha, penseltype styrer
+// multiplikator; eraser rendres destination-out. Full stamp-tekstur er ikke
+// nødvendig på 480px-thumbs.
+const renderStrokesToThumbnailDataUrl = (
+  strokes: PencilStroke[],
+  width = 480,
+  sourceWidth = 1920,
+  sourceHeight = 1080,
+): string | undefined => {
+  if (typeof document === 'undefined' || strokes.length === 0) return undefined;
+  try {
+    const height = Math.round((width * sourceHeight) / sourceWidth);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return undefined;
+    ctx.fillStyle = '#f5f2ea';
+    ctx.fillRect(0, 0, width, height);
+    const scale = width / sourceWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const stroke of strokes) {
+      // Tekst-annotasjoner fra Board Pro («PUSH IN»-stil): ett ankerpunkt +
+      // textAnnotation-felt — rendres som håndskrift-tekst, ikke linjer.
+      const annotationText = (stroke as { textAnnotation?: string }).textAnnotation;
+      if (annotationText && Array.isArray(stroke.points) && stroke.points[0]) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = stroke.opacity ?? 1;
+        ctx.font = `700 ${Math.max(10, 52 * scale)}px Caveat, "Segoe Script", cursive`;
+        ctx.fillStyle = stroke.color || '#8b5cf6';
+        ctx.fillText(String(annotationText).toUpperCase(), stroke.points[0].x * scale, stroke.points[0].y * scale);
+        ctx.restore();
+        continue;
+      }
+      const points = stroke.points;
+      if (!Array.isArray(points) || points.length < 2) continue;
+      const type = stroke.brush?.type;
+      if (type === 'smudge') continue;
+      const isEraser = type === 'eraser' || type === 'kneaded' || type === 'lightlift';
+      const widthMultiplier =
+        type === 'highlighter' ? 3
+          : type === 'watercolor' ? 2.4
+            : type === 'marker' ? 2
+              : type === 'charcoal' ? 1.5
+                : type === 'graphite' ? 1.3
+                  : 1;
+      const baseWidth = (typeof stroke.width === 'number' ? stroke.width : 4) * scale * widthMultiplier;
+      ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
+      ctx.strokeStyle = isEraser ? 'rgba(0,0,0,1)' : (stroke.color || '#26282e');
+      for (let i = 1; i < points.length; i++) {
+        const from = points[i - 1];
+        const to = points[i];
+        const pressure = ((from.pressure ?? 0.7) + (to.pressure ?? 0.7)) / 2;
+        ctx.globalAlpha = Math.min(
+          1,
+          (stroke.opacity ?? 1) * (type === 'highlighter' ? 0.35 : 0.45 + 0.55 * pressure),
+        );
+        ctx.lineWidth = Math.max(0.6, baseWidth * (0.5 + 0.75 * pressure));
+        ctx.beginPath();
+        ctx.moveTo(from.x * scale, from.y * scale);
+        ctx.lineTo(to.x * scale, to.y * scale);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    return canvas.toDataURL('image/webp', 0.8);
+  } catch {
+    return undefined;
+  }
+};
+
 const parseFrameDrawingData = (
   drawingDataRaw: unknown,
   options: {
@@ -849,6 +1000,27 @@ const toLocalFrames = (frames?: StoryboardFrameModel[]): StoryboardFrame[] => {
     assist: parseAssistSettings(f.assist),
     variantGroupId: typeof f.variantGroupId === 'string' ? f.variantGroupId : undefined,
     variantLabel: typeof f.variantLabel === 'string' ? f.variantLabel : undefined,
+    shotType: typeof f.shotType === 'string' ? f.shotType : undefined,
+    lensMm: typeof f.lensMm === 'number' && Number.isFinite(f.lensMm) ? f.lensMm : undefined,
+    beatTag: isBeatTag(f.beatTag) ? f.beatTag : undefined,
+    frameStatus: isFrameStatus(f.frameStatus) ? f.frameStatus : undefined,
+    location: typeof f.location === 'string' ? f.location : undefined,
+    timeOfDay: typeof f.timeOfDay === 'string' ? f.timeOfDay : undefined,
+    weather: typeof f.weather === 'string' ? f.weather : undefined,
+    transition: typeof f.transition === 'string' ? f.transition : undefined,
+    focusDepth: typeof f.focusDepth === 'string' ? f.focusDepth : undefined,
+    tags: Array.isArray(f.tags) ? f.tags.filter((t): t is string => typeof t === 'string') : undefined,
+    continuityNotes: typeof f.continuityNotes === 'string' ? f.continuityNotes : undefined,
+    vfxNotes: typeof f.vfxNotes === 'string' ? f.vfxNotes : undefined,
+    productionNotes: typeof f.productionNotes === 'string' ? f.productionNotes : undefined,
+    frameComments: Array.isArray(f.frameComments)
+      ? f.frameComments.filter(
+          (c): c is StoryboardFrameComment =>
+            !!c && typeof c === 'object'
+            && typeof (c as StoryboardFrameComment).id === 'string'
+            && typeof (c as StoryboardFrameComment).text === 'string'
+        )
+      : undefined,
     createdAt: typeof f.createdAt === 'string' ? f.createdAt : undefined,
     updatedAt: typeof f.updatedAt === 'string' ? f.updatedAt : undefined,
   }));
@@ -878,6 +1050,20 @@ const toModelFrames = (frames: StoryboardFrame[], defaultSceneId: string): Story
     assist: normalizeAssistSettings(f.assist),
     variantGroupId: f.variantGroupId,
     variantLabel: f.variantLabel,
+    shotType: f.shotType,
+    lensMm: f.lensMm,
+    beatTag: f.beatTag,
+    frameStatus: f.frameStatus,
+    location: f.location,
+    timeOfDay: f.timeOfDay,
+    weather: f.weather,
+    transition: f.transition,
+    focusDepth: f.focusDepth,
+    tags: f.tags,
+    continuityNotes: f.continuityNotes,
+    vfxNotes: f.vfxNotes,
+    productionNotes: f.productionNotes,
+    frameComments: f.frameComments,
     createdAt: f.createdAt,
     updatedAt: f.updatedAt,
   }));
@@ -910,6 +1096,22 @@ const framesEqual = (a: StoryboardFrame[], b: StoryboardFrame[]): boolean => {
       left.screenDirection !== right.screenDirection ||
       left.variantGroupId !== right.variantGroupId ||
       left.variantLabel !== right.variantLabel ||
+      left.shotType !== right.shotType ||
+      left.lensMm !== right.lensMm ||
+      left.beatTag !== right.beatTag ||
+      left.frameStatus !== right.frameStatus ||
+      left.location !== right.location ||
+      left.timeOfDay !== right.timeOfDay ||
+      left.weather !== right.weather ||
+      left.transition !== right.transition ||
+      left.focusDepth !== right.focusDepth ||
+      (left.tags ?? []).join('|') !== (right.tags ?? []).join('|') ||
+      left.continuityNotes !== right.continuityNotes ||
+      left.vfxNotes !== right.vfxNotes ||
+      left.productionNotes !== right.productionNotes ||
+      (left.frameComments?.length ?? 0) !== (right.frameComments?.length ?? 0) ||
+      (left.frameComments?.[left.frameComments.length - 1]?.id)
+        !== (right.frameComments?.[right.frameComments.length - 1]?.id) ||
       serializeAssistSettings(left.assist) !== serializeAssistSettings(right.assist) ||
       !rangeEqual(left.scriptLineRange, right.scriptLineRange) ||
       left.createdAt !== right.createdAt ||
@@ -940,11 +1142,16 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
   storyboardOnly = false,
   activeFrameIndex: propActiveFrameIndex,
   onFrameSelect,
+  onRequestSceneChange,
+  projectTitle,
 }) => {
   const storyboardPanelOnly = storyboardOnly || showScriptPanel;
-  const [viewMode, setViewMode] = useState<ViewMode>(
-    storyboardPanelOnly ? 'storyboard' : 'script'
-  );
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('boardpro') === '1') {
+      return 'storyboard';
+    }
+    return storyboardPanelOnly ? 'storyboard' : 'script';
+  });
   const [storyboardFrames, setStoryboardFrames] = useState<StoryboardFrame[]>(() =>
     toLocalFrames(scene.storyboardFrames)
   );
@@ -1014,6 +1221,54 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
     }, FRAME_SYNC_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timeoutId);
+  }, [storyboardFrames]);
+
+  // Auto-generer thumbnails for tegnede frames uten bilde (seedet/migrert
+  // data). Batch på 6 per runde (effekt re-kjøres av frame-oppdateringen og
+  // tar neste batch); debounce-synken persisterer thumbnailUrl til scenen.
+  useEffect(() => {
+    const pending = storyboardFrames.filter(
+      (frame) => !frame.thumbnailUrl && !frame.imageUrl && frame.drawingData?.strokes,
+    );
+    if (pending.length === 0) return undefined;
+    const timer = window.setTimeout(() => {
+      const updates = new Map<string, string>();
+      for (const frame of pending.slice(0, 6)) {
+        const strokes = parseStoredStrokes(frame.drawingData?.strokes) ?? [];
+        const dataUrl = renderStrokesToThumbnailDataUrl(strokes);
+        if (dataUrl) updates.set(frame.id, dataUrl);
+      }
+      if (updates.size === 0) return;
+      setStoryboardFrames((prev) =>
+        prev.map((frame) =>
+          updates.has(frame.id)
+            ? { ...frame, thumbnailUrl: updates.get(frame.id), updatedAt: new Date().toISOString() }
+            : frame,
+        ),
+      );
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [storyboardFrames]);
+
+  const handleSaveVersion = useCallback((summary: string) => {
+    const sceneNow = latestSceneRef.current as SceneWithVersionLog;
+    const log = Array.isArray(sceneNow.storyboardVersionLog) ? sceneNow.storyboardVersionLog : [];
+    const entry: StoryboardVersionEntry = {
+      v: log.length + 1,
+      at: new Date().toISOString(),
+      summary: summary.trim() || `Versjon ${log.length + 1}`,
+      frameCount: storyboardFrames.length,
+      totalDurationSec: storyboardFrames.reduce((sum, frame) => sum + (frame.duration || 0), 0),
+      thumbnails: storyboardFrames
+        .map((frame) => frame.thumbnailUrl || frame.imageUrl)
+        .filter((url): url is string => typeof url === 'string')
+        .slice(0, 3),
+    };
+    onUpdateRef.current({
+      ...sceneNow,
+      storyboardFrames: toModelFrames(storyboardFrames, sceneNow.id),
+      storyboardVersionLog: [...log, entry],
+    } as SceneBreakdown);
   }, [storyboardFrames]);
 
   const handleSplitResizeStart = useCallback((event: React.MouseEvent) => {
@@ -1234,6 +1489,11 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
             sceneDialogue={sceneDialogue}
             projectCinemaFormat={projectCinemaFormat}
             showCreativeStudio={showCreativeStudio}
+            versionLog={(scene as SceneWithVersionLog).storyboardVersionLog}
+            onSaveVersion={handleSaveVersion}
+            onRequestSceneChange={onRequestSceneChange}
+            onSwitchViewMode={(mode) => setViewMode(mode)}
+            projectTitle={projectTitle}
           />
         )}
         {!storyboardPanelOnly && viewMode === 'split' && (
@@ -1302,6 +1562,10 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
                 sceneDialogue={sceneDialogue}
                 projectCinemaFormat={projectCinemaFormat}
                 showCreativeStudio={showCreativeStudio}
+                versionLog={(scene as SceneWithVersionLog).storyboardVersionLog}
+                onSaveVersion={handleSaveVersion}
+                onRequestSceneChange={onRequestSceneChange}
+                projectTitle={projectTitle}
               />
             </Box>
           </Box>
@@ -1323,12 +1587,29 @@ const ScriptView: React.FC<{
   onScriptChange?: (content: string) => void;
 }> = ({ scene, scriptContent, onScriptChange }) => {
   const hasScriptEditor = typeof scriptContent === 'string';
+  // Ekte scene-manus hentet fra manuskriptet (INGEN fabrikkerte «eksempel»-replikker).
+  const sceneScript = useMemo(() => {
+    if (typeof scriptContent !== 'string') return null;
+    const lines = scriptContent.split('\n');
+    const isHeading = (l: string) => /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/i.test(l.trim());
+    const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
+    const target = norm(scene.sceneHeading || scene.heading || '');
+    if (!target) return null;
+    let start = -1;
+    for (let i = 0; i < lines.length; i++) { if (isHeading(lines[i]) && norm(lines[i]) === target) { start = i; break; } }
+    if (start === -1) return null;
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i++) { if (isHeading(lines[i])) { end = i; break; } }
+    return lines.slice(start + 1, end).join('\n').trim();
+  }, [scriptContent, scene]);
   return (
-    <Paper sx={{ p: 3, fontFamily: 'Courier, monospace', bgcolor: '#FFFFF8' }}>
+    // Lys «manus-side» → tving MØRK tekst; ellers arver innholdet dark-temaets lyse
+    // tekstfarge og blir usynlig på kremfargen (var white-on-white).
+    <Paper sx={{ p: 3, fontFamily: 'Courier, monospace', bgcolor: '#FFFFF8', color: '#1a1a1a' }}>
       <Stack spacing={3}>
         {hasScriptEditor && (
           <Stack spacing={1.5}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1a1a1a' }}>
               Manus for scenen
             </Typography>
             <TextField
@@ -1343,6 +1624,7 @@ const ScriptView: React.FC<{
                   fontFamily: 'Courier, monospace',
                   fontSize: 14,
                   backgroundColor: 'rgba(255,255,255,0.75)',
+                  color: '#1a1a1a',
                 },
               }}
             />
@@ -1361,35 +1643,23 @@ const ScriptView: React.FC<{
           </Typography>
         )}
 
-        {/* Dialogue */}
-        {scene.characters && scene.characters.length > 0 && (
-          <Stack spacing={2}>
+        {/* Ekte scene-manus (action + replikker) fra manuskriptet */}
+        {sceneScript ? (
+          <Typography
+            component="pre"
+            sx={{ fontFamily: 'Courier, monospace', whiteSpace: 'pre-wrap', lineHeight: 1.7, m: 0 }}
+          >
+            {sceneScript}
+          </Typography>
+        ) : scene.characters && scene.characters.length > 0 ? (
+          <Stack spacing={1}>
             {scene.characters.map((char, i) => (
-              <Box key={i}>
-                <Typography
-                  sx={{
-                    textAlign: 'center',
-                    fontWeight: 'bold',
-                    mb: 1,
-                  }}
-                >
-                  {char.toUpperCase()}
-                </Typography>
-                <Typography
-                  sx={{
-                    textAlign: 'center',
-                    maxWidth: '60%',
-                    mx: 'auto',
-                    fontStyle: 'italic',
-                    color: 'text.secondary',
-                  }}
-                >
-                  (eksempel dialog for {char})
-                </Typography>
-              </Box>
+              <Typography key={i} sx={{ textAlign: 'center', fontWeight: 'bold' }}>
+                {char.toUpperCase()}
+              </Typography>
             ))}
           </Stack>
-        )}
+        ) : null}
       </Stack>
     </Paper>
   );
@@ -1411,6 +1681,11 @@ const StoryboardView: React.FC<{
   sceneDialogue?: import('../models/casting').DialogueLine[];
   projectCinemaFormat?: '16:9' | '4:3' | '2.39:1' | '2.35:1' | '1.85:1' | '2.76:1' | '1:1' | '9:16';
   showCreativeStudio?: boolean;
+  versionLog?: StoryboardVersionEntry[];
+  onSaveVersion?: (summary: string) => void;
+  onRequestSceneChange?: (sceneId: string) => void;
+  onSwitchViewMode?: (mode: 'script' | 'shotlist') => void;
+  projectTitle?: string;
 }> = ({
   frames,
   onUpdate,
@@ -1427,11 +1702,22 @@ const StoryboardView: React.FC<{
   sceneDialogue,
   projectCinemaFormat,
   showCreativeStudio = true,
+  versionLog,
+  onSaveVersion,
+  onRequestSceneChange,
+  onSwitchViewMode,
+  projectTitle,
 }) => {
   const device = useDeviceDetection();
-  const { showSuccess, showInfo } = useToast();
+  const { showSuccess, showInfo, showError } = useToast();
   const { user } = useAuth();
   const [workspaceMode, setWorkspaceMode] = useState<StoryboardWorkspaceMode>('thumbnail');
+  // ?boardpro=1 auto-åpner Board Pro (sim-Safari-verifisering uten klikkevei)
+  const [boardProOpen, setBoardProOpen] = useState(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('boardpro') === '1',
+  );
+  const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
+  const [versionSummary, setVersionSummary] = useState('');
   const [drawingFrameId, setDrawingFrameId] = useState<string | null>(null);
   const [pendingPoseStrokes, setPendingPoseStrokes] = useState<PencilStroke[] | null>(null);
   const [pendingReferenceSrc, setPendingReferenceSrc] = useState<string | null>(null);
@@ -1476,61 +1762,13 @@ const StoryboardView: React.FC<{
   // Default: 'storyboard' (klassisk svart-hvit blyantskisse).
   const [stylePresetId, setStylePresetId] = useState<StylePresetId>('storyboard');
   const stylePreset = STYLE_PRESETS[stylePresetId];
-  const handleGenerateAIImage = useCallback(async () => {
-    if (!activeFrame || !projectId) return;
-    setAiGenerating(true);
-    try {
-      const { upsertStoryboard, generateAIImage } = await import('../services/storyboardApiService');
-      // Sørg for at det finnes en server-rad for dette framet (idempotent
-      // upsert på frame_id). Vi trenger en uuid for å trigge DALL-E-routen.
-      const sbRow = await upsertStoryboard(projectId, {
-        sceneId,
-        frameId: activeFrame.id,
-        title: activeFrame.shotNumber
-          ? `${activeFrame.shotNumber} — ${activeFrame.description ?? ''}`.trim()
-          : (activeFrame.description ?? sceneLabel),
-        width: 1792,
-        height: 1024,
-        workflowLevel: activeFrame.detailLevel ?? 'idea',
-      });
-      const result = await generateAIImage(projectId, sbRow.id, {
-        sceneDescription: scene.description ?? scene.sceneHeading ?? sceneLabel,
-        intExt: scene.intExt,
-        timeOfDay: scene.timeOfDay,
-        locationName: scene.locationName ?? scene.location,
-        shotType: activeFrame.shotType ?? activeFrame.cameraAngle,
-        cinematicFormat: projectCinemaFormat,
-        // Stil-preset overstyrer styleNote når den er valgt. AI-prompten
-        // får hele preset.aiPromptSuffix lagt på enden — slik blokkerer
-        // valg av Noir-preset hele framet til chiaroscuro-estetikk.
-        styleNote: [stylePreset.aiPromptSuffix, activeFrame.notes].filter(Boolean).join('. ') || undefined,
-        quality: 'standard',
-        aspectRatio: '1792x1024',
-      });
-      const imageUrl = result.storyboard.imageData ?? '';
-      if (imageUrl) {
-        // Sett som frame's imageUrl + imageSource så det vises som bakgrunn
-        // i FrameCard og kan tegnes over i FrameDrawingEditor.
-        patchFrame(activeFrame.id, {
-          imageUrl,
-          thumbnailUrl: imageUrl,
-          imageSource: 'ai-generated',
-          updatedAt: new Date().toISOString(),
-        });
-        showSuccess('AI-bilde generert. Klikk «Tegne» for å skissere over.');
-      }
-    } catch (err) {
-      showError(`Kunne ikke generere AI-bilde: ${(err as Error).message}`);
-    } finally {
-      setAiGenerating(false);
-    }
-  }, [activeFrame, projectId, sceneId, sceneLabel, scene, projectCinemaFormat, stylePreset, patchFrame, showSuccess, showError]);
-  const activeDetailLevel: StoryboardDetailLevel = activeFrame?.detailLevel || 'idea';
-  const activeAssist = mergeAssistSettings(activeDetailLevel, activeFrame?.assist);
-  const creditHistoryItem = libraryItems.find((item) => item.id === creditHistoryItemId) || null;
   const sceneLabel =
     sceneHeading?.trim() ||
     (sceneNumber !== undefined && sceneNumber !== null ? `Scene ${sceneNumber}` : `Scene ${sceneId}`);
+  // handleGenerateAIImage flyttet ned under patchFrame (dens dep) — se der.
+  const activeDetailLevel: StoryboardDetailLevel = activeFrame?.detailLevel || 'idea';
+  const activeAssist = mergeAssistSettings(activeDetailLevel, activeFrame?.assist);
+  const creditHistoryItem = libraryItems.find((item) => item.id === creditHistoryItemId) || null;
   const currentAuthorName = user?.displayName || user?.name || user?.email || 'Ukjent bruker';
   const currentAuthorId = user?.id || user?.email;
   const folderNameById = useMemo(() => {
@@ -1693,6 +1931,58 @@ const StoryboardView: React.FC<{
     },
     [frames, onUpdate]
   );
+
+  // Deklareres ETTER patchFrame (dens dependency) — ellers TDZ-krasj i
+  // dependency-arrayet ved render («Cannot access 'patchFrame' before initialization»).
+  const handleGenerateAIImage = useCallback(async () => {
+    if (!activeFrame || !projectId) return;
+    setAiGenerating(true);
+    try {
+      const { upsertStoryboard, generateAIImage } = await import('../services/storyboardApiService');
+      // Sørg for at det finnes en server-rad for dette framet (idempotent
+      // upsert på frame_id). Vi trenger en uuid for å trigge DALL-E-routen.
+      const sbRow = await upsertStoryboard(projectId, {
+        sceneId,
+        frameId: activeFrame.id,
+        title: activeFrame.shotNumber
+          ? `${activeFrame.shotNumber} — ${activeFrame.description ?? ''}`.trim()
+          : (activeFrame.description ?? sceneLabel),
+        width: 1792,
+        height: 1024,
+        workflowLevel: activeFrame.detailLevel ?? 'idea',
+      });
+      const result = await generateAIImage(projectId, sbRow.id, {
+        sceneDescription: scene.description ?? scene.sceneHeading ?? sceneLabel,
+        intExt: scene.intExt,
+        timeOfDay: scene.timeOfDay,
+        locationName: scene.locationName ?? scene.location,
+        shotType: activeFrame.shotType ?? activeFrame.cameraAngle,
+        cinematicFormat: projectCinemaFormat,
+        // Stil-preset overstyrer styleNote når den er valgt. AI-prompten
+        // får hele preset.aiPromptSuffix lagt på enden — slik blokkerer
+        // valg av Noir-preset hele framet til chiaroscuro-estetikk.
+        styleNote: [stylePreset.aiPromptSuffix, activeFrame.notes].filter(Boolean).join('. ') || undefined,
+        quality: 'standard',
+        aspectRatio: '1792x1024',
+      });
+      const imageUrl = result.storyboard.imageData ?? '';
+      if (imageUrl) {
+        // Sett som frame's imageUrl + imageSource så det vises som bakgrunn
+        // i FrameCard og kan tegnes over i FrameDrawingEditor.
+        patchFrame(activeFrame.id, {
+          imageUrl,
+          thumbnailUrl: imageUrl,
+          imageSource: 'ai-generated',
+          updatedAt: new Date().toISOString(),
+        });
+        showSuccess('AI-bilde generert. Klikk «Tegne» for å skissere over.');
+      }
+    } catch (err) {
+      showError(`Kunne ikke generere AI-bilde: ${(err as Error).message}`);
+    } finally {
+      setAiGenerating(false);
+    }
+  }, [activeFrame, projectId, sceneId, sceneLabel, scene, projectCinemaFormat, stylePreset, patchFrame, showSuccess, showError]);
 
   const removeFrame = useCallback(
     (frameId: string) => {
@@ -2301,6 +2591,27 @@ const StoryboardView: React.FC<{
               ))}
             </ToggleButtonGroup>
 
+            <Button
+              size="small"
+              variant="contained"
+              data-testid="storyboard-board-pro-button"
+              onClick={() => setBoardProOpen(true)}
+              sx={{ bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', flexShrink: 0, fontWeight: 700 }}
+            >
+              Board Pro
+            </Button>
+            {onSaveVersion && (
+              <Button
+                size="small"
+                variant="outlined"
+                data-testid="storyboard-versions-button"
+                onClick={() => setVersionsDialogOpen(true)}
+                sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#a78bfa', textTransform: 'none', flexShrink: 0 }}
+              >
+                Versions ({versionLog?.length ?? 0})
+              </Button>
+            )}
+
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="stretch" sx={{ flex: 1 }}>
               <Button
                 startIcon={<ContentCopyIcon />}
@@ -2439,7 +2750,26 @@ const StoryboardView: React.FC<{
         </Box>
       )}
 
-      {workspaceMode !== 'moodboard' && (
+      {workspaceMode === 'review' && frames.length > 0 && (
+        <ReviewModeView
+          frames={frames}
+          activeFrameIndex={activeFrameIndex}
+          onSelectFrame={onSelectFrame}
+          onPatchFrame={(frameId, patch) => patchFrame(frameId, patch)}
+        />
+      )}
+
+      {workspaceMode === 'strip' && (
+        <BoardStripView
+          frames={frames}
+          activeFrameIndex={activeFrameIndex}
+          onSelectFrame={onSelectFrame}
+          onDrawFrame={(frameId) => setDrawingFrameId(frameId)}
+          onAddFrame={handleAddFrame}
+        />
+      )}
+
+      {workspaceMode !== 'moodboard' && workspaceMode !== 'review' && workspaceMode !== 'strip' && (
       <Box
         sx={{
           display: 'grid',
@@ -2547,6 +2877,14 @@ const StoryboardView: React.FC<{
           </Box>
         ))}
       </Box>
+      )}
+
+      {frames.length > 0 && (
+        <SceneTimelineStrip
+          frames={frames}
+          activeFrameIndex={activeFrameIndex}
+          onSelectFrame={onSelectFrame}
+        />
       )}
 
       {/* Sprint A.7: Continuity strip — ±2 nabo-frames synlige + style-drift.
@@ -3507,6 +3845,181 @@ const StoryboardView: React.FC<{
               }
               fullWidth
             />
+            {/* Inspector-felter (mockup 2): DP-metadata + beat + status */}
+            <Stack direction="row" spacing={2}>
+              <TextField
+                select
+                label="Shot type"
+                value={editDraft?.shotType || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) => (prev ? { ...prev, shotType: event.target.value || undefined } : prev))
+                }
+                fullWidth
+              >
+                <MenuItem value="">—</MenuItem>
+                {SHOT_TYPE_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                label="Linse"
+                value={editDraft?.lensMm ?? ''}
+                onChange={(event) =>
+                  setEditDraft((prev) => {
+                    if (!prev) return prev;
+                    const parsed = Number(event.target.value);
+                    return { ...prev, lensMm: Number.isFinite(parsed) && parsed > 0 ? parsed : undefined };
+                  })
+                }
+                fullWidth
+              >
+                <MenuItem value="">—</MenuItem>
+                {LENS_MM_OPTIONS.map((mm) => (
+                  <MenuItem key={mm} value={mm}>{mm}mm</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+            <Stack direction="row" spacing={2}>
+              <TextField
+                select
+                label="Beat"
+                value={editDraft?.beatTag || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) =>
+                    prev ? { ...prev, beatTag: isBeatTag(event.target.value) ? event.target.value : undefined } : prev
+                  )
+                }
+                fullWidth
+              >
+                <MenuItem value="">—</MenuItem>
+                {BEAT_TAG_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                label="Status"
+                value={editDraft?.frameStatus || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) =>
+                    prev
+                      ? { ...prev, frameStatus: isFrameStatus(event.target.value) ? event.target.value : undefined }
+                      : prev
+                  )
+                }
+                fullWidth
+              >
+                <MenuItem value="">—</MenuItem>
+                {(Object.keys(FRAME_STATUS_META) as StoryboardFrameStatus[]).map((option) => (
+                  <MenuItem key={option} value={option}>{FRAME_STATUS_META[option].label}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+            <Stack direction="row" spacing={2}>
+              <TextField
+                select
+                label="Transition"
+                value={editDraft?.transition || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) => (prev ? { ...prev, transition: event.target.value || undefined } : prev))
+                }
+                fullWidth
+              >
+                <MenuItem value="">—</MenuItem>
+                {TRANSITION_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                label="Fokus / dybde"
+                value={editDraft?.focusDepth || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) => (prev ? { ...prev, focusDepth: event.target.value || undefined } : prev))
+                }
+                fullWidth
+              >
+                <MenuItem value="">—</MenuItem>
+                {FOCUS_DEPTH_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="Lokasjon"
+                value={editDraft?.location || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) => (prev ? { ...prev, location: event.target.value } : prev))
+                }
+                fullWidth
+              />
+              <TextField
+                label="Tid på døgnet"
+                value={editDraft?.timeOfDay || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) => (prev ? { ...prev, timeOfDay: event.target.value } : prev))
+                }
+                fullWidth
+              />
+              <TextField
+                label="Vær"
+                value={editDraft?.weather || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) => (prev ? { ...prev, weather: event.target.value } : prev))
+                }
+                fullWidth
+              />
+            </Stack>
+            <TextField
+              label="Tags (kommaseparert)"
+              value={(editDraft?.tags ?? []).join(', ')}
+              onChange={(event) =>
+                setEditDraft((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        tags: event.target.value
+                          .split(',')
+                          .map((t) => t.trim().toUpperCase())
+                          .filter(Boolean),
+                      }
+                    : prev
+                )
+              }
+              fullWidth
+            />
+            <TextField
+              label="Continuity"
+              value={editDraft?.continuityNotes || ''}
+              onChange={(event) =>
+                setEditDraft((prev) => (prev ? { ...prev, continuityNotes: event.target.value } : prev))
+              }
+              multiline
+              minRows={2}
+              fullWidth
+            />
+            <TextField
+              label="VFX"
+              value={editDraft?.vfxNotes || ''}
+              onChange={(event) =>
+                setEditDraft((prev) => (prev ? { ...prev, vfxNotes: event.target.value } : prev))
+              }
+              multiline
+              minRows={2}
+              fullWidth
+            />
+            <TextField
+              label="Production notes"
+              value={editDraft?.productionNotes || ''}
+              onChange={(event) =>
+                setEditDraft((prev) => (prev ? { ...prev, productionNotes: event.target.value } : prev))
+              }
+              multiline
+              minRows={2}
+              fullWidth
+            />
             <TextField
               label="Notater"
               value={editDraft?.notes || ''}
@@ -3540,12 +4053,139 @@ const StoryboardView: React.FC<{
                 focusPoint: editDraft.focusPoint?.trim() || undefined,
                 blockingNotes: editDraft.blockingNotes?.trim() || undefined,
                 notes: editDraft.notes?.trim() || undefined,
+                shotType: editDraft.shotType || undefined,
+                lensMm: editDraft.lensMm,
+                beatTag: editDraft.beatTag,
+                frameStatus: editDraft.frameStatus,
+                transition: editDraft.transition || undefined,
+                focusDepth: editDraft.focusDepth || undefined,
+                location: editDraft.location?.trim() || undefined,
+                timeOfDay: editDraft.timeOfDay?.trim() || undefined,
+                weather: editDraft.weather?.trim() || undefined,
+                tags: editDraft.tags?.length ? editDraft.tags : undefined,
+                continuityNotes: editDraft.continuityNotes?.trim() || undefined,
+                vfxNotes: editDraft.vfxNotes?.trim() || undefined,
+                productionNotes: editDraft.productionNotes?.trim() || undefined,
               });
               setEditingFrameId(null);
             }}
           >
             Lagre
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {boardProOpen && (
+        <StoryboardBoardPage
+          projectName={projectTitle || scene.projectId || 'The Role Room'}
+          sequenceLabel={scene.heading || scene.sceneName || scene.title || scene.sceneHeading}
+          sceneItems={(allScenes ?? [scene]).map((sceneEntry: any) => {
+            const sceneFrames = Array.isArray(sceneEntry.storyboardFrames) ? sceneEntry.storyboardFrames : [];
+            const thumbFrame = sceneFrames.find((f: any) => f?.thumbnailUrl || f?.imageUrl);
+            return {
+              id: sceneEntry.id,
+              heading: sceneEntry.heading || sceneEntry.sceneName || sceneEntry.title || sceneEntry.sceneHeading || sceneEntry.id,
+              shotCount: sceneFrames.length,
+              thumbnailUrl: thumbFrame?.thumbnailUrl || thumbFrame?.imageUrl,
+            };
+          })}
+          selectedSceneId={scene.id}
+          onSelectScene={onRequestSceneChange}
+          frames={frames}
+          activeFrameIndex={activeFrameIndex}
+          onSelectFrame={onSelectFrame}
+          onPatchFrame={(frameId, fields) => patchFrame(frameId, fields)}
+          onDrawFrame={(frameId) => setDrawingFrameId(frameId)}
+          onAddFrame={handleAddFrame}
+          onOpenScript={onSwitchViewMode ? () => { setBoardProOpen(false); onSwitchViewMode('script'); } : undefined}
+          onOpenShotList={onSwitchViewMode ? () => { setBoardProOpen(false); onSwitchViewMode('shotlist'); } : undefined}
+          onClose={() => setBoardProOpen(false)}
+        />
+      )}
+
+      <Dialog open={versionsDialogOpen} onClose={() => setVersionsDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Versions</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.25} sx={{ mt: 0.5 }}>
+            {(versionLog ?? []).length === 0 && (
+              <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.85)' }}>
+                Ingen versjoner lagret ennå. Lagre en versjon for å kunne spore endringer i scenen.
+              </Typography>
+            )}
+            {[...(versionLog ?? [])].reverse().map((entry, reversedIndex) => (
+              <Box
+                key={entry.v}
+                sx={{
+                  display: 'flex',
+                  gap: 1.25,
+                  p: 1.25,
+                  borderRadius: 1.5,
+                  border: reversedIndex === 0 ? '1px solid rgba(139,92,246,0.55)' : '1px solid rgba(148,163,184,0.2)',
+                  bgcolor: reversedIndex === 0 ? 'rgba(139,92,246,0.08)' : 'rgba(13,17,23,0.7)',
+                }}
+              >
+                <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+                  {entry.thumbnails.map((thumb, thumbIndex) => (
+                    <Box
+                      key={thumbIndex}
+                      sx={{
+                        width: 48,
+                        height: 30,
+                        borderRadius: 0.5,
+                        backgroundImage: `url(${thumb})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        border: '1px solid rgba(148,163,184,0.25)',
+                      }}
+                    />
+                  ))}
+                </Stack>
+                <Box sx={{ minWidth: 0 }}>
+                  <Stack direction="row" spacing={1} alignItems="baseline">
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      v{entry.v}
+                    </Typography>
+                    {reversedIndex === 0 && (
+                      <Chip label="Current Version" size="small" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(139,92,246,0.25)', color: '#c4b5fd' }} />
+                    )}
+                    <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.85)' }}>
+                      {relativeTime(entry.at)}{entry.author ? ` · ${entry.author}` : ''}
+                    </Typography>
+                  </Stack>
+                  <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.9)' }}>
+                    {entry.summary}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.8)' }}>
+                    {entry.frameCount} frames · {entry.totalDurationSec}s
+                  </Typography>
+                </Box>
+              </Box>
+            ))}
+            <Stack direction="row" spacing={1}>
+              <TextField
+                size="small"
+                fullWidth
+                placeholder="Hva endret du? (f.eks. «Adjusted timing on 12B»)"
+                value={versionSummary}
+                onChange={(event) => setVersionSummary(event.target.value)}
+                data-testid="storyboard-version-summary-input"
+              />
+              <Button
+                variant="contained"
+                data-testid="storyboard-save-version-button"
+                onClick={() => {
+                  onSaveVersion?.(versionSummary);
+                  setVersionSummary('');
+                }}
+                sx={{ bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' }, flexShrink: 0 }}
+              >
+                Lagre versjon
+              </Button>
+            </Stack>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setVersionsDialogOpen(false)}>Lukk</Button>
         </DialogActions>
       </Dialog>
 
@@ -3886,9 +4526,41 @@ const StoryboardFrameCard: React.FC<{
           </Typography>
 
           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-            <Chip label={frame.cameraAngle} size="small" sx={{ bgcolor: 'rgba(56,189,248,0.18)', color: 'rgba(224,242,254,0.95)' }} />
-            <Chip label={frame.movement} size="small" sx={{ bgcolor: 'rgba(14,165,233,0.16)', color: 'rgba(224,242,254,0.95)' }} />
+            {/* «SHOT TYPE · CAMERA MOVE» sammensatt — mockup-konvensjonen */}
+            <Chip
+              label={`${frame.shotType || frame.cameraAngle}${frame.movement ? ` · ${frame.movement}` : ''}`}
+              size="small"
+              sx={{ bgcolor: 'rgba(139,92,246,0.2)', color: 'rgba(233,213,255,0.98)', fontWeight: 600 }}
+            />
+            {typeof frame.lensMm === 'number' && (
+              <Chip label={`${frame.lensMm}mm`} size="small" sx={{ bgcolor: 'rgba(99,102,241,0.18)', color: 'rgba(224,231,255,0.95)' }} />
+            )}
             <Chip label={`${frame.duration}s`} size="small" sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: 'rgba(254,243,199,0.95)' }} />
+            {frame.beatTag && (
+              <Chip
+                label={frame.beatTag}
+                size="small"
+                sx={{
+                  bgcolor: BEAT_TAG_STYLES[frame.beatTag].bg,
+                  color: BEAT_TAG_STYLES[frame.beatTag].fg,
+                  fontWeight: 700,
+                  fontSize: '0.62rem',
+                  letterSpacing: 0.8,
+                }}
+              />
+            )}
+            {frame.frameStatus && (
+              <Chip
+                label={FRAME_STATUS_META[frame.frameStatus].label}
+                size="small"
+                variant="outlined"
+                sx={{
+                  color: FRAME_STATUS_META[frame.frameStatus].color,
+                  borderColor: FRAME_STATUS_META[frame.frameStatus].color,
+                  fontSize: '0.62rem',
+                }}
+              />
+            )}
             {frame.screenDirection && (
               <Chip
                 label={getScreenDirectionLabel(frame.screenDirection)}
@@ -3979,6 +4651,450 @@ const StoryboardFrameCard: React.FC<{
   );
 };
 
+// Scene-timeline (mockup 1): thumbnails med bredde ∝ varighet + dramaturgi-
+// fase-segmenter (SETUP/TENSION/ACTION/RESOLUTION) avledet fra beat-tags.
+const BEAT_TO_PHASE: Record<StoryboardBeatTag, string> = {
+  ESTABLISHING: 'SETUP',
+  TENSION: 'TENSION',
+  BEAT: 'TENSION',
+  ACTION: 'ACTION',
+  DIALOGUE: 'ACTION',
+  RESOLUTION: 'RESOLUTION',
+};
+const PHASE_COLORS: Record<string, string> = {
+  SETUP: 'rgba(100,116,139,0.75)',
+  TENSION: 'rgba(245,158,11,0.8)',
+  ACTION: 'rgba(239,68,68,0.8)',
+  RESOLUTION: 'rgba(56,189,248,0.8)',
+};
+
+// Board-strip (mockup 2, kjerne-layouten): én rad per shot — shot-kode-boks,
+// ACTION/DIALOG + NOTES i venstre kolonne, bred tegning i midten, og
+// metadata-kolonne (CAM/SHOT, LENS, MOVEMENT, DURATION) til høyre.
+const StripMetaRow: React.FC<{ label: string; value?: string | null }> = ({ label, value }) => (
+  <Box sx={{ mb: 0.9 }}>
+    <Typography
+      variant="caption"
+      sx={{ display: 'block', color: 'rgba(148,163,184,0.7)', fontSize: '0.56rem', letterSpacing: 1.2, fontWeight: 700 }}
+    >
+      {label}
+    </Typography>
+    <Typography
+      variant="caption"
+      sx={{ display: 'block', color: 'rgba(226,232,240,0.92)', fontSize: '0.72rem', fontStyle: 'italic' }}
+    >
+      {value || '—'}
+    </Typography>
+  </Box>
+);
+
+const BoardStripView: React.FC<{
+  frames: StoryboardFrame[];
+  activeFrameIndex: number;
+  onSelectFrame: (index: number) => void;
+  onDrawFrame: (frameId: string) => void;
+  onAddFrame: () => void;
+}> = ({ frames, activeFrameIndex, onSelectFrame, onDrawFrame, onAddFrame }) => (
+  <Stack data-testid="storyboard-board-strip" spacing={1.5}>
+    {frames.map((frame, index) => {
+      const isActive = index === activeFrameIndex;
+      const image = frame.imageUrl || frame.thumbnailUrl;
+      return (
+        <Box
+          key={frame.id}
+          onClick={() => onSelectFrame(index)}
+          onDoubleClick={() => onDrawFrame(frame.id)}
+          data-testid={`board-strip-row-${frame.shotNumber}`}
+          sx={{
+            display: 'flex',
+            gap: 2,
+            p: 1.5,
+            borderRadius: 1.5,
+            cursor: 'pointer',
+            border: isActive ? '2px solid #8b5cf6' : '1px solid rgba(148,163,184,0.18)',
+            bgcolor: isActive ? 'rgba(139,92,246,0.07)' : 'rgba(13,17,23,0.75)',
+            '&:hover': { borderColor: 'rgba(139,92,246,0.55)' },
+          }}
+        >
+          {/* Venstre: shot-kode + action/dialog + notes */}
+          <Box sx={{ width: 200, flexShrink: 0 }}>
+            <Box
+              sx={{
+                display: 'inline-block',
+                px: 1.1,
+                py: 0.3,
+                mb: 1,
+                borderRadius: 0.75,
+                border: '1.5px solid rgba(226,232,240,0.6)',
+                fontFamily: 'JetBrains Mono, Menlo, monospace',
+                fontWeight: 700,
+                fontSize: '0.82rem',
+                color: 'rgba(248,250,252,0.95)',
+              }}
+            >
+              {frame.shotNumber}
+            </Box>
+            <Typography
+              variant="caption"
+              sx={{ display: 'block', color: 'rgba(148,163,184,0.7)', fontSize: '0.56rem', letterSpacing: 1.2, fontWeight: 700 }}
+            >
+              ACTION / DIALOG
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.92)', fontStyle: 'italic', mb: 1 }}>
+              {frame.description}
+            </Typography>
+            {frame.notes && (
+              <>
+                <Typography
+                  variant="caption"
+                  sx={{ display: 'block', color: 'rgba(148,163,184,0.7)', fontSize: '0.56rem', letterSpacing: 1.2, fontWeight: 700 }}
+                >
+                  NOTES / DIAGRAM
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.85)', fontStyle: 'italic' }}>
+                  {frame.notes}
+                </Typography>
+              </>
+            )}
+          </Box>
+
+          {/* Midt: tegningen */}
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              aspectRatio: '2.39 / 1',
+              maxHeight: 300,
+              borderRadius: 1,
+              border: '1px solid rgba(148,163,184,0.25)',
+              backgroundImage: image ? `url(${image})` : undefined,
+              backgroundSize: 'contain',
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'center',
+              bgcolor: image ? 'rgba(245,242,234,0.04)' : 'rgba(148,163,184,0.08)',
+            }}
+          />
+
+          {/* Høyre: metadata-kolonnen */}
+          <Box sx={{ width: 118, flexShrink: 0 }}>
+            <StripMetaRow label="CAM / SHOT" value={frame.shotType || frame.cameraAngle} />
+            <StripMetaRow label="LENS / CAMERA" value={typeof frame.lensMm === 'number' ? `${frame.lensMm}mm` : undefined} />
+            <StripMetaRow label="MOVEMENT" value={frame.movement} />
+            <StripMetaRow label="DURATION" value={`${frame.duration} SEC`} />
+            {frame.beatTag && (
+              <Chip
+                label={frame.beatTag}
+                size="small"
+                sx={{
+                  bgcolor: BEAT_TAG_STYLES[frame.beatTag].bg,
+                  color: BEAT_TAG_STYLES[frame.beatTag].fg,
+                  fontWeight: 700,
+                  fontSize: '0.58rem',
+                  letterSpacing: 0.8,
+                }}
+              />
+            )}
+          </Box>
+        </Box>
+      );
+    })}
+    <Button
+      variant="outlined"
+      onClick={onAddFrame}
+      startIcon={<AddIcon />}
+      data-testid="board-strip-add-shot"
+      sx={{ alignSelf: 'flex-start', borderColor: 'rgba(139,92,246,0.5)', color: '#a78bfa' }}
+    >
+      Add Shot
+    </Button>
+  </Stack>
+);
+
+// Review Mode (mockup 1, nederst venstre): stor frame + vertikal filmstripe
+// + rollekommentarer + status + Approve/Needs Work.
+const relativeTime = (iso: string): string => {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.round(diffMs / 60000);
+  if (minutes < 1) return 'nå';
+  if (minutes < 60) return `${minutes}m siden`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}t siden`;
+  return `${Math.round(hours / 24)}d siden`;
+};
+
+const ReviewModeView: React.FC<{
+  frames: StoryboardFrame[];
+  activeFrameIndex: number;
+  onSelectFrame: (index: number) => void;
+  onPatchFrame: (frameId: string, patch: Partial<StoryboardFrame>) => void;
+}> = ({ frames, activeFrameIndex, onSelectFrame, onPatchFrame }) => {
+  const [commentRole, setCommentRole] = useState<string>('Director');
+  const [commentText, setCommentText] = useState<string>('');
+  const frame = frames[activeFrameIndex];
+  if (!frame) return null;
+  const imageSrc = frame.imageUrl || frame.thumbnailUrl;
+  const status = frame.frameStatus ?? 'in_review';
+  const comments = frame.frameComments ?? [];
+
+  const addComment = () => {
+    const text = commentText.trim();
+    if (!text) return;
+    const comment: StoryboardFrameComment = {
+      id: createFrameId(),
+      role: commentRole,
+      author: commentRole,
+      text,
+      at: new Date().toISOString(),
+    };
+    onPatchFrame(frame.id, { frameComments: [...comments, comment] });
+    setCommentText('');
+  };
+
+  return (
+    <Box data-testid="storyboard-review-mode" sx={{ display: 'flex', gap: 2, alignItems: 'stretch' }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Box
+          sx={{
+            borderRadius: 1.5,
+            overflow: 'hidden',
+            border: '1px solid rgba(139,92,246,0.3)',
+            bgcolor: 'rgba(13,17,23,0.9)',
+            aspectRatio: '2.39 / 1',
+            backgroundImage: imageSrc ? `url(${imageSrc})` : undefined,
+            backgroundSize: 'contain',
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+          }}
+        />
+        <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mt: 1 }}>
+          <Typography variant="subtitle2" sx={{ color: 'rgba(248,250,252,0.95)', fontWeight: 700 }}>
+            SHOT {frame.shotNumber}
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.9)' }}>
+            {[frame.shotType || frame.cameraAngle, frame.movement, `${frame.duration}s`, typeof frame.lensMm === 'number' ? `${frame.lensMm}mm` : null]
+              .filter(Boolean)
+              .join(' · ')}
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          <Chip
+            label={FRAME_STATUS_META[status].label}
+            size="small"
+            variant="outlined"
+            sx={{ color: FRAME_STATUS_META[status].color, borderColor: FRAME_STATUS_META[status].color }}
+          />
+        </Stack>
+        {frame.description && (
+          <Typography variant="body2" sx={{ mt: 0.5, color: 'rgba(226,232,240,0.85)' }}>
+            {frame.description}
+          </Typography>
+        )}
+
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.7)', letterSpacing: 1.4, fontWeight: 700 }}>
+            COMMENTS ({comments.length})
+          </Typography>
+          <Stack spacing={1} sx={{ mt: 1, maxHeight: 220, overflowY: 'auto' }}>
+            {comments.map((comment) => (
+              <Box
+                key={comment.id}
+                sx={{ p: 1, borderRadius: 1, bgcolor: 'rgba(13,17,23,0.8)', border: '1px solid rgba(148,163,184,0.18)' }}
+              >
+                <Stack direction="row" spacing={1} alignItems="baseline">
+                  <Typography variant="caption" sx={{ color: '#a78bfa', fontWeight: 700 }}>
+                    {comment.role}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.75)' }}>
+                    {relativeTime(comment.at)}
+                  </Typography>
+                </Stack>
+                <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.92)' }}>
+                  {comment.text}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+          <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+            <TextField
+              select
+              size="small"
+              value={commentRole}
+              onChange={(event) => setCommentRole(event.target.value)}
+              sx={{ width: 130 }}
+            >
+              {COMMENT_ROLE_OPTIONS.map((role) => (
+                <MenuItem key={role} value={role}>{role}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Skriv kommentar…"
+              value={commentText}
+              onChange={(event) => setCommentText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  addComment();
+                }
+              }}
+              data-testid="review-comment-input"
+            />
+            <Button variant="outlined" onClick={addComment} sx={{ flexShrink: 0 }}>
+              Send
+            </Button>
+          </Stack>
+        </Box>
+
+        <Stack direction="row" spacing={1.5} sx={{ mt: 2 }}>
+          <Button
+            variant="contained"
+            data-testid="review-approve-button"
+            onClick={() => onPatchFrame(frame.id, { frameStatus: 'done' })}
+            sx={{ bgcolor: '#10b981', '&:hover': { bgcolor: '#0d9668' } }}
+          >
+            Approve
+          </Button>
+          <Button
+            variant="contained"
+            data-testid="review-needs-work-button"
+            onClick={() => onPatchFrame(frame.id, { frameStatus: 'needs_work' })}
+            sx={{ bgcolor: '#ef4444', '&:hover': { bgcolor: '#dc2626' } }}
+          >
+            Needs Work
+          </Button>
+          <Box sx={{ flex: 1 }} />
+          <Typography variant="caption" sx={{ alignSelf: 'center', color: 'rgba(148,163,184,0.8)' }}>
+            {activeFrameIndex + 1} / {frames.length}
+          </Typography>
+        </Stack>
+      </Box>
+
+      {/* Vertikal filmstripe */}
+      <Stack spacing={0.75} sx={{ width: 108, flexShrink: 0, overflowY: 'auto', maxHeight: 560 }}>
+        {frames.map((stripFrame, index) => {
+          const thumb = stripFrame.thumbnailUrl || stripFrame.imageUrl;
+          const isActive = index === activeFrameIndex;
+          return (
+            <Box
+              key={stripFrame.id}
+              onClick={() => onSelectFrame(index)}
+              sx={{
+                borderRadius: 1,
+                overflow: 'hidden',
+                cursor: 'pointer',
+                border: isActive ? '2px solid #8b5cf6' : '1px solid rgba(148,163,184,0.22)',
+              }}
+            >
+              <Box
+                sx={{
+                  height: 56,
+                  backgroundImage: thumb ? `url(${thumb})` : undefined,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  bgcolor: thumb ? undefined : 'rgba(148,163,184,0.12)',
+                }}
+              />
+              <Typography
+                variant="caption"
+                sx={{ display: 'block', px: 0.5, color: 'rgba(226,232,240,0.85)', fontSize: '0.62rem', fontWeight: 700 }}
+              >
+                {stripFrame.shotNumber}
+              </Typography>
+            </Box>
+          );
+        })}
+      </Stack>
+    </Box>
+  );
+};
+
+const SceneTimelineStrip: React.FC<{
+  frames: StoryboardFrame[];
+  activeFrameIndex: number;
+  onSelectFrame: (index: number) => void;
+}> = ({ frames, activeFrameIndex, onSelectFrame }) => {
+  if (frames.length === 0) return null;
+  const totalSeconds = frames.reduce((sum, frame) => sum + (frame.duration || 0), 0);
+  const totalLabel = `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(Math.round(totalSeconds % 60)).padStart(2, '0')}`;
+
+  // Fase-segmenter: påfølgende frames med samme fase slås sammen; frames
+  // uten beat-tag arver forrige fase (SETUP som start).
+  const phases: Array<{ phase: string; weight: number }> = [];
+  let currentPhase = 'SETUP';
+  frames.forEach((frame) => {
+    const phase = frame.beatTag ? BEAT_TO_PHASE[frame.beatTag] : currentPhase;
+    currentPhase = phase;
+    const weight = Math.max(0.5, frame.duration || 1);
+    const last = phases[phases.length - 1];
+    if (last && last.phase === phase) last.weight += weight;
+    else phases.push({ phase, weight });
+  });
+
+  return (
+    <Box data-testid="scene-timeline-strip" sx={{ mt: 2 }}>
+      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 0.75 }}>
+        <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.75)', letterSpacing: 1.4, fontWeight: 700 }}>
+          SCENE · {frames.length} SHOTS · {totalLabel}
+        </Typography>
+      </Stack>
+      <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto', pb: 0.5 }}>
+        {frames.map((frame, index) => {
+          const thumb = frame.thumbnailUrl || frame.imageUrl;
+          const flexGrow = Math.max(0.5, frame.duration || 1);
+          const isActive = index === activeFrameIndex;
+          return (
+            <Box
+              key={frame.id}
+              onClick={() => onSelectFrame(index)}
+              sx={{
+                flexGrow,
+                flexBasis: 0,
+                minWidth: 64,
+                cursor: 'pointer',
+                borderRadius: 1,
+                overflow: 'hidden',
+                border: isActive ? '2px solid #8b5cf6' : '1px solid rgba(148,163,184,0.25)',
+                bgcolor: 'rgba(13,17,23,0.9)',
+              }}
+            >
+              <Box
+                sx={{
+                  height: 44,
+                  backgroundImage: thumb ? `url(${thumb})` : undefined,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  bgcolor: thumb ? undefined : 'rgba(148,163,184,0.12)',
+                }}
+              />
+              <Stack direction="row" justifyContent="space-between" sx={{ px: 0.6, py: 0.2 }}>
+                <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.62rem', fontWeight: 700 }}>
+                  {frame.shotNumber}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.62rem' }}>
+                  {frame.duration}s
+                </Typography>
+              </Stack>
+            </Box>
+          );
+        })}
+      </Stack>
+      <Stack direction="row" spacing={0.25} sx={{ mt: 0.5 }}>
+        {phases.map((segment, index) => (
+          <Box key={`${segment.phase}-${index}`} sx={{ flexGrow: segment.weight, flexBasis: 0, minWidth: 40 }}>
+            <Box sx={{ height: 4, borderRadius: 2, bgcolor: PHASE_COLORS[segment.phase] || 'rgba(148,163,184,0.5)' }} />
+            <Typography
+              variant="caption"
+              sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.58rem', letterSpacing: 1.1, fontWeight: 700 }}
+            >
+              {segment.phase}
+            </Typography>
+          </Box>
+        ))}
+      </Stack>
+    </Box>
+  );
+};
+
 const ShotListView: React.FC<{
   frames: StoryboardFrame[];
   onUpdate: (frames: StoryboardFrame[]) => void;
@@ -4016,16 +5132,30 @@ const ShotListView: React.FC<{
     cancelEdit();
   };
 
+  const totalSeconds = frames.reduce((sum, frame) => sum + (frame.duration || 0), 0);
+  const totalLabel = `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(Math.round(totalSeconds % 60)).padStart(2, '0')}`;
+
+  const cycleStatus = (frame: StoryboardFrame) => {
+    const order: StoryboardFrameStatus[] = ['planned', 'in_review', 'needs_work', 'done'];
+    const next = order[(order.indexOf(frame.frameStatus ?? 'planned') + 1) % order.length];
+    onUpdate(frames.map((f) => (f.id === frame.id ? { ...f, frameStatus: next } : f)));
+  };
+
   return (
     <Paper>
       <Table>
         <TableHead>
           <TableRow>
             <TableCell>Shot #</TableCell>
+            <TableCell>Board</TableCell>
             <TableCell>Beskrivelse</TableCell>
-            <TableCell>Kamera</TableCell>
+            <TableCell>Type</TableCell>
             <TableCell>Bevegelse</TableCell>
+            <TableCell>Linse</TableCell>
             <TableCell>Varighet</TableCell>
+            <TableCell>Lokasjon</TableCell>
+            <TableCell>Tid</TableCell>
+            <TableCell>Status</TableCell>
             <TableCell>Notater</TableCell>
             <TableCell>Handlinger</TableCell>
           </TableRow>
@@ -4042,6 +5172,18 @@ const ShotListView: React.FC<{
                   />
                 ) : (
                   <Chip label={frame.shotNumber} size="small" />
+                )}
+              </TableCell>
+              <TableCell>
+                {(frame.thumbnailUrl || frame.imageUrl) ? (
+                  <Box
+                    component="img"
+                    src={frame.thumbnailUrl || frame.imageUrl}
+                    alt={frame.shotNumber}
+                    sx={{ width: 64, height: 36, objectFit: 'cover', borderRadius: 0.5, display: 'block' }}
+                  />
+                ) : (
+                  <Box sx={{ width: 64, height: 36, borderRadius: 0.5, bgcolor: 'rgba(148,163,184,0.15)' }} />
                 )}
               </TableCell>
               <TableCell>
@@ -4064,7 +5206,7 @@ const ShotListView: React.FC<{
                     onChange={(event) => setEditDraft((prev) => (prev ? { ...prev, cameraAngle: event.target.value } : prev))}
                   />
                 ) : (
-                  frame.cameraAngle
+                  frame.shotType || frame.cameraAngle
                 )}
               </TableCell>
               <TableCell>
@@ -4078,6 +5220,7 @@ const ShotListView: React.FC<{
                   frame.movement
                 )}
               </TableCell>
+              <TableCell>{typeof frame.lensMm === 'number' ? `${frame.lensMm}mm` : '—'}</TableCell>
               <TableCell>
                 {editingFrameId === frame.id ? (
                   <TextField
@@ -4096,6 +5239,21 @@ const ShotListView: React.FC<{
                 ) : (
                   `${frame.duration}s`
                 )}
+              </TableCell>
+              <TableCell>{frame.location || '—'}</TableCell>
+              <TableCell>{frame.timeOfDay || '—'}</TableCell>
+              <TableCell>
+                <Chip
+                  label={FRAME_STATUS_META[frame.frameStatus ?? 'planned'].label}
+                  size="small"
+                  onClick={() => cycleStatus(frame)}
+                  sx={{
+                    color: FRAME_STATUS_META[frame.frameStatus ?? 'planned'].color,
+                    borderColor: FRAME_STATUS_META[frame.frameStatus ?? 'planned'].color,
+                    cursor: 'pointer',
+                  }}
+                  variant="outlined"
+                />
               </TableCell>
               <TableCell>
                 {editingFrameId === frame.id ? (
@@ -4143,6 +5301,66 @@ const ShotListView: React.FC<{
           ))}
         </TableBody>
       </Table>
+
+      <Stack
+        direction="row"
+        spacing={2}
+        alignItems="center"
+        justifyContent="space-between"
+        sx={{ px: 2, py: 1.25, borderTop: '1px solid rgba(148,163,184,0.18)' }}
+        data-testid="shot-list-footer"
+      >
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.8)' }}>
+            {frames.length} shots · Total Duration {totalLabel}
+          </Typography>
+          <Button
+            size="small"
+            variant="outlined"
+            data-testid="shot-list-export-csv"
+            sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#a78bfa', textTransform: 'none' }}
+            onClick={() => {
+              const escapeCsv = (value: unknown) => {
+                const text = String(value ?? '');
+                return /[",\n;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+              };
+              const header = ['Shot', 'Type', 'Move', 'Lens', 'Duration (s)', 'Location', 'Time', 'Status', 'Beat', 'Description'];
+              const rows = frames.map((frame) => [
+                frame.shotNumber,
+                frame.shotType || frame.cameraAngle,
+                frame.movement,
+                typeof frame.lensMm === 'number' ? `${frame.lensMm}mm` : '',
+                frame.duration,
+                frame.location ?? '',
+                frame.timeOfDay ?? '',
+                FRAME_STATUS_META[frame.frameStatus ?? 'planned'].label,
+                frame.beatTag ?? '',
+                frame.description,
+              ]);
+              const csv = [header, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
+              const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = 'shot-list.csv';
+              link.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Export Shot List
+          </Button>
+        </Stack>
+        <Stack direction="row" spacing={1.5}>
+          {(Object.keys(FRAME_STATUS_META) as StoryboardFrameStatus[]).map((status) => (
+            <Stack key={status} direction="row" spacing={0.5} alignItems="center">
+              <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: FRAME_STATUS_META[status].color }} />
+              <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.85)' }}>
+                {FRAME_STATUS_META[status].label}
+              </Typography>
+            </Stack>
+          ))}
+        </Stack>
+      </Stack>
 
       <Box sx={{ p: 2 }}>
         <Button

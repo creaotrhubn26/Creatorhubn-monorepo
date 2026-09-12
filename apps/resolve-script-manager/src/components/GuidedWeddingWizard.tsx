@@ -1,25 +1,29 @@
 /**
- * GuidedWeddingWizard — fullstendig onboarding for bryllups-prosjekt.
+ * Wedding Editor — guidet analyse, plan, godkjenning, bygging og QC.
  *
  * 8 steg, hvert et med læring-hook (manuelle korreksjoner skrives til
  * trrpa.learnings.global slik at Claude lærer fra sessionen).
  *
  *   1. Materialet      — mappe-pick + multicam-deteksjon + 3 timeline-valg
- *   2. Ekstern lyd     — TODO (placeholder)
- *   3. Sanger + kultur — TODO
- *   4. Personer        — TODO (face-clustering)
- *   5. Stil            — TODO (storytelling/cinematic/energetic + FlowMap)
- *   6. Live-arbeid     — TODO (Harry-Potter preview-stream)
- *   7. Color/LUT       — TODO
- *   8. Klar i Resolve  — TODO
+ * Siste steg viser alltid den konsoliderte planen og krever eksplisitt
+ * godkjenning før prosjektinnstillinger, bins eller timelines endres.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { executeScript, onScriptEvent, listMountedCards, runHealthCheck, launchResolve, convertFileSrc } from "../api";
-import type { ScriptEvent, MountedCard, HealthStatus } from "../types";
+import {
+  convertFileSrc,
+  executeScript,
+  launchResolve,
+  listMountedCards,
+  onScriptEvent,
+  runHealthCheck,
+  runResolveMcpProjectDoctor,
+} from "../api";
+import type { HealthStatus, MountedCard, ResolveMcpDoctorReport, ScriptEvent } from "../types";
 import { logActivity } from "../lib/projectActivity";
+import { buildWeddingEditorPlan } from "../lib/weddingEditorPlan";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import WarningIcon from "@mui/icons-material/Warning";
 import ErrorIcon from "@mui/icons-material/Error";
@@ -214,6 +218,56 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
   const [logGamma, setLogGamma] = useState<{ isLog: boolean; profile: string; suggestedLut?: string } | null>(null);
   const [applyLut, setApplyLut] = useState(false);
   const [logCheckBusy, setLogCheckBusy] = useState(false);
+  const [planApproved, setPlanApproved] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
+
+  const weddingPlan = useMemo(() => buildWeddingEditorPlan({
+    resolveReady: Boolean(resolveHealth?.resolveRunning && resolveHealth?.projectOpen),
+    projectName: projectName || resolveHealth?.projectName || "",
+    sourceCount: sources.length,
+    cameraCount: cameras.length,
+    clipCount: scanResult?.clipCount ?? 0,
+    multicamGroupCount: scanResult?.multicamGroupCount ?? 0,
+    multicamRequested: enableMulticam,
+    externalAudioRequested: hasExternal === true,
+    externalAudioMatchCount: matchResult?.matchCount ?? 0,
+    selectedSongCount: wishedSongs.length,
+    pickCount: livePicks.length,
+    picksPath: livePicksPath,
+    deliverables: {
+      longFilm: makeLongFilm,
+      highlight: makeHighlight,
+      teaser: makeTeaser,
+    },
+    backupManifestPath: backupResult?.manifestPath ?? null,
+    projectSettingsAvailable: Boolean(
+      cameras[0]?.resolution || scanResult?.clips?.[0]?.fps || (logGamma?.isLog && logGamma.profile),
+    ),
+    lutRequested: applyLut,
+  }), [
+    applyLut,
+    backupResult?.manifestPath,
+    cameras,
+    enableMulticam,
+    hasExternal,
+    livePicks.length,
+    livePicksPath,
+    logGamma,
+    makeHighlight,
+    makeLongFilm,
+    makeTeaser,
+    matchResult?.matchCount,
+    projectName,
+    resolveHealth,
+    scanResult,
+    sources.length,
+    wishedSongs.length,
+  ]);
+
+  useEffect(() => {
+    setPlanApproved(false);
+  }, [weddingPlan.approvalKey]);
 
   // Læring: record decisions
   const recordLearning = (note: string) => {
@@ -229,11 +283,11 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
   // ESC closes
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !scanning) onClose();
+      if (e.key === "Escape" && !scanning && !finalizing) onClose();
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [scanning, onClose]);
+  }, [finalizing, scanning, onClose]);
 
   const pickFolder = async () => {
     const sel = await openDialog({
@@ -294,14 +348,217 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
     else onComplete(folder);
   };
 
+  const executeApprovedWeddingPlan = async () => {
+    if (!planApproved || weddingPlan.readiness !== "ready" || !livePicksPath) {
+      setFinalizeError("Planen er ikke klar eller er ikke godkjent ennå.");
+      return;
+    }
+
+    setFinalizing(true);
+    setFinalizeError(null);
+    try {
+      recordLearning(
+        `Wedding Editor v1 godkjent: isLog=${logGamma?.isLog} lutChoice=${applyLut} `
+        + `timelines: long=${makeLongFilm} hl=${makeHighlight} teaser=${makeTeaser}`,
+      );
+
+      const preflightRun = await runResolveMcpProjectDoctor();
+      if (!preflightRun.succeeded) throw new Error("MCP Project Doctor kunne ikke fullføre preflight.");
+      const preflightResult = preflightRun.events.find((event) => event.type === "result");
+      const preflightReport = preflightResult?.value as ResolveMcpDoctorReport | undefined;
+      if (!preflightReport?.readOnly || !preflightReport.project) {
+        throw new Error("MCP-preflight bekreftet ikke et aktivt Resolve-prosjekt.");
+      }
+      const criticalFindings = preflightReport.findings.filter((finding) => finding.severity === "error");
+      if (criticalFindings.length > 0) {
+        throw new Error(`MCP-preflight stoppet planen: ${criticalFindings.map((finding) => finding.title).join(", ")}.`);
+      }
+
+      const projectSettingsStep = weddingPlan.steps.find((item) => item.id === "apply-project-settings");
+      if (projectSettingsStep?.enabled) {
+        const firstCam = cameras[0];
+        const resolution = firstCam?.resolution?.replace("×", "x");
+        const cstParams: Record<string, unknown> = {};
+        if (resolution) cstParams.resolution = resolution;
+        if (scanResult?.clips?.[0]?.fps) cstParams.frameRate = scanResult.clips[0].fps;
+        if (logGamma?.isLog && logGamma.profile) {
+          const profile = logGamma.profile.toLowerCase();
+          if (profile.includes("c-log")) {
+            cstParams.cstInputGamma = "Canon C-Log 2";
+            cstParams.cstInputGamut = "Canon Cinema Gamut";
+          } else if (profile.includes("s-log")) {
+            cstParams.cstInputGamma = "Sony S-Log 3";
+            cstParams.cstInputGamut = "Sony S-Gamut3.Cine";
+          } else if (profile.includes("v-log")) {
+            cstParams.cstInputGamma = "Panasonic V-Log";
+            cstParams.cstInputGamut = "Panasonic V-Gamut";
+          } else if (profile.includes("logc") || profile.includes("log c")) {
+            cstParams.cstInputGamma = "ARRI Log C / HLG";
+          }
+        }
+        if (Object.keys(cstParams).length > 0) {
+          const settingsRun = await executeScript("apply_project_settings", cstParams, false);
+          if (!settingsRun.succeeded) throw new Error("Konfigurering av prosjektinnstillinger feilet.");
+        }
+      }
+
+      const binsStep = weddingPlan.steps.find((item) => item.id === "create-bins");
+      if (binsStep?.enabled && backupResult?.manifestPath) {
+        const binsRun = await executeScript("create_resolve_bins_from_manifest", {
+          manifestPath: backupResult.manifestPath,
+        }, false);
+        if (!binsRun.succeeded) throw new Error("Oppretting av Resolve-bins feilet.");
+      }
+
+      const timelineRun = await executeScript("build_three_timelines", {
+        picksPath: livePicksPath,
+        projectName: projectName || resolveHealth?.projectName || "Untitled",
+        wanted: {
+          longFilm: makeLongFilm,
+          highlight: makeHighlight,
+          teaser: makeTeaser,
+        },
+      }, false);
+      if (!timelineRun.succeeded) throw new Error("Bygging av leveranse-timelines feilet.");
+
+      const timelineResult = timelineRun.events.find((event) => event.type === "result");
+      const timelineValue = timelineResult?.value as { timelineNames?: Record<string, string> } | undefined;
+      const timelineNames = timelineValue?.timelineNames ?? {};
+      if (Object.values(timelineNames).filter(Boolean).length === 0) {
+        throw new Error("Resolve bekreftet ikke at noen timelines ble opprettet.");
+      }
+
+      logActivity(livePicksPath, {
+        kind: "timelines_built",
+        label: `${Object.keys(timelineNames).length} timelines bygget`,
+        summary: Object.values(timelineNames).join(" · "),
+      });
+
+      const qcWarnings: string[] = [];
+      const unusedSongs = wishedSongs.map((song) => ({
+        title: song.title,
+        artist: song.artist,
+        role: song.role,
+      }));
+
+      for (const [key, timelineName] of Object.entries(timelineNames)) {
+        if (!timelineName) continue;
+        try {
+          const gapRun = await executeScript("detect_timeline_gaps", { timelineName }, false);
+          const gapResult = gapRun.events.find((event) => event.type === "result");
+          const gapValue = gapResult?.value as {
+            verdict?: string;
+            gapCount?: number;
+            totalGapSec?: number;
+          } | undefined;
+          if (gapValue && gapValue.verdict !== "clean" && (gapValue.gapCount ?? 0) > 0) {
+            qcWarnings.push(
+              `⬛ ${key}: ${gapValue.gapCount} svarte mellomrom (${gapValue.totalGapSec?.toFixed(1)}s)`,
+            );
+          }
+        } catch (error) {
+          console.warn(`Gap-check failed for ${timelineName}:`, error);
+        }
+
+        try {
+          const silenceRun = await executeScript("detect_silent_sections_in_timeline", {
+            timelineName,
+            unusedSongs,
+            minSilenceSec: 3.0,
+          }, false);
+          const silenceResult = silenceRun.events.find((event) => event.type === "result");
+          const silenceValue = silenceResult?.value as {
+            silentSections?: Array<{
+              startSec: number;
+              endSec: number;
+              durationSec: number;
+              suggestedSongs?: Array<{ title: string; artist: string; role: string }>;
+            }>;
+            totalSilentSec?: number;
+            silentPercent?: number;
+          } | undefined;
+          if (silenceValue && (silenceValue.silentSections?.length ?? 0) > 0) {
+            const lines = silenceValue.silentSections!.slice(0, 3).map((section) => {
+              const formatTime = (seconds: number) => {
+                const minutes = Math.floor(seconds / 60);
+                const remainder = Math.floor(seconds % 60);
+                return `${minutes}:${String(remainder).padStart(2, "0")}`;
+              };
+              const suggestion = section.suggestedSongs?.[0];
+              return `   ${formatTime(section.startSec)}–${formatTime(section.endSec)} `
+                + `(${section.durationSec.toFixed(1)}s)${
+                  suggestion ? ` → forslag: "${suggestion.title}" — ${suggestion.artist}` : ""
+                }`;
+            }).join("\n");
+            qcWarnings.push(
+              `🎵 ${key}: ${silenceValue.silentSections!.length} stille intervaller `
+              + `(${silenceValue.totalSilentSec}s, ${silenceValue.silentPercent}%):\n${lines}`,
+            );
+          }
+        } catch (error) {
+          console.warn(`Silent-check failed for ${timelineName}:`, error);
+        }
+      }
+
+      if (qcWarnings.length > 0) {
+        logActivity(livePicksPath, {
+          kind: "qc_run",
+          label: `QC: ${qcWarnings.length} advarsler funnet`,
+          summary: qcWarnings.slice(0, 2).join("; "),
+        });
+        const wantMarkers = await askQcMarkers(qcWarnings);
+        recordLearning(`QC: ${qcWarnings.length} advarsler — wantMarkers=${wantMarkers}`);
+
+        if (wantMarkers) {
+          let totalMarkers = 0;
+          for (const timelineName of Object.values(timelineNames)) {
+            if (!timelineName) continue;
+            try {
+              const markerRun = await executeScript("mark_qc_issues_on_timeline", {
+                timelineName,
+                unusedSongs,
+                removeOldQc: true,
+              }, false);
+              const markerResult = markerRun.events.find((event) => event.type === "result");
+              const markerValue = markerResult?.value as { markersAdded?: number } | undefined;
+              if (markerValue?.markersAdded) totalMarkers += markerValue.markersAdded;
+            } catch (error) {
+              console.warn("Marker failed:", error);
+            }
+          }
+          if (totalMarkers > 0) {
+            alert(
+              `✓ La til ${totalMarkers} QC-markers i Resolve. `
+              + "Røde = svart-gap, gule = stille. Hopp til hver via marker-listen.",
+            );
+          }
+        }
+      }
+
+      onComplete(livePicksPath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Ukjent feil under timeline-bygging.";
+      setFinalizeError(
+        `${message} Wedding Editor stoppet og åpnet ikke den kreative editoren. `
+        + "Kontroller eventuelle delvise endringer i Resolve før du prøver igjen.",
+      );
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
   const currentStepN = STEPS.find((s) => s.id === step)?.n ?? 1;
 
   return (
-    <div className="modal-backdrop anim-fade-in" onClick={!scanning ? onClose : undefined}>
-      <div className="modal anim-slide-up" onClick={(e) => e.stopPropagation()}
+    <div className="modal-backdrop anim-fade-in" onClick={!scanning && !finalizing ? onClose : undefined}>
+      <div className="modal anim-slide-up" role="dialog" aria-label="Wedding Editor"
+           onClick={(e) => e.stopPropagation()}
            style={{ maxWidth: 860, width: "min(96vw, 860px)", maxHeight: "92vh",
                      overflowY: "auto" }}>
-        <h2>Nytt bryllup — {STEPS[currentStepN - 1].label}</h2>
+        <h2>Wedding Editor — {STEPS[currentStepN - 1].label}</h2>
+        <div style={{ fontSize: 11, opacity: 0.65, marginTop: -6 }}>
+          Analyse → plan → godkjenning → bygging → QC → kreativ finpuss
+        </div>
 
         {/* Resolve-connection status banner */}
         <div style={{ display: "flex", alignItems: "center", gap: 10,
@@ -657,7 +914,7 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
 
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
               <button onClick={onClose} disabled={backupBusy}>Avbryt</button>
-              <button className="primary" disabled={cameras.length === 0 || sourceScanBusy || backupBusy}
+              <button className="primary" disabled={sources.length === 0 || sourceScanBusy || backupBusy}
                       onClick={async () => {
                 recordLearning(`Steg 1: ${cameras.length} kameraer, ${sources.length} kilder, backup=${wantBackup}`);
 
@@ -713,7 +970,9 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
                   setBackupBusy(false);
                 }
 
-                if (cameras.length > 0 && sources[0]) setFolder(sources[0].path);
+                // Tillat å gå videre så lenge minst én kilde-mappe er lagt til,
+                // selv om ingen kamera-metadata ble oppdaget i skanningen.
+                if (sources[0]) setFolder(sources[0].path);
                 setStep("material");
               }}>
                 {wantBackup && backupTarget && !backupResult
@@ -1144,7 +1403,7 @@ export function GuidedWeddingWizard({ onClose, onComplete }: Props) {
 - reason (1 setning på norsk hvorfor)
 
 KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
-                    model: "claude-opus-4-7",
+                    model: "claude-opus-4-8",
                     maxTokens: 800,
                     tools: [{
                       name: "suggest_songs",
@@ -1306,7 +1565,7 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                                 gap: 12 }}>
                   {faceClusters.slice(0, 18).map((c) => {
                     const thumbUrl = c.thumbnail.startsWith("/")
-                      ? `http://asset.localhost${c.thumbnail}` : c.thumbnail;
+                      ? convertFileSrc(c.thumbnail) : c.thumbnail;
                     return (
                       <div key={c.id} style={{ background: "rgba(0,0,0,0.3)",
                                                  padding: 8, borderRadius: 6 }}>
@@ -1446,7 +1705,10 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                       onClick={async () => {
                 if (!scanResult) return;
                 const firstClip = (scanResult as unknown as { clips?: Array<{ path: string }> }).clips?.[0]?.path;
-                if (!firstClip) return;
+                if (!firstClip) {
+                  setLiveError("Fant ingen klipp i skanningen — legg til kilde-mapper med video før du starter.");
+                  return;
+                }
                 setLiveRunning(true);
                 setLiveError(null);
                 setLivePct(0);
@@ -1623,8 +1885,8 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
         {step === "color" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={{ fontSize: 14, lineHeight: 1.5 }}>
-              Sjekker om filmen er tatt opp i log-gamma. Hvis ja, foreslår jeg en LUT
-              som matcher kameraet ditt. Vi bruker din egen LUT-mappe i Resolve.
+              Sjekker om filmen er tatt opp i log-gamma og foreslår en trygg color-retning.
+              Prosjektets CST kan konfigureres nå; selve LUT-valget tas videre til kreativ finpuss.
             </div>
 
             {!logGamma && !logCheckBusy && (
@@ -1675,183 +1937,140 @@ KUN reelle, kjente sanger. Du MÅ kalle suggest_songs-tool.`,
                     <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                       <input type="checkbox" checked={applyLut}
                               onChange={(e) => setApplyLut(e.target.checked)} />
-                      <span>Apply LUT i Resolve-timeline</span>
+                      <span>Ta med LUT-anbefalingen til kreativ finpuss</span>
                     </label>
                   </>
                 )}
               </div>
             )}
 
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
-              <button onClick={() => setStep("live")}>← Tilbake</button>
-              <button className="primary" onClick={async () => {
-                recordLearning(`Steg 7: isLog=${logGamma?.isLog} applyLut=${applyLut} timelines: long=${makeLongFilm} hl=${makeHighlight} teaser=${makeTeaser}`);
+            <div style={{
+              background: "var(--bg-3)",
+              border: `1px solid ${weddingPlan.readiness === "ready" ? "rgba(74, 212, 138, 0.55)" : "rgba(240, 165, 0, 0.55)"}`,
+              borderRadius: 10,
+              padding: 16,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>Wedding Editor-plan</div>
+                  <div style={{ fontSize: 11, opacity: 0.65 }}>Versjon 1 · eksplisitt godkjenning før Resolve endres</div>
+                </div>
+                <span style={{
+                  borderRadius: 999,
+                  padding: "4px 9px",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: weddingPlan.readiness === "ready" ? "#4ad48a" : "#f0a500",
+                  background: weddingPlan.readiness === "ready"
+                    ? "rgba(74, 212, 138, 0.12)"
+                    : "rgba(240, 165, 0, 0.12)",
+                }}>
+                  {weddingPlan.readiness === "ready" ? "KLAR FOR GODKJENNING" : "MANGLER FØR BYGGING"}
+                </span>
+              </div>
 
-                // 1. Apply project settings (resolution + framerate + CST)
-                //    basert på første kameras codec + log-gamma-deteksjon
-                if (resolveHealth?.resolveRunning && resolveHealth?.projectOpen) {
-                  try {
-                    const firstCam = cameras[0];
-                    const resolution = firstCam?.resolution?.replace("×", "x");
-                    // Sjekk codec / fps fra første klipp (heuristikk)
-                    const cstParams: Record<string, unknown> = {};
-                    if (resolution) cstParams.resolution = resolution;
-                    // FPS henter vi fra scan_folder_multicam dersom tilgjengelig
-                    if (scanResult && scanResult.clips && scanResult.clips[0]?.fps) {
-                      cstParams.frameRate = scanResult.clips[0].fps;
-                    }
-                    // CST log-gamma fra detect-resultatet
-                    if (logGamma?.isLog && logGamma.profile) {
-                      // Map profile-string til CST-input
-                      const p = logGamma.profile.toLowerCase();
-                      if (p.includes("c-log")) {
-                        cstParams.cstInputGamma = "Canon C-Log 2";
-                        cstParams.cstInputGamut = "Canon Cinema Gamut";
-                      } else if (p.includes("s-log")) {
-                        cstParams.cstInputGamma = "Sony S-Log 3";
-                        cstParams.cstInputGamut = "Sony S-Gamut3.Cine";
-                      } else if (p.includes("v-log")) {
-                        cstParams.cstInputGamma = "Panasonic V-Log";
-                        cstParams.cstInputGamut = "Panasonic V-Gamut";
-                      } else if (p.includes("logc") || p.includes("log c")) {
-                        cstParams.cstInputGamma = "ARRI Log C / HLG";
-                      }
-                    }
-                    if (Object.keys(cstParams).length > 0) {
-                      await executeScript("apply_project_settings", cstParams, false);
-                    }
-                  } catch (e) {
-                    console.warn("apply_project_settings failed:", e);
-                  }
-                }
+              <div style={{ fontSize: 12, lineHeight: 1.6, marginTop: 12 }}>
+                <strong>{weddingPlan.summary.projectName}</strong> · {weddingPlan.summary.clipCount} klipp ·{" "}
+                {weddingPlan.summary.cameraCount} kameraer · {weddingPlan.summary.pickCount} AI-picks
+                <br />
+                Leveranser: {weddingPlan.deliverables.join(" · ") || "Ingen valgt"}
+              </div>
 
-                // 2. Hvis backup-manifest finnes → lag Resolve-bins
-                if (backupResult?.manifestPath) {
-                  try {
-                    await executeScript("create_resolve_bins_from_manifest", {
-                      manifestPath: backupResult.manifestPath,
-                    }, false);
-                  } catch (e) {
-                    console.warn("Resolve-bins-build failed:", e);
-                  }
-                }
+              <div style={{ display: "grid", gap: 7, marginTop: 12 }}>
+                {weddingPlan.steps.map((planStep) => (
+                  <div key={planStep.id} style={{
+                    display: "grid",
+                    gridTemplateColumns: "20px 1fr auto",
+                    gap: 8,
+                    alignItems: "start",
+                    opacity: planStep.enabled ? 1 : 0.45,
+                    fontSize: 11,
+                  }}>
+                    <span>{planStep.enabled ? "✓" : "—"}</span>
+                    <span>
+                      <strong>{planStep.label}</strong>
+                      <span style={{ display: "block", opacity: 0.7 }}>{planStep.description}</span>
+                    </span>
+                    <span style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: 999,
+                      padding: "2px 6px",
+                      whiteSpace: "nowrap",
+                      fontSize: 9,
+                    }}>
+                      {planStep.mode === "read-only"
+                        ? "KUN LESING"
+                        : planStep.mode === "conditional-write"
+                        ? "NY GODKJENNING"
+                        : "SKRIVER"}
+                    </span>
+                  </div>
+                ))}
+              </div>
 
-                // 3. Bygg 3 timelines i ett kall basert på Steg 1-valgene
-                let timelineNames: Record<string, string> = {};
-                if (livePicksPath && (makeLongFilm || makeHighlight || makeTeaser)) {
-                  try {
-                    const sum = await executeScript("build_three_timelines", {
-                      picksPath: livePicksPath,
-                      projectName: projectName || "Untitled",
-                      wanted: {
-                        longFilm: makeLongFilm,
-                        highlight: makeHighlight,
-                        teaser: makeTeaser,
-                      },
-                    }, false);
-                    const r = sum.events.find((e) => e.type === "result");
-                    const val = r?.value as { timelineNames?: Record<string, string> } | undefined;
-                    if (val?.timelineNames) {
-                      timelineNames = val.timelineNames;
-                      logActivity(livePicksPath, {
-                        kind: "timelines_built",
-                        label: `${Object.keys(timelineNames).length} timelines bygget`,
-                        summary: Object.values(timelineNames).join(" · "),
-                      });
-                    }
-                  } catch (e) {
-                    console.warn("Three-timelines-build failed:", e);
-                  }
-                }
+              {weddingPlan.blockers.length > 0 && (
+                <div style={{
+                  marginTop: 12,
+                  borderLeft: "3px solid #f0a500",
+                  padding: "8px 10px",
+                  background: "rgba(240, 165, 0, 0.08)",
+                  fontSize: 11,
+                }}>
+                  {weddingPlan.blockers.map((blocker) => <div key={blocker}>• {blocker}</div>)}
+                </div>
+              )}
 
-                // 4. QC: gaps + silent-sections i hver bygget timeline
-                const qcWarnings: string[] = [];
-                // Spor ubrukte sanger til silent-suggestion
-                const unusedSongs = wishedSongs.map((s) => ({
-                  title: s.title, artist: s.artist, role: s.role,
-                }));
-                for (const [key, tlName] of Object.entries(timelineNames)) {
-                  if (!tlName) continue;
-                  // 4a. Svarte mellomrom
-                  try {
-                    const sum = await executeScript("detect_timeline_gaps", {
-                      timelineName: tlName,
-                    }, false);
-                    const r = sum.events.find((e) => e.type === "result");
-                    const val = r?.value as { verdict?: string; gapCount?: number; totalGapSec?: number } | undefined;
-                    if (val && val.verdict !== "clean" && (val.gapCount ?? 0) > 0) {
-                      qcWarnings.push(`⬛ ${key}: ${val.gapCount} svarte mellomrom (${val.totalGapSec?.toFixed(1)}s)`);
-                    }
-                  } catch (e) {
-                    console.warn(`Gap-check failed for ${tlName}:`, e);
-                  }
-                  // 4b. Stille intervaller med musikk-forslag
-                  try {
-                    const sum = await executeScript("detect_silent_sections_in_timeline", {
-                      timelineName: tlName,
-                      unusedSongs,
-                      minSilenceSec: 3.0,
-                    }, false);
-                    const r = sum.events.find((e) => e.type === "result");
-                    const val = r?.value as {
-                      silentSections?: Array<{ startSec: number; endSec: number; durationSec: number;
-                                                 chapterAtTime?: string;
-                                                 suggestedSongs?: Array<{ title: string; artist: string; role: string }> }>;
-                      totalSilentSec?: number;
-                      silentPercent?: number;
-                    } | undefined;
-                    if (val && (val.silentSections?.length ?? 0) > 0) {
-                      const lines = val.silentSections!.slice(0, 3).map((s) => {
-                        const fmt = (x: number) => {
-                          const m = Math.floor(x / 60); const ss = Math.floor(x % 60);
-                          return `${m}:${String(ss).padStart(2, "0")}`;
-                        };
-                        const sugg = s.suggestedSongs?.[0];
-                        return `   ${fmt(s.startSec)}–${fmt(s.endSec)} (${s.durationSec.toFixed(1)}s)${
-                          sugg ? ` → forslag: "${sugg.title}" — ${sugg.artist}` : ""}`;
-                      }).join("\n");
-                      qcWarnings.push(`🎵 ${key}: ${val.silentSections!.length} stille intervaller (${val.totalSilentSec}s, ${val.silentPercent}%):\n${lines}`);
-                    }
-                  } catch (e) {
-                    console.warn(`Silent-check failed for ${tlName}:`, e);
-                  }
-                }
-                if (qcWarnings.length > 0) {
-                  logActivity(livePicksPath, {
-                    kind: "qc_run",
-                    label: `QC: ${qcWarnings.length} advarsler funnet`,
-                    summary: qcWarnings.slice(0, 2).join("; "),
-                  });
-                  const wantMarkers = await askQcMarkers(qcWarnings);
-                  recordLearning(`QC: ${qcWarnings.length} advarsler — wantMarkers=${wantMarkers}`);
+              {weddingPlan.warnings.length > 0 && (
+                <div style={{ marginTop: 10, fontSize: 11, opacity: 0.75 }}>
+                  {weddingPlan.warnings.map((warning) => <div key={warning}>⚠ {warning}</div>)}
+                </div>
+              )}
 
-                  if (wantMarkers) {
-                    let totalMarkers = 0;
-                    for (const tlName of Object.values(timelineNames)) {
-                      if (!tlName) continue;
-                      try {
-                        const sum = await executeScript("mark_qc_issues_on_timeline", {
-                          timelineName: tlName,
-                          unusedSongs,
-                          removeOldQc: true,
-                        }, false);
-                        const r = sum.events.find((e) => e.type === "result");
-                        const val = r?.value as { markersAdded?: number } | undefined;
-                        if (val?.markersAdded) totalMarkers += val.markersAdded;
-                      } catch (e) {
-                        console.warn("Marker failed:", e);
-                      }
-                    }
-                    if (totalMarkers > 0) {
-                      alert(`✓ La til ${totalMarkers} QC-markers i Resolve. Røde = svart-gap, gule = stille. Hopp til hver via marker-listen.`);
-                    }
-                  }
-                }
-
-                if (livePicksPath) onComplete(livePicksPath);
-                else onComplete(folder);
+              <label style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 9,
+                marginTop: 14,
+                paddingTop: 12,
+                borderTop: "1px solid var(--border)",
+                cursor: weddingPlan.readiness === "ready" ? "pointer" : "not-allowed",
+                fontSize: 12,
+                lineHeight: 1.45,
               }}>
-                Ferdig — konfigurer Resolve + bygg timelines →
+                <input
+                  type="checkbox"
+                  checked={planApproved}
+                  disabled={weddingPlan.readiness !== "ready" || finalizing}
+                  onChange={(event) => setPlanApproved(event.target.checked)}
+                  style={{ marginTop: 2 }}
+                />
+                <span>
+                  Jeg godkjenner at Post Agent utfører de aktiverte skriveoperasjonene over i
+                  det åpne Resolve-prosjektet. QC-markers krever en ny godkjenning.
+                </span>
+              </label>
+            </div>
+
+            {finalizeError && (
+              <div role="alert" style={{
+                background: "rgba(239, 79, 111, 0.10)",
+                borderLeft: "3px solid var(--danger)",
+                padding: 10,
+                borderRadius: 4,
+                fontSize: 12,
+              }}>
+                <strong>Byggingen ble stoppet:</strong> {finalizeError}
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+              <button onClick={() => setStep("live")} disabled={finalizing}>← Tilbake</button>
+              <button
+                className="primary"
+                onClick={executeApprovedWeddingPlan}
+                disabled={weddingPlan.readiness !== "ready" || !planApproved || finalizing}
+              >
+                {finalizing ? "Bygger og kjører QC …" : "Godkjenn plan + bygg i Resolve →"}
               </button>
             </div>
           </div>

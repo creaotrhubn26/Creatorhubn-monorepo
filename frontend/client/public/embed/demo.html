@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>role-room-infographic — embed-demo</title>
+  <!-- Én selvstendig fil (~3,6 KB). Motoren er bundlet inn. -->
+  <script src="./role-room-infographic.js"></script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; background: #0b1120; color: #c7d2e3; }
+    .wrap { max-width: 920px; margin: 0 auto; padding: 28px 20px 60px; }
+    h1 { font-size: 20px; } h2 { font-size: 14px; color: #8fa3c0; margin-top: 34px; }
+    pre { background: #10182a; border: 1px solid #24304a; border-radius: 8px; padding: 12px 14px; overflow: auto; font-size: 12.5px; color: #9ecbff; }
+    .stage { background: linear-gradient(135deg,#10182a,#0b1120); border: 1px solid #24304a; border-radius: 12px; margin: 12px 0; }
+    role-room-infographic { display: block; width: 100%; height: 340px; }
+    code { color: #8affc8; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>&lt;role-room-infographic&gt; — embed hvor som helst</h1>
+    <p>Rammeverk-agnostisk custom element. Malen leser <code>window.__CFG__</code> (data) + definerer
+       <code>setProgress(p)</code> (animasjon). Rendres isolert i en iframe.</p>
+
+    <h2>Levende eksempel (mal via template-url, data via attributt)</h2>
+    <div class="stage"><role-room-infographic id="live" autoplay="6"
+      template-url="./demo-template.html"
+      data='{"accent":"#2f6df0","cards":[{"label":"Pasienter i dag","value":"124"},{"label":"Digital innsjekk","value":"76%"},{"label":"Redusert ventetid","value":"-18%"}]}'>
+    </role-room-infographic></div>
+
+    <h2>Bruk</h2>
+    <pre>&lt;script src="/embed/role-room-infographic.js"&gt;&lt;/script&gt;
+
+&lt;!-- A) data via attributt, mal via template-url --&gt;
+&lt;role-room-infographic accent="#2f6df0" autoplay="5"
+  template-url="/maler/kpi.html"
+  data='{"cards":[{"label":"Pasienter","value":"124","icon":"group"}]}'&gt;
+&lt;/role-room-infographic&gt;
+
+&lt;!-- B) mal + data via JS-property (best for store objekter / rammeverk-binding) --&gt;
+&lt;script&gt;
+  const el = document.querySelector('role-room-infographic');
+  el.template = '&lt;div id="wrap"&gt;...&lt;/div&gt;&lt;script&gt;window.setProgress=...&lt;/script&gt;';
+  el.data = { cards: [ /* ... */ ] };
+  el.fontsCss = '@font-face{...}'; // valgfritt: ikon-/merkevare-fonter
+&lt;/script&gt;</pre>
+  </div>
+</body>
+</html>

@@ -42,7 +42,10 @@ import {
   Switch,
   FormControlLabel,
   Autocomplete,
+  ThemeProvider,
+  InputAdornment,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Add,
   Settings,
@@ -62,9 +65,11 @@ import {
   People,
   AttachMoney,
   Event,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import type { ChipProps } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface ProfessionTypeConfig {
   id: string;
@@ -124,7 +129,14 @@ export default function ProfessionTypeManager() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedProfession, setSelectedProfession] = useState<ProfessionTypeConfig | null>(null);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  // Skjema for opprett/rediger — workspaceCategory styrer hvilken flate-familie
+  // profesjonen får i Team Workspace (profession_types.workspace_category).
+  const [form, setForm] = useState<{ name: string; displayName: string; description: string; iconColor: string; workspaceCategory: string }>({
+    name: '', displayName: '', description: '', iconColor: '#ff8c00', workspaceCategory: 'visual',
+  });
 
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const theming = useTheming('admin');
   const { analytics, performance, debugging, lifecycle, features, auth } = useEnhancedMasterIntegration();
@@ -132,7 +144,7 @@ export default function ProfessionTypeManager() {
   // Dynamic tab filtering using feature access
   const activeProfessionsAccess = features.checkFeatureAccess('admin-active-professions');
   const templatesAccess = features.checkFeatureAccess('admin-profession-templates');
-  const ssbDataAccess = features.checkFeatureAccess('admin-ssb-proff-data, ');
+  const ssbDataAccess = features.checkFeatureAccess('admin-ssb-proff-data');
   const createProfessionAccess = features.checkFeatureAccess('admin-create-profession');
   
   // Build dynamic tab configuration
@@ -362,13 +374,24 @@ export default function ProfessionTypeManager() {
     }
   });
 
+  const seedForm = (p?: Partial<ProfessionTypeConfig> | any) => setForm({
+    name: p?.name || p?.id || '',
+    displayName: p?.displayName || '',
+    description: p?.description || '',
+    iconColor: p?.iconColor || '#ff8c00',
+    workspaceCategory: (p as any)?.workspaceCategory
+      || (p?.category === 'service' ? 'service' : p?.category === 'business' ? 'vendor' : 'visual'),
+  });
+
   const handleCreateProfession = (template: ProfessionTypeConfig) => {
     setSelectedProfession(template);
+    seedForm(template);
     setCreateDialogOpen(true);
   };
 
   const handleEditProfession = (profession: ProfessionTypeConfig) => {
     setSelectedProfession(profession);
+    seedForm(profession);
     setEditDialogOpen(true);
   };
 
@@ -410,12 +433,13 @@ export default function ProfessionTypeManager() {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       {/* Header */}
-      <Paper sx={{ 
-        p: 3, 
-        mb: 3, 
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
+      <Paper sx={{
+        p: 3,
+        mb: 3,
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -423,7 +447,7 @@ export default function ProfessionTypeManager() {
               <Category sx={{ fontSize: 30, color: 'white' }} />
             </Avatar>
             <Box>
-              <Typography variant="h4" sx={{ color: 'white', fontWeight: 700}}>
+              <Typography variant="h4" component="h2" sx={{ color: 'white', fontWeight: 700}}>
                 Profession Type Manager
               </Typography>
               <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.8)' }}>
@@ -433,13 +457,15 @@ export default function ProfessionTypeManager() {
           </Box>
           
           {createProfessionAccess.hasAccess && (
-            <Button
-              variant="contained"
+            <AdminButton
+              tone="primary"
               startIcon={<Add />}
               onClick={() => {
                 analytics.trackEvent('create_profession_button_clicked', {
                   hasAccess: createProfessionAccess.hasAccess
                 });
+                setSelectedProfession(null);
+                seedForm(null);
                 setCreateDialogOpen(true);
               }}
               sx={{
@@ -448,7 +474,7 @@ export default function ProfessionTypeManager() {
               }}
             >
               Ny Profesjon
-            </Button>
+            </AdminButton>
           )}
           
           {!createProfessionAccess.hasAccess && (
@@ -509,7 +535,7 @@ export default function ProfessionTypeManager() {
               <Typography variant="h6" color="textSecondary">
                 SSB Integrasjoner
               </Typography>
-              <Typography variant="h4" sx={{ color: '#9c27b0', fontWeight: 700}}>
+              <Typography variant="h4" sx={{ color: '#ce93d8', fontWeight: 700}}>
                 {activeProfessions?.ssbConnected || 0}
               </Typography>
             </CardContent>
@@ -557,13 +583,34 @@ export default function ProfessionTypeManager() {
       {/* Active Professions */}
       {selectedTab === 0 && (
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+          <Typography variant="h5" component="h2" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
             <CheckCircle sx={{ mr: 2, color: 'success.main' }} />
             Aktive Profesjoner
           </Typography>
-          
+
+          <TextField
+            size="small"
+            placeholder="Søk i profesjoner …"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            sx={{ mb: 3, width: { xs: '100%', sm: 360 } }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+
           <Grid container spacing={2}>
-            {activeProfessions?.professions?.map((profession: ProfessionTypeConfig) => (
+            {(Array.isArray(activeProfessions?.professions) ? activeProfessions.professions : [])
+              .filter((profession: ProfessionTypeConfig) =>
+                `${profession.displayName} ${profession.name} ${profession.category} ${profession.description}`
+                  .toLowerCase()
+                  .includes(search.toLowerCase())
+              )
+              .map((profession: ProfessionTypeConfig) => (
               <Grid item xs={12} sm={6} md={4} key={profession.id}>
                 <Card sx={{ 
                   height: '100%',
@@ -653,17 +700,18 @@ export default function ProfessionTypeManager() {
                     
                     {/* Actions */}
                     <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Button
+                      <AdminButton
                         size="small"
-                        variant="outlined"
+                        tone="secondary"
                         startIcon={<Preview />}
                         onClick={() => handlePreview(profession)}
                         sx={{ flex: 1 }}
                       >
                         Forhåndsvisning
-                      </Button>
-                      <IconButton 
-                        size="small" 
+                      </AdminButton>
+                      <IconButton
+                        size="small"
+                        aria-label="Rediger profesjon"
                         onClick={() => handleEditProfession(profession)}
                         sx={{ color: profession.iconColor }}
                       >
@@ -681,7 +729,7 @@ export default function ProfessionTypeManager() {
       {/* Available Templates */}
       {selectedTab === 1 && (
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+          <Typography variant="h5" component="h2" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
             <Extension sx={{ mr: 2, color: 'primary.main' }} />
             Tilgjengelige Profesjonsmaler
           </Typography>
@@ -694,7 +742,7 @@ export default function ProfessionTypeManager() {
           </Alert>
           
           <Grid container spacing={2}>
-            {availableTemplates?.templates?.map((template: ProfessionTypeConfig) => (
+            {(Array.isArray(availableTemplates?.templates) ? availableTemplates.templates : []).map((template: ProfessionTypeConfig) => (
               <Grid item xs={12} sm={6} md={4} key={template.id}>
                 <Card sx={{ 
                   height: '100%',
@@ -787,26 +835,27 @@ export default function ProfessionTypeManager() {
                     
                     {/* Action buttons */}
                     <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Button
+                      <AdminButton
                         fullWidth
-                        variant="contained"
+                        tone="primary"
                         startIcon={<Add />}
                         onClick={() => activateTemplateMutation.mutate(template.id)}
-                        disabled={activateTemplateMutation.isPending}
+                        loading={activateTemplateMutation.isPending}
                         sx={{
                           bgcolor: template.iconColor,
                           '&:hover': { bgcolor: template.iconColor, opacity: 0.9 }
                         }}
                       >
                         Aktiver
-                      </Button>
-                      <Button
-                        variant="outlined"
+                      </AdminButton>
+                      <AdminButton
+                        tone="secondary"
+                        aria-label="Forhåndsvisning"
                         onClick={() => handlePreview(template)}
                         sx={{ minWidth: 'auto', px: 2 }}
                       >
                         <Preview />
-                      </Button>
+                      </AdminButton>
                     </Box>
                   </CardContent>
                 </Card>
@@ -819,7 +868,7 @@ export default function ProfessionTypeManager() {
       {/* SSB/Proff.no Data Tab */}
       {selectedTab === 2 && (
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h5" sx={{ mb: 3, fontWeight: 600}}>
+          <Typography variant="h5" component="h2" sx={{ mb: 3, fontWeight: 600}}>
             SSB og Proff.no Integrasjon
           </Typography>
           
@@ -831,7 +880,7 @@ export default function ProfessionTypeManager() {
           </Alert>
           
           <Grid container spacing={2}>
-            {activeProfessions?.professions?.map((profession: ProfessionTypeConfig) => (
+            {(Array.isArray(activeProfessions?.professions) ? activeProfessions.professions : []).map((profession: ProfessionTypeConfig) => (
               <Grid item xs={12} md={6} key={profession.id}>
                 <Card>
                   <CardContent>
@@ -875,11 +924,12 @@ export default function ProfessionTypeManager() {
       )}
 
       {/* Preview Dialog */}
-      <Dialog 
-        open={previewDialogOpen} 
+      <Dialog
+        open={previewDialogOpen}
         onClose={() => setPreviewDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1000,51 +1050,121 @@ export default function ProfessionTypeManager() {
         </DialogContent>
         
         <DialogActions>
-          <Button onClick={() => setPreviewDialogOpen(false)}>
+          <AdminButton tone="ghost" onClick={() => setPreviewDialogOpen(false)}>
             Lukk
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Create/Edit Dialog */}
-      <Dialog 
-        open={createDialogOpen || editDialogOpen} 
+      <Dialog
+        open={createDialogOpen || editDialogOpen}
         onClose={() => {
           setCreateDialogOpen(false);
           setEditDialogOpen(false);
         }}
         maxWidth="lg"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Typography variant="h6">
             {createDialogOpen ? 'Opprett Ny Profesjon' : 'Rediger Profesjon'}
           </Typography>
         </DialogTitle>
-        
+
         <DialogContent>
           <Alert severity="info" sx={{ mb: 3 }}>
-            Dette er en kraftig funksjon som lar deg legge til helt nye profesjoner til CreatorHub Norge.
-            Systemet vil automatisk hente SSB og Proff.no data basert på næringskoden du oppgir.
+            Profesjonen lagres i profesjonsregisteret (profession_types) og blir umiddelbart
+            tilgjengelig i registrering, dashbord og Team Workspace. <strong>Workspace-kategorien</strong> avgjør
+            hvilke faner brukere med denne profesjonen får i workspacet — endringer slår inn automatisk, uten deploy.
           </Alert>
-          
-          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-            Funksjonalitet kommer snart! For nå, bruk tilgjengelige maler i fanen "Tilgjengelige Maler".
-          </Typography>
+
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Teknisk navn (id)"
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                disabled={editDialogOpen}
+                helperText="Lowercase med underscore, f.eks. hairdresser eller tattoo_artist"
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Visningsnavn"
+                value={form.displayName}
+                onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
+                helperText="Norsk navn, f.eks. Frisør"
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                select
+                label="Workspace-kategori"
+                value={form.workspaceCategory}
+                onChange={(e) => setForm((f) => ({ ...f, workspaceCategory: e.target.value }))}
+                helperText="Flate-familien i Team Workspace"
+                fullWidth
+              >
+                <MenuItem value="visual">Foto/Video (Shotlist, Produksjonskart, Photo/Video Room)</MenuItem>
+                <MenuItem value="music">Musikk (Låter, Sesjoner, Sound Room)</MenuItem>
+                <MenuItem value="service">Service/booking (universelle faner — booking-faner kommer)</MenuItem>
+                <MenuItem value="vendor">Leverandør (Oppdrag, Lager, Ordreplan, Inspirasjon)</MenuItem>
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Ikonfarge"
+                type="color"
+                value={form.iconColor}
+                onChange={(e) => setForm((f) => ({ ...f, iconColor: e.target.value }))}
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Beskrivelse"
+                value={form.description}
+                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                multiline
+                minRows={2}
+                fullWidth
+              />
+            </Grid>
+          </Grid>
         </DialogContent>
-        
+
         <DialogActions>
-          <Button onClick={() => {
+          <AdminButton tone="ghost" onClick={() => {
             setCreateDialogOpen(false);
             setEditDialogOpen(false);
           }}>
             Avbryt
-          </Button>
-          <Button variant="contained" disabled>
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            disabled={!form.name.trim() || !form.displayName.trim() || createProfessionMutation.isPending || updateProfessionMutation.isPending}
+            onClick={() => {
+              const payload = {
+                name: form.name.trim(),
+                displayName: form.displayName.trim(),
+                description: form.description.trim() || undefined,
+                iconColor: form.iconColor,
+                workspaceCategory: form.workspaceCategory,
+              };
+              if (createDialogOpen) createProfessionMutation.mutate(payload);
+              else updateProfessionMutation.mutate({ id: (selectedProfession as any)?.name || (selectedProfession as any)?.id || form.name, data: payload });
+            }}
+          >
             {createDialogOpen ? 'Opprett' : 'Lagre'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }

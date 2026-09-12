@@ -22,6 +22,7 @@ import {
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import ShieldIcon from '@mui/icons-material/Shield';
+import authSessionService from '../../services/authSessionService';
 import { useState } from 'react';
 
 import { palette, radius } from '../theme';
@@ -46,7 +47,10 @@ export default function SettingsPage() {
     setExporting(true);
     setError(null);
     try {
-      const r = await fetch('/api/role-room/talents/me/export', { credentials: 'include' });
+      const r = await fetch('/api/role-room/talents/me/export', {
+        credentials: 'include',
+        headers: { ...authSessionService.getAuthHeadersSync() },
+      });
       if (!r.ok) {
         const payload = await r.json().catch(() => null);
         throw new Error(payload?.error || `HTTP ${r.status}`);
@@ -73,7 +77,7 @@ export default function SettingsPage() {
       const r = await fetch('/api/role-room/talents/me', {
         method: 'DELETE',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authSessionService.getAuthHeadersSync() },
         body: JSON.stringify({ confirmation: 'SLETT MIN PROFIL' }),
       });
       const payload = await r.json().catch(() => null);
@@ -89,8 +93,8 @@ export default function SettingsPage() {
   };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 720, mx: 'auto' }}>
-      <Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: palette.textPrimary, lineHeight: 1.15, mb: 3 }}>
+    <Box sx={{ p: { xs: 1.5, sm: 2, md: 3 }, maxWidth: 720, mx: 'auto' }}>
+      <Typography sx={{ fontSize: { xs: '1.5rem', sm: '1.8rem' }, fontWeight: 800, color: palette.textPrimary, lineHeight: 1.15, mb: 3 }}>
         Innstillinger
       </Typography>
 

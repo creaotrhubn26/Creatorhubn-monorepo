@@ -16,8 +16,12 @@
  *   POST   /:projectId/live-set/sync/ack
  *   GET    /:projectId/live-set/health
  *
- * Tilgang: ÅPEN (ingen auth) — matcher eksisterende oppførsel før
- * ekstrakt.
+ * Tilgang: AUTH + prosjekt-medlemskap. Alle GET/POST-endpoints (unntatt
+ * den statiske live-set/health-proben) krever innlogget bruker som er
+ * eier eller medlem av prosjektet (requireProjectAccess →
+ * canAccessRoleRoomProject). Tidligere var offers/contracts/project-
+ * agreements-GETene helt åpne (uauth cross-tenant lesing av
+ * kompensasjon/vilkår + motparts-PII).
  *
  * Mode-relevans: live-set endpoints brukes primært i Produksjonsteam-
  * mode (shooting-day-flyt), mens offers/contracts/agreements er mode-
@@ -58,12 +62,51 @@
  */
 
 import type express from "express";
+import type { Pool } from "pg";
 
 import { getProjectItems, setProjectItems } from "./_shared";
 import type { RoleRoomLiveSetService } from "./role-room-live-set-service";
+import { resolveEducationProductionRole } from "./role-room-education-production-access.js";
+
+/**
+ * Authorize a user as a member of a role-room (casting) project. Mirrors the
+ * canonical role-room access predicate used across role-room-routes (e.g.
+ * role-room-routes.ts client-comments): the caller is a member iff they created
+ * the project (casting_projects.created_by) or hold an RBAC role row
+ * (casting_user_roles.user_id). Matches user_id only — identical to the existing
+ * gate — so Live Set access is neither looser nor stricter than the rest of
+ * role-room. Fails closed on error.
+ */
+export async function canAccessRoleRoomProject(
+  pool: Pool,
+  userId: string,
+  projectId: string,
+): Promise<boolean> {
+  if (!userId || !projectId) return false;
+  try {
+    const owner = await pool.query(
+      `SELECT 1 FROM casting_projects WHERE id = $1 AND created_by = $2 LIMIT 1`,
+      [projectId, userId],
+    );
+    if ((owner.rowCount ?? 0) > 0) return true;
+    const member = await pool.query(
+      `SELECT 1 FROM casting_user_roles WHERE project_id = $1 AND user_id = $2 LIMIT 1`,
+      [projectId, userId],
+    );
+    if ((member.rowCount ?? 0) > 0) return true;
+    // Utdannings-bro: student tildelt en studentproduksjon (via education-workspacet)
+    // får tilgang med sin ekte konto — uten casting_user_roles (ingen sete-billing).
+    const eduRole = await resolveEducationProductionRole(pool, userId, projectId);
+    return eduRole !== null;
+  } catch (e) {
+    console.error("[role-room] canAccessRoleRoomProject error:", e);
+    return false; // fail closed
+  }
+}
 
 export interface RoleRoomProjectsRoutesDeps {
   app: express.Application;
+  pool: Pool;
   requireUserSession: (req: any, res: any) => any;
   compatStoreGet: <T>(storeKey: string) => Promise<T | null>;
   legacyOffersByProject: Map<string, unknown[]>;
@@ -83,6 +126,7 @@ export function setupRoleRoomProjectsRoutes(
 ): void {
   const {
     app,
+    pool,
     requireUserSession,
     compatStoreGet,
     legacyOffersByProject,
@@ -94,7 +138,30 @@ export function setupRoleRoomProjectsRoutes(
     liveSetService,
   } = deps;
 
+  // Authenticate the caller AND authorize them as a member of the addressed
+  // role-room project before ANY project-bundled resource is read or written —
+  // Live Set state as well as the offers/contracts/project-agreements lists.
+  // Previously the write endpoints only checked requireUserSession (any
+  // authenticated user could inject roll/cut/note events into ANOTHER
+  // production's live set), GET /live-set/events was fully public, and the
+  // offers/contracts/project-agreements GETs were fully public too (anyone
+  // could read a project's compensation, terms and counterparty PII by
+  // supplying its projectId). Returns the userId on success; on failure it has
+  // already written the 401/403 response, so the caller must `return`.
+  async function requireProjectAccess(req: any, res: any): Promise<string | null> {
+    const session = requireUserSession(req, res);
+    if (!session) return null;
+    const userId = String(session.userId ?? session.user_id ?? session.id ?? "");
+    const projectId = String(req.params.projectId ?? "");
+    if (!userId || !projectId || !(await canAccessRoleRoomProject(pool, userId, projectId))) {
+      res.status(403).json({ error: "forbidden" });
+      return null;
+    }
+    return userId;
+  }
+
   app.get("/api/role-room/projects/:projectId/offers", async (req, res) => {
+    if (!(await requireProjectAccess(req, res))) return;
     const projectId = req.params.projectId;
     const dbOffers = await compatStoreGet<unknown[]>(dbLegacyOffersKey(projectId));
     if (Array.isArray(dbOffers)) {
@@ -106,6 +173,7 @@ export function setupRoleRoomProjectsRoutes(
   });
 
   app.get("/api/role-room/projects/:projectId/contracts", async (req, res) => {
+    if (!(await requireProjectAccess(req, res))) return;
     const projectId = req.params.projectId;
     const dbContracts = await compatStoreGet<unknown[]>(
       dbLegacyContractsKey(projectId),
@@ -121,6 +189,7 @@ export function setupRoleRoomProjectsRoutes(
   app.get(
     "/api/role-room/projects/:projectId/project-agreements",
     async (req, res) => {
+      if (!(await requireProjectAccess(req, res))) return;
       const projectId = req.params.projectId;
       const dbAgreements = await compatStoreGet<unknown[]>(
         dbLegacyProjectAgreementsKey(projectId),
@@ -143,7 +212,7 @@ export function setupRoleRoomProjectsRoutes(
   app.post(
     "/api/role-room/projects/:projectId/live-set/sessions",
     async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    if (!(await requireProjectAccess(req, res))) return;
       const projectId = req.params.projectId;
       const payload = req.body || {};
       const current = await liveSetService.getLegacyLiveSetSessions(projectId);
@@ -187,7 +256,7 @@ export function setupRoleRoomProjectsRoutes(
   app.post(
     "/api/role-room/projects/:projectId/live-set/events/batch",
     async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    if (!(await requireProjectAccess(req, res))) return;
       const projectId = req.params.projectId;
       const payload = req.body || {};
       const incoming = Array.isArray(payload.events) ? payload.events : [];
@@ -255,6 +324,7 @@ export function setupRoleRoomProjectsRoutes(
   app.get(
     "/api/role-room/projects/:projectId/live-set/events",
     async (req, res) => {
+      if (!(await requireProjectAccess(req, res))) return;
       const projectId = req.params.projectId;
       const since = typeof req.query.since === "string" ? req.query.since : "";
       const sinceTime = since ? Date.parse(since) : NaN;
@@ -287,7 +357,7 @@ export function setupRoleRoomProjectsRoutes(
   app.post(
     "/api/role-room/projects/:projectId/live-set/sync/ack",
     async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    if (!(await requireProjectAccess(req, res))) return;
       const projectId = req.params.projectId;
       const payload = req.body || {};
       const eventIds = Array.isArray(payload.eventIds)

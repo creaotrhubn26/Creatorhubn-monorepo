@@ -73,7 +73,7 @@ interface Props {
   focusPersonName?: string;
 }
 
-const PALETTE = ['#ffba6c', '#4cc9f0', '#9b87f5', '#a8dadc', '#f4a261', '#e76f51', '#80ed99', '#ffd166', '#ef476f', '#06d6a0'];
+const PALETTE = ['#ff8c00', '#4cc9f0', '#9b87f5', '#a8dadc', '#f4a261', '#e76f51', '#80ed99', '#ffd166', '#ef476f', '#06d6a0'];
 
 const formatKr = (n: number) =>
   `${Math.round(n).toLocaleString('nb-NO')} kr`;
@@ -144,7 +144,7 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
       label: 'Total honorar',
       value: formatKr(totalAcrossPeriod),
       icon: <WalletIcon />,
-      color: '#ffba6c',
+      color: '#ff8c00',
     },
     {
       label: 'Split sheets',
@@ -173,12 +173,12 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
         p: 5,
         textAlign: 'center',
         bgcolor: 'rgba(255,255,255,0.03)',
-        border: '1px dashed rgba(255,186,108,0.32)',
+        border: '1px dashed rgba(255, 140, 0,0.32)',
         borderRadius: 3,
-        color: 'rgba(246,242,234,0.72)',
+        color: 'rgba(255, 255, 255,0.72)',
         boxShadow: 'none',
       }}>
-        <WalletIcon sx={{ fontSize: 48, color: 'rgba(255,186,108,0.4)', mb: 1 }} />
+        <WalletIcon sx={{ fontSize: 48, color: 'rgba(255, 140, 0,0.4)', mb: 1 }} />
         <Typography variant="body1">Ingen split sheets ennå</Typography>
         <Typography variant="caption">Opprett din første splitt for å se oversikten her</Typography>
       </Card>
@@ -190,7 +190,7 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
       {/* Periode-velger */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5}>
         <Box>
-          <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.18em' }}>
+          <Typography variant="overline" sx={{ color: '#ff8c00', letterSpacing: '0.18em' }}>
             Honorar-statistikk
           </Typography>
           <Typography variant="h5" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontWeight: 700, color: '#fff5e8' }}>
@@ -204,15 +204,15 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
           onChange={(_, v) => v && setPeriod(v)}
           sx={{
             '& .MuiToggleButton-root': {
-              color: 'rgba(246,242,234,0.62)',
+              color: 'rgba(255, 255, 255,0.62)',
               border: '1px solid rgba(255,255,255,0.12)',
               textTransform: 'none',
               px: 1.5,
               '&.Mui-selected': {
-                bgcolor: 'rgba(255,186,108,0.18)',
-                color: '#ffba6c',
+                bgcolor: 'rgba(255, 140, 0,0.18)',
+                color: '#ff8c00',
                 fontWeight: 700,
-                '&:hover': { bgcolor: 'rgba(255,186,108,0.22)' },
+                '&:hover': { bgcolor: 'rgba(255, 140, 0,0.22)' },
               },
             },
           }}
@@ -244,7 +244,7 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
                 {s.icon}
               </Avatar>
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.62)', display: 'block' }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)', display: 'block' }}>
                   {s.label}
                 </Typography>
                 <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff5e8', lineHeight: 1.2, fontFamily: '"Space Grotesk", sans-serif' }} noWrap>
@@ -271,10 +271,10 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
           borderRadius: 2,
           boxShadow: 'none',
         }}>
-          <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.14em' }}>
+          <Typography variant="overline" sx={{ color: '#ff8c00', letterSpacing: '0.14em' }}>
             Total andel
           </Typography>
-          <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.62)', display: 'block', mb: 1 }}>
+          <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)', display: 'block', mb: 1 }}>
             Hvem har tjent mest i perioden
           </Typography>
           <Box sx={{ width: '100%', height: 280 }}>
@@ -299,7 +299,7 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
                 <RTooltip
                   contentStyle={{
                     background: 'rgba(15,10,7,0.96)',
-                    border: '1px solid rgba(255,186,108,0.32)',
+                    border: '1px solid rgba(255, 140, 0,0.32)',
                     borderRadius: 8,
                     color: '#fff5e8',
                   }}
@@ -318,10 +318,10 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
           borderRadius: 2,
           boxShadow: 'none',
         }}>
-          <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.14em' }}>
+          <Typography variant="overline" sx={{ color: '#ff8c00', letterSpacing: '0.14em' }}>
             Over tid
           </Typography>
-          <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.62)', display: 'block', mb: 1 }}>
+          <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.62)', display: 'block', mb: 1 }}>
             Honorar per måned, fordelt per person
           </Typography>
           <Box sx={{ width: '100%', height: 280 }}>
@@ -330,26 +330,26 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                 <XAxis
                   dataKey="label"
-                  tick={{ fill: 'rgba(246,242,234,0.62)', fontSize: 12 }}
+                  tick={{ fill: 'rgba(255, 255, 255,0.62)', fontSize: 12 }}
                   axisLine={{ stroke: 'rgba(255,255,255,0.12)' }}
                 />
                 <YAxis
-                  tick={{ fill: 'rgba(246,242,234,0.62)', fontSize: 12 }}
+                  tick={{ fill: 'rgba(255, 255, 255,0.62)', fontSize: 12 }}
                   axisLine={{ stroke: 'rgba(255,255,255,0.12)' }}
                   tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
                 />
                 <RTooltip
                   contentStyle={{
                     background: 'rgba(15,10,7,0.96)',
-                    border: '1px solid rgba(255,186,108,0.32)',
+                    border: '1px solid rgba(255, 140, 0,0.32)',
                     borderRadius: 8,
                     color: '#fff5e8',
                   }}
-                  cursor={{ fill: 'rgba(255,186,108,0.06)' }}
+                  cursor={{ fill: 'rgba(255, 140, 0,0.06)' }}
                   formatter={(v: any) => formatKr(Number(v))}
                 />
                 <Legend
-                  wrapperStyle={{ fontSize: 12, color: 'rgba(246,242,234,0.72)' }}
+                  wrapperStyle={{ fontSize: 12, color: 'rgba(255, 255, 255,0.72)' }}
                   iconType="circle"
                 />
                 {perPerson.map((p, idx) => (
@@ -376,13 +376,13 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
         overflow: 'hidden',
       }}>
         <Box sx={{ px: 2.5, pt: 2, pb: 1.5 }}>
-          <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.14em' }}>
+          <Typography variant="overline" sx={{ color: '#ff8c00', letterSpacing: '0.14em' }}>
             Per person
           </Typography>
         </Box>
         <Table size="small">
           <TableHead>
-            <TableRow sx={{ '& .MuiTableCell-head': { color: 'rgba(246,242,234,0.62)', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)' } }}>
+            <TableRow sx={{ '& .MuiTableCell-head': { color: 'rgba(255, 255, 255,0.62)', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)' } }}>
               <TableCell>Person</TableCell>
               <TableCell>Roller</TableCell>
               <TableCell align="right">Sheets</TableCell>
@@ -401,7 +401,7 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
                   sx={{
                     '& .MuiTableCell-body': { color: '#fff5e8', borderBottom: '1px solid rgba(255,255,255,0.05)' },
                     transition: 'background 0.15s',
-                    '&:hover': { background: 'rgba(255,186,108,0.04)' },
+                    '&:hover': { background: 'rgba(255, 140, 0,0.04)' },
                   }}
                 >
                   <TableCell>
@@ -423,7 +423,7 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
                             height: 20,
                             fontSize: '0.65rem',
                             bgcolor: 'rgba(255,255,255,0.06)',
-                            color: 'rgba(246,242,234,0.72)',
+                            color: 'rgba(255, 255, 255,0.72)',
                             border: '1px solid rgba(255,255,255,0.1)',
                           }}
                         />
@@ -438,13 +438,13 @@ const SplitSheetEarningsOverview: React.FC<Props> = ({ sheets, focusPersonName }
                     </Stack>
                   </TableCell>
                   <TableCell align="right">{p.sheetCount}</TableCell>
-                  <TableCell align="right" sx={{ color: 'rgba(246,242,234,0.72)' }}>
+                  <TableCell align="right" sx={{ color: 'rgba(255, 255, 255,0.72)' }}>
                     {formatKr(p.total / Math.max(1, p.sheetCount))}
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, color, fontFamily: '"Space Grotesk", sans-serif' }}>
                     {formatKr(p.total)}
                   </TableCell>
-                  <TableCell align="right" sx={{ color: 'rgba(246,242,234,0.72)' }}>
+                  <TableCell align="right" sx={{ color: 'rgba(255, 255, 255,0.72)' }}>
                     {pct.toFixed(1)}%
                   </TableCell>
                 </TableRow>

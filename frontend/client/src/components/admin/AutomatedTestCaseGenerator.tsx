@@ -13,11 +13,8 @@ import {
   CardContent,
   Typography,
   Stack,
-  Button,
   Grid,
-  Chip,
   IconButton,
-  Paper,
   List,
   ListItem,
   ListItemText,
@@ -38,7 +35,10 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  ThemeProvider,
+  Button,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   AutoAwesome,
   PlayArrow,
@@ -56,6 +56,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '@/utils/theming-helper';
+import { AdminCard, AdminButton, StatusChip, useIsMobile } from './design-system';
 
 interface TestCase {
   id: string;
@@ -84,6 +85,7 @@ interface TestSuite {
 export default function AutomatedTestCaseGenerator() {
   const queryClient = useQueryClient();
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
@@ -145,12 +147,13 @@ export default function AutomatedTestCaseGenerator() {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
         <Stack direction="row" spacing={2} alignItems="center">
-          <AutoAwesome sx={{ fontSize: 32, color: '#9c27b0' }} />
+          <AutoAwesome sx={{ fontSize: 32, color: '#ce93d8' }} />
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 600}}>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 600}}>
               Automated Test Case Generator
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -159,18 +162,13 @@ export default function AutomatedTestCaseGenerator() {
           </Box>
         </Stack>
         
-        <IconButton onClick={() => queryClient.invalidateQueries()}>
+        <IconButton aria-label="Oppdater" onClick={() => queryClient.invalidateQueries()}>
           <Refresh />
         </IconButton>
       </Stack>
 
       {/* Generation Controls */}
-      <Card sx={{ mb: 4 }}>
-        <CardContent>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600}}>
-            Generate Test Cases
-          </Typography>
-          
+      <AdminCard title="Generate Test Cases" sx={{ mb: 4 }}>
           <Stack spacing={2}>
             <FormControl fullWidth>
               <InputLabel>Select Profession</InputLabel>
@@ -179,41 +177,36 @@ export default function AutomatedTestCaseGenerator() {
                 onChange={(e) => setSelectedProfession(e.target.value)}
                 label="Select Profession"
               >
-                {professions?.professions?.map((prof: any) => (
+                {(Array.isArray(professions?.professions) ? professions.professions : []).map((prof: any) => (
                   <MenuItem key={prof.professionId} value={prof.professionId}>
                     {prof.displayName || prof.professionId}
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
-            
-            <Button
-              variant="contained"
+
+            <AdminButton
+              tone="primary"
               size="large"
-              startIcon={generating ? <AutoAwesome /> : <AutoAwesome />}
+              startIcon={<AutoAwesome />}
+              loading={generating}
               onClick={handleGenerateTests}
               disabled={generating || !selectedProfession}
-              sx={{
-                background: 'linear-gradient(45deg, #9c27b0, #7b1fa2)', '&:hover': {
-                  background: 'linear-gradient(45deg, #7b1fa2, #6a1b9a)'
-                }
-              }}
             >
               {generating ? 'Generating Test Cases...' : 'Generate AI Test Cases'}
-            </Button>
-            
+            </AdminButton>
+
             {generating && (
               <Alert severity="info">
                 AI is analyzing {selectedProfession} features and generating comprehensive test scenarios...
               </Alert>
             )}
           </Stack>
-        </CardContent>
-      </Card>
+      </AdminCard>
 
       {/* Test Suites Overview */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        {testSuites.map((suite: TestSuite) => (
+        {(Array.isArray(testSuites) ? testSuites : []).map((suite: TestSuite) => (
           <Grid item xs={12} md={6} lg={4} key={suite.id}>
             <Card>
               <CardContent>
@@ -222,10 +215,9 @@ export default function AutomatedTestCaseGenerator() {
                     <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
                       {suite.profession}
                     </Typography>
-                    <Chip 
+                    <StatusChip
                       label={`${suite.coverage}% coverage`}
-                      size="small"
-                      color={suite.coverage > 80 ? 'success' : suite.coverage > 50 ? 'warning' : 'error'}
+                      tone={suite.coverage > 80 ? 'success' : suite.coverage > 50 ? 'warning' : 'error'}
                     />
                   </Stack>
                   
@@ -250,7 +242,7 @@ export default function AutomatedTestCaseGenerator() {
                         Total
                       </Typography>
                     </Box>
-                    <Box sx={{ flex: 1, textAlign: 'center', p: 1, borderRadius: 1, bgcolor: 'success.light' }}>
+                    <Box sx={{ flex: 1, textAlign: 'center', p: 1, borderRadius: 1, bgcolor: 'rgba(76,175,80,0.18)' }}>
                       <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'success.dark' }}>
                         {suite.passedTests}
                       </Typography>
@@ -258,7 +250,7 @@ export default function AutomatedTestCaseGenerator() {
                         Passed
                       </Typography>
                     </Box>
-                    <Box sx={{ flex: 1, textAlign: 'center', p: 1, borderRadius: 1, bgcolor: 'error.light' }}>
+                    <Box sx={{ flex: 1, textAlign: 'center', p: 1, borderRadius: 1, bgcolor: 'rgba(239,68,68,0.18)' }}>
                       <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'error.dark' }}>
                         {suite.failedTests}
                       </Typography>
@@ -286,13 +278,13 @@ export default function AutomatedTestCaseGenerator() {
       </Grid>
 
       {/* Test Cases List Dialog */}
-      <Dialog open={showTestCaseDialog} onClose={() => setShowTestCaseDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={showTestCaseDialog} onClose={() => setShowTestCaseDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           Test Cases: {selectedProfession}
         </DialogTitle>
         <DialogContent>
           <List>
-            {testCases.map((testCase: TestCase) => (
+            {(Array.isArray(testCases) ? testCases : []).map((testCase: TestCase) => (
               <Accordion key={testCase.id}>
                 <AccordionSummary expandIcon={<ExpandMore />}>
                   <Stack direction="row" spacing={2} alignItems="center" sx={{ width: '100%' }}>
@@ -311,16 +303,15 @@ export default function AutomatedTestCaseGenerator() {
                         {testCase.feature}
                       </Typography>
                     </Box>
-                    <Chip 
-                      label={testCase.priority} 
-                      size="small"
-                      color={
+                    <StatusChip
+                      label={testCase.priority}
+                      tone={
                         testCase.priority === 'critical' ? 'error' :
-                        testCase.priority === 'high' ? 'warning' : 'default'
+                        testCase.priority === 'high' ? 'warning' : 'neutral'
                       }
                     />
                     {testCase.automated && (
-                      <Chip label="AUTO" size="small" color="secondary" />
+                      <StatusChip label="AUTO" tone="brand" />
                     )}
                   </Stack>
                 </AccordionSummary>
@@ -338,7 +329,7 @@ export default function AutomatedTestCaseGenerator() {
                         Steps:
                       </Typography>
                       <ol style={{ margin: 0, paddingLeft: 20 }}>
-                        {testCase.steps.map((step, index) => (
+                        {(Array.isArray(testCase.steps) ? testCase.steps : []).map((step, index) => (
                           <li key={index}>
                             <Typography variant="body2">{step}</Typography>
                           </li>
@@ -365,13 +356,14 @@ export default function AutomatedTestCaseGenerator() {
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowTestCaseDialog(false)}>Close</Button>
-          <Button variant="contained" startIcon={<Download />}>
+          <AdminButton tone="ghost" onClick={() => setShowTestCaseDialog(false)}>Close</AdminButton>
+          <AdminButton tone="primary" startIcon={<Download />}>
             Export Test Cases
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }
 

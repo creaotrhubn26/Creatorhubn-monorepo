@@ -42,6 +42,7 @@ import { useCommunicationStatus } from '../../contexts/CommunicationStatusContex
 import { useFileManagementStatus } from '../../contexts/FileManagementStatusContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
+import { StatusChip } from './design-system';
 
 interface FileManagementTestPanelProps {
   onNotificationCreate?: (notification: {
@@ -301,7 +302,7 @@ export default function FileManagementTestPanel({ onNotificationCreate }: FileMa
   return (
     <Card sx={theming.getThemedCardSx()}>
       <CardContent sx={theming.getThemedCardSx()}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
           <Typography variant="h6" sx={{ color: theming.colors.primary }}>
             File Management Test Panel
           </Typography>
@@ -376,7 +377,7 @@ export default function FileManagementTestPanel({ onNotificationCreate }: FileMa
             >
               <ListItemIcon>{statusIcon(googleDriveStatus)}</ListItemIcon>
               <ListItemText primary="Google Drive" secondary={googleDriveResponse} />
-              <Chip color={statusColor(googleDriveStatus)} label={googleDriveStatus} size="small" />
+              <StatusChip tone={statusColor(googleDriveStatus)} label={googleDriveStatus} />
             </ListItem>
             <Divider component="li" />
             <ListItem
@@ -388,7 +389,7 @@ export default function FileManagementTestPanel({ onNotificationCreate }: FileMa
             >
               <ListItemIcon>{statusIcon(googlePhotosStatus)}</ListItemIcon>
               <ListItemText primary="Google Photos" secondary={googlePhotosResponse} />
-              <Chip color={statusColor(googlePhotosStatus)} label={googlePhotosStatus} size="small" />
+              <StatusChip tone={statusColor(googlePhotosStatus)} label={googlePhotosStatus} />
             </ListItem>
           </List>
         )}

@@ -113,7 +113,7 @@ export function setupRoleRoomEventsProducerRoutes(deps: RoleRoomEventsProducerRo
         })),
       });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -157,7 +157,7 @@ export function setupRoleRoomEventsProducerRoutes(deps: RoleRoomEventsProducerRo
       }
       res.json({ success: true, id: rb.id ?? null });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -187,7 +187,7 @@ export function setupRoleRoomEventsProducerRoutes(deps: RoleRoomEventsProducerRo
       }
       res.json({ success: true });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 }

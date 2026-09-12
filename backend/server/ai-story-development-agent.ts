@@ -199,11 +199,20 @@ function buildSystemPrompt(): string {
   ].join("\n");
 }
 
+// Bound the prompt against pathological inputs (see ai-story-logic-agent).
+const MAX_SCENES_IN_PROMPT = 200;
+const MAX_SCENE_CHARS = 6000;
+
 function buildUserPrompt(input: StoryDevelopmentAgentInput): string {
   const scenes = input.scenes
+    .slice(0, MAX_SCENES_IN_PROMPT)
     .map((s) => {
       const header = `### Scene ${s.sceneNumber ?? "?"}${s.sceneHeading ? ` — ${s.sceneHeading}` : ""}`;
-      return `${header}\n${s.sceneText.trim()}`;
+      const text = s.sceneText.trim();
+      const bounded = text.length > MAX_SCENE_CHARS
+        ? `${text.slice(0, MAX_SCENE_CHARS)}\n…[avkortet]`
+        : text;
+      return `${header}\n${bounded}`;
     })
     .join("\n\n");
 
@@ -253,7 +262,7 @@ export const storyDevelopmentAgent: AIAgent = {
       const AnthropicCtor = mod.default ?? mod.Anthropic;
       const client: any = new AnthropicCtor({
         apiKey,
-        maxRetries: 1,
+        maxRetries: 3, // ride out 429/529 bursts during bulk generate
         timeout: 120_000,
       });
 
@@ -278,6 +287,10 @@ export const storyDevelopmentAgent: AIAgent = {
         }],
       });
       logAIUsage(response as any, { feature: 'role-room/story-development' }).catch(() => undefined);
+
+      if (response.stop_reason === "max_tokens") {
+        console.warn("[story-development-agent] response truncated at max_tokens — suggestions may be incomplete");
+      }
 
       const toolBlock = (response.content ?? []).find(
         (b: any) => b?.type === "tool_use" && b?.name === STORY_DEV_TOOL_SCHEMA.name,

@@ -14,7 +14,7 @@
  * - Real-time updates via CrossComponentEventBus
  */
 
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, apiFetch } from '@/lib/queryClient';
 import type {
   MediaAsset,
   PhotoAsset,
@@ -77,7 +77,7 @@ class UnifiedAssetServiceClass {
       formData.append('clientVisible', String(options.clientVisible));
     if (options.googleDriveFolder) formData.append('googleDriveFolder', options.googleDriveFolder);
 
-    const response = await fetch('/api/assets/create', {
+    const response = await apiFetch('/api/assets/create', {
       method: 'POST',
       body: formData,
     });

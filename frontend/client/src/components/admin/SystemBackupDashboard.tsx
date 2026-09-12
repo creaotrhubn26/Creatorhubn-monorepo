@@ -7,7 +7,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  Button,
   Chip,
   List,
   ListItem,
@@ -22,13 +21,14 @@ import {
   TextField,
   FormControlLabel,
   Switch,
-  Alert,
   LinearProgress,
   Tooltip,
   Paper,
   Divider,
   Stack,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import Grid from '@mui/material/Grid2';
 import {
   Backup as BackupIcon,
@@ -44,6 +44,13 @@ import {
   Archive as ArchiveIcon,
 } from '@mui/icons-material';
 import { formatBytes, formatDate } from '@/lib/utils';
+import {
+  AdminButton,
+  AdminLoading,
+  AdminEmpty,
+  AdminError,
+  useIsMobile,
+} from './design-system';
 import { useTheming } from '../../utils/theming-helper';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 
@@ -120,6 +127,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
   const queryClient = useQueryClient();
   const theming = useTheming('prototype_tester');
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
@@ -151,7 +159,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
   };
 
   const {
-    data: backups = [],
+    data: backupsData,
     isLoading: backupsLoading,
     refetch: refetchBackups,
   } = useQuery<SystemBackup[]>({
@@ -162,6 +170,8 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
     },
     refetchInterval: 30000,
   });
+
+  const backups = Array.isArray(backupsData) ? backupsData : [];
 
   const { data: stats, isLoading: statsLoading } = useQuery<BackupStats>({
     queryKey: ['/api/system-backup/stats'],
@@ -252,6 +262,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
   );
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       <Box
         sx={{
@@ -259,10 +270,12 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 2,
         }}
       >
         <Box>
-          <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+          <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
             💾 System Backup Dashboard
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -270,22 +283,21 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
           </Typography>
         </Box>
         <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="secondary"
             startIcon={<FolderIcon />}
             onClick={() => setFolderDialogOpen(true)}
           >
             Vis Mappestruktur
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<BackupIcon />}
             onClick={() => setCreateDialogOpen(true)}
-            disabled={createBackupMutation.isPending}
-            sx={theming.getThemedButtonSx()}
+            loading={createBackupMutation.isPending}
           >
             Opprett System Backup
-          </Button>
+          </AdminButton>
         </Stack>
       </Box>
 
@@ -371,16 +383,19 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
         <CardHeader
           title="System Backups"
           action={
-            <IconButton onClick={() => refetchBackups()}>
+            <IconButton onClick={() => refetchBackups()} aria-label="Oppdater backup-liste">
               <RefreshIcon />
             </IconButton>
           }
         />
         <CardContent sx={theming.getThemedCardSx()}>
           {backupsLoading ? (
-            <LinearProgress />
+            <AdminLoading />
           ) : backups.length === 0 ? (
-            <Alert severity="info">Ingen system-backups funnet. Opprett din første backup.</Alert>
+            <AdminEmpty
+              title="Ingen system-backups funnet"
+              description="Opprett din første backup."
+            />
           ) : (
             <List>
               {backups.map((backup, index) => (
@@ -411,7 +426,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
                             {formatDate(backup.timestamp)} • {formatBytes(backup.size)}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            Filer: {backup.files.join(', ')}
+                            Filer: {(Array.isArray(backup.files) ? backup.files : []).join(', ')}
                           </Typography>
                         </Box>
                       }
@@ -423,6 +438,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
                             <IconButton
                               onClick={() => handleDownload(backup)}
                               disabled={!backup.success}
+                              aria-label="Last ned backup"
                             >
                               <DownloadIcon />
                             </IconButton>
@@ -432,6 +448,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
                           <IconButton
                             onClick={() => deleteBackupMutation.mutate(backup.id)}
                             color="error"
+                            aria-label="Slett backup"
                           >
                             <DeleteIcon />
                           </IconButton>
@@ -452,6 +469,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
         onClose={() => setCreateDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Opprett System Backup</DialogTitle>
         <DialogContent>
@@ -466,7 +484,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
             placeholder="f.eks. Pre-deployment backup"
           />
 
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
             Inkluder i backup:
           </Typography>
 
@@ -555,15 +573,16 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateDialogOpen(false)}>Avbryt</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setCreateDialogOpen(false)}>
+            Avbryt
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleCreateBackup}
-            variant="contained"
-            disabled={createBackupMutation.isPending}
-            sx={theming.getThemedButtonSx()}
+            loading={createBackupMutation.isPending}
           >
             Opprett Backup
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -572,23 +591,27 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
         onClose={() => setFolderDialogOpen(false)}
         maxWidth="lg"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Mappestruktur Oversikt</DialogTitle>
         <DialogContent>
           <Paper sx={{ p: 2, maxHeight: 600, overflow: 'auto', ...theming.getThemedCardSx() }}>
             {folderLoading ? (
-              <LinearProgress />
+              <AdminLoading />
             ) : folderStructure ? (
               renderFolderStructure(folderStructure)
             ) : (
-              <Alert severity="error">Kunne ikke laste mappestruktur</Alert>
+              <AdminError message="Kunne ikke laste mappestruktur" />
             )}
           </Paper>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setFolderDialogOpen(false)}>Lukk</Button>
+          <AdminButton tone="ghost" onClick={() => setFolderDialogOpen(false)}>
+            Lukk
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }

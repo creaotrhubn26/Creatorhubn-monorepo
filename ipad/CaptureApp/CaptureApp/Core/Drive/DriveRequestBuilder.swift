@@ -62,7 +62,7 @@ enum DriveRequestBuilder {
             // Required for shared-drive-aware querying; Drive returns
             // an empty list instead of a 400 otherwise.
             URLQueryItem(name: "supportsAllDrives", value: "true"),
-            URLQueryItem(name: "includeItemsFromAllDrives", value: "true"),
+            URLQueryItem(name: "includeItemsFromAllDrives", value: "true")
         ]
         var request = URLRequest(url: components.url!)
         request.httpMethod = "GET"
@@ -80,7 +80,7 @@ enum DriveRequestBuilder {
         let body: [String: Any] = [
             "name": name,
             "mimeType": DriveFile.folderMimeType,
-            "parents": [parentId],
+            "parents": [parentId]
         ]
         var components = URLComponents(
             url: endpoints.metadata.appendingPathComponent("files"),
@@ -88,7 +88,7 @@ enum DriveRequestBuilder {
         )!
         components.queryItems = [
             URLQueryItem(name: "fields", value: "id,name,mimeType,size,webViewLink"),
-            URLQueryItem(name: "supportsAllDrives", value: "true"),
+            URLQueryItem(name: "supportsAllDrives", value: "true")
         ]
         var request = URLRequest(url: components.url!)
         request.httpMethod = "POST"
@@ -120,7 +120,7 @@ enum DriveRequestBuilder {
         let body: [String: Any] = [
             "name": name,
             "mimeType": mimeType,
-            "parents": [parentId],
+            "parents": [parentId]
         ]
         var components = URLComponents(
             url: endpoints.upload.appendingPathComponent("files"),
@@ -129,7 +129,7 @@ enum DriveRequestBuilder {
         components.queryItems = [
             URLQueryItem(name: "uploadType", value: "resumable"),
             URLQueryItem(name: "supportsAllDrives", value: "true"),
-            URLQueryItem(name: "fields", value: "id,name,mimeType,size,webViewLink"),
+            URLQueryItem(name: "fields", value: "id,name,mimeType,size,webViewLink")
         ]
         var request = URLRequest(url: components.url!)
         request.httpMethod = "POST"

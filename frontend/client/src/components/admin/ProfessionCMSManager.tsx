@@ -13,6 +13,7 @@ import {
   FormControl,
   Grid,
   IconButton,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Paper,
@@ -22,7 +23,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Tabs,
@@ -38,11 +38,18 @@ import {
   Group,
   CheckCircle,
   Warning,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import CustomerJourneyBuilder from './CustomerJourneyBuilder';
+import {
+  AdminButton,
+  AdminTableContainer,
+  StatusChip,
+  useIsMobile,
+} from './design-system';
 
 type ProfessionStatus = 'active' | 'inactive' | 'beta' | 'coming_soon';
 
@@ -90,7 +97,7 @@ const EMPTY_FORM: ProfessionConfig = {
   name: '',
   nameEnglish: '',
   description: '',
-  color: '#1976d2',
+  color: '#60a5fa',
   icon: 'work',
   status: 'active',
   tabs: [...DEFAULT_TABS],
@@ -188,22 +195,24 @@ function toProfessionConfig(apiItem: ProfessionTypeApi): ProfessionConfig {
   };
 }
 
-function statusColor(status: ProfessionStatus): 'success' | 'default' | 'warning' {
+function statusTone(status: ProfessionStatus): 'success' | 'neutral' | 'warning' {
   switch (status) {
     case 'active':
       return 'success';
     case 'beta':
       return 'warning';
     default:
-      return 'default';
+      return 'neutral';
   }
 }
 
 export default function ProfessionCMSManager() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
 
   const [currentTab, setCurrentTab] = useState(0);
+  const [search, setSearch] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedProfessionForJourney, setSelectedProfessionForJourney] = useState('photographer');
   const [editingProfessionId, setEditingProfessionId] = useState<string | null>(null);
@@ -336,9 +345,9 @@ export default function ProfessionCMSManager() {
         <Typography variant="h5" fontWeight={700}>
           Profession CMS Manager
         </Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={openCreateDialog}>
+        <AdminButton tone="primary" startIcon={<Add />} onClick={openCreateDialog}>
           Ny profesjon
-        </Button>
+        </AdminButton>
       </Stack>
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -411,7 +420,23 @@ export default function ProfessionCMSManager() {
           )}
 
           {!professionsQuery.isLoading && !professionsQuery.isError && (
-            <TableContainer component={Paper}>
+            <>
+            <TextField
+              size="small"
+              placeholder="Søk etter key, navn eller status …"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              sx={{ mb: 2, maxWidth: 360 }}
+              fullWidth
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <AdminTableContainer ariaLabel="Profesjoner">
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -424,12 +449,18 @@ export default function ProfessionCMSManager() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {professions.map((profession) => (
+                  {professions
+                    .filter((profession) =>
+                      `${profession.key} ${profession.name} ${profession.status}`
+                        .toLowerCase()
+                        .includes(search.toLowerCase()),
+                    )
+                    .map((profession) => (
                     <TableRow key={profession.id ?? profession.key} hover>
                       <TableCell>{profession.key}</TableCell>
                       <TableCell>{profession.name}</TableCell>
                       <TableCell>
-                        <Chip size="small" label={profession.status} color={statusColor(profession.status)} />
+                        <StatusChip tone={statusTone(profession.status)} label={profession.status} />
                       </TableCell>
                       <TableCell>{profession.priority}</TableCell>
                       <TableCell>
@@ -448,11 +479,12 @@ export default function ProfessionCMSManager() {
                       </TableCell>
                       <TableCell>
                         <Stack direction="row" spacing={1}>
-                          <IconButton size="small" onClick={() => openEditDialog(profession)}>
+                          <IconButton size="small" aria-label="Rediger profesjon" onClick={() => openEditDialog(profession)}>
                             <Edit fontSize="small" />
                           </IconButton>
                           <IconButton
                             size="small"
+                            aria-label="Slett profesjon"
                             onClick={() => {
                               if (profession.id) {
                                 deleteProfessionMutation.mutate(profession.id);
@@ -468,7 +500,8 @@ export default function ProfessionCMSManager() {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
+            </>
           )}
         </>
       )}
@@ -494,7 +527,7 @@ export default function ProfessionCMSManager() {
         </Stack>
       )}
 
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>{editingProfessionId ? 'Rediger profesjon' : 'Opprett profesjon'}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
@@ -682,15 +715,16 @@ export default function ProfessionCMSManager() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setOpenDialog(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<Save />}
             onClick={() => saveProfessionMutation.mutate({ ...formData, id: editingProfessionId ?? formData.id })}
-            disabled={!canSave || saveProfessionMutation.isPending}
+            loading={saveProfessionMutation.isPending}
+            disabled={!canSave}
           >
             Lagre
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

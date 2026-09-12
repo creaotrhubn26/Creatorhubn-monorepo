@@ -13,6 +13,7 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import {
@@ -20,7 +21,11 @@ import {
   AutoAwesome as AutoAwesomeIcon,
   Launch as LaunchIcon,
   Save as SaveIcon,
+  Download as DownloadIcon,
+  DeleteOutline as DeleteIcon,
+  PersonOutline as PersonIcon,
 } from '@mui/icons-material';
+import { CollapsibleSection } from '../CollapsibleSection';
 import type {
   ProducerPlanningFrameworkStepKey,
   CastingProject,
@@ -250,6 +255,213 @@ const ensureContentLogic = (planning: ProducerProjectPlanning) => ({
   successSignals: planning.contentLogic?.successSignals ?? [],
 });
 
+const CLIENT_MATERIAL_TYPE_LABELS: Record<string, string> = {
+  brand_asset: 'Logo / brand',
+  asset_link: 'Lenke',
+  reference: 'Referanse',
+  document: 'Dokument',
+  brief_note: 'Brief-notat',
+  feedback: 'Tilbakemelding',
+};
+
+function formatMaterialFileSize(bytes: number | null | undefined): string {
+  if (!bytes || bytes <= 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Rik klientmateriale-visning: full liste over alt klienten (og produsenten)
+ * har lagt inn — opplastede filer (logo/brand/brief) med nedlasting, og
+ * lenker — gruppert per type. Erstatter den tidligere telling-bare visningen.
+ */
+function ProducerClientMaterialsSection({
+  projectId,
+  materials,
+  onDeleted,
+}: {
+  projectId: string;
+  materials: ProducerClientMaterial[];
+  onDeleted: (id: string) => void;
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const groups = useMemo(() => {
+    const byType = new Map<string, ProducerClientMaterial[]>();
+    for (const material of materials) {
+      const key = material.entry_type || 'reference';
+      if (!byType.has(key)) byType.set(key, []);
+      byType.get(key)!.push(material);
+    }
+    return Array.from(byType.entries()).map(([type, items]) => ({
+      type,
+      label: CLIENT_MATERIAL_TYPE_LABELS[type] ?? type,
+      items,
+    }));
+  }, [materials]);
+
+  const readFileMeta = (material: ProducerClientMaterial) => {
+    const meta = material.metadata as
+      | { file?: { originalName?: string; fileSize?: number }; uploadedByClient?: boolean }
+      | undefined;
+    return {
+      file: meta?.file ?? null,
+      fromClient: Boolean(meta?.uploadedByClient) || material.created_by_role === 'client',
+    };
+  };
+
+  const handleDownload = async (material: ProducerClientMaterial) => {
+    const { file } = readFileMeta(material);
+    setBusyId(material.id);
+    setError(null);
+    try {
+      await producerWorkflowService.downloadClientMaterialFile(
+        projectId,
+        material.id,
+        file?.originalName || material.title || 'fil',
+      );
+    } catch {
+      setError('Kunne ikke laste ned filen akkurat nå.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDelete = async (material: ProducerClientMaterial) => {
+    setBusyId(material.id);
+    setError(null);
+    try {
+      await producerWorkflowService.deleteClientMaterial(projectId, material.id);
+      onDeleted(material.id);
+    } catch {
+      setError('Kunne ikke slette materialet akkurat nå.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <CollapsibleSection
+      title="Klientmateriale"
+      defaultOpen={materials.length > 0 && materials.length <= 8}
+      summary={materials.length > 0 ? `${materials.length} element` : 'Ingen sendt ennå'}
+      badge={
+        materials.length > 0 ? (
+          <Chip size="small" label={materials.length} sx={{ height: 18, bgcolor: 'rgba(192,132,252,0.18)', color: '#f5d0fe', fontWeight: 700, fontSize: '0.68rem' }} />
+        ) : null
+      }
+    >
+      {error ? (
+        <Alert severity="error" sx={{ mb: 1.2, fontSize: '0.82rem' }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      ) : null}
+
+      {materials.length === 0 ? (
+        <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem' }}>
+          Klienten har ikke sendt materiale ennå. De kan laste opp logo, brand-filer
+          og brief direkte fra klientportalen.
+        </Typography>
+      ) : (
+        <Stack spacing={1.4}>
+          {groups.map((group) => (
+            <Box key={group.type}>
+              <Typography sx={{ color: '#e9d5ff', fontWeight: 700, fontSize: '0.82rem', mb: 0.6 }}>
+                {group.label} · {group.items.length}
+              </Typography>
+              <Stack spacing={0.7}>
+                {group.items.map((material) => {
+                  const { file, fromClient } = readFileMeta(material);
+                  const when = material.created_at ? new Date(material.created_at) : null;
+                  const whenLabel = when && !Number.isNaN(when.getTime())
+                    ? when.toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit' })
+                    : '';
+                  return (
+                    <Box
+                      key={material.id}
+                      sx={{
+                        p: 1.1,
+                        borderRadius: 1.4,
+                        bgcolor: 'rgba(15,23,42,0.6)',
+                        border: '1px solid rgba(148,163,184,0.14)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 1,
+                      }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {file?.originalName || material.title}
+                          </Typography>
+                          {fromClient ? (
+                            <Chip
+                              size="small"
+                              icon={<PersonIcon sx={{ fontSize: '0.8rem !important', color: '#7dd3fc !important' }} />}
+                              label="Fra klient"
+                              sx={{ height: 18, bgcolor: 'rgba(56,189,248,0.16)', color: '#bae6fd', fontWeight: 700, fontSize: '0.64rem' }}
+                            />
+                          ) : null}
+                        </Stack>
+                        <Typography sx={{ color: 'rgba(148,163,184,0.78)', fontSize: '0.72rem' }}>
+                          {[whenLabel, file?.fileSize ? formatMaterialFileSize(file.fileSize) : null]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </Typography>
+                        {material.description ? (
+                          <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.76rem', mt: 0.2 }}>
+                            {material.description}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
+                        {file ? (
+                          <Button
+                            size="small"
+                            disabled={busyId === material.id}
+                            onClick={() => void handleDownload(material)}
+                            startIcon={<DownloadIcon sx={{ fontSize: '1rem' }} />}
+                            sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.72rem', color: '#93c5fd', minWidth: 0 }}
+                          >
+                            Last ned
+                          </Button>
+                        ) : material.external_url ? (
+                          <Button
+                            size="small"
+                            component="a"
+                            href={material.external_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            startIcon={<LaunchIcon sx={{ fontSize: '1rem' }} />}
+                            sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.72rem', color: '#93c5fd', minWidth: 0 }}
+                          >
+                            Åpne
+                          </Button>
+                        ) : null}
+                        <Button
+                          size="small"
+                          disabled={busyId === material.id}
+                          onClick={() => void handleDelete(material)}
+                          sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.72rem', color: 'rgba(248,113,113,0.8)', minWidth: 0 }}
+                        >
+                          <DeleteIcon sx={{ fontSize: '1rem' }} />
+                        </Button>
+                      </Stack>
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </Box>
+          ))}
+        </Stack>
+      )}
+    </CollapsibleSection>
+  );
+}
+
 export default function ProducerClientPlanningPanel({
   project,
   productionEstimate,
@@ -329,7 +541,7 @@ export default function ProducerClientPlanningPanel({
           return;
         }
         console.error('[ProducerClientPlanningPanel] Failed to load client grounding', error);
-        setClientWorkspaceError('Kunne ikke hente klientgrunnlag og story logic.');
+        setClientWorkspaceError('Kunne ikke hente klientgrunnlag og den røde tråden.');
       } finally {
         if (!cancelled) {
           setClientWorkspaceLoading(false);
@@ -652,18 +864,32 @@ export default function ProducerClientPlanningPanel({
                   disabled={!storyLogicData}
                   sx={{ textTransform: 'none', fontWeight: 700 }}
                 >
-                  Fyll fra story logic
+                  Fyll fra den røde tråden
                 </Button>
-                <Button
-                  size="small"
-                  variant="contained"
-                  startIcon={<SaveIcon />}
-                  onClick={() => { void handleSave(); }}
-                  disabled={saving || !dirty}
-                  sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#1d4ed8' }}
+                <Tooltip
+                  title={
+                    saving
+                      ? 'Lagrer endringene…'
+                      : !dirty
+                        ? 'Alle endringer er lagret'
+                        : 'Lagre endringene i klientplanen'
+                  }
+                  arrow
                 >
-                  Lagre plan
-                </Button>
+                  {/* span så tooltip vises også når knappen er disabled */}
+                  <span>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<SaveIcon />}
+                      onClick={() => { void handleSave(); }}
+                      disabled={saving || !dirty}
+                      sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#1d4ed8' }}
+                    >
+                      {saving ? 'Lagrer…' : 'Lagre plan'}
+                    </Button>
+                  </span>
+                </Tooltip>
               </Stack>
             ) : null}
           </Stack>
@@ -689,7 +915,7 @@ export default function ProducerClientPlanningPanel({
           </Typography>
         ) : null}
         {clientWorkspaceError ? <Alert severity="warning">{clientWorkspaceError}</Alert> : null}
-        {clientWorkspaceLoading ? <Alert severity="info">Henter klientgrunnlag og story logic.</Alert> : null}
+        {clientWorkspaceLoading ? <Alert severity="info">Henter klientgrunnlag og den røde tråden.</Alert> : null}
         {reviewsError ? <Alert severity="warning">{reviewsError}</Alert> : null}
         {reviewsLoading ? <Alert severity="info">Oppdaterer klientpunkter og godkjenningsstatus.</Alert> : null}
 
@@ -707,7 +933,7 @@ export default function ProducerClientPlanningPanel({
                 Arbeidsgrunnlag fra klient
               </Typography>
               <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.86rem' }}>
-                Planen kan fylles direkte fra brief, materialer og story logic, slik at retning, idé og aktivering ikke må skrives opp på nytt.
+                Planen kan fylles direkte fra brief, materialer og den røde tråden, slik at retning, idé og aktivering ikke må skrives opp på nytt.
               </Typography>
             </Box>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
@@ -723,7 +949,7 @@ export default function ProducerClientPlanningPanel({
               />
               <Chip
                 size="small"
-                label={storyLogicSnapshot.length > 0 ? `Story logic ${storyLogicSnapshot.length} signaler` : 'Story logic ikke fylt ut'}
+                label={storyLogicSnapshot.length > 0 ? `Den røde tråden ${storyLogicSnapshot.length} signaler` : 'Den røde tråden ikke fylt ut'}
                 sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: '#e9d5ff' }}
               />
               {onOpenMedia ? (
@@ -798,7 +1024,7 @@ export default function ProducerClientPlanningPanel({
               }}
             >
               <Typography sx={{ color: '#fff', fontWeight: 700, mb: 0.75 }}>
-                Story logic som planmotor
+                Den røde tråden
               </Typography>
               {storyLogicSnapshot.length > 0 ? (
                 <Stack spacing={0.65}>
@@ -815,24 +1041,20 @@ export default function ProducerClientPlanningPanel({
                 </Stack>
               ) : (
                 <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem' }}>
-                  Story logic er ikke fylt ut ennå. Du kan fortsatt fylle planen direkte fra klientbrief og materiale.
+                  Den røde tråden er ikke fylt ut ennå. Du kan fortsatt fylle planen direkte fra klientbrief og materiale.
                 </Typography>
               )}
             </Box>
           </Box>
         </Box>
 
-        <Box
-          sx={{
-            p: 1.2,
-            borderRadius: 1.6,
-            border: '1px solid rgba(148,163,184,0.16)',
-            background: 'rgba(2,6,23,0.42)',
-          }}
-        >
-          <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
-            Gantt-oversikt
-          </Typography>
+        <ProducerClientMaterialsSection
+          projectId={project.id}
+          materials={clientMaterials}
+          onDeleted={(id) => setClientMaterials((previous) => previous.filter((material) => material.id !== id))}
+        />
+
+        <CollapsibleSection title="Gantt-oversikt" summary="Fase-tidslinje og milepæler per fase">
           <Stack spacing={1}>
             {draft.phasePlan.map((item) => {
               const metrics = getBarMetrics(planningRange, item.startDate, item.endDate);
@@ -896,25 +1118,13 @@ export default function ProducerClientPlanningPanel({
               );
             })}
           </Stack>
-        </Box>
+        </CollapsibleSection>
 
-        <Box
-          sx={{
-            p: 1.2,
-            borderRadius: 1.6,
-            border: '1px solid rgba(148,163,184,0.16)',
-            background: 'rgba(2,6,23,0.42)',
-          }}
+        <CollapsibleSection
+          title="Kundeflyt og innlegg"
+          summary="Faseplan og content-kalender som én samlet klientflyt"
         >
           <Stack spacing={1}>
-            <Box>
-              <Typography sx={{ color: '#fff', fontWeight: 700 }}>
-                Klientflyt og publiseringspunkter
-              </Typography>
-              <Typography sx={{ color: 'rgba(203,213,225,0.76)', fontSize: '0.85rem', mt: 0.35 }}>
-                Faseplan og content-kalender brukes her som én samlet klientflyt, slik at godkjenninger og publisering ikke blir liggende i hvert sitt spor.
-              </Typography>
-            </Box>
             <Stack spacing={0.9}>
               {clientMoments.slice(0, 6).map((moment) => {
                 const contentLogicMomentKind = getProducerContentLogicMomentKind(moment.id);
@@ -941,7 +1151,7 @@ export default function ProducerClientPlanningPanel({
                         <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mb: 0.4 }}>
                           <Chip
                             size="small"
-                            label={isContentLogicMoment ? 'Content Logic' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
+                            label={isContentLogicMoment ? 'Innholdsplan' : PRODUCER_PLANNING_CLIENT_MOMENT_LABELS[moment.type]}
                             sx={{
                               bgcolor: isContentLogicMoment ? 'rgba(167,139,250,0.18)' : 'rgba(59,130,246,0.14)',
                               color: isContentLogicMoment ? '#ede9fe' : '#bfdbfe',
@@ -980,7 +1190,7 @@ export default function ProducerClientPlanningPanel({
                         </Typography>
                         {isContentLogicMoment ? (
                           <Typography sx={{ color: 'rgba(191,219,254,0.82)', fontSize: '0.78rem', mt: 0.3 }}>
-                            Content Logic-punktet låser innholdsvalg tidlig, før resten av produksjonsløpet tar over.
+                            Innholdsplan-punktet låser innholdsvalg tidlig, før resten av produksjonsløpet tar over.
                           </Typography>
                         ) : null}
                       </Box>
@@ -1016,7 +1226,7 @@ export default function ProducerClientPlanningPanel({
               })}
             </Stack>
           </Stack>
-        </Box>
+        </CollapsibleSection>
 
         <Tabs
           value={activeTab}
@@ -1039,7 +1249,7 @@ export default function ProducerClientPlanningPanel({
             },
           }}
         >
-          <Tab value="activation" label="Content Logic" />
+          <Tab value="activation" label="Innholdsplan" />
           <Tab value="phase_plan" label="Faseplan" />
           <Tab value="calendar" label="Content-kalender" />
           <Tab value="brand" label="Merkevareguide" />
@@ -1049,7 +1259,7 @@ export default function ProducerClientPlanningPanel({
         {activeTab === 'activation' ? (
           <Stack spacing={1.2}>
             <Typography sx={{ color: 'rgba(203,213,225,0.78)', fontSize: '0.9rem' }}>
-              `Content Logic` er innholdsprodusentens og klientens arbeidsmodus. Den gjør mål, hook, budskap, bevis og CTA konkrete uten å endre produksjonsteamets separate `Story Logic`.
+              `Innholdsplan` er innholdsprodusentens og klientens arbeidsmodus. Den gjør mål, hook, budskap, bevis og CTA konkrete uten å endre produksjonsteamets separate `Story Logic`.
             </Typography>
 
             <ToggleButtonGroup
@@ -1081,7 +1291,7 @@ export default function ProducerClientPlanningPanel({
                 },
               }}
             >
-              <ToggleButton value="content_logic">Content Logic</ToggleButton>
+              <ToggleButton value="content_logic">Innholdsplan</ToggleButton>
               <ToggleButton value="activation_plan">Planramme</ToggleButton>
             </ToggleButtonGroup>
 
@@ -1230,7 +1440,7 @@ export default function ProducerClientPlanningPanel({
                     </Stack>
                   ) : (
                     <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.84rem' }}>
-                      Story Logic er ikke fylt ut ennå. Det stopper ikke Content Logic for klient og innholdsprodusent.
+                      Story Logic er ikke fylt ut ennå. Det stopper ikke Innholdsplan for klient og innholdsprodusent.
                     </Typography>
                   )}
                 </Box>

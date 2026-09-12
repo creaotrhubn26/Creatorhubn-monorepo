@@ -22,7 +22,9 @@ export type ProfessionMode =
   | 'content_producer'  // innholdsprodusent
   | 'content_creator'   // innholdsskaper
   | 'dance_studio'      // dans — studioeier (PR #2)
-  | 'dance_freelance';  // dans — frilanser (PR #2)
+  | 'dance_freelance'   // dans — frilanser (PR #2)
+  | 'education'         // utdanningsinstitusjon — kull, studentproduksjoner, faglærer-oversikt
+  | 'student';          // student ved utdanningsinstitusjon — «Min side» (foreløpig super-admin-preview)
 
 export const ALL_PROFESSION_MODES: readonly ProfessionMode[] = [
   'production',
@@ -31,6 +33,8 @@ export const ALL_PROFESSION_MODES: readonly ProfessionMode[] = [
   'content_creator',
   'dance_studio',
   'dance_freelance',
+  'education',
+  'student',
 ] as const;
 
 export const DEFAULT_PROFESSION_MODE: ProfessionMode = 'production';
@@ -61,6 +65,12 @@ const URL_ALIASES: Record<string, ProfessionMode> = {
   film: 'production',
   video: 'production',
   foto: 'photographer',
+  utdanning: 'education',
+  utdanningsinstitusjon: 'education',
+  education: 'education',
+  skole: 'education',
+  student: 'student',
+  elev: 'student',
 };
 
 /**
@@ -120,3 +130,65 @@ export const isDanceMode = (mode: ProfessionMode): boolean =>
 export const isProductionMode = (mode: ProfessionMode): boolean =>
   mode === 'production' || mode === 'photographer' ||
   mode === 'content_producer' || mode === 'content_creator';
+
+/** Utdanningsinstitusjon-modus — egen parallell workspace (EducationWorkspace). */
+export const isEducationMode = (mode: ProfessionMode): boolean =>
+  mode === 'education';
+
+/** Student-modus — «Min side» (StudentWorkspace), foreløpig super-admin-preview. */
+export const isStudentMode = (mode: ProfessionMode): boolean =>
+  mode === 'student';
+
+/**
+ * Bro fra bruker-profesjon/rolle (server-side `users.profession` / onboarding-
+ * `selectedProfession`) → ProfessionMode. Dette er «profession-feltet» som
+ * kommentaren over `getActiveProfessionMode` forutsa: en provisjonert
+ * utdanningsinstitusjon (profession='education') skal lande i utdannings-
+ * workspacet uten å måtte velge modus manuelt.
+ *
+ * FORELØPIG KUN education-signaler → 'education'. Andre profesjoner returnerer
+ * null (uendret oppførsel) — bevisst, så broen ikke endrer modus for
+ * eksisterende produksjons-/foto-brukere. Kan utvides senere.
+ */
+const PROFESSION_ROLE_TO_MODE: Record<string, ProfessionMode> = {
+  education: 'education',
+  education_institution: 'education',
+  educational_institution: 'education',
+  utdanning: 'education',
+  utdanningsinstitusjon: 'education',
+  skole: 'education',
+};
+
+export function professionRoleToMode(role: string | null | undefined): ProfessionMode | null {
+  if (typeof role !== 'string' || !role.trim()) return null;
+  return PROFESSION_ROLE_TO_MODE[role.trim().toLowerCase()] ?? null;
+}
+
+/** Har brukeren allerede et lagret (eksplisitt/broet) modus-valg? Brukes til å
+ *  hoppe over profesjons-oppslaget på boot når modus alt er avgjort. */
+export function hasStoredProfessionMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return isProfessionMode(window.localStorage.getItem(STORAGE_KEY));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Aktiver modus fra bruker-profesjon — men KUN hvis brukeren ikke allerede har
+ * et eksplisitt modus-valg (localStorage). Et eksplisitt valg (mode-switcher)
+ * vinner alltid. Returnerer true hvis modus ble satt.
+ */
+export function applyProfessionModeFromRole(role: string | null | undefined): boolean {
+  if (typeof window === 'undefined') return false;
+  const mode = professionRoleToMode(role);
+  if (!mode) return false;
+  try {
+    if (window.localStorage.getItem(STORAGE_KEY)) return false; // eksplisitt valg vinner
+  } catch {
+    return false;
+  }
+  setActiveProfessionMode(mode);
+  return true;
+}

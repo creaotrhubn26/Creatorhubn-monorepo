@@ -73,4 +73,21 @@ describe('Sprint 3.1 — deriveCompletedWorkflowSteps', () => {
       'approval',
     ]);
   });
+
+  it('inkluderer delivery/economy når de er eksplisitt markert fullført', () => {
+    expect(
+      deriveCompletedWorkflowSteps('approved', { delivery: '2026-06-01T10:00:00.000Z', economy: '2026-06-01T11:00:00.000Z' }),
+    ).toEqual(['brief', 'story', 'storyboard', 'approval', 'delivery', 'economy']);
+  });
+
+  it('kan markere delivery/economy fullført uavhengig av review-status (planning)', () => {
+    expect(deriveCompletedWorkflowSteps('planning', { delivery: '2026-06-01T10:00:00.000Z' })).toEqual(['delivery']);
+    expect(deriveCompletedWorkflowSteps('planning', { economy: '2026-06-01T10:00:00.000Z' })).toEqual(['economy']);
+  });
+
+  it('ignorerer null/tomme fase-flagg', () => {
+    expect(deriveCompletedWorkflowSteps('planning', { delivery: null, economy: null })).toEqual([]);
+    expect(deriveCompletedWorkflowSteps('approved', {})).toEqual(['brief', 'story', 'storyboard', 'approval']);
+    expect(deriveCompletedWorkflowSteps('approved', null)).toEqual(['brief', 'story', 'storyboard', 'approval']);
+  });
 });

@@ -62,6 +62,7 @@ import {
   Group,
   CalendarMonth,
   Close,
+  Warning,
   Star,
   StarBorder,
   Edit,
@@ -119,6 +120,8 @@ import {
   getDay,
   parseISO,
 } from 'date-fns';
+import { useProjectMemberAvailability } from '../../hooks/useProjectMemberAvailability';
+import type { CrewDayAvailability } from '../calendar/CrewCalendarView';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -352,6 +355,34 @@ const EventCard: React.FC<EventCardProps> = ({ event, crew, onClick, compact }) 
 // EVENT DETAIL DIALOG
 // ============================================================================
 
+// Liten «Opptatt/Tentativ denne dagen»-brikke fra medlemmets egen kalender.
+const CrewConflictChip: React.FC<{ status: CrewDayAvailability }> = ({ status }) => {
+  const isBusy = status === 'unavailable';
+  return (
+    <Tooltip
+      title={isBusy
+        ? 'Medlemmet har markert seg opptatt denne dagen i sin egen kalender'
+        : 'Medlemmet har markert dagen som tentativ i sin egen kalender'}
+      arrow
+    >
+      <Chip
+        size="small"
+        icon={<Warning sx={{ fontSize: 13 }} />}
+        label={isBusy ? 'Opptatt denne dagen' : 'Tentativ denne dagen'}
+        sx={{
+          height: 20,
+          fontSize: '0.66rem',
+          fontWeight: 700,
+          color: isBusy ? '#fca5a5' : '#fcd34d',
+          bgcolor: isBusy ? 'rgba(239,68,68,0.14)' : 'rgba(245,158,11,0.16)',
+          border: `1px solid ${isBusy ? 'rgba(239,68,68,0.5)' : 'rgba(245,158,11,0.5)'}`,
+          '& .MuiChip-icon': { color: isBusy ? '#fca5a5' : '#fcd34d' },
+        }}
+      />
+    </Tooltip>
+  );
+};
+
 interface EventDetailDialogProps {
   event: CrewCalendarEvent | null;
   crew: CrewMemberBasic[];
@@ -359,6 +390,7 @@ interface EventDetailDialogProps {
   onClose: () => void;
   onEdit: (event: CrewCalendarEvent) => void;
   onDelete: (eventId: string) => void;
+  getDateConflict?: (member: CrewMemberBasic, date: Date | undefined) => CrewDayAvailability | undefined;
 }
 
 const EventDetailDialog: React.FC<EventDetailDialogProps> = ({
@@ -368,6 +400,7 @@ const EventDetailDialog: React.FC<EventDetailDialogProps> = ({
   onClose,
   onEdit,
   onDelete,
+  getDateConflict,
 }) => {
   const [activeTab, setActiveTab] = useState(0);
   
@@ -465,28 +498,36 @@ const EventDetailDialog: React.FC<EventDetailDialogProps> = ({
         </Typography>
         
         <List dense sx={{ bgcolor: 'background.default', borderRadius: 2 }}>
-          {eventCrew.map((member) => (
-            <ListItem
-              key={member.id}
-              secondaryAction={
-                <IconButton size="small">
-                  <Close fontSize="small" />
-                </IconButton>
-              }
-            >
-              <ListItemAvatar>
-                <Avatar sx={{ width: 32, height: 32, bgcolor: config.color }}>
-                  {member.name.charAt(0)}
-                </Avatar>
-              </ListItemAvatar>
-              <ListItemText
-                primary={member.name}
-                secondary={format(event.date, 'd. MMM yyyy', { locale: nb })}
-                primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
-                secondaryTypographyProps={{ variant: 'caption' }}
-              />
-            </ListItem>
-          ))}
+          {eventCrew.map((member) => {
+            const conflict = getDateConflict?.(member, event.date);
+            return (
+              <ListItem
+                key={member.id}
+                secondaryAction={
+                  <IconButton size="small">
+                    <Close fontSize="small" />
+                  </IconButton>
+                }
+              >
+                <ListItemAvatar>
+                  <Avatar sx={{ width: 32, height: 32, bgcolor: config.color }}>
+                    {member.name.charAt(0)}
+                  </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                  primary={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                      <span>{member.name}</span>
+                      {conflict && <CrewConflictChip status={conflict} />}
+                    </Box>
+                  }
+                  secondary={format(event.date, 'd. MMM yyyy', { locale: nb })}
+                  primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
+                  secondaryTypographyProps={{ variant: 'caption' }}
+                />
+              </ListItem>
+            );
+          })}
         </List>
       </DialogContent>
       
@@ -522,6 +563,7 @@ interface EventFormDialogProps {
   crew: CrewMemberBasic[];
   defaultDate?: Date;
   defaultHour?: number;
+  getDateConflict?: (member: CrewMemberBasic, date: Date | undefined) => CrewDayAvailability | undefined;
 }
 
 const EventFormDialog: React.FC<EventFormDialogProps> = ({
@@ -532,6 +574,7 @@ const EventFormDialog: React.FC<EventFormDialogProps> = ({
   crew,
   defaultDate,
   defaultHour,
+  getDateConflict,
 }) => {
   const isEditing = !!event;
   const [title, setTitle] = useState(event?.title || '');
@@ -721,7 +764,9 @@ const EventFormDialog: React.FC<EventFormDialogProps> = ({
               {crew.map((member) => {
                 const isSelected = selectedCrew.includes(member.id);
                 const config = DEPARTMENT_CONFIG[member.department];
-                return (
+                const conflict = getDateConflict?.(member, event?.date ?? defaultDate);
+                const conflictColor = conflict === 'unavailable' ? '#ef4444' : conflict === 'hold' ? '#f59e0b' : null;
+                const chip = (
                   <Chip
                     key={member.id}
                     label={member.name}
@@ -732,16 +777,32 @@ const EventFormDialog: React.FC<EventFormDialogProps> = ({
                         {member.name.charAt(0)}
                       </Avatar>
                     }
+                    deleteIcon={conflictColor ? <Warning sx={{ fontSize: 15 }} /> : undefined}
+                    onDelete={conflictColor ? () => toggleCrewMember(member.id) : undefined}
                     sx={{
-                      border: isSelected ? `2px solid ${config.color}` : '2px solid transparent',
+                      border: conflictColor
+                        ? `2px solid ${conflictColor}`
+                        : isSelected ? `2px solid ${config.color}` : '2px solid transparent',
                       bgcolor: isSelected ? alpha(config.color, 0.15) : 'transparent',
                       cursor: 'pointer',
+                      '& .MuiChip-deleteIcon': { color: conflictColor || undefined },
                       '&:hover': {
                         bgcolor: alpha(config.color, 0.1),
                       },
                     }}
                   />
                 );
+                return conflictColor ? (
+                  <Tooltip
+                    key={member.id}
+                    arrow
+                    title={conflict === 'unavailable'
+                      ? `${member.name} har markert seg opptatt denne dagen`
+                      : `${member.name} har markert dagen som tentativ`}
+                  >
+                    {chip}
+                  </Tooltip>
+                ) : chip;
               })}
             </Box>
           </Box>
@@ -926,6 +987,26 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
   const [crew] = useState<CrewMemberBasic[]>(() => propCrew ?? []);
   const [selectedEvent, setSelectedEvent] = useState<CrewCalendarEvent | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+
+  // Tilgjengelighet fra crew-medlemmenes egne kalendere (delt kilde) — så vi
+  // kan flagge når en person er satt på en hendelse de har markert seg opptatt.
+  const { availabilityByUser, emailToUser } = useProjectMemberAvailability(projectId);
+  const getDateConflict = useCallback(
+    (member: CrewMemberBasic, date: Date | undefined): CrewDayAvailability | undefined => {
+      if (!date) return undefined;
+      const em = (member.email || '').toLowerCase().trim();
+      if (!em) return undefined;
+      const userId = emailToUser.get(em);
+      if (!userId) return undefined;
+      const cells = availabilityByUser.get(userId)?.cells;
+      if (!cells?.length) return undefined;
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const cell = cells.find((c) => c.date === key);
+      if (cell?.availability === 'unavailable' || cell?.availability === 'hold') return cell.availability;
+      return undefined;
+    },
+    [availabilityByUser, emailToUser],
+  );
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CrewCalendarEvent | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -2432,6 +2513,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
         onClose={() => setDetailDialogOpen(false)}
         onEdit={handleEventEdit}
         onDelete={handleEventDelete}
+        getDateConflict={getDateConflict}
       />
       
       {/* Create/Edit Event Dialog */}
@@ -2456,6 +2538,7 @@ export const CrewCalendarPanel: React.FC<CrewCalendarPanelProps> = ({
         crew={crew}
         defaultDate={selectedTimeSlot?.day || selectedDate}
         defaultHour={selectedTimeSlot?.hour}
+        getDateConflict={getDateConflict}
       />
       
       {/* Search Dialog */}

@@ -1,4 +1,5 @@
 // @ts-nocheck
+import DOMPurify from 'dompurify';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
@@ -954,8 +955,8 @@ const getChatWebSocketUrl = (
     : '';
 
   // Slice 9X.69 — Skip WS-connection i prod hvis ikke VITE_WS_URL er satt.
-  // Vercel rewrite gjelder ikke /ws, så wss://creatorhubn.com/ws… går til
-  // edge som ikke har WS-handler → spammer "WebSocket failed" i console.
+  // Netlify-proxyen gjelder ikke /ws, så wss://creatorhubn.com/ws… går til
+  // frontend-hostingen uten WS-handler → spammer "WebSocket failed" i console.
   const isProd = !import.meta.env.DEV && !['localhost', '127.0.0.1'].includes(window.location.hostname);
   if (isProd && !configuredWsUrl) {
     return null;
@@ -971,6 +972,14 @@ const getChatWebSocketUrl = (
     if (userIdentifier && userIdentifier.trim()) {
       url.searchParams.set('userId', userIdentifier.trim());
     }
+    // Bearer token so the /ws chat server can verify identity at handshake
+    // (chat send/receive is gated on this server-side).
+    try {
+      const token = localStorage.getItem('creatorhub_auth_token')
+        || localStorage.getItem('token')
+        || localStorage.getItem('role_room_auth_token');
+      if (token) url.searchParams.set('token', token);
+    } catch { /* localStorage unavailable */ }
     return url.toString();
   } catch {
     return null;
@@ -1236,7 +1245,10 @@ export default function UniversalChatWidget({
   const [googleWorkspaceOauthPending, setGoogleWorkspaceOauthPending] = useState(false);
   
   // Push notifications
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
+  // Leverandør-profil: chat-huben er fotograf-orientert. Vis kun det relevante
+  // (CreatorHub-chat + Feedback); skjul Google Chat / E-post / Evendi / Academy.
+  const isVendorProfile = String(professionProp || '').toLowerCase() === 'vendor';
   const currentUserId = userId || user?.id || user?.sub;
   const { pushEnabled, isSupported } = usePushNotifications(currentUserId);
   
@@ -3946,8 +3958,14 @@ export default function UniversalChatWidget({
     }
 
     try {
+      const authToken =
+        localStorage.getItem('creatorhub_auth_token') ||
+        localStorage.getItem('role_room_auth_token') ||
+        localStorage.getItem('token') ||
+        '';
       const response = await fetch(`/api/contracts/${contractId}/pdf`, {
         headers: {
+          'Authorization': `Bearer ${authToken}`,
           'X-User-Email': userEmail || 'anonymous',
         },
       });
@@ -5207,6 +5225,9 @@ export default function UniversalChatWidget({
 };
 
   const openFeedbackStatusDialog = (feedback: FeedbackItem) => {
+    // Kun admin kan endre status / skrive admin-notater. Ikke-admin (f.eks.
+    // leverandør eller fotograf) skal aldri kunne åpne admin-håndteringen.
+    if (!isAdmin) return;
     setSelectedFeedback(feedback);
     setNewFeedbackStatus(feedback.status);
     setAdminNotes(feedback.adminNotes || '');
@@ -5425,7 +5446,11 @@ export default function UniversalChatWidget({
   const tabContentHeight = isCompactViewport
     ? 'calc(100% - 188px)'
     : Math.max(360, widgetSize.height - (isWorkspacePanel ? (isNarrowWorkspace ? 188 : 176) : (isNarrowWorkspace ? 236 : 200)));
-  const panelWidth = isCompactViewport ? 'min(390px, calc(100vw - 24px))' : widgetSize.width;
+  // UX-density: cap workspace-panel width slik at full inbox ikke dekker hele dashbordet.
+  // Default kompakt-widget (400×550) påvirkes ikke; kun isWorkspacePanel-modus klempes.
+  const panelWidth = isCompactViewport
+    ? 'min(390px, calc(100vw - 24px))'
+    : (isWorkspacePanel ? Math.min(widgetSize.width, 1240) : widgetSize.width);
   const panelHeight = isCompactViewport ? 'min(calc(100vh - 24px), 860px)' : widgetSize.height;
   const isMobileConversationTab = isCompactViewport && (activeTab === TAB_CREATORHUB || activeTab === TAB_GOOGLE_CHAT || activeTab === TAB_EMAIL || activeTab === TAB_EVENDI);
   const isMobileDetailView = isMobileConversationTab && mobileConversationMode === 'detail';
@@ -6464,7 +6489,7 @@ export default function UniversalChatWidget({
                   sx={{
                     p: 0.85,
                     borderRadius: 2.1,
-                    bgcolor: 'rgba(248,250,252,0.96)',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                     border: `1px solid ${getColorWithAlpha('#cbd5e1', 0.72)}`,
                   }}
                 >
@@ -6536,7 +6561,7 @@ export default function UniversalChatWidget({
           {(emailOpenTasks.length > 0 || emailRecentActivities.length > 0) && (
             <Box sx={{ display: 'grid', gap: 0.55 }}>
               {emailOpenTasks.slice(0, 2).map((task) => (
-                <Box key={task.id} sx={{ p: 0.9, borderRadius: 2.2, bgcolor: 'rgba(248,250,252,0.98)' }}>
+                <Box key={task.id} sx={{ p: 0.9, borderRadius: 2.2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                   <Typography variant="caption" sx={{ display: 'block', color: '#0f172a', fontWeight: 800 }}>
                     {task.title}
                   </Typography>
@@ -6546,7 +6571,7 @@ export default function UniversalChatWidget({
                 </Box>
               ))}
               {emailRecentActivities.slice(0, 2).map((activity) => (
-                <Box key={activity.id} sx={{ p: 0.9, borderRadius: 2.2, bgcolor: 'rgba(248,250,252,0.98)' }}>
+                <Box key={activity.id} sx={{ p: 0.9, borderRadius: 2.2, bgcolor: 'rgba(255,255,255,0.04)' }}>
                   <Typography variant="caption" sx={{ display: 'block', color: '#0f172a', fontWeight: 800 }}>
                     {activity.subject}
                   </Typography>
@@ -6669,7 +6694,7 @@ export default function UniversalChatWidget({
                   sx={{
                     p: 0.9,
                     borderRadius: 2.4,
-                    bgcolor: 'rgba(248,250,252,0.95)',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                     border: `1px solid ${getColorWithAlpha('#cbd5e1', 0.72)}`,
                   }}
                 >
@@ -6814,7 +6839,7 @@ export default function UniversalChatWidget({
                 sx={{
                   p: 1,
                   borderRadius: 2.6,
-                  bgcolor: 'rgba(248,250,252,0.92)',
+                  bgcolor: 'rgba(255,255,255,0.04)',
                   border: `1px solid ${getColorWithAlpha('#cbd5e1', 0.72)}`,
                   mb: 0.9,
                 }}
@@ -6852,7 +6877,7 @@ export default function UniversalChatWidget({
                       p: 0.95,
                       borderRadius: 2.4,
                       border: `1px solid ${getColorWithAlpha('#cbd5e1', 0.72)}`,
-                      bgcolor: 'rgba(248,250,252,0.92)',
+                      bgcolor: 'rgba(255,255,255,0.04)',
                     }}
                   >
                     <Typography variant="body2" sx={{ fontWeight: 700, color: '#111827' }}>
@@ -6968,7 +6993,7 @@ export default function UniversalChatWidget({
                     textTransform: 'none',
                     borderRadius: 2.2,
                     color: '#0f172a',
-                    bgcolor: 'rgba(248,250,252,0.92)',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                     border: `1px solid ${getColorWithAlpha('#e2e8f0', 0.92)}`,
                   }}
                 >
@@ -7060,7 +7085,7 @@ export default function UniversalChatWidget({
                     textTransform: 'none',
                     color: '#111827',
                     borderColor: getColorWithAlpha('#cbd5e1', 0.9),
-                    bgcolor: 'rgba(248,250,252,0.92)',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                   }}
                 >
                   <Box sx={{ textAlign: 'left', minWidth: 0 }}>
@@ -7209,7 +7234,7 @@ export default function UniversalChatWidget({
             </IconButton>
           </Box>
 
-          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.1, bgcolor: 'rgba(20,16,11,0.6)' }}>
+          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.75, bgcolor: 'rgba(20,16,11,0.6)' }}>
             {internalActionPanelContent}
           </Box>
         </Paper>
@@ -7233,13 +7258,13 @@ export default function UniversalChatWidget({
         boxShadow: workspaceCardShadow,
       }}
     >
-      <Box sx={{ px: 1.5, py: 1.45, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
+      <Box sx={{ px: 1.85, py: 1.85, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Box>
             <Typography variant="overline" sx={{ display: 'block', fontWeight: 800, color: '#ea580c', letterSpacing: '0.1em', lineHeight: 1 }}>
               Inbox
             </Typography>
-            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.35 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.45 }}>
               Kanaler og mapper
             </Typography>
           </Box>
@@ -7249,7 +7274,7 @@ export default function UniversalChatWidget({
         </Box>
       </Box>
 
-      <Box sx={{ px: 1, py: 1.05, display: 'grid', gap: 0.45 }}>
+      <Box sx={{ px: 1.5, py: 1.5, display: 'grid', gap: 0.65 }}>
         {internalInboxSections.map((section) => {
           const selected = internalInboxSection === section.id;
 
@@ -7261,9 +7286,9 @@ export default function UniversalChatWidget({
                 display: 'grid',
                 gridTemplateColumns: '18px minmax(0, 1fr) auto',
                 alignItems: 'center',
-                gap: 1,
-                px: 1.05,
-                py: 0.92,
+                gap: 1.25,
+                px: 1.35,
+                py: 1.15,
                 borderRadius: 2.8,
                 cursor: 'pointer',
                 color: selected ? '#ea580c' : '#374151',
@@ -7291,11 +7316,11 @@ export default function UniversalChatWidget({
 
       <Divider sx={{ borderColor: chatWidgetDesign.border }} />
 
-      <Box sx={{ px: 1.4, py: 1.1, minHeight: 0, overflow: 'auto' }}>
-        <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: '#6b7280', mb: 1 }}>
+      <Box sx={{ px: 1.75, py: 1.6, minHeight: 0, overflow: 'auto' }}>
+        <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: '#6b7280', mb: 1.25 }}>
           Ditt team
         </Typography>
-        <Box sx={{ display: 'grid', gap: 0.75 }}>
+        <Box sx={{ display: 'grid', gap: 1.1 }}>
           {teamRoster.length > 0 ? teamRoster.map((chat) => (
             <Box
               key={`roster-${chat.id}`}
@@ -7303,7 +7328,7 @@ export default function UniversalChatWidget({
                 display: 'grid',
                 gridTemplateColumns: '32px minmax(0, 1fr)',
                 alignItems: 'center',
-                gap: 0.8,
+                gap: 1.1,
               }}
             >
               <Badge
@@ -7337,7 +7362,7 @@ export default function UniversalChatWidget({
         </Box>
       </Box>
 
-      <Box sx={{ mt: 'auto', px: 1.4, py: 1.2, borderTop: `1px solid ${chatWidgetDesign.border}` }}>
+      <Box sx={{ mt: 'auto', px: 1.75, py: 1.6, borderTop: `1px solid ${chatWidgetDesign.border}` }}>
         <Button
           fullWidth
           variant="outlined"
@@ -7373,13 +7398,13 @@ export default function UniversalChatWidget({
         boxShadow: workspaceCardShadow,
       }}
     >
-      <Box sx={{ px: 1.5, py: 1.35, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
+      <Box sx={{ px: 1.85, py: 1.75, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Box>
             <Typography variant="overline" sx={{ display: 'block', fontWeight: 800, color: '#64748b', letterSpacing: '0.08em', lineHeight: 1 }}>
               Samtaler
             </Typography>
-            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.35 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.45 }}>
               {internalInboxSections.find((section) => section.id === internalInboxSection)?.label || 'Alle'}
             </Typography>
           </Box>
@@ -7397,10 +7422,10 @@ export default function UniversalChatWidget({
           onChange={(event) => setInternalChatFilter(event.target.value)}
           placeholder="Søk i samtaler"
           sx={{
-            mt: 1,
+            mt: 1.4,
             '& .MuiOutlinedInput-root': {
               borderRadius: 2.5,
-              bgcolor: 'rgba(248,250,252,0.96)',
+              bgcolor: 'rgba(255,255,255,0.04)',
             }
           }}
           InputProps={{
@@ -7413,7 +7438,7 @@ export default function UniversalChatWidget({
         />
       </Box>
 
-      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 0.9, display: 'grid', gap: 0.75 }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.5, display: 'grid', gap: 1.1 }}>
         {filteredChatPreviews.length > 0 ? filteredChatPreviews.map((chat) => {
           const isSelected = selectedChat === chat.id;
 
@@ -7423,11 +7448,11 @@ export default function UniversalChatWidget({
               onClick={() => setSelectedChat(chat.id)}
               sx={{
                 cursor: 'pointer',
-                p: 1.15,
+                p: 1.6,
                 borderRadius: 3.2,
                 border: `1px solid ${isSelected ? getColorWithAlpha('#f97316', 0.34) : getColorWithAlpha(chatWidgetDesign.border, 0.72)}`,
                 background: isSelected
-                  ? 'linear-gradient(180deg, rgba(249,115,22,0.1) 0%, rgba(255,255,255,0.98) 100%)'
+                  ? 'linear-gradient(180deg, rgba(249,115,22,0.1) 0%, rgba(255,255,255,0.06) 100%)'
                   : 'rgba(255,255,255,0.94)',
                 boxShadow: isSelected ? '0 18px 34px rgba(249,115,22,0.12)' : '0 8px 20px rgba(15,23,42,0.04)',
                 transition: 'all 140ms ease',
@@ -7437,7 +7462,7 @@ export default function UniversalChatWidget({
                 },
               }}
             >
-              <Box sx={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', alignItems: 'start', gap: 0.9 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', alignItems: 'start', gap: 1.25 }}>
                 <Badge
                   overlap="circular"
                   anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
@@ -7474,12 +7499,12 @@ export default function UniversalChatWidget({
                       size="small"
                       label={chat.unreadCount}
                       sx={{
-                        height: 20,
-                        minWidth: 24,
+                        height: 22,
+                        minWidth: 26,
                         bgcolor: '#f97316',
                         color: 'white',
                         fontWeight: 800,
-                        fontSize: '0.66rem',
+                        fontSize: '0.78rem',
                       }}
                     />
                   ) : (
@@ -7521,8 +7546,8 @@ export default function UniversalChatWidget({
     >
       {selectedChatPreview ? (
         <>
-          <Box sx={{ px: 1.7, py: 1.35, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: '44px minmax(0, 1fr) auto', gap: 1, alignItems: 'center' }}>
+          <Box sx={{ px: 2, py: 1.75, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '44px minmax(0, 1fr) auto', gap: 1.4, alignItems: 'center' }}>
               <Badge
                 overlap="circular"
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
@@ -7713,7 +7738,7 @@ export default function UniversalChatWidget({
                               px: 1.15,
                               py: 0.95,
                               borderRadius: ownMessage ? '18px 18px 6px 18px' : '18px 18px 18px 6px',
-                              bgcolor: ownMessage ? '#f97316' : 'rgba(255,255,255,0.98)',
+                              bgcolor: ownMessage ? '#f97316' : 'rgba(255,255,255,0.08)',
                               color: ownMessage ? 'white' : '#111827',
                               border: ownMessage ? 'none' : `1px solid ${getColorWithAlpha(chatWidgetDesign.border, 0.8)}`,
                               boxShadow: ownMessage
@@ -7819,7 +7844,7 @@ export default function UniversalChatWidget({
                   sx={{
                     border: `1px solid ${getColorWithAlpha(chatWidgetDesign.border, 0.78)}`,
                     borderRadius: 3.2,
-                    bgcolor: 'rgba(248,250,252,0.96)',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                     boxShadow: '0 16px 30px rgba(15,23,42,0.06)',
                     p: 0.9,
                   }}
@@ -7962,21 +7987,21 @@ export default function UniversalChatWidget({
             <IconButton
               size="small"
               onClick={() => internalSearchInputRef.current?.focus()}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <Search sx={{ fontSize: 18 }} />
             </IconButton>
             <IconButton
               size="small"
               onClick={(e) => setMobileTabMenuAnchor(e.currentTarget)}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <MoreVert sx={{ fontSize: 18 }} />
             </IconButton>
             <IconButton
               size="small"
               onClick={() => { onClose?.(); setIsExpanded(false); setIsOpen(false); }}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <Close sx={{ fontSize: 18 }} />
             </IconButton>
@@ -7997,7 +8022,7 @@ export default function UniversalChatWidget({
                   borderRadius: 999,
                   fontWeight: 700,
                   color: selected ? 'white' : '#64748b',
-                  bgcolor: selected ? '#f97316' : 'rgba(241,245,249,0.98)',
+                  bgcolor: selected ? '#f97316' : 'rgba(255,255,255,0.06)',
                   border: selected ? '1px solid #f97316' : '1px solid rgba(226,232,240,0.92)',
                   boxShadow: selected ? '0 10px 18px rgba(249,115,22,0.22)' : 'none',
                 }}
@@ -8017,7 +8042,7 @@ export default function UniversalChatWidget({
             mt: 1.3,
             '& .MuiOutlinedInput-root': {
               borderRadius: 999,
-              bgcolor: 'rgba(248,250,252,0.98)',
+              bgcolor: 'rgba(255,255,255,0.04)',
             }
           }}
           InputProps={{
@@ -8082,12 +8107,12 @@ export default function UniversalChatWidget({
                   size="small"
                   label={chat.unreadCount}
                   sx={{
-                    height: 20,
-                    minWidth: 24,
+                    height: 22,
+                    minWidth: 26,
                     bgcolor: '#f97316',
                     color: 'white',
                     fontWeight: 800,
-                    fontSize: '0.66rem',
+                    fontSize: '0.78rem',
                   }}
                 />
               ) : (
@@ -8206,7 +8231,7 @@ export default function UniversalChatWidget({
                     px: 1.15,
                     py: 0.95,
                     borderRadius: ownMessage ? '20px 20px 8px 20px' : '20px 20px 20px 8px',
-                    bgcolor: ownMessage ? '#f97316' : '#ffffff',
+                    bgcolor: ownMessage ? '#f97316' : 'rgba(255,255,255,0.08)',
                     color: ownMessage ? 'white' : '#111827',
                     boxShadow: ownMessage
                       ? '0 14px 28px rgba(249,115,22,0.2)'
@@ -8262,7 +8287,7 @@ export default function UniversalChatWidget({
             sx={{
               '& .MuiOutlinedInput-root': {
                 borderRadius: 999,
-                bgcolor: 'rgba(248,250,252,0.96)',
+                bgcolor: 'rgba(255,255,255,0.04)',
                 pr: 0.6,
               }
             }}
@@ -8366,7 +8391,7 @@ export default function UniversalChatWidget({
               <Close sx={{ fontSize: 16 }} />
             </IconButton>
           </Box>
-          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.1, bgcolor: 'rgba(20,16,11,0.6)' }}>
+          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.75, bgcolor: 'rgba(20,16,11,0.6)' }}>
             {emailActionPanelContent}
           </Box>
         </Paper>
@@ -8390,13 +8415,13 @@ export default function UniversalChatWidget({
         boxShadow: workspaceCardShadow,
       }}
     >
-      <Box sx={{ px: 1.5, py: 1.45, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
+      <Box sx={{ px: 1.85, py: 1.85, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Box>
             <Typography variant="overline" sx={{ display: 'block', fontWeight: 800, color: '#2563eb', letterSpacing: '0.1em', lineHeight: 1 }}>
               Inbox
             </Typography>
-            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.35 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.45 }}>
               E-postmapper
             </Typography>
           </Box>
@@ -8406,7 +8431,7 @@ export default function UniversalChatWidget({
         </Box>
       </Box>
 
-      <Box sx={{ px: 1, py: 1.05, display: 'grid', gap: 0.45 }}>
+      <Box sx={{ px: 1.5, py: 1.5, display: 'grid', gap: 0.65 }}>
         {emailInboxSections.map((section) => {
           const selected = emailInboxSection === section.id;
           return (
@@ -8417,9 +8442,9 @@ export default function UniversalChatWidget({
                 display: 'grid',
                 gridTemplateColumns: '18px minmax(0, 1fr) auto',
                 alignItems: 'center',
-                gap: 1,
-                px: 1.05,
-                py: 0.92,
+                gap: 1.25,
+                px: 1.35,
+                py: 1.15,
                 borderRadius: 2.8,
                 cursor: 'pointer',
                 color: selected ? '#2563eb' : '#374151',
@@ -8451,12 +8476,12 @@ export default function UniversalChatWidget({
 
       <Divider sx={{ borderColor: chatWidgetDesign.border }} />
 
-      <Box sx={{ px: 1.4, py: 1.1, minHeight: 0, overflow: 'auto' }}>
-        <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: '#6b7280', mb: 1 }}>
+      <Box sx={{ px: 1.75, py: 1.6, minHeight: 0, overflow: 'auto' }}>
+        <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: '#6b7280', mb: 1.25 }}>
           Status
         </Typography>
-        <Box sx={{ display: 'grid', gap: 0.75 }}>
-          <Box sx={{ p: 0.95, borderRadius: 2.3, bgcolor: 'rgba(248,250,252,0.94)', border: `1px solid ${workspaceCardBorder}` }}>
+        <Box sx={{ display: 'grid', gap: 1.1 }}>
+          <Box sx={{ p: 1.5, borderRadius: 2.3, bgcolor: 'rgba(255,255,255,0.04)', border: `1px solid ${workspaceCardBorder}` }}>
             <Typography variant="body2" sx={{ fontWeight: 700, color: '#111827' }}>
               {isGmailConnected ? 'Gmail aktiv' : gmailNeedsReconnect ? 'Krever reconnect' : 'Ikke koblet'}
             </Typography>
@@ -8469,7 +8494,7 @@ export default function UniversalChatWidget({
         </Box>
       </Box>
 
-      <Box sx={{ mt: 'auto', px: 1.4, py: 1.2, borderTop: `1px solid ${chatWidgetDesign.border}` }}>
+      <Box sx={{ mt: 'auto', px: 1.75, py: 1.6, borderTop: `1px solid ${chatWidgetDesign.border}` }}>
         <Button
           fullWidth
           variant="outlined"
@@ -8506,13 +8531,13 @@ export default function UniversalChatWidget({
         boxShadow: workspaceCardShadow,
       }}
     >
-      <Box sx={{ px: 1.5, py: 1.35, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
+      <Box sx={{ px: 1.85, py: 1.75, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
           <Box>
             <Typography variant="overline" sx={{ display: 'block', fontWeight: 800, color: '#64748b', letterSpacing: '0.08em', lineHeight: 1 }}>
               Tråder
             </Typography>
-            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.35 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#111827', mt: 0.45 }}>
               {activeEmailInboxSection.label}
             </Typography>
           </Box>
@@ -8526,10 +8551,10 @@ export default function UniversalChatWidget({
           onChange={(event) => setEmailThreadFilter(event.target.value)}
           placeholder="Søk i e-post"
           sx={{
-            mt: 1,
+            mt: 1.4,
             '& .MuiOutlinedInput-root': {
               borderRadius: 2.5,
-              bgcolor: 'rgba(248,250,252,0.96)',
+              bgcolor: 'rgba(255,255,255,0.04)',
             }
           }}
           InputProps={{
@@ -8542,7 +8567,7 @@ export default function UniversalChatWidget({
         />
       </Box>
 
-      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 0.9, display: 'grid', gap: 0.75 }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.5, display: 'grid', gap: 1.1 }}>
         {!isGmailConnected ? (
           <Box sx={{ p: 2.2, textAlign: 'center' }}>
             <Typography variant="body2" sx={{ fontWeight: 700, color: '#111827' }}>
@@ -8562,11 +8587,11 @@ export default function UniversalChatWidget({
               onClick={() => setSelectedEmailThread(thread.id)}
               sx={{
                 cursor: 'pointer',
-                p: 1.15,
+                p: 1.6,
                 borderRadius: 3.2,
                 border: `1px solid ${isSelected ? getColorWithAlpha('#2563eb', 0.34) : getColorWithAlpha(chatWidgetDesign.border, 0.72)}`,
                 background: isSelected
-                  ? 'linear-gradient(180deg, rgba(37,99,235,0.1) 0%, rgba(255,255,255,0.98) 100%)'
+                  ? 'linear-gradient(180deg, rgba(37,99,235,0.1) 0%, rgba(255,255,255,0.06) 100%)'
                   : 'rgba(255,255,255,0.94)',
                 boxShadow: isSelected ? '0 18px 34px rgba(37,99,235,0.12)' : '0 8px 20px rgba(15,23,42,0.04)',
                 transition: 'all 140ms ease',
@@ -8576,7 +8601,7 @@ export default function UniversalChatWidget({
                 },
               }}
             >
-              <Box sx={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', alignItems: 'start', gap: 0.9 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 1fr) auto', alignItems: 'start', gap: 1.25 }}>
                 <Avatar sx={{ width: 38, height: 38, fontSize: '0.9rem', bgcolor: needsReply ? 'rgba(249,115,22,0.12)' : 'rgba(37,99,235,0.12)', color: needsReply ? '#c2410c' : '#1d4ed8', fontWeight: 800 }}>
                   {(thread.counterpartName || thread.counterpartEmail || 'E').charAt(0).toUpperCase()}
                 </Avatar>
@@ -8596,7 +8621,7 @@ export default function UniversalChatWidget({
                     {formatTime(thread.timestamp)}
                   </Typography>
                   {thread.unreadCount > 0 ? (
-                    <Chip size="small" label={thread.unreadCount} sx={{ height: 20, minWidth: 24, bgcolor: '#2563eb', color: 'white', fontWeight: 800, fontSize: '0.66rem' }} />
+                    <Chip size="small" label={thread.unreadCount} sx={{ height: 22, minWidth: 26, bgcolor: '#2563eb', color: 'white', fontWeight: 800, fontSize: '0.78rem' }} />
                   ) : (
                     <CheckCircle sx={{ fontSize: 14, color: '#10b981' }} />
                   )}
@@ -8635,7 +8660,7 @@ export default function UniversalChatWidget({
       }}
     >
       {!isGmailConnected ? (
-        <Box sx={{ flex: 1, minHeight: 0, p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 1.2, background: 'linear-gradient(180deg, rgba(248,250,252,0.88) 0%, rgba(255,255,255,0.98) 100%)' }}>
+        <Box sx={{ flex: 1, minHeight: 0, p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 1.2, background: 'linear-gradient(180deg, rgba(248,250,252,0.88) 0%, rgba(255,255,255,0.06) 100%)' }}>
           <Email sx={{ fontSize: 48, color: '#2563eb' }} />
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
             {gmailNeedsReconnect ? 'Forny Google-SSO for å åpne e-postkanalen' : 'Bruk Google-SSO for å åpne e-postkanalen'}
@@ -8645,7 +8670,7 @@ export default function UniversalChatWidget({
           </Typography>
         </Box>
       ) : !selectedEmailThreadPreview ? (
-        <Box sx={{ flex: 1, minHeight: 0, p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 1, background: 'linear-gradient(180deg, rgba(248,250,252,0.88) 0%, rgba(255,255,255,0.98) 100%)' }}>
+        <Box sx={{ flex: 1, minHeight: 0, p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 1, background: 'linear-gradient(180deg, rgba(248,250,252,0.88) 0%, rgba(255,255,255,0.06) 100%)' }}>
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
             Velg en e-posttråd for å starte flyten
           </Typography>
@@ -8655,8 +8680,8 @@ export default function UniversalChatWidget({
         </Box>
       ) : (
         <>
-          <Box sx={{ px: 1.7, py: 1.35, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: '44px minmax(0, 1fr) auto', gap: 1, alignItems: 'center' }}>
+          <Box sx={{ px: 2, py: 1.75, borderBottom: `1px solid ${workspaceCardBorder}`, background: workspaceMutedSurface }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '44px minmax(0, 1fr) auto', gap: 1.4, alignItems: 'center' }}>
               <Avatar sx={{ width: 42, height: 42, bgcolor: getColorWithAlpha(selectedEmailReplyTone, 0.12), color: selectedEmailReplyTone, fontWeight: 800 }}>
                 {(selectedEmailCounterpartLabel || 'E').charAt(0).toUpperCase()}
               </Avatar>
@@ -8737,7 +8762,7 @@ export default function UniversalChatWidget({
                             {(message.senderName || selectedEmailCounterpartLabel || 'E').slice(0, 1).toUpperCase()}
                           </Avatar>
                         )}
-                        <Box sx={{ p: 1.35, borderRadius: 3.2, border: `1px solid ${getColorWithAlpha(ownMessage ? '#2563eb' : chatWidgetDesign.border, ownMessage ? 0.22 : 0.76)}`, bgcolor: ownMessage ? 'rgba(37,99,235,0.08)' : 'rgba(255,255,255,0.98)', boxShadow: ownMessage ? '0 12px 24px rgba(37,99,235,0.08)' : `0 10px 24px ${getColorWithAlpha('#0f172a', 0.06)}` }}>
+                        <Box sx={{ p: 1.35, borderRadius: 3.2, border: `1px solid ${getColorWithAlpha(ownMessage ? '#2563eb' : chatWidgetDesign.border, ownMessage ? 0.22 : 0.76)}`, bgcolor: ownMessage ? 'rgba(37,99,235,0.08)' : 'rgba(255,255,255,0.06)', boxShadow: ownMessage ? '0 12px 24px rgba(37,99,235,0.08)' : `0 10px 24px ${getColorWithAlpha('#0f172a', 0.06)}` }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 0.55 }}>
                             <Typography variant="body2" sx={{ fontWeight: 800, color: '#0f172a' }}>
                               {ownMessage ? 'Deg' : message.senderName}
@@ -8799,7 +8824,7 @@ export default function UniversalChatWidget({
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     borderRadius: 2.75,
-                    bgcolor: 'rgba(248,250,252,0.98)',
+                    bgcolor: 'rgba(255,255,255,0.04)',
                     alignItems: 'flex-start',
                     '& fieldset': { borderColor: chatWidgetDesign.border },
                     '&:hover fieldset': { borderColor: getColorWithAlpha('#2563eb', 0.5) },
@@ -8850,21 +8875,21 @@ export default function UniversalChatWidget({
             <IconButton
               size="small"
               onClick={() => googleSearchInputRef.current?.focus()}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <Search sx={{ fontSize: 18 }} />
             </IconButton>
             <IconButton
               size="small"
               onClick={(e) => setMobileTabMenuAnchor(e.currentTarget)}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <MoreVert sx={{ fontSize: 18 }} />
             </IconButton>
             <IconButton
               size="small"
               onClick={() => { onClose?.(); setIsExpanded(false); setIsOpen(false); }}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <Close sx={{ fontSize: 18 }} />
             </IconButton>
@@ -8873,7 +8898,7 @@ export default function UniversalChatWidget({
 
         <Box sx={{ display: 'flex', gap: 0.7, mt: 1.4, overflowX: 'auto', pb: 0.2 }}>
           <Chip label={googleChatConnectionLabel} sx={{ height: 30, borderRadius: 999, fontWeight: 700, bgcolor: isGoogleChatConnected ? 'rgba(66,133,244,0.12)' : 'rgba(254,226,226,0.92)', color: isGoogleChatConnected ? '#1d4ed8' : '#b91c1c' }} />
-          <Chip label={`${googleChatSpaces.length} rom`} sx={{ height: 30, borderRadius: 999, fontWeight: 700, bgcolor: 'rgba(241,245,249,0.98)', color: '#475569' }} />
+          <Chip label={`${googleChatSpaces.length} rom`} sx={{ height: 30, borderRadius: 999, fontWeight: 700, bgcolor: 'rgba(255,255,255,0.06)', color: '#475569' }} />
         </Box>
 
         <TextField
@@ -8887,7 +8912,7 @@ export default function UniversalChatWidget({
             mt: 1.3,
             '& .MuiOutlinedInput-root': {
               borderRadius: 999,
-              bgcolor: 'rgba(248,250,252,0.98)',
+              bgcolor: 'rgba(255,255,255,0.04)',
             }
           }}
           InputProps={{
@@ -9017,7 +9042,7 @@ export default function UniversalChatWidget({
                     px: 1.15,
                     py: 0.95,
                     borderRadius: ownMessage ? '20px 20px 8px 20px' : '20px 20px 20px 8px',
-                    bgcolor: ownMessage ? '#4285F4' : '#ffffff',
+                    bgcolor: ownMessage ? '#4285F4' : 'rgba(255,255,255,0.08)',
                     color: ownMessage ? 'white' : '#111827',
                     boxShadow: ownMessage
                       ? '0 14px 28px rgba(66,133,244,0.22)'
@@ -9087,7 +9112,7 @@ export default function UniversalChatWidget({
             sx={{
               '& .MuiOutlinedInput-root': {
                 borderRadius: 999,
-                bgcolor: 'rgba(248,250,252,0.96)',
+                bgcolor: 'rgba(255,255,255,0.04)',
                 pr: 0.6,
               }
             }}
@@ -9142,21 +9167,21 @@ export default function UniversalChatWidget({
             <IconButton
               size="small"
               onClick={() => utilitySearchInputRef.current?.focus()}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <Search sx={{ fontSize: 18 }} />
             </IconButton>
             <IconButton
               size="small"
               onClick={(e) => setMobileTabMenuAnchor(e.currentTarget)}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <MoreVert sx={{ fontSize: 18 }} />
             </IconButton>
             <IconButton
               size="small"
               onClick={() => { onClose?.(); setIsExpanded(false); setIsOpen(false); }}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <Close sx={{ fontSize: 18 }} />
             </IconButton>
@@ -9165,9 +9190,9 @@ export default function UniversalChatWidget({
 
         <Box sx={{ display: 'flex', gap: 0.7, mt: 1.4, overflowX: 'auto', pb: 0.2 }}>
           <Chip label={`${evendiConversations.length} samtaler`} sx={{ height: 30, borderRadius: 999, fontWeight: 700, bgcolor: 'rgba(233,30,99,0.12)', color: '#be185d' }} />
-          <Chip label={`${totalEvendiUnread} uleste`} sx={{ height: 30, borderRadius: 999, fontWeight: 700, bgcolor: totalEvendiUnread > 0 ? 'rgba(249,115,22,0.12)' : 'rgba(241,245,249,0.98)', color: totalEvendiUnread > 0 ? '#c2410c' : '#475569' }} />
+          <Chip label={`${totalEvendiUnread} uleste`} sx={{ height: 30, borderRadius: 999, fontWeight: 700, bgcolor: totalEvendiUnread > 0 ? 'rgba(249,115,22,0.12)' : 'rgba(255,255,255,0.06)', color: totalEvendiUnread > 0 ? '#c2410c' : '#475569' }} />
           {evendiVendorName ? (
-            <Chip label={evendiVendorName} sx={{ height: 30, borderRadius: 999, fontWeight: 700, bgcolor: 'rgba(248,250,252,0.98)', color: '#475569' }} />
+            <Chip label={evendiVendorName} sx={{ height: 30, borderRadius: 999, fontWeight: 700, bgcolor: 'rgba(255,255,255,0.04)', color: '#475569' }} />
           ) : null}
         </Box>
 
@@ -9182,7 +9207,7 @@ export default function UniversalChatWidget({
             mt: 1.3,
             '& .MuiOutlinedInput-root': {
               borderRadius: 999,
-              bgcolor: 'rgba(248,250,252,0.98)',
+              bgcolor: 'rgba(255,255,255,0.04)',
             }
           }}
           InputProps={{
@@ -9240,12 +9265,12 @@ export default function UniversalChatWidget({
                   size="small"
                   label={conversation.vendor_unread_count}
                   sx={{
-                    height: 20,
-                    minWidth: 24,
+                    height: 22,
+                    minWidth: 26,
                     bgcolor: '#E91E63',
                     color: 'white',
                     fontWeight: 800,
-                    fontSize: '0.66rem',
+                    fontSize: '0.78rem',
                   }}
                 />
               ) : (
@@ -9333,7 +9358,7 @@ export default function UniversalChatWidget({
                     px: 1.15,
                     py: 0.95,
                     borderRadius: ownMessage ? '20px 20px 8px 20px' : '20px 20px 20px 8px',
-                    bgcolor: ownMessage ? '#E91E63' : '#ffffff',
+                    bgcolor: ownMessage ? '#E91E63' : 'rgba(255,255,255,0.08)',
                     color: ownMessage ? 'white' : '#111827',
                     boxShadow: ownMessage
                       ? '0 14px 28px rgba(233,30,99,0.2)'
@@ -9384,7 +9409,7 @@ export default function UniversalChatWidget({
             sx={{
               '& .MuiOutlinedInput-root': {
                 borderRadius: 999,
-                bgcolor: 'rgba(248,250,252,0.96)',
+                bgcolor: 'rgba(255,255,255,0.04)',
                 pr: 0.6,
               }
             }}
@@ -9437,21 +9462,21 @@ export default function UniversalChatWidget({
             <IconButton
               size="small"
               onClick={() => emailSearchInputRef.current?.focus()}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <Search sx={{ fontSize: 18 }} />
             </IconButton>
             <IconButton
               size="small"
               onClick={(e) => setMobileTabMenuAnchor(e.currentTarget)}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <MoreVert sx={{ fontSize: 18 }} />
             </IconButton>
             <IconButton
               size="small"
               onClick={() => { onClose?.(); setIsExpanded(false); setIsOpen(false); }}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <Close sx={{ fontSize: 18 }} />
             </IconButton>
@@ -9494,7 +9519,7 @@ export default function UniversalChatWidget({
             mt: 1.35,
             '& .MuiOutlinedInput-root': {
               borderRadius: 999,
-              bgcolor: 'rgba(248,250,252,0.98)',
+              bgcolor: 'rgba(255,255,255,0.04)',
             }
           }}
           InputProps={{
@@ -9545,7 +9570,7 @@ export default function UniversalChatWidget({
               p: 2.1,
               textAlign: 'center',
               border: '1px solid rgba(37,99,235,0.18)',
-              background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(239,246,255,0.92) 100%)',
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(239,246,255,0.92) 100%)',
             }}
           >
             <Email sx={{ fontSize: 34, color: '#2563eb' }} />
@@ -9569,8 +9594,8 @@ export default function UniversalChatWidget({
                 p: 1.15,
                 border: `1px solid ${selected ? getColorWithAlpha('#2563eb', 0.34) : 'rgba(226,232,240,0.95)'}`,
                 background: selected
-                  ? 'linear-gradient(180deg, rgba(239,246,255,0.98) 0%, rgba(255,255,255,0.98) 100%)'
-                  : 'rgba(255,255,255,0.98)',
+                  ? 'linear-gradient(180deg, rgba(239,246,255,0.98) 0%, rgba(255,255,255,0.06) 100%)'
+                  : 'rgba(255,255,255,0.06)',
                 boxShadow: selected ? '0 14px 26px rgba(37,99,235,0.12)' : '0 8px 18px rgba(15,23,42,0.06)',
               }}
             >
@@ -9708,7 +9733,7 @@ export default function UniversalChatWidget({
               p: 1.1,
               borderRadius: 3,
               border: `1px solid ${getColorWithAlpha(emailCommercialStageTone, 0.22)}`,
-              background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.98) 100%)',
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.04) 100%)',
             }}
           >
             <Typography variant="caption" sx={{ display: 'block', color: emailCommercialStageTone, fontWeight: 800, letterSpacing: '0.08em' }}>
@@ -9740,7 +9765,7 @@ export default function UniversalChatWidget({
                     p: 1.15,
                     borderRadius: 3,
                     border: `1px solid ${getColorWithAlpha(ownMessage ? '#2563eb' : '#cbd5e1', ownMessage ? 0.22 : 0.92)}`,
-                    bgcolor: ownMessage ? 'rgba(37,99,235,0.08)' : 'rgba(255,255,255,0.98)',
+                    bgcolor: ownMessage ? 'rgba(37,99,235,0.08)' : 'rgba(255,255,255,0.06)',
                     boxShadow: ownMessage ? '0 12px 22px rgba(37,99,235,0.1)' : '0 10px 20px rgba(15,23,42,0.06)',
                   }}
                 >
@@ -9806,7 +9831,7 @@ export default function UniversalChatWidget({
             sx={{
               '& .MuiOutlinedInput-root': {
                 borderRadius: 3,
-                bgcolor: 'rgba(248,250,252,0.98)',
+                bgcolor: 'rgba(255,255,255,0.04)',
                 alignItems: 'flex-start',
               }
             }}
@@ -9882,21 +9907,21 @@ export default function UniversalChatWidget({
             <IconButton
               size="small"
               onClick={() => utilitySearchInputRef.current?.focus()}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <Search sx={{ fontSize: 18 }} />
             </IconButton>
             <IconButton
               size="small"
               onClick={(e) => setMobileTabMenuAnchor(e.currentTarget)}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <MoreVert sx={{ fontSize: 18 }} />
             </IconButton>
             <IconButton
               size="small"
               onClick={() => { onClose?.(); setIsExpanded(false); setIsOpen(false); }}
-              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(248,250,252,0.96)' }}
+              sx={{ border: '1px solid rgba(226,232,240,0.95)', bgcolor: 'rgba(255,255,255,0.04)' }}
             >
               <Close sx={{ fontSize: 18 }} />
             </IconButton>
@@ -9912,7 +9937,7 @@ export default function UniversalChatWidget({
                 height: 30,
                 borderRadius: 999,
                 fontWeight: 700,
-                bgcolor: chip.accent ? getColorWithAlpha(mobileUtilityMeta.accent, 0.12) : 'rgba(241,245,249,0.98)',
+                bgcolor: chip.accent ? getColorWithAlpha(mobileUtilityMeta.accent, 0.12) : 'rgba(255,255,255,0.06)',
                 color: chip.accent ? mobileUtilityMeta.accent : '#475569',
               }}
             />
@@ -9930,7 +9955,7 @@ export default function UniversalChatWidget({
             mt: 1.3,
             '& .MuiOutlinedInput-root': {
               borderRadius: 999,
-              bgcolor: 'rgba(248,250,252,0.98)',
+              bgcolor: 'rgba(255,255,255,0.04)',
             }
           }}
           InputProps={{
@@ -10062,12 +10087,14 @@ export default function UniversalChatWidget({
     </Box>
   );
 
-  const mobileBottomTabs = [
+  const mobileBottomTabs = ([
     { id: TAB_CREATORHUB, label: 'Chat', icon: <Chat sx={{ fontSize: 20 }} /> },
     { id: TAB_GOOGLE_CHAT, label: 'Google', icon: <Google sx={{ fontSize: 20 }} /> },
     { id: TAB_EMAIL, label: 'E-post', icon: <Email sx={{ fontSize: 20 }} /> },
     { id: TAB_FEEDBACK, label: 'Feedback', icon: <BugReport sx={{ fontSize: 20 }} /> },
-  ] as const;
+  ] as const).filter(
+    (t) => !isVendorProfile || t.id === TAB_CREATORHUB || t.id === TAB_FEEDBACK,
+  );
 
   const mobileShell = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', bgcolor: 'rgba(20,16,11,0.6)' }}>
@@ -10901,7 +10928,7 @@ export default function UniversalChatWidget({
                     bgcolor: isWorkspacePanel ? 'rgba(255,255,255,0.84)' : 'transparent',
                     boxShadow: isWorkspacePanel ? '0 8px 18px rgba(15,23,42,0.04)' : 'none',
                     '&:hover': {
-                      bgcolor: isWorkspacePanel ? 'rgba(255,255,255,0.96)' : getColorWithAlpha(chatWidgetDesign.accent, 0.08)
+                      bgcolor: isWorkspacePanel ? 'rgba(255,255,255,0.06)' : getColorWithAlpha(chatWidgetDesign.accent, 0.08)
                     },
                     '&.Mui-selected': {
                       color: 'common.white',
@@ -10921,6 +10948,7 @@ export default function UniversalChatWidget({
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
+                {!isVendorProfile && (
                 <Tab
                   value={TAB_GOOGLE_CHAT}
                   icon={<Google sx={{ fontSize: 24 }} />}
@@ -10928,6 +10956,8 @@ export default function UniversalChatWidget({
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
+                )}
+                {!isVendorProfile && (
                 <Tab
                   value={TAB_EMAIL}
                   icon={<Email sx={{ fontSize: 24 }} />}
@@ -10935,6 +10965,7 @@ export default function UniversalChatWidget({
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
+                )}
                 <Tab
                   value={TAB_FEEDBACK}
                   icon={<BugReport sx={{ fontSize: 24 }} />}
@@ -10942,6 +10973,7 @@ export default function UniversalChatWidget({
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
+                {!isVendorProfile && (
                 <Tab
                   value={TAB_EVENDI}
                   icon={<img src="/evendi-logo.png" alt="Evendi" style={{ width: 24, height: 24, borderRadius: '50%' }} />}
@@ -10949,6 +10981,8 @@ export default function UniversalChatWidget({
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
+                )}
+                {!isVendorProfile && (
                 <Tab
                   value={TAB_ACADEMY}
                   icon={<img src="/academy-favicon.svg" alt="Academy" style={{ width: 24, height: 24 }} />}
@@ -10956,6 +10990,7 @@ export default function UniversalChatWidget({
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
+                )}
               </Tabs>
             </Box>
 
@@ -10967,7 +11002,7 @@ export default function UniversalChatWidget({
               py: isWorkspacePanel ? 1.1 : 1,
               background: isWorkspacePanel
                 ? 'linear-gradient(180deg, rgba(239,242,246,0.92) 0%, rgba(231,235,240,0.98) 100%)'
-                : 'linear-gradient(180deg, rgba(255,255,255,0.86) 0%, rgba(248,250,252,0.98) 100%)'
+                : 'linear-gradient(180deg, rgba(255,255,255,0.86) 0%, rgba(255,255,255,0.04) 100%)'
               ,
               willChange: isWorkspacePanel ? 'transform, opacity' : undefined,
               animation: workspaceContentAnimation,
@@ -10976,8 +11011,8 @@ export default function UniversalChatWidget({
                 // Internal Chat Tab
                 <Box sx={{ height: '100%', minHeight: 0 }}>
                   {isNarrowWorkspace ? (
-                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 1.1, minHeight: 0, height: '100%' }}>
-                      <Box sx={{ display: 'grid', gap: 1.1, minHeight: 0 }}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2, minHeight: 0, height: '100%' }}>
+                      <Box sx={{ display: 'grid', gap: 1.75, minHeight: 0 }}>
                         {internalConversationList}
                         {internalInboxNavigation}
                       </Box>
@@ -10992,7 +11027,7 @@ export default function UniversalChatWidget({
                           : shouldShowInternalCrmRailPanel
                             ? '72px minmax(280px, 320px) minmax(300px, 360px) minmax(0, 1fr)'
                             : '72px minmax(210px, 240px) minmax(300px, 360px) minmax(0, 1fr)',
-                        gap: 1.2,
+                        gap: 2.25,
                         minHeight: 0,
                         height: '100%',
                       }}
@@ -11204,7 +11239,7 @@ export default function UniversalChatWidget({
                     sx={{
                       display: 'grid',
                       gridTemplateColumns: isNarrowWorkspace ? '1fr' : 'minmax(250px, 300px) minmax(0, 1fr)',
-                      gap: 1.25,
+                      gap: 2.25,
                       minHeight: 0,
                       flex: 1,
                     }}
@@ -11239,7 +11274,7 @@ export default function UniversalChatWidget({
                             mt: 1.15,
                             '& .MuiOutlinedInput-root': {
                               borderRadius: 2.5,
-                              bgcolor: 'rgba(248,250,252,0.95)',
+                              bgcolor: 'rgba(255,255,255,0.04)',
                             }
                           }}
                           InputProps={{
@@ -11310,13 +11345,13 @@ export default function UniversalChatWidget({
                                   borderRadius: 3,
                                   border: `1px solid ${isSelectedSpace ? getColorWithAlpha('#4285F4', 0.34) : getColorWithAlpha(chatWidgetDesign.border, 0.7)}`,
                                   background: isSelectedSpace
-                                    ? 'linear-gradient(150deg, rgba(66,133,244,0.12) 0%, rgba(255,255,255,0.98) 100%)'
+                                    ? 'linear-gradient(150deg, rgba(66,133,244,0.12) 0%, rgba(255,255,255,0.06) 100%)'
                                     : 'rgba(255,255,255,0.92)',
                                   boxShadow: isSelectedSpace ? '0 12px 24px rgba(66,133,244,0.12)' : 'none',
                                   transition: 'all 0.16s ease',
                                   '&:hover': {
                                     borderColor: getColorWithAlpha('#4285F4', 0.32),
-                                    background: 'linear-gradient(150deg, rgba(66,133,244,0.08) 0%, rgba(255,255,255,0.98) 100%)',
+                                    background: 'linear-gradient(150deg, rgba(66,133,244,0.08) 0%, rgba(255,255,255,0.06) 100%)',
                                   },
                                 }}
                               >
@@ -11496,7 +11531,7 @@ export default function UniversalChatWidget({
                             justifyContent: 'center',
                             textAlign: 'center',
                             gap: 1.2,
-                            background: 'linear-gradient(180deg, rgba(248,250,252,0.88) 0%, rgba(255,255,255,0.98) 100%)',
+                            background: 'linear-gradient(180deg, rgba(248,250,252,0.88) 0%, rgba(255,255,255,0.06) 100%)',
                           }}
                         >
                           <Google sx={{ fontSize: 48, color: '#4285F4' }} />
@@ -11527,7 +11562,7 @@ export default function UniversalChatWidget({
                             justifyContent: 'center',
                             textAlign: 'center',
                             gap: 1,
-                            background: 'linear-gradient(180deg, rgba(248,250,252,0.88) 0%, rgba(255,255,255,0.98) 100%)',
+                            background: 'linear-gradient(180deg, rgba(248,250,252,0.88) 0%, rgba(255,255,255,0.06) 100%)',
                           }}
                         >
                           <Typography variant="h6" sx={{ fontWeight: 800 }}>
@@ -11544,7 +11579,7 @@ export default function UniversalChatWidget({
                               px: 1.5,
                               py: 1.2,
                               borderBottom: `1px solid ${chatWidgetDesign.border}`,
-                              background: 'linear-gradient(180deg, rgba(248,250,252,0.92) 0%, rgba(255,255,255,0.98) 100%)',
+                              background: 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.06) 100%)',
                             }}
                           >
                             <Box
@@ -11645,7 +11680,7 @@ export default function UniversalChatWidget({
                               p: 1.5,
                               display: 'grid',
                               gap: 1.15,
-                              bgcolor: 'linear-gradient(180deg, rgba(248,250,252,0.72) 0%, rgba(255,255,255,0.95) 100%)',
+                              bgcolor: 'linear-gradient(180deg, rgba(248,250,252,0.72) 0%, rgba(255,255,255,0.06) 100%)',
                             }}
                           >
                             {googleMessagesLoading && googleChatMessages.length === 0 ? (
@@ -11777,7 +11812,7 @@ export default function UniversalChatWidget({
                                 sx={{
                                   '& .MuiOutlinedInput-root': {
                                     borderRadius: 2.75,
-                                    bgcolor: 'rgba(248,250,252,0.98)',
+                                    bgcolor: 'rgba(255,255,255,0.04)',
                                     alignItems: 'flex-start',
                                     '& fieldset': { borderColor: chatWidgetDesign.border },
                                     '&:hover fieldset': { borderColor: getColorWithAlpha('#4285F4', 0.5) },
@@ -11825,8 +11860,8 @@ export default function UniversalChatWidget({
               ) : activeTab === TAB_EMAIL ? (
                 <Box sx={{ height: '100%', minHeight: 0 }}>
                   {isNarrowWorkspace ? (
-                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 1.1, minHeight: 0, height: '100%' }}>
-                      <Box sx={{ display: 'grid', gap: 1.1, minHeight: 0 }}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2, minHeight: 0, height: '100%' }}>
+                      <Box sx={{ display: 'grid', gap: 1.75, minHeight: 0 }}>
                         {emailInboxNavigation}
                         {emailConversationList}
                       </Box>
@@ -11841,7 +11876,7 @@ export default function UniversalChatWidget({
                           : shouldShowEmailCrmRailPanel
                             ? '72px minmax(280px, 320px) minmax(300px, 360px) minmax(0, 1fr)'
                             : '72px minmax(210px, 240px) minmax(300px, 360px) minmax(0, 1fr)',
-                        gap: 1.2,
+                        gap: 2.25,
                         minHeight: 0,
                         height: '100%',
                       }}
@@ -12069,6 +12104,7 @@ export default function UniversalChatWidget({
                                 </Box>
                           }
                             />
+                            {isAdmin && (
                             <ListItemSecondaryAction>
                               <IconButton
                                 size="small"
@@ -12081,6 +12117,7 @@ export default function UniversalChatWidget({
                                 <Edit fontSize="small" />
                               </IconButton>
                             </ListItemSecondaryAction>
+                            )}
                           </ListItem>
                         ))}
                       </List>
@@ -12458,7 +12495,7 @@ export default function UniversalChatWidget({
                   sx={{
                     mt: 1,
                     '& .MuiOutlinedInput-root': {
-                      bgcolor: 'rgba(248,250,252,0.98)',
+                      bgcolor: 'rgba(255,255,255,0.04)',
                       borderRadius: 2.5,
                       '& fieldset': { borderColor: chatWidgetDesign.border },
                       '&:hover fieldset': { borderColor: getColorWithAlpha(getProfessionColor(), 0.6) },
@@ -13209,9 +13246,9 @@ export default function UniversalChatWidget({
         </Alert>
       </Snackbar>
 
-      {/* Feedback Status Update Dialog */}
+      {/* Feedback Status Update Dialog — admin-only */}
       <Dialog
-        open={feedbackStatusDialogOpen}
+        open={feedbackStatusDialogOpen && isAdmin}
         onClose={() => setFeedbackStatusDialogOpen(false)}
         maxWidth="md"
         fullWidth
@@ -13468,7 +13505,7 @@ export default function UniversalChatWidget({
                 <Box>
                   <Typography variant="subtitle2" gutterBottom>Admin Notater</Typography>
                   <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', ...theming.getThemedCardSx() }}>
-                    <div dangerouslySetInnerHTML={{ __html: selectedFeedback.adminNotes }} />
+                    <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedFeedback.adminNotes ?? '') }} />
                   </Paper>
                 </Box>
               )}
@@ -13650,6 +13687,7 @@ export default function UniversalChatWidget({
           <Button onClick={() => setFeedbackDetailDialogOpen(false)}>
             Lukk
           </Button>
+          {isAdmin && (
           <Button
             onClick={() => {
               setFeedbackDetailDialogOpen(false);
@@ -13669,6 +13707,7 @@ export default function UniversalChatWidget({
           >
             Oppdater Status
           </Button>
+          )}
           {/* Deploy Fix Button - Only show if feedback has AI analysis */}
           {selectedFeedback?.aiAnalysis && (
             <Button

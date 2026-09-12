@@ -1,0 +1,53 @@
+name: Post Agent Build Gate
+
+# CI BLIND SPOT #2 (closed). apps/resolve-script-manager (the Post Agent Tauri
+# app) was built ONLY in the release workflow — never on a PR. So its frontend
+# bundle was never exercised before merge, and a Rollup-breaking import (e.g.
+# `@mui/icons-material` deep path-imports of `*Outline` without a root .js)
+# passed green: tsc alone doesn't catch it, only the `vite build` bundling step
+# does. "tsc + CI green" was NOT the same as "the app builds".
+#
+# This runs the app's real `build` (tsc && vite build) on every PR touching it,
+# so bundling breakage is caught before merge. The heavier Rust `tauri build`
+# stays in the release workflow — the JS bundle is where the recurring breakage
+# lived.
+
+on:
+  pull_request:
+    paths:
+      - 'apps/resolve-script-manager/**'
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: post-agent-build-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  post-agent-build:
+    name: Post Agent vite build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: apps/resolve-script-manager
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/resolve-script-manager/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `tsc && vite build` — the bundling step is the one that catches
+      # Rollup-breaking imports that a bare typecheck lets through.
+      - name: Build (tsc && vite build)
+        run: NODE_OPTIONS=--max-old-space-size=8192 npm run build

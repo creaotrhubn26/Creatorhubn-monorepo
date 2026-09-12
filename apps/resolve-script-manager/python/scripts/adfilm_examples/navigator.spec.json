@@ -1,0 +1,37 @@
+{
+  "product": "Leadgrid",
+  "workdir": "/tmp/leadgrid-film",
+  "setting": "Oslo, golden hour / blåtime / regn",
+  "brand": { "wordmark_asset": "LeadgridLockup", "accent": "#6a3fbf" },
+  "character": {
+    "ref_still": "stills/ref.jpg",
+    "lock": "mann 30-år, hvit dress-skjorte + svart bukse + mørk charcoal-frakk, profesjonell"
+  },
+  "fps": 24,
+  "vo": { "provider": "elevenlabs", "voice": "Brian", "lang_spoken": "en", "lang_sub": "no" },
+  "music": "music_seamless.m4a",
+  "out": "~/Desktop/LEADGRID-NAVIGATOR-final.mp4",
+
+  "shots": [
+    { "id": "s01", "prompt": "café hero over the shoulder, hands hold iPad, warm window light, green iPad screen for key", "dur": 4.2, "ui_key": true, "ui_recording": "recordings/dashboard.mov" },
+    { "id": "s02", "prompt": "earth from space at night, city lights over Europe, purple pins", "dur": 3.2, "ui_key": false },
+    { "id": "s03", "prompt": "walking POV into the field, wet Oslo street at sunrise", "dur": 3.5, "ui_key": false },
+    { "id": "s04", "prompt": "map to UX pull-back reveal, iPad in hand on cobblestone street, route + card visible", "dur": 7.9, "ui_key": true, "ui_recording": "recordings/nordic_nav.mov" },
+    { "id": "s09", "prompt": "aerial Oslo with connected network of glowing pins", "dur": 3.5, "ui_key": false },
+    { "id": "s15", "prompt": "golden-hour café silhouette, iPad + coffee cup, misty cityscape outside", "dur": 4.5, "ui_key": true, "ui_recording": "recordings/map.mov" }
+  ],
+
+  "vo_lines": [
+    { "en": "The world is full of opportunity.", "no": "Verden er full av muligheter." },
+    { "en": "You just need to see it clearly.", "no": "Du trenger bare å se den tydelig." },
+    { "en": "Every day, you head into the field.", "no": "Hver dag drar du ut i felten." },
+    { "en": "Every lead, every route — one clear view.", "no": "Hver lead, hver rute — ett tydelig overblikk." },
+    { "en": "Leadgrid guides you the whole way.", "no": "Leadgrid guider deg hele veien." },
+    { "en": "Arrive prepared. One tap, and the meeting begins.", "no": "Kom forberedt. Ett trykk, og møtet starter." },
+    { "en": "Capture what matters, right there.", "no": "Fang det som betyr noe — der og da." },
+    { "en": "Know who's ready — before you knock.", "no": "Vit hvem som er klar — før du banker på." },
+    { "en": "Watch your momentum build, in real time.", "no": "Se momentumet bygge seg — i sanntid." },
+    { "en": "More meetings. Better follow-up. More wins.", "no": "Flere møter. Bedre oppfølging. Flere vinn." },
+    { "en": "Leadgrid. Lead smarter. Close more.", "no": "Leadgrid. Lead smarter. Close more." }
+  ]
+}

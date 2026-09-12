@@ -3,7 +3,7 @@ import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { PlanFeaturePreview } from '../subscription/PlanFeaturePreview';
@@ -21,7 +21,6 @@ import {
   TableRow,
   Paper,
   Chip,
-  Button,
   IconButton,
   Dialog,
   DialogTitle,
@@ -42,7 +41,13 @@ import {
   StepLabel,
   StepConnector,
   stepConnectorClasses,
+  ThemeProvider,
+  InputAdornment,
+  Stack,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
+import { TableVirtuoso } from 'react-virtuoso';
+import type { TableHeadProps } from '@mui/material/TableHead';
 import { styled } from '@mui/material/styles';
 import {
   Assessment,
@@ -62,9 +67,11 @@ import {
   HowToReg,
   Verified,
   CreditCard,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import FikenIntegrationRequestsPanel from './FikenIntegrationRequestsPanel';
+import { AdminButton, useIsMobile } from './design-system';
 
 // Custom styled connector for journey stepper
 const JourneyConnector = styled(StepConnector)(({ theme }) => ({
@@ -92,6 +99,25 @@ const JourneyConnector = styled(StepConnector)(({ theme }) => ({
 // User journey status type
 type UserJourneyStatus = 'request_submitted' | 'under_review' | 'invite_sent' | 'account_created' | 'onboarding_started' | 'onboarding_completed' | 'active';
 
+interface TesterAgreementStatus {
+  inviteId: string;
+  inviteStatus: string;
+  expiresAt?: string | null;
+  acceptedAt?: string | null;
+  signerName?: string | null;
+  confirmedSigningAuthority: boolean;
+  agreementDigest?: string | null;
+  complete: boolean;
+  legacyAcceptance: boolean;
+  accountProvisioningComplete: boolean;
+  documents: Array<{
+    key: string;
+    title: string;
+    version: string;
+    accepted: boolean;
+  }>;
+}
+
 interface InviteRequest {
   id: string;
   businessName: string;
@@ -99,6 +125,9 @@ interface InviteRequest {
   contactName: string;
   contactEmail: string;
   profession: string;
+  testerProfession?: string;
+  source?: string;
+  message?: string;
   status: 'pending' | 'under_review' | 'approved' | 'rejected';
   hasGoogleWorkspace: boolean;
   redFlagAnalysis?: {
@@ -127,6 +156,7 @@ interface InviteRequest {
   onboardingStartedAt?: string;
   onboardingCompletedAt?: string;
   onboardingStep?: number;
+  testerAgreementStatus?: TesterAgreementStatus | null;
 }
 
 interface InviteStats {
@@ -155,10 +185,13 @@ const normalizePlan = (plan?: string): 'basic' | 'pro' | 'enterprise' | null => 
 export default function InviteManagementDashboard() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
-  
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
+
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
 
@@ -172,8 +205,56 @@ export default function InviteManagementDashboard() {
     refetchInterval: 30000
 });
 
-  const invitations = inviteData?.invitations || [];
-  const stats = inviteData?.stats || {};
+  // Backend (`mapInviteRow`) serialiserer med andre feltnavn enn tabellen leser
+  // (business/firstName/lastName/email/organizationNumber/requestDate/proffAnalysis).
+  // Normaliser til camelCase-formen komponenten forventer — leser den nye formen
+  // først, faller tilbake til backend-navnene (robust begge veier).
+  const invitations = useMemo(() => {
+    const raw = Array.isArray(inviteData?.invitations) ? inviteData.invitations : [];
+    return raw.map((r: any) => {
+      const contactName =
+        r.contactName ?? [r.firstName, r.lastName].filter(Boolean).join(' ').trim();
+      const proff = r.redFlagAnalysis ?? r.proffAnalysis ?? null;
+      const riskLevel = r.proffRiskLevel ?? proff?.riskLevel ?? null;
+      const redFlagAnalysis =
+        riskLevel || proff
+          ? {
+              riskLevel: riskLevel ?? 'unknown',
+              score: r.proffRiskScore ?? proff?.riskScore ?? proff?.score ?? 0,
+              flags: Array.isArray(proff?.flags) ? proff.flags : [],
+            }
+          : null;
+      return {
+        ...r,
+        businessName: r.businessName ?? r.business ?? '',
+        contactName,
+        contactEmail: r.contactEmail ?? r.email ?? '',
+        orgNumber: r.orgNumber ?? r.organizationNumber ?? '',
+        createdAt: r.createdAt ?? r.requestDate ?? null,
+        redFlagAnalysis,
+      };
+    });
+  }, [inviteData]);
+
+  // KPI-kortene leser totalRequests/pendingReview/conversionRate; backend sender
+  // total/pending/approved/rejected (uten conversionRate) → utled fra listen.
+  const stats = useMemo(() => {
+    const total = invitations.length;
+    const pending = invitations.filter((i: any) => i.status === 'pending').length;
+    const approved = invitations.filter((i: any) => i.status === 'approved').length;
+    const rejected = invitations.filter((i: any) => i.status === 'rejected').length;
+    return {
+      totalRequests: total,
+      pendingReview: pending,
+      approved,
+      rejected,
+      conversionRate: total > 0 ? (approved / total) * 100 : 0,
+    };
+  }, [invitations]);
+  const [reviewFeedback, setReviewFeedback] = useState<{
+    severity: 'success' | 'warning' | 'error';
+    message: string;
+  } | null>(null);
 
   // Update invite status mutation
   const updateStatusMutation = useMutation({
@@ -187,12 +268,47 @@ export default function InviteManagementDashboard() {
         body: JSON.stringify({ status, adminNotes: notes })
       });
   },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/invites/admin/requests'] });
+    onSuccess: (data: any, variables) => {
+      const delivery = data?.testerInvite?.emailDelivery;
+      if (variables.status === 'approved' && data?.testerInvite) {
+        if (delivery?.sent) {
+          setReviewFeedback({
+            severity: 'success',
+            message: `Søknaden er godkjent og invitasjons-e-posten er sendt via ${delivery.provider || 'e-postleverandøren'}.`,
+          });
+        } else {
+          setReviewFeedback({
+            severity: 'warning',
+            message: `Søknaden er godkjent, men invitasjons-e-posten ble ikke sendt (${delivery?.reason || 'ukjent feil'}).`,
+          });
+        }
+      } else if (variables.status === 'rejected') {
+        const decisionDelivery = data?.decisionEmailDelivery;
+        if (decisionDelivery?.sent) {
+          setReviewFeedback({
+            severity: 'success',
+            message: `Søknaden er avslått og beslutnings-e-posten er sendt via ${decisionDelivery.provider || 'e-postleverandøren'}.`,
+          });
+        } else {
+          setReviewFeedback({
+            severity: 'warning',
+            message: `Søknaden er avslått, men beslutnings-e-posten ble ikke sendt (${decisionDelivery?.reason || 'ukjent feil'}).`,
+          });
+        }
+      } else {
+        setReviewFeedback({ severity: 'success', message: 'Statusen er oppdatert.' });
+      }
+      void queryClient.invalidateQueries({ queryKey: ['/api/invites/admin/requests'] });
       setShowReviewDialog(false);
       setSelectedInvite(null);
       setAdminNotes('');
-  }
+    },
+    onError: (error: any) => {
+      setReviewFeedback({
+        severity: 'error',
+        message: error?.message || 'Kunne ikke oppdatere søknaden.',
+      });
+    },
 });
 
   const [mainView, setMainView] = useState<'invites' | 'fiken'>('invites');
@@ -200,7 +316,9 @@ export default function InviteManagementDashboard() {
   const [selectedInvite, setSelectedInvite] = useState<InviteRequest | null>(null);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [reviewStatus, setReviewStatus] = useState('');
+  const [agreementEvidenceLoading, setAgreementEvidenceLoading] = useState(false);
   const [adminNotes, setAdminNotes] = useState('');
+  const [search, setSearch] = useState('');
 
   // Send invite email mutation
   const sendInviteMutation = useMutation({
@@ -235,7 +353,40 @@ export default function InviteManagementDashboard() {
 
   const handleSendInvite = (inviteId: string) => {
     sendInviteMutation.mutate(inviteId);
-};
+  };
+
+  const handleDownloadAgreementEvidence = async (invite: InviteRequest) => {
+    setAgreementEvidenceLoading(true);
+    try {
+      const headers = await auth.getAuthHeader();
+      const payload = await apiRequest(
+        "/api/invites/admin/requests/" + encodeURIComponent(invite.id) + "/tester-agreements",
+        { headers },
+      );
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "creatorhub-signeringsbevis-" + invite.id + ".json";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setReviewFeedback({
+        severity: payload?.evidence?.digestVerified ? "success" : "warning",
+        message: payload?.evidence?.digestVerified
+          ? "Signeringsbeviset er lastet ned og SHA-256-kontrollen er verifisert."
+          : "Akseptbeviset er lastet ned, men mangler et verifiserbart 4-dokumentsavtrykk.",
+      });
+    } catch (error: any) {
+      setReviewFeedback({
+        severity: "error",
+        message: error?.message || "Kunne ikke laste ned signeringsbeviset.",
+      });
+    } finally {
+      setAgreementEvidenceLoading(false);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -259,6 +410,14 @@ export default function InviteManagementDashboard() {
 
   const getProfessionLabel = (profession: string) => {
     return getProfessionDisplayName(profession);
+  };
+
+  // Trygg dato-formattering — unngår at «Invalid Date» rendres i tabellen når
+  // feltet mangler eller ikke lar seg parse.
+  const formatInviteDate = (value?: string | number | Date | null) => {
+    if (!value) return '—';
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('nb-NO');
   };
 
   // User journey status helpers
@@ -296,32 +455,57 @@ export default function InviteManagementDashboard() {
     }
   };
 
-  const filteredInvitations = invitations.filter((invite: any) => {
-    switch (currentTab) {
-      case 1: return invite.status === 'pending';
-      case 2: return invite.status === 'under_review';
-      case 3: return invite.status === 'approved';
-      case 4: return invite.status === 'rejected';
-      default: return true;
-}
-});
+  const filteredInvitations = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return invitations.filter((invite: any) => {
+      const matchesTab = (() => {
+        switch (currentTab) {
+          case 1: return invite.status === 'pending';
+          case 2: return invite.status === 'under_review';
+          case 3: return invite.status === 'approved';
+          case 4: return invite.status === 'rejected';
+          default: return true;
+        }
+      })();
+      if (!matchesTab) return false;
+      if (!q) return true;
+      return [
+        invite.businessName,
+        invite.contactName,
+        invite.contactEmail,
+        invite.orgNumber,
+        invite.profession,
+      ]
+        .map((v: any) => String(v ?? '').toLowerCase())
+        .some((v: string) => v.includes(q));
+    });
+  }, [invitations, currentTab, search]);
 
   if (isLoading) {
     return (
-      <Box sx={{ p: 3 }}>
-        <LinearProgress />
-        <Typography sx={{ mt: 2, textAlign: 'center' }}>
-          Laster invitasjonsdata...
-        </Typography>
-      </Box>
+      <ThemeProvider theme={adminDarkTheme}>
+        <Box sx={{ p: 3 }}>
+          <LinearProgress />
+          <Typography sx={{ mt: 2, textAlign: 'center' }}>
+            Laster invitasjonsdata...
+          </Typography>
+        </Box>
+      </ThemeProvider>
     );
 }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" sx={{ mb: 3, color: theming.colors.primary }}>
+      <Typography variant="h4" component="h2" sx={{ mb: 3, color: themeColors.primary }}>
         Invitasjonshåndtering
       </Typography>
+
+      {reviewFeedback && (
+        <Alert severity={reviewFeedback.severity} onClose={() => setReviewFeedback(null)} data-testid="invite-review-feedback" sx={{ mb: 3 }}>
+          {reviewFeedback.message}
+        </Alert>
+      )}
 
       {/* Main View Tabs - Invites vs Fiken */}
       <Paper sx={{ mb: 3 }}>
@@ -367,7 +551,7 @@ export default function InviteManagementDashboard() {
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Group sx={{ color: 'primary.main', mr: 2 }} />
                 <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.totalRequests || 0}</Typography>
+                  <Typography variant="h4" sx={{ color: themeColors.primary }}>{stats.totalRequests || 0}</Typography>
                   <Typography variant="body2">Totale søknader</Typography>
                 </Box>
               </Box>
@@ -376,12 +560,12 @@ export default function InviteManagementDashboard() {
         </Grid>
         
         <Grid item xs={12} md={3}>
-          <MuiCard sx={{ backgroundColor: 'rgba(255, 1520.1)' }}>
+          <MuiCard sx={{ backgroundColor: 'rgba(255, 152, 0, 0.1)' }}>
             <CardContent >
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Schedule sx={{ color: 'warning.main', mr: 2 }} />
                 <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.pendingReview || 0}</Typography>
+                  <Typography variant="h4" sx={{ color: themeColors.primary }}>{stats.pendingReview || 0}</Typography>
                   <Typography variant="body2">Venter på godkjenning</Typography>
                 </Box>
               </Box>
@@ -395,7 +579,7 @@ export default function InviteManagementDashboard() {
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <CheckCircle sx={{ color: 'success.main', mr: 2 }} />
                 <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.approved || 0}</Typography>
+                  <Typography variant="h4" sx={{ color: themeColors.primary }}>{stats.approved || 0}</Typography>
                   <Typography variant="body2">Godkjente</Typography>
                 </Box>
               </Box>
@@ -409,7 +593,7 @@ export default function InviteManagementDashboard() {
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <TrendingUp sx={{ color: '#ff6b35', mr: 2 }} />
                 <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{Math.round(stats.conversionRate || 0)}%</Typography>
+                  <Typography variant="h4" sx={{ color: themeColors.primary }}>{Math.round(stats.conversionRate || 0)}%</Typography>
                   <Typography variant="body2">Konverteringsrate</Typography>
                 </Box>
               </Box>
@@ -441,51 +625,114 @@ export default function InviteManagementDashboard() {
         </Tabs>
       </Paper>
 
+      {/* Search */}
+      <TextField
+        size="small"
+        fullWidth
+        placeholder="Søk i bedrift, kontakt, e-post, org.nr eller profesjon …"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ mb: 2 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
+
       {/* Invitations Table */}
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
+      <Paper style={{ height: 600, width: '100%' }}>
+        {/*
+          Virtualisert tabell (react-virtuoso) – rendrer kun synlige rader, så
+          DOM-en holder seg lett uansett hvor mange invitasjoner som vises.
+          Samme mønster som RefundRequestsTable/PaymentMethodsTable.
+        */}
+        <TableVirtuoso
+          data={filteredInvitations}
+          components={{
+            Scroller: React.forwardRef<HTMLDivElement>((props, ref) => (
+              <TableContainer component={Paper} {...props} ref={ref} />
+            )),
+            Table: (props) => (
+              <Table {...props} sx={{ borderCollapse: 'separate', tableLayout: 'fixed' }} />
+            ),
+            TableHead: React.forwardRef<HTMLTableSectionElement, TableHeadProps>((props, ref) => (
+              <TableHead {...props} ref={ref} />
+            )),
+            TableRow: ({ item: _item, ...props }) => <TableRow {...props} hover />,
+            TableBody: React.forwardRef<HTMLTableSectionElement>((props, ref) => (
+              <TableBody {...props} ref={ref} />
+            )),
+          }}
+          fixedHeaderContent={() => (
             <TableRow>
-              <TableCell>Bedrift</TableCell>
-              <TableCell>Kontakt</TableCell>
-              <TableCell>Profesjon</TableCell>
-              <TableCell>Abonnement</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Brukerreise</TableCell>
-              <TableCell>Risiko</TableCell>
-              <TableCell>Dato</TableCell>
-              <TableCell>Handlinger</TableCell>
+              <TableCell sx={{ width: 200, fontWeight: 600 }}>Bedrift</TableCell>
+              <TableCell sx={{ width: 200, fontWeight: 600 }}>Kontakt</TableCell>
+              <TableCell sx={{ width: 130, fontWeight: 600 }}>Profesjon</TableCell>
+              <TableCell sx={{ width: 140, fontWeight: 600 }}>Abonnement</TableCell>
+              <TableCell sx={{ width: 120, fontWeight: 600 }}>Status</TableCell>
+              <TableCell sx={{ width: 150, fontWeight: 600 }}>Brukerreise</TableCell>
+              <TableCell sx={{ width: 110, fontWeight: 600 }}>Risiko</TableCell>
+              <TableCell sx={{ width: 110, fontWeight: 600 }}>Dato</TableCell>
+              <TableCell sx={{ width: 110, fontWeight: 600 }}>Handlinger</TableCell>
             </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredInvitations.map((invite: any) => (
-              <TableRow key={invite.id} hover>
-                <TableCell>
+          )}
+          itemContent={(_index, invite: any) => (
+            <>
+                <TableCell data-testid={`invite-request-${invite.id}`}>
                   <Box>
                     <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                      {invite.businessName}
+                      {invite.businessName || '—'}
                     </Typography>
-                    <Typography variant="caption" color="textSecondary">
-                      {invite.orgNumber}
-                    </Typography>
+                    {invite.orgNumber && (
+                      <Typography variant="caption" color="textSecondary">
+                        {invite.orgNumber}
+                      </Typography>
+                    )}
                   </Box>
                 </TableCell>
-                
+
                 <TableCell>
                   <Box>
-                    <Typography variant="body2">{invite.contactName}</Typography>
-                    <Typography variant="caption" color="textSecondary">
-                      {invite.contactEmail}
-                    </Typography>
+                    <Typography variant="body2">{invite.contactName || '—'}</Typography>
+                    {invite.contactEmail && (
+                      <Typography variant="caption" color="textSecondary">
+                        {invite.contactEmail}
+                      </Typography>
+                    )}
                   </Box>
                 </TableCell>
-                
+
                 <TableCell>
                   <Chip
                     label={getProfessionLabel(invite.profession)}
                     variant="outlined"
                     size="small"
                   />
+                  {invite.testerProfession && (
+                    <Chip
+                      label={`Tester som ${getProfessionLabel(invite.testerProfession)}`}
+                      color="info"
+                      size="small"
+                      sx={{ ml: 0.5 }}
+                    />
+                  )}
+                  {(() => {
+                    // Team-forespørsel? Parses fra «[Team: N medlemmer]» i meldingen.
+                    // Ved godkjenning settes prototype-master + max_team_size = N.
+                    const msg = String((invite as any).message || "");
+                    const m = msg.match(/\[Team:\s*(\d+)\s*medlemmer?\]/i);
+                    return m ? (
+                      <Chip
+                        label={`👥 Team (${m[1]})`}
+                        size="small"
+                        color="info"
+                        sx={{ ml: 0.5, fontWeight: 700 }}
+                      />
+                    ) : null;
+                  })()}
                 </TableCell>
 
                 {/* Subscription Plan */}
@@ -537,28 +784,30 @@ export default function InviteManagementDashboard() {
                     </Tooltip>
                   )}
                 </TableCell>
-                
+
                 <TableCell>
                   <Typography variant="body2">
-                    {new Date(invite.createdAt).toLocaleDateString('nb-NO')}
+                    {formatInviteDate(invite.createdAt)}
                   </Typography>
                 </TableCell>
-                
+
                 <TableCell>
                   <Box sx={{ display: 'flex', gap: 1 }}>
                     <Tooltip title="Se detaljer">
-                      <IconButton 
+                      <IconButton
                         size="small"
+                        aria-label="Se detaljer"
                         onClick={() => handleReviewInvite(invite)}
                       >
                         {theming.getThemedIcon('visibility')}
                       </IconButton>
                     </Tooltip>
-                    
+
                     {invite.status === 'approved' && !invite.inviteSentAt && (
                       <Tooltip title="Send invitasjon">
-                        <IconButton 
+                        <IconButton
                           size="small"
+                          aria-label="Send invitasjon"
                           onClick={() => handleSendInvite(invite.id)}
                           disabled={sendInviteMutation.isPending}
                         >
@@ -568,18 +817,18 @@ export default function InviteManagementDashboard() {
                     )}
                   </Box>
                 </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </>
+          )}
+        />
+      </Paper>
 
       {/* Review Dialog */}
-      <Dialog 
+      <Dialog
         open={showReviewDialog}
         onClose={() => setShowReviewDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           Vurder invitasjon - {selectedInvite?.businessName}
@@ -591,7 +840,7 @@ export default function InviteManagementDashboard() {
               {/* User Journey Stepper */}
               <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(255,107,53,0.05)' }}>
                 <CardContent>
-                  <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                  <Typography variant="h6" component="h3" sx={{ mb: 2, color: themeColors.primary }}>
                     Brukerreise
                   </Typography>
                   <Stepper
@@ -657,11 +906,81 @@ export default function InviteManagementDashboard() {
                 </CardContent>
               </MuiCard>
 
+              {selectedInvite.testerAgreementStatus && (
+                <MuiCard
+                  data-testid="tester-agreement-status"
+                  sx={{ mb: 3, backgroundColor: "rgba(76,175,80,0.05)" }}
+                >
+                  <CardContent>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                      <Typography variant="h6" component="h3" sx={{ color: themeColors.primary }}>
+                        Avtaledokumenter
+                      </Typography>
+                      <Chip
+                        size="small"
+                        color={
+                          selectedInvite.testerAgreementStatus.complete &&
+                          selectedInvite.testerAgreementStatus.accountProvisioningComplete
+                            ? "success"
+                            : "warning"
+                        }
+                        label={
+                          selectedInvite.testerAgreementStatus.complete &&
+                          !selectedInvite.testerAgreementStatus.accountProvisioningComplete
+                            ? "Avtaler ok · konto venter"
+                            : selectedInvite.testerAgreementStatus.complete
+                              ? "Alle 4 akseptert"
+                            : selectedInvite.testerAgreementStatus.legacyAcceptance
+                              ? "Historisk aksept (før 4 dokumenter)"
+                              : "Venter på komplett aksept"
+                        }
+                      />
+                    </Stack>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                      {selectedInvite.testerAgreementStatus.documents.map((document) => (
+                        <Chip
+                          key={document.key}
+                          size="small"
+                          variant={document.accepted ? "filled" : "outlined"}
+                          color={document.accepted ? "success" : "default"}
+                          icon={document.accepted ? <CheckCircle /> : <Schedule />}
+                          label={`${document.title} v${document.version}`}
+                        />
+                      ))}
+                    </Stack>
+                    {selectedInvite.testerAgreementStatus.acceptedAt && (
+                      <Typography variant="body2" sx={{ mt: 2 }}>
+                        Signert av <strong>{selectedInvite.testerAgreementStatus.signerName || "ukjent"}</strong>
+                        {` ${new Date(selectedInvite.testerAgreementStatus.acceptedAt).toLocaleString("nb-NO")}`}
+                        {selectedInvite.testerAgreementStatus.confirmedSigningAuthority ? " · fullmakt bekreftet" : ""}
+                      </Typography>
+                    )}
+                    {selectedInvite.testerAgreementStatus.agreementDigest && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1, wordBreak: "break-all" }}>
+                        SHA-256: <code>{selectedInvite.testerAgreementStatus.agreementDigest}</code>
+                      </Typography>
+                    )}
+                    {selectedInvite.testerAgreementStatus.acceptedAt && (
+                      <AdminButton
+                        tone="secondary"
+                        size="small"
+                        startIcon={<Assignment />}
+                        loading={agreementEvidenceLoading}
+                        onClick={() => void handleDownloadAgreementEvidence(selectedInvite)}
+                        sx={{ mt: 2 }}
+                      >
+                        Last ned signeringsbevis
+                      </AdminButton>
+                    )}
+                  </CardContent>
+                </MuiCard>
+              )}
+
               {/* Subscription Plan Info */}
               {selectedInvite.planName && (
                 <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(33,150,243,0.05)' }}>
                   <CardContent>
-                    <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                    <Typography variant="h6" component="h3" sx={{ mb: 2, color: themeColors.primary }}>
                       Valgt abonnement
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -684,7 +1003,7 @@ export default function InviteManagementDashboard() {
               {/* Business Information */}
               <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(255,255,255,0.02)' }}>
                 <CardContent>
-                  <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                  <Typography variant="h6" component="h3" sx={{ mb: 2, color: themeColors.primary }}>
                     Bedriftsinformasjon
                   </Typography>
                   <Grid container spacing={2}>
@@ -704,6 +1023,14 @@ export default function InviteManagementDashboard() {
                       <Typography variant="body2" color="textSecondary">E-post: </Typography>
                       <Typography variant="body1">{selectedInvite.contactEmail}</Typography>
                     </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="textSecondary">Kilde: </Typography>
+                      <Typography variant="body1">{selectedInvite.source || '—'}</Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="textSecondary">Tester som: </Typography>
+                      <Typography variant="body1">{selectedInvite.testerProfession ? getProfessionLabel(selectedInvite.testerProfession) : '—'}</Typography>
+                    </Grid>
                   </Grid>
                 </CardContent>
               </MuiCard>
@@ -712,14 +1039,14 @@ export default function InviteManagementDashboard() {
               {selectedInvite.profession && (
                 <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(255,138,0,0.05)' }}>
                   <CardContent>
-                    <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                    <Typography variant="h6" component="h3" sx={{ mb: 2, color: themeColors.primary }}>
                       📦 Funksjoner for denne brukeren
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Basert på yrke ({selectedInvite.profession}) og valgt plan ({selectedInvite.selectedPlan || 'basic'})
+                      Basert på yrke ({selectedInvite.testerProfession || selectedInvite.profession}) og valgt plan ({selectedInvite.selectedPlan || 'basic'})
                     </Typography>
                     <PlanFeaturePreview
-                      profession={selectedInvite.profession}
+                      profession={selectedInvite.testerProfession || selectedInvite.profession}
                       selectedPlan={normalizePlan(selectedInvite.selectedPlan)}
                       showLocked={true}
                       showDetails={true}
@@ -733,7 +1060,7 @@ export default function InviteManagementDashboard() {
               {selectedInvite.redFlagAnalysis && (
                 <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(255,255,255,0.02)' }}>
                   <CardContent>
-                    <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                    <Typography variant="h6" component="h3" sx={{ mb: 2, color: themeColors.primary }}>
                       Risikoanalyse
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -769,8 +1096,10 @@ export default function InviteManagementDashboard() {
 
               {/* Review Controls */}
               <FormControl fullWidth sx={{ mb: 3 }}>
-                <InputLabel>Status</InputLabel>
+                <InputLabel id="invite-review-status-label">Status</InputLabel>
                 <Select
+                  id="invite-review-status"
+                  labelId="invite-review-status-label"
                   value={reviewStatus}
                   onChange={(e) => setReviewStatus(e.target.value)}
                   label="Status"
@@ -796,21 +1125,21 @@ export default function InviteManagementDashboard() {
         </DialogContent>
 
         <DialogActions>
-          <Button onClick={() => setShowReviewDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setShowReviewDialog(false)}>
             Avbryt
-          </Button>
-          <Button onClick={handleUpdateStatus}
-            variant="contained"
-            disabled={updateStatusMutation.isPending}
-            sx={{
-              backgroundColor: '#ff6b35','&:hover': { backgroundColor: '#e55722' }
-          }}>
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            onClick={handleUpdateStatus}
+            loading={updateStatusMutation.isPending}
+          >
             Oppdater status
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
         </>
       )}
     </Box>
+    </ThemeProvider>
   );
 }

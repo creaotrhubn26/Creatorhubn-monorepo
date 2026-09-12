@@ -109,7 +109,7 @@ export function setupRoleRoomTalentGdprRoutes(deps: RoleRoomTalentGdprRoutesDeps
       return res.send(JSON.stringify(exportPayload, null, 2));
     } catch (err) {
       console.error("[gdpr/export] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å eksportere", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å eksportere", detail: "internal_error" });
     }
   });
 
@@ -204,7 +204,7 @@ export function setupRoleRoomTalentGdprRoutes(deps: RoleRoomTalentGdprRoutesDeps
       });
     } catch (err) {
       console.error("[gdpr/delete] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å slette profilen", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å slette profilen", detail: "internal_error" });
     }
   });
 
@@ -214,7 +214,7 @@ export function setupRoleRoomTalentGdprRoutes(deps: RoleRoomTalentGdprRoutesDeps
   app.post("/api/role-room/talents/audit-retention/sweep", async (req, res) => {
     const token = (req.header("x-migrate-trigger-token") || "").trim();
     const expected = (process.env.MIGRATE_TRIGGER_TOKEN || "").trim();
-    if (!expected || token !== expected) {
+    if (!expected || token.length !== expected.length || !require('crypto').timingSafeEqual(Buffer.from(token), Buffer.from(expected))) {
       return res.status(401).json({ error: "Trenger MIGRATE_TRIGGER_TOKEN" });
     }
     try {
@@ -226,7 +226,7 @@ export function setupRoleRoomTalentGdprRoutes(deps: RoleRoomTalentGdprRoutesDeps
       return res.json({ ok: true, deleted: r.rowCount });
     } catch (err) {
       console.error("[audit-retention sweep] failed", err);
-      return res.status(500).json({ error: "Sweep feilet", detail: String(err) });
+      return res.status(500).json({ error: "Sweep feilet", detail: "internal_error" });
     }
   });
 }

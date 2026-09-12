@@ -21,6 +21,10 @@ import { archiveToRoleRoomB2, slugifyForKey } from "./b2-archive-helper.js";
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MiB — postere er typisk 200-800 KiB
+  fileFilter: (_req, file, cb) => {
+    if (/^(image\/|application\/pdf)/.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Kun bilder og PDF er tillatt") as any, false);
+  },
 });
 
 interface CastingPosterArchiveDeps {

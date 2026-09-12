@@ -17,13 +17,13 @@
  *
  * Eksporterer `createCastingManuscriptsService(deps)`-factory som tar
  * compatStore-funksjoner og returnerer 15 metoder: reads + replace + lookup
- * + clear. `replace*`-metodene oppdaterer både Map og DB atomisk.
+ * + clear. Kritisk manus-, scene- og revisjonsinnhold skrives til DB før
+ * det publiseres i minne-cachen.
  *
  * **Robustness-noter (forbedringer vs. opprinnelig implementasjon):**
  *
- *   - Konsistent feilhåndtering: `replace*`/`clear*`-metodene fanger
- *     compatStore-feil og logger dem uten å miste in-memory-state — bedre
- *     for read-after-write-konsistens når DB er midlertidig nede.
+ *   - Kritiske skriveveier propagerer persistensfeil slik at klienten kan
+ *     beholde en lokal kopi i stedet for å vise falsk skysuksess.
  *   - `clearManuscriptState` lukker DB-deletes i Promise.allSettled
  *     istedenfor Promise.all, så enkelt-feilet-key ikke aborterer hele
  *     cascade. Matcher den oppførselen casting-DELETE allerede gjør for
@@ -32,8 +32,10 @@
  *     find-in-Map → fallback-find-in-DB-patternet i én metode (var dupli-
  *     sert 3 steder i opprinnelig kode).
  *
+ *   - If-Match håndheves i route-laget; servicen bumper manusversjonen på
+ *     writes og returnerer den persisterte versjonen til klienten.
+ *
  * **Ikke endret (samme oppførsel som før):**
- *   - Ingen optimistic locking (TODO: legg til versjons-felt + If-Match)
  *   - Ingen DB-transaksjoner på cascade-delete (compat-store-laget
  *     støtter ikke transaksjoner per nå)
  *   - ID-generering ved `Date.now()` (TODO: vurder crypto.randomUUID()
@@ -58,6 +60,9 @@ export interface ManuscriptLocationWithItems extends ManuscriptLocation {
 export interface CastingManuscriptsServiceDeps {
   compatStoreGet: <T>(storeKey: string) => Promise<T | null>;
   compatStoreSet: (storeKey: string, storeValue: unknown) => Promise<void>;
+  // Strict-variant som KASTER ved DB-utilgjengelighet — brukes for
+  // manus, scener og revisjoner så klienten ikke får stille minnetap.
+  compatStoreSetStrict?: (storeKey: string, storeValue: unknown) => Promise<void>;
   compatStoreDelete: (storeKey: string) => Promise<void>;
   compatStoreListByPrefix: <T>(
     prefix: string,
@@ -127,9 +132,27 @@ export interface CastingManuscriptsService {
   // returnere den til klient med korrekt ETag-header.
   replaceManuscript(manuscriptId: string, manuscript: JsonBlob): Promise<JsonBlob>;
   replaceScenes(manuscriptId: string, scenes: JsonBlob[]): Promise<JsonBlob[]>;
+  /**
+   * Per-frame patch: merger fields inn i én storyboard-frame og strict-
+   * persisterer scenen. Kutter payload (hele scener POSTes ellers per
+   * strøk-lagring) og klobber ikke andre frames i samme scene.
+   * null → scene/frame ikke funnet.
+   */
+  patchFrame(
+    manuscriptId: string,
+    sceneId: string,
+    frameId: string,
+    fields: JsonBlob,
+  ): Promise<{ updatedAt: string } | null>;
+  /** Se implementasjonen: bevarer forrige strokes i drawingHistory. */
+  withDrawingHistory(existingFrame: unknown, nextFrame: unknown): unknown;
   replaceDialogue(manuscriptId: string, dialogue: JsonBlob[]): Promise<JsonBlob[]>;
   replaceActs(manuscriptId: string, acts: JsonBlob[]): Promise<JsonBlob[]>;
-  replaceRevisions(manuscriptId: string, revisions: JsonBlob[]): Promise<JsonBlob[]>;
+  replaceRevisions(
+    manuscriptId: string,
+    revisions: JsonBlob[],
+    options?: { bumpManuscriptVersion?: boolean },
+  ): Promise<JsonBlob[]>;
 
   // ── Lookups (find-by-id, prøver Map først, så DB) ────────────────
   findDialogueLocation(dialogueId: string): Promise<ManuscriptLocation | null>;
@@ -204,6 +227,7 @@ export function createCastingManuscriptsService(
     compatStoreDelete,
     compatStoreListByPrefix,
   } = deps;
+  const compatStoreSetStrict = deps.compatStoreSetStrict ?? compatStoreSet;
 
   const legacyManuscripts = new Map<string, JsonBlob>();
   const legacyScenesByManuscript = new Map<string, JsonBlob[]>();
@@ -392,8 +416,8 @@ export function createCastingManuscriptsService(
     const existing = await getManuscript(manuscriptId);
     if (!existing) return; // ingen manuscript = ingen version å bumpe
     const next = { ...existing, version: bumpVersion(existing) };
+    await compatStoreSetStrict(dbLegacyManuscriptKey(manuscriptId), next);
     legacyManuscripts.set(manuscriptId, next);
-    await compatStoreSet(dbLegacyManuscriptKey(manuscriptId), next);
   }
 
   async function replaceManuscript(
@@ -402,8 +426,10 @@ export function createCastingManuscriptsService(
   ): Promise<JsonBlob> {
     const existing = legacyManuscripts.get(manuscriptId);
     const versioned = { ...manuscript, version: bumpVersion(existing) };
+    // Text must never be acknowledged as a cloud save when persistence
+    // failed. Write through to durable storage before publishing in memory.
+    await compatStoreSetStrict(dbLegacyManuscriptKey(manuscriptId), versioned);
     legacyManuscripts.set(manuscriptId, versioned);
-    await compatStoreSet(dbLegacyManuscriptKey(manuscriptId), versioned);
     return versioned;
   }
 
@@ -411,12 +437,72 @@ export function createCastingManuscriptsService(
     manuscriptId: string,
     scenes: JsonBlob[],
   ): Promise<JsonBlob[]> {
+    // Strict: feiler DB-skrivingen skal ruta svare 503 — settes derfor i
+    // minne-cache FØRST ETTER vellykket persist (ellers ser klienten
+    // «lagret» data som forsvinner ved restart).
+    await compatStoreSetStrict(dbLegacyScenesKey(manuscriptId), scenes);
     legacyScenesByManuscript.set(manuscriptId, scenes);
-    await compatStoreSet(dbLegacyScenesKey(manuscriptId), scenes);
     // Bumper manuscript-master-version for sub-entitet-mutasjoner — sikrer
     // at klienter med cached manuscript-bundle invaliderer ved scene-edit.
     await bumpManuscriptVersion(manuscriptId);
     return scenes;
+  }
+
+  /**
+   * Tegne-historikk: når drawingData.strokes byttes ut, bevares forrige
+   * versjon i frame.drawingHistory (nyeste først, cap 3) så synket undo
+   * ikke er borte for alltid. Thumbs/underlag holdes utenfor — kun
+   * strokes-strengen + tidspunkt.
+   */
+  function withDrawingHistory(existingFrame: any, nextFrame: any): any {
+    const prevStrokes = existingFrame?.drawingData?.strokes;
+    const nextStrokes = nextFrame?.drawingData?.strokes;
+    if (typeof prevStrokes !== "string" || prevStrokes === nextStrokes) {
+      return nextFrame;
+    }
+    const history = Array.isArray(existingFrame?.drawingHistory)
+      ? existingFrame.drawingHistory
+      : [];
+    return {
+      ...nextFrame,
+      drawingHistory: [
+        { strokes: prevStrokes, updatedAt: existingFrame?.updatedAt ?? null },
+        ...history,
+      ].slice(0, 3),
+    };
+  }
+
+  async function patchFrame(
+    manuscriptId: string,
+    sceneId: string,
+    frameId: string,
+    fields: JsonBlob,
+  ): Promise<{ updatedAt: string } | null> {
+    const scenes = await getScenes(manuscriptId);
+    const sceneIndex = scenes.findIndex((scene) => scene?.id === sceneId);
+    if (sceneIndex < 0) return null;
+    const scene = scenes[sceneIndex] as any;
+    const frames: any[] = Array.isArray(scene.storyboardFrames)
+      ? scene.storyboardFrames
+      : [];
+    const frameIndex = frames.findIndex((frame) => frame?.id === frameId);
+    if (frameIndex < 0) return null;
+    const updatedAt = new Date().toISOString();
+    const nextFrames = frames.slice();
+    nextFrames[frameIndex] = withDrawingHistory(frames[frameIndex], {
+      ...frames[frameIndex],
+      ...fields,
+      id: frameId,
+      updatedAt,
+    });
+    const nextScenes = scenes.slice();
+    nextScenes[sceneIndex] = {
+      ...scene,
+      storyboardFrames: nextFrames,
+      updatedAt,
+    };
+    await replaceScenes(manuscriptId, nextScenes);
+    return { updatedAt };
   }
 
   async function replaceDialogue(
@@ -442,10 +528,15 @@ export function createCastingManuscriptsService(
   async function replaceRevisions(
     manuscriptId: string,
     revisions: JsonBlob[],
+    options: { bumpManuscriptVersion?: boolean } = {},
   ): Promise<JsonBlob[]> {
+    // Revision history is a recovery mechanism, so an in-memory-only write
+    // must fail instead of being presented as durable cloud history.
+    await compatStoreSetStrict(dbLegacyRevisionsKey(manuscriptId), revisions);
     legacyRevisionsByManuscript.set(manuscriptId, revisions);
-    await compatStoreSet(dbLegacyRevisionsKey(manuscriptId), revisions);
-    await bumpManuscriptVersion(manuscriptId);
+    if (options.bumpManuscriptVersion !== false) {
+      await bumpManuscriptVersion(manuscriptId);
+    }
     return revisions;
   }
 
@@ -577,6 +668,8 @@ export function createCastingManuscriptsService(
     getRevisions,
     replaceManuscript,
     replaceScenes,
+    patchFrame,
+    withDrawingHistory,
     replaceDialogue,
     replaceActs,
     replaceRevisions,

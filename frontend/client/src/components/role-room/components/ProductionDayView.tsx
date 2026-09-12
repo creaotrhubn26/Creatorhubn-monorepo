@@ -936,7 +936,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   const getStatusColor = (status?: ProductionDayStatus): string => {
     switch (status) {
       case 'completed': return '#10b981';
-      case 'in_progress': return '#00d4ff';
+      case 'in_progress': return 'var(--role-cyan, #00d4ff)';
       case 'cancelled': return '#ff4444';
       default: return '#ffb800';
     }
@@ -2765,7 +2765,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
               </Box>
               <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(17,24,39,0.55)', border: '1px solid rgba(255,255,255,0.1)' }}>
                 <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Dekning</Typography>
-                <Typography sx={{ color: '#22d3ee', fontWeight: 700, fontSize: '1.2rem' }}>{proKpis.coveragePercent}%</Typography>
+                <Typography sx={{ color: 'var(--role-cyan, #22d3ee)', fontWeight: 700, fontSize: '1.2rem' }}>{proKpis.coveragePercent}%</Typography>
               </Box>
               <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(17,24,39,0.55)', border: '1px solid rgba(255,255,255,0.1)' }}>
                 <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.72rem', textTransform: 'uppercase' }}>Planlagt tid</Typography>
@@ -2958,7 +2958,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                     variant="outlined"
                     startIcon={<StartIcon />}
                     onClick={() => void applyFieldStatus(selectedProDay, 'in_progress', 'check_in')}
-                    sx={{ color: '#22d3ee', borderColor: 'rgba(34,211,238,0.45)' }}
+                    sx={{ color: 'var(--role-cyan, #22d3ee)', borderColor: 'rgba(34,211,238,0.45)' }}
                   >
                     Check-in
                   </Button>
@@ -3856,7 +3856,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
 
                               const getWeatherColor = () => {
                                 if (isSunny) return '#ffb800';
-                                if (isRainy) return '#00d4ff';
+                                if (isRainy) return 'var(--role-cyan, #00d4ff)';
                                 if (isSnowy) return '#a8d8ff';
                                 if (isThunder) return '#8b5cf6';
                                 if (isCloudy) return '#94a3b8';
@@ -3974,7 +3974,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                                 left: { xs: 8 + i * 10, sm: 10 + i * 11 },
                                                 width: 3,
                                                 height: 10,
-                                                bgcolor: '#00d4ff',
+                                                bgcolor: 'var(--role-cyan, #00d4ff)',
                                                 borderRadius: 2,
                                                 animation: 'rain 0.7s ease-in-out infinite',
                                                 animationDelay: `${i * 0.15}s`,
@@ -4063,7 +4063,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                                             <UmbrellaIcon sx={{
                                               fontSize: { xs: 18, sm: 20 },
-                                              color: '#00d4ff',
+                                              color: 'var(--role-cyan, #00d4ff)',
                                               animation: dayForecast.precipitation > 0 ? 'pulse 2s ease-in-out infinite' : 'none',
                                             }} />
                                             <Box>
@@ -4299,10 +4299,10 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                             justifyContent: 'center',
                                           }}
                                         >
-                                          <PeopleIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: '#00d4ff' }} />
+                                          <PeopleIcon sx={{ fontSize: { xs: 20, sm: 22 }, color: 'var(--role-cyan, #00d4ff)' }} />
                                         </Box>
                                         <Box sx={{ flex: 1 }}>
-                                          <Typography sx={{ color: '#00d4ff', fontWeight: 700, fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+                                          <Typography sx={{ color: 'var(--role-cyan, #00d4ff)', fontWeight: 700, fontSize: { xs: '0.9rem', sm: '1rem' } }}>
                                             Team
                                           </Typography>
                                           <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.75rem', sm: '0.8rem' } }}>
@@ -4314,7 +4314,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                                           size="small"
                                           sx={{
                                             bgcolor: 'rgba(0,212,255,0.3)',
-                                            color: '#00d4ff',
+                                            color: 'var(--role-cyan, #00d4ff)',
                                             fontWeight: 700,
                                             minWidth: 32,
                                           }}

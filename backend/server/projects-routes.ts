@@ -4,13 +4,27 @@ import { promises as fs } from "fs";
 import { existsSync } from "fs";
 import path from "path";
 import { readString } from "./_shared";
+import { canAccessProject } from "./project-team-routes";
+import {
+  ensureProjectTeamSchema,
+  requireProjectAccess,
+} from "./project-access";
+import { findProjectRowById, listAccessibleProjectRows } from "./project-repository";
+import {
+  CANONICAL_PROFESSIONS,
+  isWorkspaceCategory,
+  normalizeProfession,
+} from "../../frontend/shared/profession-types.ts";
 
 export interface ProjectsRoutesDeps {
   app: express.Application;
   pool: Pool;
   mapProjectRow: (r: any) => any;
-  getUserIdFromAuth: (req: any) => string | null;
   compatResolveUserId: (req: any) => string;
+  requireUserSession: (
+    req: any,
+    res: any,
+  ) => { userId: string; email: string; name: string; role: string } | null | Promise<{ userId: string; email: string; name: string; role: string } | null>;
   compatStoreSet: (key: string, value: unknown) => Promise<void>;
   buildGalleryShareUrl: (accessToken: string) => string;
   bootstrapCaptureSessionForProject: (...args: any[]) => Promise<any>;
@@ -54,13 +68,16 @@ export interface ProjectsRoutesDeps {
   upsertShotListForProject: (...args: any[]) => Promise<any>;
 }
 
+const isUuid = (s: string | null | undefined): s is string =>
+  !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
 export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   const {
     app,
     pool,
     mapProjectRow,
-    getUserIdFromAuth,
     compatResolveUserId,
+    requireUserSession,
     compatStoreSet,
     buildGalleryShareUrl,
     bootstrapCaptureSessionForProject,
@@ -83,15 +100,48 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     upsertShotListForProject,
   } = deps;
 
+  const resolveWorkspaceCategory = async (
+    profession: unknown,
+    projectType?: unknown,
+  ) => {
+    const normalizedProjectType = (readString(projectType) || "")
+      .toLowerCase()
+      .replace(/[\s_-]+/g, "");
+    if (["music", "musikk", "audio", "song", "album", "recording"].includes(normalizedProjectType)) {
+      return "music";
+    }
+    const normalized = normalizeProfession(profession);
+    const baseline = CANONICAL_PROFESSIONS.find((entry) => entry.name === normalized)?.workspaceCategory ?? "service";
+    if (!normalized) return baseline;
+    try {
+      const result = await pool.query(
+        "SELECT workspace_category FROM profession_types WHERE name = $1 LIMIT 1",
+        [normalized],
+      );
+      return isWorkspaceCategory(result.rows[0]?.workspace_category)
+        ? result.rows[0].workspace_category
+        : baseline;
+    } catch {
+      return baseline;
+    }
+  };
+
   app.get("/api/projects", async (req, res) => {
     try {
-      const authUserId = readString(getUserIdFromAuth(req));
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const resolvedId = session.userId || compatResolveUserId(req);
+      const authUserId = typeof resolvedId === "string" && resolvedId.trim() ? resolvedId.trim() : null;
       const queryUserId = readString(req.query.userId);
       const profession = readString(req.query.profession);
       const status = readString(req.query.status);
       const customerId =
         readString(req.query.customerId) || readString(req.query.clientId);
-      const requestedUserId = queryUserId || authUserId;
+      // query.userId er IKKE en tilgangs-vektor. Honorer den KUN når den er lik
+      // den autentiserte brukeren — ellers kunne hvem som helst hente en annen
+      // brukers prosjekt-liste via ?userId=<offer> (BOLA).
+      const requestedUserId =
+        queryUserId && queryUserId === authUserId ? queryUserId : authUserId;
       const isLocalDevelopmentWorkspaceUserId = (
         value: string | null | undefined,
       ): boolean =>
@@ -103,56 +153,34 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         requestedUserId && !isLocalDevelopmentWorkspaceUserId(requestedUserId)
           ? requestedUserId
           : null;
-      let query = "SELECT * FROM legacy.projects";
-      const params: any[] = [];
-      let idx = 1;
-      const filters: string[] = [];
-
-      if (customerId) {
-        filters.push(`customer_id = $${idx++}`);
-        params.push(customerId);
-      }
-
-      if (profession) {
-        filters.push(`profession = $${idx++}`);
-        params.push(profession);
-      }
-
-      if (status) {
-        filters.push(`status = $${idx++}`);
-        params.push(status);
-      }
-
-      if (scopedUserId) {
-        filters.push(`user_id = $${idx++}`);
-        params.push(scopedUserId);
-      }
-
-      if (filters.length > 0) {
-        query += ` WHERE ${filters.join(" AND ")}`;
-      }
-
-      query += " ORDER BY created_at DESC";
-
-      const result = await pool.query(query, params);
-      res.json(result.rows.map(mapProjectRow));
+      const rows = await listAccessibleProjectRows(pool, {
+        userId: scopedUserId,
+        profession,
+        status,
+        customerId,
+      });
+      res.json(rows.map(mapProjectRow));
     } catch (error) {
-      console.error("Error fetching projects:", error);
-      res.status(500).json({ error: "Kunne ikke hente prosjekter" });
+      // Manglende legacy.projects-tabell (eller schema-drift) skal ikke krasje
+      // dashbord-load. Returner tom liste i stedet for 500.
+      console.warn("[projects] list degraded:", (error as any)?.message || error);
+      res.json([]);
     }
   });
 
   // GET /api/projects/:id — get single project
   app.get("/api/projects/:id", async (req, res) => {
     try {
-      const result = await pool.query(
-        "SELECT * FROM legacy.projects WHERE id = $1",
-        [req.params.id],
-      );
-      if (result.rowCount === 0) {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await canAccessProject(pool, session.userId, req.params.id))) {
         return res.status(404).json({ error: "Prosjekt ikke funnet" });
       }
-      const project = mapProjectRow(result.rows[0]);
+      const row = await findProjectRowById(pool, req.params.id);
+      if (!row) {
+        return res.status(404).json({ error: "Prosjekt ikke funnet" });
+      }
+      const project = mapProjectRow(row);
       const meetingContext = await resolveMeetingNotesProjectContext(req.params.id);
       res.json({
         ...project,
@@ -173,6 +201,77 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     }
   });
 
+  // Én autoritativ oppstartskontrakt for Team Workspace. Prosjekt, kategori,
+  // rettigheter og team kommer fra samme tilgangssjekk og samme prosjekt-id.
+  app.get("/api/projects/:id/workspace-bootstrap", async (req, res) => {
+    const context = await requireProjectAccess(
+      { pool, requireUserSession },
+      req,
+      res,
+      { projectId: req.params.id, level: "read", hideExistence: true },
+    );
+    if (!context) return;
+
+    try {
+      const row = await findProjectRowById(pool, req.params.id);
+      if (!row) return res.status(404).json({ error: "not_found" });
+      const project = mapProjectRow(row);
+      await ensureProjectTeamSchema(pool);
+      const [ownerResult, memberResult, workspaceCategory] = await Promise.all([
+        pool.query(
+          `SELECT id::text AS user_id, email, first_name, last_name
+             FROM users WHERE id::text = $1 LIMIT 1`,
+          [String(row.user_id || "")],
+        ).catch(() => ({ rows: [] as any[] })),
+        pool.query(
+          `SELECT id, project_id, user_id, email, name, role, crew_role,
+                  permissions, status, invited_at, accepted_at
+             FROM project_team_members
+            WHERE project_id = $1 AND deactivated_at IS NULL
+            ORDER BY invited_at ASC`,
+          [req.params.id],
+        ).catch(() => ({ rows: [] as any[] })),
+        resolveWorkspaceCategory(
+          project.profession,
+          project.projectType ?? project.project_type ?? project.category,
+        ),
+      ]);
+      const owner = ownerResult.rows[0];
+      res.json({
+        project,
+        workspaceCategory,
+        access: context.access,
+        owner: owner ? {
+          userId: owner.user_id,
+          email: owner.email,
+          name: [owner.first_name, owner.last_name].filter(Boolean).join(" ") || owner.email,
+          avatarUrl: owner.user_id ? `/api/users/${owner.user_id}/avatar` : null,
+        } : {
+          userId: String(row.user_id || ""),
+          email: null,
+          name: null,
+          avatarUrl: row.user_id ? `/api/users/${row.user_id}/avatar` : null,
+        },
+        members: memberResult.rows.map((member: any) => ({
+          id: member.id,
+          userId: member.user_id || null,
+          email: member.email,
+          name: member.name || member.email,
+          role: member.role || "member",
+          crewRole: member.crew_role || null,
+          permissions: member.permissions || { canRead: true, canEdit: false },
+          status: member.status || "pending",
+          invitedAt: member.invited_at,
+          acceptedAt: member.accepted_at || null,
+          avatarUrl: member.user_id ? `/api/users/${member.user_id}/avatar` : null,
+        })),
+      });
+    } catch (error) {
+      console.error("GET workspace bootstrap", error);
+      res.status(500).json({ error: "workspace_bootstrap_failed" });
+    }
+  });
+
   // GET /api/projects/:id/change-log — paged list of noteworthy
   // project events (client hearts, quote/contract signatures). Used
   // by the iPad Context panel timeline + future web activity feed.
@@ -180,18 +279,12 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   // Owner-gated: the request's bearer must match ``projects.user_id``
   // so one photographer can't browse another's client activity.
   app.get("/api/projects/:id/change-log", async (req, res) => {
+    const access = await requireProjectAccess(
+      { pool, requireUserSession }, req, res,
+      { projectId: req.params.id, level: "read", hideExistence: true },
+    );
+    if (!access) return;
     try {
-      const userId = getUserIdFromAuth(req);
-      if (!userId) return res.status(401).json({ error: "unauthorized" });
-      const owns = await pool.query(
-        "SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2 LIMIT 1",
-        [req.params.id, userId],
-      );
-      if (owns.rowCount === 0) {
-        // Returning 404 instead of 403 so callers can't enumerate
-        // projects by probing ids.
-        return res.status(404).json({ error: "not_found" });
-      }
       const limit = Number(req.query.limit ?? 50);
       const before =
         typeof req.query.before === "string" && req.query.before.length > 0
@@ -253,8 +346,10 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
       res.json({ entries });
     } catch (error) {
-      console.error("[project-change-log] fetch failed", error);
-      res.status(500).json({ error: "fetch_failed" });
+      // Manglende change-log-tabell skal ikke krasje aktivitets-banner.
+      // Returner tom liste i stedet for 500.
+      console.warn("[project-change-log] degraded:", (error as any)?.message || error);
+      res.json({ entries: [] });
     }
   });
 
@@ -271,14 +366,22 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
   app.post("/api/drive/batches", async (req, res) => {
     try {
-      const userId = getUserIdFromAuth(req);
-      if (!userId) return res.status(401).json({ error: "unauthorized" });
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const userId = session.userId;
 
       const body = req.body ?? {};
       const projectId =
         typeof body.projectId === "string" && body.projectId.length > 0
           ? body.projectId
           : null;
+      if (projectId) {
+        const projectAccess = await requireProjectAccess(
+          { pool, requireUserSession }, req, res,
+          { projectId, level: "edit", hideExistence: true },
+        );
+        if (!projectAccess) return;
+      }
       const rawItems = Array.isArray(body.items) ? body.items : [];
       const items = rawItems
         .map((entry: unknown) => {
@@ -332,8 +435,9 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
   app.get("/api/drive/batches/:id", async (req, res) => {
     try {
-      const userId = getUserIdFromAuth(req);
-      if (!userId) return res.status(401).json({ error: "unauthorized" });
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const userId = session.userId;
       const snapshot = await fetchDriveUploadBatch(pool, userId, req.params.id);
       if (!snapshot) {
         // 404 — we don't distinguish "your batch doesn't exist" from
@@ -350,7 +454,9 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   // POST /api/projects — create new project
   app.post("/api/projects", async (req, res) => {
     try {
-      const userId = getUserIdFromAuth(req);
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const userId = session.userId;
       const data = req.body;
 
       // Build the project name
@@ -407,12 +513,12 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
       const customerId = data.customerId || data.customer_id || null;
 
       const result = await pool.query(
-        `INSERT INTO legacy.projects 
-          (id, user_id, title, name, description, profession, category, status,
-           client_email, client_phone, date, event_date, location, budget,
-           settings, metadata, customer_id, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW())
-         RETURNING *`,
+        `INSERT INTO projects
+          (id, user_id, title, name, description, profession, project_type, status,
+           client_name, event_date, location, budget, settings, project_data,
+           created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11,$12::jsonb,$13::jsonb,NOW(),NOW())
+         RETURNING *, 'public'::text AS _project_source`,
         [
           projectId,
           userId,
@@ -421,15 +527,12 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
           data.description || "",
           data.profession || "photographer",
           data.projectType || "wedding",
-          data.clientEmail || "",
-          data.clientPhone || "",
-          data.eventDate || null,
+          data.clientName || null,
           data.eventDate || null,
           data.location || "",
           data.budget || null,
           JSON.stringify(settings),
           JSON.stringify(metadata),
-          customerId,
         ],
       );
 
@@ -438,24 +541,28 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         `🎬 Nytt prosjekt opprettet: "${projectName}" (${projectId}) av ${userId}${customerId ? ` for kunde ${customerId}` : ""}`,
       );
 
-      // If created from CRM customer, link project back to customer
+      // If created from CRM customer, link project back to customer.
+      // Eier-scope owner_user_id: customerId er caller-oppgitt — uten filter
+      // kunne man om-lenke en annen brukers CRM-kunde til sitt eget prosjekt.
       if (customerId) {
         await pool
           .query(
-            `UPDATE crm_customers SET project_id = $1, status = 'active', updated_at = NOW() WHERE id = $2`,
-            [projectId, customerId],
+            `UPDATE crm_customers SET project_id = $1, status = 'active', updated_at = NOW() WHERE id = $2 AND owner_user_id = $3`,
+            [projectId, customerId, userId],
           )
           .catch((err: any) =>
             console.error("Failed to link project to CRM customer:", err.message),
           );
       }
 
-      // If this project came from a submission, update submission status
+      // If this project came from a submission, update submission status.
+      // Eier-scope vendor_id: submissionId er caller-oppgitt — uten filter
+      // kunne man markere en annen fotografs forespørsel som «booked» (IDOR).
       if (data.submissionId) {
         await pool
           .query(
-            `UPDATE client_submissions SET status = 'booked', updated_at = NOW() WHERE id = $1`,
-            [data.submissionId],
+            `UPDATE client_submissions SET status = 'booked', updated_at = NOW() WHERE id = $1 AND vendor_id = $2`,
+            [data.submissionId, userId],
           )
           .catch(() => {});
       }
@@ -469,9 +576,19 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
   // PUT /api/projects/:id — update project
   app.put("/api/projects/:id", async (req, res) => {
+    const access = await requireProjectAccess(
+      { pool, requireUserSession },
+      req,
+      res,
+      { projectId: req.params.id, level: "edit" },
+    );
+    if (!access) return;
     try {
       const { id } = req.params;
       const data = req.body;
+      const storedProject = await findProjectRowById(pool, id);
+      if (!storedProject) return res.status(404).json({ error: "Prosjekt ikke funnet" });
+      const publicStore = storedProject._project_source === "public";
 
       // Slice 9X.15 — capture old status BEFORE update so we can detect
       // milestone transitions and notify clients exactly once. Wrapped in
@@ -479,17 +596,13 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
       // below also returns 404 — the notification logic skips on null.
       let oldStatus: string | null = null;
       try {
-        const before = await pool.query(
-          `SELECT status FROM legacy.projects WHERE id = $1 LIMIT 1`,
-          [id],
-        );
-        oldStatus = (before.rows[0]?.status ?? null) as string | null;
+        oldStatus = (storedProject.status ?? null) as string | null;
       } catch (_err) {
         // Non-fatal — skip notification path on lookup error.
       }
 
       // Build dynamic SET clause
-      const updates: string[] = ["updated_at = NOW()"];
+      const updates: string[] = [publicStore ? "updated_at = NOW()::text" : "updated_at = NOW()"];
       const params: any[] = [];
       let paramIdx = 1;
 
@@ -501,10 +614,9 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         location: "location",
         profession: "profession",
         clientName: "client_name",
-        clientEmail: "client_email",
-        clientPhone: "client_phone",
-        projectType: "category",
-        eventDate: "date",
+        ...(publicStore ? {} : { clientEmail: "client_email", clientPhone: "client_phone" }),
+        projectType: publicStore ? "project_type" : "category",
+        eventDate: publicStore ? "event_date" : "date",
       };
 
       for (const [key, col] of Object.entries(fieldMap)) {
@@ -526,14 +638,16 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
       }
       if (data.metadata) {
         updates.push(
-          `metadata = COALESCE(metadata, '{}')::jsonb || $${paramIdx++}::jsonb`,
+          `${publicStore ? "project_data" : "metadata"} = COALESCE(${publicStore ? "project_data" : "metadata"}, '{}')::jsonb || $${paramIdx++}::jsonb`,
         );
         params.push(JSON.stringify(data.metadata));
       }
 
       params.push(id);
       const result = await pool.query(
-        `UPDATE legacy.projects SET ${updates.join(", ")} WHERE id = $${paramIdx} RETURNING *`,
+        publicStore
+          ? `UPDATE projects SET ${updates.join(", ")} WHERE id::text = $${paramIdx} RETURNING *, 'public'::text AS _project_source`
+          : `UPDATE legacy.projects SET ${updates.join(", ")} WHERE id = $${paramIdx} RETURNING *, 'legacy'::text AS _project_source`,
         params,
       );
 
@@ -553,7 +667,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         recordAnalyticsEvent('project.status_changed', {
           entityType: 'project',
           entityId: String(id),
-          actorUserId: typeof getUserIdFromAuth === 'function' ? readString(getUserIdFromAuth(req)) ?? null : null,
+          actorUserId: access.userId,
           metadata: {
             oldStatus: oldStatus ?? null,
             newStatus,
@@ -574,7 +688,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
                LIMIT 50`,
               [String(id)],
             );
-            if (linked.rowCount === 0) return;
+            if (!linked.rows.length) return;
             // Photographer name for the From-line. Best-effort lookup —
             // falls back to "CreatorHub".
             let photographerName: string | null = null;
@@ -628,12 +742,21 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
   // DELETE /api/projects/:id — delete project
   app.delete("/api/projects/:id", async (req, res) => {
+    const access = await requireProjectAccess(
+      { pool, requireUserSession },
+      req,
+      res,
+      { projectId: req.params.id, level: "owner" },
+    );
+    if (!access) return;
     try {
-      const result = await pool.query(
-        "DELETE FROM legacy.projects WHERE id = $1 RETURNING id",
-        [req.params.id],
-      );
-      if (result.rowCount === 0) {
+      const [publicResult, legacyResult] = await Promise.all([
+        pool.query("DELETE FROM projects WHERE id::text = $1 AND user_id::text = $2 RETURNING id", [req.params.id, access.userId])
+          .catch(() => ({ rowCount: 0, rows: [] })),
+        pool.query("DELETE FROM legacy.projects WHERE id = $1 AND user_id = $2 RETURNING id", [req.params.id, access.userId])
+          .catch(() => ({ rowCount: 0, rows: [] })),
+      ]);
+      if ((publicResult.rowCount || 0) + (legacyResult.rowCount || 0) === 0) {
         return res.status(404).json({ error: "Prosjekt ikke funnet" });
       }
       res.json({ success: true, message: "Prosjekt slettet" });
@@ -651,7 +774,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         "SELECT metadata FROM legacy.projects WHERE id = $1 LIMIT 1",
         [projectId],
       );
-      if (!result.rowCount || result.rowCount === 0) return null;
+      if (!result.rowCount || !result.rows.length) return null;
       const raw = result.rows[0]?.metadata;
       if (!raw) return {};
       if (typeof raw === "object") return raw as Record<string, unknown>;
@@ -704,6 +827,29 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   }
 
   // Project collaboration, files, comments, integrations, compliance, audit and analytics
+  // Legacy compatibility-rutene deler én tilgangsport. Dette hindrer at en
+  // tidligere ubevoktet handler omgår owner/editor/viewer-kontrakten.
+  const compatOwnerRoots = new Set(["collaborators", "integrations", "permissions", "compliance"]);
+  const compatRoots = [
+    "collaborators", "files", "comments", "integrations", "permissions", "access",
+    "compliance", "audit-trail", "audit", "analytics", "health-score", "health",
+    "memory-cards", "shot-list", "capture-session",
+  ];
+  for (const root of compatRoots) {
+    app.use(`/api/projects/:projectId/${root}`, async (req, res, next) => {
+      const readOnlyRequest = req.method === "GET" || root === "access";
+      const level = readOnlyRequest ? "read" : compatOwnerRoots.has(root) ? "owner" : "edit";
+      const context = await requireProjectAccess(
+        { pool, requireUserSession }, req, res,
+        { projectId: req.params.projectId, level, hideExistence: readOnlyRequest },
+      );
+      if (!context) return;
+      (req as any).workspaceAccess = context.access;
+      (req as any).workspaceUserId = context.userId;
+      next();
+    });
+  }
+
   app.get("/api/projects/:projectId/collaborators", async (req, res) => {
     const { projectId } = req.params;
     const metadata = await compatReadProjectMetadata(projectId);
@@ -754,6 +900,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   app.delete(
     "/api/projects/:projectId/collaborators/:collaboratorId",
     async (req, res) => {
+      const _cid = compatResolveUserId(req);
+      if (!isUuid(_cid)) return res.status(401).json({ error: "unauthorized" });
       const { projectId, collaboratorId } = req.params;
       const state = ensureCompatProjectState(projectId);
       state.collaborators = state.collaborators.filter(
@@ -773,6 +921,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   app.put(
     "/api/projects/:projectId/collaborators/:collaboratorId/permissions",
     async (req, res) => {
+      const callerId = compatResolveUserId(req);
+      if (!isUuid(callerId)) return res.status(401).json({ error: "unauthorized" });
       const { projectId, collaboratorId } = req.params;
       const state = ensureCompatProjectState(projectId);
       state.collaborators = state.collaborators.map((collaborator) => {
@@ -862,7 +1012,11 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         normalizedProjectId,
       ])
       .catch(() => ({ rowCount: 0 }));
-    return (castingResult.rowCount || 0) > 0;
+    if ((castingResult.rowCount || 0) > 0) return true;
+    const publicResult = await pool
+      .query("SELECT id FROM projects WHERE id::text = $1 LIMIT 1", [normalizedProjectId])
+      .catch(() => ({ rowCount: 0 }));
+    return (publicResult.rowCount || 0) > 0;
   }
 
   async function requireProjectFileProject(
@@ -879,6 +1033,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   const ensureProjectFileStorageDirectory = async (
     projectId: string,
   ): Promise<string> => {
+    if (!isUuid(projectId)) throw new Error("invalid_project_id");
     const projectDirectory = path.join(PROJECT_FILE_STORAGE_ROOT, projectId);
     await fs.mkdir(projectDirectory, { recursive: true });
     return projectDirectory;
@@ -905,6 +1060,14 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
       if (!(await requireProjectFileProject(res, projectId))) {
         return;
       }
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const writeAccess = await requireProjectAccess(
+        { pool, requireUserSession }, req, res,
+        { projectId, level: "edit", hideExistence: true },
+      );
+      if (!writeAccess) return;
+      const userId = session.userId;
       if (!req.file) {
         return res.status(400).json({ error: "file is required" });
       }
@@ -960,6 +1123,11 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const fileAccess = await requireProjectAccess(
+      { pool, requireUserSession }, req, res,
+      { projectId, level: "read", hideExistence: true },
+    );
+    if (!fileAccess) return;
     const metadata = await compatReadProjectMetadata(projectId);
     const state = await loadCompatProjectState(projectId);
     if (metadata && Array.isArray(metadata.files) && state.files.length === 0) {
@@ -978,6 +1146,11 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const fileAccess = await requireProjectAccess(
+      { pool, requireUserSession }, req, res,
+      { projectId, level: "read", hideExistence: true },
+    );
+    if (!fileAccess) return;
     const metadata = await compatReadProjectMetadata(projectId);
     const state = await loadCompatProjectState(projectId);
     if (metadata && Array.isArray(metadata.files) && state.files.length === 0) {
@@ -1029,6 +1202,11 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const fileAccess = await requireProjectAccess(
+      { pool, requireUserSession }, req, res,
+      { projectId, level: "edit", hideExistence: true },
+    );
+    if (!fileAccess) return;
     const state = await loadCompatProjectState(projectId);
     if (!state.files.some((file) => file.id === fileId)) {
       return res.status(404).json({ error: "project_file_not_found" });
@@ -1049,6 +1227,11 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const fileAccess = await requireProjectAccess(
+      { pool, requireUserSession }, req, res,
+      { projectId, level: "edit", hideExistence: true },
+    );
+    if (!fileAccess) return;
     const state = await loadCompatProjectState(projectId);
     const fileRecord = state.files.find((file) => file.id === fileId);
     if (!fileRecord) {
@@ -1072,6 +1255,11 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const fileAccess = await requireProjectAccess(
+      { pool, requireUserSession }, req, res,
+      { projectId, level: "edit", hideExistence: true },
+    );
+    if (!fileAccess) return;
     const state = await loadCompatProjectState(projectId);
     if (!state.files.some((file) => file.id === fileId)) {
       return res.status(404).json({ error: "project_file_not_found" });
@@ -1098,7 +1286,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         typeof payload === "string"
           ? payload
           : readString(payload?.content) || readString(payload?.text) || "",
-      authorId: readString(payload?.authorId) || compatResolveUserId(req),
+      authorId: String((req as any).workspaceUserId || ""),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       status: "open",
@@ -1125,6 +1313,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.put("/api/projects/:projectId/comments/:commentId", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId, commentId } = req.params;
     const state = ensureCompatProjectState(projectId);
     state.comments = state.comments.map((comment) =>
@@ -1139,6 +1328,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.delete("/api/projects/:projectId/comments/:commentId", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId, commentId } = req.params;
     const state = ensureCompatProjectState(projectId);
     state.comments = state.comments.filter((comment) => comment.id !== commentId);
@@ -1154,10 +1344,12 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.put("/api/projects/:projectId/integrations", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId } = req.params;
     const state = ensureCompatProjectState(projectId);
     const payload = req.body && typeof req.body === "object" ? req.body : {};
     for (const [key, value] of Object.entries(payload)) {
+      if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
       state.integrations[key] = {
         ...(state.integrations[key] || {}),
         enabled: Boolean(value),
@@ -1177,6 +1369,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   app.post(
     "/api/projects/:projectId/integrations/:integrationType",
     async (req, res) => {
+      if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
       const { projectId, integrationType } = req.params;
       const state = ensureCompatProjectState(projectId);
       state.integrations[integrationType] = {
@@ -1239,6 +1432,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.put("/api/projects/:projectId/permissions", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId } = req.params;
     const state = ensureCompatProjectState(projectId);
     state.permissions = {
@@ -1256,7 +1450,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
   app.post("/api/projects/:projectId/access", (req, res) => {
     res.json({
-      hasAccess: true,
+      hasAccess: !!(req as any).workspaceAccess?.canRead,
+      access: (req as any).workspaceAccess,
       action: readString(req.body?.action) || "view",
       checkedAt: new Date().toISOString(),
     });
@@ -1291,6 +1486,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.put("/api/projects/:projectId/compliance", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId } = req.params;
     const state = ensureCompatProjectState(projectId);
     state.compliance = {
@@ -1400,6 +1596,13 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
   // POST /api/projects/:projectId/memory-cards — save memory card configuration
   app.post("/api/projects/:projectId/memory-cards", async (req, res) => {
+    const access = await requireProjectAccess(
+      { pool, requireUserSession },
+      req,
+      res,
+      { level: "edit" },
+    );
+    if (!access) return;
     try {
       const { projectId } = req.params;
       const { cards, configs, budget, cameras } = req.body;
@@ -1468,15 +1671,21 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   app.post("/api/projects/:projectId/shot-list", async (req, res) => {
     try {
       const { projectId } = req.params;
-      const userId = getUserIdFromAuth(req);
-      if (!userId) {
-        return res.status(401).json({ error: "unauthorized" });
-      }
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const writeAccess = await requireProjectAccess(
+        { pool, requireUserSession }, req, res,
+        { projectId, level: "edit", hideExistence: true },
+      );
+      if (!writeAccess) return;
+      const projectRow = await findProjectRowById(pool, projectId);
+      const ownerUserId = String(projectRow?.user_id || "");
+      if (!ownerUserId) return res.status(404).json({ error: "project_not_found" });
       const shots = Array.isArray(req.body?.shots) ? req.body.shots : [];
       const listName = typeof req.body?.listName === "string" ? req.body.listName : undefined;
       const eventType = typeof req.body?.eventType === "string" ? req.body.eventType : undefined;
       const result = await upsertShotListForProject(db as any, {
-        ownerUserId: userId,
+        ownerUserId,
         projectId,
         shots,
         listName,
@@ -1498,15 +1707,21 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   app.post("/api/projects/:projectId/capture-session", async (req, res) => {
     try {
       const { projectId } = req.params;
-      const userId = getUserIdFromAuth(req);
-      if (!userId) {
-        return res.status(401).json({ error: "unauthorized" });
-      }
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const writeAccess = await requireProjectAccess(
+        { pool, requireUserSession }, req, res,
+        { projectId, level: "edit", hideExistence: true },
+      );
+      if (!writeAccess) return;
+      const projectRow = await findProjectRowById(pool, projectId);
+      const ownerUserId = String(projectRow?.user_id || "");
+      if (!ownerUserId) return res.status(404).json({ error: "project_not_found" });
       const name = typeof req.body?.name === "string" ? req.body.name : undefined;
       const startsAt = typeof req.body?.startsAt === "string" ? new Date(req.body.startsAt) : undefined;
       const result = await bootstrapCaptureSessionForProject(
         db as any,
-        userId,
+        ownerUserId,
         projectId,
         { name, startsAt },
       );

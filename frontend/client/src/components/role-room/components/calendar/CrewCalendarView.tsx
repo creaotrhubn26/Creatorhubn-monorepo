@@ -20,6 +20,9 @@ import React, { useMemo } from 'react';
 import { Avatar, Box, Tooltip, Typography } from '@mui/material';
 import type { CalendarEvent } from '../../services/castingApiService';
 
+/** Medlemmets egen kalender-status pr. dag (fra role_room_member_availability). */
+export type CrewDayAvailability = 'available' | 'unavailable' | 'hold';
+
 export interface CrewCalendarMember {
   id: string;
   name: string;
@@ -28,7 +31,20 @@ export interface CrewCalendarMember {
   avatarUrl?: string | null;
   /** Optional status-indikator-farge (grønn = tilgjengelig, rød = utilgjengelig) */
   statusColor?: string | null;
+  /**
+   * Optional per-dag tilgjengelighet fra medlemmets EGEN kalender, keyet på
+   * `YYYY-MM-DD`. Toner dagcellen (grønn=ledig, rød=opptatt, gul=tentativ) så
+   * produsenten ser tilgjengelighet rett i Gantt-rutenettet.
+   */
+  availabilityByDay?: Record<string, CrewDayAvailability>;
 }
+
+// Dag-tint pr. tilgjengelighets-status (bakgrunn + hover + tooltip-tekst).
+const AVAILABILITY_TINT: Record<CrewDayAvailability, { bg: string; hover: string; label: string }> = {
+  available: { bg: 'rgba(16,185,129,0.10)', hover: 'rgba(16,185,129,0.16)', label: 'Ledig (fra egen kalender)' },
+  unavailable: { bg: 'rgba(239,68,68,0.13)', hover: 'rgba(239,68,68,0.20)', label: 'Opptatt (fra egen kalender)' },
+  hold: { bg: 'rgba(245,158,11,0.13)', hover: 'rgba(245,158,11,0.20)', label: 'Tentativ (fra egen kalender)' },
+};
 
 export interface CrewCalendarEventTypeMeta {
   label: string;
@@ -289,7 +305,9 @@ export const CrewCalendarView: React.FC<CrewCalendarViewProps> = ({
           {/* Day-celler for denne crew-member */}
           {days.map((day) => {
             const cellEvents = eventGrid.get(member.id)?.get(day.key) ?? [];
-            return (
+            const availability = member.availabilityByDay?.[day.key];
+            const tint = availability ? AVAILABILITY_TINT[availability] : null;
+            const cell = (
               <Box
                 key={`${member.id}-${day.key}`}
                 role="button"
@@ -307,13 +325,13 @@ export const CrewCalendarView: React.FC<CrewCalendarViewProps> = ({
                   minHeight: 76,
                   px: 0.5,
                   py: 0.5,
-                  bgcolor: day.isToday ? 'rgba(139,92,246,0.04)' : 'transparent',
+                  bgcolor: tint ? tint.bg : day.isToday ? 'rgba(139,92,246,0.04)' : 'transparent',
                   borderRight: '1px solid rgba(255,255,255,0.04)',
                   borderBottom: '1px solid rgba(255,255,255,0.04)',
                   cursor: cellEvents.length === 0 ? 'pointer' : 'default',
                   transition: 'background-color 160ms ease-out',
                   '&:hover': cellEvents.length === 0
-                    ? { bgcolor: 'rgba(96,165,250,0.06)' }
+                    ? { bgcolor: tint ? tint.hover : 'rgba(96,165,250,0.06)' }
                     : undefined,
                   '&:focus-visible': { outline: '2px solid #60a5fa', outlineOffset: -2 },
                   display: 'flex',
@@ -384,6 +402,14 @@ export const CrewCalendarView: React.FC<CrewCalendarViewProps> = ({
                   );
                 })}
               </Box>
+            );
+            // Toner-forklaring i tooltip når medlemmet har delt tilgjengelighet.
+            return tint ? (
+              <Tooltip key={`${member.id}-${day.key}`} title={tint.label} arrow disableInteractive>
+                {cell}
+              </Tooltip>
+            ) : (
+              cell
             );
           })}
         </React.Fragment>

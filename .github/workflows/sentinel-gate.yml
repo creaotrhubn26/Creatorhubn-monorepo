@@ -1,0 +1,81 @@
+name: Sentinel Gate
+
+# CreatorHub Sentinel — deterministic deploy gate (Engine 1+2 slice).
+# Blocks a PR only when it INTRODUCES a new confirmed finding vs the base
+# branch. The ~240 pre-existing confirmed findings are a backlog, not a
+# per-PR failure — this is how a gate rolls out on a legacy codebase without
+# blocking everyone on day one. Full backlog is uploaded to code-scanning for
+# visibility.
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'crates/sentinel-core/**'
+      - '.github/workflows/sentinel-gate.yml'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  sentinel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            crates/sentinel-core/target
+          key: sentinel-${{ runner.os }}-${{ hashFiles('crates/sentinel-core/**/*.rs', 'crates/sentinel-core/Cargo.toml') }}
+
+      - name: Build gate
+        run: cargo build --release --manifest-path crates/sentinel-core/Cargo.toml
+
+      - name: Unit tests
+        run: cargo test --release --manifest-path crates/sentinel-core/Cargo.toml
+
+      - name: Scan PR head
+        run: crates/sentinel-core/target/release/sentinel-ci . --json --all > head.json
+
+      - name: Upload full backlog to code-scanning
+        run: crates/sentinel-core/target/release/sentinel-ci . --sarif --all > sentinel.sarif
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sentinel.sarif
+        continue-on-error: true
+
+      - name: Scan base branch (baseline)
+        run: |
+          git worktree add /tmp/sentinel-base "origin/${{ github.base_ref }}"
+          crates/sentinel-core/target/release/sentinel-ci /tmp/sentinel-base --json --all > base.json
+
+      - name: Block on newly-introduced confirmed findings
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          head = json.load(open('head.json'))
+          base = json.load(open('base.json'))
+          # Match on (rule, snippet) so shifting line numbers don't count as new.
+          def key(f): return (f['ruleId'], f['snippet'].strip())
+          base_keys = {key(f) for f in base}
+          new_confirmed = [f for f in head
+                           if f['confidence'] == 'confirmed' and key(f) not in base_keys]
+          if new_confirmed:
+              print(f"\n✖ Sentinel gate: {len(new_confirmed)} new confirmed finding(s) — deploy blocked.\n")
+              for f in new_confirmed:
+                  print(f"  {f['ruleId']}  {f['file']}:{f['line']}")
+                  print(f"    {f['message']}\n")
+              sys.exit(1)
+          print("✓ Sentinel gate: no new confirmed findings.")
+          PY

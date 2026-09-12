@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # smoke-production.sh — sanntid-verifisering at alt vi har shippet
-# faktisk lever på produksjon. Kjør etter Render+Vercel-deploy.
+# faktisk lever på produksjon. Kjør etter Render+Netlify-deploy.
 #
 # Bruk:
 #   $ bash scripts/smoke-production.sh
@@ -70,9 +70,9 @@ assert_contains "Stats har 'auditioner'-felt"           "$BACKEND/api/role-room/
 assert_contains "Stats har 'crew'-felt"                 "$BACKEND/api/role-room/public/stats"                       "crew"
 assert_contains "Stats har 'lokasjoner'-felt"           "$BACKEND/api/role-room/public/stats"                       "lokasjoner"
 
-# ── Frontend rendering (Vercel) ────────────────────────────────
+# ── Frontend rendering (Netlify) ───────────────────────────────
 echo ""
-echo "── Frontend (Vercel) ──────────────────────────────────────"
+echo "── Frontend (Netlify) ─────────────────────────────────────"
 assert_status "theroleroom.com hovedside"               "$FRONTEND/"                                                "200"
 assert_status "creatorhubn.com hovedside"               "$CREATORHUB/"                                              "200"
 

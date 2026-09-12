@@ -176,7 +176,7 @@ class RetryManager {
 
   // Execute operation with timeout
   private async executeWithTimeout<T>(
-    operation: () => Promise<>,
+    operation: () => Promise<T>,
     timeout?: number
   ): Promise<T> {
     if (!timeout) {
@@ -346,7 +346,7 @@ export const useRetry = () => {
   const [lastError, setLastError] = React.useState<any>(null);
 
   const executeWithRetry = React.useCallback(async <T>(
-    operation: () => Promise<>,
+    operation: () => Promise<T>,
     config?: Partial<RetryConfig>,
     category?: string
   ): Promise<RetryResult<T>> => {

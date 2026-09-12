@@ -17,6 +17,9 @@
 
 import type { Pool } from "pg";
 import type { KpiSnapshotInput } from "./role-room-kpi-tracking.js";
+import { ensureFreshTikTokConnection } from "./role-room-tiktok-oauth.js";
+import { getProjectProducerUserId } from "./client-portal-connected-platforms.js";
+import { fetchTikTokVideoMetrics } from "./role-room-tiktok-insights.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // #177 — Meta Graph API connector (IG Business + Facebook Pages)
@@ -105,17 +108,26 @@ export async function fetchMetaKpisForPosts(
   );
   if (candidates.length === 0) return [];
 
-  // Hent meta_media_id fra feed-planner-posts hvis kolonnen finnes
+  // Koble feed-plan-ID til det faktiske Meta media-id-et som publish-jobben
+  // persisterer. Feed-plan-postene ligger som JSONB i role_room_feed_plans;
+  // det finnes derfor ingen separat role_room_feed_plan_posts-tabell.
   let mediaIdMap: Map<string, string>;
   try {
     const feedIds = candidates.map((p) => p.feedPlanPostId!).filter(Boolean);
     const r = await pool.query<{ id: string; meta_media_id: string | null }>(
-      `SELECT id, meta_media_id FROM role_room_feed_plan_posts WHERE id = ANY($1::uuid[])`,
+      `SELECT DISTINCT ON (feed_plan_post_id)
+              feed_plan_post_id AS id,
+              ig_media_id AS meta_media_id
+         FROM role_room_instagram_publish_jobs
+        WHERE feed_plan_post_id = ANY($1::text[])
+          AND status = 'published'
+          AND ig_media_id IS NOT NULL
+        ORDER BY feed_plan_post_id, published_at DESC NULLS LAST, updated_at DESC`,
       [feedIds],
     );
     mediaIdMap = new Map(r.rows.filter((row) => row.meta_media_id).map((row) => [row.id, row.meta_media_id!]));
   } catch {
-    // Kolonnen meta_media_id finnes ikke i alle miljøer — fall tilbake til tom map
+    // Publiseringsskjemaet kan mangle før migrasjoner er kjørt.
     mediaIdMap = new Map();
   }
 
@@ -144,15 +156,80 @@ export async function fetchMetaKpisForPosts(
 
 export async function fetchTikTokKpisForPosts(
   pool: Pool,
-  _projectId: string,
-  _planId: string,
+  projectId: string,
+  planId: string,
   posts: Array<{ id: string; feedPlanPostId: string | null; primaryPlatform: string | null }>,
 ): Promise<KpiSnapshotInput[]> {
-  void pool;
   const tiktokPosts = posts.filter((p) => p.feedPlanPostId && p.primaryPlatform === "tiktok");
   if (tiktokPosts.length === 0) return [];
-  console.log("[role-room-kpi-connectors] TikTok stub: ville hentet KPI for", tiktokPosts.length, "posts — trenger TikTok Business OAuth (app-review pending). Returnerer tomt.");
-  return [];
+
+  // The producer's TikTok connection holds the token; posts are project-scoped.
+  const userId = await getProjectProducerUserId(pool, projectId);
+  if (!userId) return [];
+  const authorized = await ensureFreshTikTokConnection(pool, userId);
+  if (!authorized?.accessToken) return [];
+  if (!authorized.connection.scopes.includes("video.list")) {
+    console.log("[role-room-kpi-connectors] TikTok: mangler video.list-scope — brukeren må re-koble TikTok. Returnerer tomt.");
+    return [];
+  }
+
+  // Map feedPlanPostId → published TikTok video id. The publish flow records
+  // external_post_id in social_metrics with raw.feedPlanPostId (see
+  // role-room-social-routes.ts) — no separate media-id column exists.
+  const feedIds = tiktokPosts.map((p) => p.feedPlanPostId!).filter(Boolean);
+  const videoIdByPost = new Map<string, string>();
+  try {
+    const r = await pool.query<{ feed_plan_post_id: string | null; external_post_id: string | null }>(
+      `SELECT raw->>'feedPlanPostId' AS feed_plan_post_id, external_post_id
+         FROM social_metrics
+        WHERE platform = 'tiktok'
+          AND external_post_id IS NOT NULL
+          AND raw->>'feedPlanPostId' = ANY($1::text[])`,
+      [feedIds],
+    );
+    for (const row of r.rows) {
+      if (row.feed_plan_post_id && row.external_post_id && !videoIdByPost.has(row.feed_plan_post_id)) {
+        videoIdByPost.set(row.feed_plan_post_id, row.external_post_id);
+      }
+    }
+  } catch (err) {
+    console.warn("[role-room-kpi-connectors] TikTok: kunne ikke lese external_post_id fra social_metrics", err);
+    return [];
+  }
+
+  const videoIds = Array.from(new Set(videoIdByPost.values()));
+  if (videoIds.length === 0) return [];
+
+  let metrics: Awaited<ReturnType<typeof fetchTikTokVideoMetrics>>;
+  try {
+    metrics = await fetchTikTokVideoMetrics(authorized.accessToken, videoIds);
+  } catch (err) {
+    console.warn("[role-room-kpi-connectors] TikTok video/query feilet", err);
+    return [];
+  }
+  const metricsByVideo = new Map<string, typeof metrics>();
+  for (const m of metrics) {
+    const arr = metricsByVideo.get(m.videoId) ?? [];
+    arr.push(m);
+    metricsByVideo.set(m.videoId, arr);
+  }
+
+  const snapshots: KpiSnapshotInput[] = [];
+  for (const post of tiktokPosts) {
+    const videoId = videoIdByPost.get(post.feedPlanPostId!);
+    if (!videoId) continue;
+    for (const m of metricsByVideo.get(videoId) ?? []) {
+      snapshots.push({
+        postId: post.id,
+        planId,
+        platform: "tiktok",
+        metric: m.metric,
+        value: m.value,
+        source: "tiktok_business",
+      });
+    }
+  }
+  return snapshots;
 }
 
 // ─────────────────────────────────────────────────────────────────────

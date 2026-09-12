@@ -1,5 +1,77 @@
 import express from "express";
+import crypto from "crypto";
 import type { Pool } from "pg";
+import { notifyAdmins } from "./admin-notify";
+import { safeAppBaseUrl } from "./web-origin-allowlist";
+import { canonicalJsonStringify } from "../../frontend/shared/prototype-tester-agreements";
+import {
+  sendTransactionalEmail,
+  isTransactionalEmailConfigured,
+} from "./transactional-email-service";
+
+const _inviteRateBuckets = new Map<string, number[]>();
+function _inviteRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const arr = (_inviteRateBuckets.get(ip) ?? []).filter((t) => now - t < 3_600_000);
+  arr.push(now);
+  _inviteRateBuckets.set(ip, arr);
+  return arr.length > 5;
+}
+const _inviteClientIp = (req: express.Request): string =>
+  (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "?";
+
+const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TESTER_PROFESSION_LABELS: Record<string, string> = {
+  photographer: "Fotograf",
+  videographer: "Videograf",
+  music_producer: "Musikkprodusent",
+  vendor: "Leverandør",
+};
+
+const TESTER_PROFESSION_ALIASES: Record<string, string> = {
+  photographer: "photographer",
+  fotograf: "photographer",
+  videographer: "videographer",
+  videograf: "videographer",
+  music_producer: "music_producer",
+  musikkprodusent: "music_producer",
+  vendor: "vendor",
+  leverandor: "vendor",
+  leverandør: "vendor",
+};
+
+function normalizeTesterProfession(value: unknown): string | null {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return TESTER_PROFESSION_ALIASES[normalized] || null;
+}
+
+function parseTesterProfessionFromMessage(message: unknown): string | null {
+  if (typeof message !== "string") return null;
+  const match = message.match(/\[Tester-profesjon:\s*([^\]]+)\]/i);
+  return match ? normalizeTesterProfession(match[1]) : null;
+}
+
+function withTesterProfessionTag(message: unknown, profession: string): string {
+  const base = String(message || "")
+    .replace(/\[Tester-profesjon:\s*[^\]]+\]\s*/gi, "")
+    .trim();
+  const label = TESTER_PROFESSION_LABELS[profession] || profession;
+  return `[Tester-profesjon: ${label}]${base ? `\n\n${base}` : ""}`;
+}
+
+function isPrototypeTesterRequest(body: Record<string, unknown>): boolean {
+  return (
+    String(body.profession || "") === "prototype_tester" ||
+    String(body.selectedPlan || "") === "prototype_tester" ||
+    String(body.planName || "") === "Prototype Tester" ||
+    String(body.source || "") === "prototype_tester_pricing"
+  );
+}
+
+function isDatabaseUnavailable(error: any): boolean {
+  const code = String(error?.code || "");
+  return ["28P01", "08001", "08003", "08006", "57P01", "ETIMEDOUT", "ECONNREFUSED"].includes(code);
+}
 
 const INVITE_REQUEST_APPROVER_ROLES = new Set([
   "admin",
@@ -7,6 +79,7 @@ const INVITE_REQUEST_APPROVER_ROLES = new Set([
   "academy_admin",
   "instructor",
 ]);
+const AGREEMENT_EVIDENCE_ROLES = new Set(["admin", "super_admin"]);
 
 type InviteRequestApproverSession = {
   userId: string;
@@ -27,7 +100,7 @@ export interface InviteRequestsRoutesDeps {
   pool: Pool;
   getActiveSessionFromRequest: (
     req: express.Request,
-  ) => InviteRequestApproverSession | null;
+  ) => InviteRequestApproverSession | null | Promise<InviteRequestApproverSession | null>;
   isValidNorwegianOrgNumber: (value: string) => boolean;
   getTableColumns: (tableName: string) => Promise<Set<string>>;
   hasTable: (tableName: string) => Promise<boolean>;
@@ -35,7 +108,7 @@ export interface InviteRequestsRoutesDeps {
   lookupInviteRequestBrregCompany: (
     organizationNumber: string,
   ) => Promise<any>;
-  buildInviteRequestProffAnalysis: (input: any) => any;
+  buildInviteRequestProffAnalysis: (input: any) => Promise<any>;
   upsertInviteRequestProffScreening: (
     inviteRequestId: string,
     organizationNumber: string,
@@ -60,7 +133,37 @@ export interface InviteRequestsRoutesDeps {
     grantedPlan: string,
     grantedFeatures: any[],
     teamSize: number,
+    memberProfession?: string | null,
+    memberCompany?: string | null,
+    memberOrganizationNumber?: string | null,
+    memberBusinessAddress?: string | null,
   ) => Promise<any>;
+  sendAccessRequestReceivedEmail?: (input: {
+    recipientEmail: string;
+    recipientName: string;
+    requestId: string;
+    companyName: string;
+    professionName: string;
+    source: string;
+  }) => Promise<{
+    sent: boolean;
+    provider: string | null;
+    reason: string | null;
+    messageId: string | null;
+  }>;
+  sendAccessRequestRejectedEmail?: (input: {
+    recipientEmail: string;
+    recipientName: string;
+    requestId: string;
+    companyName: string;
+    professionName: string;
+    sentByUserId: string;
+  }) => Promise<{
+    sent: boolean;
+    provider: string | null;
+    reason: string | null;
+    messageId: string | null;
+  }>;
 }
 
 export function setupInviteRequestsRoutes(
@@ -79,14 +182,16 @@ export function setupInviteRequestsRoutes(
     upsertInviteRequestProffScreening,
     ensureInviteRequestAccessProvisioning,
     ensureCommunityAccessForApprovedInvite,
+    sendAccessRequestReceivedEmail,
+    sendAccessRequestRejectedEmail,
     createInviteFromApprovedRequest,
   } = deps;
 
-  function requireInviteRequestApproverSession(
+  async function requireInviteRequestApproverSession(
     req: express.Request,
     res: express.Response,
-  ): InviteRequestApproverSession | null {
-    const session = getActiveSessionFromRequest(req);
+  ): Promise<InviteRequestApproverSession | null> {
+    const session = await getActiveSessionFromRequest(req);
     if (!session) {
       res
         .status(401)
@@ -165,10 +270,60 @@ export function setupInviteRequestsRoutes(
     return screeningMap.get(inviteRequestId) || null;
   }
 
-  function mapInviteRow(r: any, proffAnalysis?: any) {
+  async function getPrototypeTesterAgreementStatusMap(inviteRequestIds: string[]) {
+    if (inviteRequestIds.length === 0) return new Map<string, any>();
+    try {
+      const result = await pool.query(
+        `SELECT invite_request_id, id, status, expires_at, accepted_at,
+                accepted_nda_name, accepted_program_terms, accepted_dpa,
+                accepted_letter_of_intent, confirmed_signing_authority,
+                nda_version, program_terms_version, dpa_version,
+                letter_of_intent_version, agreement_digest, provisioned_user_id, provisioned_at
+           FROM prototype_tester_invites
+          WHERE invite_request_id::text = ANY($1::text[])
+          ORDER BY created_at DESC`,
+        [inviteRequestIds],
+      );
+      const statuses = new Map<string, any>();
+      for (const row of result.rows) {
+        const requestId = String(row.invite_request_id || "");
+        if (!requestId || statuses.has(requestId)) continue;
+        const documents = [
+          { key: "program_terms", title: "Programvilkår", version: row.program_terms_version, accepted: row.accepted_program_terms === true },
+          { key: "nda", title: "NDA", version: row.nda_version, accepted: Boolean(row.accepted_nda_name) },
+          { key: "dpa", title: "Databehandleravtale", version: row.dpa_version, accepted: row.accepted_dpa === true },
+          { key: "letter_of_intent", title: "Intensjonsavtale", version: row.letter_of_intent_version, accepted: row.accepted_letter_of_intent === true },
+        ];
+        statuses.set(requestId, {
+          inviteId: row.id,
+          inviteStatus: row.status,
+          expiresAt: row.expires_at,
+          acceptedAt: row.accepted_at,
+          signerName: row.accepted_nda_name,
+          confirmedSigningAuthority: row.confirmed_signing_authority === true,
+          agreementDigest: row.agreement_digest,
+          legacyAcceptance: row.status === "accepted" && Boolean(row.accepted_at) && !row.agreement_digest,
+          accountProvisioningComplete: Boolean(
+            row.provisioned_user_id ||
+            row.provisioned_at ||
+            (row.status === "accepted" && !row.agreement_digest),
+          ),
+          complete: documents.every((document) => document.accepted),
+          documents,
+        });
+      }
+      return statuses;
+    } catch (error) {
+      console.warn("[invite-requests] agreement status unavailable", error);
+      return new Map<string, any>();
+    }
+  }
+
+  function mapInviteRow(r: any, proffAnalysis?: any, testerAgreementStatus?: any) {
     return {
       id: r.id,
       profession: r.profession,
+      testerProfession: normalizeTesterProfession(r.tester_profession) || parseTesterProfessionFromMessage(r.message),
       firstName: r.first_name || "",
       lastName: r.last_name || "",
       email: r.email,
@@ -192,6 +347,13 @@ export function setupInviteRequestsRoutes(
       adminNotes: r.admin_notes || null,
       userJourneyStatus: r.user_journey_status || null,
       source: r.source || null,
+      inviteSentAt: r.invite_sent_at || null,
+      inviteSentCount: Number(r.invite_sent_count || 0),
+      inviteEmailOpenedAt: r.invite_email_opened_at || null,
+      inviteLinkClickedAt: r.invite_link_clicked_at || null,
+      onboardingStartedAt: r.onboarding_started_at || null,
+      onboardingCompletedAt: r.onboarding_completed_at || null,
+      onboardingStep: Number(r.onboarding_step || 0),
       proffAnalysisStatus: proffAnalysis?.screeningStatus || null,
       proffRecommendation: proffAnalysis?.approvalRecommendation || null,
       proffRiskLevel: proffAnalysis?.riskLevel || null,
@@ -204,16 +366,19 @@ export function setupInviteRequestsRoutes(
       proffScreeningSource: proffAnalysis?.screeningSource || null,
       proffBrregVerified: proffAnalysis?.brregVerified || false,
       proffAnalysis: proffAnalysis || null,
+      testerAgreementStatus: testerAgreementStatus || null,
     };
   }
 
   app.post("/api/invite-requests", async (req, res) => {
+    if (_inviteRateLimited(_inviteClientIp(req))) return res.status(429).json({ error: "too_many_requests" });
     try {
       const {
         email,
         firstName,
         lastName,
         profession,
+        testerProfession,
         companyName,
         organizationNumber,
         businessAddress,
@@ -232,11 +397,18 @@ export function setupInviteRequestsRoutes(
         organizationNumber || "",
       ).replace(/\D/g, "");
       const trimmedCompanyName = String(companyName || "").trim();
+      const normalizedFirstName = String(firstName || "").trim();
+      const normalizedLastName = String(lastName || "").trim();
+      const prototypeTesterRequest = isPrototypeTesterRequest(req.body || {});
+      const normalizedTesterProfession = normalizeTesterProfession(testerProfession);
+      const persistedMessage = prototypeTesterRequest && normalizedTesterProfession
+        ? withTesterProfessionTag(message, normalizedTesterProfession)
+        : String(message || "").trim() || null;
 
       if (
         !normalizedEmail ||
-        !firstName ||
-        !lastName ||
+        !normalizedFirstName ||
+        !normalizedLastName ||
         !profession ||
         !trimmedCompanyName ||
         !normalizedOrganizationNumber
@@ -245,6 +417,18 @@ export function setupInviteRequestsRoutes(
           .status(400)
           .json({ error: "Alle obligatoriske felt må fylles ut" });
       }
+
+      if (!EMAIL_ADDRESS_PATTERN.test(normalizedEmail)) {
+        return res.status(400).json({ error: "Oppgi en gyldig e-postadresse." });
+      }
+
+      if (prototypeTesterRequest && !normalizedTesterProfession) {
+        return res.status(400).json({
+          error:
+            "Velg hvilken profesjon du skal teste CreatorHub som.",
+        });
+      }
+
 
       if (!isValidNorwegianOrgNumber(normalizedOrganizationNumber)) {
         return res.status(400).json({
@@ -271,7 +455,7 @@ export function setupInviteRequestsRoutes(
         ) ||
         String(businessAddress || "").trim() ||
         null;
-      const proffAnalysis = buildInviteRequestProffAnalysis({
+      const proffAnalysis = await buildInviteRequestProffAnalysis({
         organizationNumber: normalizedOrganizationNumber,
         companyName: persistedCompanyName,
         brregLookup,
@@ -289,15 +473,16 @@ export function setupInviteRequestsRoutes(
       };
 
       pushInsert("email", normalizedEmail);
-      pushInsert("first_name", firstName);
-      pushInsert("last_name", lastName);
+      pushInsert("first_name", normalizedFirstName);
+      pushInsert("last_name", normalizedLastName);
       pushInsert("profession", profession);
       pushInsert("company_name", persistedCompanyName);
       pushInsert("organization_number", normalizedOrganizationNumber);
       pushInsert("business_address", persistedBusinessAddress);
       pushInsert("phone_number", phoneNumber || null);
       pushInsert("website", website || null);
-      pushInsert("message", message || null);
+      pushInsert("message", persistedMessage);
+      pushInsert("tester_profession", normalizedTesterProfession);
       pushInsert("status", "pending");
       pushInsert("selected_plan", selectedPlan || null);
       pushInsert("plan_name", planName || null);
@@ -322,19 +507,59 @@ export function setupInviteRequestsRoutes(
         values,
       );
 
-      await upsertInviteRequestProffScreening(
-        String(result.rows[0].id),
-        normalizedOrganizationNumber,
-        proffAnalysis,
-      );
+      try {
+        await upsertInviteRequestProffScreening(
+          String(result.rows[0].id),
+          normalizedOrganizationNumber,
+          proffAnalysis,
+        );
+      } catch (screeningError) {
+        console.warn("[invite-requests] screening could not be stored:", screeningError);
+      }
 
       console.log(
         `📨 New invite request from ${normalizedEmail} (${profession}) [${proffAnalysis.approvalRecommendation}/${proffAnalysis.riskLevel}]`,
       );
+      await notifyAdmins(pool, {
+        type: "invite_request",
+        source: `creatorhubn.com · ${source || "invite-request (landing)"}`,
+        title: `Ny tilgangsforespørsel: ${normalizedFirstName} ${normalizedLastName} (${persistedCompanyName})`,
+        summary: `${normalizedTesterProfession ? TESTER_PROFESSION_LABELS[normalizedTesterProfession] : profession} · ${normalizedEmail}${planName ? ` · Plan: ${planName}` : ""} · Proff: ${proffAnalysis.approvalRecommendation}/${proffAnalysis.riskLevel}`,
+        link: "/admin",
+        cta: (req.body && req.body.cta) || null,
+        page: req.get("referer") || (req.body && req.body.page) || null,
+        utm: (req.body && req.body.utm) || null,
+        relatedId: result.rows[0].id,
+        contactName: `${firstName} ${lastName}`.trim() || null,
+        contactEmail: normalizedEmail || null,
+      });
+      let receiptEmailDelivery: {
+        sent: boolean;
+        provider: string | null;
+        reason: string | null;
+        messageId: string | null;
+      } | null = null;
+      if (sendAccessRequestReceivedEmail) {
+        try {
+          receiptEmailDelivery = await sendAccessRequestReceivedEmail({
+            recipientEmail: normalizedEmail,
+            recipientName: `${normalizedFirstName} ${normalizedLastName}`.trim(),
+            requestId: String(result.rows[0].id),
+            companyName: persistedCompanyName,
+            professionName: normalizedTesterProfession
+              ? TESTER_PROFESSION_LABELS[normalizedTesterProfession]
+              : String(profession),
+            source: String(source || "landing"),
+          });
+        } catch (emailError) {
+          console.error("[invite-requests] receipt email failed:", emailError);
+        }
+      }
       res.status(201).json({
         success: true,
         requestId: result.rows[0].id,
         status: "pending",
+        receiptEmailDelivery,
         message:
           "Forespørselen din er mottatt. Admin vil gjennomgå søknaden.",
         proffAnalysis: {
@@ -353,6 +578,12 @@ export function setupInviteRequestsRoutes(
             error: "En forespørsel med denne e-posten finnes allerede.",
           });
       }
+      if (isDatabaseUnavailable(error)) {
+        return res.status(503).json({
+          error:
+            "Søknadstjenesten er midlertidig utilgjengelig. Prøv igjen om litt.",
+        });
+      }
       console.error("Error creating invite request:", error);
       res.status(500).json({ error: "Kunne ikke opprette forespørsel" });
     }
@@ -360,7 +591,7 @@ export function setupInviteRequestsRoutes(
 
   app.get("/api/invite-requests", async (req, res) => {
     try {
-      if (!requireInviteRequestApproverSession(req, res)) return;
+      if (!(await requireInviteRequestApproverSession(req, res))) return;
       if (!(await hasTable("invite_requests"))) {
         return res.json([]);
       }
@@ -407,12 +638,12 @@ export function setupInviteRequestsRoutes(
 
   app.get("/api/invite-requests/:id", async (req, res) => {
     try {
-      if (!requireInviteRequestApproverSession(req, res)) return;
+      if (!(await requireInviteRequestApproverSession(req, res))) return;
       const result = await pool.query(
         "SELECT * FROM invite_requests WHERE id = $1",
         [req.params.id],
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         return res.status(404).json({ error: "Forespørsel ikke funnet" });
       }
       const screening = await getInviteRequestProffScreening(
@@ -427,12 +658,12 @@ export function setupInviteRequestsRoutes(
 
   app.get("/api/invite-requests/:id/proff-analysis", async (req, res) => {
     try {
-      if (!requireInviteRequestApproverSession(req, res)) return;
+      if (!(await requireInviteRequestApproverSession(req, res))) return;
       const result = await pool.query(
         "SELECT * FROM invite_requests WHERE id = $1",
         [req.params.id],
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         return res.status(404).json({ error: "Forespørsel ikke funnet" });
       }
 
@@ -444,7 +675,7 @@ export function setupInviteRequestsRoutes(
         const brregLookup = await lookupInviteRequestBrregCompany(
           String(inviteRequest.organization_number),
         );
-        screening = buildInviteRequestProffAnalysis({
+        screening = await buildInviteRequestProffAnalysis({
           organizationNumber: String(inviteRequest.organization_number),
           companyName: toAdminString(inviteRequest.company_name) || "",
           brregLookup,
@@ -489,7 +720,7 @@ export function setupInviteRequestsRoutes(
             .json({ success: false, error: "Fant ikke foretaket i BRREG" });
         }
 
-        const analysis = buildInviteRequestProffAnalysis({
+        const analysis = await buildInviteRequestProffAnalysis({
           organizationNumber,
           companyName:
             brregLookup.company?.name || `Foretak ${organizationNumber}`,
@@ -530,7 +761,7 @@ export function setupInviteRequestsRoutes(
             .json({ success: false, error: "Fant ikke foretaket i BRREG" });
         }
 
-        const analysis = buildInviteRequestProffAnalysis({
+        const analysis = await buildInviteRequestProffAnalysis({
           organizationNumber,
           companyName:
             brregLookup.company?.name || `Foretak ${organizationNumber}`,
@@ -551,7 +782,7 @@ export function setupInviteRequestsRoutes(
 
   app.post("/api/invite-requests/:id/process", async (req, res) => {
     try {
-      const approverSession = requireInviteRequestApproverSession(req, res);
+      const approverSession = await requireInviteRequestApproverSession(req, res);
       if (!approverSession) {
         return;
       }
@@ -563,6 +794,11 @@ export function setupInviteRequestsRoutes(
           .status(400)
           .json({ error: 'Status må være "approved" eller "rejected"' });
       }
+      const previousStatusResult = await pool.query(
+        "SELECT status FROM invite_requests WHERE id = $1 LIMIT 1",
+        [id],
+      );
+      const previousStatus = String(previousStatusResult.rows[0]?.status || "");
 
       const inviteColumns = await getTableColumns("invite_requests");
       const hasProcessedByColumn = inviteColumns.has("processed_by");
@@ -601,7 +837,7 @@ export function setupInviteRequestsRoutes(
         const brregLookup = await lookupInviteRequestBrregCompany(
           String(request.organization_number),
         );
-        const analysis = buildInviteRequestProffAnalysis({
+        const analysis = await buildInviteRequestProffAnalysis({
           organizationNumber: String(request.organization_number),
           companyName: toAdminString(request.company_name) || "",
           brregLookup,
@@ -615,6 +851,7 @@ export function setupInviteRequestsRoutes(
       }
       let provisioning: any = null;
       let communityProvisioning: any = null;
+      let testerInvite: any = null;
 
       if (status === "approved") {
         provisioning = await ensureInviteRequestAccessProvisioning(request);
@@ -629,6 +866,88 @@ export function setupInviteRequestsRoutes(
           request,
           String(provisioning?.userId || ""),
         );
+
+        // Prototype-tester master/team-invite — SAMME bro som /status-flaten,
+        // slik at godkjenning via DENNE flaten (Academy / admin-invite-system)
+        // også oppretter master-inviten. Uten dette ble team-master aldri laget
+        // ved godkjenning her. Try/catch: skal aldri blokkere godkjenningen.
+        const isPrototypeTester =
+          request.selected_plan === "prototype_tester" ||
+          request.plan_name === "Prototype Tester" ||
+          request.source === "prototype_tester_pricing";
+        if (isPrototypeTester) {
+          try {
+            const baseUrl = safeAppBaseUrl(req);
+            const fullName =
+              [request.first_name, request.last_name].filter(Boolean).join(" ") ||
+              request.email;
+            const grantedPlan =
+              typeof req.body?.grantedPlan === "string"
+                ? req.body.grantedPlan
+                : "tester_all_access";
+            const grantedFeatures = Array.isArray(req.body?.grantedFeatures)
+              ? req.body.grantedFeatures
+              : [];
+            let teamSize = 1;
+            if (typeof request.message === "string") {
+              const m = request.message.match(/\[Team:\s*(\d+)\s*medlemmer?\]/i);
+              if (m) {
+                const n = parseInt(m[1], 10);
+                if (Number.isFinite(n)) teamSize = Math.min(5, Math.max(1, n));
+              }
+            }
+            if (Number.isFinite(req.body?.teamSize)) {
+              teamSize = Math.min(5, Math.max(1, Number(req.body.teamSize)));
+            }
+            testerInvite = await createInviteFromApprovedRequest(
+              pool,
+              String(request.id),
+              request.email,
+              fullName,
+              null,
+              [],
+              String(baseUrl),
+              grantedPlan,
+              grantedFeatures,
+              teamSize,
+              // Bær profesjon + firma fra søknaden → forhåndsutfylt tester-profil.
+              normalizeTesterProfession(request.tester_profession) || parseTesterProfessionFromMessage(request.message),
+              request.company_name || null,
+              request.organization_number || null,
+              request.business_address || null,
+            );
+          } catch (bridgeErr) {
+            console.error("[invite-requests/process] prototype master-bridge failed", bridgeErr);
+          }
+        }
+      }
+      let decisionEmailDelivery: {
+        sent: boolean;
+        provider: string | null;
+        reason: string | null;
+        messageId: string | null;
+      } | null = null;
+      if (
+        status === "rejected" &&
+        previousStatus !== "rejected" &&
+        sendAccessRequestRejectedEmail
+      ) {
+        try {
+          decisionEmailDelivery = await sendAccessRequestRejectedEmail({
+            recipientEmail: String(request.email || ""),
+            recipientName:
+              [request.first_name, request.last_name].filter(Boolean).join(" ") ||
+              String(request.email || ""),
+            requestId: String(request.id || id),
+            companyName: String(request.company_name || ""),
+            professionName:
+              TESTER_PROFESSION_LABELS[normalizeTesterProfession(request.tester_profession) || ""] ||
+              String(request.profession || "CreatorHub-bruker"),
+            sentByUserId: approverSession.userId,
+          });
+        } catch (emailError) {
+          console.error("[invite-requests/process] rejection email failed:", emailError);
+        }
       }
 
       console.log(`✅ Invite request ${id} ${status} (${request.email})`);
@@ -639,6 +958,8 @@ export function setupInviteRequestsRoutes(
         request: mapInviteRow(request, screening),
         provisioning,
         communityProvisioning,
+        decisionEmailDelivery,
+        testerInvite,
         processedBy: {
           id: approverSession.userId,
           name: approverSession.name,
@@ -658,15 +979,22 @@ export function setupInviteRequestsRoutes(
 
   app.get("/api/invites/admin/requests", async (req, res) => {
     try {
-      if (!requireInviteRequestApproverSession(req, res)) return;
+      if (!(await requireInviteRequestApproverSession(req, res))) return;
       const result = await pool.query(
         "SELECT * FROM invite_requests ORDER BY created_at DESC",
       );
       const screeningMap = await getInviteRequestProffScreeningMap(
         result.rows.map((row: any) => String(row.id)),
       );
+      const agreementStatusMap = await getPrototypeTesterAgreementStatusMap(
+        result.rows.map((row: any) => String(row.id)),
+      );
       const invitations = result.rows.map((row: any) =>
-        mapInviteRow(row, screeningMap.get(String(row.id)) || null),
+        mapInviteRow(
+          row,
+          screeningMap.get(String(row.id)) || null,
+          agreementStatusMap.get(String(row.id)) || null,
+        ),
       );
       const pending = invitations.filter(
         (r: any) => r.status === "pending",
@@ -687,13 +1015,94 @@ export function setupInviteRequestsRoutes(
     }
   });
 
+  app.get("/api/invites/admin/requests/:id/tester-agreements", async (req, res) => {
+    try {
+      const approverSession = await requireInviteRequestApproverSession(req, res);
+      if (!approverSession) return;
+      if (!AGREEMENT_EVIDENCE_ROLES.has(String(approverSession.role).toLowerCase())) {
+        return res.status(403).json({
+          error: "Kun administratorer kan laste ned signeringsbevis",
+        });
+      }
+      const result = await pool.query(
+        `SELECT id, invite_request_id, email, status, accepted_at, accepted_nda_name,
+                accepted_ip, accepted_user_agent, confirmed_signing_authority,
+                accepted_agreements_snapshot, agreement_digest, provisioned_user_id, provisioned_at
+           FROM prototype_tester_invites
+          WHERE invite_request_id = $1
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [req.params.id],
+      );
+      if (!result.rows.length) {
+        return res.status(404).json({ error: "Ingen prototype-testerinvitasjon funnet" });
+      }
+
+      const row = result.rows[0];
+      let snapshot = row.accepted_agreements_snapshot || null;
+      if (typeof snapshot === "string") {
+        try {
+          snapshot = JSON.parse(snapshot);
+        } catch {
+          snapshot = null;
+        }
+      }
+      const recalculatedDigest = snapshot
+        ? crypto.createHash("sha256").update(canonicalJsonStringify(snapshot), "utf8").digest("hex")
+        : null;
+      const digest = row.agreement_digest || null;
+
+      res.json({
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        inviteRequestId: row.invite_request_id,
+        inviteId: row.id,
+        inviteStatus: row.status,
+        legacyAcceptance: row.status === "accepted" && Boolean(row.accepted_at) && !digest,
+        accountProvisioningComplete: Boolean(
+          row.provisioned_user_id ||
+          row.provisioned_at ||
+          (row.status === "accepted" && !digest),
+        ),
+        evidence: {
+          acceptedAt: row.accepted_at || null,
+          signerName: row.accepted_nda_name || null,
+          signerEmail: snapshot?.signerEmail || row.email || null,
+          representedCompany: snapshot?.representedCompany || null,
+          acceptedIp: row.accepted_ip || null,
+          acceptedUserAgent: row.accepted_user_agent || null,
+          confirmedSigningAuthority: row.confirmed_signing_authority === true,
+          digest,
+          recalculatedDigest,
+          digestVerified: Boolean(digest && recalculatedDigest && digest === recalculatedDigest),
+          snapshot,
+        },
+      });
+    } catch (error) {
+      console.error("Error exporting prototype tester agreement evidence:", error);
+      res.status(500).json({ error: "Kunne ikke eksportere signeringsbevis" });
+    }
+  });
+
   app.put(
     "/api/invites/admin/requests/:inviteId/status",
     async (req, res) => {
       try {
-        if (!requireInviteRequestApproverSession(req, res)) return;
+        const approverSession = await requireInviteRequestApproverSession(req, res);
+        if (!approverSession) return;
         const { inviteId } = req.params;
         const { status, adminNotes } = req.body;
+        if (!status || !["approved", "rejected"].includes(status)) {
+          return res.status(400).json({
+            error: 'Status må være "approved" eller "rejected"',
+          });
+        }
+        const previousStatusResult = await pool.query(
+          "SELECT status FROM invite_requests WHERE id = $1 LIMIT 1",
+          [inviteId],
+        );
+        const previousStatus = String(previousStatusResult.rows[0]?.status || "");
+
 
         const result = await pool.query(
           `UPDATE invite_requests
@@ -708,6 +1117,16 @@ export function setupInviteRequestsRoutes(
         }
 
         const row = result.rows[0];
+        // Opprett brukerkonto for godkjent søker (master). Denne flaten gjorde
+        // det ikke før — kun /process gjorde — så master fikk invite men ingen
+        // konto å logge inn med. Try/catch: skal ikke blokkere godkjenningen.
+        if (status === "approved") {
+          try {
+            await ensureInviteRequestAccessProvisioning(row);
+          } catch (provErr) {
+            console.error("[invites/status] account provisioning failed", provErr);
+          }
+        }
         let testerInvite: any = null;
         const isPrototypeTester =
           status === "approved" &&
@@ -715,9 +1134,7 @@ export function setupInviteRequestsRoutes(
             row.plan_name === "Prototype Tester" ||
             row.source === "prototype_tester_pricing");
         if (isPrototypeTester) {
-          const baseUrl =
-            req.headers.origin ||
-            `https://${req.headers.host || "creatorhubn.com"}`;
+          const baseUrl = safeAppBaseUrl(req);
           const fullName =
             [row.first_name, row.last_name].filter(Boolean).join(" ") ||
             row.email;
@@ -754,14 +1171,49 @@ export function setupInviteRequestsRoutes(
             grantedPlan,
             grantedFeatures,
             teamSize,
+            // Bær profesjon + firma fra søknaden → forhåndsutfylt tester-profil.
+            normalizeTesterProfession(row.tester_profession) || parseTesterProfessionFromMessage(row.message),
+            row.company_name || null,
+            row.organization_number || null,
+            row.business_address || null,
           );
         }
+        let decisionEmailDelivery: {
+          sent: boolean;
+          provider: string | null;
+          reason: string | null;
+          messageId: string | null;
+        } | null = null;
+        if (
+          status === "rejected" &&
+          previousStatus !== "rejected" &&
+          sendAccessRequestRejectedEmail
+        ) {
+          try {
+            decisionEmailDelivery = await sendAccessRequestRejectedEmail({
+              recipientEmail: String(row.email || ""),
+              recipientName:
+                [row.first_name, row.last_name].filter(Boolean).join(" ") ||
+                String(row.email || ""),
+              requestId: String(row.id || inviteId),
+              companyName: String(row.company_name || ""),
+              professionName:
+                TESTER_PROFESSION_LABELS[normalizeTesterProfession(row.tester_profession) || ""] ||
+                String(row.profession || "CreatorHub-bruker"),
+              sentByUserId: approverSession.userId,
+            });
+          } catch (emailError) {
+            console.error("[invites/status] rejection email failed:", emailError);
+          }
+        }
+
 
         const screening = await getInviteRequestProffScreening(
           String(inviteId),
         );
         res.json({
           success: true,
+          decisionEmailDelivery,
           request: mapInviteRow(result.rows[0], screening),
           testerInvite: testerInvite || null,
         });
@@ -776,19 +1228,89 @@ export function setupInviteRequestsRoutes(
     "/api/invites/admin/requests/:inviteId/send-invite",
     async (req, res) => {
       try {
-        if (!requireInviteRequestApproverSession(req, res)) return;
+        const session = await requireInviteRequestApproverSession(req, res);
+        if (!session) return;
         const { inviteId } = req.params;
+        const rowR = await pool.query(
+          `SELECT * FROM invite_requests WHERE id = $1 LIMIT 1`,
+          [inviteId],
+        );
+        if (rowR.rowCount === 0) {
+          return res.status(404).json({ error: "Invite request not found" });
+        }
+        const row = rowR.rows[0];
+        if (!isTransactionalEmailConfigured()) {
+          return res.status(503).json({
+            error:
+              "E-post er ikke konfigurert (Resend/Gmail). Invitasjonen ble IKKE sendt.",
+          });
+        }
+
+        // Tracket lenke + åpnings-pixel: token = invite_requests.id (uuid) —
+        // track-endepunktene i prototype-tester-invites-routes faller tilbake
+        // til den når tokenet ikke finnes i prototype_tester_invites.
+        const baseUrl = safeAppBaseUrl(req);
+        const t = encodeURIComponent(String(row.id));
+        const clickUrl = `${baseUrl}/api/prototype-tester-invites/track/click/${t}`;
+        const openPixelUrl = `${baseUrl}/api/prototype-tester-invites/track/open/${t}`;
+        const loginUrl = `${baseUrl}/login`;
+        const name =
+          [row.first_name, row.last_name].filter(Boolean).join(" ") ||
+          String(row.email);
+        const esc = (s: unknown) =>
+          String(s ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+
+        const emailResult = await sendTransactionalEmail({
+          pool,
+          to: String(row.email),
+          subject: "Du er godkjent i Creatorhubn — kom i gang",
+          fromLabel: "Creatorhubn",
+          kind: "invite_request_invite",
+          sentByUserId: session.userId,
+          text: `Hei ${name},\n\nSøknaden din om tilgang til Creatorhubn er godkjent. Logg inn her: ${loginUrl}\n\nHilsen Creatorhubn`,
+          html: `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a1a1a;">
+      <h2 style="margin:0 0 16px;">Hei ${esc(name)},</h2>
+      <p style="font-size:15px;line-height:1.6;">
+        Søknaden din om tilgang til Creatorhubn er <b>godkjent</b>! Kontoen din er klar.
+      </p>
+      <div style="text-align:center;margin:32px 0;">
+        <a href="${clickUrl}" style="display:inline-block;background:#ffba6c;color:#150d05;padding:14px 28px;border-radius:999px;text-decoration:none;font-weight:700;">Logg inn og kom i gang</a>
+      </div>
+      <p style="font-size:13px;color:#666;line-height:1.5;">
+        Hvis knappen ikke fungerer:<br>
+        <a href="${clickUrl}" style="color:#1976d2;word-break:break-all;">${esc(loginUrl)}</a>
+      </p>
+      <hr style="border:none;border-top:1px solid #eee;margin:32px 0 16px;">
+      <p style="font-size:12px;color:#999;">
+        Du får denne fordi du søkte om tilgang via creatorhubn.com.
+        Hvis dette er en feil, kan du ignorere e-posten.
+      </p>
+      <img src="${openPixelUrl}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;">
+    </div>`,
+        });
+
+        if (!emailResult.sent) {
+          return res.status(502).json({
+            error: `E-post kunne ikke sendes (${emailResult.reason || "ukjent feil"}). invite_sent_at er IKKE stemplet.`,
+          });
+        }
+
         const result = await pool.query(
           `UPDATE invite_requests SET invite_sent_at = NOW(), invite_sent_count = COALESCE(invite_sent_count, 0) + 1, updated_at = NOW() WHERE id = $1 RETURNING *`,
           [inviteId],
         );
-        if (result.rowCount === 0) {
-          return res.status(404).json({ error: "Invite request not found" });
-        }
-        console.log(`📧 Invite email sent to ${result.rows[0].email}`);
+        console.log(
+          `📧 Invite email sent to ${row.email} via ${emailResult.provider}`,
+        );
         res.json({
           success: true,
           message: "Invite email sent",
+          provider: emailResult.provider,
           request: mapInviteRow(result.rows[0]),
         });
       } catch (error) {

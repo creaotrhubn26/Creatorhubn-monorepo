@@ -12,12 +12,20 @@ export interface PoolAudition {
   updatedAt?: string;
 }
 
+import authSessionService from './authSessionService';
+
 const API_BASE = '/api/casting';
+
+// theroleroom.com autentiserer via Authorization: Bearer (ikke cookie), og
+// pool-endepunktene er session-gated (requireUserSession). Uten auth-headere
+// får ALLE kall 401 — nettopp derfor virket «lagre/importer til pool» ikke.
+const getAuthHeaders = (): Record<string, string> =>
+  authSessionService.getAuthHeadersSync() as Record<string, string>;
 
 export const auditionPoolService = {
   async getPoolAuditions(): Promise<PoolAudition[]> {
     try {
-      const response = await fetch(`${API_BASE}/audition-pool`);
+      const response = await fetch(`${API_BASE}/audition-pool`, { headers: getAuthHeaders() });
       const data = await response.json();
       return data.success ? data.auditions : [];
     } catch (error) {
@@ -30,7 +38,7 @@ export const auditionPoolService = {
     try {
       const response = await fetch(`${API_BASE}/audition-pool`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(audition),
       });
       const data = await response.json();
@@ -45,6 +53,7 @@ export const auditionPoolService = {
     try {
       const response = await fetch(`${API_BASE}/audition-pool/${auditionId}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       const data = await response.json();
       return data.success;
@@ -58,7 +67,7 @@ export const auditionPoolService = {
     try {
       const response = await fetch(`${API_BASE}/audition-pool/import-to-project`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ poolAuditionId, targetProjectId }),
       });
       const data = await response.json();
@@ -73,7 +82,7 @@ export const auditionPoolService = {
     try {
       const response = await fetch(`${API_BASE}/schedules/save-to-pool`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ scheduleId }),
       });
       const data = await response.json();

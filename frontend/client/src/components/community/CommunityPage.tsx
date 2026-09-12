@@ -115,6 +115,7 @@ import PrototypeFeedbackTool from '../feedback/PrototypeFeedbackTool';
 import { useAuth } from '@/hooks/useAuth';
 import { CommunityTutorial, useCommunityTutorial } from './CommunityTutorial';
 import CommunityHomeDashboard from './CommunityHomeDashboard';
+import { useCommunityLocale } from './communityLocale';
 import {
   COMMUNITY_DIALOG_CLOSE_BUTTON_SX,
   COMMUNITY_DIALOG_CONTENT_SX,
@@ -225,9 +226,9 @@ interface CommunityProfilePreference {
 }
 
 const COMMUNITY_SHELL_BACKGROUND = `
-  radial-gradient(circle at top right, rgba(245, 166, 35, 0.14), transparent 28%),
+  radial-gradient(circle at top right, rgba(255, 140, 0, 0.14), transparent 28%),
   radial-gradient(circle at bottom left, rgba(88, 122, 168, 0.18), transparent 32%),
-  linear-gradient(180deg, #05070b 0%, #091019 52%, #06080c 100%)
+  linear-gradient(180deg, #0a0f1a 0%, #091019 52%, #06080c 100%)
 `;
 const COMMUNITY_PANEL_BACKGROUND =
   'linear-gradient(180deg, rgba(13, 18, 27, 0.94), rgba(8, 12, 18, 0.94))';
@@ -235,9 +236,9 @@ const COMMUNITY_PANEL_BORDER = '1px solid rgba(255,255,255,0.08)';
 const COMMUNITY_PANEL_SHADOW = '0 24px 60px rgba(0, 0, 0, 0.36)';
 const COMMUNITY_INSET_BACKGROUND = 'rgba(6, 9, 14, 0.58)';
 const COMMUNITY_HOVER_BACKGROUND = 'rgba(255,255,255,0.04)';
-const COMMUNITY_TEXT_PRIMARY = 'rgba(248, 241, 231, 0.92)';
-const COMMUNITY_TEXT_MUTED = 'rgba(248, 241, 231, 0.64)';
-const COMMUNITY_ACCENT = '#f5a623';
+const COMMUNITY_TEXT_PRIMARY = 'rgba(255, 255, 255, 0.92)';
+const COMMUNITY_TEXT_MUTED = 'rgba(255, 255, 255, 0.64)';
+const COMMUNITY_ACCENT = '#ff8c00';
 const COMMUNITY_PROFILE_STORAGE_KEY = 'creatorhub-community-onboarding-profile-v1';
 const COMMUNITY_UPCOMING_EVENTS = [
   {
@@ -266,6 +267,7 @@ const COMMUNITY_UPCOMING_EVENTS = [
 export default function CommunityPage({ userId, profession }: CommunityPageProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const { tt } = useCommunityLocale();
   const { communication } = useEnhancedMasterIntegration();
   
   // Auth for prototype testing access
@@ -725,7 +727,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
     // Initial fetch
     fetchChannelMessages(selectedChannel.id);
 
-    // Connect to WebSocket. null i prod uten eksplisitt WS-host (Vercel
+    // Connect to WebSocket. null i prod uten eksplisitt WS-host (Netlify
     // proxy-er ikke WS) — da hopper vi over koblingen så vi ikke spammer
     // failed-connections i konsollen.
     const wsUrl = buildEventsWsUrl('/ws/events');
@@ -1337,7 +1339,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
         detail: 'Koble læring til praksis ved å starte diskusjoner rundt kurs og leksjoner.',
         current: academyAnnouncements.length + publishedPosts.length,
         target: 3,
-        accent: '#f5a623',
+        accent: '#ff8c00',
       },
     ],
     [academyAnnouncements.length, publishedPosts.length, userStats.messages, userStats.solutions],
@@ -1425,9 +1427,9 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
             sx={{
               width: 50,
               height: 50,
-              bgcolor: 'rgba(245, 166, 35, 0.18)',
+              bgcolor: 'rgba(255, 140, 0, 0.18)',
               color: COMMUNITY_ACCENT,
-              border: '1px solid rgba(245, 166, 35, 0.2)',
+              border: '1px solid rgba(255, 140, 0, 0.2)',
             }}
           >
             {user?.name?.[0]}
@@ -1484,7 +1486,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
       >
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
           <Typography variant="subtitle2" fontWeight={600} sx={{ color: COMMUNITY_TEXT_PRIMARY }}>
-            Dine Grupper
+            {tt('Dine Grupper', 'Your groups')}
           </Typography>
         </Box>
         <List>
@@ -1511,13 +1513,13 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   color: COMMUNITY_TEXT_MUTED,
                 },
                 '&.Mui-selected': {
-                  background: 'rgba(245, 166, 35, 0.12)',
-                  border: '1px solid rgba(245, 166, 35, 0.22)',
+                  background: 'rgba(255, 140, 0, 0.12)',
+                  border: '1px solid rgba(255, 140, 0, 0.22)',
                   '& .MuiListItemIcon-root': {
                     color: COMMUNITY_ACCENT,
                   },
                   '&:hover': {
-                    background: 'rgba(245, 166, 35, 0.16)',
+                    background: 'rgba(255, 140, 0, 0.16)',
                   },
                 },
                 '&:hover': {
@@ -1530,7 +1532,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
               </ListItemIcon>
               <ListItemText
                 primary={group.name}
-                secondary={`${group.member_count} medlemmer`}
+                secondary={`${group.member_count} ${tt('medlemmer', 'members')}`}
               />
             </ListItemButton>
           ))}
@@ -1542,7 +1544,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
             <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
             <Box sx={{ p: 2, borderBottom: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
               <Typography variant="subtitle2" fontWeight={600} sx={{ color: COMMUNITY_TEXT_PRIMARY }}>
-                Kanaler
+                {tt('Kanaler', 'Channels')}
               </Typography>
             </Box>
             <List>
@@ -1567,13 +1569,13 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                       color: COMMUNITY_TEXT_MUTED,
                     },
                     '&.Mui-selected': {
-                      background: 'rgba(245, 166, 35, 0.12)',
-                      border: '1px solid rgba(245, 166, 35, 0.22)',
+                      background: 'rgba(255, 140, 0, 0.12)',
+                      border: '1px solid rgba(255, 140, 0, 0.22)',
                       '& .MuiListItemIcon-root': {
                         color: COMMUNITY_ACCENT,
                       },
                       '&:hover': {
-                        background: 'rgba(245, 166, 35, 0.16)',
+                        background: 'rgba(255, 140, 0, 0.16)',
                       },
                     },
                     '&.Mui-disabled': {
@@ -1627,16 +1629,16 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
             sx={{
               textTransform: 'none',
               justifyContent: 'flex-start',
-              color: selectedView === 'home' ? '#05070b' : COMMUNITY_TEXT_PRIMARY,
+              color: selectedView === 'home' ? '#0a0f1a' : COMMUNITY_TEXT_PRIMARY,
               borderColor: 'rgba(255,255,255,0.1)',
               bgcolor: selectedView === 'home' ? COMMUNITY_ACCENT : 'transparent',
               '&:hover': {
-                borderColor: 'rgba(245, 166, 35, 0.22)',
-                bgcolor: selectedView === 'home' ? '#ffcd73' : 'rgba(245, 166, 35, 0.08)',
+                borderColor: 'rgba(255, 140, 0, 0.22)',
+                bgcolor: selectedView === 'home' ? '#ffcd73' : 'rgba(255, 140, 0, 0.08)',
               },
             }}
           >
-            Community-hjem
+            {tt('Community-hjem', 'Community home')}
           </Button>
           {/* Back to Dashboard Button */}
           <Button
@@ -1653,12 +1655,12 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
               color: COMMUNITY_TEXT_PRIMARY,
               borderColor: 'rgba(255,255,255,0.1)',
               '&:hover': {
-                borderColor: 'rgba(245, 166, 35, 0.22)',
-                bgcolor: 'rgba(245, 166, 35, 0.08)',
+                borderColor: 'rgba(255, 140, 0, 0.22)',
+                bgcolor: 'rgba(255, 140, 0, 0.08)',
               },
             }}
           >
-            Tilbake til Dashboard
+            {tt('Tilbake til Dashboard', 'Back to dashboard')}
           </Button>
 
           {/* Academy Dashboard Button - Only for Mentors */}
@@ -1670,20 +1672,13 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 color="secondary"
                 startIcon={<School />}
                 onClick={() => {
-                  // Navigate to Academy Dashboard
-                  // We'll use the router or window location to navigate
-                  const currentPath = window.location.pathname;
-                  if (currentPath.includes('/dashboard')) {
-                    // If we're in dashboard context, trigger tab change
-                    window.dispatchEvent(new CustomEvent('navigate-to-academy'));
-                  } else {
-                    // Otherwise navigate to dashboard with academy tab
-                    window.location.href = '/dashboard?tab=academy';
-                  }
+                  // Academy har egen flate nå (/academy-dashboard); den gamle
+                  // /dashboard?tab=academy redirecter til workspace og mister fanen.
+                  window.location.href = '/academy-dashboard';
                 }}
                 sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
               >
-                Academy-oversikt
+                {tt('Academy-oversikt', 'Academy overview')}
               </Button>
 
               {/* Publish Course Button */}
@@ -1699,12 +1694,12 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   color: COMMUNITY_TEXT_PRIMARY,
                   borderColor: 'rgba(255,255,255,0.1)',
                   '&:hover': {
-                    borderColor: 'rgba(245, 166, 35, 0.22)',
-                    bgcolor: 'rgba(245, 166, 35, 0.08)',
+                    borderColor: 'rgba(255, 140, 0, 0.22)',
+                    bgcolor: 'rgba(255, 140, 0, 0.08)',
                   },
                 }}
               >
-                Publiser Kurs
+                {tt('Publiser Kurs', 'Publish course')}
               </Button>
 
               {/* Manage Published Posts Button */}
@@ -1720,12 +1715,12 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   color: COMMUNITY_TEXT_PRIMARY,
                   borderColor: 'rgba(255,255,255,0.1)',
                   '&:hover': {
-                    borderColor: 'rgba(245, 166, 35, 0.22)',
-                    bgcolor: 'rgba(245, 166, 35, 0.08)',
+                    borderColor: 'rgba(255, 140, 0, 0.22)',
+                    bgcolor: 'rgba(255, 140, 0, 0.08)',
                   },
                 }}
               >
-                Administrer Innlegg
+                {tt('Administrer Innlegg', 'Manage posts')}
               </Button>
             </>
           )}
@@ -1746,7 +1741,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
           p: 2,
           borderRadius: 3,
           color: COMMUNITY_TEXT_PRIMARY,
-          background: isOwnMessage ? 'rgba(245, 166, 35, 0.04)' : 'transparent',
+          background: isOwnMessage ? 'rgba(255, 140, 0, 0.04)' : 'transparent',
           '&:hover': {
             bgcolor: COMMUNITY_HOVER_BACKGROUND,
           },
@@ -1790,9 +1785,9 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
               width: 40,
               height: 40,
               cursor: 'pointer',
-              bgcolor: 'rgba(245, 166, 35, 0.18)',
+              bgcolor: 'rgba(255, 140, 0, 0.18)',
               color: COMMUNITY_ACCENT,
-              border: '1px solid rgba(245, 166, 35, 0.18)',
+              border: '1px solid rgba(255, 140, 0, 0.18)',
               '&:hover': { opacity: 0.8 },
             }}
             onClick={() => {
@@ -1819,9 +1814,9 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   height: 20,
                   fontSize: '10px',
                   fontWeight: 600,
-                  bgcolor: 'rgba(245, 166, 35, 0.14)',
+                  bgcolor: 'rgba(255, 140, 0, 0.14)',
                   color: COMMUNITY_ACCENT,
-                  border: '1px solid rgba(245, 166, 35, 0.18)',
+                  border: '1px solid rgba(255, 140, 0, 0.18)',
                 }}
               />
             )}
@@ -1885,10 +1880,10 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                       borderColor: 'rgba(255,255,255,0.1)',
                     },
                     '&:hover fieldset': {
-                      borderColor: 'rgba(245, 166, 35, 0.24)',
+                      borderColor: 'rgba(255, 140, 0, 0.24)',
                     },
                     '&.Mui-focused fieldset': {
-                      borderColor: 'rgba(245, 166, 35, 0.42)',
+                      borderColor: 'rgba(255, 140, 0, 0.42)',
                     },
                   },
                 }}
@@ -1900,13 +1895,13 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   onClick={() => handleSaveEdit(message.id)}
                   sx={{
                     bgcolor: COMMUNITY_ACCENT,
-                    color: '#05070b',
+                    color: '#0a0f1a',
                     '&:hover': {
                       bgcolor: '#ffcd73',
                     },
                   }}
                 >
-                  Lagre
+                  {tt('Lagre', 'Save')}
                 </Button>
                 <Button
                   size="small"
@@ -1917,7 +1912,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                     borderColor: 'rgba(255,255,255,0.12)',
                   }}
                 >
-                  Avbryt
+                  {tt('Avbryt', 'Cancel')}
                 </Button>
               </Box>
             </Box>
@@ -1935,7 +1930,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                       variant="caption"
                       sx={{ ml: 1, fontStyle: 'italic', color: COMMUNITY_TEXT_MUTED }}
                     >
-                      (redigert)
+                      {tt('(redigert)', '(edited)')}
                     </Typography>
                   )}
                 </Typography>
@@ -1943,7 +1938,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 {message.is_solution && (
                   <Chip
                     icon={<CheckCircle />}
-                    label="Løsning"
+                    label={tt('Løsning', 'Solution')}
                     size="small"
                     color="success"
                     sx={{
@@ -2027,10 +2022,10 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                     height: 24,
                     color: COMMUNITY_TEXT_PRIMARY,
                     bgcolor: users.includes(userId)
-                      ? 'rgba(245, 166, 35, 0.16)'
+                      ? 'rgba(255, 140, 0, 0.16)'
                       : 'rgba(255,255,255,0.06)',
                     border: users.includes(userId)
-                      ? '1px solid rgba(245, 166, 35, 0.2)'
+                      ? '1px solid rgba(255, 140, 0, 0.2)'
                       : '1px solid rgba(255,255,255,0.08)',
                   }}
                 />
@@ -2054,7 +2049,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 color: COMMUNITY_TEXT_MUTED,
               }}
             >
-              {(message.thread_count || 0) > 0 ? `${message.thread_count} svar` : 'Svar'}
+              {(message.thread_count || 0) > 0 ? `${message.thread_count} ${tt('svar', 'replies')}` : tt('Svar', 'Reply')}
             </Button>
 
             {/* Quick Reactions */}
@@ -2106,7 +2101,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
         >
           <CircularProgress sx={{ color: COMMUNITY_ACCENT }} />
           <Typography variant="body1" sx={{ mt: 2, color: COMMUNITY_TEXT_MUTED }}>
-            Laster community...
+            {tt('Laster community...', 'Loading community...')}
           </Typography>
         </Box>
       </Box>
@@ -2191,11 +2186,11 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                       borderRadius: 999,
                       textTransform: 'none',
                       bgcolor: selectedView === 'home' ? COMMUNITY_ACCENT : 'transparent',
-                      color: selectedView === 'home' ? '#05070b' : COMMUNITY_TEXT_PRIMARY,
+                      color: selectedView === 'home' ? '#0a0f1a' : COMMUNITY_TEXT_PRIMARY,
                       borderColor: 'rgba(255,255,255,0.12)',
                     }}
                   >
-                    Hjem
+                    {tt('Hjem', 'Home')}
                   </Button>
                   {selectedChannel && (
                     <Button
@@ -2204,7 +2199,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                       sx={{
                         borderRadius: 999,
                         textTransform: 'none',
-                        bgcolor: selectedView === 'channel' ? 'rgba(245, 166, 35, 0.14)' : 'transparent',
+                        bgcolor: selectedView === 'channel' ? 'rgba(255, 140, 0, 0.14)' : 'transparent',
                         color: COMMUNITY_TEXT_PRIMARY,
                         borderColor: 'rgba(255,255,255,0.12)',
                       }}
@@ -2215,13 +2210,13 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 </Stack>
                 <Typography variant="body2" sx={{ mt: 1, color: COMMUNITY_TEXT_MUTED }}>
                   {selectedView === 'home'
-                    ? 'Prioriter svar, kunnskap og Academy-broer fra ett sted.'
-                    : selectedChannel?.description || 'Aktiv kanalvisning.'}
+                    ? tt('Prioriter svar, kunnskap og Academy-broer fra ett sted.', 'Prioritise answers, knowledge and Academy bridges from one place.')
+                    : selectedChannel?.description || tt('Aktiv kanalvisning.', 'Active channel view.')}
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                 <Chip
-                  label={wsConnected ? 'Sanntidssynk' : 'Frakoblet'}
+                  label={wsConnected ? tt('Sanntidssynk', 'Live sync') : tt('Frakoblet', 'Offline')}
                   size="small"
                   sx={{
                     bgcolor: wsConnected ? 'rgba(84, 181, 125, 0.14)' : 'rgba(255,255,255,0.06)',
@@ -2240,14 +2235,14 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                     sx={{
                       textTransform: 'none',
                       bgcolor: COMMUNITY_ACCENT,
-                      color: '#05070b',
+                      color: '#0a0f1a',
                     }}
                   >
-                    Bli Mentor
+                    {tt('Bli Mentor', 'Become a mentor')}
                   </Button>
                 )}
                 {isMentor && (
-                  <Tooltip title="Mentoroversikt">
+                  <Tooltip title={tt('Mentoroversikt', 'Mentor overview')}>
                     <IconButton
                       onClick={() => setMentorDashboardOpen(true)}
                       sx={{
@@ -2263,7 +2258,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   </Tooltip>
                 )}
                 {selectedGroup && (
-                  <Tooltip title="Stemmebrett - funksjonsønsker">
+                  <Tooltip title={tt('Stemmebrett - funksjonsønsker', 'Voting board - feature requests')}>
                     <IconButton
                       onClick={() => setVotingBoardOpen(true)}
                       sx={{
@@ -2276,7 +2271,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                     </IconButton>
                   </Tooltip>
                 )}
-                <Tooltip title="Varsler">
+                <Tooltip title={tt('Varsler', 'Notifications')}>
                   <IconButton
                     onClick={() => setNotificationDrawerOpen(true)}
                     sx={{
@@ -2290,7 +2285,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                     </Badge>
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="Søk (⌘+K)">
+                <Tooltip title={tt('Søk (⌘+K)', 'Search (⌘+K)')}>
                   <IconButton
                     onClick={() => {
                       setSearchScope('all');
@@ -2307,7 +2302,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                     <Search />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="Hjelp & Guide (⌘+?)">
+                <Tooltip title={tt('Hjelp & Guide (⌘+?)', 'Help & guide (⌘+?)')}>
                   <IconButton
                     onClick={openCommunityTutorial}
                     sx={{
@@ -2391,10 +2386,10 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   <Box sx={{ textAlign: 'center', py: 8 }}>
                     <Forum sx={{ fontSize: 60, color: COMMUNITY_ACCENT, mb: 2 }} />
                     <Typography variant="h6" sx={{ color: COMMUNITY_TEXT_PRIMARY }}>
-                      Ingen meldinger ennå
+                      {tt('Ingen meldinger ennå', 'No messages yet')}
                     </Typography>
                     <Typography variant="body2" sx={{ color: COMMUNITY_TEXT_MUTED }}>
-                      Vær den første til å starte samtalen!
+                      {tt('Vær den første til å starte samtalen!', 'Be the first to start the conversation!')}
                     </Typography>
                   </Box>
                 ) : (
@@ -2413,17 +2408,17 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 <Box sx={{ p: 2, borderTop: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
                   <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 1.2 }}>
                     <Chip
-                      label="Spør om Academy-leksjon"
+                      label={tt('Spør om Academy-leksjon', 'Ask about an Academy lesson')}
                       onClick={() =>
                         handleUsePromptTemplate(
                           'Jeg jobber med en Academy-leksjon akkurat nå og trenger sparring på dette: ',
                           selectedChannel.id,
                         )
                       }
-                      sx={{ bgcolor: 'rgba(245, 166, 35, 0.12)', color: '#f5a623' }}
+                      sx={{ bgcolor: 'rgba(255, 140, 0, 0.12)', color: '#ff8c00' }}
                     />
                     <Chip
-                      label="Del takeaway"
+                      label={tt('Del takeaway', 'Share a takeaway')}
                       onClick={() =>
                         handleUsePromptTemplate(
                           'Dette er det viktigste jeg tar med meg fra Academy i dag. Hvordan ville dere brukt dette i praksis? ',
@@ -2433,7 +2428,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                       sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: COMMUNITY_TEXT_PRIMARY }}
                     />
                     <Chip
-                      label="Be om tilbakemelding"
+                      label={tt('Be om tilbakemelding', 'Ask for feedback')}
                       onClick={() =>
                         handleUsePromptTemplate(
                           'Jeg vil gjerne ha tilbakemelding på denne ideen / leveransen før jeg går videre: ',
@@ -2455,7 +2450,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                       }}
                     >
                       <Typography variant="caption" sx={{ color: COMMUNITY_TEXT_MUTED }}>
-                        Mulige svar før du poster
+                        {tt('Mulige svar før du poster', 'Possible answers before you post')}
                       </Typography>
                       <Stack spacing={1} sx={{ mt: 1 }}>
                         {composerSuggestions.map((suggestion) => (
@@ -2470,10 +2465,10 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                             </Box>
                             <Button
                               size="small"
-                              sx={{ color: '#f5a623', flexShrink: 0 }}
+                              sx={{ color: '#ff8c00', flexShrink: 0 }}
                               onClick={() => handleOpenDiscussion(suggestion.channel_id, suggestion.id)}
                             >
-                              Vis
+                              {tt('Vis', 'View')}
                             </Button>
                           </Box>
                         ))}
@@ -2488,8 +2483,8 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                         sx={{ fontStyle: 'italic', color: COMMUNITY_TEXT_MUTED }}
                       >
                         {typingUsers.size === 1
-                          ? 'Noen skriver...'
-                          : `${typingUsers.size} personer skriver...`}
+                          ? tt('Noen skriver...', 'Someone is typing...')
+                          : `${typingUsers.size} ${tt('personer skriver...', 'people are typing...')}`}
                       </Typography>
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
                         <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: COMMUNITY_TEXT_MUTED, animation: 'pulse 1.4s infinite' }} />
@@ -2502,7 +2497,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                     fullWidth
                     multiline
                     maxRows={4}
-                    placeholder={`Send melding til # ${selectedChannel.display_name}`}
+                    placeholder={`${tt('Send melding til', 'Send message to')} # ${selectedChannel.display_name}`}
                     value={messageInput}
                     onChange={handleMessageInputChange}
                     onKeyDown={(e) => {
@@ -2522,10 +2517,10 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                           borderColor: 'rgba(255,255,255,0.1)',
                         },
                         '&:hover fieldset': {
-                          borderColor: 'rgba(245, 166, 35, 0.24)',
+                          borderColor: 'rgba(255, 140, 0, 0.24)',
                         },
                         '&.Mui-focused fieldset': {
-                          borderColor: 'rgba(245, 166, 35, 0.42)',
+                          borderColor: 'rgba(255, 140, 0, 0.42)',
                         },
                       },
                       '& .MuiInputBase-input::placeholder': {
@@ -2546,7 +2541,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                             onFilesUploaded={handleFilesUploaded}
                             disabled={sendingMessage}
                           />
-                          <Tooltip title="Legg til emoji">
+                          <Tooltip title={tt('Legg til emoji', 'Add emoji')}>
                             <IconButton
                               size="small"
                               onClick={handleOpenEmojiPicker}
@@ -2580,13 +2575,13 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                     p: 2,
                     borderTop: 1,
                     borderColor: 'rgba(255,255,255,0.08)',
-                    bgcolor: 'rgba(245, 166, 35, 0.08)',
+                    bgcolor: 'rgba(255, 140, 0, 0.08)',
                   }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Lock fontSize="small" sx={{ color: COMMUNITY_TEXT_MUTED }} />
                     <Typography variant="body2" sx={{ color: COMMUNITY_TEXT_MUTED }}>
-                      Denne kanalen er skrivebeskyttet. Kun administratorer kan sende meldinger.
+                      {tt('Denne kanalen er skrivebeskyttet. Kun administratorer kan sende meldinger.', 'This channel is read-only. Only administrators can send messages.')}
                     </Typography>
                   </Box>
                 </Box>
@@ -3166,9 +3161,9 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
           }}}
       >
         <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: 1, borderColor: 'divider' }}>
-          <Typography variant="h6">Varsler</Typography>
+          <Typography variant="h6">{tt('Varsler', 'Notifications')}</Typography>
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <Tooltip title="Innstillinger">
+            <Tooltip title={tt('Innstillinger', 'Settings')}>
               <IconButton onClick={() => setNotificationPreferencesOpen(true)} size="small">
                 <Settings />
               </IconButton>

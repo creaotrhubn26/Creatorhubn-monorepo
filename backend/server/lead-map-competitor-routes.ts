@@ -1,0 +1,1480 @@
+/**
+ * lead-map-competitor-routes.ts
+ *
+ * Konkurrent-management for Lead Map.
+ *
+ * Endepunkter:
+ *   GET  /api/admin-room/lead-map/competitors
+ *        → liste alle konkurrenter for workspace (auto + manual)
+ *   POST /api/admin-room/lead-map/competitors
+ *        → legg til manuelt (uten Market Scan-kobling)
+ *   PATCH /api/admin-room/lead-map/competitors/:id
+ *        → oppdater threat_level / priority_rank / notes
+ *   POST /api/admin-room/lead-map/competitors/:id/assess
+ *        → Claude vurderer threat-level + "hva bekymre seg for" + "hva ignorere"
+ *   POST /api/admin-room/lead-map/leads/rank-all
+ *        → Claude ranker alle leads etter "mest anbefalt å nå ut til"
+ *   GET  /api/admin-room/lead-map/market-points
+ *        → kombinert leads + competitors for kartvisning (bbox-filter)
+ */
+
+import type { Express, Request, Response } from "express";
+import type { Pool } from "pg";
+import Anthropic from "@anthropic-ai/sdk";
+import { buildCsvDocument } from "./leadgrid-csv.js";
+import {
+  LeadgridExportAccessError,
+  requireLeadgridExportProject,
+} from "./leadgrid-export-access.js";
+import { assessCompetitorThreat } from "./competitor-threat-assessment.js";
+import { fetchBestLogo } from "./lead-logo-fetcher.js";
+import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { resolveLeadMapSession } from "./lead-map-session-helper.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
+import {
+  requestedLeadMapOrganizationId,
+  sendLeadMapOrganizationScopeError,
+} from "./lead-map-org-scope.js";
+
+/**
+ * Fire-and-forget: hent logo for opptil 10 leads som mangler logo_url
+ * men har website_url. Resultat lagres i crm_customers.logo_url slik
+ * at neste kart-load henter dem ut. Feiler stille per lead.
+ */
+async function autoFetchLeadLogos(
+  pool: Pool,
+  rows: Array<Record<string, unknown>>,
+): Promise<void> {
+  const candidates = rows
+    .filter((r) => !r.logo_url)
+    .slice(0, 10);
+  if (candidates.length === 0) return;
+  // Trenger website_url — hent fra DB siden market-points SELECT'en
+  // ikke inkluderer det.
+  const ids = candidates.map((r) => r.id as string);
+  const r = await pool.query<{ id: string; website_url: string | null }>(
+    `SELECT id::text, website_url
+       FROM crm_customers
+      WHERE id = ANY($1::text[])
+        AND website_url IS NOT NULL
+        AND (logo_url IS NULL OR logo_url = '')`,
+    [ids],
+  );
+  for (const lead of r.rows) {
+    if (!lead.website_url) continue;
+    try {
+      const logo = await fetchBestLogo(lead.website_url);
+      if (logo) {
+        await pool.query(
+          `UPDATE crm_customers SET logo_url = $2 WHERE id = $1`,
+          [lead.id, logo.url],
+        );
+      }
+    } catch {
+      // Stille feil — neste run prøver på nytt
+    }
+  }
+}
+import {
+  generateCounterCampaign,
+  saveCounterCampaignToWorkflow,
+  type CounterCampaign,
+} from "./competitor-counter-campaign.js";
+import { recommendOutreachStrategy } from "./lead-outreach-strategy.js";
+import { enrichLeadWithBrreg, getStoredEnrichment } from "./lead-brreg-service.js";
+import { getDemographics } from "./lead-ssb-service.js";
+
+type SessionData = { userId: string; role?: string; email?: string };
+interface Deps {
+  app: Express;
+  pool: Pool;
+  activeSessions: Map<string, SessionData>;
+}
+
+async function getUser(
+  req: Request,
+  pool: Pool,
+  activeSessions: Map<string, SessionData>,
+): Promise<SessionData | null> {
+  return resolveLeadMapSession(req, pool, activeSessions);
+}
+
+/**
+ * Hent valgfri prosjekt-filter fra request (query eller body).
+ * Returner null hvis ikke satt → ingen filtering.
+ */
+function getProjectId(req: Request): string | null {
+  const q = req.query.projectId ?? req.query.project_id;
+  if (typeof q === "string") {
+    const normalized = q.trim();
+    if (normalized.length > 0 && normalized.length <= 255) return normalized;
+  }
+  const requestBody = req.body as {
+    projectId?: unknown;
+    project_id?: unknown;
+  } | undefined;
+  const b = requestBody?.projectId ?? requestBody?.project_id;
+  if (typeof b === "string") {
+    const normalized = b.trim();
+    if (normalized.length > 0 && normalized.length <= 255) return normalized;
+  }
+  return null;
+}
+
+interface CompetitorRow {
+  id: string;
+  name: string;
+  domain: string;
+  category: string | null;
+  positioning: string | null;
+  primary_offer: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  google_address: string | null;
+  google_phone: string | null;
+  google_rating: number | null;
+  is_manual_addition: boolean;
+  threat_level: "near" | "medium" | "far" | null;
+  threat_score: number | null;
+  claude_threat_summary: string | null;
+  claude_what_to_worry_about: string | null;
+  claude_what_to_ignore: string | null;
+  claude_assessed_at: string | null;
+  priority_rank: number | null;
+  created_at: string;
+}
+
+function rowToCompetitor(r: CompetitorRow) {
+  return {
+    id: r.id,
+    name: r.name,
+    domain: r.domain,
+    category: r.category,
+    positioning: r.positioning,
+    primaryOffer: r.primary_offer,
+    latitude: r.latitude != null ? Number(r.latitude) : null,
+    longitude: r.longitude != null ? Number(r.longitude) : null,
+    address: r.google_address,
+    phone: r.google_phone,
+    rating: r.google_rating != null ? Number(r.google_rating) : null,
+    isManualAddition: r.is_manual_addition,
+    threatLevel: r.threat_level,
+    threatScore: r.threat_score,
+    claudeThreatSummary: r.claude_threat_summary,
+    claudeWhatToWorryAbout: r.claude_what_to_worry_about,
+    claudeWhatToIgnore: r.claude_what_to_ignore,
+    claudeAssessedAt: r.claude_assessed_at,
+    priorityRank: r.priority_rank,
+    createdAt: r.created_at,
+  };
+}
+
+export function registerLeadMapCompetitorRoutes({
+  app,
+  pool,
+  activeSessions,
+}: Deps): void {
+  async function requiredProjectScope(
+    req: Request,
+    res: Response,
+    userId: string,
+  ) {
+    const projectId = getProjectId(req);
+    if (!projectId) {
+      res.status(400).json({ error: "project_id_required" });
+      return null;
+    }
+    const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+    const requestedOrganizationId = requestedLeadMapOrganizationId(req);
+    if (
+      !project
+      || (requestedOrganizationId
+        && requestedOrganizationId !== project.organizationId)
+    ) {
+      res.status(404).json({ error: "project_not_found" });
+      return null;
+    }
+    return project;
+  }
+
+  async function competitorBelongsToProject(
+    project: { id: string; organizationId: string },
+    competitorId: string,
+  ): Promise<boolean> {
+    const result = await pool.query(
+      `SELECT 1
+         FROM market_scan_competitors
+        WHERE id = $1::uuid
+          AND organization_id = $2::uuid
+          AND project_id = $3
+        LIMIT 1`,
+      [competitorId, project.organizationId, project.id],
+    );
+    return result.rows.length > 0;
+  }
+
+  async function leadBelongsToProject(
+    project: { id: string; organizationId: string },
+    leadId: string,
+  ): Promise<boolean> {
+    const result = await pool.query(
+      `SELECT 1
+         FROM crm_customers
+        WHERE id = $1::uuid
+          AND organization_id = $2::uuid
+          AND project_id = $3
+          AND archived_at IS NULL
+        LIMIT 1`,
+      [leadId, project.organizationId, project.id],
+    );
+    return result.rows.length > 0;
+  }
+  // ─── GET /competitors ─────────────────────────────────────────────
+  app.get(
+    "/api/admin-room/lead-map/competitors",
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        const r = await pool.query<CompetitorRow>(
+          `SELECT id::text, name, domain, category, positioning, primary_offer,
+                  latitude, longitude, google_address, google_phone, google_rating,
+                  is_manual_addition, threat_level, threat_score,
+                  claude_threat_summary, claude_what_to_worry_about, claude_what_to_ignore,
+                  claude_assessed_at::text, priority_rank, created_at::text
+             FROM market_scan_competitors
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
+            ORDER BY
+              priority_rank DESC NULLS LAST,
+              CASE threat_level
+                WHEN 'near' THEN 1
+                WHEN 'medium' THEN 2
+                WHEN 'far' THEN 3
+                ELSE 4
+              END,
+              threat_score DESC NULLS LAST,
+              created_at DESC
+            LIMIT 200`,
+          [project.organizationId, project.id],
+        );
+        return res.json({ competitors: r.rows.map(rowToCompetitor) });
+      } catch (err) {
+        if (sendLeadMapOrganizationScopeError(err, res)) return;
+        return res.status(500).json({ error: "list_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  // ─── POST /competitors (manuell add) ──────────────────────────────
+  app.post(
+    "/api/admin-room/lead-map/competitors",
+    requireLeadMapPermission("competitors.create", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const body = req.body as {
+        name?: string;
+        domain?: string;
+        category?: string;
+        positioning?: string;
+        primaryOffer?: string;
+        projectId?: string;
+        project_id?: string;
+        threatLevel?: "near" | "medium" | "far";
+      };
+      if (!body.name || !body.domain) {
+        return res.status(400).json({ error: "name_og_domain_kreves" });
+      }
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+
+        const ins = await pool.query<CompetitorRow>(
+          `INSERT INTO market_scan_competitors (
+             market_scan_id, workspace_owner_user_id, organization_id, project_id,
+             name, domain, category, positioning, primary_offer,
+             confidence, source_urls,
+             is_manual_addition, added_by_user_id, threat_level
+           )
+           VALUES (
+             NULL, $1, $2::uuid, $3, $4, $5, $6, $7, $8,
+             'high', '[]'::jsonb,
+             TRUE, $1, $9
+           )
+           RETURNING id::text, name, domain, category, positioning, primary_offer,
+                     latitude, longitude, google_address, google_phone, google_rating,
+                     is_manual_addition, threat_level, threat_score,
+                     claude_threat_summary, claude_what_to_worry_about,
+                     claude_what_to_ignore, claude_assessed_at::text,
+                     priority_rank, created_at::text`,
+          [
+            session.userId,
+            project.organizationId,
+            project.id,
+            body.name.trim(),
+            body.domain.trim(),
+            body.category ?? null,
+            body.positioning ?? null,
+            body.primaryOffer ?? null,
+            body.threatLevel ?? null,
+          ],
+        );
+        const competitor = rowToCompetitor(ins.rows[0]);
+
+        // Auto-fyr Claude threat-vurdering i bakgrunnen — bruker venter ikke.
+        // Hopper over hvis brukeren har eksplisitt satt threat_level i form-en
+        // (de har allerede tatt et standpunkt).
+        if (!body.threatLevel && process.env.ANTHROPIC_API_KEY) {
+          void (async () => {
+            try {
+              await assessCompetitorThreat(pool, {
+                competitorId: competitor.id,
+                workspaceOwnerUserId: session.userId,
+                organizationId: project.organizationId,
+                projectId: project.id,
+              });
+              console.log(`[competitor-add] Auto-assessed threat for ${competitor.name}`);
+            } catch (err) {
+              console.warn(
+                `[competitor-add] Auto-assess feilet for ${competitor.name}:`,
+                (err as Error).message,
+              );
+            }
+          })();
+        }
+
+        return res.json({ competitor });
+      } catch (err) {
+        if (sendLeadMapOrganizationScopeError(err, res)) return;
+        return res.status(500).json({ error: "add_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  // ─── PATCH /competitors/:id ───────────────────────────────────────
+  app.patch(
+    "/api/admin-room/lead-map/competitors/:id",
+    requireLeadMapPermission("competitors.update", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const body = req.body as {
+        threatLevel?: "near" | "medium" | "far";
+        priorityRank?: number;
+        positioning?: string;
+        projectId?: string;
+        project_id?: string;
+      };
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        const r = await pool.query<CompetitorRow>(
+          `UPDATE market_scan_competitors
+              SET threat_level = COALESCE($4, threat_level),
+                  priority_rank = COALESCE($5, priority_rank),
+                  positioning = COALESCE($6, positioning)
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3
+          RETURNING id::text, name, domain, category, positioning, primary_offer,
+                    latitude, longitude, google_address, google_phone, google_rating,
+                    is_manual_addition, threat_level, threat_score,
+                    claude_threat_summary, claude_what_to_worry_about,
+                    claude_what_to_ignore, claude_assessed_at::text,
+                    priority_rank, created_at::text`,
+          [
+            req.params.id,
+            project.organizationId,
+            project.id,
+            body.threatLevel ?? null,
+            body.priorityRank ?? null,
+            body.positioning ?? null,
+          ],
+        );
+        if (r.rows.length === 0) return res.status(404).json({ error: "not_found" });
+        return res.json({ competitor: rowToCompetitor(r.rows[0]) });
+      } catch (err) {
+        if (sendLeadMapOrganizationScopeError(err, res)) return;
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  // ─── DELETE /competitors/:id ──────────────────────────────────────
+  app.delete(
+    "/api/admin-room/lead-map/competitors/:id",
+    requireLeadMapPermission("competitors.delete", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        const r = await pool.query(
+          `DELETE FROM market_scan_competitors
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3
+          RETURNING id::text`,
+          [req.params.id, project.organizationId, project.id],
+        );
+        if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+        return res.json({ ok: true, deleted: r.rows[0].id });
+      } catch (err) {
+        if (sendLeadMapOrganizationScopeError(err, res)) return;
+        return res.status(500).json({ error: "delete_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  // ─── GET /calendar (kommende møter + follow-ups) ─────────────────
+  // Møtetid, varighet og ferdigstatus leses fra samme delte datamodell.
+  app.get(
+    "/api/admin-room/lead-map/calendar",
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const projectId = getProjectId(req);
+      if (!projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        const params: unknown[] = [project.organizationId, project.id];
+        const leadScopeClause = "c.organization_id = $1::uuid";
+        const projectClause = "AND c.project_id = $2";
+        const r = await pool.query<{
+          id: string;
+          name: string;
+          lead_status: string;
+          next_follow_up_at: string | null;
+          meeting_duration_minutes: number;
+          meeting_status: string;
+          meeting_logged: boolean;
+          next_action: string | null;
+          city: string | null;
+          phone: string | null;
+          email: string | null;
+          owner_user_id: string | null;
+          assigned_user_name: string | null;
+          assigned_user_email: string | null;
+        }>(
+          `SELECT c.id::text, c.name, c.lead_status,
+                  c.next_follow_up_at::text, c.meeting_duration_minutes, c.meeting_status,
+                  EXISTS (
+                    SELECT 1
+                      FROM leadgrid_mote_logg ml
+                     WHERE ml.organization_id = c.organization_id::text
+                       AND ml.lead_id = c.id
+                       AND ml.meeting_at BETWEEN c.next_follow_up_at - INTERVAL '5 minutes'
+                                             AND c.next_follow_up_at + INTERVAL '5 minutes'
+                  ) AS meeting_logged,
+                  c.next_action, c.city, c.phone, c.email,
+                  c.owner_user_id,
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name,
+                  u.email AS assigned_user_email
+             FROM crm_customers c
+             LEFT JOIN users u ON u.id = c.owner_user_id
+            WHERE ${leadScopeClause}
+              ${projectClause}
+              AND c.next_follow_up_at IS NOT NULL
+              AND c.next_follow_up_at >= NOW() - INTERVAL '1 day'
+              AND c.next_follow_up_at <= NOW() + INTERVAL '60 days'
+              AND c.lead_status NOT IN ('won', 'lost', 'do_not_contact')
+            ORDER BY c.next_follow_up_at ASC
+            LIMIT 100`,
+          params,
+        );
+        const events = r.rows.map((row) => ({
+          id: row.id,
+          leadName: row.name,
+          status: row.lead_status,
+          datetime: row.next_follow_up_at,
+          durationMinutes: row.meeting_duration_minutes,
+          meetingStatus: row.meeting_status,
+          meetingLogged: row.meeting_logged,
+          nextAction: row.next_action,
+          city: row.city,
+          phone: row.phone,
+          email: row.email,
+          assignedUserId: row.owner_user_id,
+          assignedUserName: row.assigned_user_name,
+          assignedUserEmail: row.assigned_user_email,
+          eventType: row.lead_status === "meeting_booked" ? "meeting" : "follow_up",
+        }));
+        return res.json({ events });
+      } catch (err) {
+        if (sendLeadMapOrganizationScopeError(err, res)) return;
+        return res.status(500).json({ error: "calendar_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  // ─── PATCH /calendar/:leadId (endre møtetid eller varighet) ─────────
+  app.patch(
+    "/api/admin-room/lead-map/calendar/:leadId",
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const dtRaw = typeof body.datetime === "string" ? body.datetime.trim() : "";
+      const dt = dtRaw ? new Date(dtRaw) : null;
+      const durationRaw = body.durationMinutes ?? body.duration_minutes;
+      const duration = durationRaw === undefined || durationRaw === null
+        ? null
+        : Number(durationRaw);
+      const meetingStatusRaw = body.meetingStatus ?? body.meeting_status;
+      const meetingStatus = typeof meetingStatusRaw === "string" ? meetingStatusRaw.trim() : null;
+      const note = typeof body.note === "string" ? body.note.trim().slice(0, 2000) : "";
+      const validMeetingStatuses = new Set([
+        "confirmed", "on_the_way", "follow_up", "pending", "cancelled",
+      ]);
+      if (dt && Number.isNaN(dt.getTime())) {
+        return res.status(400).json({ error: "bad_request", detail: "datetime må være gyldig ISO-tid" });
+      }
+      if (duration !== null && (!Number.isInteger(duration) || duration < 15 || duration > 720)) {
+        return res.status(400).json({ error: "bad_request", detail: "durationMinutes må være 15–720" });
+      }
+      if (meetingStatus !== null && !validMeetingStatuses.has(meetingStatus)) {
+        return res.status(400).json({ error: "bad_request", detail: "meetingStatus er ugyldig" });
+      }
+      if (!dt && duration === null && meetingStatus === null) {
+        return res.status(400).json({ error: "bad_request", detail: "datetime, durationMinutes eller meetingStatus er påkrevd" });
+      }
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        const r = await pool.query(
+          `WITH updated AS (
+             UPDATE crm_customers
+                SET next_follow_up_at = COALESCE($1::timestamptz, next_follow_up_at),
+                    meeting_duration_minutes = COALESCE($2::integer, meeting_duration_minutes),
+                    meeting_status = COALESCE($3, meeting_status),
+                    updated_at = NOW()
+              WHERE id = $4::uuid
+                AND organization_id = $5::uuid
+                AND project_id = $6
+              RETURNING id, next_follow_up_at, meeting_duration_minutes, meeting_status
+           )
+           INSERT INTO crm_lead_activities
+             (customer_id, user_id, activity_type, new_value, description)
+           SELECT id, $7, 'follow_up_set',
+                  CONCAT(next_follow_up_at::text, '|', meeting_duration_minutes::text, '|', meeting_status),
+                  COALESCE(NULLIF($8, ''), 'Møtetid, varighet eller møtestatus endret')
+             FROM updated
+           RETURNING customer_id`,
+          [dt?.toISOString() ?? null, duration, meetingStatus, req.params.leadId,
+           project.organizationId, project.id, session.userId, note],
+        );
+        if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+        return res.json({ ok: true });
+      } catch (err) {
+        if (sendLeadMapOrganizationScopeError(err, res)) return;
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  // ─── GET /reminders (stille leads + dagens follow-ups) ──────────
+  app.get(
+    "/api/admin-room/lead-map/reminders",
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const projectId = getProjectId(req);
+      if (!projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        const params: unknown[] = [project.organizationId, project.id];
+        const leadScopeClause = "organization_id = $1::uuid";
+        const projectClause = "AND project_id = $2";
+        const stale = await pool.query<{
+          id: string; name: string; lead_status: string; city: string | null;
+          days_silent: number; updated_at: string;
+        }>(
+          `SELECT id::text, name, lead_status, city,
+                  (EXTRACT(EPOCH FROM (NOW() - updated_at)) / 86400)::int AS days_silent,
+                  updated_at::text
+             FROM crm_customers
+            WHERE ${leadScopeClause}
+              ${projectClause}
+              AND lead_status NOT IN ('won', 'lost', 'do_not_contact')
+              AND updated_at < NOW() - INTERVAL '7 days'
+            ORDER BY updated_at ASC
+            LIMIT 50`,
+          params,
+        );
+
+        const buckets = {
+          over30days: stale.rows.filter((r) => r.days_silent >= 30).length,
+          over14days: stale.rows.filter((r) => r.days_silent >= 14 && r.days_silent < 30).length,
+          over7days: stale.rows.filter((r) => r.days_silent >= 7 && r.days_silent < 14).length,
+        };
+
+        const dueToday = await pool.query<{
+          id: string; name: string; next_follow_up_at: string; next_action: string | null;
+        }>(
+          `SELECT id::text, name, next_follow_up_at::text, next_action
+             FROM crm_customers
+            WHERE ${leadScopeClause}
+              ${projectClause}
+              AND next_follow_up_at IS NOT NULL
+              AND next_follow_up_at <= NOW() + INTERVAL '24 hours'
+              AND next_follow_up_at >= NOW() - INTERVAL '24 hours'
+              AND lead_status NOT IN ('won', 'lost', 'do_not_contact')
+            ORDER BY next_follow_up_at ASC
+            LIMIT 20`,
+          params,
+        );
+
+        return res.json({
+          staleLeads: stale.rows.map((r) => ({
+            id: r.id,
+            name: r.name,
+            status: r.lead_status,
+            city: r.city,
+            daysSilent: r.days_silent,
+            updatedAt: r.updated_at,
+          })),
+          buckets,
+          dueToday: dueToday.rows.map((r) => ({
+            id: r.id,
+            name: r.name,
+            datetime: r.next_follow_up_at,
+            nextAction: r.next_action,
+          })),
+          totalStale: stale.rows.length,
+        });
+      } catch (err) {
+        if (sendLeadMapOrganizationScopeError(err, res)) return;
+        return res.status(500).json({ error: "reminders_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  // ─── GET /status-report (ukens status-rapport) ──────────────────
+  app.get(
+    "/api/admin-room/lead-map/status-report",
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const projectId = getProjectId(req);
+      if (!projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        const params: unknown[] = [project.organizationId, project.id];
+        const leadScopeClause = "organization_id = $1::uuid";
+        const projectClause = "AND project_id = $2";
+        const subqueryProjectClause = "AND project_id = $2";
+        const r = await pool.query<{
+          new_leads_7d: number;
+          won_7d: number;
+          meetings_7d: number;
+          longest_silent_days: number;
+          longest_silent_name: string | null;
+          active_pipeline: number;
+        }>(
+          `SELECT
+             COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int AS new_leads_7d,
+             COUNT(*) FILTER (
+               WHERE lead_status = 'won'
+                 AND updated_at >= NOW() - INTERVAL '7 days'
+             )::int AS won_7d,
+             COUNT(*) FILTER (
+               WHERE lead_status = 'meeting_booked'
+                 AND updated_at >= NOW() - INTERVAL '7 days'
+             )::int AS meetings_7d,
+             COALESCE(MAX(
+               (EXTRACT(EPOCH FROM (NOW() - updated_at)) / 86400)::int
+             ) FILTER (
+               WHERE lead_status NOT IN ('won', 'lost', 'do_not_contact')
+             ), 0)::int AS longest_silent_days,
+             (SELECT name FROM crm_customers
+               WHERE ${leadScopeClause}
+                 ${subqueryProjectClause}
+                 AND lead_status NOT IN ('won', 'lost', 'do_not_contact')
+               ORDER BY updated_at ASC LIMIT 1
+             ) AS longest_silent_name,
+             COUNT(*) FILTER (
+               WHERE lead_status NOT IN ('won', 'lost', 'do_not_contact')
+             )::int AS active_pipeline
+           FROM crm_customers
+          WHERE ${leadScopeClause}
+            ${projectClause}`,
+          params,
+        );
+        const row = r.rows[0];
+
+        const recommendations: string[] = [];
+        if (row.longest_silent_days >= 14 && row.longest_silent_name) {
+          recommendations.push(
+            `${row.longest_silent_name} har ikke fått oppmerksomhet på ${row.longest_silent_days} dager — følg opp eller marker som tapt`,
+          );
+        }
+        if (row.new_leads_7d === 0) {
+          recommendations.push(
+            "Ingen nye leads siste uken — kjør Discovery V2 eller importer en kvalitetssikret fil",
+          );
+        } else if (row.new_leads_7d >= 5 && row.meetings_7d === 0) {
+          recommendations.push(
+            `${row.new_leads_7d} nye leads, men 0 bookede møter — øk follow-up-takt`,
+          );
+        }
+        if (row.active_pipeline >= 20 && row.won_7d === 0) {
+          recommendations.push(
+            `${row.active_pipeline} aktive leads, men ingen vunnet siste uken — review pitch-strategi`,
+          );
+        }
+
+        return res.json({
+          newLeads7d: row.new_leads_7d,
+          won7d: row.won_7d,
+          meetings7d: row.meetings_7d,
+          longestSilentDays: row.longest_silent_days,
+          longestSilentName: row.longest_silent_name,
+          activePipeline: row.active_pipeline,
+          recommendations,
+          generatedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        return res.status(500).json({ error: "status_report_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  // ─── GET /leaderboard (konkurranse blant lead-skaffere) ──────────
+  // Per-bruker aggregat: hvem har skaffet flest leads, mest converted,
+  // beste conversion-rate. Workspace-isolert til admin-room-tenant.
+  app.get(
+    "/api/admin-room/lead-map/leaderboard",
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const projectId = getProjectId(req);
+      if (!projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        const params: unknown[] = [project.organizationId, project.id];
+        const tenantClause = "c.organization_id = $1::uuid";
+        const projectClause = "AND c.project_id = $2";
+        const r = await pool.query<{
+          owner_user_id: string | null;
+          user_name: string | null;
+          user_email: string | null;
+          total_leads: number;
+          won: number;
+          lost: number;
+          meeting_booked: number;
+          interested: number;
+          declined: number;
+          last_activity_at: string | null;
+        }>(
+          `SELECT c.owner_user_id,
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS user_name,
+                  u.email AS user_email,
+                  COUNT(*)::int AS total_leads,
+                  COUNT(*) FILTER (WHERE c.lead_status = 'won')::int AS won,
+                  COUNT(*) FILTER (WHERE c.lead_status = 'lost')::int AS lost,
+                  COUNT(*) FILTER (WHERE c.lead_status = 'meeting_booked')::int AS meeting_booked,
+                  COUNT(*) FILTER (WHERE c.lead_status = 'interested')::int AS interested,
+                  COUNT(*) FILTER (WHERE c.lead_status = 'declined')::int AS declined,
+                  MAX(c.updated_at)::text AS last_activity_at
+             FROM crm_customers c
+             LEFT JOIN users u ON u.id = c.owner_user_id
+            WHERE ${tenantClause}
+              ${projectClause}
+            GROUP BY c.owner_user_id, NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email
+            ORDER BY total_leads DESC, won DESC
+            LIMIT 50`,
+          params,
+        );
+        const leaders = r.rows.map((row, idx) => {
+          const closeable = row.won + row.lost;
+          const conversionRate = closeable > 0 ? Math.round((row.won / closeable) * 100) : null;
+          return {
+            rank: idx + 1,
+            userId: row.owner_user_id,
+            userName: row.user_name,
+            userEmail: row.user_email,
+            totalLeads: row.total_leads,
+            won: row.won,
+            lost: row.lost,
+            meetingBooked: row.meeting_booked,
+            interested: row.interested,
+            declined: row.declined,
+            conversionRate,
+            lastActivityAt: row.last_activity_at,
+          };
+        });
+        return res.json({ leaders });
+      } catch (err) {
+        return res.status(500).json({ error: "leaderboard_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  // ─── POST /competitors/:id/counter-campaign (Claude → Marketing Cockpit-bro) ──
+  // Genererer en mot-kampanje. Returnerer JSON-struktur (target-segment,
+  // key-messages, content-drafts, channel-mix) UTEN å persistere. Bruker
+  // kaller separat /save for å lagre som marketing_workflow.
+  app.post(
+    "/api/admin-room/lead-map/competitors/:id/counter-campaign",
+    requireLeadMapPermission("ai.use_claude", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        if (!await competitorBelongsToProject(project, req.params.id)) {
+          return res.status(404).json({ error: "competitor_not_found" });
+        }
+        const campaign = await generateCounterCampaign(pool, {
+          competitorId: req.params.id,
+          workspaceOwnerUserId: session.userId,
+          organizationId: project.organizationId,
+          projectId: project.id,
+        });
+        return res.json({ campaign });
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === "competitor_not_found") return res.status(404).json({ error: msg });
+        if (msg.includes("ANTHROPIC_API_KEY mangler")) {
+          return res.status(500).json({ error: "anthropic_key_missing" });
+        }
+        return res.status(500).json({ error: "counter_campaign_failed", detail: msg });
+      }
+    },
+  );
+
+  // ─── POST /competitors/:id/counter-campaign/save (persistere som workflow) ──
+  // Lagrer en allerede generert counter-campaign som marketing_workflow
+  // slik at den havner i Marketing Cockpit. Cockpit-UI parser
+  // workflow.notes (JSON) for å vise innholdet.
+  app.post(
+    "/api/admin-room/lead-map/competitors/:id/counter-campaign/save",
+    requireLeadMapPermission("competitors.update", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const body = req.body as { campaign?: CounterCampaign };
+      if (!body.campaign) return res.status(400).json({ error: "campaign_kreves_i_body" });
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        if (!await competitorBelongsToProject(project, req.params.id)) {
+          return res.status(404).json({ error: "competitor_not_found" });
+        }
+        const result = await saveCounterCampaignToWorkflow(pool, {
+          workspaceOwnerUserId: session.userId,
+          competitorId: req.params.id,
+          organizationId: project.organizationId,
+          projectId: project.id,
+          campaign: body.campaign,
+        });
+        return res.json(result);
+      } catch (err) {
+        return res.status(500).json({ error: "save_failed", detail: String("internal_error") });
+      }
+    },
+  );
+
+  // ─── POST /competitors/:id/assess (Claude threat-vurdering) ───────
+  app.post(
+    "/api/admin-room/lead-map/competitors/:id/assess",
+    requireLeadMapPermission("ai.use_claude", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        if (!await competitorBelongsToProject(project, req.params.id)) {
+          return res.status(404).json({ error: "competitor_not_found" });
+        }
+        await assessCompetitorThreat(pool, {
+          competitorId: req.params.id,
+          workspaceOwnerUserId: session.userId,
+          organizationId: project.organizationId,
+          projectId: project.id,
+        });
+        // Hent oppdatert rad så frontend ikke trenger ny round-trip
+        const r = await pool.query<CompetitorRow>(
+          `SELECT id::text, name, domain, category, positioning, primary_offer,
+                  latitude, longitude, google_address, google_phone, google_rating,
+                  is_manual_addition, threat_level, threat_score,
+                  claude_threat_summary, claude_what_to_worry_about,
+                  claude_what_to_ignore, claude_assessed_at::text,
+                  priority_rank, created_at::text
+             FROM market_scan_competitors
+            WHERE id = $1
+              AND organization_id = $2::uuid
+              AND project_id = $3`,
+          [req.params.id, project.organizationId, project.id],
+        );
+        if (r.rows.length === 0) return res.status(404).json({ error: "not_found" });
+        return res.json({ competitor: rowToCompetitor(r.rows[0]) });
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === "competitor_not_found") return res.status(404).json({ error: msg });
+        if (msg.includes("ANTHROPIC_API_KEY mangler")) {
+          return res.status(500).json({ error: "anthropic_key_missing" });
+        }
+        return res.status(500).json({ error: "assess_failed", detail: msg });
+      }
+    },
+  );
+
+  // ─── GET /leads/:id/demographics (SSB markedspotensial) ──
+  // Ingen DB-cache her — SSB endrer seg månedlig, klient cacher per
+  // sesjon. Returnerer befolkning + markedspotensial 0-100.
+  app.get(
+    "/api/admin-room/lead-map/leads/:id/demographics",
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        const lr = await pool.query<{ city: string | null; postal_code: string | null }>(
+          `SELECT city, postal_code FROM crm_customers
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3
+              AND archived_at IS NULL`,
+          [req.params.id, project.organizationId, project.id],
+        );
+        if (lr.rows.length === 0) return res.status(404).json({ error: "lead_not_found" });
+        const lead = lr.rows[0];
+        const demographics = await getDemographics({
+          city: lead.city,
+          postalCode: lead.postal_code,
+        });
+        return res.json({ demographics });
+      } catch (err) {
+        return res.status(500).json({ error: "demographics_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  // ─── GET /leads/export-csv (prosjektisolert CSV-eksport) ──
+  app.get(
+    "/api/admin-room/lead-map/leads/export-csv",
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).send("Innlogging kreves");
+      }
+      try {
+        const project = await requireLeadgridExportProject(pool, {
+          userId: session.userId,
+          projectId: req.query.projectId ?? req.query.project_id,
+        });
+        const r = await pool.query(
+          `SELECT c.name, c.company, c.lead_category, c.lead_status,
+                  c.address, c.postal_code, c.city, c.country,
+                  c.phone, c.email, c.website_url,
+                  c.latitude, c.longitude,
+                  c.google_rating, c.ai_opportunity_score,
+                  c.claude_recommendation_rank, c.notes,
+                  c.last_visit_at, c.next_follow_up_at, c.next_action,
+                  c.created_at, c.updated_at,
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name,
+                  u.email AS assigned_user_email
+             FROM crm_customers c
+             LEFT JOIN users u ON u.id = c.owner_user_id
+            WHERE c.organization_id = $1::uuid
+              AND c.project_id = $2
+            ORDER BY c.created_at DESC`,
+          [project.organizationId, project.id],
+        );
+        const headers = [
+          "name", "company", "category", "status",
+          "address", "postal_code", "city", "country",
+          "phone", "email", "website",
+          "latitude", "longitude",
+          "google_rating", "ai_opportunity_score",
+          "claude_rec_rank", "notes",
+          "last_visit_at", "next_follow_up_at", "next_action",
+          "created_at", "updated_at",
+          "assigned_user", "assigned_email",
+        ];
+        const csv = buildCsvDocument(
+          headers,
+          r.rows.map((row) => [
+            row.name, row.company, row.lead_category, row.lead_status,
+            row.address, row.postal_code, row.city, row.country,
+            row.phone, row.email, row.website_url,
+            row.latitude, row.longitude,
+            row.google_rating, row.ai_opportunity_score,
+            row.claude_recommendation_rank, row.notes,
+            row.last_visit_at, row.next_follow_up_at, row.next_action,
+            row.created_at, row.updated_at,
+            row.assigned_user_name, row.assigned_user_email,
+          ]),
+          { delimiter: "," },
+        );
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="leads-${new Date().toISOString().slice(0, 10)}.csv"`,
+        );
+        return res.send(csv);
+      } catch (err) {
+        if (err instanceof LeadgridExportAccessError) {
+          return res.status(err.status).json({
+            error: err.code,
+            ...(err.code === "mangler_tillatelse"
+              ? { required: "leads.export" }
+              : {}),
+          });
+        }
+        return res.status(500).json({ error: "export_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  // ─── POST /leads/import-csv (bulk-import) ──
+  // Body: { leads: [{name, address?, city?, phone?, email?, websiteUrl?,
+  //                  category?, notes?, latitude?, longitude?}, ...] }
+  // Returnerer: { imported: n, skipped: [{name, reason}] }
+  app.post(
+    "/api/admin-room/lead-map/leads/import-csv",
+    requireLeadMapPermission("leads.create", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const body = req.body as {
+        projectId?: string | null;
+        project_id?: string | null;
+        leads?: Array<{
+          name?: string;
+          address?: string;
+          city?: string;
+          postalCode?: string;
+          country?: string;
+          phone?: string;
+          email?: string;
+          websiteUrl?: string;
+          category?: string;
+          notes?: string;
+          latitude?: number;
+          longitude?: number;
+        }>;
+      };
+      if (!Array.isArray(body.leads) || body.leads.length === 0) {
+        return res.status(400).json({ error: "leads_array_kreves" });
+      }
+      if (body.leads.length > 1000) {
+        return res.status(400).json({ error: "max_1000_per_import" });
+      }
+      const project = await requiredProjectScope(req, res, session.userId);
+      if (!project) return;
+      const skipped: Array<{ name: string; reason: string }> = [];
+      let imported = 0;
+      for (const lead of body.leads) {
+        if (!lead.name?.trim()) {
+          skipped.push({ name: "(uten navn)", reason: "name_kreves" });
+          continue;
+        }
+        try {
+          await pool.query(
+            `INSERT INTO crm_customers (
+               name, address, city, postal_code, country,
+               phone, email, website_url, lead_category, notes,
+               latitude, longitude,
+               lead_status, lead_source, owner_user_id, organization_id, agent_config_id,
+               project_id
+             ) VALUES (
+               $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+               $11::numeric, $12::numeric,
+               'unvisited', 'csv_import', $13, $14::uuid, NULL,
+               $15
+             )`,
+            [
+              lead.name.trim(),
+              lead.address ?? null,
+              lead.city ?? null,
+              lead.postalCode ?? null,
+              lead.country ?? null,
+              lead.phone ?? null,
+              lead.email ?? null,
+              lead.websiteUrl ?? null,
+              lead.category ?? null,
+              lead.notes ?? null,
+              lead.latitude ?? null,
+              lead.longitude ?? null,
+              session.userId,
+              project.organizationId,
+              project.id,
+            ],
+          );
+          imported += 1;
+        } catch (err) {
+          skipped.push({
+            name: lead.name,
+            reason: (err as Error).message.slice(0, 100),
+          });
+        }
+      }
+      return res.json({ imported, skipped, total: body.leads.length });
+    },
+  );
+
+  // ─── GET /leads/:id/enrichment (hent lagret BRREG-berikkelse) ──
+  app.get(
+    "/api/admin-room/lead-map/leads/:id/enrichment",
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        if (!await leadBelongsToProject(project, req.params.id)) {
+          return res.status(404).json({ error: "lead_not_found" });
+        }
+        const enrichment = await getStoredEnrichment(pool, {
+          leadId: req.params.id,
+          workspaceOwnerUserId: session.userId,
+          organizationId: project.organizationId,
+        });
+        return res.json({ enrichment });
+      } catch (err) {
+        return res.status(500).json({ error: "enrichment_fetch_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  // ─── POST /leads/:id/enrich (kjør BRREG-berikkelse) ──
+  // Daniel ba om å bruke ExternalDataService — BRREG er åpent gratis API
+  // (data.brreg.no). Vi henter firma-data + roller og lagrer som
+  // crm_customers.enrichment_data (JSONB). Cache 30 dager.
+  app.post(
+    "/api/admin-room/lead-map/leads/:id/enrich",
+    requireLeadMapPermission("leads.update", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const force = req.body?.force === true;
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        if (!await leadBelongsToProject(project, req.params.id)) {
+          return res.status(404).json({ error: "lead_not_found" });
+        }
+        const result = await enrichLeadWithBrreg(pool, {
+          leadId: req.params.id,
+          workspaceOwnerUserId: session.userId,
+          organizationId: project.organizationId,
+          forceRefresh: force,
+        });
+        return res.json({ enrichment: result });
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === "lead_not_found") return res.status(404).json({ error: msg });
+        if (msg === "brreg_detail_fetch_failed") {
+          return res.status(502).json({ error: "brreg_unavailable", detail: msg });
+        }
+        return res.status(500).json({ error: "enrich_failed", detail: msg });
+      }
+    },
+  );
+
+  // ─── POST /leads/:id/strategy (Claude anbefalt outreach-strategi) ──
+  // Returnerer primary_channel + sekvens + opening-line + best-time +
+  // rationale. Brukes fra lead-detail-panel for å vite om man skal
+  // ringe, sende email, DM-e på Instagram, dra på besøk, eller noe annet.
+  app.post(
+    "/api/admin-room/lead-map/leads/:id/strategy",
+    requireLeadMapPermission("ai.use_claude", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        if (!await leadBelongsToProject(project, req.params.id)) {
+          return res.status(404).json({ error: "lead_not_found" });
+        }
+        const strategy = await recommendOutreachStrategy(pool, {
+          leadId: req.params.id,
+          workspaceOwnerUserId: session.userId,
+          organizationId: project.organizationId,
+        });
+        return res.json({ strategy });
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === "lead_not_found") return res.status(404).json({ error: msg });
+        if (msg.includes("ANTHROPIC_API_KEY mangler")) {
+          return res.status(500).json({ error: "anthropic_key_missing" });
+        }
+        return res.status(500).json({ error: "strategy_failed", detail: msg });
+      }
+    },
+  );
+
+  // ─── POST /leads/rank-all (Claude rangering av leads) ─────────────
+  app.post(
+    "/api/admin-room/lead-map/leads/rank-all",
+    requireLeadMapPermission("ai.use_claude", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "anthropic_key_missing" });
+
+      try {
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        const leads = await pool.query<{
+          id: string; name: string; category: string | null;
+          positioning: string | null;
+          city: string | null; website_url: string | null;
+          google_rating: number | null;
+        }>(
+          `SELECT id::text, name, lead_category AS category,
+                  notes AS positioning,
+                  city, website_url, google_rating
+             FROM crm_customers
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
+              AND lead_status NOT IN ('won', 'lost', 'do_not_contact')
+            ORDER BY created_at DESC
+            LIMIT 50`,
+          [project.organizationId, project.id],
+        );
+        if (leads.rows.length === 0) {
+          return res.json({ ranked: 0 });
+        }
+
+        // Min Brand Kit-baseline
+        const bk = await pool.query<{ profile: string | null }>(
+          `SELECT (brand_profile->>'positioning_summary')::text AS profile
+             FROM brand_kits
+            WHERE workspace_owner_user_id = $1
+            ORDER BY updated_at DESC LIMIT 1`,
+          [session.userId],
+        );
+        const myProfile = bk.rows[0]?.profile ?? "(ingen brand-kit registrert)";
+
+        const client = new Anthropic({ apiKey });
+        const msg = await client.messages.create({
+          model: "claude-opus-4-7",
+          max_tokens: 4000,
+          messages: [{
+            role: "user",
+            content: `Du er Leadgrids markedsanalytiker. Ranger disse potensielle kundene etter
+hvor anbefalt det er for vår bedrift å nå ut til dem.
+
+VÅR POSISJONERING:
+${myProfile}
+
+LEADS (${leads.rows.length}):
+${leads.rows.map((l, i) => `${i + 1}. ${l.name} (${l.category ?? "?"}) — ${l.city ?? "?"} — rating ${l.google_rating ?? "?"}`).join("\n")}
+
+Returner strengt JSON-array:
+[
+  { "id": "<lead.id>", "rank": 0-100, "reason": "kort begrunnelse" },
+  ...
+]
+Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
+          }],
+        });
+
+        const text = msg.content
+          .filter((b): b is Anthropic.TextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("\n");
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) return res.status(500).json({ error: "claude_no_json", raw: text });
+        const ranked = JSON.parse(jsonMatch[0]) as Array<{
+          id: string; rank: number; reason: string;
+        }>;
+
+        // Map id → lead.id (Claude kan ha brukt index 1-50). Pass på.
+        const validIds = new Set(leads.rows.map((l) => l.id));
+        let updates = 0;
+        for (const r of ranked) {
+          if (!validIds.has(r.id)) continue;
+          await pool.query(
+            `UPDATE crm_customers
+                SET claude_recommendation_rank = $4,
+                    claude_recommendation_reason = $5,
+                    claude_ranked_at = NOW()
+              WHERE id = $1
+                AND organization_id = $2::uuid
+                AND project_id = $3`,
+            [r.id, project.organizationId, project.id, r.rank, r.reason],
+          );
+          updates += 1;
+        }
+        return res.json({ ranked: updates });
+      } catch (err) {
+        return res.status(500).json({ error: "rank_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  // ─── GET /market-points (kombinert kart-data) ─────────────────────
+  //
+  // Defensiv mot delvis kjørte migrasjoner: hver del (leads/competitors)
+  // har egen try/catch slik at hvis ett av sub-spørringene feiler (f.eks.
+  // mig 281 ikke applied → claude_recommendation_rank mangler), får vi
+  // FORTSATT en delvis respons med det som finnes. UI degraderer pent.
+  app.get(
+    "/api/admin-room/lead-map/market-points",
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const include = String(req.query.include ?? "both"); // 'leads' | 'competitors' | 'both'
+      if (!new Set(["leads", "competitors", "both"]).has(include)) {
+        return res.status(400).json({ error: "invalid_include" });
+      }
+      const projectId = getProjectId(req);
+      if (!projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
+      const out: {
+        leads: unknown[];
+        competitors: unknown[];
+        warnings?: string[];
+      } = { leads: [], competitors: [] };
+      const warnings: string[] = [];
+      let project: Awaited<ReturnType<typeof loadAccessibleLeadgridProject>>;
+      try {
+        project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+      } catch (error) {
+        if (sendLeadMapOrganizationScopeError(error, res)) return;
+        return res.status(500).json({ error: "market_points_scope_failed" });
+      }
+
+      // ── Leads (m/ defensiv fallback hvis mig 281 ikke applied) ────
+      if (include === "leads" || include === "both") {
+        try {
+          // Sjekk om mig 281's crm_customers-utvidelse er applied
+          const hasClaudeCols = await pool.query<{ exists: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'crm_customers'
+                  AND column_name = 'claude_recommendation_rank'
+             ) AS exists`,
+          );
+          const claudeRankSelect = hasClaudeCols.rows[0].exists
+            ? "claude_recommendation_rank, claude_recommendation_reason"
+            : "NULL::int AS claude_recommendation_rank, NULL::text AS claude_recommendation_reason";
+
+          const leadParams: unknown[] = [project.organizationId, project.id];
+          const leadTenantClause = "c.organization_id = $1::uuid";
+          const leadProjectClause = "AND c.project_id = $2";
+          const l = await pool.query(
+            // Kolonnen heter `lead_category` på crm_customers (mig 271) — ikke `category`.
+            // JOIN users for å vise eier-navn ('skaffet av').
+            `SELECT c.id::text, c.name, c.lead_category AS category, c.lead_status AS status,
+                    c.latitude, c.longitude, c.address, c.city,
+                    ${claudeRankSelect.replace(/claude_recommendation_/g, 'c.claude_recommendation_')},
+                    c.ai_opportunity_score, c.google_rating,
+                    c.owner_user_id,
+                    -- logo_url er valgfri (lagt til av mig 288); kolonnen blir
+                    -- selectet defensivt via COALESCE for å overleve hvis
+                    -- migrasjonen ikke har kjørt ennå
+                    COALESCE(
+                      to_jsonb(c) ->> 'logo_url',
+                      NULL
+                    ) AS logo_url,
+                    NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name,
+                    u.email AS assigned_user_email
+               FROM crm_customers c
+               LEFT JOIN users u ON u.id = c.owner_user_id
+              WHERE ${leadTenantClause}
+                ${leadProjectClause}
+                AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL`,
+            leadParams,
+          );
+          out.leads = l.rows.map((r: Record<string, unknown>) => ({
+            kind: "lead",
+            id: r.id,
+            name: r.name,
+            category: r.category,
+            status: r.status,
+            latitude: Number(r.latitude),
+            longitude: Number(r.longitude),
+            address: r.address,
+            city: r.city,
+            logoUrl: r.logo_url,
+            recommendationRank: r.claude_recommendation_rank,
+            recommendationReason: r.claude_recommendation_reason,
+            aiOpportunityScore: r.ai_opportunity_score,
+            googleRating: r.google_rating != null ? Number(r.google_rating) : null,
+            assignedUserId: r.owner_user_id,
+            assignedUserName: r.assigned_user_name,
+            assignedUserEmail: r.assigned_user_email,
+          }));
+          // ── Auto-fetch logo i bakgrunnen for leads som mangler det ──
+          // Fire-and-forget: blokkerer ikke svaret. Neste kart-load ser
+          // den oppdaterte logoen. Max 10 per request for å unngå burst.
+          setImmediate(() => {
+            void autoFetchLeadLogos(pool, l.rows as Array<Record<string, unknown>>);
+          });
+        } catch (err) {
+          console.error("[market-points] leads-query failed", err);
+          warnings.push(`leads_unavailable: ${(err as Error).message}`);
+        }
+      }
+
+      // ── Konkurrenter (m/ defensiv fallback hvis mig 281 ikke applied) ──
+      if (include === "competitors" || include === "both") {
+        try {
+          const hasCompCols = await pool.query<{ exists: boolean }>(
+            `SELECT EXISTS (
+               SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'market_scan_competitors'
+                  AND column_name = 'workspace_owner_user_id'
+             ) AS exists`,
+          );
+          if (!hasCompCols.rows[0].exists) {
+            warnings.push("competitors_unavailable: mig 281 not applied");
+          } else {
+            const c = await pool.query<CompetitorRow>(
+              `SELECT id::text, name, domain, category, positioning, primary_offer,
+                      latitude, longitude, google_address, google_phone, google_rating,
+                      is_manual_addition, threat_level, threat_score,
+                      claude_threat_summary, claude_what_to_worry_about,
+                      claude_what_to_ignore, claude_assessed_at::text,
+                      priority_rank, created_at::text
+                 FROM market_scan_competitors
+                WHERE organization_id = $1::uuid
+                  AND project_id = $2
+                  AND latitude IS NOT NULL AND longitude IS NOT NULL`,
+              [project.organizationId, project.id],
+            );
+            out.competitors = c.rows.map((r) => ({
+              kind: "competitor",
+              ...rowToCompetitor(r),
+            }));
+          }
+        } catch (err) {
+          console.error("[market-points] competitors-query failed", err);
+          warnings.push(`competitors_unavailable: ${(err as Error).message}`);
+        }
+      }
+
+      if (warnings.length > 0) out.warnings = warnings;
+      return res.json(out);
+    },
+  );
+}

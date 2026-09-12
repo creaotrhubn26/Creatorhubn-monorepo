@@ -29,6 +29,7 @@ import {
   TextField,
   CircularProgress,
   Tooltip,
+  MenuItem,
 } from '@mui/material';
 import {
   Groups as TeamIcon,
@@ -49,7 +50,21 @@ interface Member {
   invitedAt: string;
   acceptedAt: string | null;
   programEndsAt: string | null;
+  profession: string | null;
 }
+
+// Profesjoner et team-medlem kan ha (matcher backend ALLOWED_MEMBER_PROFESSIONS).
+const MEMBER_PROFESSIONS: { value: string; label: string; emoji: string }[] = [
+  { value: 'photographer', label: 'Fotograf', emoji: '📷' },
+  { value: 'videographer', label: 'Videograf', emoji: '🎬' },
+  { value: 'music_producer', label: 'Musikkprodusent', emoji: '🎧' },
+  { value: 'vendor', label: 'Leverandør', emoji: '🛠️' },
+];
+const professionLabel = (p: string | null): string => {
+  if (!p) return '';
+  const m = MEMBER_PROFESSIONS.find((x) => x.value === p);
+  return m ? `${m.emoji} ${m.label}` : p;
+};
 
 interface TeamData {
   isMaster: boolean;
@@ -176,7 +191,19 @@ const TeamInvitePanel: React.FC = () => {
                     {statusChip}
                     <ListItemText
                       sx={{ ml: 1 }}
-                      primary={<Typography variant="body2"><b>{m.name}</b> · {m.email}</Typography>}
+                      primary={
+                        <Typography variant="body2" component="span">
+                          <b>{m.name}</b> · {m.email}
+                          {m.profession && (
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={professionLabel(m.profession)}
+                              sx={{ ml: 1, height: 20 }}
+                            />
+                          )}
+                        </Typography>
+                      }
                       secondary={
                         m.acceptedAt
                           ? `Signert ${new Date(m.acceptedAt).toLocaleDateString('nb-NO')}`
@@ -213,10 +240,11 @@ interface InviteDialogProps {
 const InviteMemberDialog: React.FC<InviteDialogProps> = ({ open, onClose, onInvited, slotsRemaining, sharedEndsAt }) => {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  const [profession, setProfession] = useState('photographer');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reset = () => { setEmail(''); setName(''); setError(null); };
+  const reset = () => { setEmail(''); setName(''); setProfession('photographer'); setError(null); };
   const handleClose = () => { reset(); onClose(); };
 
   const handleSubmit = async () => {
@@ -225,7 +253,7 @@ const InviteMemberDialog: React.FC<InviteDialogProps> = ({ open, onClose, onInvi
     try {
       await apiRequest('/api/prototype-tester-invites/me/team/invite', {
         method: 'POST',
-        body: { email: email.trim(), name: name.trim() },
+        body: { email: email.trim(), name: name.trim(), profession },
       });
       trackEvent('prototype_tester_team_invite_sent', {});
       reset();
@@ -246,6 +274,19 @@ const InviteMemberDialog: React.FC<InviteDialogProps> = ({ open, onClose, onInvi
           </Typography>
           <TextField label="Navn" value={name} onChange={(e) => setName(e.target.value)} fullWidth required size="small" />
           <TextField label="E-post" type="email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth required size="small" />
+          <TextField
+            select
+            label="Profesjon"
+            value={profession}
+            onChange={(e) => setProfession(e.target.value)}
+            fullWidth
+            size="small"
+            helperText="Bestemmer hvilket dashboard medlemmet får (f.eks. videograf får videograf-verktøy)."
+          >
+            {MEMBER_PROFESSIONS.map((p) => (
+              <MenuItem key={p.value} value={p.value}>{p.emoji} {p.label}</MenuItem>
+            ))}
+          </TextField>
           {error && <Alert severity="error">{error}</Alert>}
           <Typography variant="caption" color="text.secondary">
             Plasser igjen: {slotsRemaining}

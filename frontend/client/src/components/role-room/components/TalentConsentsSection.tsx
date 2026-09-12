@@ -45,7 +45,7 @@ const BORDER = 'rgba(125, 211, 252, 0.14)';
 const TEXT_PRIMARY = 'rgba(241, 245, 249, 0.96)';
 const TEXT_SECONDARY = 'rgba(191, 219, 254, 0.74)';
 const TEXT_MUTED = 'rgba(148, 163, 184, 0.78)';
-const ACCENT = '#7dd3fc';
+const ACCENT = 'var(--role-portal-accent, #7dd3fc)';
 const SUCCESS = '#34d399';
 const DANGER = '#f87171';
 

@@ -55,7 +55,10 @@ import GlobalMentionHelper from './shared/GlobalMentionHelper';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import SelfTapePreviewModal from './selftape/SelfTapePreviewModal';
 import {
+  availabilityChipStyle,
+  canQueryCastingRoleSelftapes,
   listCastingRoleSelftapes,
+  selftapeAvailability,
   type CastingRoleSelftape,
 } from '../services/roleRoomSelfTapesService';
 
@@ -279,9 +282,9 @@ interface KanbanColumn {
 
 const KANBAN_COLUMNS: KanbanColumn[] = [
   { status: 'pending',   label: 'Ingen status', color: '#6b7280' },
-  { status: 'requested', label: 'Forespurt',    color: '#00d4ff' },
+  { status: 'requested', label: 'Forespurt',    color: 'var(--role-cyan, #00d4ff)' },
   { status: 'shortlist', label: 'Vurderes',     color: '#ffb800' },
-  { status: 'selected',  label: 'Valgt',        color: '#8b5cf6' },
+  { status: 'selected',  label: 'Valgt',        color: 'var(--role-violet, #8b5cf6)' },
   { status: 'confirmed', label: 'Bekreftet',    color: '#10b981' },
   { status: 'rejected',  label: 'Avvist',       color: '#ef4444' },
 ];
@@ -379,7 +382,7 @@ function AssignEventDialog({
       color: '#fff',
       '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
       '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
-      '&.Mui-focused fieldset': { borderColor: '#8b5cf6' },
+      '&.Mui-focused fieldset': { borderColor: 'var(--role-violet, #8b5cf6)' },
     },
     '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.7)' },
   };
@@ -398,7 +401,7 @@ function AssignEventDialog({
     >
       <DialogTitle sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)', pb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <EventIcon sx={{ color: '#8b5cf6' }} />
+          <EventIcon sx={{ color: 'var(--role-violet, #8b5cf6)' }} />
           Tilordne audition-event
         </Box>
         <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mt: 0.5, fontWeight: 400, fontSize: '0.8rem' }}>
@@ -440,7 +443,7 @@ function AssignEventDialog({
         <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.7)' }} disabled={loading}>Avbryt</Button>
         <Button variant="contained" onClick={handleSubmit} disabled={!date || !time || loading}
           startIcon={loading ? <CircularProgress size={16} sx={{ color: 'inherit' }} /> : <EventIcon />}
-          sx={{ bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' } }}>
+          sx={{ bgcolor: 'var(--role-violet, #8b5cf6)', '&:hover': { bgcolor: '#7c3aed' } }}>
           {loading ? 'Oppretter…' : `Opprett event (${candidateIds.length})`}
         </Button>
       </DialogActions>
@@ -588,6 +591,7 @@ function KanbanPanelInner({
         const results = await Promise.all(
           roles.map(async (r) => {
             try {
+              if (!canQueryCastingRoleSelftapes(r, project.id)) return [] as CastingRoleSelftape[];
               const { selftapes } = await listCastingRoleSelftapes(r.id);
               return selftapes;
             } catch {
@@ -936,7 +940,7 @@ function KanbanPanelInner({
               color: '#fff', height: 30, fontSize: '12px',
               '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
               '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.35)' },
-              '&.Mui-focused fieldset': { borderColor: '#8b5cf6' },
+              '&.Mui-focused fieldset': { borderColor: 'var(--role-violet, #8b5cf6)' },
             },
           }}
         />
@@ -1356,13 +1360,15 @@ function KanbanPanelInner({
                               )}
                             </Box>
                           </Box>
-                          {/* Self-tape-badge: vises hvis kandidaten har talent_id med aktiv submission */}
+                          {/* Self-tape-badge: tilstand-bevisst (Video tilgjengelig / Behandles / Sendt) */}
                           {(() => {
                             const talentId = (candidate as { talent_id?: string }).talent_id;
                             if (!talentId) return null;
                             const tapes = selftapesByTalent.get(talentId);
                             if (!tapes || tapes.length === 0) return null;
                             const tape = tapes[0];
+                            const availability = selftapeAvailability(tape);
+                            const style = availabilityChipStyle(availability);
                             return (
                               <Box
                                 onClick={(e) => {
@@ -1377,18 +1383,18 @@ function KanbanPanelInner({
                                   px: 1,
                                   py: 0.3,
                                   borderRadius: 999,
-                                  bgcolor: 'rgba(168,85,247,0.18)',
-                                  color: '#c084fc',
+                                  bgcolor: style.bg,
+                                  color: style.fg,
                                   fontWeight: 700,
                                   fontSize: '0.7rem',
                                   cursor: 'pointer',
-                                  border: '1px solid rgba(168,85,247,0.32)',
-                                  '&:hover': { bgcolor: 'rgba(168,85,247,0.28)' },
+                                  border: `1px solid ${style.border}`,
+                                  '&:hover': { filter: 'brightness(1.15)' },
                                 }}
-                                title="Se talentens self-tape"
+                                title={`${style.label} — klikk for å åpne`}
                               >
                                 <PlayCircleOutlineIcon sx={{ fontSize: 12 }} />
-                                Self-tape{tapes.length > 1 ? ` (${tapes.length})` : ''}
+                                {style.label}{tapes.length > 1 ? ` (${tapes.length})` : ''}
                               </Box>
                             );
                           })()}
@@ -1401,7 +1407,7 @@ function KanbanPanelInner({
                                   size="small"
                                   sx={{
                                     bgcolor: 'rgba(0,212,255,0.15)',
-                                    color: '#00d4ff',
+                                    color: 'var(--role-cyan, #00d4ff)',
                                     fontSize: { xs: '9px', sm: '10px', md: '9.5px', lg: '11px', xl: '13px' },
                                     height: { xs: 18, sm: 20, md: 19, lg: 22, xl: 26 },
                                     maxWidth: { xs: 90, sm: 100, md: 95, lg: 110, xl: 130 },
@@ -1443,7 +1449,7 @@ function KanbanPanelInner({
                               onClick={e => e.stopPropagation()}>
                               <Tooltip title="Tilordne audition-event">
                                 <IconButton size="small" onClick={() => openAssignEvent([candidate.id])}
-                                  sx={{ color: '#8b5cf6', p: 0.5, '&:hover': { bgcolor: 'rgba(139,92,246,0.15)' } }}>
+                                  sx={{ color: 'var(--role-violet, #8b5cf6)', p: 0.5, '&:hover': { bgcolor: 'rgba(139,92,246,0.15)' } }}>
                                   <EventIcon sx={{ fontSize: 15 }} />
                                 </IconButton>
                               </Tooltip>

@@ -53,6 +53,14 @@ import {
 } from '@shared/profession-feature-matrix';
 import { getAllProfessionTypes } from '@shared/profession-type-registry';
 import { getPlanDisplayName, type PlanTier } from '@shared/subscription-plans';
+import {
+  AdminButton,
+  AdminLoading,
+  AdminEmpty,
+  StatusChip,
+  AdminTableContainer,
+  useIsMobile,
+} from './design-system';
 
 type FeatureBaseConfig = ProfessionFeatureConfig['availableFeatures'][string];
 
@@ -75,6 +83,7 @@ type AvailabilityMode = 'included' | 'trial' | 'addon' | 'locked';
 export default function UnifiedFeatureSubscriptionPanel() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState(0);
   const [selectedProfession, setSelectedProfession] = useState<string>('videographer');
   const [searchQuery, setSearchQuery] = useState('');
@@ -177,7 +186,9 @@ export default function UnifiedFeatureSubscriptionPanel() {
 
   // Helper: Get availability mode
   function getAvailabilityMode(feature: FeatureWithMetadata): AvailabilityMode {
-    const trialConfig = trialConfigs.find((t) => t.featureId === feature.id);
+    const trialConfig = (Array.isArray(trialConfigs) ? trialConfigs : []).find(
+      (t) => t.featureId === feature.id,
+    );
 
     if (!feature.enabled && !feature.optional) return 'locked';
     if (trialConfig?.availableInTrial) return 'trial';
@@ -262,8 +273,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
   if (isLoading) {
     return (
       <Box sx={{ p: 3 }}>
-        <LinearProgress />
-        <Typography sx={{ mt: 2 }}>Loading feature configurations...</Typography>
+        <AdminLoading label="Loading feature configurations..." />
       </Box>
     );
   }
@@ -271,9 +281,9 @@ export default function UnifiedFeatureSubscriptionPanel() {
   return (
     <Box sx={{ p: 3 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
+          <Typography variant="h4" component="h2" sx={{ fontWeight: 600, mb: 1 }}>
             Feature & Subscription Management
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -282,32 +292,32 @@ export default function UnifiedFeatureSubscriptionPanel() {
         </Box>
 
         <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="secondary"
             startIcon={<Refresh />}
             onClick={() =>
               queryClient.invalidateQueries({ queryKey: ['/api/admin/feature-configs'] })
             }
           >
             Refresh
-          </Button>
-          <Button
-            variant="outlined"
+          </AdminButton>
+          <AdminButton
+            tone="secondary"
             startIcon={<FilterList />}
             onClick={handleReset}
             disabled={!hasChanges}
           >
             Reset Changes
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<Save />}
             onClick={handleSave}
-            disabled={!hasChanges || saveMutation.isPending}
-            color="primary"
+            disabled={!hasChanges}
+            loading={saveMutation.isPending}
           >
             Save All Changes
-          </Button>
+          </AdminButton>
         </Stack>
       </Box>
 
@@ -462,7 +472,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
       </Paper>
 
       {/* Feature List */}
-      <TableContainer component={Paper}>
+      <AdminTableContainer ariaLabel="Feature configurations">
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -494,7 +504,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
                       <Typography variant="body2" fontWeight={500}>
                         {feature.id.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
                         {isChanged && (
-                          <Chip label="Modified" size="small" color="warning" sx={{ ml: 1 }} />
+                          <StatusChip tone="warning" label="Modified" sx={{ ml: 1 }} />
                         )}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
@@ -504,12 +514,13 @@ export default function UnifiedFeatureSubscriptionPanel() {
                   </TableCell>
 
                   <TableCell>
-                    <Chip label={feature.category} size="small" />
+                    <StatusChip tone="neutral" label={feature.category} />
                   </TableCell>
 
                   <TableCell align="center">
                     <Select
                       size="small"
+                      aria-label="Velg abonnement"
                       value={merged.plan || 'basic'}
                       onChange={(e) =>
                         updateFeature(feature.id, { plan: e.target.value as PlanTier })
@@ -524,6 +535,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
                   <TableCell align="center">
                     <Select
                       size="small"
+                      aria-label="Velg tilgjengelighet"
                       value={mode}
                       onChange={(e) => {
                         const newMode = e.target.value as AvailabilityMode;
@@ -545,6 +557,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
                       checked={merged.enabled}
                       onChange={(e) => updateFeature(feature.id, { enabled: e.target.checked })}
                       size="small"
+                      inputProps={{ 'aria-label': 'Aktivert' }}
                     />
                   </TableCell>
 
@@ -553,6 +566,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
                       checked={merged.optional}
                       onChange={(e) => updateFeature(feature.id, { optional: e.target.checked })}
                       size="small"
+                      inputProps={{ 'aria-label': 'Valgfri' }}
                     />
                   </TableCell>
 
@@ -593,6 +607,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
                   <TableCell align="right">
                     <IconButton
                       size="small"
+                      aria-label="Rediger funksjon"
                       onClick={() =>
                         setEditDialog({
                           open: true,
@@ -609,12 +624,10 @@ export default function UnifiedFeatureSubscriptionPanel() {
             })}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
 
       {filteredFeatures.length === 0 && (
-        <Box sx={{ textAlign: 'center', py: 4 }}>
-          <Typography color="text.secondary">No features found matching your criteria</Typography>
-        </Box>
+        <AdminEmpty title="No features found matching your criteria" />
       )}
 
       {/* Edit Dialog */}
@@ -623,6 +636,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
         onClose={() => setEditDialog({ open: false })}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Edit Feature: {editDialog.featureName}</DialogTitle>
         <DialogContent>
@@ -632,8 +646,10 @@ export default function UnifiedFeatureSubscriptionPanel() {
           {/* Add more detailed configuration options here */}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditDialog({ open: false })}>Cancel</Button>
-          <Button variant="contained">Save Changes</Button>
+          <AdminButton tone="ghost" onClick={() => setEditDialog({ open: false })}>
+            Cancel
+          </AdminButton>
+          <AdminButton tone="primary">Save Changes</AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

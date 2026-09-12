@@ -77,6 +77,7 @@ export function setupAdminSeoTrendsRoutes(
 
   // SEO Projects Management
   app.get("/api/admin/seo-projects", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const userId = req.query.userId as string;
 

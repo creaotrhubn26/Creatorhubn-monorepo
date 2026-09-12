@@ -1,8 +1,9 @@
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim
 
 ENV NODE_ENV=production \
   RENDER=true \
   PUPPETEER_SKIP_DOWNLOAD=true \
+  PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
   PHOTO_ENHANCER_BIN_DIR=/usr/bin \
   PHOTO_ENHANCER_FORCE_LOCAL_DCRAW=true \
@@ -15,9 +16,12 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     bash \
     ca-certificates \
+    chromium \
     curl \
     darktable \
     ffmpeg \
+    fonts-liberation \
+    fonts-noto-color-emoji \
     g++ \
     git \
     imagemagick \
@@ -37,6 +41,17 @@ RUN apt-get update \
     rawtherapee \
   && rm -rf /var/lib/apt/lists/*
 
+# Lensfun lens database for RawTherapee's automatic lens correction
+# (LcMode=lfauto, used by the photo enhancer's RAW pipeline). Kept as a
+# best-effort step so a package-name/network issue can never break the core
+# image — RawTherapee falls back to its bundled Lensfun data if this is
+# absent. `lensfun-update-data` then refreshes to the latest lens profiles.
+RUN (apt-get update \
+      && apt-get install -y --no-install-recommends liblensfun-bin liblensfun-data-v1 \
+      && rm -rf /var/lib/apt/lists/* \
+      && (lensfun-update-data || true)) \
+    || echo "[lensfun] optional lens database not installed — using RawTherapee's bundled data"
+
 WORKDIR /app/backend
 
 COPY backend/package*.json backend/.npmrc ./
@@ -46,7 +61,7 @@ RUN npm config set fetch-retries 5 \
   && npm config set fetch-retry-maxtimeout 120000 \
   && npm config set fetch-timeout 600000 \
   && for attempt in 1 2 3; do \
-    npm ci --include=dev --legacy-peer-deps && break; \
+    npm ci --workspaces=false --include=dev --legacy-peer-deps && break; \
     if [ "$attempt" = "3" ]; then exit 1; fi; \
     sleep $((attempt * 15)); \
   done \

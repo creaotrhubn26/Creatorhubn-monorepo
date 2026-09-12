@@ -6,6 +6,7 @@
 import type { ReactNode} from 'react';
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { apiRequest } from '@/lib/queryClient';
 import { useDynamicProfessions } from '../components/universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '../hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '../hooks/useProfessionAdapter';
@@ -24,7 +25,7 @@ const getRealTimeWebSocketUrl = (userIdentifier?: string | null): string | null 
     : '';
 
   // Slice 9X.69 — Prod-fix: hvis vi ikke har en eksplisitt VITE_WS_URL,
-  // ikke prøv å koble til en WS via Vercel-domenet (Vercel rewrite for
+  // ikke prøv å koble til en WS via frontend-domenet (Netlify-proxyen for
   // /api/* gjelder ikke WS). Backend må eksponere WS via egen subdomain
   // eller env-var. Inntil videre returnerer vi null så ingen tilkobling
   // forsøkes — Stines console spammet WS-feil hvert sekund.
@@ -44,6 +45,14 @@ const getRealTimeWebSocketUrl = (userIdentifier?: string | null): string | null 
     if (userIdentifier && userIdentifier.trim()) {
       url.searchParams.set('userId', userIdentifier.trim());
     }
+    // Bearer token so the /ws chat server can verify identity at handshake
+    // (chat send/receive is gated on this server-side).
+    try {
+      const token = localStorage.getItem('creatorhub_auth_token')
+        || localStorage.getItem('token')
+        || localStorage.getItem('role_room_auth_token');
+      if (token) url.searchParams.set('token', token);
+    } catch { /* localStorage unavailable */ }
     return url.toString();
   } catch {
     return null;
@@ -456,19 +465,10 @@ export const RealTimeProvider: React.FC<{ children: ReactNode }> = ({ children }
     setError(null);
 
     try {
-      const response = await fetch('/api/collaboration/sessions', {
+      const session = await apiRequest('/api/collaboration/sessions', {
         method: 'POST',
-        headers: {
-          'Content-Type' : 'application/json', 'Authorization': `Bearer ${user?.id}`,
-      },
         body: JSON.stringify(sessionData),
-    });
-
-      if (!response.ok) {
-        throw new Error('Failed to create session');
-    }
-
-      const session = await response.json();
+      }) as CollaborationSession;
       setCurrentSession(session);
       
       // Join the session

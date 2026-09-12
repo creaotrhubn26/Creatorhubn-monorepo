@@ -8,11 +8,8 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Chip,
-  Button,
   Grid,
   Card,
   CardContent,
@@ -25,7 +22,6 @@ import {
   FormControl,
   InputLabel,
   Alert,
-  LinearProgress,
 } from '@mui/material';
 import {
   Search,
@@ -40,6 +36,12 @@ import {
 import { apiRequest } from '@/lib/queryClient';
 import { getPlanDisplayName } from '@shared/subscription-plans';
 import PaymentMethodLogo from '../common/PaymentMethodLogo';
+import {
+  AdminButton,
+  StatusChip,
+  AdminLoading,
+  AdminTableContainer,
+} from './design-system';
 
 interface GooglePayTransaction {
   id: string;
@@ -90,7 +92,7 @@ export default function GooglePayAdminDashboard() {
   });
 
   // Filter transactions
-  const filteredTransactions = transactions.filter((tx) => {
+  const filteredTransactions = (Array.isArray(transactions) ? transactions : []).filter((tx) => {
     const matchesSearch =
       tx.userEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
       tx.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -127,20 +129,15 @@ export default function GooglePayAdminDashboard() {
   };
 
   if (isLoading) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <LinearProgress />
-        <Typography sx={{ mt: 2 }}>Loading Google Pay transactions...</Typography>
-      </Box>
-    );
+    return <AdminLoading label="Loading Google Pay transactions..." />;
   }
 
   return (
     <Box sx={{ p: 3 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
+          <Typography variant="h4" component="h2" sx={{ fontWeight: 600, mb: 1 }}>
             Google Pay Transactions
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -148,9 +145,9 @@ export default function GooglePayAdminDashboard() {
           </Typography>
         </Box>
 
-        <Button variant="outlined" startIcon={<Refresh />} onClick={() => refetch()}>
+        <AdminButton tone="secondary" startIcon={<Refresh />} onClick={() => refetch()}>
           Refresh
-        </Button>
+        </AdminButton>
       </Box>
 
       {/* Statistics Cards */}
@@ -242,6 +239,7 @@ export default function GooglePayAdminDashboard() {
               fullWidth
               size="small"
               placeholder="Search by email, name, or transaction ID..."
+              aria-label="Søk i transaksjoner etter e-post, navn eller transaksjons-ID"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               InputProps={{
@@ -273,7 +271,7 @@ export default function GooglePayAdminDashboard() {
       </Paper>
 
       {/* Transactions Table */}
-      <TableContainer component={Paper}>
+      <AdminTableContainer ariaLabel="Google Pay transactions">
         <Table>
           <TableHead>
             <TableRow>
@@ -317,10 +315,9 @@ export default function GooglePayAdminDashboard() {
                   </TableCell>
 
                   <TableCell>
-                    <Chip
+                    <StatusChip
                       label={getPlanDisplayName(transaction.selectedPlan)}
-                      size="small"
-                      color="primary"
+                      tone="brand"
                     />
                   </TableCell>
 
@@ -331,18 +328,20 @@ export default function GooglePayAdminDashboard() {
                   </TableCell>
 
                   <TableCell>
-                    <Chip
+                    <StatusChip
                       icon={getStatusIcon(transaction.status)}
                       label={
                         transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)
                       }
-                      size="small"
-                      color={
-                        getStatusColor(transaction.status) as
-                          | 'success'
-                          | 'warning'
-                          | 'error'
-                          | 'default'
+                      tone={
+                        (
+                          {
+                            success: 'success',
+                            warning: 'warning',
+                            error: 'error',
+                            default: 'neutral',
+                          } as const
+                        )[getStatusColor(transaction.status)] ?? 'neutral'
                       }
                     />
                   </TableCell>
@@ -353,7 +352,7 @@ export default function GooglePayAdminDashboard() {
 
                   <TableCell align="right">
                     <Tooltip title="View details">
-                      <IconButton size="small" onClick={() => setSelectedTransaction(transaction)}>
+                      <IconButton size="small" aria-label="Vis detaljer" onClick={() => setSelectedTransaction(transaction)}>
                         <Visibility fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -363,7 +362,7 @@ export default function GooglePayAdminDashboard() {
             )}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
 
       {/* Transaction Detail Dialog would go here */}
       {selectedTransaction && (
@@ -372,7 +371,9 @@ export default function GooglePayAdminDashboard() {
             Transaction Details
           </Typography>
           <pre>{JSON.stringify(selectedTransaction, null, 2)}</pre>
-          <Button onClick={() => setSelectedTransaction(null) as void}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setSelectedTransaction(null) as void}>
+            Close
+          </AdminButton>
         </Box>
       )}
     </Box>

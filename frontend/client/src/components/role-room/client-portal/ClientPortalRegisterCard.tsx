@@ -34,6 +34,21 @@ export interface ClientPortalRegisterCardProps {
   token: string;
 }
 
+// Parse utm_* query params off the current URL so admins see the campaign
+// that drove this inbound client-portal registration. Undefined when none.
+function parseUtmParams(): Record<string, string> | undefined {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    const utm: Record<string, string> = {};
+    sp.forEach((value, key) => {
+      if (/^utm_/i.test(key) && value) utm[key] = value;
+    });
+    return Object.keys(utm).length > 0 ? utm : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ token }) => {
   const [status, setStatus] = useState<'loading' | 'unregistered' | 'registered' | 'error'>('loading');
   const [email, setEmail] = useState('');
@@ -151,7 +166,12 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
       const response = await fetch(`/api/client/portal/register?token=${encodeURIComponent(token)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password, fullName: fullName.trim() }),
+        body: JSON.stringify({
+          password,
+          fullName: fullName.trim(),
+          cta: 'Opprett bruker (Klient-portal — sett passord for fremtidig innlogging)',
+          ...(parseUtmParams() ? { utm: parseUtmParams() } : {}),
+        }),
       });
       if (!response.ok) {
         const errPayload = await response.json().catch(() => null) as { message?: string; error?: string } | null;
@@ -207,6 +227,11 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
             </Typography>
             <Typography sx={{ color: 'rgba(220,252,231,0.75)', fontSize: '0.78rem' }}>
               Neste gang kan du logge inn på vanlig måte med <strong>{email}</strong> + passord.
+            </Typography>
+            <Typography sx={{ color: 'rgba(220,252,231,0.62)', fontSize: '0.74rem', mt: 0.5 }}>
+              Når du logger inn får du tilgang til hele prosjekt-arbeidsflaten — bl.a.
+              <strong> økonomi/fakturagrunnlag</strong>, godkjenning, møter og meldinger.
+              Denne lenken viser kun en lese-oversikt.
             </Typography>
           </Box>
           <Button
@@ -302,7 +327,7 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
       }}
     >
       <Stack direction="row" spacing={1.4} alignItems="center" flexWrap="wrap" useFlexGap>
-        <LockIcon sx={{ color: '#22d3ee' }} />
+        <LockIcon sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
         <Box sx={{ flex: 1, minWidth: 220 }}>
           <Typography sx={{ color: '#f8fafc', fontSize: '0.92rem', fontWeight: 700 }}>
             Slipp magic-link neste gang — opprett en bruker
@@ -311,6 +336,11 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
             Sett et passord for <strong>{email}</strong>, så kan du logge inn på vanlig måte
             uten å finne e-post-lenken på nytt.
           </Typography>
+          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem', mt: 0.5 }}>
+            Innlogget får du tilgang til hele prosjekt-arbeidsflaten — bl.a.
+            <strong> økonomi/fakturagrunnlag</strong>, godkjenning, møter og meldinger.
+            Denne magic-linken viser kun en lese-oversikt.
+          </Typography>
         </Box>
         <Button
           variant="contained"
@@ -318,7 +348,7 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
           sx={{
             textTransform: 'none',
             fontWeight: 700,
-            bgcolor: '#22d3ee',
+            bgcolor: 'var(--role-cyan, #22d3ee)',
             color: '#0b1226',
             '&:hover': { bgcolor: '#06b6d4' },
           }}
@@ -391,7 +421,7 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
                       sx={{
                         textTransform: 'none',
                         fontWeight: 700,
-                        bgcolor: '#22d3ee',
+                        bgcolor: 'var(--role-cyan, #22d3ee)',
                         color: '#0b1226',
                         '&:hover': { bgcolor: '#06b6d4' },
                       }}
@@ -417,7 +447,7 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
 
           {/* Steg 2: sett passord — vises kun når kode er verifisert */}
           {codeStage === 'verified' ? (
-            <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#22d3ee', mt: 0.4 }}>
+            <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--role-cyan, #22d3ee)', mt: 0.4 }}>
               Steg 2 av 2 — Sett passord
             </Typography>
           ) : null}
@@ -474,7 +504,7 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
               sx={{
                 textTransform: 'none',
                 fontWeight: 700,
-                bgcolor: '#22d3ee',
+                bgcolor: 'var(--role-cyan, #22d3ee)',
                 color: '#0b1226',
                 '&:hover': { bgcolor: '#06b6d4' },
               }}

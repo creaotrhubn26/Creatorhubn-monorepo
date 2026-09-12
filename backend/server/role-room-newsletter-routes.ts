@@ -187,8 +187,12 @@ export function setupRoleRoomNewsletterRoutes(deps: NewsletterRoutesDeps): void 
         bySource: bySource.rows,
       });
     } catch (err) {
-      console.error("[role-room-newsletter] stats error", err);
-      res.status(500).json({ error: "Kunne ikke hente newsletter-statistikk" });
+      // Graceful: role_room_newsletter_signups mangler → tomme stats.
+      console.warn("[role-room-newsletter] stats failed:", (err as Error).message);
+      res.json({
+        totals: { total: 0, confirmed: 0, pending: 0, unsubscribed: 0, new_last_7d: 0, new_last_30d: 0 },
+        bySource: [],
+      });
     }
   });
 
@@ -208,8 +212,9 @@ export function setupRoleRoomNewsletterRoutes(deps: NewsletterRoutesDeps): void 
       );
       res.json({ items: result.rows });
     } catch (err) {
-      console.error("[role-room-newsletter] signups error", err);
-      res.status(500).json({ error: "Kunne ikke hente påmeldinger" });
+      // Graceful: tabell mangler → tom liste.
+      console.warn("[role-room-newsletter] signups failed:", (err as Error).message);
+      res.json({ items: [] });
     }
   });
 
@@ -395,8 +400,9 @@ export function setupRoleRoomNewsletterRoutes(deps: NewsletterRoutesDeps): void 
       );
       res.json({ items: result.rows });
     } catch (err) {
-      console.error("[newsletter-issues] list error", err);
-      res.status(500).json({ error: "Kunne ikke hente utgaver" });
+      // Graceful: tabell mangler → tom liste (iPad: "Ingen issues").
+      console.warn("[newsletter-issues] list failed:", (err as Error).message);
+      res.json({ items: [] });
     }
   });
 

@@ -1,0 +1,292 @@
+# Netlify-produksjonskonfig for CreatorHub, Leadgrid og The Role Room.
+# DNS og produksjonsdeploy er på Netlify; denne filen er sannhetskilden for
+# headers, redirects, proxyer, build og SPA-fallback. Host-/UA-ruter eies av
+# netlify/host-routes.json og genereres som en Netlify Edge Function.
+#
+# Historisk migrasjonsnotat (2026-08-05): konfigen ble portet fra Vercel.
+# Tidligere rewrites ble Netlify [[redirects]] med status 200, permanente
+# redirects fikk status 301, `(.*)`/`$1` ble `*`/`:splat`, og eksterne
+# proxyer fikk `force = true`. Notatet beskriver kun migrasjonshistorikk;
+# Vercel er ikke et aktivt deploymål.
+
+[build]
+  # `frontend` er en npm-WORKSPACE → deps (vite m.fl.) hoistes til ROT-node_modules.
+  # Derfor: base = repo-rot (install hoister alt), bygg workspacet, publiser dets dist.
+  command = "npm run build --workspace creatorhub-frontend"
+  publish = "frontend/client/dist"
+  # Hopp over bygg som ikke rører frontend/ eller Netlify-konfigurasjonen.
+  # Alle live/*-produksjonsgrener bygger alltid.
+  #
+  # Merke-isolasjon: creatorhubn.com deployer fra live/creatorhub først etter
+  # grønn migrering + eksakt backend-deploy. Leadgrid og Role Room bruker sine
+  # egne live/*-grener via «Promoter merke». main er dermed ikke en direkte
+  # frontend-produksjonsgren.
+  # Netlify: exit 0 = hopp over, non-zero = bygg.
+  ignore = "case \"$BRANCH\" in main|live/*) exit 1 ;; esac; git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- frontend netlify.toml netlify"
+
+[build.environment]
+  NPM_FLAGS = "--legacy-peer-deps"   # kreves av dagens dependency-graf
+  NODE_VERSION = "20"                # hold synkronisert med Vite/CI-runtime
+
+# Canonical release-workflow polls this generated Vite asset until Netlify has
+# published the exact live/creatorhub commit. It must never be served stale.
+[[headers]]
+  for = "/build-info.json"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0, must-revalidate"
+
+# App-skallet og Role Room-serviceworkeren må revalideres ved hver deploy.
+# Hashede byggfiler kan caches evig; filnavnet endres når innholdet endres.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/role-room-sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Personlige dokumentlenker må aldri caches, indekseres, rammes inn eller
+# lekke URL-en via Referer. CSP-en tillater fortsatt samme-origin SPA/API,
+# Vite-assets og den eksplisitte Render-backenden som appen bruker.
+[[headers]]
+  for = "/participant-document/*"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0, must-revalidate"
+    X-Robots-Tag = "noindex, nofollow, noarchive"
+    Referrer-Policy = "no-referrer"
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://creatorhub-backend-rtbl.onrender.com; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'"
+
+# Invitasjonslenken er et bearer-token i URL-en. Ikke la nettleser, mellomledd,
+# søkemotorer eller innebyggende sider lagre eller lekke den.
+[[headers]]
+  for = "/prototype-tester/accept-invite"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0, must-revalidate"
+    X-Robots-Tag = "noindex, nofollow, noarchive"
+    Referrer-Policy = "no-referrer"
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://creatorhub-backend-rtbl.onrender.com; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'"
+
+# ─────────────────────────── REDIRECTS (301) ───────────────────────────
+# Netlify bruker første treff → permanente redirects må stå før rewrites.
+
+[[redirects]]
+  from = "/casting.html"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/theroleroom"
+  to = "/"
+  status = 301
+  force = true
+# ⚠️ MERK: denne 301-en skygger rewrite-en «/theroleroom → /theroleroom.html» lenger nede
+#    (samme oppførsel som før Netlify-migrasjonen). Verifiser at det er ØNSKET —
+#    dette ser ut som en historisk, utilsiktet skygge.
+
+[[redirects]]
+  from = "/theroleroom/"
+  to = "/"
+  status = 301
+  force = true
+
+# Historisk migrasjonsnotat: de tidligere reglene «/talentportal/ →
+# /talentportal» og «/utdanningsinstitusjon/ → …» ble fjernet fordi Netlify
+# normaliserer trailing slash automatisk. Reglene matchet ellers seg selv og
+# ga 301-loop. Uten dem faller «/talentportal» gjennom til rewrite-en
+# «/talentportal → /theroleroom.html» (200) som forventet.
+
+# Skygget av reglene over (duplikat-source, Netlify bruker første treff) — beholdt
+# som dokumentasjon, deaktivert:
+#   /casting.html   → /theroleroom   (skygget av /casting.html → /)
+#   /theroleroom/   → /theroleroom   (skygget av /theroleroom/ → /)
+
+# ─────────────────────── PROXY-REWRITES (200, force) ───────────────────────
+# Eksterne mål (Render-backend, R2, Cloudflare Worker) — må proxye selv om en fil matcher.
+
+[[redirects]]
+  from = "/api/showcase/cdn/*"
+  to = "https://showcase-cdn.creatorhubn.workers.dev/api/showcase/cdn/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://creatorhub-backend-rtbl.onrender.com/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/g/*"
+  to = "https://creatorhub-backend-rtbl.onrender.com/g/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/cdn/*"
+  to = "https://pub-6556104b51da4540aebfd28b23c0ebea.r2.dev/:splat"
+  status = 200
+  force = true
+
+# 2026-08-20: /robots.txt, /sitemap.xml, /llms.txt (og all geo-prerendert
+# bot-innhold) er nå host+User-Agent-betinget rutet av
+# netlify/edge-functions/host-routes.ts — Netlify [[redirects]] har ingen
+# native Host/UA-betingelser. De tidligere ubetingede theroleroom-reglene
+# er derfor fjernet; de var aldri korrekte på Netlify og serverte Role Room
+# sin robots/sitemap/llms.txt til alle tre domener.
+
+# ─────────────────────── INTERNE REWRITES (200) ───────────────────────
+
+[[redirects]]
+  from = "/link"
+  to = "/post-agent-link.html"
+  status = 200
+
+[[redirects]]
+  from = "/billing/post-agent"
+  to = "/post-agent-billing.html"
+  status = 200
+
+[[redirects]]
+  from = "/marketplace"
+  to = "/marketplace.html"
+  status = 200
+
+[[redirects]]
+  from = "/marketplace/post-agent"
+  to = "/post-agent-detail.html"
+  status = 200
+
+# theroleroom.html-landingssider (statisk innhold, URL uendret)
+[[redirects]]
+  from = "/en"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/en/*"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/talentportal"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/utdanningsinstitusjon"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/alternatives"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/vs-*"                       # var /vs-:competitor (mål er statisk → splat er trygt)
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/for-studenter"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/film-tv-utdanning"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/casting-director-utdanning"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/regissor-verktoy"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/produksjonsledelse-studie"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/innholdsprodusenter"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/innholdsproduksjon-studie"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/dansestudio"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/casting-svindel-tegn"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/barn-samtykke-film"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/casting-rapport-2026"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/brief"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/brief/:slug"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/presse"
+  to = "/theroleroom.html"
+  status = 200
+[[redirects]]
+  from = "/theroleroom"                # ⚠️ skygget av 301 «/theroleroom → /» over
+  to = "/theroleroom.html"
+  status = 200
+
+# Rot: normal fallback er den BYGDE index.html (SPA-entry). The Role Room-hostet
+# rutes før dette av host-routes Edge Function til role-room-index.html, som
+# genereres fra samme Vite-bygg med korrekte server-side metadata og samme
+# hashede app-assets. public/theroleroom-root.html brukes ikke som app-entry.
+[[redirects]]
+  from = "/"
+  to = "/index.html"
+  status = 200
+[[redirects]]
+  from = "/data-deletion"
+  to = "/theroleroom-data-deletion.html"
+  status = 200
+[[redirects]]
+  from = "/privacy"
+  to = "/theroleroom-privacy.html"
+  status = 200
+[[redirects]]
+  from = "/terms-and-conditions"
+  # live/leadgrid: This route is also the public OAuth terms URL. Serve the
+  # host-aware React document instead of the static Role Room terms file.
+  to = "/index.html"
+  status = 200
+[[redirects]]
+  from = "/terms"
+  to = "/theroleroom-terms.html"
+  status = 200
+
+# ─────────────────────── SPA-FALLBACK (MÅ VÆRE SIST) ───────────────────────
+# INGEN force → ekte filer (/assets/*.js, .css, bilder) serveres direkte.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

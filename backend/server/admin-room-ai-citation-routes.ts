@@ -199,7 +199,7 @@ export function setupAdminAiCitationRoutes(deps: AdminRoomRoutesDeps): void {
       res.json({ items: result.rows });
     } catch (err) {
       console.error("[ai-citation queries] list error", err);
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -227,7 +227,7 @@ export function setupAdminAiCitationRoutes(deps: AdminRoomRoutesDeps): void {
       res.status(201).json({ item: result.rows[0] });
     } catch (err) {
       console.error("[ai-citation queries] create error", err);
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -257,7 +257,7 @@ export function setupAdminAiCitationRoutes(deps: AdminRoomRoutesDeps): void {
       res.json({ item: result.rows[0] });
     } catch (err) {
       console.error("[ai-citation queries] patch error", err);
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -290,7 +290,7 @@ export function setupAdminAiCitationRoutes(deps: AdminRoomRoutesDeps): void {
       res.json({ items: result.rows });
     } catch (err) {
       console.error("[ai-citation results] list error", err);
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -367,7 +367,7 @@ export function setupAdminAiCitationRoutes(deps: AdminRoomRoutesDeps): void {
       });
     } catch (err) {
       console.error("[ai-citation dashboard] error", err);
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -441,7 +441,7 @@ export function setupAdminAiCitationRoutes(deps: AdminRoomRoutesDeps): void {
       });
     } catch (err) {
       console.error("[ai-citation run] error", err);
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 

@@ -64,10 +64,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       const info = await client.getCameraInfo();
       res.json({ success: true, camera: { ipAddress: body.ipAddress, port: body.port ?? 8080, info } });
     } catch (err) {
-      res.status(502).json({
-        success: false,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 
@@ -86,10 +83,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       ]);
       res.json({ success: true, info, event });
     } catch (err) {
-      res.status(502).json({
-        success: false,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 
@@ -100,7 +94,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       await getSonyClient(req.params.ip).startMovieRecording();
       res.json({ success: true });
     } catch (err) {
-      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 
@@ -111,7 +105,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       await getSonyClient(req.params.ip).stopMovieRecording();
       res.json({ success: true });
     } catch (err) {
-      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 
@@ -132,7 +126,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       if (body.whiteBalanceK !== undefined) await client.setWhiteBalance(body.whiteBalanceK);
       res.json({ success: true });
     } catch (err) {
-      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 
@@ -161,10 +155,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
         camera: { ipAddress: body.ipAddress, port: body.port ?? 80, info },
       });
     } catch (err) {
-      res.status(502).json({
-        success: false,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 
@@ -175,7 +166,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       const [info, state] = await Promise.all([client.getInfo(), client.getState()]);
       res.json({ success: true, info, state });
     } catch (err) {
-      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 
@@ -186,7 +177,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       await getArriClient(req.params.ip).startRecording();
       res.json({ success: true });
     } catch (err) {
-      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 
@@ -197,7 +188,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       await getArriClient(req.params.ip).stopRecording();
       res.json({ success: true });
     } catch (err) {
-      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 
@@ -227,7 +218,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       }
       res.json({ success: true });
     } catch (err) {
-      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 
@@ -250,7 +241,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
         camera: { ipAddress: body.ipAddress, port: body.port ?? 80, info },
       });
     } catch (err) {
-      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 
@@ -261,7 +252,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       const [info, state] = await Promise.all([client.getInfo(), client.getState()]);
       res.json({ success: true, info, state });
     } catch (err) {
-      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 
@@ -272,7 +263,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       await getZcamClient(req.params.ip).startRecording();
       res.json({ success: true });
     } catch (err) {
-      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 
@@ -283,7 +274,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       await getZcamClient(req.params.ip).stopRecording();
       res.json({ success: true });
     } catch (err) {
-      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 
@@ -306,7 +297,7 @@ export function setupMultiVendorCameraRoutes(deps: MultiVendorCameraRoutesDeps):
       if (body.whiteBalanceK !== undefined) await client.setWhiteBalance(body.whiteBalanceK);
       res.json({ success: true });
     } catch (err) {
-      res.status(502).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+      res.status(502).json({ success: false, error: "vendor_error" });
     }
   });
 

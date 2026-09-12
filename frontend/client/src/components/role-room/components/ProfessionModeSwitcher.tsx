@@ -16,6 +16,8 @@ import {
   Bolt as ContentCreatorIcon,
   School as DanceStudioIcon,
   EmojiPeople as DanceFreelanceIcon,
+  CastForEducation as EducationModeIcon,
+  Backpack as StudentModeIcon,
   CheckCircle as CheckIcon,
 } from '@mui/icons-material';
 import {
@@ -69,6 +71,20 @@ const MODE_META: Record<ProfessionMode, ModeMeta> = {
     label: 'Dans — frilans',
     description: 'Frilansdanser — bookinger, auditions, ferdighetsprofil, tilgjengelighet.',
     icon: <DanceFreelanceIcon />,
+    accent: '#8b5cf6',
+    beta: true,
+  },
+  education: {
+    label: 'Utdanningsinstitusjon',
+    description: 'Kull, studentproduksjoner, oppgaver og faglærer-oversikt i én flate.',
+    icon: <EducationModeIcon />,
+    accent: '#8b5cf6',
+    beta: true,
+  },
+  student: {
+    label: 'Student',
+    description: 'Studentens «Min side» — produksjoner, oppgaver og tilbakemelding (super-admin-preview).',
+    icon: <StudentModeIcon />,
     accent: '#8b5cf6',
     beta: true,
   },

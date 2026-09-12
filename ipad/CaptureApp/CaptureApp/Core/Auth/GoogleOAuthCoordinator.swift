@@ -121,7 +121,7 @@ final class GoogleOAuthCoordinator: NSObject, ASWebAuthenticationPresentationCon
             // ``select_account`` lets a photographer who runs multiple
             // Google identities (personal vs. business) pick at sign-in
             // instead of silently reusing the last session.
-            .init(name: "prompt", value: "select_account"),
+            .init(name: "prompt", value: "select_account")
         ]
         guard let authURL = components.url else {
             throw OAuthError.invalidRedirect
@@ -178,7 +178,7 @@ final class GoogleOAuthCoordinator: NSObject, ASWebAuthenticationPresentationCon
             "code": code,
             "code_verifier": codeVerifier,
             "grant_type": "authorization_code",
-            "redirect_uri": config.redirectURI,
+            "redirect_uri": config.redirectURI
         ]
         request.httpBody = body
             .map { "\($0.key)=\(Self.urlEncode($0.value))" }

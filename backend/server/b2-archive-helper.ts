@@ -22,9 +22,14 @@
  *   ad-hoc/{filename}   (manuelle uploads fra B2-arkiv-fanen)
  */
 
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const B2_REGION = process.env.B2_REGION || "us-west-001";
+// NB: the-role-room-prod-bøtta ligger i eu-central-003 (verifisert via B2
+// b2_authorize_account 2026-06-08). Defaulten var feil (us-west-001) → all
+// role-room-B2-lesing/-skriving feilet stille i prod. B2_REGION er nå satt på
+// Render, men defaulten her må også være riktig så koden er korrekt uten env.
+const B2_REGION = process.env.B2_REGION || "eu-central-003";
 const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
 
 function getRoleRoomB2Client(): { client: S3Client; bucket: string } | null {
@@ -100,6 +105,85 @@ export async function archiveToRoleRoomB2(
 }
 
 /**
+ * Hent et objekt fra Role Room B2-bucketen (server-side). Brukes til å servere
+ * publiserte guider via vår egen /g/:id — så lenken er permanent uten at
+ * bucketen må være offentlig. Returnerer null hvis ikke konfigurert/ikke funnet.
+ */
+export async function getFromRoleRoomB2(
+  key: string,
+): Promise<{ body: Buffer; contentType?: string } | null> {
+  const config = getRoleRoomB2Client();
+  if (!config) return null;
+  try {
+    const out = await config.client.send(
+      new GetObjectCommand({ Bucket: config.bucket, Key: key }),
+    );
+    const bytes = await (out.Body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined)
+      ?.transformToByteArray?.();
+    if (!bytes) return null;
+    return { body: Buffer.from(bytes), contentType: out.ContentType };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Lag en tidsbegrenset (presigned) GET-URL for et objekt i Role Room-bøtta.
+ * Brukes til gated nedlasting av Post Agent-appen: backend sjekker entitlement,
+ * og redirecter så til denne URL-en — bøtta forblir privat, men brukeren får
+ * laste direkte fra B2 (ingen båndbredde gjennom Node).
+ *
+ * `downloadFilename` setter Content-Disposition slik at fila lagres med riktig
+ * navn uansett key-struktur. Returnerer null hvis B2 ikke er konfigurert.
+ */
+export async function presignRoleRoomB2Download(
+  key: string,
+  downloadFilename?: string,
+  expiresInSeconds = 300,
+): Promise<string | null> {
+  const config = getRoleRoomB2Client();
+  if (!config) return null;
+  try {
+    const command = new GetObjectCommand({
+      Bucket: config.bucket,
+      Key: key,
+      ...(downloadFilename
+        ? { ResponseContentDisposition: `attachment; filename="${downloadFilename}"` }
+        : {}),
+    });
+    return await getSignedUrl(config.client, command, { expiresIn: expiresInSeconds });
+  } catch (err) {
+    console.warn("[b2-archive] presign failed", { key, err: (err as Error).message });
+    return null;
+  }
+}
+
+/**
+ * Presignet PUT-URL for DIREKTE klient→B2-opplasting (store filer som video
+ * skal IKKE bufres i server-minne). Klienten gjør `fetch(url, {method:'PUT',
+ * body:file})`. Les senere via presignRoleRoomB2Download(key).
+ */
+export async function presignRoleRoomB2Upload(
+  key: string,
+  contentType: string,
+  expiresInSeconds = 3600,
+): Promise<string | null> {
+  const config = getRoleRoomB2Client();
+  if (!config) return null;
+  try {
+    const command = new PutObjectCommand({
+      Bucket: config.bucket,
+      Key: key,
+      ContentType: contentType || "application/octet-stream",
+    });
+    return await getSignedUrl(config.client, command, { expiresIn: expiresInSeconds });
+  } catch (err) {
+    console.warn("[b2-archive] presign upload failed", { key, err: (err as Error).message });
+    return null;
+  }
+}
+
+/**
  * Bygg key for newsletter-issue-arkivering.
  * F.eks. `newsletters/issues/2026-06/{issueId}.html`
  */
@@ -138,10 +222,13 @@ export function deckKey(deckId: string, slug: string, suffix: string): string {
 
 /**
  * Bygg key for business-plan-snapshot.
- * F.eks. `business-plans/snapshots/2026-06-05T15-23-snapshot.json`
+ * F.eks. `business-plans/role_room/snapshots/2026-06-05T15-23-snapshot.json`
+ * eller `business-plans/leadgrid/snapshots/...` etter mig 0335 (multi-produkt).
+ *
+ * @param productKey 'role_room' (default for bakoverkompatibilitet) eller 'leadgrid'.
  */
-export function businessPlanSnapshotKey(): string {
+export function businessPlanSnapshotKey(productKey: "role_room" | "leadgrid" = "role_room"): string {
   const now = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "T");
   const stamp = now.slice(0, 19); // YYYY-MM-DDTHH-MM-SS
-  return `business-plans/snapshots/${stamp}-snapshot.json`;
+  return `business-plans/${productKey}/snapshots/${stamp}-snapshot.json`;
 }

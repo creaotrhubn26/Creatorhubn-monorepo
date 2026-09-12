@@ -1,0 +1,751 @@
+/**
+ * leadgrid-client-portal-routes.ts
+ *
+ * Public klient-portal m/ token-basert tilgang for Leadgrid-kunder.
+ * (Egen fil — eksisterende client-portal-routes.ts hører til Role
+ * Room client_workspace.)
+ *
+ * Klienten åpner `leadgrid.no/c/{token}` — ingen registrering,
+ * ingen passord. Sidens innhold:
+ *
+ *   - Velkommen + verdi-budskap (hva Leadgrid er + hvordan det skaper verdi)
+ *   - Audit-sammendrag (Leadgrid-score + needs-count)
+ *   - Behov-liste oversatt til klient-vennlig norsk språk + avhuking
+ *     ("Vi ønsker fokus her") → skaper client_focus_requests
+ *   - Leveranser (project_deliverables) m/ status-tidslinje
+ *
+ * Routes (PUBLIC — ingen auth, kun token):
+ *   GET    /api/leadgrid-client/:token             Hent dashbord-data
+ *   POST   /api/leadgrid-client/:token/accept      Godta TOS
+ *   POST   /api/leadgrid-client/:token/seen        Pulserer last_seen_at
+ *   POST   /api/leadgrid-client/:token/focus       Klient ber om fokus
+ *          { need_type: 'needs_meta_pixel', requested: true, note?: '...' }
+ *          → skaper rader i client_focus_requests + notification til
+ *          markedssjef/markedskoordinator hos org-eieren.
+ */
+
+import type { Express, Request, Response } from "express";
+import type { Pool, PoolClient } from "pg";
+import { notifyClient } from "./client-notification-service.js";
+
+interface Deps {
+  app: Express;
+  pool: Pool;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Klient-vennlig labels for needs + signals
+// ─────────────────────────────────────────────────────────────────
+
+interface NeedLabel { title: string; why: string; icon: string }
+
+const NEED_LABELS: Record<string, NeedLabel> = {
+  needs_google_analytics: {
+    title: "Mangler Google Analytics 4",
+    why: "Uten GA4 kan vi ikke måle hvor besøkende kommer fra eller hva som virker.",
+    icon: "chart.bar",
+  },
+  needs_google_tag_manager: {
+    title: "Mangler Google Tag Manager",
+    why: "GTM gjør at vi kan legge på ny tracking uten å røre koden hver gang.",
+    icon: "rectangle.stack",
+  },
+  needs_meta_pixel: {
+    title: "Mangler Meta Pixel",
+    why: "Uten dette kan vi ikke retargete besøkende på Facebook eller Instagram.",
+    icon: "person.crop.rectangle",
+  },
+  needs_google_ads_pixel: {
+    title: "Mangler Google Ads conversion-pixel",
+    why: "Vi kan ikke måle om Google Ads-spend gir kunder uten denne.",
+    icon: "target",
+  },
+  needs_linkedin_insight: {
+    title: "Mangler LinkedIn Insight Tag",
+    why: "Kritisk for B2B-leads — uten den taper vi LinkedIn-attribusjon.",
+    icon: "link",
+  },
+  needs_tiktok_pixel: {
+    title: "Mangler TikTok Pixel",
+    why: "Uten den kan vi ikke kjøre TikTok-ads med ROI-måling.",
+    icon: "play.rectangle",
+  },
+  needs_seo_structured_data: {
+    title: "Mangler strukturert SEO-data (JSON-LD)",
+    why: "Google viser ikke rich snippets — vi går glipp av høyere CTR.",
+    icon: "doc.plaintext",
+  },
+  needs_ssr_landing: {
+    title: "SPA-rendering svekker SEO",
+    why: "Googlebot ser tom side ved første crawl. Vi bør lage SSR-landinger.",
+    icon: "globe",
+  },
+  needs_better_website: {
+    title: "Trenger nettsidefornyelse",
+    why: "Lavt Lighthouse-tall + utdaterte ytelses-mønstre.",
+    icon: "wand.and.rays",
+  },
+  needs_video: {
+    title: "Mangler video for tillit",
+    why: "Spesielt viktig for B2B + helsetech — kjøpere vil se mennesker, ikke bare logoer.",
+    icon: "video",
+  },
+  needs_reels: {
+    title: "Trenger Reels-strategi",
+    why: "Reels gir gratis rekkevidde — uten plan misser dere algoritmen.",
+    icon: "film",
+  },
+  needs_photos: {
+    title: "Trenger bedre produkt-/team-foto",
+    why: "Stockfoto svekker tillit. Vi tar profesjonelle bilder.",
+    icon: "photo",
+  },
+  needs_case_studies: {
+    title: "Mangler case-studier",
+    why: "Beslutningstakere ber ALLTID om kundecase. Vi lager 3 å vise frem.",
+    icon: "doc.text",
+  },
+  needs_customer_testimonials: {
+    title: "Mangler kundeomtaler",
+    why: "Sosial bevis er kritisk i B2B. Vi setter opp innhentning + viser dem fram.",
+    icon: "quote.bubble",
+  },
+  needs_review_collection: {
+    title: "Mangler Google-omtaler",
+    why: "Google rangerer høyere når dere har flere/nyere omtaler. Vi automatiserer innhentning.",
+    icon: "star.bubble",
+  },
+  needs_brand_guidelines: {
+    title: "Trenger brand-guidelines",
+    why: "Visuell konsistens på tvers av flater — vi lager et dokument alle kan bruke.",
+    icon: "swatchpalette",
+  },
+  needs_recruitment_content: {
+    title: "Mangler rekrutterings-innhold",
+    why: "Kommunikasjon mot kandidater må ha eget spor — vi lager rekrutterings-hub.",
+    icon: "person.2",
+  },
+  needs_launch_campaign: {
+    title: "Trenger launch-kampanje",
+    why: "Stor nyhet bør pakkes som en kampanje — ikke bare ett innlegg.",
+    icon: "megaphone",
+  },
+  needs_event_coverage: {
+    title: "Mangler event-dekning",
+    why: "Foredrag/messer er gull verdt — vi sørger for opptak, foto og lange-haler.",
+    icon: "calendar",
+  },
+  needs_partner_visibility: {
+    title: "Mangler partner-synlighet",
+    why: "Partnere er en gratis distribusjonskanal — vi orkestrerer felles innhold.",
+    icon: "person.line.dotted.person",
+  },
+  needs_linkedin_presence: {
+    title: "Trenger sterkere LinkedIn-tilstedeværelse",
+    why: "B2B-beslutningstakere lever på LinkedIn. Vi setter opp innholdskalender.",
+    icon: "link.badge.plus",
+  },
+  needs_landing_page: {
+    title: "Mangler dedikerte landingssider",
+    why: "Per-kampanje-landingssider konverterer 2-3x bedre enn hovedside.",
+    icon: "rectangle.fill.on.rectangle.fill",
+  },
+  needs_seo_local: {
+    title: "Trenger lokal-SEO",
+    why: "Riktig oppsett av Google Business + lokal-strukturert data.",
+    icon: "mappin.circle",
+  },
+};
+
+function clientFriendlyNeed(needType: string): NeedLabel {
+  return NEED_LABELS[needType] ?? {
+    title: needType.replace(/^needs_/, "").replace(/_/g, " "),
+    why: "Identifisert behov for forbedring i dette området.",
+    icon: "questionmark.circle",
+  };
+}
+
+const SIGNAL_LABELS: Record<string, string> = {
+  has_google_search_console_verified: "Allerede registrert i Google Search Console",
+  has_sitemap_with_lastmod: "Har sitemap med oppdaterings-datoer",
+  has_open_graph_complete: "Komplett Open Graph for sosiale medier",
+  has_canonical: "Har riktig satt canonical-URL",
+  has_clear_value_prop: "Tydelig verdiproposisjon",
+  has_nextjs_ssr: "Bygget med moderne SSR-teknologi",
+  has_instagram_presence: "Aktiv på Instagram",
+  has_linkedin_company_page: "Har LinkedIn-bedriftsside",
+  security_focused_messaging: "Tydelig sikkerhets-fokus i kommunikasjon",
+  high_google_rating: "Høy Google-rating",
+  strong_visual_product: "Sterkt visuelt produkt",
+  clear_value_prop: "Tydelig verdiproposisjon",
+  missing_all_analytics: "Ingen webanalyse-data samles inn",
+  missing_all_ads_pixels: "Ingen ads-pixler er installert",
+  missing_structured_data: "Mangler strukturert SEO-data",
+  spa_rendering_seo_risk: "SPA-rendering svekker Google-indeksering",
+  low_image_optimization: "Bilder ikke optimalisert",
+  low_instagram_activity: "Lav aktivitet på Instagram",
+  missing_robots_txt: "Mangler robots.txt",
+  missing_sitemap: "Mangler sitemap.xml",
+  outdated_branding: "Utdatert brandinguttrykk",
+  mobile_unfriendly_site: "Nettside ikke mobilvennlig",
+  slow_page_speed: "Lav lastetid",
+  no_gmb_photos: "Ingen bilder på Google Business",
+  competitor_outranks: "Konkurrent rangerer høyere",
+};
+
+function clientFriendlySignal(signalType: string): string {
+  return SIGNAL_LABELS[signalType] ?? signalType.replace(/_/g, " ");
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Token-validering (felles)
+// ─────────────────────────────────────────────────────────────────
+
+interface TokenRow {
+  id: string;
+  organization_id: string;
+  project_id: string;
+  customer_id: string;
+  invited_email: string;
+  invited_name: string | null;
+  invited_role: string;
+  accepted_at: string | null;
+  expires_at: string;
+  revoked_at: string | null;
+  first_opened_at: string | null;
+}
+
+async function loadToken(pool: Pool, token: string): Promise<TokenRow | null> {
+  const r = await pool.query<TokenRow>(
+    `SELECT portal.id::text,
+            portal.organization_id::text,
+            portal.project_id,
+            portal.customer_id::text,
+            portal.invited_email,
+            portal.invited_name,
+            portal.invited_role,
+            portal.accepted_at::text,
+            portal.expires_at::text,
+            portal.revoked_at::text,
+            portal.first_opened_at::text
+       FROM client_portal_tokens portal
+       JOIN leadgrid_projects project
+         ON project.organization_id = portal.organization_id
+        AND project.id = portal.project_id
+        AND (project.status IS NULL OR project.status NOT IN ('archived', 'deleted'))
+       JOIN crm_customers customer
+         ON customer.id::text = portal.customer_id::text
+        AND customer.organization_id = portal.organization_id
+        AND customer.project_id = portal.project_id
+      WHERE portal.token = $1
+      LIMIT 1`,
+    [token],
+  );
+  return r.rows[0] ?? null;
+}
+
+function tokenExpired(t: TokenRow): boolean {
+  if (t.revoked_at) return true;
+  return new Date(t.expires_at).getTime() < Date.now();
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Routes
+// ─────────────────────────────────────────────────────────────────
+
+export function registerClientPortalRoutes({ app, pool }: Deps): void {
+  const ROOT = "/api/leadgrid-client";
+
+  // GET /:token — dashboard
+  app.get(`${ROOT}/:token`, async (req: Request, res: Response) => {
+    try {
+      const t = await loadToken(pool, req.params.token);
+      if (!t) return res.status(404).json({ error: "Lenken finnes ikke" });
+      if (tokenExpired(t)) return res.status(410).json({ error: "Lenken er utløpt" });
+
+      await pool.query(
+        `UPDATE client_portal_tokens
+            SET first_opened_at = COALESCE(first_opened_at, now()),
+                last_seen_at = now(),
+                view_count = view_count + 1
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3
+            AND customer_id::text = $4`,
+        [t.id, t.organization_id, t.project_id, t.customer_id],
+      );
+
+      // Hent org-data + email-branding for å gjøre portalen tydelig "levert av Org X"
+      const orgRes = await pool.query<{
+        name: string; description: string | null;
+        logo_url: string | null; brand_color: string | null;
+        website: string | null; org_number: string | null;
+        sender_full_name: string | null; sender_title: string | null;
+        sender_phone: string | null; sender_email: string | null;
+        brand_primary_color: string | null; brand_accent_color: string | null;
+      }>(
+        `SELECT o.name, o.description, o.logo_url, o.brand_color,
+                o.website, o.org_number,
+                eb.sender_full_name, eb.sender_title,
+                eb.sender_phone, eb.sender_email,
+                eb.brand_primary_color, eb.brand_accent_color
+           FROM organizations o
+           LEFT JOIN leadgrid_email_branding_config eb
+                  ON eb.org_key = o.id::text
+          WHERE o.id = $1`,
+        [t.organization_id],
+      );
+
+      const custRes = await pool.query<{
+        name: string; website_url: string | null; logo_url: string | null;
+        ai_opportunity_score: number | null; lead_category: string | null;
+      }>(
+        `SELECT name, website_url, logo_url, ai_opportunity_score, lead_category
+           FROM crm_customers
+          WHERE id::text = $1
+            AND organization_id = $2::uuid
+            AND project_id = $3
+          LIMIT 1`,
+        [t.customer_id, t.organization_id, t.project_id],
+      );
+
+      const needsRes = await pool.query<{
+        need_type: string; priority: number; status: string; evidence: string | null;
+      }>(
+        `SELECT need_type, priority, status, evidence
+           FROM crm_customer_needs
+          WHERE customer_id::text = $1
+            AND organization_id = $2::uuid
+            AND project_id = $3
+            AND status IN ('detected', 'accepted', 'resolved')
+          ORDER BY priority DESC, need_type`,
+        [t.customer_id, t.organization_id, t.project_id],
+      );
+
+      const signalsRes = await pool.query<{
+        signal_type: string; polarity: string; raw_value: string | null;
+      }>(
+        `SELECT signal_type, polarity, raw_value
+           FROM crm_customer_signals
+          WHERE customer_id::text = $1
+            AND organization_id = $2::uuid
+            AND project_id = $3
+          ORDER BY polarity, signal_type`,
+        [t.customer_id, t.organization_id, t.project_id],
+      );
+
+      const delsRes = await pool.query<{
+        id: string; title: string | null; client_summary: string | null;
+        status: string; target_date: string | null;
+        completed_at: string | null; related_need_type: string | null;
+      }>(
+        `SELECT id::text, title, client_summary, status,
+                target_date::text, completed_at::text, related_need_type
+           FROM project_deliverables
+          WHERE organization_id = $1::uuid
+            AND project_id = $2
+            AND customer_id::text = $3
+            AND is_visible_to_client = true
+          ORDER BY
+            CASE status
+              WHEN 'in_progress' THEN 1
+              WHEN 'ready_for_review' THEN 2
+              WHEN 'planned' THEN 3
+              WHEN 'completed' THEN 4
+              WHEN 'blocked' THEN 5
+              ELSE 6 END,
+            target_date NULLS LAST`,
+        [t.organization_id, t.project_id, t.customer_id],
+      );
+
+      // Hvilke needs har klienten allerede bedt om fokus på?
+      const focusRes = await pool.query<{ need_type: string; status: string }>(
+        `SELECT need_type, status
+           FROM client_focus_requests
+          WHERE customer_id::text = $1
+            AND organization_id = $2::uuid
+            AND project_id = $3`,
+        [t.customer_id, t.organization_id, t.project_id],
+      );
+      const focusedNeeds = new Map(focusRes.rows.map((r) => [r.need_type, r.status]));
+
+      return res.json({
+        token_meta: {
+          accepted: t.accepted_at != null,
+          first_visit: t.first_opened_at == null,
+          invited_name: t.invited_name,
+          invited_email: t.invited_email,
+        },
+        organization: {
+          name: orgRes.rows[0]?.name ?? "Creatorhub",
+          description: orgRes.rows[0]?.description ?? null,
+          logo_url: orgRes.rows[0]?.logo_url ?? null,
+          brand_color: orgRes.rows[0]?.brand_primary_color
+                      ?? orgRes.rows[0]?.brand_color ?? null,
+          brand_accent_color: orgRes.rows[0]?.brand_accent_color ?? null,
+          website: orgRes.rows[0]?.website ?? null,
+          org_number: orgRes.rows[0]?.org_number ?? null,
+          sender_full_name: orgRes.rows[0]?.sender_full_name ?? null,
+          sender_title: orgRes.rows[0]?.sender_title ?? null,
+          sender_phone: orgRes.rows[0]?.sender_phone ?? null,
+          sender_email: orgRes.rows[0]?.sender_email ?? null,
+        },
+        customer: {
+          name: custRes.rows[0]?.name ?? null,
+          website_url: custRes.rows[0]?.website_url ?? null,
+          logo_url: custRes.rows[0]?.logo_url ?? null,
+          industry: custRes.rows[0]?.lead_category ?? null,
+        },
+        leadgrid_value: {
+          tagline: "Vi gjør kunder synlige og målbare.",
+          one_liner:
+            "Leadgrid er operativsystemet vi bruker for å skanne din digitale " +
+            "tilstedeværelse, finne hva som svikter, og dokumentere fremgang " +
+            "i sanntid — slik at du ser hva vi gjør og hvorfor det betyr noe.",
+          three_steps: [
+            { title: "Vi tråler", body: "Tråler hele websiten + sosiale flater for å se hva som finnes og hva som mangler." },
+            { title: "Vi skårer", body: "Hver mangel får en prioritering basert på hva som faktisk flytter omsetning." },
+            { title: "Vi leverer", body: "Du følger med på fremgang i denne portalen — fra første crawl til siste pixel-implementering." },
+          ],
+        },
+        audit: {
+          composite_score: custRes.rows[0]?.ai_opportunity_score ?? null,
+          needs: needsRes.rows.map((n) => {
+            const friendly = clientFriendlyNeed(n.need_type);
+            return {
+              need_type: n.need_type,
+              priority: n.priority,
+              status: n.status,
+              focus_status: focusedNeeds.get(n.need_type) ?? null,
+              ...friendly,
+            };
+          }),
+          signals: {
+            positive: signalsRes.rows
+              .filter((s) => s.polarity === "positive")
+              .map((s) => ({
+                signal_type: s.signal_type,
+                label: clientFriendlySignal(s.signal_type),
+                raw_value: s.raw_value,
+              })),
+            negative: signalsRes.rows
+              .filter((s) => s.polarity === "negative")
+              .map((s) => ({
+                signal_type: s.signal_type,
+                label: clientFriendlySignal(s.signal_type),
+                raw_value: s.raw_value,
+              })),
+          },
+        },
+        deliverables: delsRes.rows,
+      });
+    } catch {
+      return res.status(500).json({
+        error: "portal_load_failed",
+        detail: "internal_error",
+      });
+    }
+  });
+
+  // POST /:token/accept
+  app.post(`${ROOT}/:token/accept`, async (req: Request, res: Response) => {
+    try {
+      const token = await loadToken(pool, req.params.token);
+      if (!token) return res.status(404).json({ error: "not_found_or_expired" });
+      if (tokenExpired(token)) {
+        return res.status(404).json({ error: "not_found_or_expired" });
+      }
+      const r = await pool.query(
+        `UPDATE client_portal_tokens
+            SET accepted_at = COALESCE(accepted_at, now()), last_seen_at = now()
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3
+            AND customer_id::text = $4
+            AND revoked_at IS NULL
+            AND expires_at > now()
+          RETURNING accepted_at::text`,
+        [
+          token.id,
+          token.organization_id,
+          token.project_id,
+          token.customer_id,
+        ],
+      );
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found_or_expired" });
+      return res.json({ accepted: true, accepted_at: r.rows[0].accepted_at });
+    } catch (err) {
+      return res.status(500).json({ error: "accept_failed", detail: "internal_error" });
+    }
+  });
+
+  // POST /:token/seen
+  app.post(`${ROOT}/:token/seen`, async (req: Request, res: Response) => {
+    try {
+      const token = await loadToken(pool, req.params.token);
+      if (!token || tokenExpired(token)) {
+        return res.status(404).json({ error: "not_found" });
+      }
+      await pool.query(
+        `UPDATE client_portal_tokens
+            SET last_seen_at = now(), view_count = view_count + 1
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3
+            AND customer_id::text = $4`,
+        [
+          token.id,
+          token.organization_id,
+          token.project_id,
+          token.customer_id,
+        ],
+      );
+    } catch {
+      return res.status(500).json({ error: "seen_failed" });
+    }
+    return res.json({ ok: true });
+  });
+
+  // POST /:token/focus — klient ber om fokus på spesifikke needs
+  app.post(`${ROOT}/:token/focus`, async (req: Request, res: Response) => {
+    let client: PoolClient | null = null;
+    try {
+      const t = await loadToken(pool, req.params.token);
+      if (!t) return res.status(404).json({ error: "not_found" });
+      if (tokenExpired(t)) return res.status(410).json({ error: "expired" });
+      if (!t.accepted_at) {
+        return res.status(403).json({ error: "portal_not_accepted" });
+      }
+
+      const body = req.body as {
+        need_type?: unknown;
+        requested?: unknown;
+        needs?: unknown;
+        note?: unknown;
+      };
+      const singleNeed =
+        typeof body.need_type === "string" ? body.need_type.trim() : "";
+      const isSingleMutation = singleNeed.length > 0;
+      if (isSingleMutation && typeof body.requested !== "boolean") {
+        return res.status(400).json({ error: "requested_boolean_required" });
+      }
+      if (singleNeed.length > 60) {
+        return res.status(400).json({ error: "invalid_need" });
+      }
+
+      const legacyNeeds = Array.isArray(body.needs)
+        ? body.needs
+            .filter((value): value is string => typeof value === "string")
+            .map((value) => value.trim())
+            .filter((value) => value.length > 0 && value.length <= 60)
+            .slice(0, 30)
+        : [];
+      const needs = Array.from(
+        new Set(isSingleMutation ? [singleNeed] : legacyNeeds),
+      );
+      if (needs.length === 0) {
+        return res.status(400).json({ error: "need_type_required" });
+      }
+      const requested = isSingleMutation ? body.requested as boolean : true;
+      const note =
+        typeof body.note === "string"
+          ? body.note.trim().slice(0, 1000) || null
+          : null;
+
+      const knownNeeds = await pool.query<{ need_type: string }>(
+        `SELECT need_type
+           FROM crm_customer_needs
+          WHERE customer_id::text = $1
+            AND organization_id = $2::uuid
+            AND project_id = $3
+            AND need_type = ANY($4::text[])
+            AND status IN ('detected', 'accepted', 'resolved')`,
+        [t.customer_id, t.organization_id, t.project_id, needs],
+      );
+      if (new Set(knownNeeds.rows.map((row) => row.need_type)).size !== needs.length) {
+        return res.status(400).json({ error: "invalid_need" });
+      }
+
+      client = await pool.connect();
+      await client.query("BEGIN");
+      let changedCount = 0;
+      for (const needType of [...needs].sort()) {
+        await client.query(
+          "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+          [
+            [
+              "leadgrid-client-focus",
+              t.organization_id,
+              t.project_id,
+              t.customer_id,
+              needType,
+            ].join(":"),
+          ],
+        );
+        const existing = await client.query<{ status: string }>(
+          `SELECT status
+             FROM client_focus_requests
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
+              AND customer_id::text = $3
+              AND need_type = $4
+            FOR UPDATE`,
+          [t.organization_id, t.project_id, t.customer_id, needType],
+        );
+        const currentStatus = existing.rows[0]?.status ?? null;
+
+        if (!requested) {
+          if (currentStatus === "in_progress") {
+            await client.query("ROLLBACK");
+            client.release();
+            client = null;
+            return res.status(409).json({
+              error: "delivery_already_started",
+              message: "Leveransen er allerede startet. Kontakt rådgiveren for å stoppe arbeidet.",
+            });
+          }
+          if (currentStatus === "completed" || currentStatus === "withdrawn" || !currentStatus) {
+            continue;
+          }
+          const withdrawn = await client.query(
+            `UPDATE client_focus_requests
+                SET status = 'withdrawn',
+                    withdrawn_at = NOW()
+              WHERE organization_id = $1::uuid
+                AND project_id = $2
+                AND customer_id::text = $3
+                AND need_type = $4
+                AND status = $5`,
+            [
+              t.organization_id,
+              t.project_id,
+              t.customer_id,
+              needType,
+              currentStatus,
+            ],
+          );
+          changedCount += withdrawn.rowCount ?? 0;
+          continue;
+        }
+
+        if (currentStatus === "completed") {
+          await client.query("ROLLBACK");
+          client.release();
+          client = null;
+          return res.status(409).json({
+            error: "focus_already_completed",
+            message: "Dette behovet er allerede levert.",
+          });
+        }
+        if (currentStatus && !["declined", "withdrawn"].includes(currentStatus)) {
+          continue;
+        }
+        if (currentStatus) {
+          const reopened = await client.query(
+            `UPDATE client_focus_requests
+                SET client_token = $5,
+                    client_note = COALESCE($6, client_note),
+                    status = 'pending',
+                    requested_at = NOW(),
+                    acknowledged_at = NULL,
+                    completed_at = NULL,
+                    withdrawn_at = NULL
+              WHERE organization_id = $1::uuid
+                AND project_id = $2
+                AND customer_id::text = $3
+                AND need_type = $4
+                AND status IN ('declined', 'withdrawn')`,
+            [
+              t.organization_id,
+              t.project_id,
+              t.customer_id,
+              needType,
+              req.params.token,
+              note,
+            ],
+          );
+          changedCount += reopened.rowCount ?? 0;
+        } else {
+          const inserted = await client.query(
+            `INSERT INTO client_focus_requests
+               (organization_id, project_id, customer_id, client_token,
+                need_type, client_note)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6)
+             ON CONFLICT (
+               organization_id, project_id, customer_id, need_type
+             ) DO NOTHING`,
+            [
+              t.organization_id,
+              t.project_id,
+              t.customer_id,
+              req.params.token,
+              needType,
+              note,
+            ],
+          );
+          changedCount += inserted.rowCount ?? 0;
+        }
+      }
+      await client.query("COMMIT");
+      client.release();
+      client = null;
+
+      // Notify markedssjef + markedskoordinator + salgssjef i org-en.
+      // En retry som ikke endret status sender heller ikke et nytt varsel.
+      if (changedCount > 0) try {
+        const customerName = await pool.query<{ name: string }>(
+          `SELECT name
+             FROM crm_customers
+            WHERE id::text = $1
+              AND organization_id = $2::uuid
+              AND project_id = $3`,
+          [t.customer_id, t.organization_id, t.project_id],
+        );
+        const msg = requested
+          ? `${customerName.rows[0]?.name ?? "Klient"} ber om fokus på ${needs.length} behov`
+          : `${customerName.rows[0]?.name ?? "Klient"} trakk tilbake et fokusønske`;
+        await pool.query(
+          `INSERT INTO notification_events
+             (user_id, event_type, lead_id, message, created_at)
+           SELECT om.user_id, 'client_focus_request', $2::uuid, $3, now()
+             FROM organization_members om
+            WHERE om.organization_id = $1
+              AND om.role IN ('markedssjef', 'markedskoordinator',
+                              'salgssjef', 'admin')`,
+          [t.organization_id, t.customer_id, msg],
+        );
+      } catch { /* schema-variansjon — ikke avbryt */ }
+
+      // Send bekreftelse til klienten (e-post + ev. SMS/WhatsApp etter prefs)
+      if (requested && changedCount > 0) try {
+        await notifyClient(pool, {
+          customerId: t.customer_id,
+          organizationId: t.organization_id,
+          projectId: t.project_id,
+          event: "focus_request_received",
+          focusArea: needs.slice(0, 3).join(", "),
+          portalToken: req.params.token,
+        });
+      } catch (e) {
+        console.error("[client-portal-focus] notifyClient feilet", e);
+      }
+
+      return res.status(changedCount > 0 ? 201 : 200).json({
+        requested,
+        changed: changedCount > 0,
+        changed_count: changedCount,
+        replayed: changedCount === 0,
+        message: requested
+          ? "Vi har varslet rådgiveren. De tar kontakt snart."
+          : "Fokusforespørselen er trukket tilbake.",
+      });
+    } catch (err) {
+      if (client) {
+        await client.query("ROLLBACK").catch(() => undefined);
+      }
+      return res.status(500).json({ error: "focus_failed", detail: "internal_error" });
+    } finally {
+      client?.release();
+    }
+  });
+}

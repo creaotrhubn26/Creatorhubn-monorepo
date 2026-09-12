@@ -50,6 +50,7 @@ import {
 } from '../../utils/producerGoogleWorkspace';
 import type { ProjectFileRecord } from '../../utils/projectFiles';
 import { getRoleRoomReturnPath } from '../../utils/runtime';
+import { describeProducerError, isTransientProducerError } from '../../utils/producerErrorMessage';
 import RoleRoomGoogleCollaborationWorkspace from './RoleRoomGoogleCollaborationWorkspace';
 
 interface ProducerGoogleWorkspacePanelProps {
@@ -280,7 +281,13 @@ export default function ProducerGoogleWorkspacePanel({
         }
         console.warn('[ProducerGoogleWorkspacePanel] Automatic Google Workspace bootstrap failed', error);
         setAutoBootstrapFailed(true);
-        setLocalError('Google Workspace er aktivert, men prosjektet kunne ikke fullføre automatisk oppsett ennå.');
+        // Skill offline/midlertidig fra ekte feil — ellers tror Stig at oppsettet
+        // er ødelagt når backend bare er utilgjengelig akkurat nå.
+        setLocalError(
+          isTransientProducerError(error)
+            ? 'Klarte ikke å fullføre Google Workspace-oppsettet nå (offline eller midlertidig feil). Det forsøkes igjen når forbindelsen er tilbake.'
+            : describeProducerError(error, 'fullføre Google Workspace-oppsettet'),
+        );
       })
       .finally(() => {
         if (!cancelled) {

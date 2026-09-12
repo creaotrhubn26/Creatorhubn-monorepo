@@ -1,0 +1,81 @@
+[oversikt] XCUIAccessibilityAuditType(rawValue: 4): Hit area is too small — "Legal" Link
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed — "Ingenting planlagt — book et møte eller legg til en oppfølging fra en lead." StaticText
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed — "2" StaticText
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed — "2" StaticText
+[oversikt] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed — "11" StaticText
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Ingenting planlagt — book et møte eller legg til en oppfølging fra en lead." StaticText
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "2" StaticText
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Kald" StaticText
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "11" StaticText
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "22 leads" StaticText
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "22" StaticText
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "?" Button
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Alle status" StaticText
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Statistikk" StaticText
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "2" StaticText
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "↑ +18%" StaticText
+[oversikt] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Søn. 5." StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed — "—" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed — "Ikke kontaktet" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed — "REMA 1000" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed — "—" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed — "NOK 0" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed — "Coop Mega Aker Brygge" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 1): Contrast failed — "NOK 0" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Ikke kontaktet" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Ikke kontaktet" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "KIWI Torggata Oslo" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "REMA 1000 ILA" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "—" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Søk etter navn, selskap, bransje…" TextField
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "KIWI Storgata 33" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "REMA 1000 TØYEN" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "NOK 0" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Alle lead score" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "NOK 0" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "NOK 0" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "22 leads" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "NOK 0" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "KIWI Byporten" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "—" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Ikke kontaktet" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Alle status" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "—" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "NOK 0" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "—" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "—" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "NOK 0" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Ikke kontaktet" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Statistikk" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Søn. 5." StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "?" Button
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "—" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Alle områder" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "NOK 0" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "NOK 0" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "+22 nye" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Ikke kontaktet" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "—" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "REMA 1000 TRELASTGÅRDEN" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Joker Grünerløkka" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Ikke kontaktet" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Ikke kontaktet" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Coop Prix Postgirobygget" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Ikke kontaktet" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "—" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 131072): Text clipped — "Coop Prix Postgirobygget" StaticText
+[leads] XCUIAccessibilityAuditType(rawValue: 131072): Text clipped — "REMA 1000 TRELASTGÅRDEN" StaticText
+[moter] XCUIAccessibilityAuditType(rawValue: 4): Hit area is too small — "calendar.day.timeline.left" Button
+[moter] XCUIAccessibilityAuditType(rawValue: 4): Hit area is too small — "calendar" Button
+[moter] XCUIAccessibilityAuditType(rawValue: 4): Hit area is too small — "calendar.badge.clock" Button
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Kommende møter" StaticText
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "?" Button
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Agenda" StaticText
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Ingen kommende møter" StaticText
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Bok et møte fra en lead, eller skru på demo-modus for eksempler." StaticText
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Ingen møter i dag" StaticText
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Bok et møte fra en lead, eller skru på demo-modus for eksempler." StaticText
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Statistikk" StaticText
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Søn. 5." StaticText
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "Søndag 5. Juli · 0 møter" StaticText
+[moter] XCUIAccessibilityAuditType(rawValue: 65536): Dynamic Type font sizes are unsupported — "0 møter i dag" StaticText

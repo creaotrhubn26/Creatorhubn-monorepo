@@ -25,13 +25,12 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  InputAdornment,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   IconButton,
   Tooltip,
   Badge,
@@ -59,8 +58,10 @@ import {
   Settings,
   Visibility,
   VisibilityOff,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton, AdminTableContainer, useIsMobile } from './design-system';
 
 interface FeatureFlag {
   id: string;
@@ -116,9 +117,11 @@ export default function FeatureManagementWithPublish() {
   const [publishMetadata, setPublishMetadata] = useState('');
   const [revertReason, setRevertReason] = useState('');
   const [emergencyReason, setEmergencyReason] = useState('');
+  const [search, setSearch] = useState('');
 
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -253,7 +256,7 @@ export default function FeatureManagementWithPublish() {
 });
 
   const handlePublishToStaging = () => {
-    const currentFlags = stagingFlags?.flags || [];
+    const currentFlags = Array.isArray(stagingFlags?.flags) ? stagingFlags.flags : [];
     publishToStaging.mutate({
       featureFlags: currentFlags,
       publishedBy: 'admin', // In real app, get from auth context
@@ -305,7 +308,7 @@ export default function FeatureManagementWithPublish() {
 
   return (
     <Box sx={{ p:  3 }}>
-      <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      <Typography variant="h4" component="h2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         {theming.getThemedIcon('settings')}
         Feature Flag Management & Deployment
       </Typography>
@@ -315,47 +318,46 @@ export default function FeatureManagementWithPublish() {
 
       {/* Action Buttons */}
       <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-        <Button variant="contained"
+        <AdminButton tone="primary"
           startIcon={<Publish />}
           onClick={() => setPublishDialogOpen(true)}
           disabled={publishToStaging.isPending}
         >
           Publish to Staging
-        </Button>
-        <Button variant="contained"
-          color="success"
+        </AdminButton>
+        <AdminButton tone="primary"
           startIcon={theming.getThemedIcon('cloudUpload')}
           onClick={handlePromoteToProduction}
+          loading={promoteToProduction.isPending}
           disabled={promoteToProduction.isPending || !stagingFlags?.flags?.length}
-          sx={theming.getThemedButtonSx()}>
+        >
           Promote to Production
-        </Button>
-        <Button
-          variant="outlined"
+        </AdminButton>
+        <AdminButton
+          tone="ghost"
           startIcon={theming.getThemedIcon('undo')}
           onClick={() => setRevertDialogOpen(true)}
           disabled={revertFlags.isPending}
         >
           Revert
-        </Button>
-        <Button
-          variant="outlined"
-          color="error"
+        </AdminButton>
+        <AdminButton
+          tone="danger"
           startIcon={<Emergency />}
           onClick={() => setEmergencyDialogOpen(true)}
           disabled={emergencyRollback.isPending}
         >
           Emergency Rollback
-        </Button>
-        <Button
-          variant="outlined"
+        </AdminButton>
+        <AdminButton
+          tone="ghost"
           startIcon={theming.getThemedIcon('refresh')}
           onClick={() => {
             queryClient.invalidateQueries({ queryKey: ['/api/feature-flags'] });
           }}
         >
           Refresh
-        </Button>
+        </AdminButton>
       </Box>
 
       {/* Environment Status Cards */}
@@ -364,8 +366,8 @@ export default function FeatureManagementWithPublish() {
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  2 }}>
-                <Typography variant="h6" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-                  <CloudUpload color="primary" />
+                <Typography variant="h6" component="h3" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                  <CloudUpload color="primary" aria-hidden="true" />
                   Staging Environment
                 </Typography>
                 <Chip label="Latest" color="primary" size="small" />
@@ -390,8 +392,8 @@ export default function FeatureManagementWithPublish() {
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  2 }}>
-                <Typography variant="h6" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-                  <CloudDownload color="success" />
+                <Typography variant="h6" component="h3" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                  <CloudDownload color="success" aria-hidden="true" />
                   Production Environment
                 </Typography>
                 <Chip label="Live" color="success" size="small" />
@@ -429,7 +431,7 @@ export default function FeatureManagementWithPublish() {
         {/* Environment Comparison Tab */}
         {tabValue === 0 && (
           <Box sx={{ p:  3 }}>
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
               Staging vs Production Differences
             </Typography>
             {environmentDiff?.summary && (
@@ -456,7 +458,7 @@ export default function FeatureManagementWithPublish() {
                 />
               </Box>
             )}
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Staging vs Production differences">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -467,7 +469,7 @@ export default function FeatureManagementWithPublish() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {environmentDiff?.diff?.map((item: EnvironmentDiff) => (
+                  {(Array.isArray(environmentDiff?.diff) ? environmentDiff.diff : []).map((item: EnvironmentDiff) => (
                     <TableRow key={item.featureName}>
                       <TableCell>
                         <Typography variant="body2" sx={{ fontWeight: 500}}>
@@ -502,7 +504,7 @@ export default function FeatureManagementWithPublish() {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </Box>
         )}
 
@@ -511,10 +513,10 @@ export default function FeatureManagementWithPublish() {
           <Box sx={{ p:  3 }}>
             <Grid container spacing={3}>
               <Grid item xs={12} md={6}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                   Staging History
                 </Typography>
-                {stagingHistory?.history?.map((entry: PublishHistory) => (
+                {(Array.isArray(stagingHistory?.history) ? stagingHistory.history : []).map((entry: PublishHistory) => (
                   <Accordion key={entry.version}>
                     <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
@@ -544,10 +546,10 @@ export default function FeatureManagementWithPublish() {
                 ))}
               </Grid>
               <Grid item xs={12} md={6}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                   Production History
                 </Typography>
-                {productionHistory?.history?.map((entry: PublishHistory) => (
+                {(Array.isArray(productionHistory?.history) ? productionHistory.history : []).map((entry: PublishHistory) => (
                   <Accordion key={entry.version}>
                     <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
@@ -583,11 +585,27 @@ export default function FeatureManagementWithPublish() {
         {/* Feature Flags Tab */}
         {tabValue === 2 && (
           <Box sx={{ p:  3 }}>
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
               Current Feature Flags
             </Typography>
+            <TextField
+              size="small"
+              placeholder="Søk i feature flags …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ mb: 2, width: { xs: '100%', sm: 320 } }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
             <Grid container spacing={2}>
-              {stagingFlags?.flags?.map((flag: FeatureFlag) => (
+              {(Array.isArray(stagingFlags?.flags) ? stagingFlags.flags : [])
+                .filter((flag: FeatureFlag) => flag.featureName.toLowerCase().includes(search.toLowerCase()))
+                .map((flag: FeatureFlag) => (
                 <Grid item xs={12} sm={6} md={4} key={flag.id}>
                   <Card variant="outlined" sx={theming.getThemedCardSx()}>
                     <CardContent sx={theming.getThemedCardSx()}>
@@ -617,7 +635,7 @@ export default function FeatureManagementWithPublish() {
       </Card>
 
       {/* Publish Dialog */}
-      <Dialog open={publishDialogOpen} onClose={() => setPublishDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={publishDialogOpen} onClose={() => setPublishDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Publish to Staging</DialogTitle>
         <DialogContent>
           <TextField
@@ -632,15 +650,15 @@ export default function FeatureManagementWithPublish() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPublishDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handlePublishToStaging} variant="contained" disabled={publishToStaging.isPending} sx={theming.getThemedButtonSx()}>
+          <AdminButton tone="ghost" onClick={() => setPublishDialogOpen(false)}>Cancel</AdminButton>
+          <AdminButton tone="primary" onClick={handlePublishToStaging} loading={publishToStaging.isPending} disabled={publishToStaging.isPending}>
             {publishToStaging.isPending ? 'Publishing...' : 'Publish'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Revert Dialog */}
-      <Dialog open={revertDialogOpen} onClose={() => setRevertDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={revertDialogOpen} onClose={() => setRevertDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Revert Feature Flags</DialogTitle>
         <DialogContent>
           <FormControl fullWidth sx={{ mt: 2, mb: 2 }}>
@@ -648,6 +666,7 @@ export default function FeatureManagementWithPublish() {
             <Select
               value={selectedEnvironment}
               onChange={(e) => setSelectedEnvironment(e.target.value as 'staging' | 'production')}
+              aria-label="Miljø"
             >
               <MenuItem value="staging">Staging</MenuItem>
               <MenuItem value="production">Production</MenuItem>
@@ -664,7 +683,7 @@ export default function FeatureManagementWithPublish() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRevertDialogOpen(false)}>Cancel</Button>
+          <AdminButton tone="ghost" onClick={() => setRevertDialogOpen(false)}>Cancel</AdminButton>
           <Button onClick={handleRevert} variant="contained" color="warning" disabled={revertFlags.isPending} sx={theming.getThemedButtonSx()}>
             {revertFlags.isPending ? 'Reverting...' : 'Revert'}
           </Button>
@@ -672,7 +691,7 @@ export default function FeatureManagementWithPublish() {
       </Dialog>
 
       {/* Emergency Rollback Dialog */}
-      <Dialog open={emergencyDialogOpen} onClose={() => setEmergencyDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={emergencyDialogOpen} onClose={() => setEmergencyDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ color: 'error.main'}}>Emergency Rollback</DialogTitle>
         <DialogContent>
           <Alert severity="error" sx={{ mb:  2 }}>
@@ -690,10 +709,10 @@ export default function FeatureManagementWithPublish() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEmergencyDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleEmergencyRollback} variant="contained" color="error" disabled={emergencyRollback.isPending} sx={theming.getThemedButtonSx()}>
+          <AdminButton tone="ghost" onClick={() => setEmergencyDialogOpen(false)}>Cancel</AdminButton>
+          <AdminButton tone="danger" onClick={handleEmergencyRollback} loading={emergencyRollback.isPending} disabled={emergencyRollback.isPending}>
             {emergencyRollback.isPending ? 'Rolling back...' : 'Emergency Rollback'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

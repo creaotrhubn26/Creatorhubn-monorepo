@@ -22,6 +22,13 @@ import {
   Divider,
   Stack,
 } from '@mui/material';
+import {
+  CheckCircle as CheckCircleIcon,
+  WarningAmber as WarningAmberIcon,
+  Cancel as CancelIcon,
+  HelpOutline as HelpOutlineIcon,
+  Link as LinkIcon,
+} from '@mui/icons-material';
 import { useUniversalDashboard } from './UniversalDashboardContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
@@ -368,17 +375,26 @@ const UniversalDashboardIntegrationTest: React.FC<UniversalDashboardIntegrationT
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'pass': return '✅';
-      case 'partial': return '⚠️';
-      case 'fail': return '❌';
-      default: return '❓';
-}
-};
+      case 'pass': return <CheckCircleIcon fontSize="small" color="success" />;
+      case 'partial': return <WarningAmberIcon fontSize="small" color="warning" />;
+      case 'fail': return <CancelIcon fontSize="small" color="error" />;
+      default: return <HelpOutlineIcon fontSize="small" color="disabled" />;
+    }
+  };
+
+  const boolIcon = (ok: boolean) =>
+    ok ? <CheckCircleIcon sx={{ fontSize: 14, verticalAlign: 'middle', color: 'success.main' }} />
+       : <CancelIcon sx={{ fontSize: 14, verticalAlign: 'middle', color: 'error.main' }} />;
 
   return (
     <Box sx={{ p:  3 }}>
-      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
-        🔗 UniversalDashboard Integration Test
+      <Typography
+        variant="h4"
+        gutterBottom
+        sx={{ color: theming.colors.primary, display: 'inline-flex', alignItems: 'center', gap: 1 }}
+      >
+        <LinkIcon />
+        UniversalDashboard Integration Test
       </Typography>
       
       <Typography variant="body1" color="text.secondary" sx={{ mb:  3 }}>
@@ -510,8 +526,9 @@ const UniversalDashboardIntegrationTest: React.FC<UniversalDashboardIntegrationT
                   <ListItemText
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {getStatusIcon(result.status)}
                         <Typography variant="subtitle1">
-                          {getStatusIcon(result.status)} {result.componentName}
+                          {result.componentName}
                         </Typography>
                         <Chip 
                           label={result.status.toUpperCase()} 
@@ -522,12 +539,12 @@ const UniversalDashboardIntegrationTest: React.FC<UniversalDashboardIntegrationT
                   }
                     secondary={
                       <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          Context: {result.hasContextAccess ? '✅' : ', ❌'} | 
-                          Integration: {result.hasIntegrationAccess ? '✅' : ', ❌'} | 
-                          Broadcast: {result.canBroadcast ? '✅' : ', ❌'} | 
-                          Listen: {result.canListen ? '✅' : ', ❌'} | 
-                          Sync: {result.canSyncData ? '✅' : ', ❌'}
+                        <Typography variant="body2" color="text.secondary" component="div">
+                          Context: {boolIcon(result.hasContextAccess)} |{' '}
+                          Integration: {boolIcon(result.hasIntegrationAccess)} |{' '}
+                          Broadcast: {boolIcon(result.canBroadcast)} |{' '}
+                          Listen: {boolIcon(result.canListen)} |{' '}
+                          Sync: {boolIcon(result.canSyncData)}
                         </Typography>
                         {result.issues.length > 0 && (
                           <Box sx={{ mt:  1 }}>

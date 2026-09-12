@@ -160,15 +160,15 @@ const TeamOnboardingWizard: React.FC<Props> = ({
           boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
           minHeight: '70vh',
           '& .MuiInputLabel-root': { color: 'rgba(246,242,234,0.72)' },
-          '& .MuiInputLabel-root.Mui-focused': { color: '#ffba6c' },
+          '& .MuiInputLabel-root.Mui-focused': { color: 'var(--chl-accent, #ffba6c)' },
           '& .MuiOutlinedInput-root': {
             color: '#fff5e8',
             '& fieldset': { borderColor: 'rgba(255,255,255,0.18)' },
             '&:hover fieldset': { borderColor: 'rgba(255,186,108,0.4)' },
-            '&.Mui-focused fieldset': { borderColor: '#ffba6c' },
+            '&.Mui-focused fieldset': { borderColor: 'var(--chl-accent, #ffba6c)' },
           },
           '& .MuiStepLabel-label': { color: 'rgba(246,242,234,0.62)' },
-          '& .MuiStepLabel-label.Mui-active': { color: '#ffba6c', fontWeight: 700 },
+          '& .MuiStepLabel-label.Mui-active': { color: 'var(--chl-accent, #ffba6c)', fontWeight: 700 },
           '& .MuiStepLabel-label.Mui-completed': { color: '#fff5e8' },
           '& .MuiSelect-icon': { color: 'rgba(246,242,234,0.72)' },
         },
@@ -182,11 +182,11 @@ const TeamOnboardingWizard: React.FC<Props> = ({
       }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
           <Stack direction="row" alignItems="center" spacing={1.5}>
-            <Avatar sx={{ bgcolor: 'rgba(255,186,108,0.18)', color: '#ffba6c' }}>
+            <Avatar sx={{ bgcolor: 'rgba(255,186,108,0.18)', color: 'var(--chl-accent, #ffba6c)' }}>
               <WelcomeIcon />
             </Avatar>
             <Box>
-              <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.18em' }}>
+              <Typography variant="overline" sx={{ color: 'var(--chl-accent, #ffba6c)', letterSpacing: '0.18em' }}>
                 Velkomst
               </Typography>
               <Typography variant="h5" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontWeight: 700 }}>
@@ -208,7 +208,7 @@ const TeamOnboardingWizard: React.FC<Props> = ({
                   <Box sx={{
                     width: 36, height: 36, borderRadius: '50%',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    bgcolor: active || completed ? '#ffba6c' : 'rgba(255,255,255,0.10)',
+                    bgcolor: active || completed ? 'var(--chl-accent, #ffba6c)' : 'rgba(255,255,255,0.10)',
                     color: active || completed ? '#150d05' : 'rgba(246,242,234,0.5)',
                     transition: 'all 0.3s',
                   }}>
@@ -281,7 +281,7 @@ const TeamOnboardingWizard: React.FC<Props> = ({
                 onClick={addMember}
                 sx={{
                   borderRadius: '999px', px: 2, py: 0.75,
-                  bgcolor: '#ffba6c', color: '#150d05',
+                  bgcolor: 'var(--chl-accent, #ffba6c)', color: '#150d05',
                   fontWeight: 700, textTransform: 'none',
                   '&:hover': { bgcolor: '#ffc788' },
                 }}
@@ -301,7 +301,7 @@ const TeamOnboardingWizard: React.FC<Props> = ({
                 }}>
                   <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
                     <Avatar sx={{
-                      bgcolor: alpha('#ffba6c', 0.18), color: '#ffba6c',
+                      bgcolor: alpha('#ffba6c', 0.18), color: 'var(--chl-accent, #ffba6c)',
                       fontSize: 14, fontWeight: 700, width: 36, height: 36,
                     }}>
                       {idx + 1}
@@ -363,7 +363,7 @@ const TeamOnboardingWizard: React.FC<Props> = ({
                 border: '1px solid rgba(255,255,255,0.08)',
               }}>
                 <Stack direction="row" alignItems="center" spacing={2}>
-                  <Avatar sx={{ bgcolor: alpha('#ffba6c', 0.18), color: '#ffba6c' }}>
+                  <Avatar sx={{ bgcolor: alpha('#ffba6c', 0.18), color: 'var(--chl-accent, #ffba6c)' }}>
                     {m.name.charAt(0).toUpperCase()}
                   </Avatar>
                   <Box sx={{ flex: 1 }}>
@@ -428,7 +428,7 @@ const TeamOnboardingWizard: React.FC<Props> = ({
                         label={role?.label || m.defaultRoleId}
                         sx={{
                           bgcolor: 'rgba(255,186,108,0.18)',
-                          color: '#ffba6c',
+                          color: 'var(--chl-accent, #ffba6c)',
                           height: 20, fontSize: '0.66rem',
                         }}
                       />
@@ -443,7 +443,7 @@ const TeamOnboardingWizard: React.FC<Props> = ({
               sx={{
                 bgcolor: 'rgba(255,186,108,0.08)', color: '#fff5e8',
                 border: '1px solid rgba(255,186,108,0.22)',
-                '& .MuiAlert-icon': { color: '#ffba6c' },
+                '& .MuiAlert-icon': { color: 'var(--chl-accent, #ffba6c)' },
               }}
             >
               Du finner alle medlemmene under <strong>Split Sheets → Team-direktorat</strong>.
@@ -476,7 +476,7 @@ const TeamOnboardingWizard: React.FC<Props> = ({
             sx={{
               borderRadius: '999px', px: 3, py: 1.1,
               fontWeight: 700, textTransform: 'none',
-              bgcolor: '#ffba6c', color: '#150d05',
+              bgcolor: 'var(--chl-accent, #ffba6c)', color: '#150d05',
               '&:hover': { bgcolor: '#ffc788' },
               '&.Mui-disabled': { bgcolor: 'rgba(255,186,108,0.3)', color: 'rgba(21,13,5,0.5)' },
             }}

@@ -60,12 +60,12 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
   }, [projects, selectedRole?.name]);
 
   const TOUCH_TARGET = 44;
-  const roleTabAccent = '#b86bff';
+  const roleTabAccent = 'var(--role-accent, #b86bff)';
   const roleTabAccentHover = '#a855f7';
   const roleTabAccentSoft = 'rgba(184,107,255,0.24)';
   const roleSurface = 'rgba(20,14,48,0.84)';
   const roleSurfaceMuted = 'rgba(33,24,70,0.72)';
-  const roleBorder = 'rgba(184,107,255,0.32)';
+  const roleBorder = 'var(--role-border, rgba(184,107,255,0.32))';
   const roleText = '#f3eaff';
   const roleTextMuted = 'rgba(220,205,255,0.82)';
   const rolePanelBackdrop = "url('/role-room-assets/role_panel_backdrop.webp')";
@@ -225,7 +225,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
       case 'hovedrolle': return '#f59e0b';
       case 'birolle': return '#8f6b52';
       case 'statist': return '#6b7280';
-      default: return '#b86bff';
+      default: return 'var(--role-accent, #b86bff)';
     }
   };
 
@@ -729,7 +729,7 @@ export const RolePoolPanel: FC<RolePoolPanelProps> = ({
                           height: 20,
                           fontSize: '0.7rem',
                           bgcolor: 'rgba(184,107,255,0.26)',
-                          color: '#b86bff',
+                          color: 'var(--role-accent, #b86bff)',
                         }}
                       />
                     ))}

@@ -43,6 +43,7 @@ import {
   FormControlLabel,
   Tooltip,
   Badge,
+  InputAdornment,
 } from '@mui/material';
 import {
   Payment,
@@ -65,11 +66,13 @@ import {
   MonetizationOn,
   AccountBalance,
   LocalAtm,
+  Search,
 } from '@mui/icons-material';
 import { useToast } from '../../hooks/use-toast';
 import { googlePayService } from '../../services/GooglePayService';
 import { paymentProcessingService } from '../../services/PaymentProcessingService';
 import { pricingService } from '../../services/PricingService';
+import { AdminButton, StatusChip, AdminTableContainer, useIsMobile } from './design-system';
 
 interface PaymentIntegrationPanelProps {
   className?: string;
@@ -130,8 +133,10 @@ export default function PaymentIntegrationPanel({
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Master integration system for "everything interacts with everything"
   const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
@@ -356,10 +361,11 @@ export default function PaymentIntegrationPanel({
   });
 
   // Get user subscriptions
-  const { data: userSubscriptions = [] } = useQuery({
+  const { data: userSubscriptionsRaw = [] } = useQuery({
     queryKey: ['user-subscriptions'],
     queryFn: () => paymentProcessingService.getUserSubscriptions('user-id')
   });
+  const userSubscriptions = Array.isArray(userSubscriptionsRaw) ? userSubscriptionsRaw : [];
 
   const handleTestPayment = async (paymentMethod: PaymentMethod) => {
     try {
@@ -501,8 +507,8 @@ export default function PaymentIntegrationPanel({
 
   return (
     <Box className={className}>
-      <Typography variant="h4" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-        <Payment color="primary" />
+      <Typography variant="h4" component="h2" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+        <Payment color="primary" aria-hidden="true" />
         Betalingsintegrasjon
       </Typography>
 
@@ -714,10 +720,10 @@ export default function PaymentIntegrationPanel({
       {tabValue === 1 && (
         <Card sx={theming.getThemedCardSx()}>
           <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+            <Typography variant="h6" component="h3" sx={{ mb: 2, color: theming.colors.primary }}>
               Siste transaksjoner
             </Typography>
-            <TableContainer>
+            <AdminTableContainer ariaLabel="Siste transaksjoner">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -753,17 +759,16 @@ export default function PaymentIntegrationPanel({
                         </Box>
                       </TableCell>
                       <TableCell>
-                        <Chip
+                        <StatusChip
                           label={transaction.status}
-                          color={transaction.status === 'succeeded' ? 'success' : 'default'}
-                          size="small"
+                          tone={transaction.status === 'succeeded' ? 'success' : 'neutral'}
                         />
                       </TableCell>
                       <TableCell>
                         {new Date(transaction.timestamp).toLocaleString('no-NO')}
                       </TableCell>
                       <TableCell>
-                        <IconButton size="small">
+                        <IconButton size="small" aria-label="Vis transaksjonsdetaljer">
                           <Visibility />
                         </IconButton>
                       </TableCell>
@@ -771,7 +776,7 @@ export default function PaymentIntegrationPanel({
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </CardContent>
         </Card>
       )}
@@ -780,13 +785,28 @@ export default function PaymentIntegrationPanel({
       {tabValue === 2 && (
         <Card sx={theming.getThemedCardSx()}>
           <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+            <Typography variant="h6" component="h3" sx={{ mb: 2, color: theming.colors.primary }}>
               Abonnementer
             </Typography>
             <Alert severity="info" sx={{ mb: 2 }}>
               {userSubscriptions.length} aktive abonnementer funnet
             </Alert>
-            <TableContainer>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Søk etter produkt eller kunde …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ mb: 2 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <AdminTableContainer ariaLabel="Abonnementer">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -800,7 +820,16 @@ export default function PaymentIntegrationPanel({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {userSubscriptions.slice(0, 10).map((subscription: any) => (
+                  {userSubscriptions
+                    .filter((subscription: any) =>
+                      [subscription.productId, subscription.userId]
+                        .filter(Boolean)
+                        .join(' ')
+                        .toLowerCase()
+                        .includes(search.toLowerCase())
+                    )
+                    .slice(0, 10)
+                    .map((subscription: any) => (
                     <TableRow key={subscription.d}>
                       <TableCell>{subscription.productId}</TableCell>
                       <TableCell>{subscription.userId}</TableCell>
@@ -817,17 +846,16 @@ export default function PaymentIntegrationPanel({
                         />
                       </TableCell>
                       <TableCell>
-                        <Chip
+                        <StatusChip
                           label={subscription.status}
-                          color={subscription.status === 'active' ? 'success' : 'default'}
-                          size="small"
+                          tone={subscription.status === 'active' ? 'success' : 'neutral'}
                         />
                       </TableCell>
                       <TableCell>
                         {new Date(subscription.startDate).toLocaleDateString('no-NO')}
                       </TableCell>
                       <TableCell>
-                        <IconButton size="small">
+                        <IconButton size="small" aria-label="Vis abonnementsdetaljer">
                           <Visibility />
                         </IconButton>
                       </TableCell>
@@ -835,7 +863,7 @@ export default function PaymentIntegrationPanel({
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </CardContent>
         </Card>
       )}
@@ -846,7 +874,7 @@ export default function PaymentIntegrationPanel({
           <Grid item xs={12} md={3}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" sx={{ mb: 2, color: theming.colors.primary }}>
                   Google Pay Konfigurasjon
                 </Typography>
                 <List>
@@ -885,7 +913,7 @@ export default function PaymentIntegrationPanel({
           <Grid item xs={12} md={3}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" sx={{ mb: 2, color: theming.colors.primary }}>
                   Stripe Konfigurasjon
                 </Typography>
                 <List>
@@ -918,7 +946,7 @@ export default function PaymentIntegrationPanel({
       {tabValue === 4 && (
         <Card sx={theming.getThemedCardSx()}>
           <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+            <Typography variant="h6" component="h3" sx={{ mb: 2, color: theming.colors.primary }}>
               Betalingsrapporter
             </Typography>
             <Grid container spacing={3}>
@@ -971,7 +999,7 @@ export default function PaymentIntegrationPanel({
       )}
 
       {/* Configuration Dialog */}
-      <Dialog open={showConfigDialog} onClose={() => setShowConfigDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={showConfigDialog} onClose={() => setShowConfigDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           Konfigurer {selectedPaymentMethod?.name}
         </DialogTitle>
@@ -994,12 +1022,12 @@ export default function PaymentIntegrationPanel({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowConfigDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setShowConfigDialog(false)}>
             Lukk
-          </Button>
-          <Button variant="contained" sx={theming.getThemedButtonSx()}>
+          </AdminButton>
+          <AdminButton tone="primary">
             Lagre endringer
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

@@ -37,8 +37,9 @@ import { google } from "googleapis";
 import {
   isSupportedPlatform as isSupportedFeedPlatform,
   loadFeedPlan,
+  mergeFeedPostsPreservingApproval,
+  mutateFeedPlanLocked,
   normalizeFeedPostsPayload,
-  saveFeedPlan,
   type RoleRoomFeedApprovalState,
 } from "./role-room-feed-plan.js";
 import {
@@ -569,7 +570,15 @@ export function setupRoleRoomAgentFeedPlanRoutes(
     }
   });
 
-  app.get("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res) => {
+  app.get("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res, next) => {
+    // `/:projectId/approval-policy` er en egen, mildere-gatet rute registrert
+    // lenger ned. Express matcher denne generiske `:platform`-ruten først (samme
+    // to-segments-form), så uten dette fall-through-et ble approval-policy tolket
+    // som platform="approval-policy" → 400 + admin-gate for klient-flaten. Slipp
+    // den videre til riktig handler.
+    if (req.params.platform === "approval-policy") {
+      return next();
+    }
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({
@@ -607,7 +616,11 @@ export function setupRoleRoomAgentFeedPlanRoutes(
     });
   });
 
-  app.put("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res) => {
+  app.put("/api/role-room/agent/feed-plan/:projectId/:platform", async (req, res, next) => {
+    // Se GET-ruten over: slipp `/approval-policy` videre til sin egen PUT-rute.
+    if (req.params.platform === "approval-policy") {
+      return next();
+    }
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({
@@ -645,10 +658,15 @@ export function setupRoleRoomAgentFeedPlanRoutes(
     const posts = normalizeFeedPostsPayload(body.posts);
     const brandSnapshot = body.brandSnapshot === undefined ? null : body.brandSnapshot;
 
-    const saved = await saveFeedPlan(pool, projectId, platform, posts, {
+    // This is a producer content-save. The approval/review state machine is
+    // owned by /approve + /submit-review, so we merge under a row lock and
+    // preserve the persisted approval fields — otherwise a stale producer
+    // auto-save would silently wipe a client's approval made elsewhere.
+    const saved = await mutateFeedPlanLocked(pool, projectId, platform, (current) => ({
+      posts: mergeFeedPostsPreservingApproval(posts, current?.posts),
       brandSnapshot,
       updatedBy: session.userId,
-    });
+    }));
 
     if (!saved) {
       return res.status(500).json({
@@ -723,26 +741,40 @@ export function setupRoleRoomAgentFeedPlanRoutes(
       }
     }
 
-    const plan = await loadFeedPlan(pool, projectId, platform);
-    if (!plan) {
-      return res.status(404).json({ success: false, error: "Feed-plan ikke funnet" });
-    }
-
     const wantedIds = new Set(postIds.map((id) => String(id)));
-    const now = new Date().toISOString();
+    // Apply the state transition under a row lock so two concurrent approval
+    // mutations (or a publish-worker write) can't clobber each other's
+    // full-array save.
+    let planExisted = false;
     let touched = 0;
-    const nextPosts = plan.posts.map((post) => {
-      if (!wantedIds.has(post.id)) return post;
-      touched += 1;
+    const saved = await mutateFeedPlanLocked(pool, projectId, platform, (current) => {
+      if (!current) return null;
+      planExisted = true;
+      const now = new Date().toISOString();
+      let localTouched = 0;
+      const nextPosts = current.posts.map((post) => {
+        if (!wantedIds.has(post.id)) return post;
+        localTouched += 1;
+        return {
+          ...post,
+          approvalState: newState as RoleRoomFeedApprovalState,
+          approvalChangedAt: now,
+          approvalChangedBy: session.email ?? session.userId ?? null,
+          approvalNote: newState === 'rejected' || newState === 'needs_changes' ? note : null,
+        };
+      });
+      touched = localTouched;
+      if (localTouched === 0) return null;
       return {
-        ...post,
-        approvalState: newState as RoleRoomFeedApprovalState,
-        approvalChangedAt: now,
-        approvalChangedBy: session.email ?? session.userId ?? null,
-        approvalNote: newState === 'rejected' || newState === 'needs_changes' ? note : null,
+        posts: nextPosts,
+        brandSnapshot: current.brandSnapshot,
+        updatedBy: session.email ?? session.userId ?? null,
       };
     });
 
+    if (!planExisted) {
+      return res.status(404).json({ success: false, error: "Feed-plan ikke funnet" });
+    }
     if (touched === 0) {
       return res.status(404).json({
         success: false,
@@ -750,15 +782,10 @@ export function setupRoleRoomAgentFeedPlanRoutes(
       });
     }
 
-    const saved = await saveFeedPlan(pool, projectId, platform, nextPosts, {
-      brandSnapshot: plan.brandSnapshot,
-      updatedBy: session.email ?? session.userId ?? null,
-    });
-
     return res.json({
       success: true,
       touched,
-      posts: saved?.posts ?? nextPosts,
+      posts: saved?.posts ?? [],
     });
   });
 
@@ -848,6 +875,27 @@ export function setupRoleRoomAgentFeedPlanRoutes(
       return res.status(403).json({
         success: false,
         error: "Bare kunden kan endre godkjenningspolicyen.",
+      });
+    }
+    // §5.1 BOLA-gate: the `client_reviewer` session role is self-selectable at
+    // login (auth-routes derives it from the caller-supplied requestedRole), so
+    // role ALONE is not authorization. The actor must be the client OF THIS
+    // project — verified against casting_user_roles by proven identity (user_id
+    // or the session's authenticated email). Without this, any logged-in user
+    // could flip requireClientApproval on any project and bypass §5.1.
+    const clientOnProject = await pool.query(
+      `SELECT 1 FROM casting_user_roles
+        WHERE project_id = $1
+          AND role IN ('client', 'client_reviewer')
+          AND deactivated_at IS NULL
+          AND (user_id = $2 OR (email IS NOT NULL AND lower(email) = lower($3)))
+        LIMIT 1`,
+      [projectId, session.userId, session.email ?? ""],
+    );
+    if (clientOnProject.rowCount === 0) {
+      return res.status(403).json({
+        success: false,
+        error: "Du er ikke registrert som kunde på dette prosjektet.",
       });
     }
     const body = (req.body || {}) as Record<string, unknown>;

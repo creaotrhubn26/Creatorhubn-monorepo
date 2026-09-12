@@ -42,6 +42,7 @@ struct CameraTelemetry: Sendable, Equatable {
     var apertureValue: String?
     var shutterSpeed: String?
     var isoValue: String?
+    var exposureCompensation: String?
     var lensName: String?
     var freeSpaceBytes: Int64?
     var totalContentsCount: Int?
@@ -53,6 +54,7 @@ struct CameraTelemetry: Sendable, Equatable {
         && apertureValue == nil
         && shutterSpeed == nil
         && isoValue == nil
+        && exposureCompensation == nil
         && lensName == nil
         && freeSpaceBytes == nil
         && totalContentsCount == nil

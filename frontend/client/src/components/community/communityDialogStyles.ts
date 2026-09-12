@@ -1,14 +1,14 @@
 import type { SxProps, Theme } from '@mui/material/styles';
 
-export const COMMUNITY_DIALOG_ACCENT = '#f5a623';
+export const COMMUNITY_DIALOG_ACCENT = '#ff8c00';
 export const COMMUNITY_DIALOG_ACCENT_BRIGHT = '#ffd27a';
-export const COMMUNITY_DIALOG_TEXT = 'rgba(248, 241, 231, 0.94)';
-export const COMMUNITY_DIALOG_MUTED = 'rgba(248, 241, 231, 0.66)';
+export const COMMUNITY_DIALOG_TEXT = 'rgba(255, 255, 255, 0.94)';
+export const COMMUNITY_DIALOG_MUTED = 'rgba(255, 255, 255, 0.66)';
 export const COMMUNITY_DIALOG_BORDER = '1px solid rgba(255,255,255,0.08)';
 export const COMMUNITY_DIALOG_BG = `
-  radial-gradient(circle at top right, rgba(245, 166, 35, 0.18), transparent 28%),
+  radial-gradient(circle at top right, rgba(255, 140, 0, 0.18), transparent 28%),
   radial-gradient(circle at bottom left, rgba(88, 122, 168, 0.16), transparent 30%),
-  linear-gradient(180deg, #05070b 0%, #091019 52%, #06080c 100%)
+  linear-gradient(180deg, #0a0f1a 0%, #091019 52%, #06080c 100%)
 `;
 
 export const COMMUNITY_DIALOG_SX: SxProps<Theme> = {
@@ -42,7 +42,7 @@ export const COMMUNITY_DIALOG_TITLE_SX: SxProps<Theme> = {
     width: 260,
     height: 260,
     background:
-      'radial-gradient(circle, rgba(245, 166, 35, 0.24) 0%, rgba(245, 166, 35, 0) 70%)',
+      'radial-gradient(circle, rgba(255, 140, 0, 0.24) 0%, rgba(255, 140, 0, 0) 70%)',
     pointerEvents: 'none',
   },
 };
@@ -110,8 +110,8 @@ export const COMMUNITY_DIALOG_CLOSE_BUTTON_SX: SxProps<Theme> = {
   border: '1px solid rgba(255,255,255,0.08)',
   bgcolor: 'rgba(255,255,255,0.04)',
   '&:hover': {
-    bgcolor: 'rgba(245, 166, 35, 0.1)',
-    borderColor: 'rgba(245, 166, 35, 0.24)',
+    bgcolor: 'rgba(255, 140, 0, 0.1)',
+    borderColor: 'rgba(255, 140, 0, 0.24)',
   },
 };
 
@@ -119,7 +119,7 @@ export const COMMUNITY_DIALOG_PRIMARY_BUTTON_SX: SxProps<Theme> = {
   borderRadius: 999,
   px: 2,
   fontWeight: 700,
-  color: '#05070b',
+  color: '#0a0f1a',
   background: `linear-gradient(135deg, ${COMMUNITY_DIALOG_ACCENT} 0%, ${COMMUNITY_DIALOG_ACCENT_BRIGHT} 100%)`,
   boxShadow: '0 18px 30px rgba(0, 0, 0, 0.24)',
   '&:hover': {
@@ -170,7 +170,7 @@ export const COMMUNITY_DIALOG_FIELD_SX: SxProps<Theme> = {
       borderColor: 'rgba(255,255,255,0.18)',
     },
     '&.Mui-focused fieldset': {
-      borderColor: 'rgba(245, 166, 35, 0.34)',
+      borderColor: 'rgba(255, 140, 0, 0.34)',
     },
   },
   '& .MuiInputAdornment-root, & .MuiSvgIcon-root': {
@@ -219,7 +219,7 @@ export const COMMUNITY_DIALOG_TOGGLE_GROUP_SX: SxProps<Theme> = {
     color: COMMUNITY_DIALOG_MUTED,
     px: 1.8,
     '&.Mui-selected': {
-      color: '#05070b',
+      color: '#0a0f1a',
       background: `linear-gradient(135deg, ${COMMUNITY_DIALOG_ACCENT} 0%, ${COMMUNITY_DIALOG_ACCENT_BRIGHT} 100%)`,
     },
   },

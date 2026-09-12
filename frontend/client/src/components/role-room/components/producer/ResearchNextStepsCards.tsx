@@ -212,7 +212,7 @@ const ResearchNextStepsCards: React.FC<ResearchNextStepsCardsProps> = ({
               {costEstimate ? (
                 <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap sx={{ mt: 0.4 }}>
                   <Tooltip
-                    title={`Estimert: ~${(costEstimate.estimatedInputTokens / 1000).toFixed(1)}k input + ~${(costEstimate.estimatedOutputTokens / 1000).toFixed(1)}k output tokens via Claude Sonnet 4.5`}
+                    title={`Estimert: ~${(costEstimate.estimatedInputTokens / 1000).toFixed(1)}k input + ~${(costEstimate.estimatedOutputTokens / 1000).toFixed(1)}k output tokens via CI`}
                   >
                     <Chip
                       size="small"

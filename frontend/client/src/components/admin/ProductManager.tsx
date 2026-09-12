@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
@@ -9,7 +9,6 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -24,7 +23,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -35,6 +33,12 @@ import {
   PhotoLibrary,
   Search,
 } from '@mui/icons-material';
+import {
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+  useIsMobile,
+} from './design-system';
 
 type ProductType = 'camera' | 'lens' | 'accessory';
 type ProductLicense = 'proprietary' | 'cc-by' | 'editorial-use-only';
@@ -179,6 +183,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
   selectedProject,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [filterBrand, setFilterBrand] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterMount, setFilterMount] = useState('');
@@ -197,12 +202,18 @@ const ProductManager: React.FC<ProductManagerProps> = ({
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   const { data: productsData, isLoading } = useQuery({
-    queryKey: ['/api/admin/products', searchTerm, filterBrand, filterType, filterMount, page],
+    queryKey: ['/api/admin/products', debouncedSearchTerm, filterBrand, filterType, filterMount, page],
     queryFn: async (): Promise<ProductListResponse> => {
       const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
+      if (debouncedSearchTerm) params.append('search', debouncedSearchTerm);
       if (filterBrand) params.append('brand', filterBrand);
       if (filterType) params.append('type', filterType);
       if (filterMount) params.append('mount', filterMount);
@@ -305,8 +316,22 @@ const ProductManager: React.FC<ProductManagerProps> = ({
   });
 
   const products = useMemo(() => {
-    return productsData?.data ?? productsData?.products ?? [];
+    const list = productsData?.data ?? productsData?.products ?? [];
+    return Array.isArray(list) ? list : [];
   }, [productsData]);
+
+  const cameraCount = useMemo(
+    () => products.filter((product) => product.type === 'camera').length,
+    [products],
+  );
+  const lensCount = useMemo(
+    () => products.filter((product) => product.type === 'lens').length,
+    [products],
+  );
+  const accessoryCount = useMemo(
+    () => products.filter((product) => product.type === 'accessory').length,
+    [products],
+  );
 
   const handleSaveProduct = (formData: FormData) => {
     const brand = normalizeString(formData.get('brand'));
@@ -343,7 +368,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+      <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
         Produktadministrasjon
       </Typography>
 
@@ -424,14 +449,14 @@ const ProductManager: React.FC<ProductManagerProps> = ({
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <StatsCard title="Totalt produkter" value={products.length} />
-        <StatsCard title="Kameraer" value={products.filter((product) => product.type === 'camera').length} />
-        <StatsCard title="Objektiver" value={products.filter((product) => product.type === 'lens').length} />
-        <StatsCard title="Tilbehør" value={products.filter((product) => product.type === 'accessory').length} />
+        <StatsCard title="Kameraer" value={cameraCount} />
+        <StatsCard title="Objektiver" value={lensCount} />
+        <StatsCard title="Tilbehør" value={accessoryCount} />
       </Grid>
 
       {isLoading ? <LinearProgress sx={{ mb: 2 }} /> : null}
 
-      <TableContainer component={Paper}>
+      <AdminTableContainer ariaLabel="Produkter">
         <Table>
           <TableHead>
             <TableRow>
@@ -469,7 +494,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
                         borderRadius: 1,
                       }}
                     >
-                      <PhotoLibrary color="disabled" />
+                      <PhotoLibrary color="disabled" aria-hidden />
                     </Box>
                   )}
                 </TableCell>
@@ -488,20 +513,18 @@ const ProductManager: React.FC<ProductManagerProps> = ({
                   </Typography>
                 </TableCell>
                 <TableCell>
-                  <Chip
-                    size="small"
+                  <StatusChip
                     label={product.type}
-                    color={product.type === 'camera' ? 'primary' : product.type === 'lens' ? 'secondary' : 'default'}
+                    tone={product.type === 'camera' ? 'brand' : product.type === 'lens' ? 'info' : 'neutral'}
                   />
                 </TableCell>
                 <TableCell>{product.mount || '-'}</TableCell>
                 <TableCell>{product.sensorFormat || '-'}</TableCell>
                 <TableCell>
                   {product.license ? (
-                    <Chip
-                      size="small"
+                    <StatusChip
                       label={product.license}
-                      color={product.license === 'cc-by' ? 'success' : 'warning'}
+                      tone={product.license === 'cc-by' ? 'success' : 'warning'}
                     />
                   ) : (
                     '-'
@@ -511,6 +534,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
                 <TableCell>
                   <IconButton
                     size="small"
+                    aria-label="Rediger produkt"
                     onClick={() => {
                       setSelectedProduct(product);
                       setOpenDialog(true);
@@ -518,7 +542,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
                   >
                     {theming.getThemedIcon('edit')}
                   </IconButton>
-                  <IconButton size="small" color="error" onClick={() => setDeleteConfirmProduct(product)}>
+                  <IconButton size="small" color="error" aria-label="Slett produkt" onClick={() => setDeleteConfirmProduct(product)}>
                     {theming.getThemedIcon('delete')}
                   </IconButton>
                 </TableCell>
@@ -526,9 +550,9 @@ const ProductManager: React.FC<ProductManagerProps> = ({
             ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
 
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -598,15 +622,15 @@ const ProductManager: React.FC<ProductManagerProps> = ({
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setOpenDialog(false)}>Avbryt</Button>
-            <Button type="submit" variant="contained" disabled={productMutation.isPending} sx={theming.getThemedButtonSx()}>
+            <AdminButton tone="ghost" onClick={() => setOpenDialog(false)}>Avbryt</AdminButton>
+            <AdminButton type="submit" tone="primary" loading={productMutation.isPending} disabled={productMutation.isPending}>
               {productMutation.isPending ? 'Lagrer...' : 'Lagre'}
-            </Button>
+            </AdminButton>
           </DialogActions>
         </form>
       </Dialog>
 
-      <Dialog open={bulkImportOpen} onClose={() => setBulkImportOpen(false)}>
+      <Dialog open={bulkImportOpen} onClose={() => setBulkImportOpen(false)} fullScreen={isMobile}>
         <DialogTitle>Masseimport av produkter</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }}>
@@ -628,15 +652,15 @@ const ProductManager: React.FC<ProductManagerProps> = ({
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBulkImportOpen(false)}>Avbryt</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setBulkImportOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
             onClick={handleBulkImport}
-            variant="contained"
+            tone="primary"
+            loading={bulkImportMutation.isPending}
             disabled={!selectedFile || bulkImportMutation.isPending}
-            sx={theming.getThemedButtonSx()}
           >
             {bulkImportMutation.isPending ? 'Importerer...' : 'Importer'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -648,10 +672,9 @@ const ProductManager: React.FC<ProductManagerProps> = ({
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteConfirmProduct(null)}>Avbryt</Button>
-          <Button
-            variant="contained"
-            color="error"
+          <AdminButton tone="ghost" onClick={() => setDeleteConfirmProduct(null)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="danger"
             onClick={() => {
               if (!deleteConfirmProduct) return;
               deleteMutation.mutate(deleteConfirmProduct.id);
@@ -659,7 +682,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
             }}
           >
             Slett
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

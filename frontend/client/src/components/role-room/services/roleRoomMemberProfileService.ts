@@ -1,9 +1,47 @@
 /**
  * Role Room Member Profile — API-client.
- * Bruker session-cookie (auto-sendt) eller eksplisitt bearer-token.
+ * Bruker apiFetch som vedlegger session-bearer-token automatisk.
  */
 
+import { apiFetch } from '@/lib/queryClient';
+
 export type ProfileVisibility = 'public' | 'connections' | 'private';
+
+/** En rad i medlemmets tidligere prosjekt-historikk (CV-stil). */
+export interface EarlierProject {
+  title: string;
+  role: string;
+  year: string;
+}
+
+/** En arbeidsprøve / portfolio-lenke. */
+export interface PortfolioItem {
+  title: string;
+  url: string;
+}
+
+/** En referanse / attest fra tidligere kunde. */
+export interface MemberReference {
+  name: string;
+  role: string;
+  quote: string;
+}
+
+export type AvailabilityStatus = 'available' | 'busy' | 'unavailable';
+
+/** Status for én dag/intervall i tilgjengelighets-kalenderen. */
+export type CalendarDayStatus = 'available' | 'busy' | 'tentative';
+
+/** En oppføring i tilgjengelighets-kalenderen (dato-intervall). */
+export interface AvailabilityEntry {
+  id?: string;
+  /** ISO YYYY-MM-DD. */
+  startDate: string;
+  /** ISO YYYY-MM-DD (>= startDate). */
+  endDate: string;
+  status: CalendarDayStatus;
+  note: string;
+}
 
 export interface RoleRoomMemberProfile {
   userId: string;
@@ -11,6 +49,8 @@ export interface RoleRoomMemberProfile {
   bio: string | null;
   professions: string[];
   companyName: string | null;
+  organizationNumber: string | null;
+  businessAddress: string | null;
   locationCity: string | null;
   locationCountry: string | null;
   website: string | null;
@@ -18,7 +58,28 @@ export interface RoleRoomMemberProfile {
   showreelUrl: string | null;
   skills: string[];
   languages: string[];
+  /** Antall års erfaring (valgfri). */
+  yearsExperience: number | null;
+  /** Tidligere prosjekter (bruker-redigert historikk). */
+  earlierProjects: EarlierProject[];
+  /** Portfolio / arbeidsprøver (lenker med tittel). */
+  portfolioItems: PortfolioItem[];
+  /** Tilgjengelighet for oppdrag. */
+  availabilityStatus: AvailabilityStatus | null;
+  /** Arbeidspreferanser (På sett / Remote / Kan reise / Frilans / …). */
+  workPreferences: string[];
+  /** Utstyr / gear (fra foto/video-katalog + egne). */
+  equipment: string[];
+  /** Sertifiseringer & lisenser. */
+  certifications: string[];
+  /** Referanser / attester fra tidligere kunder. */
+  memberReferences: MemberReference[];
+  /** Fagområder / spesialiseringer (Bryllup, Musikkvideo, Reklame …). */
+  expertiseAreas: string[];
   profileImageUrl: string | null;
+  /** Fokuspunkt for profilbildet i prosent (0–100). Brukes til object-position. */
+  profileImageFocalX: number | null;
+  profileImageFocalY: number | null;
   bannerImageUrl: string | null;
   visibility: ProfileVisibility;
   onboardingCompleted: boolean;
@@ -45,6 +106,7 @@ export interface OnboardingConfig {
     profession?: boolean;
     about?: boolean;
     links?: boolean;
+    availability?: boolean;
     privacy?: boolean;
   };
   requiredFields: {
@@ -57,6 +119,8 @@ export interface OnboardingConfig {
 
 export interface MemberListItem {
   userId: string;
+  /** E-post fra `users` — brukt til å matche crew-rader mot medlemskalendere. */
+  email: string | null;
   displayName: string | null;
   bio: string | null;
   professions: string[];
@@ -64,8 +128,19 @@ export interface MemberListItem {
   companyName: string | null;
   locationCity: string | null;
   locationCountry: string | null;
+  yearsExperience: number | null;
   profileImageUrl: string | null;
+  profileImageFocalX: number | null;
+  profileImageFocalY: number | null;
   visibility: ProfileVisibility;
+}
+
+export interface SharedProject {
+  id: string;
+  name: string;
+  status: string | null;
+  /** Medlemmets rolle i prosjektet ('Leder' hvis de eier det). */
+  role: string;
 }
 
 export interface AdminOnboardingConfigResponse {
@@ -76,14 +151,9 @@ export interface AdminOnboardingConfigResponse {
 }
 
 async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-  });
+  // apiFetch accepts the same shape as RequestInit (plus optional plain-object
+  // bodies). The cast is purely a TS narrowing aid.
+  const res = await apiFetch(url, init as Parameters<typeof apiFetch>[1]);
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
     throw new Error(`${url}: ${res.status} ${detail || res.statusText}`.trim());
@@ -100,6 +170,23 @@ export const roleRoomMemberProfileService = {
     return data.profile;
   },
 
+  /**
+   * `users.profession` for innlogget bruker (ikke member-profilens professions[]).
+   * Driver auto-routing til riktig workspace (f.eks. education). Degraderer til
+   * null ved feil.
+   */
+  async getMyProfession(): Promise<string | null> {
+    try {
+      const data = await jsonRequest<{ profession: string | null }>(
+        '/api/role-room/me/profession',
+        { method: 'GET' },
+      );
+      return data?.profession ?? null;
+    } catch {
+      return null;
+    }
+  },
+
   async updateMyProfile(updates: Partial<Omit<RoleRoomMemberProfile, 'userId' | 'updatedAt'>>): Promise<RoleRoomMemberProfile> {
     const data = await jsonRequest<{ profile: RoleRoomMemberProfile }>(
       '/api/role-room/profile/me',
@@ -111,9 +198,8 @@ export const roleRoomMemberProfileService = {
   async uploadProfileImage(file: File): Promise<string> {
     const formData = new FormData();
     formData.append('image', file);
-    const res = await fetch('/api/role-room/profile/me/image', {
+    const res = await apiFetch('/api/role-room/profile/me/image', {
       method: 'POST',
-      credentials: 'include',
       body: formData,
     });
     if (!res.ok) {
@@ -158,6 +244,41 @@ export const roleRoomMemberProfileService = {
       { method: 'GET' },
     );
     return data.profile;
+  },
+
+  /** Som getPublicProfile, men inkluderer felles prosjekter (team-oversikt). */
+  async getPublicProfileWithProjects(
+    userId: string,
+  ): Promise<{ profile: RoleRoomMemberProfile; sharedProjects: SharedProject[] }> {
+    const data = await jsonRequest<{ profile: RoleRoomMemberProfile; sharedProjects?: SharedProject[] }>(
+      `/api/role-room/profile/${encodeURIComponent(userId)}`,
+      { method: 'GET' },
+    );
+    return { profile: data.profile, sharedProjects: data.sharedProjects ?? [] };
+  },
+
+  async getMyAvailability(): Promise<AvailabilityEntry[]> {
+    const data = await jsonRequest<{ availability: AvailabilityEntry[] }>(
+      '/api/role-room/profile/me/availability',
+      { method: 'GET' },
+    );
+    return data.availability ?? [];
+  },
+
+  async setMyAvailability(entries: AvailabilityEntry[]): Promise<AvailabilityEntry[]> {
+    const data = await jsonRequest<{ availability: AvailabilityEntry[] }>(
+      '/api/role-room/profile/me/availability',
+      { method: 'PUT', body: JSON.stringify({ availability: entries }) },
+    );
+    return data.availability ?? [];
+  },
+
+  async getMemberAvailability(userId: string): Promise<AvailabilityEntry[]> {
+    const data = await jsonRequest<{ availability: AvailabilityEntry[] }>(
+      `/api/role-room/profile/${encodeURIComponent(userId)}/availability`,
+      { method: 'GET' },
+    );
+    return data.availability ?? [];
   },
 
   async getOnboardingConfig(): Promise<OnboardingConfig> {

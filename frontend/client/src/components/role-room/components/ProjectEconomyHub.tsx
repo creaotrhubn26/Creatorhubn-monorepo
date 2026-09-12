@@ -53,6 +53,9 @@ import { onProjectAgreementEvent } from '../services/projectAgreementEvents';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import { SimpleBudgetEstimator, computeSimpleBudgetEstimate } from './SimpleBudgetEstimator';
 import { ProducerTodoButton } from './ProducerTodoButton';
+import EconomyHealthHeader from './EconomyHealthHeader';
+import BudgetProgressBar from './BudgetProgressBar';
+import ClientPublishBanner from './ClientPublishBanner';
 import {
   buildProducerDeliveryManifest,
   getProducerWorkspaceLocationForSurface,
@@ -75,6 +78,7 @@ import {
 } from './split-sheets/types';
 import ProjectAgreementsPanel from './ProjectAgreementsPanel';
 import ProducerEconomyPanel from './producer/ProducerEconomyPanel';
+import { CollapsibleSection } from './CollapsibleSection';
 import EconomyCashflowPanel from './producer/EconomyCashflowPanel';
 import EconomyReportsPanel from './producer/EconomyReportsPanel';
 
@@ -605,6 +609,7 @@ export default function ProjectEconomyHub({
     createItem,
     updateItem,
     removeItem,
+    publishItem,
   } = useProducerEconomy(project.id);
   const {
     items: reviewItems,
@@ -1719,14 +1724,19 @@ export default function ProjectEconomyHub({
   };
 
   const handleCandidateStatusChange = async (candidateId: string, status: string) => {
-    const candidate = project.candidates.find((entry) => entry.id === candidateId);
+    // `project.candidates` kan mangle på prosjekter hentet fra API-et (feltet
+    // er ikke garantert i alle DTO-varianter) — uten guard kastet .find/.map
+    // «Cannot read properties of undefined» og feltet krasjet Økonomi-fanen via
+    // ErrorBoundary. Fall tilbake til tom liste.
+    const candidates = project.candidates ?? [];
+    const candidate = candidates.find((entry) => entry.id === candidateId);
     if (!candidate) {
       return;
     }
 
     const nextProject: CastingProject = {
       ...project,
-      candidates: project.candidates.map((entry) => (
+      candidates: candidates.map((entry) => (
         entry.id === candidateId
           ? { ...entry, status }
           : entry
@@ -2330,6 +2340,36 @@ export default function ProjectEconomyHub({
 
         <Box sx={{ p: { xs: 1.25, md: 1.75 } }}>
           {activeView === 'overview' ? (
+            <>
+            <EconomyHealthHeader
+              budget={projectBudget}
+              spent={phaseTotals.preproduction.actual + phaseTotals.production.actual + phaseTotals.postproduction.actual}
+              approved={phaseTotals.preproduction.approved + phaseTotals.production.approved + phaseTotals.postproduction.approved}
+              currency={project.currency ?? 'NOK'}
+            />
+            <ClientPublishBanner
+              noun="budsjettlinjer"
+              publishedCount={items.filter((i) => i.published_at).length}
+              draftCount={items.filter((i) => !i.published_at).length}
+              onPublishAll={async () => {
+                const drafts = items.filter((i) => !i.published_at);
+                let ok = 0;
+                for (const draft of drafts) {
+                  try {
+                    await publishItem(draft.id, true);
+                    ok += 1;
+                  } catch {
+                    /* fortsett med resten */
+                  }
+                }
+                enqueueSnackbar(
+                  ok > 0
+                    ? `Publiserte ${ok} budsjettlinje${ok === 1 ? '' : 'r'} til klienten.`
+                    : 'Kunne ikke publisere budsjettlinjene.',
+                  { variant: ok > 0 ? 'success' : 'error' },
+                );
+              }}
+            />
             <Box
               sx={{
                 display: 'grid',
@@ -2561,6 +2601,7 @@ export default function ProjectEconomyHub({
                           <Typography sx={{ color: 'rgba(203,213,225,0.72)', fontSize: '0.8rem', mt: 0.35 }}>
                             Godkjent {formatCurrency(phaseCard.approved, currency)} · Faktisk {formatCurrency(phaseCard.actual, currency)}
                           </Typography>
+                          <BudgetProgressBar approved={phaseCard.approved} actual={phaseCard.actual} />
                           <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.78rem', mt: 0.45 }}>
                             {phaseCard.syncedLineCount > 0
                               ? `${phaseCard.syncedLineCount} linjer kommer fra team/reise-synk`
@@ -2572,45 +2613,31 @@ export default function ProjectEconomyHub({
                   </Box>
                 </Box>
 
-                <Box
-                  sx={{
-                    p: 1.5,
-                    borderRadius: 2,
-                    border: '1px solid rgba(148,163,184,0.16)',
-                    background: 'rgba(15,23,42,0.66)',
-                  }}
+                <CollapsibleSection
+                  title="Det som styrer tallene"
+                  summary="Økonomien leser samme sannhet som produksjonsplan og klientgrunnlag"
                 >
-                  <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} justifyContent="space-between" sx={{ mb: 1 }}>
-                    <Box>
-                      <Typography sx={{ color: '#fff', fontWeight: 800 }}>
-                        Det som styrer tallene
-                      </Typography>
-                      <Typography sx={{ color: 'rgba(203,213,225,0.74)', fontSize: '0.86rem' }}>
-                        Økonomien skal lese samme sannhet som produksjonsplan, leveranser og klientgrunnlag, ikke en separat sidevei.
-                      </Typography>
-                    </Box>
-                    <Stack direction="row" spacing={1} flexWrap="wrap">
-                      {onOpenTimeline ? (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => onOpenTimeline()}
-                          sx={{ textTransform: 'none', fontWeight: 700 }}
-                        >
-                          Åpne tidslinje
-                        </Button>
-                      ) : null}
-                      {onOpenReviews ? (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => openReviewFocus()}
-                          sx={{ textTransform: 'none', fontWeight: 700 }}
-                        >
-                          Åpne klientsamarbeid
-                        </Button>
-                      ) : null}
-                    </Stack>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
+                    {onOpenTimeline ? (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => onOpenTimeline()}
+                        sx={{ textTransform: 'none', fontWeight: 700 }}
+                      >
+                        Åpne tidslinje
+                      </Button>
+                    ) : null}
+                    {onOpenReviews ? (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => openReviewFocus()}
+                        sx={{ textTransform: 'none', fontWeight: 700 }}
+                      >
+                        Åpne klientsamarbeid
+                      </Button>
+                    ) : null}
                   </Stack>
                   <Box
                     sx={{
@@ -2644,19 +2671,12 @@ export default function ProjectEconomyHub({
                       </Box>
                     ))}
                   </Box>
-                </Box>
+                </CollapsibleSection>
 
-                <Box
-                  sx={{
-                    p: 1.5,
-                    borderRadius: 2,
-                    border: '1px solid rgba(148,163,184,0.16)',
-                    background: 'rgba(15,23,42,0.66)',
-                  }}
+                <CollapsibleSection
+                  title="Økonomiflyt akkurat nå"
+                  summary="Budsjett-milepæler og status per fase"
                 >
-                  <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>
-                    Økonomiflyt akkurat nå
-                  </Typography>
                   <Stack spacing={1}>
                     {budgetTimelineItems.slice(0, 4).map((item) => (
                       <Box
@@ -2696,7 +2716,7 @@ export default function ProjectEconomyHub({
                       </Typography>
                     ) : null}
                   </Stack>
-                </Box>
+                </CollapsibleSection>
               </Stack>
 
               <Box
@@ -2757,7 +2777,7 @@ export default function ProjectEconomyHub({
                     }}
                   >
                     <Typography sx={{ color: '#fff', fontWeight: 800, mb: 0.8 }}>
-                      Statusdriver akkurat nå
+                      Det viktigste akkurat nå
                     </Typography>
                     {statusTouchpoint ? (
                       <Stack spacing={0.75}>
@@ -2807,6 +2827,7 @@ export default function ProjectEconomyHub({
                 </Stack>
               </Box>
             </Box>
+            </>
           ) : null}
           {activeView === 'budget' ? (
             <Stack spacing={2}>
@@ -4078,7 +4099,7 @@ export default function ProjectEconomyHub({
               >
                 <Box sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(148,163,184,0.16)', background: 'rgba(15,23,42,0.66)' }}>
                   <Typography sx={{ color: '#fff', fontWeight: 800, mb: 1 }}>
-                    Statusdriver akkurat nå
+                    Det viktigste akkurat nå
                   </Typography>
                   {statusTouchpoint ? (
                     <Stack spacing={1}>

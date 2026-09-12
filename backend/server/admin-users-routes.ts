@@ -21,6 +21,7 @@
 import crypto from "crypto";
 import type express from "express";
 import type { Pool } from "pg";
+import { deletePersistedAuthSessionsByUserId } from "./auth-session-store.js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface AdminUsersRoutesDeps {
@@ -259,6 +260,21 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
         });
       }
 
+      // Revoke all active sessions when the account is deactivated OR when its
+      // role changes. Live sessions carry a role snapshot and are only ever
+      // upgraded (never downgraded) by reconcileSessionAdminRole, so a demoted
+      // admin would otherwise retain admin access in their existing session
+      // indefinitely (there is no session TTL). Forcing re-login rebuilds a
+      // fresh snapshot from the persisted role.
+      const roleChanged =
+        nextRole !== undefined && nextRole !== currentRole;
+      if ((nextIsActive === false || roleChanged) && accountUserId) {
+        for (const [tok, sess] of activeSessions.entries()) {
+          if (String(sess?.userId) === accountUserId) activeSessions.delete(tok);
+        }
+        await deletePersistedAuthSessionsByUserId(pool, accountUserId);
+      }
+
       const updatedUser = await resolveAdminUserView(req.params.id, email);
       res.json({ success: true, user: updatedUser });
     } catch (error) {
@@ -486,6 +502,13 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
       const targetRole = normalizeAdminRoleId(
         targetAccount.role || userView?.role || "user",
       );
+
+      if (targetRole === "super_admin") {
+        return res.status(403).json({ error: "Kan ikke impersonere super_admin." });
+      }
+
+      const callingAdmin = requireAdminSession(req, res);
+      if (!callingAdmin) return;
       const targetRoleEntry = buildAdminRoleEntry(targetRole);
       const targetProfession =
         toAdminString(targetAccount.profession) ||
@@ -520,12 +543,20 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
           String(userView?.email || "").split("@")[0] ||
           "CreatorHub User",
         impersonatedByAdmin: true,
+        impersonatorId: callingAdmin.userId,
+        impersonationExpiresAt: Date.now() + 30 * 60 * 1000,
         isAdmin: ADMIN_SESSION_ROLES.has(targetRole),
         loginAt: new Date().toISOString(),
       };
 
       activeSessions.set(targetSessionToken, targetSession);
       await persistAuthSession(pool, targetSessionToken, targetSession);
+      await pool.query(
+        `INSERT INTO org_audit_log (actor_user_id, action, target_user_id, metadata, created_at)
+         VALUES ($1, 'admin_impersonate_start', $2, $3, now())
+         ON CONFLICT DO NOTHING`,
+        [callingAdmin.userId, targetSession.userId, JSON.stringify({ targetEmail: targetSession.email, targetRole })],
+      ).catch(() => { /* audit failure must not block impersonation */ });
 
       res.json({
         success: true,
@@ -554,11 +585,11 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
       if (!requireAdminSession(req, res)) {
         return;
       }
-      const days = parseInt(req.query.days as string) || 30;
+      const days = Math.min(365, Math.max(1, parseInt(req.query.days as string) || 30));
       const result = await pool.query(
         `SELECT * FROM invite_requests
          WHERE status = 'approved' AND processed_at > NOW() - INTERVAL '1 day' * $1
-         ORDER BY processed_at DESC`,
+         ORDER BY processed_at DESC LIMIT 500`,
         [days],
       );
       res.json(
@@ -579,6 +610,83 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
     } catch (error) {
       console.error("Error fetching recently approved users:", error);
       res.status(500).json({ error: "Could not fetch recently approved users" });
+    }
+  });
+
+  // DELETE /api/admin/users/:id — permanent sletting av en bruker.
+  // KUN super_admin. Kan ikke slette seg selv eller andre admin/super_admin.
+  // FK-trygt: NULL-er nullbare NO ACTION-referanser (bevarer raden), sletter
+  // ikke-nullbare; CASCADE + SET NULL håndteres av DB-en. Alt i én transaksjon.
+  app.delete("/api/admin/users/:id", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    if (String(session.role || "").trim().toLowerCase() !== "super_admin") {
+      return res.status(403).json({ error: "Kun super_admin kan slette brukere." });
+    }
+    const targetId = String(req.params.id || "").trim();
+    if (!targetId) return res.status(400).json({ error: "Bruker-ID mangler." });
+    if (targetId === String(session.userId)) {
+      return res.status(400).json({ error: "Du kan ikke slette din egen konto." });
+    }
+
+    const client = await pool.connect();
+    try {
+      const targetRes = await client.query(
+        "SELECT id, email, role FROM users WHERE id::text = $1",
+        [targetId],
+      );
+      if (!targetRes.rows.length) {
+        return res.status(404).json({ error: "Fant ingen bruker med denne ID-en." });
+      }
+      const target = targetRes.rows[0];
+      const targetRole = String(target.role || "").trim().toLowerCase();
+      if (targetRole === "super_admin" || targetRole === "admin") {
+        return res.status(403).json({
+          error: "Kan ikke slette admin/super_admin-kontoer. Endre rollen til 'bruker' først.",
+        });
+      }
+
+      await client.query("BEGIN");
+      // NO ACTION-FK-barn må håndteres manuelt (ellers blokkerer de slettingen).
+      // Katalog-navn (trygge, ikke bruker-input) → bygges som siterte identifikatorer.
+      const fkRes = await client.query(`
+        SELECT tc.table_schema AS s, tc.table_name AS t, kcu.column_name AS c, col.is_nullable AS nullable
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema
+        JOIN information_schema.constraint_column_usage ccu
+          ON tc.constraint_name=ccu.constraint_name AND tc.table_schema=ccu.table_schema
+        JOIN information_schema.referential_constraints rc
+          ON tc.constraint_name=rc.constraint_name
+        JOIN information_schema.columns col
+          ON col.table_schema=tc.table_schema AND col.table_name=tc.table_name AND col.column_name=kcu.column_name
+        WHERE tc.constraint_type='FOREIGN KEY'
+          AND ccu.table_name='users' AND ccu.table_schema='public'
+          AND rc.delete_rule='NO ACTION'`);
+      for (const row of fkRes.rows as Array<{ s: string; t: string; c: string; nullable: string }>) {
+        const ident = `"${row.s}"."${row.t}"`;
+        const col = `"${row.c}"`;
+        if (String(row.nullable).toUpperCase() === "YES") {
+          await client.query(`UPDATE ${ident} SET ${col} = NULL WHERE ${col}::text = $1`, [targetId]);
+        } else {
+          await client.query(`DELETE FROM ${ident} WHERE ${col}::text = $1`, [targetId]);
+        }
+      }
+      const del = await client.query("DELETE FROM users WHERE id::text = $1", [targetId]);
+      await client.query("COMMIT");
+      // Evict all in-memory sessions for deleted user
+      for (const [tok, sess] of activeSessions.entries()) {
+        if (String(sess?.userId) === targetId) activeSessions.delete(tok);
+      }
+      // Evict persisted sessions so they aren't rehydrated on restart
+      await deletePersistedAuthSessionsByUserId(pool, targetId);
+      return res.json({ success: true, deletedEmail: target.email, deleted: del.rowCount });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("Error deleting user:", error);
+      return res.status(500).json({ error: "Kunne ikke slette bruker." });
+    } finally {
+      client.release();
     }
   });
 }

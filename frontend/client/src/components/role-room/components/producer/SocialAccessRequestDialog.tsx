@@ -120,7 +120,7 @@ export default function SocialAccessRequestDialog({
       </DialogTitle>
       <DialogContent>
         <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.84rem', mb: 2 }}>
-          Claude lager en kort, vennlig e-post du kan sende til kunden, med konkrete steg-for-steg-
+          CI lager en kort, vennlig e-post du kan sende til kunden, med konkrete steg-for-steg-
           instruksjoner for hvordan de gir deg admin-tilgang.
         </Typography>
 
@@ -162,7 +162,7 @@ export default function SocialAccessRequestDialog({
                 '&:hover': { bgcolor: '#2563eb' },
               }}
             >
-              {loading ? 'Lager e-post…' : 'Lag e-post med Claude'}
+              {loading ? 'Lager e-post…' : 'Lag e-post med CI'}
             </Button>
           </Stack>
         ) : (

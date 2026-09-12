@@ -88,6 +88,12 @@ fn volume_stats(_path: &Path) -> Option<(u64, u64)> {
     None
 }
 
+/// Eksponert helper for capacity pre-flight i lib.rs.
+/// Returnerer (total, free) eller None hvis stien ikke kan stat'es.
+pub fn capacity_for_path(path: &Path) -> Option<(u64, u64)> {
+    volume_stats(path)
+}
+
 fn scan_volume(root: &Path) -> DetectedMount {
     let volume_label = root
         .file_name()

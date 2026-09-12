@@ -1,6 +1,9 @@
 import { Box, Container, Stack, Typography } from '@mui/material';
 import VolunteerActivismIcon from '@mui/icons-material/VolunteerActivism';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Intimacy coordinator i Norge — Trust & Safety + Compliance-hybrid.
@@ -57,6 +60,12 @@ const FAQ: Array<{ q: string; a: string }> = [
 ];
 
 export function IntimacyCoordinatorPage() {
+  const cmsBlocks = useCmsBlocks('intimacy-coordinator-norge');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"

@@ -1,13 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Chip,
@@ -15,8 +12,8 @@ import {
   Tooltip,
   TextField,
   MenuItem,
-  Button,
   Grid,
+  InputAdornment,
 } from '@mui/material';
 import {
   Visibility as ViewIcon,
@@ -24,8 +21,10 @@ import {
   Error as ErrorIcon,
   Delete as DeleteIcon,
   FileDownload as ExportIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import type { WireMockTestResult } from './WireMockResponseViewer';
+import { AdminCard, AdminButton, StatusChip, AdminEmpty, AdminTableContainer } from './design-system';
 
 interface WireMockTestHistoryTableProps {
   history: WireMockTestResult[];
@@ -46,16 +45,26 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
 }) => {
   const [filterApi, setFilterApi] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [search, setSearch] = useState('');
 
   // Get unique API names
-  const uniqueApis = Array.from(new Set(history.map(r => r.apiName))).sort();
+  const uniqueApis = useMemo(
+    () => Array.from(new Set(history.map(r => r.apiName))).sort(),
+    [history]
+  );
 
   // Filter history
-  const filteredHistory = history.filter(result => {
-    if (filterApi !== 'all' && result.apiName !== filterApi) return false;
-    if (filterStatus !== 'all' && result.status !== filterStatus) return false;
-    return true;
-  });
+  const filteredHistory = useMemo(
+    () => history.filter(result => {
+      if (filterApi !== 'all' && result.apiName !== filterApi) return false;
+      if (filterStatus !== 'all' && result.status !== filterStatus) return false;
+      const q = search.toLowerCase();
+      if (q && ![result.apiName, result.method, String(result.statusCode || ''), result.status]
+        .some(field => (field || '').toLowerCase().includes(q))) return false;
+      return true;
+    }),
+    [history, filterApi, filterStatus, search]
+  );
 
   const formatTime = (date: Date) => {
     return new Date(date).toLocaleTimeString('no-NO', {
@@ -76,35 +85,31 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
   };
 
   return (
-    <Card>
-      <CardContent>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h6">
-            🧪 WireMock Test History
-          </Typography>
-          <Box display="flex" gap={1}>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<ExportIcon />}
-              onClick={onExportHistory}
-              disabled={history.length === 0}
-            >
-              Export
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              color="error"
-              startIcon={<DeleteIcon />}
-              onClick={onClearHistory}
-              disabled={history.length === 0}
-            >
-              Clear
-            </Button>
-          </Box>
+    <AdminCard
+      title="🧪 WireMock Test History"
+      action={
+        <Box display="flex" gap={1}>
+          <AdminButton
+            tone="ghost"
+            size="small"
+            startIcon={<ExportIcon />}
+            onClick={onExportHistory}
+            disabled={history.length === 0}
+          >
+            Export
+          </AdminButton>
+          <AdminButton
+            tone="danger"
+            size="small"
+            startIcon={<DeleteIcon />}
+            onClick={onClearHistory}
+            disabled={history.length === 0}
+          >
+            Clear
+          </AdminButton>
         </Box>
-
+      }
+    >
         {/* Stats */}
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid item xs={12} sm={4}>
@@ -140,7 +145,21 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
         </Grid>
 
         {/* Filters */}
-        <Box display="flex" gap={2} mb={2}>
+        <Box display="flex" flexWrap="wrap" gap={2} mb={2}>
+          <TextField
+            size="small"
+            placeholder="Søk …"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            sx={{ minWidth: 200 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
           <TextField
             select
             size="small"
@@ -170,11 +189,9 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
 
         {/* Table */}
         {filteredHistory.length === 0 ? (
-          <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-            <Typography>No test results yet. Run a WireMock test to see results here.</Typography>
-          </Box>
+          <AdminEmpty description="No test results yet. Run a WireMock test to see results here." />
         ) : (
-          <TableContainer sx={{ maxHeight: 400 }}>
+          <AdminTableContainer ariaLabel="WireMock Test History" sx={{ maxHeight: 400 }}>
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
@@ -199,11 +216,9 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
                       <Chip label={result.method} size="small" variant="outlined" />
                     </TableCell>
                     <TableCell>
-                      <Chip
-                        icon={result.status === 'success' ? <SuccessIcon /> : <ErrorIcon />}
-                        label={result.statusCode || result.status}
-                        size="small"
-                        color={getStatusColor(result)}
+                      <StatusChip
+                        tone={getStatusColor(result)}
+                        label={String(result.statusCode || result.status)}
                       />
                     </TableCell>
                     <TableCell align="right">
@@ -211,7 +226,7 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
                     </TableCell>
                     <TableCell align="center">
                       <Tooltip title="View Details">
-                        <IconButton size="small" onClick={() => onViewResult(result)}>
+                        <IconButton size="small" aria-label="Se detaljer" onClick={() => onViewResult(result)}>
                           <ViewIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -220,10 +235,9 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
         )}
-      </CardContent>
-    </Card>
+    </AdminCard>
   );
 };
 

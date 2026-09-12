@@ -249,6 +249,10 @@ export function createDanceChoreographyRouter(
   const musicUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 30 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype.startsWith("audio/")) cb(null, true);
+      else cb(new Error("Kun lydfiler er tillatt") as any, false);
+    },
   });
 
   router.post(

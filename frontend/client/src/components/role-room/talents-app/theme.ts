@@ -13,18 +13,19 @@ export const palette = {
   bgCard: '#150b2e',
   bgCardElevated: '#1a0f3a',
 
-  // Borders
-  border: 'rgba(168, 85, 247, 0.18)',
-  borderStrong: 'rgba(168, 85, 247, 0.32)',
-  borderSubtle: 'rgba(168, 85, 247, 0.08)',
+  // Borders — CreatorHub Design (Fase C): aksent-avledet, CSS-var-drevet fra
+  // design-tokens (ws=theroleroom). Uten override = literalene her (identisk).
+  border: 'var(--rr-border, rgba(168, 85, 247, 0.18))',
+  borderStrong: 'var(--rr-border-strong, rgba(168, 85, 247, 0.32))',
+  borderSubtle: 'var(--rr-border-subtle, rgba(168, 85, 247, 0.08))',
 
   // Tekst
   textPrimary: '#f5f3ff',
   textSecondary: '#c4b5fd',
   textMuted: '#8b7ec4',
 
-  // Accent — primær lilla + magenta-glow
-  accent: '#a855f7',
+  // Accent — primær lilla + magenta-glow (token-drevet, literal-fallback)
+  accent: 'var(--rr-accent, #a855f7)',
   accentBright: '#c084fc',
   accentMuted: '#7c3aed',
   accentGradient: 'linear-gradient(135deg, #a855f7 0%, #d946ef 100%)',
@@ -38,8 +39,8 @@ export const palette = {
   dangerBg: 'rgba(239, 68, 68, 0.12)',
   info: '#38bdf8',
 
-  // Filmstrip-shimmer på sidebaren
-  filmstrip: 'rgba(168, 85, 247, 0.06)',
+  // Filmstrip-shimmer på sidebaren (aksent-avledet)
+  filmstrip: 'var(--rr-filmstrip, rgba(168, 85, 247, 0.06))',
 } as const;
 
 export const radius = {

@@ -45,6 +45,8 @@ import {
   type NewsletterWeeklyInsights,
 } from '../../../services/adminRoomApi';
 import NewsletterBlockBuilder from './NewsletterBlockBuilder';
+import { WeeklyBriefEditor } from '../../role-room/marketing-templates/WeeklyBriefEditor';
+import ImageIcon from '@mui/icons-material/Image';
 
 /**
  * Newsletter Studio — eget dashboard for å skrive og sende Norwegian
@@ -140,6 +142,8 @@ export function NewsletterStudioTab() {
   const [voiceDraftOpen, setVoiceDraftOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<string | null>(null);
   const [subscriberStats, setSubscriberStats] = useState<{ confirmed: number; pending: number; total: number } | null>(null);
+  // Weekly Brief marketing-poster editor (4:5 PNG for LinkedIn/IG feed)
+  const [posterOpen, setPosterOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -288,6 +292,14 @@ export function NewsletterStudioTab() {
           </Button>
           <Button variant="outlined" startIcon={<MicIcon />} onClick={() => setVoiceDraftOpen(true)} sx={{ textTransform: 'none', fontWeight: 700, color: '#22d3ee', borderColor: 'rgba(34,211,238,0.5)' }}>
             Voice memo
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<ImageIcon />}
+            onClick={() => setPosterOpen(true)}
+            sx={{ textTransform: 'none', fontWeight: 700, color: '#ddd6fe', borderColor: 'rgba(167,139,250,0.5)' }}
+          >
+            Marketing-poster
           </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleNew} sx={{ textTransform: 'none', fontWeight: 700, bgcolor: '#7c3aed' }}>
             Ny utgave
@@ -476,6 +488,11 @@ export function NewsletterStudioTab() {
         onClose={() => setVoiceDraftOpen(false)}
         onError={setError}
         onCopied={(label) => setSnackbar(`${label} kopiert til utklippstavlen`)}
+      />
+
+      <WeeklyBriefEditor
+        open={posterOpen}
+        onClose={() => setPosterOpen(false)}
       />
 
       <Snackbar

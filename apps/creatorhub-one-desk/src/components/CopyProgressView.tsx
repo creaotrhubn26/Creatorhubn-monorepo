@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import {
+  Alert,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   LinearProgress,
   List,
   ListItem,
@@ -16,15 +21,21 @@ import {
 import Stop from "@mui/icons-material/Stop";
 import CheckCircle from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import {
   cancelCopySession,
+  CopyDestDisabledEvent,
   CopyFileCompletedEvent,
   CopyFileProgressEvent,
   CopyFileStartedEvent,
   CopySessionCompletedEvent,
   CopySessionStartedEvent,
+  ejectVolume,
+  getAutoEjectPref,
   listCopySessions,
+  macosNotification,
   SessionStatus,
+  setTrayStatus,
 } from "../api";
 import { bytesToHumanGb } from "../utils/capacity";
 
@@ -39,11 +50,14 @@ interface FileState {
   totalDests: number;
 }
 
-/// Per-session bytes/sec-spor for å beregne ETA. Vi sampler totalt
-/// (succeeded + skipped) bytes hver gang vi får et FileCompleted-event,
-/// og deriverer hastighet over et glidende vindu (siste 30s eller siste
-/// 20 samples — det som er kortest). Dette gir et stabilt estimat selv
-/// når enkeltfiler varierer dramatisk i størrelse.
+interface MountDisappearedEvent {
+  session_id: string;
+  mount_path: string;
+  files_skipped: number;
+  succeeded: number;
+  failed: number;
+}
+
 interface ThroughputSample {
   ts_ms: number;
   bytes_done: number;
@@ -63,12 +77,20 @@ function formatEta(secondsRemaining: number): string {
   return `~${hours} t ${rem} min igjen`;
 }
 
+interface DisabledDestInfo {
+  dest_id: string;
+  dest_label: string;
+  reason_code: string;
+  reason_message: string;
+}
+
 export default function CopyProgressView() {
   const [sessions, setSessions] = useState<SessionStatus[]>([]);
   const [currentFiles, setCurrentFiles] = useState<Record<string, FileState>>({});
   const [recentErrors, setRecentErrors] = useState<string[]>([]);
-  // Bytes-progress-samples per session for ETA-beregning.
+  const [mountDisappeared, setMountDisappeared] = useState<MountDisappearedEvent | null>(null);
   const [throughput, setThroughput] = useState<Record<string, ThroughputSample[]>>({});
+  const [disabledDests, setDisabledDests] = useState<Record<string, DisabledDestInfo[]>>({});
 
   useEffect(() => {
     void listCopySessions().then(setSessions).catch(() => {});
@@ -172,20 +194,99 @@ export default function CopyProgressView() {
 
     listen<CopySessionCompletedEvent>("copy-session-completed", (e) => {
       void listCopySessions().then(setSessions);
-      // Frigjør throughput-samples for ferdig sesjon — ingen grunn til
-      // å holde dem i minne, og hvis Fredrik starter ny session med
-      // samme ID (resume-flow) blir det forvirrende.
+      // Frigjør throughput-samples for ferdig sesjon.
       setThroughput((prev) => {
         const next = { ...prev };
         delete next[e.payload.session_id];
         return next;
       });
+
+      const { succeeded, failed, cancelled, mount_path } = e.payload;
+
+      // macOS Notification Center.
+      if (!cancelled && succeeded > 0) {
+        const title = failed > 0 ? "Backup ferdig med advarsler" : "Backup ferdig";
+        const body = failed > 0
+          ? `${succeeded} filer kopiert, ${failed} feilet`
+          : `${succeeded} filer kopiert`;
+        void macosNotification(title, body).catch(() => {});
+      }
+
+      // Auto-eject: kun ved 100% success (alle filer kopiert,
+      // ingen feilet, ikke avbrutt). Mislykkede/avbrutte sesjoner
+      // beholder kortet montert så Fredrik kan inspisere.
+      if (cancelled || failed > 0 || succeeded === 0 || !mount_path) return;
+      void getAutoEjectPref()
+        .then((enabled) => {
+          if (!enabled) return;
+          return ejectVolume(mount_path).then(
+            () => {
+              console.log(`[auto-eject] ${mount_path} ejected`);
+            },
+            (err) => {
+              console.warn(`[auto-eject] feilet for ${mount_path}: ${err}`);
+            },
+          );
+        })
+        .catch((err) => console.warn("auto-eject pref read failed:", err));
+    }).then((un) => unlisteners.push(un));
+
+    listen<CopyDestDisabledEvent>("copy-dest-disabled", (e) => {
+      setDisabledDests((prev) => {
+        const existing = prev[e.payload.session_id] ?? [];
+        if (existing.some((d) => d.dest_id === e.payload.dest_id)) return prev;
+        return {
+          ...prev,
+          [e.payload.session_id]: [
+            ...existing,
+            {
+              dest_id: e.payload.dest_id,
+              dest_label: e.payload.dest_label,
+              reason_code: e.payload.reason_code,
+              reason_message: e.payload.reason_message,
+            },
+          ],
+        };
+      });
+      setRecentErrors((prev) =>
+        [
+          `[${e.payload.dest_label}] DEAKTIVERT for resten av sesjonen: ${e.payload.reason_message}`,
+          ...prev,
+        ].slice(0, 10),
+      );
+    }).then((un) => unlisteners.push(un));
+
+    listen<MountDisappearedEvent>("copy-session-mount-disappeared", (e) => {
+      setMountDisappeared(e.payload);
+      void listCopySessions().then(setSessions);
     }).then((un) => unlisteners.push(un));
 
     return () => {
       for (const un of unlisteners) un();
     };
   }, []);
+
+  // Oppdater Mac-tray-tooltip når sessions endrer state. La oss
+  // Fredrik se "2 aktive · 87/240" uten å åpne hovedvinduet.
+  // Hopper over hvis Tauri-API ikke er tilgjengelig (web-preview/dev).
+  useEffect(() => {
+    const active = sessions.filter((s) => s.state === "running");
+    let tooltip: string;
+    if (active.length === 0) {
+      tooltip = "Creatorhub One Desk";
+    } else {
+      const totalDone = active.reduce((sum, s) => sum + s.succeeded + s.failed, 0);
+      const totalFiles = active.reduce((sum, s) => sum + s.file_count, 0);
+      tooltip =
+        active.length === 1
+          ? `Backup: ${totalDone}/${totalFiles} filer`
+          : `${active.length} aktive · ${totalDone}/${totalFiles} filer`;
+    }
+    void setTrayStatus(tooltip).catch(() => {
+      // Tray-API ikke tilgjengelig (web preview eller mobile target)
+      // — ikke kritisk, ignorér.
+    });
+  }, [sessions]);
 
   if (sessions.length === 0 && Object.keys(currentFiles).length === 0) {
     return null;
@@ -310,6 +411,20 @@ export default function CopyProgressView() {
                   );
                 })()}
               </Stack>
+              {/* Per-dest-recovery: vis hvilke destinasjoner som ble
+                  deaktivert pga vedvarende feil. Andre destinasjoner
+                  fortsetter — sesjonen er IKKE død bare fordi én disk
+                  ble full. */}
+              {(disabledDests[s.session_id] ?? []).map((d) => (
+                <Chip
+                  key={d.dest_id}
+                  size="small"
+                  color="warning"
+                  variant="outlined"
+                  label={`${d.dest_label} — ${d.reason_code === "DEST_NO_SPACE" ? "full" : "ingen tilgang"}`}
+                  sx={{ mt: 0.5, mr: 0.5 }}
+                />
+              ))}
             </Box>
           );
         })}
@@ -369,11 +484,14 @@ export default function CopyProgressView() {
                     <CheckCircle color="success" fontSize="small" />
                   ) : s.state === "cancelled" ? (
                     <Chip size="small" label="avbrutt" />
+                  ) : s.state === "mount_disappeared" ? (
+                    <WarningAmberIcon color="warning" fontSize="small" />
                   ) : (
                     <ErrorIcon color="error" fontSize="small" />
                   )}
                   <Typography variant="caption">
                     {s.volume_label}: {s.succeeded} ✓ / {s.failed} ✗ av {s.file_count}
+                    {s.state === "mount_disappeared" && " — kort fjernet"}
                   </Typography>
                 </Stack>
               ))}
@@ -421,6 +539,38 @@ export default function CopyProgressView() {
           </Box>
         )}
       </CardContent>
+
+      {/* Mount-disappeared modal — vises som blocking dialog så Fredrik
+          ikke får inntrykk av at backup gikk gjennom. Klar action: sett
+          inn kortet igjen + rerun, eller bekreft som "vil ikke fortsette". */}
+      <Dialog
+        open={!!mountDisappeared}
+        onClose={() => setMountDisappeared(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <WarningAmberIcon color="warning" />
+          Kortet ble fjernet før backup var ferdig
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <strong>{mountDisappeared?.files_skipped ?? 0}</strong> filer rakk
+            ikke å bli kopiert. <strong>{mountDisappeared?.succeeded ?? 0}</strong>{" "}
+            ble fullført, <strong>{mountDisappeared?.failed ?? 0}</strong> feilet.
+          </Alert>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Mount-sti: <code>{mountDisappeared?.mount_path}</code>
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Sett inn kortet på nytt og start backup igjen for den samme volumen —
+            allerede kopierte filer hoppes over automatisk.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMountDisappeared(null)}>OK, jeg har sett det</Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }

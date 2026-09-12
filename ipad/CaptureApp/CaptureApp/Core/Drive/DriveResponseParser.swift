@@ -129,8 +129,7 @@ enum DriveResponseParser {
         for (key, value) in response.allHeaderFields {
             if let keyString = key as? String,
                keyString.caseInsensitiveCompare(name) == .orderedSame,
-               let valueString = value as? String
-            {
+               let valueString = value as? String {
                 return valueString
             }
         }

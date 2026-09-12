@@ -141,7 +141,7 @@ export default function ThreadViewDialog({
         p: 2.25,
         mb: 2,
         border: isParent
-          ? '1px solid rgba(245, 166, 35, 0.24)'
+          ? '1px solid rgba(255, 140, 0, 0.24)'
           : '1px solid rgba(255,255,255,0.08)',
       }}
     >
@@ -151,8 +151,8 @@ export default function ThreadViewDialog({
           sx={{
             width: 40,
             height: 40,
-            bgcolor: isParent ? 'rgba(245, 166, 35, 0.18)' : 'rgba(255,255,255,0.08)',
-            color: isParent ? '#f5a623' : COMMUNITY_DIALOG_TEXT,
+            bgcolor: isParent ? 'rgba(255, 140, 0, 0.18)' : 'rgba(255,255,255,0.08)',
+            color: isParent ? '#ff8c00' : COMMUNITY_DIALOG_TEXT,
           }}
         >
           {message.user_name?.charAt(0).toUpperCase()}
@@ -205,7 +205,7 @@ export default function ThreadViewDialog({
       <DialogContent sx={COMMUNITY_DIALOG_CONTENT_SX} dividers>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress sx={{ color: '#f5a623' }} />
+            <CircularProgress sx={{ color: '#ff8c00' }} />
           </Box>
         ) : (
           <>
@@ -273,7 +273,7 @@ export default function ThreadViewDialog({
                   disabled={!replyContent.trim() || sending || !channelId}
                   sx={COMMUNITY_DIALOG_CLOSE_BUTTON_SX}
                 >
-                  {sending ? <CircularProgress size={24} sx={{ color: '#f5a623' }} /> : <Send />}
+                  {sending ? <CircularProgress size={24} sx={{ color: '#ff8c00' }} /> : <Send />}
                 </IconButton>
               </InputAdornment>
             ),

@@ -15,12 +15,31 @@ import cors from 'cors';
 import crypto from 'crypto';
 import {
   persistOauthState,
+  consumeOauthState,
   loadOauthState,
   deleteOauthState,
   persistOauthTransfer,
   loadOauthTransfer,
   deleteOauthTransfer,
 } from './role-room-oauth-store.js';
+import {
+  buildRoleRoomNativeGoogleReturnUrl,
+  parseRoleRoomGoogleNativeClient,
+  type RoleRoomGoogleNativeClient,
+} from './role-room-native-google-oauth.js';
+import { resolveClientPortalSession } from './role-room-client-portal.js';
+import { ROLE_ROOM_LINKEDIN_OAUTH_SCOPES } from './role-room-linkedin-oauth-scopes.js';
+import { resolveOrgIdForUser, invalidateOrgCache } from './leadgrid-org-resolver.js';
+import { resolveEducationProductionRole, listEducationProductionProjectIds } from './role-room-education-production-access.js';
+import { notifyProducerOfClientPlatformConnection } from './role-room-producer-notifications.js';
+import { canAccessProjectAds, readProjectAccessUser } from './role-room-project-access.js';
+import { getAssistantAreas } from './role-room-assistant-access.js';
+import {
+  getProjectProducerUserId,
+  loadProjectProducerInfo,
+  recordClientOauthConsent,
+  revokeProjectPlatformConnection,
+} from './client-portal-connected-platforms.js';
 import { existsSync } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
@@ -79,12 +98,22 @@ import {
   RateLimitExceededError,
 } from './role-room-agent-ratelimit.js';
 import { handleAgentStream } from './role-room-agent-stream.js';
+import { buildRoleRoomPublicStatsRelationCountQuery } from './role-room-public-stats.js';
 import {
   generateMerchMockup,
   isPrintfulConfigured,
+  listMerchCatalogVariants,
+  listMerchProductSpecs,
   PrintfulMockupError,
   type MerchMockupProductId,
+  type MerchProductionTechnique,
 } from './role-room-merch-mockup.js';
+import {
+  listMerchConcepts,
+  MerchConceptError,
+  saveMerchConcept,
+  setMerchConceptStatus,
+} from './role-room-merch-concepts.js';
 import {
   generateMerchCooperationDraft,
   MerchCooperationError,
@@ -127,6 +156,14 @@ import {
   normalizeUrl,
 } from './role-room-website-analyzer.js';
 import { generateWeekPlan } from './role-room-content-strategist.js';
+import { runBrandScan } from './brand-kit-service.js';
+import { getBestTimesForProject } from './role-room-best-time.js';
+import { applyDataDrivenPostTimes } from './role-room-best-time-to-post.js';
+import {
+  sendClientUpdate,
+  listClientUpdates,
+  resolvePlanContext,
+} from './role-room-client-update-service.js';
 import {
   generateCarouselDraft,
 } from './role-room-carousel-generator.js';
@@ -136,6 +173,31 @@ import {
   makeReplicateClient,
 } from './role-room-carousel-ai-image.js';
 import { findGalleryMatches } from './role-room-carousel-gallery-match.js';
+
+/**
+ * Best-effort: replace a week plan's LLM-guessed optimalPostTime values with
+ * data-derived times from the project's own history. No-op without a projectId
+ * or usable history; never throws (a marketing plan must still generate).
+ */
+async function applyBestTimeOverride(
+  pool: Pool,
+  plan: { concepts: Array<{ primaryPlatform: string; optimalPostTime: string }>; generationNotes: string[] },
+  projectId: unknown,
+): Promise<void> {
+  if (typeof projectId !== 'string' || !projectId) return;
+  try {
+    const bestTimes = await getBestTimesForProject(pool, projectId);
+    const { concepts, dataBackedCount } = applyDataDrivenPostTimes(plan.concepts, bestTimes);
+    plan.concepts = concepts;
+    if (dataBackedCount > 0) {
+      plan.generationNotes.push(
+        `Postetidspunkt for ${dataBackedCount} av ${plan.concepts.length} innlegg er datadrevet — basert på prosjektets historiske engasjement.`,
+      );
+    }
+  } catch (err) {
+    console.warn('[best-time] optimalPostTime override skipped', err);
+  }
+}
 import {
   publishCarouselPost,
   ValidationFailedError,
@@ -419,6 +481,7 @@ interface RoleRoomGoogleAgreementSignatureRow {
 
 interface RoleRoomGoogleOauthState {
   mode: RoleRoomGoogleOauthMode;
+  nativeClient?: RoleRoomGoogleNativeClient | null;
   returnPath: string;
   browserOrigin?: string | null;
   redirectUri?: string | null;
@@ -429,6 +492,11 @@ interface RoleRoomGoogleOauthState {
   createdByEmail?: string | null;
   targetConnectionUserId?: string | null;
   targetConnectionEmail?: string | null;
+  // 'youtube-analytics'-consenten: yt-analytics-scopene bes om ISOLERT
+  // (include_granted_scopes=false) og lagres som EGEN tilkobling
+  // (oauth_app='role_room_yt_analytics'), fordi yt-analytics-monetary IKKE kan
+  // dele grant med Drive. Flagget bæres hit så callback ruter til riktig rad.
+  youtubeAnalytics?: boolean;
   createdAt: number;
 }
 
@@ -764,6 +832,8 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const PROJECT_FILE_STORAGE_ROOT = path.join(REPO_ROOT, 'uploads', 'project-files');
 const ROLE_ROOM_TALENT_UPLOAD_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-talent');
 const ROLE_ROOM_RECEIPT_UPLOAD_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-receipts');
+const ROLE_ROOM_CLIENT_ASSET_UPLOAD_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-client-assets');
+const ROLE_ROOM_CLIENT_ASSET_MAX_BYTES = 50 * 1024 * 1024;
 const ROLE_ROOM_RECEIPT_OCR_CACHE_ROOT = path.join(REPO_ROOT, 'uploads', 'role-room-ocr-cache');
 const ROLE_ROOM_TALENT_UPLOAD_MAX_BYTES = 512 * 1024 * 1024;
 const ROLE_ROOM_RECEIPT_UPLOAD_MAX_BYTES = 35 * 1024 * 1024;
@@ -829,6 +899,32 @@ const roleRoomReceiptUpload = multer({
     cb(new Error('Ugyldig kvitteringsformat. Bruk PDF, JPG, PNG, WebP, HEIC eller TIFF.'));
   },
 });
+// Klient-asset-opplasting (logo, brand-filer, brief). Bredere format-tillatelse
+// enn kvitteringer siden logoer ofte er SVG/AI/EPS. Filene serveres alltid som
+// nedlasting (Content-Disposition: attachment), aldri inline — så SVG ikke kan
+// rendres som aktivt innhold i nettleseren.
+const roleRoomClientAssetUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: ROLE_ROOM_CLIENT_ASSET_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    const mimetype = String(file.mimetype || '').toLowerCase();
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    const allowedExtensions = [
+      '.pdf', '.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.tif', '.tiff',
+      '.gif', '.svg', '.ai', '.eps', '.psd', '.zip', '.doc', '.docx', '.ppt', '.pptx',
+    ];
+    const blockedExtensions = ['.exe', '.sh', '.bat', '.cmd', '.js', '.app', '.dll', '.msi'];
+    if (blockedExtensions.includes(extension)) {
+      cb(new Error('Filtypen er ikke tillatt.'));
+      return;
+    }
+    if (mimetype.startsWith('image/') || mimetype === 'application/pdf' || allowedExtensions.includes(extension)) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error('Ugyldig filformat for klient-opplasting.'));
+  },
+});
 const ROLE_ROOM_GOOGLE_SCOPES = [
   'openid',
   'email',
@@ -836,10 +932,13 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   // Full Drive access is required for Showcase and other workspace flows
   // that list, create, move, and share arbitrary Drive files/folders.
   'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/drive.file',
+  // drive.file er utelatt: Google avviser drive.file + youtube i samme request
+  // («scopes that cannot be requested together», 400 invalid_request), og full
+  // `drive` er uansett et superset.
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/drive.activity.readonly',
   'https://www.googleapis.com/auth/documents',
+  'https://www.googleapis.com/auth/spreadsheets',
   // Full Calendar access is required when Role Room creates dedicated
   // secondary project calendars in addition to event sync / Meet sessions.
   'https://www.googleapis.com/auth/calendar',
@@ -858,9 +957,11 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/chat.spaces.create',
   'https://www.googleapis.com/auth/chat.memberships.readonly',
   'https://www.googleapis.com/auth/chat.messages.reactions.create',
-  // Publishing requires both direct uploads and full video management.
-  'https://www.googleapis.com/auth/youtube',
-  'https://www.googleapis.com/auth/youtube.upload',
+  // MERK: `youtube` er FJERNET fra bunten (2026-08-24). Google avviser nå hele
+  // forespørselen med unknownerror («Something went wrong») når youtube-scopet
+  // kombineres med Workspace-bunten — samme klasse som yt-analytics-saken under.
+  // YouTube hentes via egen inkrementell consent (se
+  // ROLE_ROOM_GOOGLE_YOUTUBE_ANALYTICS_SCOPES-mønsteret).
   // ── KPI-tracking scopes (Datakilder-fanen) ─────────────────────────
   // GA4 Data API — read-only sessions/users/conversions per property.
   'https://www.googleapis.com/auth/analytics.readonly',
@@ -869,14 +970,34 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/business.manage',
   // Search Console — clicks/impressions/CTR/position per query.
   'https://www.googleapis.com/auth/webmasters.readonly',
-  // YouTube Analytics — channel + video performance metrics.
+  // ── Oppsett-scopes (doc 14, OAuth-fasen) ───────────────────────────
+  // GA4 Admin API — opprette property/stream, sette retention, key events.
+  'https://www.googleapis.com/auth/analytics.edit',
+  // Search Console skrive: melde inn sitemaps programmatisk.
+  'https://www.googleapis.com/auth/webmasters',
+  // Site Verification API — verifisere domener (metatag/fil) for GSC.
+  'https://www.googleapis.com/auth/siteverification',
+  // MERK: yt-analytics.readonly + yt-analytics-monetary.readonly er FJERNET fra
+  // denne bunten. Google avviser hele consent-forespørselen med invalid_request
+  // («scopes that cannot be requested together») når YouTube Analytics-scopene
+  // (særlig monetary/finansdata) bes om sammen med Drive-scopes. De hentes i
+  // stedet via en egen, inkrementell YouTube-consent — se ROLE_ROOM_GOOGLE_YOUTUBE_ANALYTICS_SCOPES.
+] as const;
+// YouTube Analytics-scopene isolert i egen bunt. MÅ bes om i en separat consent
+// (uten Drive/Workspace-scopes), ellers svarer Google invalid_request.
+const ROLE_ROOM_GOOGLE_YOUTUBE_ANALYTICS_SCOPES = [
+  'openid',
+  'https://www.googleapis.com/auth/youtube.readonly',
   'https://www.googleapis.com/auth/yt-analytics.readonly',
   'https://www.googleapis.com/auth/yt-analytics-monetary.readonly',
 ] as const;
-const ROLE_ROOM_LINKEDIN_SCOPES = [
+// «Sign in with Google» skal KUN identifisere brukeren — ikke be om de tunge
+// Workspace/YouTube-scopene (Google avviser bl.a. yt-analytics-monetary sammen
+// med andre). De tunge scopene bes om separat ved mode='link' (koble Workspace).
+const ROLE_ROOM_GOOGLE_LOGIN_SCOPES = [
   'openid',
-  'profile',
-  'email',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
 ] as const;
 const ROLE_ROOM_GOOGLE_DRIVE_FOLDERS = [
   { key: 'brief', label: '01 Brief' },
@@ -1510,7 +1631,7 @@ function readRoleRoomGoogleUpstreamErrorMessage(error: unknown): string | null {
 
 function sendRoleRoomGoogleError(res: Response, error: unknown, fallbackMessage: string) {
   if (isRoleRoomGoogleAuthError(error)) {
-    res.status(error.statusCode).json({ error: error.message, reconnectRequired: true });
+    res.status(error.statusCode).json({ error: "internal_error", reconnectRequired: true });
     return;
   }
 
@@ -1592,7 +1713,12 @@ function buildRoleRoomGoogleReturnUrl(
   returnPath: string,
   params: Record<string, string | null | undefined>,
   browserOrigin?: string | null,
+  nativeClient?: RoleRoomGoogleNativeClient | null,
 ): string {
+  const nativeReturnUrl = buildRoleRoomNativeGoogleReturnUrl(nativeClient, params);
+  if (nativeReturnUrl) {
+    return nativeReturnUrl;
+  }
   const nextPath = appendQueryParamsToPath(returnPath, params);
   if (browserOrigin && nextPath.startsWith('/')) {
     return `${browserOrigin}${nextPath}`;
@@ -1662,6 +1788,15 @@ function buildCorsOptions(): cors.CorsOptionsDelegate<Request> {
         ...defaultDevOrigins,
         DEFAULT_ROLE_ROOM_TALENT_PUBLIC_ORIGIN,
         'https://www.theroleroom.com',
+        'https://theroleroom.com',
+        // Førsteparts CreatorHub-flater som hoster Role Room admin/integrasjons-
+        // UI (bl.a. LTI-plattform-registrering i AdminDashboard). Uten disse
+        // ble kreditert cross-origin-kall fra admin-panelet mot /api/role-room/*
+        // avvist (LTI-plattformregistrering feilet). Speiler den globale
+        // KNOWN_ORIGINS-listen for CreatorHub-vertene.
+        'https://admin.creatorhubn.com',
+        'https://creatorhubn.com',
+        'https://www.creatorhubn.com',
       ].filter((entry): entry is string => Boolean(readStringValue(entry))),
     ),
   );
@@ -1698,7 +1833,18 @@ function buildCorsOptions(): cors.CorsOptionsDelegate<Request> {
       return callback(null, { ...baseOptions, origin: true });
     }
 
-    callback(new Error(`Origin ${origin} blocked by CORS_ALLOW_ORIGINS policy`));
+    // Ukjent origin: IKKE kast. Et kast her gjør at cors kaller next(err) →
+    // Express' error-handler → 500 for HELE /api/role-room — inkludert
+    // LTI- og Feide-subrouterne som mountes ETTER denne routeren (de nås
+    // aldri, fordi denne router.use(cors(...)) matcher alle sub-paths og
+    // kaster først). LMS-launch (saLTIre/Canvas) og enhver annen tredjeparts-
+    // origin er per definisjon utenfor allowlist-en, så dette 500-et blokkerte
+    // all LTI-launch. Svar i stedet med ikke-kreditert CORS: `origin:false`
+    // gir `Access-Control-Allow-Origin: *` UTEN credentials-header, så
+    // browseren blokkerer fortsatt cross-origin *kreditert* lesing (uendret
+    // sikkerhet), mens top-level LTI-navigasjon (som ikke er CORS-underlagt)
+    // nå slipper gjennom til handleren i stedet for å feile med 500.
+    callback(null, { ...baseOptions, origin: false, credentials: false });
   };
 }
 
@@ -1898,13 +2044,13 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
     const keyHash = hashApiKey(key);
     try {
       const result = await pool.query<RoleRoomApiKeyRow>(
-        `SELECT * FROM role_room_api_keys 
-         WHERE key_hash = $1 AND is_active = TRUE 
+        `SELECT * FROM role_room_api_keys
+         WHERE key_hash = $1 AND is_active = TRUE
          AND (expires_at IS NULL OR expires_at > NOW())`,
         [keyHash]
       );
 
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(403).json({ error: 'Ugyldig eller utløpt API-nøkkel' });
         return;
       }
@@ -1936,6 +2082,18 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
 function getUserId(req: Request): string {
   const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
   return apiKeyReq.apiKeyUser?.userId ?? 'anonymous';
+}
+
+/**
+ * Server-trusted role for entitlement decisions. Resolved by `apiKeyAuth`
+ * from the authenticated session (or, only when dev-bypass is enabled, from
+ * the dev headers). NEVER re-read the raw `x-user-role` header for gating —
+ * doing so lets any caller send `x-user-role: admin` and hit the privileged
+ * `checkAgentEntitlement` bypass, skipping the paywall and trial caps.
+ */
+function getSessionRole(req: Request): string | undefined {
+  const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
+  return apiKeyReq.apiKeyUser?.role ?? undefined;
 }
 
 function requireScope(req: Request, scope: string): boolean {
@@ -2268,6 +2426,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     roleRoomEmail: string | null,
     googleProfile: { email: string; subject: string; profile: Record<string, unknown> },
     tokenBundle: NonNullable<RoleRoomGoogleTransferPayload['tokenBundle']>,
+    // Hvilken logisk tilkobling raden tilhører. Default 'role_room' = Workspace-
+    // tilkoblingen (Drive/Kalender/Gmail/YouTube). 'role_room_yt_analytics' er den
+    // isolerte YouTube-Analytics-granten (eget refresh-token, egne scopes) — den
+    // MÅ være separat fordi yt-analytics-monetary ikke kan dele grant med Drive.
+    oauthApp: string = 'role_room',
   ): Promise<RoleRoomGoogleConnectionRow> {
     if (!(await ensureRoleRoomGoogleTables())) {
       throw new Error('Role Room Google tables unavailable');
@@ -2286,9 +2449,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT *
          FROM role_room_google_connections
          WHERE user_id = $1
-           AND oauth_app = 'role_room'
+           AND oauth_app = $2
          LIMIT 1`,
-        [userId],
+        [userId, oauthApp],
       );
       const existingByUser = existingByUserResult.rows[0] ?? null;
 
@@ -2296,9 +2459,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT *
          FROM role_room_google_connections
          WHERE google_subject = $1
-           AND oauth_app = 'role_room'
+           AND oauth_app = $2
          LIMIT 1`,
-        [googleProfile.subject],
+        [googleProfile.subject, oauthApp],
       );
       const existingBySubject = existingBySubjectResult.rows[0] ?? null;
 
@@ -2323,7 +2486,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
                connection_state = 'connected',
                last_error = NULL,
                profile = $10::jsonb,
-               oauth_app = 'role_room',
+               oauth_app = $11,
                updated_at = NOW(),
                last_used_at = NOW()
            WHERE id = $1
@@ -2339,6 +2502,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             expiryDate,
             JSON.stringify(tokenBundle.scopes ?? []),
             JSON.stringify(googleProfile.profile),
+            oauthApp,
           ],
         );
         await client.query('COMMIT');
@@ -2353,7 +2517,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         ) VALUES (
           $1, $2, $3, $4, $5,
           $6, $7, $8, $9::jsonb,
-          'connected', NULL, $10::jsonb, 'role_room', NOW(), NOW(), NOW()
+          'connected', NULL, $10::jsonb, $11, NOW(), NOW(), NOW()
         )
         ON CONFLICT (user_id, oauth_app) DO UPDATE SET
           role_room_email = EXCLUDED.role_room_email,
@@ -2362,6 +2526,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           access_token_encrypted = COALESCE(EXCLUDED.access_token_encrypted, role_room_google_connections.access_token_encrypted),
           refresh_token_encrypted = COALESCE(EXCLUDED.refresh_token_encrypted, role_room_google_connections.refresh_token_encrypted),
           expiry_date = COALESCE(EXCLUDED.expiry_date, role_room_google_connections.expiry_date),
+          -- OVERSKRIVER scopes (ikke union). Korrekt per (user_id, oauth_app)-rad:
+          -- hver consent ber om sin komplette bunt (include_granted_scopes=false
+          -- overalt — true fletter inn gamle grants og gir Googles «scopes that
+          -- cannot be requested together»), så token-svaret bærer hele bunten.
+          -- Hver rad = én logisk grant, så overskrive er riktig.
           scopes = EXCLUDED.scopes,
           connection_state = 'connected',
           last_error = NULL,
@@ -2380,6 +2549,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           expiryDate,
           JSON.stringify(tokenBundle.scopes ?? []),
           JSON.stringify(googleProfile.profile),
+          oauthApp,
         ],
       );
 
@@ -2393,6 +2563,58 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   }
 
+  // Klient-portal Google: lagres i EGEN tabell (role_room_client_google_-
+  // connections), isolert fra de 20+ Workspace-leserne + den destruktive
+  // DELETE-en i upsertRoleRoomGoogleConnection. Én tilkobling per prosjekt.
+  async function upsertClientGoogleConnection(input: {
+    projectId: string;
+    producerUserId: string;
+    email: string | null;
+    subject: string | null;
+    profile: Record<string, unknown>;
+    tokenBundle: NonNullable<RoleRoomGoogleTransferPayload['tokenBundle']>;
+  }): Promise<void> {
+    const accessTokenEncrypted = input.tokenBundle.accessToken ? encryptRoleRoomGoogleToken(input.tokenBundle.accessToken) : null;
+    const refreshTokenEncrypted = input.tokenBundle.refreshToken ? encryptRoleRoomGoogleToken(input.tokenBundle.refreshToken) : null;
+    const expiryDate = typeof input.tokenBundle.expiryDate === 'number' && Number.isFinite(input.tokenBundle.expiryDate)
+      ? new Date(input.tokenBundle.expiryDate).toISOString()
+      : null;
+    const scopes = (input.tokenBundle as { scopes?: string[] }).scopes ?? [];
+    await pool.query(
+      `INSERT INTO role_room_client_google_connections (
+         id, project_id, producer_user_id, google_email, google_subject,
+         access_token_encrypted, refresh_token_encrypted, expiry_date, scopes,
+         connection_state, profile, created_at, updated_at, last_used_at
+       ) VALUES (
+         gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8::jsonb, 'connected', $9::jsonb, NOW(), NOW(), NOW()
+       )
+       ON CONFLICT (project_id) DO UPDATE SET
+         producer_user_id = EXCLUDED.producer_user_id,
+         google_email = EXCLUDED.google_email,
+         google_subject = EXCLUDED.google_subject,
+         access_token_encrypted = COALESCE(EXCLUDED.access_token_encrypted, role_room_client_google_connections.access_token_encrypted),
+         refresh_token_encrypted = COALESCE(EXCLUDED.refresh_token_encrypted, role_room_client_google_connections.refresh_token_encrypted),
+         expiry_date = COALESCE(EXCLUDED.expiry_date, role_room_client_google_connections.expiry_date),
+         scopes = EXCLUDED.scopes,
+         connection_state = 'connected',
+         last_error = NULL,
+         profile = EXCLUDED.profile,
+         updated_at = NOW(),
+         last_used_at = NOW()`,
+      [
+        input.projectId,
+        input.producerUserId,
+        input.email,
+        input.subject,
+        accessTokenEncrypted,
+        refreshTokenEncrypted,
+        expiryDate,
+        JSON.stringify(scopes),
+        JSON.stringify(input.profile),
+      ],
+    );
+  }
+
   async function upsertRoleRoomLinkedInConnection(
     userId: string,
     roleRoomEmail: string | null,
@@ -2403,6 +2625,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       profile: Record<string, unknown>;
     },
     tokenBundle: RoleRoomLinkedInTransferPayload['tokenBundle'],
+    // Klient-portal-tilkoblinger scopes til prosjektet (lagres under produsentens
+    // user_id + project_id). Produsentens egne globale tilkoblinger (publisering)
+    // har project_id = null — derfor default null her.
+    projectId: string | null = null,
   ): Promise<RoleRoomLinkedInConnectionRow> {
     if (!(await ensureRoleRoomLinkedInTables())) {
       throw new Error('Role Room LinkedIn tables unavailable');
@@ -2418,13 +2644,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       `INSERT INTO role_room_linkedin_connections (
         id, user_id, role_room_email, linkedin_member_id, linkedin_email, linkedin_name,
         access_token_encrypted, refresh_token_encrypted, expiry_date, scopes,
-        connection_state, last_error, profile, created_at, updated_at, last_used_at
+        connection_state, last_error, profile, project_id, created_at, updated_at, last_used_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
         $7, $8, $9, $10::jsonb,
-        'connected', NULL, $11::jsonb, NOW(), NOW(), NOW()
+        'connected', NULL, $11::jsonb, $12, NOW(), NOW(), NOW()
       )
-      ON CONFLICT (user_id) DO UPDATE SET
+      ON CONFLICT (user_id, COALESCE(project_id, '')) DO UPDATE SET
         role_room_email = EXCLUDED.role_room_email,
         linkedin_member_id = EXCLUDED.linkedin_member_id,
         linkedin_email = EXCLUDED.linkedin_email,
@@ -2451,6 +2677,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         expiryDate,
         JSON.stringify(tokenBundle.scopes ?? []),
         JSON.stringify(linkedInProfile.profile),
+        projectId,
       ],
     );
     return result.rows[0];
@@ -2644,7 +2871,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT metadata FROM legacy.projects WHERE id = $1 LIMIT 1`,
         [projectId],
       );
-      if (!result.rowCount || result.rowCount === 0) {
+      if (!result.rowCount || !result.rows.length) {
         return {};
       }
       return readJsonObject(result.rows[0]?.metadata);
@@ -3866,6 +4093,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           'content_producer',
           'producer',
           'production_manager',
+          'production_coordinator',
           'director',
         ].includes(normalizedRequestedRole)
       ) {
@@ -4060,6 +4288,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       `SELECT role
        FROM casting_user_roles
        WHERE project_id = $1
+         AND deactivated_at IS NULL
          AND (expires_at IS NULL OR expires_at > NOW())
          AND (
            LOWER(COALESCE(email, '')) = LOWER($2)
@@ -4655,6 +4884,46 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           canRequestChanges: false,
           canViewEconomy: false,
         };
+      case 'production_coordinator':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canCoordinateProduction: true,
+          canManageCrew: false,
+          canManageLocations: false,
+          canEditShots: false,
+          canEditShotLists: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: false,
+          canViewEconomy: false,
+        };
+      case 'first_ad':
+      case 'first_assistant_director':
+      case '1st_ad':
+      case 'second_ad':
+      case 'second_assistant_director':
+      case '2nd_ad':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: true,
+          canManageCrew: false,
+          canManageLocations: false,
+          canEditShots: false,
+          canEditShotLists: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: true,
+          canViewEconomy: false,
+        };
       case 'camera_team':
         return {
           canViewAll: false,
@@ -4743,6 +5012,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
        FROM casting_user_roles
        WHERE project_id = $1
          AND user_id = ANY($2::text[])
+         AND deactivated_at IS NULL
          AND (expires_at IS NULL OR expires_at > NOW())
        LIMIT 1`,
       [projectId, identifiers],
@@ -4755,6 +5025,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          FROM casting_user_roles
          WHERE project_id = '__global__'
            AND user_id = ANY($1::text[])
+           AND deactivated_at IS NULL
            AND (expires_at IS NULL OR expires_at > NOW())
          LIMIT 1`,
         [identifiers],
@@ -4822,6 +5093,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       'director',
       'producer',
       'production_manager',
+      'production_coordinator',
+      'first_ad',
+      'first_assistant_director',
+      '1st_ad',
+      'second_ad',
+      'second_assistant_director',
+      '2nd_ad',
       'content_producer',
       'client_reviewer',
     ].includes(effectiveRoleRecord.role)) return true;
@@ -4842,8 +5120,27 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (requireScope(req, 'admin')) return true;
     const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
     if (!effectiveRoleRecord) return false;
-    if (['director', 'producer', 'production_manager', 'content_producer'].includes(effectiveRoleRecord.role)) return true;
+    if ([
+      'director',
+      'producer',
+      'production_manager',
+      'first_ad',
+      'first_assistant_director',
+      '1st_ad',
+      'second_ad',
+      'second_assistant_director',
+      '2nd_ad',
+      'content_producer',
+    ].includes(effectiveRoleRecord.role)) return true;
     return effectiveRoleRecord.permissions.canEditProduction === true;
+  }
+
+  function canManageProjectRoles(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (requireScope(req, 'admin')) return true;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    if (!effectiveRoleRecord) return false;
+    if (['director', 'producer', 'production_manager'].includes(effectiveRoleRecord.role)) return true;
+    return effectiveRoleRecord.permissions.canManageCrew === true;
   }
 
   function canReadStoryLogic(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
@@ -5166,6 +5463,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     project_id: string;
     platform: ProducerAccountAccessPlatform;
     label?: string | null;
+    account_label?: string | null;
+    owner_side?: string | null;
+    rotated_at?: string | null;
+    reveal_ttl_seconds?: number | null;
     secret_type?: string | null;
     username_encrypted?: string | null;
     secret_encrypted?: string | null;
@@ -5374,6 +5675,23 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     return String(role ?? '').trim().toLowerCase() === 'client_reviewer';
   }
 
+  // Draft → publiser → synk-grense: en klient-rolle ser KUN publiserte rader
+  // (published_at IS NOT NULL). Produsent-roller ser alt (draft inkludert).
+  // Admin-scope teller som produsent (full innsikt).
+  function isClientPublishViewer(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
+    if (requireScope(req, 'admin')) return false;
+    const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+    return isClientReviewerProjectRole(effectiveRoleRecord?.role);
+  }
+
+  // Assistent-scoping: true hvis innlogget bruker er en scopet assistent UTEN
+  // tilgang til området. Returnerer false for produsent/klient/eier.
+  async function assistantAreaBlocked(req: Request, projectId: string, area: string): Promise<boolean> {
+    const email = (req as Request & { apiKeyUser?: { email?: string } }).apiKeyUser?.email;
+    const scope = await getAssistantAreas(pool, projectId, { userId: getUserId(req), email });
+    return scope != null && scope.areas[area] !== true;
+  }
+
   function getProducerNotificationAudiences(
     req: Request,
     roleRecord: ProjectRoleRecord | null,
@@ -5395,6 +5713,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       'director',
       'producer',
       'production_manager',
+      'production_coordinator',
       'content_producer',
     ].includes(effectiveRoleRecord.role)) {
       return ['producer_team', 'all'];
@@ -6972,6 +7291,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       projectId: row.project_id,
       platform: row.platform,
       label: readStringValue(row.label),
+      accountLabel: readStringValue(row.account_label) ?? '',
+      ownerSide: readStringValue(row.owner_side) === 'client' ? 'client' : 'producer',
+      rotatedAt: row.rotated_at ?? null,
+      revealTtlSeconds: typeof row.reveal_ttl_seconds === 'number' ? row.reveal_ttl_seconds : 300,
       secretType: readStringValue(row.secret_type),
       maskedReference: readStringValue(row.masked_reference),
       tier: readStringValue(row.tier),
@@ -7042,14 +7365,16 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   async function getRoleRoomAccessVaultSecretByPlatform(
     projectId: string,
     platform: ProducerAccountAccessPlatform,
+    accountLabel = '',
   ): Promise<RoleRoomAccessVaultSecretRow | null> {
     const result = await pool.query(
       `SELECT *
        FROM role_room_access_vault_secrets
        WHERE project_id = $1
          AND platform = $2
+         AND COALESCE(account_label, '') = $3
        LIMIT 1`,
-      [projectId, platform],
+      [projectId, platform, accountLabel],
     );
     return (result.rows[0] as RoleRoomAccessVaultSecretRow | undefined) ?? null;
   }
@@ -7447,6 +7772,22 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             ON role_room_project_notifications(project_id, updated_at DESC)
             WHERE archived_at IS NULL;
 
+          -- Draft → publiser → synk-grense (se migrasjon 293). NULL = draft/privat,
+          -- satt = publisert/synlig for motparten. ADD COLUMN IF NOT EXISTS gjør at
+          -- ferske DB-er får feltene selv uten migrasjon.
+          ALTER TABLE role_room_phase_timeline_items
+            ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS published_by_user_id VARCHAR(255);
+          ALTER TABLE role_room_budget_items
+            ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS published_by_user_id VARCHAR(255);
+          ALTER TABLE role_room_client_reviews
+            ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS published_by_user_id VARCHAR(255);
+          ALTER TABLE role_room_client_intake
+            ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS published_by_user_id VARCHAR(255);
+
           CREATE TABLE IF NOT EXISTS role_room_project_notification_reads (
             notification_id UUID NOT NULL REFERENCES role_room_project_notifications(id) ON DELETE CASCADE,
             user_id VARCHAR(255) NOT NULL,
@@ -7615,10 +7956,32 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             last_revealed_at TIMESTAMPTZ,
             revoked_at TIMESTAMPTZ
           );
-          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_access_vault_secrets_platform
-            ON role_room_access_vault_secrets(project_id, platform);
+          -- Vault v2: multi-secret per plattform + eierskap + rotasjon/TTL.
+          ALTER TABLE role_room_access_vault_secrets
+            ADD COLUMN IF NOT EXISTS account_label VARCHAR(255) NOT NULL DEFAULT '',
+            ADD COLUMN IF NOT EXISTS owner_side VARCHAR(16) NOT NULL DEFAULT 'producer',
+            ADD COLUMN IF NOT EXISTS rotated_at TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS reveal_ttl_seconds INTEGER NOT NULL DEFAULT 300;
+          DROP INDEX IF EXISTS idx_rr_access_vault_secrets_platform;
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_rr_access_vault_secrets_platform_label
+            ON role_room_access_vault_secrets(project_id, platform, account_label);
           CREATE INDEX IF NOT EXISTS idx_rr_access_vault_secrets_project
             ON role_room_access_vault_secrets(project_id, updated_at DESC);
+          CREATE TABLE IF NOT EXISTS role_room_access_vault_grants (
+            id UUID PRIMARY KEY,
+            secret_id UUID NOT NULL REFERENCES role_room_access_vault_secrets(id) ON DELETE CASCADE,
+            project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
+            grantee_user_id VARCHAR(255),
+            grantee_role VARCHAR(80),
+            granted_by_user_id VARCHAR(255),
+            granted_by_role VARCHAR(80),
+            granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            expires_at TIMESTAMPTZ,
+            revoked_at TIMESTAMPTZ,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+          );
+          CREATE INDEX IF NOT EXISTS idx_rr_access_vault_grants_secret
+            ON role_room_access_vault_grants(secret_id) WHERE revoked_at IS NULL;
 
           CREATE TABLE IF NOT EXISTS role_room_access_vault_reveal_requests (
             id UUID PRIMARY KEY,
@@ -8766,7 +9129,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     try {
       const result = await pool.query('SELECT NOW() AS server_time');
       const tableCheck = await pool.query(
-        `SELECT COUNT(*) AS count FROM information_schema.tables 
+        `SELECT COUNT(*) AS count FROM information_schema.tables
          WHERE table_schema = 'public' AND table_name LIKE 'casting_%'`
       );
       res.json({
@@ -8778,7 +9141,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         apiKeyEnforced: true,
       });
     } catch (err) {
-      res.status(500).json({ status: 'error', message: String(err) });
+      res.status(500).json({ status: 'error', message: "internal_error" });
     }
   });
 
@@ -8795,7 +9158,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         message: 'API-nøkkel verifisert. Tilkobling vellykket.',
       });
     } catch (err) {
-      res.status(500).json({ status: 'error', message: String(err) });
+      res.status(500).json({ status: 'error', message: "internal_error" });
     }
   });
 
@@ -8854,7 +9217,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
-      const mode = readStringValue(req.body?.mode)?.toLowerCase() === 'link' ? 'link' : 'login';
+      // 'youtube-analytics' = inkrementell YouTube Analytics-consent. Lagres som
+      // 'link' i staten (samme callback + eierskaps-flyt), men ber KUN om YouTube-
+      // Analytics-scopene — de kan ikke bes om sammen med Drive (Google avviser
+      // «scopes that cannot be requested together»). include_granted_scopes fletter
+      // dem inn i den eksisterende bevilgningen.
+      const rawMode = readStringValue(req.body?.mode)?.toLowerCase();
+      const isYoutubeAnalyticsConsent = rawMode === 'youtube-analytics';
+      const mode = (rawMode === 'link' || isYoutubeAnalyticsConsent) ? 'link' : 'login';
       const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
       if (mode === 'link' && !requestUser?.userId) {
         res.status(401).json({ error: 'Må være innlogget for å koble Google Workspace' });
@@ -8868,6 +9238,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const stateId = crypto.randomUUID();
+      const requestedNativeClient = readStringValue(req.body?.nativeClient);
+      const nativeClient = parseRoleRoomGoogleNativeClient(requestedNativeClient);
+      if (requestedNativeClient && !nativeClient) {
+        res.status(400).json({
+          error: 'Native OAuth-klient støttes ikke',
+        });
+        return;
+      }
       const loginAs = readStringValue(req.body?.loginAs)?.toLowerCase() ?? null;
       const requestedRole = readStringValue(req.body?.requestedRole ?? req.body?.role)?.toLowerCase() ?? null;
       const projectId = readStringValue(req.body?.projectId);
@@ -8896,6 +9274,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
       const oauthStatePayload: RoleRoomGoogleOauthState = {
         mode,
+        nativeClient,
         returnPath,
         browserOrigin,
         redirectUri: config.redirectUri ?? null,
@@ -8906,20 +9285,45 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         createdByEmail: requestUser?.email ?? null,
         targetConnectionUserId,
         targetConnectionEmail,
+        youtubeAnalytics: isYoutubeAnalyticsConsent,
         createdAt: Date.now(),
       };
+      // DB er autoritativ for OAuth-state. Da tåler flyten at Google-callback
+      // og native session-result treffer andre Render-instanser, samtidig som
+      // state fortsatt er engangsbruk og ikke kan spilles av på nytt.
+      const statePersisted = await persistOauthState(
+        pool,
+        stateId,
+        oauthStatePayload,
+        new Date(Date.now() + 10 * 60 * 1000),
+      );
+      if (!statePersisted) {
+        res.status(503).json({
+          error: 'Google-innlogging er midlertidig utilgjengelig. Prøv igjen.',
+        });
+        return;
+      }
       roleRoomGoogleOauthStateStore.set(stateId, oauthStatePayload);
-      // Sikkerhetsfix (#6): persister også til DB så multi-pod
-      // setups (Render horizontal scaling) ikke mister state når
-      // callback treffer en annen pod enn den som opprettet den.
-      // 10 min TTL — samme som in-memory pruning.
-      void persistOauthState(pool, stateId, oauthStatePayload, new Date(Date.now() + 10 * 60 * 1000));
 
       const loginHint = targetConnectionEmail ?? requestUser?.email ?? readStringValue(req.body?.email);
+      // Login = kun minimale identitets-scopes (unngår Googles «scopes cannot be
+      // requested together»-avvisning); link = full Workspace-scope-sett.
+      const isLoginMode = mode === 'login';
+      const requestedScopes = isYoutubeAnalyticsConsent
+        ? [...ROLE_ROOM_GOOGLE_YOUTUBE_ANALYTICS_SCOPES]
+        : isLoginMode
+          ? [...ROLE_ROOM_GOOGLE_LOGIN_SCOPES]
+          : [...ROLE_ROOM_GOOGLE_SCOPES];
+      // ALDRI include_granted_scopes=true: Google fletter da kontoens TIDLIGERE
+      // grants inn i requesten (f.eks. den isolerte yt-analytics-granten, eller
+      // gamle youtube.upload-grants fra før scope-oppryddingen) og avviser hele
+      // requesten med «scopes that cannot be requested together» (400
+      // invalid_request). Hver consent ber om sin komplette bunt og lagres som
+      // egen credential (oauth_app), så flagget tilfører ingenting.
       const authorizationUrl = oauthClient.generateAuthUrl({
         access_type: 'offline',
-        scope: [...ROLE_ROOM_GOOGLE_SCOPES],
-        include_granted_scopes: true,
+        scope: requestedScopes,
+        include_granted_scopes: false,
         prompt: 'consent',
         state: stateId,
         ...(loginHint ? { login_hint: loginHint } : {}),
@@ -8930,9 +9334,78 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         mode,
         authorizationUrl,
         stateId,
+        nativeClient,
       });
     } catch (error) {
       console.error('Role Room Google oauth start error:', error);
+      res.status(500).json({ error: 'Kunne ikke starte Google OAuth' });
+    }
+  });
+
+  // Klient-initiert Google Workspace-kobling fra portalen (alltid link-modus).
+  // Samme state-payload som produsentens link-start, men med prosjekteierens
+  // userId. Hopper over commercial-login-gaten (den gjelder kun mode='login').
+  router.post('/client-portal/oauth/google/start', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredRoleRoomGoogleState();
+      const token = typeof req.query.token === 'string' ? req.query.token : '';
+      if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+      const session = await resolveClientPortalSession(pool, token);
+      if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+      const producerUserId = await getProjectProducerUserId(pool, session.projectId);
+      if (!producerUserId) {
+        res.status(409).json({ error: 'Prosjektet mangler en produsent å koble kontoen til.' });
+        return;
+      }
+
+      const browserOrigin = sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req);
+      const requestScopedRedirectUri = browserOrigin
+        ? `${browserOrigin}/api/role-room/google/oauth/callback`
+        : null;
+      const config = getRoleRoomGoogleConfig(req, requestScopedRedirectUri);
+      if (!config.configured) {
+        res.status(400).json({ error: 'Google Workspace er ikke konfigurert', missing: config.missing });
+        return;
+      }
+      const oauthClient = createRoleRoomGoogleOAuthClient(req, config.redirectUri);
+      if (!oauthClient) {
+        res.status(500).json({ error: 'Google OAuth-klient er ikke tilgjengelig' });
+        return;
+      }
+
+      const stateId = crypto.randomUUID();
+      // Redirect klienten tilbake til portalen etter kobling.
+      const returnPath = `/client/portal/${encodeURIComponent(token)}?connected=google`;
+      const oauthStatePayload: RoleRoomGoogleOauthState = {
+        mode: 'link',
+        returnPath,
+        browserOrigin,
+        redirectUri: config.redirectUri ?? null,
+        loginAs: null,
+        requestedRole: null,
+        projectId: session.projectId,
+        createdByUserId: producerUserId,
+        createdByEmail: null,
+        targetConnectionUserId: null,
+        targetConnectionEmail: null,
+        createdAt: Date.now(),
+      };
+      roleRoomGoogleOauthStateStore.set(stateId, oauthStatePayload);
+      void persistOauthState(pool, stateId, oauthStatePayload, new Date(Date.now() + 10 * 60 * 1000));
+
+      const authorizationUrl = oauthClient.generateAuthUrl({
+        access_type: 'offline',
+        scope: [...ROLE_ROOM_GOOGLE_SCOPES],
+        // false — se kommentar ved produsent-linken over: true fletter inn
+        // gamle grants og gir «scopes that cannot be requested together».
+        include_granted_scopes: false,
+        prompt: 'consent',
+        state: stateId,
+      });
+
+      res.json({ success: true, mode: 'link' as const, authorizationUrl });
+    } catch (error) {
+      console.error('Role Room client Google oauth start error:', error);
       res.status(500).json({ error: 'Kunne ikke starte Google OAuth' });
     }
   });
@@ -8942,28 +9415,25 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const fallbackReturnPath = sanitizeRoleRoomReturnPath(req.query.returnPath, req);
     const requestOrigin = resolveRoleRoomBrowserOrigin(req);
 
+    const stateId = readStringValue(req.query.state);
+    const code = readStringValue(req.query.code);
+    // Autoritativ, atomisk consume hindrer både cross-pod state-tap og replay
+    // mot podden som opprinnelig opprettet sin lokale cache-rad.
+    const oauthState = stateId
+      ? await consumeOauthState<RoleRoomGoogleOauthState>(pool, stateId)
+      : null;
+    if (stateId) {
+      roleRoomGoogleOauthStateStore.delete(stateId);
+    }
+
     const redirectWithError = (returnPath: string, message: string, browserOrigin?: string | null) => {
       res.redirect(
         buildRoleRoomGoogleReturnUrl(returnPath, {
           rrGoogleStatus: 'error',
           rrGoogleMessage: message,
-        }, resolveRoleRoomBrowserOrigin(req, browserOrigin) ?? requestOrigin),
+        }, resolveRoleRoomBrowserOrigin(req, browserOrigin) ?? requestOrigin, oauthState?.nativeClient),
       );
     };
-
-    const stateId = readStringValue(req.query.state);
-    const code = readStringValue(req.query.code);
-    // Sikkerhetsfix (#6): Map kan miste treff hvis callback treffer en
-    // annen pod enn den som opprettet state. DB-fallback dekker det.
-    let oauthState = stateId ? roleRoomGoogleOauthStateStore.get(stateId) : null;
-    if (!oauthState && stateId) {
-      const fromDb = await loadOauthState<RoleRoomGoogleOauthState>(pool, stateId);
-      if (fromDb) {
-        oauthState = fromDb;
-        // Cache i Map for raskere oppslag senere i samme prosess.
-        roleRoomGoogleOauthStateStore.set(stateId, fromDb);
-      }
-    }
 
     // Sikkerhetsfix (#5): bruker som klikker "Avbryt" på Googles consent-
     // skjerm sender ?error=access_denied. Tidligere fanget vi dette via
@@ -8987,10 +9457,6 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       redirectWithError(oauthState?.returnPath ?? fallbackReturnPath, 'Ugyldig Google-forespørsel', oauthState?.browserOrigin);
       return;
     }
-
-    roleRoomGoogleOauthStateStore.delete(stateId!);
-    // Sikkerhetsfix (#6): slett også fra DB
-    void deleteOauthState(pool, stateId!);
 
     try {
       const oauthClient = createRoleRoomGoogleOAuthClient(req, oauthState.redirectUri);
@@ -9215,7 +9681,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
                   rrGoogleStatus: 'needs_2fa',
                   rrGoogleMode: 'login',
                   rrGoogleTempToken: tempToken,
-                }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
+                }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin, oauthState.nativeClient),
               );
               return;
             }
@@ -9261,7 +9727,63 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             rrGoogleStatus: 'success',
             rrGoogleMode: 'login',
             rrGoogleTransfer: transferId,
-          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
+          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin, oauthState.nativeClient),
+        );
+        return;
+      }
+
+      // Klient-portal: lagre Google-tilkoblingen i den isolerte klient-tabellen
+      // (ikke produsentens Workspace-tilkobling). Klienten kobler sin EGEN konto,
+      // så ingen av de 20+ Workspace-leserne eller den destruktive DELETE-en røres.
+      if (oauthState.returnPath.startsWith('/client/portal/') && oauthState.createdByUserId && oauthState.projectId) {
+        await upsertClientGoogleConnection({
+          projectId: oauthState.projectId,
+          producerUserId: oauthState.createdByUserId,
+          email: googleEmail,
+          subject: googleSubject,
+          profile: (googleProfile ?? {}) as Record<string, unknown>,
+          tokenBundle,
+        });
+        // Varsle produsent-teamet: tilkoblingen er fullført og aktiv.
+        void notifyProducerOfClientPlatformConnection(pool, {
+          projectId: oauthState.projectId,
+          platformLabel: 'Google Workspace',
+          platformKey: 'google',
+          clientEmail: googleEmail ?? null,
+        });
+        res.redirect(
+          buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
+            rrGoogleStatus: 'success',
+            rrGoogleMode: 'link',
+          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin, oauthState.nativeClient),
+        );
+        return;
+      }
+
+      // YouTube-Analytics-consent: isolert grant (kun yt-analytics-scopene,
+      // include_granted_scopes=false). Lagres som EGEN tilkobling
+      // (oauth_app='role_room_yt_analytics') så den IKKE overskriver Workspace-
+      // tokenet — yt-analytics-monetary kan ikke dele grant med Drive. Kortslutter
+      // FØR Workspace-link-upserten under (som ellers ville klobbet 'role_room').
+      if (oauthState.youtubeAnalytics) {
+        const analyticsUserId = oauthState.targetConnectionUserId ?? oauthState.createdByUserId ?? null;
+        const analyticsEmail = oauthState.targetConnectionEmail ?? oauthState.createdByEmail ?? null;
+        if (!analyticsUserId) {
+          redirectWithError(oauthState.returnPath, 'Fant ikke brukeren som skal koble YouTube Analytics', oauthState.browserOrigin);
+          return;
+        }
+        await upsertRoleRoomGoogleConnection(
+          analyticsUserId,
+          analyticsEmail,
+          { email: googleEmail, subject: googleSubject, profile: googleProfile },
+          tokenBundle,
+          'role_room_yt_analytics',
+        );
+        res.redirect(
+          buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
+            rrGoogleStatus: 'success',
+            rrGoogleMode: 'link',
+          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin, oauthState.nativeClient),
         );
         return;
       }
@@ -9321,7 +9843,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           rrGoogleStatus: 'success',
           rrGoogleMode: 'link',
           rrGoogleTransfer: transferId,
-        }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
+        }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin, oauthState.nativeClient),
       );
     } catch (error) {
       console.error('Role Room Google callback error:', error);
@@ -9584,7 +10106,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           response_type: 'code',
           client_id: config.clientId,
           redirect_uri: config.redirectUri,
-          scope: [...ROLE_ROOM_LINKEDIN_SCOPES].join(' '),
+          scope: [...ROLE_ROOM_LINKEDIN_OAUTH_SCOPES].join(' '),
           state: stateId,
         }).toString()
       }`;
@@ -9597,6 +10119,57 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       });
     } catch (error) {
       console.error('Role Room LinkedIn oauth start error:', error);
+      res.status(500).json({ error: 'Kunne ikke starte LinkedIn OAuth' });
+    }
+  });
+
+  // Klient-initiert LinkedIn-kobling fra portalen. Mynter samme state-store-
+  // entry som produsentens start, men med PROSJEKTEIERENS userId, slik at den
+  // delte callbacken lagrer koblingen under produsenten + prosjektet.
+  // Klient-token gater hvem som kan starte; consent gis med klientens konto.
+  router.post('/client-portal/oauth/linkedin/start', async (req: Request, res: Response) => {
+    try {
+      pruneExpiredRoleRoomGoogleState();
+      const token = typeof req.query.token === 'string' ? req.query.token : '';
+      if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+      const session = await resolveClientPortalSession(pool, token);
+      if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+      const producerUserId = await getProjectProducerUserId(pool, session.projectId);
+      if (!producerUserId) {
+        res.status(409).json({ error: 'Prosjektet mangler en produsent å koble kontoen til.' });
+        return;
+      }
+
+      const config = getRoleRoomLinkedInConfig(req);
+      if (!config.configured || !config.clientId || !config.redirectUri) {
+        res.status(400).json({ error: 'LinkedIn er ikke konfigurert', missing: config.missing });
+        return;
+      }
+
+      const stateId = crypto.randomUUID();
+      // Redirect klienten tilbake til portalen etter kobling.
+      const returnPath = `/client/portal/${encodeURIComponent(token)}?connected=linkedin`;
+      roleRoomLinkedInOauthStateStore.set(stateId, {
+        returnPath,
+        browserOrigin: sanitizeRoleRoomBrowserOrigin(req.body?.browserOrigin) ?? getRoleRoomRequestOrigin(req),
+        projectId: session.projectId,
+        createdByUserId: producerUserId,
+        createdAt: Date.now(),
+      });
+
+      const authorizationUrl = `https://www.linkedin.com/oauth/v2/authorization?${
+        new URLSearchParams({
+          response_type: 'code',
+          client_id: config.clientId,
+          redirect_uri: config.redirectUri,
+          scope: [...ROLE_ROOM_LINKEDIN_OAUTH_SCOPES].join(' '),
+          state: stateId,
+        }).toString()
+      }`;
+
+      res.json({ success: true, mode: 'link' as const, authorizationUrl });
+    } catch (error) {
+      console.error('Role Room client LinkedIn oauth start error:', error);
       res.status(500).json({ error: 'Kunne ikke starte LinkedIn OAuth' });
     }
   });
@@ -9700,6 +10273,44 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         ? Date.now() + (Number(tokenPayload.expires_in) * 1000)
         : null;
       const rawScopes = readStringValue(tokenPayload.scope);
+
+      // Klient-portal: klienten er IKKE innlogget, så transfer→/linkedin/link-
+      // fullføringen (som krever getUserId) finnes ikke for dem. Auto-upsert
+      // direkte her, prosjekt-scopet under produsentens user_id. Produsentens
+      // egen kobling går fortsatt via transfer-store + /linkedin/link (under).
+      if (oauthState.returnPath.startsWith('/client/portal/') && oauthState.createdByUserId) {
+        await upsertRoleRoomLinkedInConnection(
+          oauthState.createdByUserId,
+          linkedInEmail,
+          { memberId: linkedInMemberId, email: linkedInEmail, name: linkedInName, profile: readJsonObject(profilePayload) },
+          {
+            accessToken,
+            refreshToken: readStringValue(tokenPayload.refresh_token),
+            expiryDate,
+            scopes: rawScopes
+              ? rawScopes.split(' ').filter((entry) => entry.trim().length > 0)
+              : [...ROLE_ROOM_LINKEDIN_OAUTH_SCOPES],
+          },
+          oauthState.projectId ?? null,
+        );
+        // Varsle produsent-teamet: tilkoblingen er fullført og aktiv.
+        if (oauthState.projectId) {
+          void notifyProducerOfClientPlatformConnection(pool, {
+            projectId: oauthState.projectId,
+            platformLabel: 'LinkedIn',
+            platformKey: 'linkedin',
+            clientEmail: linkedInEmail ?? null,
+          });
+        }
+        res.redirect(
+          buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
+            rrLinkedInStatus: 'success',
+            rrLinkedInMode: 'link',
+          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
+        );
+        return;
+      }
+
       const transferId = crypto.randomUUID();
       roleRoomLinkedInTransferStore.set(transferId, {
         mode: 'link',
@@ -9714,7 +10325,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           expiryDate,
           scopes: rawScopes
             ? rawScopes.split(' ').filter((entry) => entry.trim().length > 0)
-            : [...ROLE_ROOM_LINKEDIN_SCOPES],
+            : [...ROLE_ROOM_LINKEDIN_OAUTH_SCOPES],
         },
       });
 
@@ -11360,13 +11971,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.delete('/api-keys/:keyId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
-      await pool.query(
-        `UPDATE role_room_api_keys SET is_active = FALSE WHERE id = $1`,
-        [req.params.keyId]
+      const isAdmin = requireScope(req, 'admin');
+      const result = await pool.query(
+        `UPDATE role_room_api_keys SET is_active = FALSE
+           WHERE id = $1 AND ($2::boolean OR user_id = $3)`,
+        [req.params.keyId, isAdmin, getUserId(req)]
       );
+      if (result.rowCount === 0) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -11585,7 +12202,32 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          ORDER BY cp.updated_at DESC`,
         [userId]
       );
-      res.json(result.rows.map((row) => buildCastingProjectResponse(row)));
+
+      const rows = result.rows;
+      const bridgeProjectIds = await listEducationProductionProjectIds(pool, userId);
+      const missingBridgeIds = bridgeProjectIds.filter(
+        (id) => !rows.some((row) => row.id === id),
+      );
+      if (missingBridgeIds.length) {
+        const bridgeResult = await pool.query<CastingProjectRow>(
+          `SELECT
+             cp.*,
+             COALESCE(
+               NULLIF(TRIM(CONCAT_WS(' ', NULLIF(u.first_name, ''), NULLIF(u.last_name, ''))), ''),
+               NULLIF(u.username, ''),
+               NULLIF(u.email, ''),
+               NULLIF(cp.created_by, '')
+             ) AS created_by_label
+           FROM casting_projects cp
+           LEFT JOIN users u ON CAST(u.id AS TEXT) = cp.created_by OR LOWER(COALESCE(u.email, '')) = LOWER(COALESCE(cp.created_by, ''))
+           WHERE cp.id = ANY($1::text[])
+           ORDER BY cp.updated_at DESC`,
+          [missingBridgeIds],
+        );
+        rows.push(...bridgeResult.rows);
+      }
+
+      res.json(rows.map((row) => buildCastingProjectResponse(row)));
     } catch (err) {
       console.error('Fetch projects error:', err);
       res.status(500).json({ error: 'Kunne ikke hente prosjekter' });
@@ -11635,11 +12277,35 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
              NULLIF(cp.created_by, '')
            ) AS created_by_label
          FROM casting_projects cp
+         LEFT JOIN casting_user_roles cur ON cp.id = cur.project_id AND cur.user_id = $2
          LEFT JOIN users u ON CAST(u.id AS TEXT) = cp.created_by OR LOWER(COALESCE(u.email, '')) = LOWER(COALESCE(cp.created_by, ''))
-         WHERE cp.id = $1`,
-        [req.params.id]
+         WHERE cp.id = $1 AND ($3::boolean OR cp.created_by = $2 OR cur.user_id IS NOT NULL)`,
+        [req.params.id, getUserId(req), requireScope(req, 'admin')]
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
+        // Ikke eier/admin/medlem — sjekk utdannings-broen før 404: en
+        // education-student kan være tildelt denne produksjonen via
+        // role_room_education_production_members uten å stå i casting_user_roles.
+        const bridgeRole = await resolveEducationProductionRole(pool, getUserId(req), String(req.params.id));
+        if (bridgeRole) {
+          const bridgeResult = await pool.query<CastingProjectRow>(
+            `SELECT
+               cp.*,
+               COALESCE(
+                 NULLIF(TRIM(CONCAT_WS(' ', NULLIF(u.first_name, ''), NULLIF(u.last_name, ''))), ''),
+                 NULLIF(u.username, ''),
+                 NULLIF(u.email, ''),
+                 NULLIF(cp.created_by, '')
+               ) AS created_by_label
+             FROM casting_projects cp
+             LEFT JOIN users u ON CAST(u.id AS TEXT) = cp.created_by OR LOWER(COALESCE(u.email, '')) = LOWER(COALESCE(cp.created_by, ''))
+             WHERE cp.id = $1`,
+            [req.params.id],
+          );
+          result.rows = bridgeResult.rows;
+        }
+      }
+      if (!result.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -12306,6 +12972,17 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
     }
+    if (!(await ensureProjectAccess(req.params.id))) {
+      res.status(404).json({ error: 'Prosjekt ikke funnet' });
+      return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.id, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å oppdatere prosjektet' });
+        return;
+      }
+    }
     const body = readRecordValue(req.body) ?? {};
     const { name, description, status, genre, projectType } = body;
     const budget = readNumberValue(body.budget);
@@ -12370,8 +13047,18 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til roller' });
+        return;
+      }
+
       const result = await pool.query(
-        'SELECT * FROM casting_user_roles WHERE project_id = $1 ORDER BY created_at',
+        `SELECT * FROM casting_user_roles
+          WHERE project_id = $1
+            AND deactivated_at IS NULL
+            AND (expires_at IS NULL OR expires_at > NOW())
+          ORDER BY created_at`,
         [req.params.projectId]
       );
       res.json(result.rows);
@@ -12384,6 +13071,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canManageProjectRoles(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å endre roller i prosjektet' });
+        return;
+      }
     }
     const { userId, email, role, permissions } = req.body as {
       userId: string;
@@ -12421,6 +13115,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.delete('/projects/:projectId/roles/:userId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canManageProjectRoles(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å endre roller for prosjektet' });
+        return;
+      }
       await pool.query(
         'DELETE FROM casting_user_roles WHERE project_id = $1 AND user_id = $2',
         [req.params.projectId, req.params.userId]
@@ -12434,6 +13133,53 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // ═══════════════════════════════════════════════════════════
   // Producer Workflow (Timeline / Economy / Client Reviews)
   // ═══════════════════════════════════════════════════════════
+
+  // Klient-tilstedeværelse: hvilke klienter har klientportalen åpen akkurat nå.
+  // Mates av POST /api/client/portal/presence (klientportalens heartbeat).
+  router.get('/projects/:projectId/client-presence', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til prosjektet' });
+        return;
+      }
+      const { clientsForProject } = await import('./client-portal-presence-service.js');
+      const clients = clientsForProject(projectId);
+      res.json({
+        status: 'ok',
+        projectId,
+        clients: clients.map((entry) => ({
+          email: entry.email,
+          name: entry.name,
+          workspace: entry.workspace,
+          joinedAt: new Date(entry.joinedAt).toISOString(),
+          lastSeenAt: new Date(entry.lastSeenAt).toISOString(),
+        })),
+      });
+    } catch (error) {
+      console.error('[role-room] client-presence failed', error);
+      res.status(500).json({ error: 'Kunne ikke hente klient-tilstedeværelse' });
+    }
+  });
+
+  // Produsent-side: se hvilke samtykker klienten har gitt (chip i UI).
+  router.get('/projects/:projectId/client-consents', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const projectId = req.params.projectId;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til prosjektet' });
+        return;
+      }
+      const { latestClientConsentsForProject } = await import('./client-portal-connected-platforms.js');
+      const consents = await latestClientConsentsForProject(pool, projectId);
+      res.json({ status: 'ok', projectId, consents });
+    } catch (error) {
+      console.error('[role-room] client-consents failed', error);
+      res.status(500).json({ error: 'Kunne ikke hente klient-samtykker' });
+    }
+  });
 
   router.get('/projects/:projectId/producer/timeline', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     if (!(await ensureProducerWorkflowTables())) {
@@ -12449,10 +13195,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(403).json({ error: 'Mangler tilgang til tidslinje' });
         return;
       }
+      if (await assistantAreaBlocked(req, projectId, 'plan')) { res.json({ items: [] }); return; }
 
+      // Klient ser kun publiserte elementer (draft = produsentens private utkast).
+      const clientOnlyPublished = isClientPublishViewer(req, roleRecord);
       const result = await pool.query(
         `SELECT * FROM role_room_phase_timeline_items
          WHERE project_id = $1
+           ${clientOnlyPublished ? 'AND published_at IS NOT NULL' : ''}
          ORDER BY
            CASE phase
              WHEN 'preproduction' THEN 1
@@ -12777,7 +13527,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [notificationId, projectId],
       );
-      if (existingResult.rowCount === 0) {
+      if (!existingResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke innbokselementet' });
         return;
       }
@@ -12905,7 +13655,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [notificationId, projectId],
       );
-      if (notificationCheck.rowCount === 0) {
+      if (!notificationCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke varselet' });
         return;
       }
@@ -12958,6 +13708,110 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       console.error('Producer notification mark-all-read error:', error);
       res.status(500).json({ error: 'Kunne ikke markere varsler som lest' });
     }
+  });
+
+  // SSE-stream for produsent-varsler (cluster D — erstatter 15-30s polling med
+  // near-instant push). Server-side poll→push: hver tilkoblet instans poller
+  // DB-en og dytter deltaer til SINE klienter, så det fungerer på tvers av
+  // Render-instanser uten LISTEN/NOTIFY. Klienten leser via fetch-streaming
+  // (ikke EventSource — vi trenger auth-headere) og faller tilbake til vanlig
+  // polling hvis streamen feiler.
+  router.get('/projects/:projectId/producer/notifications/stream', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+      return;
+    }
+    const projectId = req.params.projectId;
+    const userId = getUserId(req);
+    let roleRecord: Awaited<ReturnType<typeof getProjectRoleRecord>>;
+    try {
+      roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    } catch {
+      res.status(500).json({ error: 'Kunne ikke verifisere tilgang' });
+      return;
+    }
+    if (!canReadProducerNotifications(req, roleRecord)) {
+      res.status(403).json({ error: 'Mangler tilgang til varsler' });
+      return;
+    }
+    const audiences = getProducerNotificationAudiences(req, roleRecord);
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // unngå proxy-buffering (Render)
+    res.flushHeaders?.();
+
+    let closed = false;
+    let pollId: ReturnType<typeof setInterval> | null = null;
+    let pingId: ReturnType<typeof setInterval> | null = null;
+    let maxId: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanup = (): void => {
+      if (closed) return;
+      closed = true;
+      if (pollId) clearInterval(pollId);
+      if (pingId) clearInterval(pingId);
+      if (maxId) clearTimeout(maxId);
+      try { res.end(); } catch { /* ignore */ }
+    };
+
+    const writeEvent = (event: string, data: unknown): void => {
+      if (closed) return;
+      try {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      } catch { /* socket torn down */ }
+    };
+
+    writeEvent('connected', { projectId, at: new Date().toISOString() });
+
+    // lastSeen starter nå — klienten har nettopp gjort en initial GET, så vi
+    // pusher kun nye/oppdaterte varsler etter dette punktet.
+    let lastSeen = new Date().toISOString();
+    const poll = async (): Promise<void> => {
+      if (closed) return;
+      try {
+        const result = await pool.query(
+          `SELECT notification.*, reads.read_at,
+                  CASE WHEN reads.read_at IS NULL THEN FALSE ELSE TRUE END AS read
+           FROM role_room_project_notifications notification
+           LEFT JOIN role_room_project_notification_reads reads
+             ON reads.notification_id = notification.id AND reads.user_id = $2
+           WHERE notification.project_id = $1
+             AND notification.audience = ANY($3::text[])
+             AND notification.updated_at > $4
+           ORDER BY notification.updated_at ASC
+           LIMIT 50`,
+          [projectId, userId, audiences, lastSeen],
+        );
+        for (const row of result.rows) {
+          const typedRow = row as ProducerProjectNotificationRow;
+          const updatedAt = (row as { updated_at?: unknown }).updated_at;
+          const iso = updatedAt instanceof Date
+            ? updatedAt.toISOString()
+            : typeof updatedAt === 'string' ? updatedAt : null;
+          if (iso && iso > lastSeen) lastSeen = iso;
+          writeEvent('notification', buildProducerProjectNotificationResponse(typedRow));
+        }
+      } catch {
+        // Best-effort — behold tilkoblingen; klientens poll-fallback dekker hull.
+      }
+    };
+
+    pollId = setInterval(() => { void poll(); }, 4000);
+    pingId = setInterval(() => {
+      if (closed) return;
+      try { res.write(`: ping\n\n`); } catch { /* ignore */ }
+    }, 20000);
+    // Be klienten reconnecte etter 5 min så vi ikke holder stale long-lived
+    // connections (Render proxy timer dem uansett ut til slutt).
+    maxId = setTimeout(() => {
+      writeEvent('reconnect', { reason: 'max_duration' });
+      cleanup();
+    }, 5 * 60 * 1000);
+
+    req.on('close', cleanup);
   });
 
   router.get('/projects/:projectId/producer/expenses', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
@@ -13188,7 +14042,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [expenseId, projectId],
       );
-      if (expenseCheck.rowCount === 0) {
+      if (!expenseCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke utlegget' });
         return;
       }
@@ -13310,7 +14164,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [expenseId, projectId],
       );
-      if (expenseCheck.rowCount === 0) {
+      if (!expenseCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke utlegget' });
         return;
       }
@@ -13756,10 +14610,20 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(403).json({ error: 'Mangler tilgang til økonomi' });
         return;
       }
+      // Assistent-scoping: økonomi er sensitivt — nekt hvis assistent uten flagg.
+      const economyEmail = (req as Request & { apiKeyUser?: { email?: string } }).apiKeyUser?.email;
+      const economyAssistant = await getAssistantAreas(pool, projectId, { userId, email: economyEmail });
+      if (economyAssistant && economyAssistant.areas.economy !== true) {
+        res.status(403).json({ error: 'Mangler tilgang til økonomi' });
+        return;
+      }
 
+      // Klient ser kun publiserte budsjettlinjer (draft = produsentens private utkast).
+      const clientOnlyPublished = isClientPublishViewer(req, roleRecord);
       const result = await pool.query(
         `SELECT * FROM role_room_budget_items
          WHERE project_id = $1
+           ${clientOnlyPublished ? 'AND published_at IS NOT NULL' : ''}
          ORDER BY
            CASE phase
              WHEN 'preproduction' THEN 1
@@ -13969,6 +14833,147 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   });
 
+  // ── Draft → publiser → synk-grense ──────────────────────────────────────
+  // Felles handler: setter/nullstiller published_at på en producer-workflow-rad
+  // og varsler klienten (inbox + e-post) ved publisering.
+  async function handlePublishToggle(args: {
+    req: Request;
+    res: Response;
+    table: 'role_room_phase_timeline_items' | 'role_room_budget_items';
+    idColumn: string;
+    idValue: string;
+    projectId: string;
+    publish: boolean;
+    entityKind: string; // for notification linkedEntityType
+    notifyTitle: (titleFromRow: string) => string;
+    titleColumn: string;
+  }): Promise<void> {
+    const { req, res, table, idColumn, idValue, projectId, publish, entityKind, notifyTitle, titleColumn } = args;
+    const userId = getUserId(req);
+    const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, roleRecord)) {
+      res.status(403).json({ error: 'Mangler tilgang til å publisere' });
+      return;
+    }
+    const updated = await pool.query(
+      `UPDATE ${table}
+         SET published_at = ${publish ? 'NOW()' : 'NULL'},
+             published_by_user_id = ${publish ? '$3' : 'NULL'},
+             updated_at = NOW()
+       WHERE project_id = $1 AND ${idColumn} = $2
+       RETURNING *`,
+      publish ? [projectId, idValue, userId] : [projectId, idValue],
+    );
+    if (updated.rowCount === 0) {
+      res.status(404).json({ error: 'Fant ikke elementet' });
+      return;
+    }
+    const row = updated.rows[0] as Record<string, unknown>;
+    if (publish) {
+      try {
+        await upsertProducerProjectNotification({
+          projectId,
+          audience: 'client',
+          eventType: `${entityKind}_published`,
+          title: notifyTitle(String(row[titleColumn] ?? '')),
+          message: 'Produsenten har publisert oppdatert informasjon i prosjektrommet.',
+          linkedEntityType: entityKind,
+          linkedEntityId: idValue,
+          createdByUserId: userId,
+          metadata: { dueAt: row.due_at ?? null },
+        });
+      } catch (notifyError) {
+        console.error('[role-room] publish notify failed', notifyError);
+      }
+    }
+    res.json({ item: row, published: publish });
+  }
+
+  router.post('/projects/:projectId/producer/timeline/:itemId/publish', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) { res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' }); return; }
+    try {
+      await handlePublishToggle({
+        req, res, table: 'role_room_phase_timeline_items', idColumn: 'id', idValue: req.params.itemId,
+        projectId: req.params.projectId, publish: req.body?.publish !== false, entityKind: 'timeline_item',
+        notifyTitle: (t) => `Tidslinje publisert: ${t || 'oppdatering'}`, titleColumn: 'title',
+      });
+    } catch (error) {
+      console.error('Producer timeline publish error:', error);
+      res.status(500).json({ error: 'Kunne ikke publisere tidslinjeelement' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/economy/items/:itemId/publish', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) { res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' }); return; }
+    try {
+      const publish = req.body?.publish !== false;
+      // Hold client_visible synkronisert med publiseringsstatus for budsjettlinjer.
+      await pool.query(
+        `UPDATE role_room_budget_items SET client_visible = $3 WHERE project_id = $1 AND id = $2`,
+        [req.params.projectId, req.params.itemId, publish],
+      );
+      await handlePublishToggle({
+        req, res, table: 'role_room_budget_items', idColumn: 'id', idValue: req.params.itemId,
+        projectId: req.params.projectId, publish, entityKind: 'budget_item',
+        notifyTitle: (t) => `Budsjett publisert: ${t || 'linje'}`, titleColumn: 'item_name',
+      });
+    } catch (error) {
+      console.error('Producer economy publish error:', error);
+      res.status(500).json({ error: 'Kunne ikke publisere økonomilinje' });
+    }
+  });
+
+  router.post('/projects/:projectId/producer/client-intake/publish', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!(await ensureProducerWorkflowTables())) { res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' }); return; }
+    const projectId = req.params.projectId;
+    const userId = getUserId(req);
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      // To-veis brief: både produsent og klient kan publisere sine innspill.
+      if (!canWriteProducerClientInput(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til å publisere brief' });
+        return;
+      }
+      const publishedByClient = isClientPublishViewer(req, roleRecord);
+      const publish = req.body?.publish !== false;
+      const updated = await pool.query(
+        `UPDATE role_room_client_intake
+           SET published_at = ${publish ? 'NOW()' : 'NULL'},
+               published_by_user_id = ${publish ? '$2' : 'NULL'},
+               updated_at = NOW()
+         WHERE project_id = $1
+         RETURNING *`,
+        publish ? [projectId, userId] : [projectId],
+      );
+      if (updated.rowCount === 0) {
+        res.status(404).json({ error: 'Fant ikke brief' });
+        return;
+      }
+      if (publish) {
+        try {
+          // Varsle MOTPARTEN: produsent publiserer → klient varsles, og omvendt.
+          await upsertProducerProjectNotification({
+            projectId,
+            audience: publishedByClient ? 'producer_team' : 'client',
+            eventType: 'brief_published',
+            title: publishedByClient ? 'Klienten publiserte brief-innspill' : 'Brief publisert',
+            message: publishedByClient
+              ? 'Klienten har publisert oppdaterte brief-innspill.'
+              : 'Produsenten har publisert prosjektbriefen.',
+            linkedEntityType: 'client_intake', linkedEntityId: projectId, createdByUserId: userId,
+            metadata: { inboxType: 'brief' },
+          });
+        } catch (notifyError) {
+          console.error('[role-room] brief publish notify failed', notifyError);
+        }
+      }
+      res.json({ intake: updated.rows[0], published: publish });
+    } catch (error) {
+      console.error('Producer client intake publish error:', error);
+      res.status(500).json({ error: 'Kunne ikke publisere brief' });
+    }
+  });
+
   // ── Budsjett-kategorier (system + per-prosjekt) ────────────────────
   router.get('/projects/:projectId/producer/economy/categories', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const projectId = req.params.projectId;
@@ -14155,10 +15160,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const result = await pool.query(
         `INSERT INTO role_room_client_reviews (
           id, project_id, review_type, title, description, target_entity_type, target_entity_id,
-          requested_by_user_id, requested_at, due_at, status, metadata, created_at, updated_at
+          requested_by_user_id, requested_at, due_at, status, metadata,
+          published_at, published_by_user_id, created_at, updated_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7,
-          $8, NOW(), $9, 'pending', $10::jsonb, NOW(), NOW()
+          $8, NOW(), $9, 'pending', $10::jsonb,
+          NOW(), $8, NOW(), NOW()
         )
         RETURNING *`,
         [
@@ -14211,7 +15218,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT * FROM role_room_client_reviews WHERE id = $1 AND project_id = $2 LIMIT 1`,
         [reviewId, projectId],
       );
-      if (existingResult.rowCount === 0) {
+      if (!existingResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke review' });
         return;
       }
@@ -14307,7 +15314,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT id, title FROM role_room_client_reviews WHERE id = $1 AND project_id = $2`,
         [reviewId, projectId],
       );
-      if (reviewCheck.rowCount === 0) {
+      if (!reviewCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke review' });
         return;
       }
@@ -14377,7 +15384,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT * FROM role_room_client_reviews WHERE id = $1 AND project_id = $2 LIMIT 1`,
         [reviewId, projectId],
       );
-      if (reviewResult.rowCount === 0) {
+      if (!reviewResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke review' });
         return;
       }
@@ -14486,12 +15493,21 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(403).json({ error: 'Mangler tilgang til klientbrief' });
         return;
       }
+      // Assistent uten brief-tilgang ser ikke briefen. (Klient-kontaktinfo ligger
+      // i briefen, så client_info-gating dekkes også her.)
+      if (await assistantAreaBlocked(req, projectId, 'brief')) { res.json({ intake: null }); return; }
 
       const result = await pool.query(
         `SELECT * FROM role_room_client_intake WHERE project_id = $1 LIMIT 1`,
         [projectId],
       );
-      res.json({ intake: result.rows[0] ?? null });
+      // Klient ser kun publisert brief — produsentens upubliserte utkast holdes privat.
+      const intake = result.rows[0] ?? null;
+      if (intake && isClientPublishViewer(req, roleRecord) && intake.published_at == null) {
+        res.json({ intake: null });
+        return;
+      }
+      res.json({ intake });
     } catch (error) {
       console.error('Producer client intake fetch error:', error);
       res.status(500).json({ error: 'Kunne ikke hente klientbrief' });
@@ -14870,7 +15886,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           WHERE id = $1 AND project_id = $2`,
         [commentId, projectId],
       );
-      if (existing.rowCount === 0) {
+      if (!existing.rows.length) {
         res.status(404).json({ error: 'Kommentar ikke funnet' });
         return;
       }
@@ -14940,6 +15956,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(403).json({ error: 'Mangler tilgang til klientmateriale' });
         return;
       }
+      if (await assistantAreaBlocked(req, projectId, 'materials')) { res.json({ items: [] }); return; }
 
       const result = await pool.query(
         `SELECT * FROM role_room_client_materials
@@ -15030,6 +16047,406 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       console.error('Producer client material create error:', error);
       res.status(500).json({ error: 'Kunne ikke opprette klientmateriale' });
     }
+  });
+
+  // Merkevare-/material-kategorier (entry_type). brand_* = logo/farger/fonter,
+  // reference = referanser, other = annet. Fri TEXT i DB; dette er whitelisten.
+  const ALLOWED_MATERIAL_ENTRY_TYPES = [
+    'brand_logo', 'brand_colors', 'brand_fonts', 'brand_asset',
+    'asset_link', 'reference', 'document', 'brief_note', 'feedback', 'other',
+  ];
+
+  // ── Autentisert filopplasting (merkevare-fane i klient-workspace + produsent)
+  // Speiler /client-portal/materials, men bruker innlogget sesjon i stedet for
+  // token, og varsler MOTPARTEN (klient laster opp → produsent, og omvendt).
+  router.post(
+    '/projects/:projectId/producer/client-materials/upload',
+    apiKeyAuth(pool, activeSessions),
+    roleRoomClientAssetUpload.single('file'),
+    async (req: Request, res: Response) => {
+      if (!(await ensureProducerWorkflowTables())) {
+        res.status(500).json({ error: 'Producer-tabeller er ikke tilgjengelige' });
+        return;
+      }
+      const projectId = req.params.projectId;
+      const userId = getUserId(req);
+      const uploadedFile = (req as Request & { file?: Express.Multer.File }).file;
+      if (!uploadedFile) { res.status(400).json({ error: 'Mangler fil' }); return; }
+      try {
+        const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+        if (!canWriteProducerClientInput(req, roleRecord)) {
+          res.status(403).json({ error: 'Mangler tilgang til å laste opp materiale' });
+          return;
+        }
+        const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+        const role = effectiveRoleRecord?.role ?? (requireScope(req, 'admin') ? 'admin' : 'unknown');
+        const uploadedByClient = isClientReviewerProjectRole(role);
+
+        const rawType = typeof req.body?.entryType === 'string' ? req.body.entryType.trim().toLowerCase() : '';
+        const entryType = ALLOWED_MATERIAL_ENTRY_TYPES.includes(rawType) ? rawType : 'other';
+        const titleRaw = typeof req.body?.title === 'string' && req.body.title.trim()
+          ? req.body.title.trim()
+          : (uploadedFile.originalname || 'Fil');
+        const description = typeof req.body?.description === 'string' && req.body.description.trim()
+          ? req.body.description.trim()
+          : null;
+
+        const materialId = crypto.randomUUID();
+        const safeOriginalName = sanitizeRoleRoomTalentFileSegment(uploadedFile.originalname || 'fil');
+        const extension = path.extname(safeOriginalName) || '.bin';
+        const fileName = `${materialId}${extension}`;
+        const storageDirectory = path.join(ROLE_ROOM_CLIENT_ASSET_UPLOAD_ROOT, sanitizeRoleRoomTalentFileSegment(projectId));
+        await fs.mkdir(storageDirectory, { recursive: true });
+        const storagePath = path.join(storageDirectory, fileName);
+        await fs.writeFile(storagePath, uploadedFile.buffer);
+        const sha256 = crypto.createHash('sha256').update(uploadedFile.buffer).digest('hex');
+
+        const metadata = {
+          file: {
+            fileName,
+            originalName: uploadedFile.originalname || fileName,
+            mimeType: uploadedFile.mimetype || 'application/octet-stream',
+            fileSize: uploadedFile.size,
+            sha256,
+            storagePath,
+          },
+          uploadedByClient,
+        };
+
+        const result = await pool.query(
+          `INSERT INTO role_room_client_materials (
+            id, project_id, entry_type, title, description, external_url, phase,
+            linked_shot_list_id, status, metadata, created_by_user_id, created_by_role, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, 'provided', $6::jsonb, $7, $8, NOW(), NOW())
+          RETURNING *`,
+          [materialId, projectId, entryType, titleRaw, description, JSON.stringify(metadata), userId, role],
+        );
+
+        try {
+          if (uploadedByClient) {
+            await notifyProducerTeamAboutClientMaterial(
+              projectId, result.rows[0] as ProducerClientMaterialRow, userId, role, 'created',
+            );
+          } else {
+            await upsertProducerProjectNotification({
+              projectId, audience: 'client', eventType: 'producer_material_shared',
+              title: 'Produsenten delte en fil',
+              message: `${titleRaw} er delt med deg.`,
+              linkedEntityType: 'client_material', linkedEntityId: materialId,
+              createdByUserId: userId, createdByRole: role,
+              metadata: { inboxType: 'material' },
+            });
+          }
+        } catch (notifyError) {
+          console.warn('[role-room] material upload notify failed', notifyError);
+        }
+
+        res.status(201).json({
+          item: {
+            ...result.rows[0],
+            file: {
+              originalName: metadata.file.originalName,
+              mimeType: metadata.file.mimeType,
+              fileSize: metadata.file.fileSize,
+            },
+          },
+        });
+      } catch (error) {
+        console.error('[role-room] authenticated material upload failed', error);
+        res.status(500).json({ error: 'Kunne ikke laste opp filen' });
+      }
+    },
+  );
+
+  // ── Klient-filopplasting fra portalen ────────────────────────────────────
+  // Klienten (Helene) laster opp logo/brand-filer/brief direkte fra portalen.
+  // Filen lagres på disk + en role_room_client_materials-rad (created_by_role
+  // = 'client', metadata.file) opprettes, slik at produsenten ser den i sin
+  // klientgrunnlag-visning og kan laste den ned. Klient-token gater opplasting.
+  router.post('/client-portal/materials', roleRoomClientAssetUpload.single('file'), async (req: Request, res: Response) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+    const uploadedFile = (req as Request & { file?: Express.Multer.File }).file;
+    if (!uploadedFile) { res.status(400).json({ error: 'Mangler fil' }); return; }
+    if (!(await ensureProducerWorkflowTables())) {
+      res.status(500).json({ error: 'Klientmateriale er ikke tilgjengelig akkurat nå' });
+      return;
+    }
+    try {
+      const projectId = session.projectId;
+      const rawType = typeof req.body?.entryType === 'string' ? req.body.entryType.trim().toLowerCase() : '';
+      const entryType = ALLOWED_MATERIAL_ENTRY_TYPES.includes(rawType) ? rawType : 'brand_asset';
+      const titleRaw = typeof req.body?.title === 'string' && req.body.title.trim()
+        ? req.body.title.trim()
+        : (uploadedFile.originalname || 'Klientfil');
+      const description = typeof req.body?.description === 'string' && req.body.description.trim()
+        ? req.body.description.trim()
+        : null;
+
+      const materialId = crypto.randomUUID();
+      const safeOriginalName = sanitizeRoleRoomTalentFileSegment(uploadedFile.originalname || 'fil');
+      const extension = path.extname(safeOriginalName) || '.bin';
+      const fileName = `${materialId}${extension}`;
+      const storageDirectory = path.join(ROLE_ROOM_CLIENT_ASSET_UPLOAD_ROOT, sanitizeRoleRoomTalentFileSegment(projectId));
+      await fs.mkdir(storageDirectory, { recursive: true });
+      const storagePath = path.join(storageDirectory, fileName);
+      await fs.writeFile(storagePath, uploadedFile.buffer);
+      const sha256 = crypto.createHash('sha256').update(uploadedFile.buffer).digest('hex');
+
+      const metadata = {
+        file: {
+          fileName,
+          originalName: uploadedFile.originalname || fileName,
+          mimeType: uploadedFile.mimetype || 'application/octet-stream',
+          fileSize: uploadedFile.size,
+          sha256,
+          storagePath,
+        },
+        uploadedByClient: true,
+        clientEmail: session.clientEmail,
+        clientName: session.clientName ?? null,
+      };
+
+      const result = await pool.query(
+        `INSERT INTO role_room_client_materials (
+          id, project_id, entry_type, title, description, external_url, phase,
+          linked_shot_list_id, status, metadata, created_by_user_id, created_by_role, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, 'provided', $6::jsonb, $7, 'client', NOW(), NOW())
+        RETURNING id, entry_type AS "entryType", title, description, status, created_at AS "createdAt"`,
+        [materialId, projectId, entryType, titleRaw, description, JSON.stringify(metadata), session.clientEmail],
+      );
+
+      // Proaktivt varsel til produsent-teamet (push + inbox) — så de ser at
+      // klienten har sendt en fil uten å vente på poll.
+      try {
+        await notifyProducerTeamAboutClientMaterial(
+          projectId,
+          {
+            id: materialId,
+            title: titleRaw,
+            entry_type: entryType,
+            description,
+            phase: null,
+          } as unknown as ProducerClientMaterialRow,
+          session.clientEmail,
+          'client',
+          'created',
+        );
+      } catch (notifyError) {
+        console.warn('[client-portal] material-varsel feilet', notifyError);
+      }
+
+      res.status(201).json({
+        item: {
+          ...result.rows[0],
+          file: {
+            originalName: metadata.file.originalName,
+            mimeType: metadata.file.mimeType,
+            fileSize: metadata.file.fileSize,
+          },
+        },
+      });
+    } catch (error) {
+      console.error('[client-portal] material upload failed', error);
+      res.status(500).json({ error: 'Kunne ikke laste opp filen' });
+    }
+  });
+
+  // Klienten ser sine egne opplastede filer i portalen.
+  router.get('/client-portal/materials', async (req: Request, res: Response) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+    if (!(await ensureProducerWorkflowTables())) { res.json({ items: [] }); return; }
+    try {
+      const result = await pool.query(
+        `SELECT id, entry_type AS "entryType", title, description, status, metadata, created_at AS "createdAt"
+           FROM role_room_client_materials
+          WHERE project_id = $1 AND created_by_role = 'client'
+          ORDER BY created_at DESC`,
+        [session.projectId],
+      );
+      const items = result.rows.map((row) => {
+        const meta = (row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as {
+          file?: { originalName?: string; mimeType?: string; fileSize?: number };
+        };
+        return {
+          id: row.id,
+          entryType: row.entryType,
+          title: row.title,
+          description: row.description,
+          status: row.status,
+          createdAt: row.createdAt,
+          file: meta.file
+            ? { originalName: meta.file.originalName ?? null, mimeType: meta.file.mimeType ?? null, fileSize: meta.file.fileSize ?? null }
+            : null,
+        };
+      });
+      res.json({ items });
+    } catch (error) {
+      console.error('[client-portal] material list failed', error);
+      res.json({ items: [] });
+    }
+  });
+
+  // Produsenten laster ned en klient-opplastet fil (auth-gated stream).
+  router.get('/projects/:projectId/producer/client-materials/:materialId/file', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const { projectId, materialId } = req.params;
+    try {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til klientmateriale' });
+        return;
+      }
+      const result = await pool.query(
+        `SELECT metadata FROM role_room_client_materials WHERE id = $1 AND project_id = $2 LIMIT 1`,
+        [materialId, projectId],
+      );
+      const meta = (result.rows[0]?.metadata && typeof result.rows[0].metadata === 'object'
+        ? result.rows[0].metadata
+        : {}) as { file?: { storagePath?: string; originalName?: string; mimeType?: string } };
+      const file = meta.file;
+      if (!file?.storagePath) { res.status(404).json({ error: 'Fant ikke filen' }); return; }
+      // Sti-traversal-vern: filen MÅ ligge under klient-asset-roten.
+      const resolved = path.resolve(file.storagePath);
+      if (!resolved.startsWith(path.resolve(ROLE_ROOM_CLIENT_ASSET_UPLOAD_ROOT) + path.sep)) {
+        res.status(400).json({ error: 'Ugyldig fil-sti' });
+        return;
+      }
+      const buffer = await fs.readFile(resolved);
+      res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.originalName || 'fil')}"`);
+      res.send(buffer);
+    } catch (error) {
+      console.error('[role-room] client material download failed', error);
+      res.status(500).json({ error: 'Kunne ikke laste ned filen' });
+    }
+  });
+
+  // Klient-samtykke til OAuth-tilgang. Ligger her (ikke i client-portal-routes)
+  // for å kunne varsle produsent-teamet via upsertProducerProjectNotification.
+  // Logges FØR redirect → sporbart GDPR-bevis.
+  const CLIENT_OAUTH_CONSENT_SUMMARY: Record<string, string> = {
+    instagram: 'Publisere innlegg, reels og stories til Instagram (via Meta).',
+    facebook: 'Publisere innlegg til den tilkoblede Facebook-siden (via Meta).',
+    tiktok: 'Publisere videoer til TikTok-kontoen.',
+    linkedin: 'Publisere innlegg til LinkedIn på vegne av kontoen.',
+    google: 'Lese/skrive dokumenter og filer i Google Workspace knyttet til prosjektet.',
+  };
+  router.post('/client-portal/oauth-consent', async (req: Request, res: Response) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+    const platform = typeof req.body?.platform === 'string' ? req.body.platform.toLowerCase() : '';
+    if (!CLIENT_OAUTH_CONSENT_SUMMARY[platform]) { res.status(400).json({ error: 'invalid_platform' }); return; }
+    const producer = await loadProjectProducerInfo(pool, session.projectId);
+    if (!producer) { res.status(409).json({ error: 'no_producer_on_project' }); return; }
+
+    const forwarded = req.headers['x-forwarded-for'];
+    const ipAddress = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : null) || req.ip || null;
+    const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null;
+    await recordClientOauthConsent(pool, {
+      projectId: session.projectId,
+      clientEmail: session.clientEmail,
+      clientName: session.clientName ?? null,
+      producerUserId: producer.userId,
+      producerName: producer.name,
+      producerAgency: producer.agency,
+      platform,
+      scopesSummary: CLIENT_OAUTH_CONSENT_SUMMARY[platform],
+      ipAddress,
+      userAgent,
+    });
+
+    // Proaktivt varsel til produsent-teamet (push + inbox).
+    try {
+      const platformLabel = platform.charAt(0).toUpperCase() + platform.slice(1);
+      await upsertProducerProjectNotification({
+        projectId: session.projectId,
+        audience: 'producer_team',
+        eventType: 'client_granted_oauth_access',
+        title: 'Klienten ga tilgang til en konto',
+        message: `${session.clientName || session.clientEmail} ga tilgang til å publisere på ${platformLabel}.`,
+        linkedEntityType: 'client_oauth_consent',
+        linkedEntityId: platform,
+        metadata: {
+          source: 'client_oauth_consent',
+          platform,
+          clientEmail: session.clientEmail,
+          clientName: session.clientName ?? null,
+        },
+        createdByUserId: session.clientEmail,
+        createdByRole: 'client',
+      });
+    } catch (notifyError) {
+      console.warn('[client-portal] consent-varsel feilet', notifyError);
+    }
+
+    res.json({ status: 'ok' });
+  });
+
+  // Klient trekker tilbake tilgang (GDPR-retten til å trekke samtykke).
+  // Setter koblingen til 'revoked' (tilgangen opphører), logger tilbaketrekkingen
+  // i samme spor (action='revoked'), og varsler produsenten.
+  router.post('/client-portal/oauth-revoke', async (req: Request, res: Response) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!token) { res.status(400).json({ error: 'missing_token' }); return; }
+    const session = await resolveClientPortalSession(pool, token);
+    if (!session) { res.status(404).json({ error: 'invalid_or_expired_token' }); return; }
+    const platform = typeof req.body?.platform === 'string' ? req.body.platform.toLowerCase() : '';
+    if (!CLIENT_OAUTH_CONSENT_SUMMARY[platform]) { res.status(400).json({ error: 'invalid_platform' }); return; }
+    const producer = await loadProjectProducerInfo(pool, session.projectId);
+
+    // 1) Koblingen settes til revoked → tilgangen opphører.
+    await revokeProjectPlatformConnection(pool, session.projectId, producer?.userId ?? null, platform);
+
+    // 2) Logg tilbaketrekkingen (GDPR-bevis).
+    const forwarded = req.headers['x-forwarded-for'];
+    const ipAddress = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : null) || req.ip || null;
+    const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null;
+    await recordClientOauthConsent(pool, {
+      projectId: session.projectId,
+      clientEmail: session.clientEmail,
+      clientName: session.clientName ?? null,
+      producerUserId: producer?.userId ?? 'unknown',
+      producerName: producer?.name ?? null,
+      producerAgency: producer?.agency ?? null,
+      platform,
+      scopesSummary: 'Tilgang trukket tilbake av klienten.',
+      ipAddress,
+      userAgent,
+      action: 'revoked',
+    });
+
+    // 3) Varsle produsent-teamet.
+    try {
+      const platformLabel = platform.charAt(0).toUpperCase() + platform.slice(1);
+      await upsertProducerProjectNotification({
+        projectId: session.projectId,
+        audience: 'producer_team',
+        eventType: 'client_revoked_oauth_access',
+        title: 'Klienten trakk tilbake tilgang',
+        message: `${session.clientName || session.clientEmail} trakk tilbake tilgangen til ${platformLabel}.`,
+        linkedEntityType: 'client_oauth_consent',
+        linkedEntityId: platform,
+        metadata: {
+          source: 'client_oauth_revoke',
+          platform,
+          clientEmail: session.clientEmail,
+          clientName: session.clientName ?? null,
+        },
+        createdByUserId: session.clientEmail,
+        createdByRole: 'client',
+      });
+    } catch (notifyError) {
+      console.warn('[client-portal] revoke-varsel feilet', notifyError);
+    }
+
+    res.json({ status: 'ok' });
   });
 
   router.patch('/projects/:projectId/producer/client-materials/:materialId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
@@ -15156,7 +16573,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [materialId, projectId],
       );
-      if (existingMaterialResult.rowCount === 0) {
+      if (!existingMaterialResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke klientmateriale' });
         return;
       }
@@ -15256,13 +16673,32 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
     try {
       const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
-      if (!canManageProducerAccessVault(req, roleRecord)) {
+      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
+      const isClientSelfService = isClientReviewerProjectRole(effectiveRoleRecord?.role);
+      // Trust-first: klienten kan selvbetjent legge inn/redigere EGNE credentials;
+      // produsent-roller forvalter resten.
+      if (!canManageProducerAccessVault(req, roleRecord) && !isClientSelfService) {
         res.status(403).json({ error: 'Mangler tilgang til å lagre sensitive secrets' });
         return;
       }
 
-      const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
-      const existing = await getRoleRoomAccessVaultSecretByPlatform(projectId, platform);
+      const accountLabel = (readStringValue(req.body?.accountLabel) ?? '').slice(0, 255);
+      const existing = await getRoleRoomAccessVaultSecretByPlatform(projectId, platform, accountLabel);
+      // Klienten kan kun røre klient-eide secrets (ikke produsentens).
+      if (isClientSelfService && !canManageProducerAccessVault(req, roleRecord)
+          && existing && readStringValue(existing.owner_side) === 'producer') {
+        res.status(403).json({ error: 'Denne credentialen forvaltes av produsenten' });
+        return;
+      }
+      // Eierskap: klient-selvbetjening = client-eid; ellers behold/produsent.
+      const ownerSide = isClientSelfService && !canManageProducerAccessVault(req, roleRecord)
+        ? 'client'
+        : (readStringValue(req.body?.ownerSide)
+          ?? readStringValue(existing?.owner_side)
+          ?? 'producer');
+      const secretValueProvided = readStringValue(req.body?.secretValue);
+      // rotated_at oppdateres når en ny hemmelig verdi legges inn.
+      const rotatedAt = secretValueProvided ? new Date().toISOString() : (existing?.rotated_at ?? null);
       const label = readStringValue(req.body?.label) ?? readStringValue(existing?.label) ?? null;
       const secretType = readStringValue(req.body?.secretType) ?? readStringValue(existing?.secret_type) ?? null;
       const username = readStringValue(req.body?.username);
@@ -15287,15 +16723,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
       const result = await pool.query(
         `INSERT INTO role_room_access_vault_secrets (
-          id, project_id, platform, label, secret_type, username_encrypted, secret_encrypted,
+          id, project_id, platform, account_label, owner_side, rotated_at, label, secret_type,
+          username_encrypted, secret_encrypted,
           backup_code_encrypted, masked_reference, tier, risk_level, reveal_policy, status, owner_label,
           shared_with_roles, expires_at, metadata, created_by_user_id, created_by_role, created_at, updated_at, revoked_at
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7,
-          $8, $9, $10, $11, $12, $13, $14,
-          $15::jsonb, $16, $17::jsonb, $18, $19, NOW(), NOW(), NULL
+          $1, $2, $3, $4, $5, $6, $7, $8,
+          $9, $10,
+          $11, $12, $13, $14, $15, $16, $17,
+          $18::jsonb, $19, $20::jsonb, $21, $22, NOW(), NOW(), NULL
         )
-        ON CONFLICT (project_id, platform) DO UPDATE SET
+        ON CONFLICT (project_id, platform, account_label) DO UPDATE SET
+          owner_side = EXCLUDED.owner_side,
+          rotated_at = EXCLUDED.rotated_at,
           label = EXCLUDED.label,
           secret_type = EXCLUDED.secret_type,
           username_encrypted = COALESCE(EXCLUDED.username_encrypted, role_room_access_vault_secrets.username_encrypted),
@@ -15319,6 +16759,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           existing?.id ?? crypto.randomUUID(),
           projectId,
           platform,
+          accountLabel,
+          ownerSide,
+          rotatedAt,
           label,
           secretType,
           username ? encryptRoleRoomVaultSecret(username) : null,
@@ -15442,7 +16885,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const effectiveRoleRecord = getEffectiveProjectRoleRecord(req, roleRecord);
-      const secret = await getRoleRoomAccessVaultSecretByPlatform(projectId, platform);
+      // Multi-secret: target en spesifikk konto via accountLabel (default '' =
+      // enkelt-secret, bakoverkompatibelt).
+      const requestAccountLabel = (readStringValue(req.body?.accountLabel) ?? '').slice(0, 255);
+      const secret = await getRoleRoomAccessVaultSecretByPlatform(projectId, platform, requestAccountLabel);
       if (!secret || secret.revoked_at) {
         res.status(404).json({ error: 'Fant ikke aktiv secret for plattformen' });
         return;
@@ -15625,7 +17071,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [requestId, projectId],
       );
-      if (requestResult.rowCount === 0) {
+      if (!requestResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke reveal-forespørselen' });
         return;
       }
@@ -15710,7 +17156,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [requestId, projectId],
       );
-      if (requestResult.rowCount === 0) {
+      if (!requestResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke reveal-forespørselen' });
         return;
       }
@@ -15743,7 +17189,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [requestRow.secret_id, projectId],
       );
-      if (secretResult.rowCount === 0) {
+      if (!secretResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke secret' });
         return;
       }
@@ -15752,6 +17198,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       if (normalizeRoleRoomVaultRevealPolicy(secretRow.reveal_policy) === 'manual_only') {
         res.status(409).json({ error: 'Denne secret-en kan ikke vises direkte. Bruk manuell handoff.' });
         return;
+      }
+      // Vault v2: håndhev secretets eget tidsvindu + tilbaketrekking på reveal.
+      // (Tidligere ble kun reveal-forespørselens utløp sjekket.)
+      if (secretRow.revoked_at) {
+        res.status(409).json({ error: 'Tilgangen er trukket tilbake og kan ikke vises.' });
+        return;
+      }
+      if (secretRow.expires_at) {
+        const expiresMs = Date.parse(String(secretRow.expires_at));
+        if (Number.isFinite(expiresMs) && expiresMs < Date.now()) {
+          res.status(409).json({ error: 'Tilgangens tidsvindu er utløpt — be klienten rotere/forlenge.' });
+          return;
+        }
       }
 
       const secretValue = decryptRoleRoomVaultSecret(secretRow.secret_encrypted);
@@ -15839,6 +17298,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til casting-roller' });
+        return;
+      }
+
       const result = await pool.query(
         'SELECT * FROM casting_roles WHERE project_id = $1 ORDER BY created_at',
         [req.params.projectId]
@@ -15853,6 +17318,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
+        return;
+      }
     }
     const { name, description, ageRange, gender, roleType, requirements } = req.body as Record<string, unknown>;
     const id = makeId();
@@ -15886,6 +17358,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til kandidatlisten' });
+        return;
+      }
+
       const result = await pool.query(
         'SELECT * FROM casting_candidates WHERE project_id = $1 ORDER BY name',
         [req.params.projectId]
@@ -15900,6 +17378,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler skrivetilgang til dette prosjektet' });
+        return;
+      }
     }
     const { name, email, phone, agency, notes } = req.body as Record<string, unknown>;
     const id = makeId();
@@ -15926,6 +17411,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til crewlisten' });
+        return;
+      }
+
       const result = await pool.query(
         'SELECT * FROM casting_crew WHERE project_id = $1 ORDER BY name',
         [req.params.projectId]
@@ -15940,6 +17431,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Skrive-tilgang til dette prosjektet kreves' });
+        return;
+      }
     }
     const body = req.body as Record<string, unknown>;
     const { name, role, email, phone, department, rate } = body;
@@ -16010,6 +17508,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til lokasjoner' });
+        return;
+      }
+
       const result = await pool.query(
         'SELECT * FROM casting_locations WHERE project_id = $1 ORDER BY name',
         [req.params.projectId]
@@ -16032,6 +17536,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!projectId || !name) {
       res.status(400).json({ error: 'project_id og name er påkrevd' });
       return;
+    }
+
+    {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
+        return;
+      }
     }
 
     const id = makeId();
@@ -16079,7 +17591,24 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       return;
     }
     try {
-      await pool.query('DELETE FROM casting_locations WHERE id = $1', [req.params.locationId]);
+      const locRes = await pool.query<{ project_id: string }>(
+        'SELECT project_id FROM casting_locations WHERE id = $1 LIMIT 1',
+        [req.params.locationId],
+      );
+      const projectId = locRes.rows[0]?.project_id;
+      if (!projectId) {
+        res.json({ ok: true }); // idempotent: nothing to delete
+        return;
+      }
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Ingen tilgang til dette prosjektet' });
+        return;
+      }
+      await pool.query(
+        'DELETE FROM casting_locations WHERE id = $1 AND project_id = $2',
+        [req.params.locationId, projectId],
+      );
       res.json({ ok: true });
     } catch (err) {
       console.error('Delete location error:', err);
@@ -16207,6 +17736,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           },
         });
         return;
+      }
+
+      {
+        const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, roleRecord)) {
+          res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+          return;
+        }
       }
 
       // ── Build dynamic WHERE conditions ──────────────────────
@@ -16362,6 +17899,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
     }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+        return;
+      }
+    }
     const {
       candidateId, roleId, sceneId, locationId, date, startTime, endTime,
       type, notes, location, status = 'scheduled',
@@ -16393,6 +17937,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+        return;
+      }
     }
     const {
       candidateId, roleId, sceneId, locationId, date, startTime, endTime,
@@ -16430,6 +17981,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
     }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+        return;
+      }
+    }
     const body = req.body as Record<string, unknown>;
     const allowed = ['status', 'notes', 'date', 'start_time', 'end_time', 'location', 'candidate_id', 'role_id'];
     const setClause = Object.keys(body)
@@ -16459,6 +18017,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
     }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+        return;
+      }
+    }
     try {
       const result = await pool.query(
         'DELETE FROM casting_schedules WHERE id = $1 AND project_id = $2',
@@ -16482,6 +18047,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!requireScope(req, 'write')) {
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+        return;
+      }
     }
     const { ids } = req.body as { ids?: string[] };
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -16509,8 +18081,17 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(403).json({ error: 'Skrive-tilgang kreves' });
       return;
     }
-    const { userId, favorite } = req.body as { userId?: string; favorite?: boolean };
-    if (!userId) { res.status(400).json({ error: 'userId påkrevd' }); return; }
+    {
+      const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ error: 'Mangler tilgang til denne produksjonen' });
+        return;
+      }
+    }
+    // Favoritt er per-bruker: bind til innlogget kaller, ikke klient-oppgitt userId.
+    const { favorite } = req.body as { favorite?: boolean };
+    const userId = getUserId(req);
+    if (!userId || userId === 'anonymous') { res.status(400).json({ error: 'Innlogging kreves' }); return; }
     try {
       if (favorite) {
         await pool.query(
@@ -16545,6 +18126,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!hasProjectAccess) {
       res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, roleRecord)) {
+        res.status(403).json({ success: false, error: 'Mangler tilgang til produksjonskalenderen' });
+        return;
+      }
     }
     if (!(await ensureRoleRoomCalendarEventsTable())) {
       res.status(500).json({ success: false, error: 'Kalenderlager ikke tilgjengelig' });
@@ -16617,6 +18205,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     if (!projectId || !(await ensureProjectAccess(projectId))) {
       res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
       return;
+    }
+    {
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ success: false, error: 'Skrivetilgang til prosjektet kreves' });
+        return;
+      }
     }
 
     const title = typeof body.title === 'string' ? body.title.trim() : '';
@@ -16728,6 +18323,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
         return;
       }
+      {
+        const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, roleRecord)) {
+          res.status(403).json({ success: false, error: 'Skrivetilgang til prosjektet kreves' });
+          return;
+        }
+      }
 
       const updates: string[] = [];
       const values: unknown[] = [eventId];
@@ -16833,6 +18435,20 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
     const { eventId } = req.params;
     try {
+      const existing = await pool.query(
+        `SELECT project_id FROM role_room_calendar_events WHERE id = $1 LIMIT 1`,
+        [eventId],
+      );
+      if ((existing.rowCount ?? 0) === 0) {
+        res.status(404).json({ success: false, error: 'Kalenderhendelse ikke funnet' });
+        return;
+      }
+      const projectId = String(existing.rows[0].project_id);
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, roleRecord)) {
+        res.status(403).json({ success: false, error: 'Skrivetilgang til prosjektet kreves' });
+        return;
+      }
       const result = await pool.query(
         `DELETE FROM role_room_calendar_events WHERE id = $1`,
         [eventId],
@@ -16859,7 +18475,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
 
     const payload = req.body as ProjectSyncPayload;
-    const { creatorhubProjectId, projectName, projectType, description, eventDate, budget, userId } = payload;
+    const { creatorhubProjectId, projectName, projectType, description, eventDate, budget } = payload;
+    // Eierskap avledes fra sesjonen, ikke body — ellers kan en kaller seede
+    // director-roller for vilkårlige bruker-id-er / kapre andres synk.
+    const ownerId = getUserId(req);
 
     if (!creatorhubProjectId || !projectName) {
       res.status(400).json({ error: 'creatorhubProjectId og projectName er påkrevd' });
@@ -16878,6 +18497,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       if (existing.rowCount && existing.rowCount > 0) {
         // Update existing
         castingProjectId = existing.rows[0].id;
+        const roleRecord = await getProjectRoleRecord(castingProjectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, roleRecord)) {
+          res.status(403).json({ error: 'Mangler skrivetilgang til prosjektet' });
+          return;
+        }
         await pool.query(
           `UPDATE casting_projects SET name = $1, description = $2, project_type = $3, updated_at = NOW()
            WHERE id = $4`,
@@ -16889,7 +18513,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         await pool.query(
           `INSERT INTO casting_projects (id, name, description, status, created_by, project_type, start_date, budget, creatorhub_project_id)
            VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8)`,
-          [castingProjectId, projectName, description ?? null, userId, projectType ?? null, eventDate ?? null, budget ?? null, creatorhubProjectId]
+          [castingProjectId, projectName, description ?? null, ownerId, projectType ?? null, eventDate ?? null, budget ?? null, creatorhubProjectId]
         );
 
         // Auto-assign creator as director
@@ -16897,7 +18521,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           `INSERT INTO casting_user_roles (id, project_id, user_id, role, permissions)
            VALUES ($1, $2, $3, 'director', $4)
            ON CONFLICT (project_id, user_id) DO NOTHING`,
-          [makeId(), castingProjectId, userId, JSON.stringify(buildProjectRolePermissions('director'))]
+          [makeId(), castingProjectId, ownerId, JSON.stringify(buildProjectRolePermissions('director'))]
         );
       }
 
@@ -16905,7 +18529,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       await pool.query(
         `INSERT INTO casting_project_sync (creatorhub_project_id, casting_project_id, sync_direction, sync_status, sync_data, synced_at)
          VALUES ($1, $2, $3, 'completed', $4, NOW())`,
-        [creatorhubProjectId, castingProjectId, 'creatorhub_to_roleroom' as SyncDirection, JSON.stringify({ projectName, projectType, userId })]
+        [creatorhubProjectId, castingProjectId, 'creatorhub_to_roleroom' as SyncDirection, JSON.stringify({ projectName, projectType, userId: ownerId })]
       );
 
       res.json({
@@ -16923,11 +18547,27 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   router.get('/sync/status/:creatorhubProjectId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
+      const identifiers = getUserIdentifiers(req);
+      if (identifiers.length === 0) {
+        res.status(403).json({ error: 'Ingen tilgang' });
+        return;
+      }
       const result = await pool.query(
-        `SELECT * FROM casting_project_sync 
-         WHERE creatorhub_project_id = $1 
-         ORDER BY created_at DESC LIMIT 10`,
-        [req.params.creatorhubProjectId]
+        `SELECT s.* FROM casting_project_sync s
+           JOIN casting_projects p ON p.id = s.casting_project_id
+          WHERE s.creatorhub_project_id = $1
+            AND (
+              p.created_by = ANY($2::text[])
+              OR EXISTS (
+                SELECT 1 FROM casting_user_roles r
+                 WHERE r.project_id = p.id
+                   AND r.user_id = ANY($2::text[])
+                   AND r.deactivated_at IS NULL
+                   AND (r.expires_at IS NULL OR r.expires_at > NOW())
+              )
+            )
+          ORDER BY s.created_at DESC LIMIT 10`,
+        [req.params.creatorhubProjectId, identifiers]
       );
       res.json(result.rows);
     } catch (err) {
@@ -16947,8 +18587,21 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       role?: string;
     };
 
-    if (!userId || !profession) {
-      res.status(400).json({ error: 'userId og profession er påkrevd' });
+    if (!profession) {
+      res.status(400).json({ error: 'profession er påkrevd' });
+      return;
+    }
+
+    // Bind identitet til innlogget sesjon. Kun admin kan registrere rolle på
+    // vegne av en annen bruker eller overstyre rollen; ellers avledes rollen
+    // strengt fra profession-kartet, og bruker-id fra sesjonen (ikke body).
+    const sessionUserId = getUserId(req);
+    const isAdmin = requireScope(req, 'admin');
+    const targetUserId = (isAdmin && typeof userId === 'string' && userId.trim() && userId !== 'current-user')
+      ? userId
+      : sessionUserId;
+    if (!targetUserId || targetUserId === 'anonymous') {
+      res.status(400).json({ error: 'Innlogging kreves' });
       return;
     }
 
@@ -16962,7 +18615,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       admin: 'director',
     };
 
-    const mappedRole = role ?? roleMapping[profession] ?? 'reader';
+    const mappedRole = (isAdmin && role) ? role : (roleMapping[profession] ?? 'reader');
 
     try {
       // Store the user's role mapping for future project assignments
@@ -16970,12 +18623,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `INSERT INTO casting_user_roles (id, project_id, user_id, email, role, permissions, added_by)
          VALUES ($1, '__global__', $2, $3, $4, $5, 'onboarding')
          ON CONFLICT (project_id, user_id) DO UPDATE SET role = $4, permissions = $5, email = $3, updated_at = NOW()`,
-        [makeId(), userId, email ?? null, mappedRole, JSON.stringify(buildProjectRolePermissions(mappedRole))]
+        [makeId(), targetUserId, email ?? null, mappedRole, JSON.stringify(buildProjectRolePermissions(mappedRole))]
       );
 
       res.json({
         success: true,
-        userId,
+        userId: targetUserId,
         roleRoomRole: mappedRole,
         profession,
         message: `Rolle '${mappedRole}' registrert i Role Room`,
@@ -17039,12 +18692,215 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   });
 
   // ═══════════════════════════════════════════════════════════
+  // Marketplace — org-scoped (Fase 2: Leadgrid som tjeneste)
+  // De user-scoped rutene over er NextRole-bundet (marketplace_installations,
+  // mig 0137). Disse er org-scoped (role_room_app_installs, mig 0450) og
+  // brukes av innholdsprodusenter som installerer Leadgrid i
+  // innholdsproduksjonsmodus. Install → sikre/opprett leadgrid-org → bro til
+  // gating (module_feature_entitlements: module='leadgrid', feature='core').
+  // ═══════════════════════════════════════════════════════════
+
+  const MARKETPLACE_TRIAL_DAYS = 14;
+
+  // Sikrer at brukeren har en leadgrid-org å scope installasjonen til.
+  // Rekkefølge: resolver (override/enterprise) → admin-medlemskap i
+  // organizations → opprett ny org (samme mønster som lead-map-org-routes
+  // POST /organizations). Ved solo-brukere settes override slik at katalog,
+  // installerte og gating resolver til samme org.
+  const ensureOrgForMarketplaceInstall = async (userId: string): Promise<{ organizationId: string; isNewOrg: boolean }> => {
+    const resolved = await resolveOrgIdForUser(pool, userId);
+    const isSoloFallback = resolved === userId;
+    if (!isSoloFallback) return { organizationId: resolved, isNewOrg: false };
+
+    // Eier brukeren allerede en org? Gjenbruk — ikke lag duplikater.
+    let orgId: string | null = null;
+    const existing = await pool.query<{ id: string }>(
+      `SELECT organization_id::text AS id FROM organization_members
+        WHERE user_id = $1 AND role = 'admin'
+        ORDER BY created_at DESC NULLS LAST LIMIT 1`,
+      [userId],
+    );
+    if (existing.rows[0]?.id) orgId = existing.rows[0].id;
+
+    let isNewOrg = false;
+    if (!orgId) {
+      const userRes = await pool.query<{ display_name: string | null; email: string | null }>(
+        `SELECT display_name, email FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      const userName = userRes.rows[0]?.display_name ?? userRes.rows[0]?.email ?? 'Innholdsprodusent';
+      const orgRes = await pool.query<{ id: string }>(
+        `INSERT INTO organizations (name, slug, owner_user_id)
+         VALUES ($1, $2, $3) RETURNING id::text`,
+        [`${userName} — Leadgrid`, null, userId],
+      );
+      orgId = orgRes.rows[0].id;
+      await pool.query(
+        `INSERT INTO organization_members (organization_id, user_id, role, invited_by)
+         VALUES ($1, $2, 'admin', $2)`,
+        [orgId, userId],
+      );
+      isNewOrg = true;
+    }
+
+    // Gjør org-et til brukerens leadgrid-org (konsistent resolusjon +
+    // broen install→gating).
+    await pool.query(
+      `INSERT INTO leadgrid_org_overrides (user_id, override_org_id, updated_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (user_id) DO UPDATE SET override_org_id = $2, updated_at = now()`,
+      [userId, orgId],
+    );
+    invalidateOrgCache(userId);
+
+    return { organizationId: orgId!, isNewOrg };
+  };
+
+  // GET /marketplace/apps — katalog med installasjonsstate for org-et
+  router.get('/marketplace/apps', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (userId === 'anonymous') return res.status(401).json({ error: 'Autentisering kreves' });
+    try {
+      const organizationId = await resolveOrgIdForUser(pool, userId);
+      const r = await pool.query(
+        `SELECT a.id, a.name, a.description, a.logo_url, a.category,
+                i.state AS install_state,
+                i.trial_ends_at::text AS trial_ends_at,
+                i.installed_at::text AS installed_at
+           FROM role_room_apps a
+           LEFT JOIN role_room_app_installs i
+             ON i.app_id = a.id AND i.organization_id = $1
+            AND i.state IN ('trial', 'active')
+          WHERE a.is_active = TRUE
+          ORDER BY a.display_order ASC, a.name ASC`,
+        [organizationId],
+      );
+      res.json({ apps: r.rows, organizationId });
+    } catch (err) {
+      console.error('[role-room] marketplace apps failed:', err);
+      res.status(500).json({ error: 'Kunne ikke hente app-katalog' });
+    }
+  });
+
+  // GET /marketplace/organizations/installed — org-ens installasjoner
+  router.get('/marketplace/organizations/installed', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (userId === 'anonymous') return res.status(401).json({ error: 'Autentisering kreves' });
+    try {
+      const organizationId = await resolveOrgIdForUser(pool, userId);
+      const r = await pool.query(
+        `SELECT i.id::text, i.app_id, a.name AS app_name, i.state,
+                i.trial_ends_at::text AS trial_ends_at,
+                i.installed_at::text AS installed_at
+           FROM role_room_app_installs i
+           JOIN role_room_apps a ON a.id = i.app_id
+          WHERE i.organization_id = $1 AND i.state IN ('trial', 'active')
+          ORDER BY i.installed_at DESC`,
+        [organizationId],
+      );
+      res.json({ installations: r.rows, organizationId });
+    } catch (err) {
+      console.error('[role-room] marketplace installed failed:', err);
+      res.status(500).json({ error: 'Kunne ikke hente installasjoner' });
+    }
+  });
+
+  // POST /marketplace/organizations/install — installer app (trial) for org-et
+  router.post('/marketplace/organizations/install', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (userId === 'anonymous') return res.status(401).json({ error: 'Autentisering kreves' });
+    const { appId } = (req.body ?? {}) as { appId?: string };
+    if (!appId || typeof appId !== 'string') {
+      return res.status(400).json({ error: 'appId er påkrevd' });
+    }
+    try {
+      const app = await pool.query(
+        `SELECT id FROM role_room_apps WHERE id = $1 AND is_active = TRUE`,
+        [appId],
+      );
+      if (app.rows.length === 0) return res.status(404).json({ error: 'app_ikke_funnet' });
+
+      const { organizationId, isNewOrg } = await ensureOrgForMarketplaceInstall(userId);
+
+      // 1. Opprett/forny installasjon (trial 14 dager)
+      const trialEndsAt = new Date(Date.now() + MARKETPLACE_TRIAL_DAYS * 24 * 60 * 60 * 1000);
+      await pool.query(
+        `INSERT INTO role_room_app_installs
+            (organization_id, app_id, state, installed_by, installed_at, trial_ends_at)
+         VALUES ($1, $2, 'trial', $3, now(), $4)
+         ON CONFLICT (organization_id, app_id)
+         DO UPDATE SET state = 'trial', trial_ends_at = $4, updated_at = now()`,
+        [organizationId, appId, userId, trialEndsAt],
+      );
+
+      // 2. Bro: install → gating (module_feature_entitlements)
+      await pool.query(
+        `INSERT INTO module_feature_entitlements
+            (organization_id, workspace_id, module_key, feature_key, state,
+             trial_ends_at, environment, updated_by, updated_at)
+         VALUES ($1, NULL, 'leadgrid', 'core', 'trial', $2, 'production', $3, now())
+         ON CONFLICT (organization_id, module_key, feature_key, environment)
+         DO UPDATE SET state = 'trial', trial_ends_at = $2, updated_by = $3, updated_at = now()`,
+        [organizationId, trialEndsAt, userId],
+      );
+
+      res.json({
+        success: true,
+        appId,
+        state: 'trial',
+        trialEndsAt: trialEndsAt.toISOString(),
+        organizationId,
+        isNewOrg,
+      });
+    } catch (err) {
+      console.error('[role-room] marketplace install failed:', err);
+      res.status(500).json({ error: 'Installasjon feilet' });
+    }
+  });
+
+  // POST /marketplace/organizations/uninstall — deaktiver + steng tilgang (behold data)
+  router.post('/marketplace/organizations/uninstall', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    const userId = getUserId(req);
+    if (userId === 'anonymous') return res.status(401).json({ error: 'Autentisering kreves' });
+    const { appId } = (req.body ?? {}) as { appId?: string };
+    if (!appId || typeof appId !== 'string') {
+      return res.status(400).json({ error: 'appId er påkrevd' });
+    }
+    try {
+      const organizationId = await resolveOrgIdForUser(pool, userId);
+      await pool.query(
+        `UPDATE role_room_app_installs SET state = 'cancelled', updated_at = now()
+          WHERE organization_id = $1 AND app_id = $2`,
+        [organizationId, appId],
+      );
+      // Steng tilgang — behold data (locked er absolutt i resolver-kaskaden)
+      await pool.query(
+        `INSERT INTO module_feature_entitlements
+            (organization_id, workspace_id, module_key, feature_key, state,
+             environment, updated_by, updated_at)
+         VALUES ($1, NULL, 'leadgrid', 'core', 'locked', 'production', $2, now())
+         ON CONFLICT (organization_id, module_key, feature_key, environment)
+         DO UPDATE SET state = 'locked', updated_by = $2, updated_at = now()`,
+        [organizationId, userId],
+      );
+      res.json({ success: true, appId, state: 'cancelled', organizationId });
+    } catch (err) {
+      console.error('[role-room] marketplace uninstall failed:', err);
+      res.status(500).json({ error: 'Avinstallering feilet' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
   // Public Stats — no auth, used on landing page stats bar
   // ═══════════════════════════════════════════════════════════
 
-  const ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN = '(demo|test|verification|null|playwright|holy crust|invite test|storyboard test|subtabproject|ui-to-api|producer demo|content producer demo|troll project)';
-  const ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN = '(demo|test|verification|invite-test|holy-crust|troll-project|producer-demo|content-producer-demo|null)';
-  const ROLE_ROOM_NON_LIVE_CREATOR_PATTERN = '^(e2e-test-user|dev-local-user|producer-verification|phase2-producer-)';
+  // e2e / seed / «Proj 1001» / timestamp-navn (13 sifre) lakk gjennom det gamle
+  // mønsteret og blåste opp admin-dashbordets «live»-tall (revisjon 2026-08-19).
+  // TROLL er bevisst demo-innhold (komplett produksjon modellert på Netflix-
+  // filmen) — skal se ekte ut i appen, men holdes utenfor live-tallene.
+  const ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN = '(demo|test|verification|null|playwright|holy crust|invite test|storyboard test|subtabproject|ui-to-api|producer demo|content producer demo|troll project|e2e|seed project|^proj [0-9]+$|[0-9]{13}|^troll$)';
+  const ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN = '(demo|test|verification|invite-test|holy-crust|troll-project|producer-demo|content-producer-demo|null|e2e|seed|^troll-)';
+  const ROLE_ROOM_NON_LIVE_CREATOR_PATTERN = '^(e2e-test-user|dev-local-user|producer-verification|phase2-producer-|demo-user|dev-|guest)';
 
   const getRoleRoomStatsSummary = async () => {
     // Live-projects definert som rader som IKKE matcher test-/demo-mønstre
@@ -17096,17 +18952,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          INNER JOIN live_projects lp ON lp.id = casting_candidates.project_id`),
       safeCount(`${liveProjectsCTE}
          SELECT COUNT(*) AS n
-         FROM schedules
-         INNER JOIN live_projects lp ON lp.id = schedules.project_id
-         WHERE LOWER(COALESCE(schedules.status, '')) IN ('confirmed', 'completed')`),
-      safeCount(`${liveProjectsCTE}
-         SELECT COUNT(*) AS n
-         FROM crew
-         INNER JOIN live_projects lp ON lp.id = crew.project_id`),
-      safeCount(`${liveProjectsCTE}
-         SELECT COUNT(*) AS n
-         FROM locations
-         INNER JOIN live_projects lp ON lp.id = locations.project_id`),
+         FROM casting_schedules
+         INNER JOIN live_projects lp ON lp.id = casting_schedules.project_id
+         WHERE LOWER(COALESCE(casting_schedules.status, '')) IN ('confirmed', 'completed')`),
+      safeCount(buildRoleRoomPublicStatsRelationCountQuery(liveProjectsCTE, 'crew')),
+      safeCount(buildRoleRoomPublicStatsRelationCountQuery(liveProjectsCTE, 'locations')),
     ]);
 
     return { kreative, produksjoner, rollerBesatt, kandidater, auditioner, crew, lokasjoner };
@@ -18445,22 +20295,38 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const summary = await getRoleRoomStatsSummary();
+      // Revisjon 2026-08-19: ikke overskriv summarys testfiltrerte kandidater-
+      // tall med rå COUNT(*), filtrer «Siste produksjoner» med samme live-
+      // mønster, og hold auto-genererte e2e-/guest-nøkler utenfor API-tallet.
+      const livePatternArgs = [
+        ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN,
+        ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN,
+        ROLE_ROOM_NON_LIVE_CREATOR_PATTERN,
+      ];
       const [
-        candidatesRes,
         marketplaceRes,
         activeKeysRes,
         recentProjectsRes,
         professionRes,
       ] = await Promise.all([
-        pool.query(`SELECT COUNT(*) AS n FROM casting_candidates`),
         pool.query(
           `SELECT COUNT(*) AS n FROM marketplace_installations
            WHERE is_active = TRUE AND (app_id ILIKE '%role%' OR app_id ILIKE '%casting%' OR app_id = 'role-room')`
         ),
-        pool.query(`SELECT COUNT(*) AS n FROM role_room_api_keys WHERE is_active = TRUE`),
+        pool.query(
+          `SELECT COUNT(*) AS n FROM role_room_api_keys
+           WHERE is_active = TRUE
+             AND COALESCE(name, '') NOT ILIKE 'auto-e2e%'
+             AND COALESCE(name, '') NOT ILIKE 'auto-guest%'`
+        ),
         pool.query(
           `SELECT id, name, status, created_at FROM casting_projects
-           ORDER BY created_at DESC LIMIT 5`
+           WHERE COALESCE(name, '') !~* $1
+             AND COALESCE(id, '') !~* $2
+             AND COALESCE(created_by, '') <> ''
+             AND COALESCE(created_by, '') !~* $3
+           ORDER BY created_at DESC LIMIT 5`,
+          livePatternArgs
         ),
         pool.query(
           `SELECT cur.role, COUNT(*) AS n
@@ -18472,7 +20338,6 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
       res.json({
         ...summary,
-        kandidater:          parseInt(candidatesRes.rows[0]?.n     ?? '0', 10),
         marketplaceInstalls: parseInt(marketplaceRes.rows[0]?.n    ?? '0', 10),
         activeApiKeys:       parseInt(activeKeysRes.rows[0]?.n     ?? '0', 10),
         recentProjects:      recentProjectsRes.rows,
@@ -19131,6 +20996,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
       return;
     }
+    const sessionRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, sessionRole)) {
+      res.status(403).json({ success: false, error: 'Mangler tilgang til dette prosjektet' });
+      return;
+    }
 
     const parsed = liveSetSessionSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -19168,6 +21038,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const { projectId } = req.params;
     if (!(await ensureProjectAccess(projectId))) {
       res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
+      return;
+    }
+
+    const batchRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, batchRole)) {
+      res.status(403).json({ success: false, error: 'Mangler tilgang til dette prosjektet' });
       return;
     }
 
@@ -19400,6 +21276,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       return;
     }
 
+    const eventsRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canReadProducerData(req, eventsRole)) {
+      res.status(403).json({ success: false, error: 'Mangler tilgang til dette prosjektet' });
+      return;
+    }
+
     const sinceRaw = typeof req.query.since === 'string' ? req.query.since : '';
     const sinceTs = sinceRaw ? Date.parse(sinceRaw) : NaN;
     const events = await getLiveSetEventsV2(projectId);
@@ -19422,6 +21304,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const { projectId } = req.params;
     if (!(await ensureProjectAccess(projectId))) {
       res.status(404).json({ success: false, error: 'Prosjekt ikke funnet' });
+      return;
+    }
+
+    const ackRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, ackRole)) {
+      res.status(403).json({ success: false, error: 'Mangler tilgang til dette prosjektet' });
       return;
     }
 
@@ -19595,7 +21483,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         return;
       }
-      res.status(502).json({ success: false, error: error instanceof Error ? error.message : 'Weather upstream failed' });
+      res.status(502).json({ success: false, error: error instanceof Error ? "internal_error" : 'Weather upstream failed' });
     }
   });
 
@@ -19686,6 +21574,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const { projectId } = req.params;
     const did = req.query.shootingDayId as string;
     if (!did) return res.status(400).json({ error: 'shootingDayId required' });
+    const statusRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canReadProducerData(req, statusRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
     const status = (await getLiveStatus(projectId, did)) ?? {
       currentScene: null, currentShot: null, currentTake: 1,
       isRolling: false, lastAction: '', lastActionTime: new Date().toISOString(),
@@ -19696,15 +21586,18 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // POST /api/liveset/:projectId/roll
   router.post('/liveset/:projectId/roll', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const { projectId } = req.params;
-    const { shootingDayId, sceneId, shotId, userId } = req.body as Record<string, string>;
+    const { shootingDayId, sceneId, shotId } = req.body as Record<string, string>;
     if (!shootingDayId || !sceneId || !shotId) return res.status(400).json({ error: 'shootingDayId, sceneId, shotId required' });
+    const rollRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, rollRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
+    const rollActor = getUserId(req);
     const k = storeKey(projectId, shootingDayId);
     const prev = (await getLiveStatus(projectId, shootingDayId)) ?? {};
     const next = { ...prev, currentScene: sceneId, currentShot: shotId, isRolling: true,
       lastAction: 'ROLLING', lastActionTime: new Date().toISOString() };
     liveStatusStore.set(k, next);
     await compatStoreSet(livesetStatusDbKey(projectId, shootingDayId), next);
-    await appendAudit(projectId, shootingDayId, 'roll', { sceneId, shotId }, userId ?? 'unknown');
+    await appendAudit(projectId, shootingDayId, 'roll', { sceneId, shotId }, rollActor);
     res.json(next);
   });
 
@@ -19712,8 +21605,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.post('/liveset/:projectId/cut', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const { projectId } = req.params;
     const { shootingDayId, status, notes, cameraId, camera, lens, fps, iso, ndFilter,
-            nextTake, loggedBy } = req.body as Record<string, string | number>;
+            nextTake } = req.body as Record<string, string | number>;
     if (!shootingDayId || !status) return res.status(400).json({ error: 'shootingDayId, status required' });
+    const cutRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, cutRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
+    const cutActor = getUserId(req);
     const k = storeKey(projectId, String(shootingDayId));
     const prev = ((await getLiveStatus(projectId, String(shootingDayId))) ?? { currentScene: null, currentShot: null, currentTake: 1 }) as Record<string, unknown>;
     const take: TakeRow = {
@@ -19731,7 +21627,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       iso:        iso     ? Number(iso)     : undefined,
       ndFilter:   ndFilter ? String(ndFilter): undefined,
       notes:      notes   ? String(notes)   : undefined,
-      loggedBy:   loggedBy ? String(loggedBy): undefined,
+      loggedBy:   cutActor,
       loggedAt:   new Date().toISOString(),
     };
     const takes = await getLiveTakes(projectId, String(shootingDayId));
@@ -19743,15 +21639,17 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       lastAction: `CUT - ${String(status).toUpperCase()}`, lastActionTime: new Date().toISOString() };
     liveStatusStore.set(k, nextStatus);
     await compatStoreSet(livesetStatusDbKey(projectId, String(shootingDayId)), nextStatus);
-    await appendAudit(projectId, String(shootingDayId), 'cut', take, String(loggedBy ?? 'unknown'));
+    await appendAudit(projectId, String(shootingDayId), 'cut', take, cutActor);
     res.json(take);
   });
 
   // POST /api/liveset/:projectId/circle
   router.post('/liveset/:projectId/circle', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const { projectId } = req.params;
-    const { shootingDayId, takeId, userId } = req.body as Record<string, string>;
+    const { shootingDayId, takeId } = req.body as Record<string, string>;
     if (!shootingDayId || !takeId) return res.status(400).json({ error: 'shootingDayId, takeId required' });
+    const circleRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, circleRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
     const k = storeKey(projectId, shootingDayId);
     const takes = await getLiveTakes(projectId, shootingDayId);
     const take = takes.find(t => t.id === takeId);
@@ -19759,7 +21657,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     take.status = 'circle';
     takesStore.set(k, takes);
     await compatStoreSet(livesetTakesDbKey(projectId, shootingDayId), takes);
-    await appendAudit(projectId, shootingDayId, 'circle_take', { takeId }, userId ?? 'unknown');
+    await appendAudit(projectId, shootingDayId, 'circle_take', { takeId }, getUserId(req));
     res.json(take);
   });
 
@@ -19768,14 +21666,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const { projectId } = req.params;
     const did = req.query.shootingDayId as string;
     if (!did) return res.status(400).json({ error: 'shootingDayId required' });
+    const takesRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canReadProducerData(req, takesRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
     res.json(await getLiveTakes(projectId, did));
   });
 
   // POST /api/liveset/:projectId/notes
   router.post('/liveset/:projectId/notes', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const { projectId } = req.params;
-    const { shootingDayId, sceneId, shotId, takeId, type, note, createdBy } = req.body as Record<string, string>;
+    const { shootingDayId, sceneId, shotId, takeId, type, note } = req.body as Record<string, string>;
     if (!shootingDayId || !sceneId || !note) return res.status(400).json({ error: 'shootingDayId, sceneId, note required' });
+    const noteRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, noteRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
+    const noteActor = getUserId(req);
     const k = storeKey(projectId, shootingDayId);
     const entry: NoteRow = {
       id: `note-${Date.now()}`,
@@ -19783,13 +21686,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       type:       type ?? 'general',
       note,
       timestamp:  new Date().toISOString(),
-      createdBy:  createdBy ?? 'unknown',
+      createdBy:  noteActor,
     };
     const notes = await getLiveNotes(projectId, shootingDayId);
     notes.push(entry);
     notesStore.set(k, notes);
     await compatStoreSet(livesetNotesDbKey(projectId, shootingDayId), notes);
-    await appendAudit(projectId, shootingDayId, 'add_note', entry, createdBy ?? 'unknown');
+    await appendAudit(projectId, shootingDayId, 'add_note', entry, noteActor);
     res.json(entry);
   });
 
@@ -19798,22 +21701,27 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const { projectId } = req.params;
     const did = req.query.shootingDayId as string;
     if (!did) return res.status(400).json({ error: 'shootingDayId required' });
+    const notesReadRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canReadProducerData(req, notesReadRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
     res.json(await getLiveNotes(projectId, did));
   });
 
   // POST /api/liveset/:projectId/setup-complete
   router.post('/liveset/:projectId/setup-complete', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     const { projectId } = req.params;
-    const { shootingDayId, sceneId, shotId, userId } = req.body as Record<string, string>;
+    const { shootingDayId, sceneId, shotId } = req.body as Record<string, string>;
     if (!shootingDayId) return res.status(400).json({ error: 'shootingDayId required' });
+    const setupRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canWriteProducerData(req, setupRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
+    const setupActor = getUserId(req);
     const k = storeKey(projectId, shootingDayId);
     const prev = (await getLiveStatus(projectId, shootingDayId)) ?? {};
     const next = { ...prev, currentTake: 1, isRolling: false,
-      lastAction: `SETUP COMPLETE — ${sceneId}/${shotId} — av ${userId}`,
+      lastAction: `SETUP COMPLETE — ${sceneId}/${shotId} — av ${setupActor}`,
       lastActionTime: new Date().toISOString() };
     liveStatusStore.set(k, next);
     await compatStoreSet(livesetStatusDbKey(projectId, shootingDayId), next);
-    await appendAudit(projectId, shootingDayId, 'setup_complete', { sceneId, shotId }, userId ?? 'unknown');
+    await appendAudit(projectId, shootingDayId, 'setup_complete', { sceneId, shotId }, setupActor);
     res.json({ ok: true });
   });
 
@@ -19822,6 +21730,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const { projectId } = req.params;
     const did = req.query.shootingDayId as string;
     if (!did) return res.status(400).json({ error: 'shootingDayId required' });
+    const auditRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    if (!canReadProducerData(req, auditRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
     res.json(await getLiveAudit(projectId, did));
   });
 
@@ -19990,12 +21900,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.get('/projects/:projectId/memory-card-control', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
+      {
+        const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, roleRecord)) {
+          res.status(403).json({ error: 'Mangler tilgang til minnekortkontroll' });
+          return;
+        }
+      }
       const result = await pool.query<{ settings: unknown }>(
         'SELECT settings FROM casting_projects WHERE id = $1',
         [projectId]
       );
 
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -20025,6 +21942,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const { projectId } = req.params;
+      {
+        const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, roleRecord)) {
+          res.status(403).json({ error: 'Mangler tilgang til minnekortkontroll' });
+          return;
+        }
+      }
       const body = req.body as Record<string, unknown>;
       const nextState = sanitizeMemoryCardControlState(body.state ?? body);
 
@@ -20033,7 +21957,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         [projectId]
       );
 
-      if (existing.rowCount === 0) {
+      if (!existing.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -20070,12 +21994,19 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.get('/projects/:projectId/memory-card-control/report', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
+      {
+        const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, roleRecord)) {
+          res.status(403).json({ error: 'Mangler tilgang til minnekort-rapport' });
+          return;
+        }
+      }
       const result = await pool.query<{ settings: unknown }>(
         'SELECT settings FROM casting_projects WHERE id = $1',
         [projectId]
       );
 
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -20102,6 +22033,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.post('/projects/:projectId/memory-card-control/qr-label', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
+      {
+        const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, roleRecord)) {
+          res.status(403).json({ error: 'Mangler tilgang til minnekortkontroll' });
+          return;
+        }
+      }
       const body = req.body as Record<string, unknown>;
       const requestedEntryId = typeof body.entryId === 'string' ? body.entryId : '';
 
@@ -20206,6 +22144,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.get('/projects/:projectId/equipment', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
+      const equipListRole = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+      if (!canReadProducerData(req, equipListRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
       const rows = await db2
         .select()
         .from(castingEquipment)
@@ -20227,6 +22167,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const body = req.body as Record<string, unknown>;
       const { project_id, name } = body as { project_id?: string; name?: string };
       if (!project_id || !name) return res.status(400).json({ error: 'project_id and name required' });
+      const equipCreateRole = await getProjectRoleRecord(project_id, getUserIdentifiers(req));
+      if (!canWriteProducerData(req, equipCreateRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
       const [row] = await db2
         .insert(castingEquipment)
         .values({
@@ -20266,6 +22208,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.put('/equipment/:id', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
+      const [equipTarget] = await db2.select({ projectId: castingEquipment.projectId }).from(castingEquipment).where(eq(castingEquipment.id, id));
+      if (!equipTarget) return res.status(404).json({ error: 'Equipment not found' });
+      const equipUpdRole = await getProjectRoleRecord(equipTarget.projectId ?? '', getUserIdentifiers(req));
+      if (!canWriteProducerData(req, equipUpdRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
       const body = req.body as Record<string, unknown>;
       const patch: Record<string, unknown> = {};
       const FIELDS: Record<string, string> = {
@@ -20299,6 +22245,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   router.delete('/equipment/:id', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
+      const [equipDelTarget] = await db2.select({ projectId: castingEquipment.projectId }).from(castingEquipment).where(eq(castingEquipment.id, id));
+      if (!equipDelTarget) return res.json({ ok: true });
+      const equipDelRole = await getProjectRoleRecord(equipDelTarget.projectId ?? '', getUserIdentifiers(req));
+      if (!canWriteProducerData(req, equipDelRole)) return res.status(403).json({ error: 'Mangler tilgang til dette prosjektet' });
       await db2.delete(castingEquipment).where(eq(castingEquipment.id, id));
       res.json({ ok: true });
     } catch (e) {
@@ -20776,6 +22726,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        {
+          const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+          if (!canReadProducerData(req, roleRecord)) {
+            return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
+          }
+        }
         const processor = String(req.query.processor ?? 'anthropic') as RoleRoomAiProcessor;
         if (!VALID_PROCESSORS.includes(processor)) {
           return res.status(400).json({ error: 'invalid processor' });
@@ -20783,7 +22739,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const record = await getAiConsent(pool, req.params.projectId, processor);
         res.json({ consent: record });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load AI consent', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load AI consent', detail: "internal_error" });
       }
     },
   );
@@ -20794,6 +22750,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
+        {
+          const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+          if (!canWriteProducerData(req, roleRecord)) {
+            return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
+          }
+        }
         const { scope, processor, note, excludedEntityIds, includedEntityIds } = req.body ?? {};
         if (!VALID_SCOPES.includes(scope)) {
           return res.status(400).json({ error: 'invalid scope' });
@@ -20812,7 +22774,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         res.status(201).json({ consent: record });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to grant AI consent', detail: String(error) });
+        res.status(500).json({ error: 'Failed to grant AI consent', detail: "internal_error" });
       }
     },
   );
@@ -20822,6 +22784,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        {
+          const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+          if (!canWriteProducerData(req, roleRecord)) {
+            return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
+          }
+        }
         const processor = String(req.query.processor ?? 'anthropic') as RoleRoomAiProcessor;
         if (!VALID_PROCESSORS.includes(processor)) {
           return res.status(400).json({ error: 'invalid processor' });
@@ -20829,7 +22797,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         await revokeAiConsent(pool, req.params.projectId, processor);
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to revoke AI consent', detail: String(error) });
+        res.status(500).json({ error: 'Failed to revoke AI consent', detail: "internal_error" });
       }
     },
   );
@@ -20839,6 +22807,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        {
+          const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+          if (!canWriteProducerData(req, roleRecord)) {
+            return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
+          }
+        }
         const processor = String(req.query.processor ?? 'anthropic') as RoleRoomAiProcessor;
         if (!VALID_PROCESSORS.includes(processor)) {
           return res.status(400).json({ error: 'invalid processor' });
@@ -20851,7 +22825,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!updated) return res.status(404).json({ error: 'no active consent' });
         res.json({ consent: updated });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to update entity lists', detail: String(error) });
+        res.status(500).json({ error: 'Failed to update entity lists', detail: "internal_error" });
       }
     },
   );
@@ -20859,6 +22833,39 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // Role Room Agent (Claude) — protected endpoint that runs every call
   // through consent → pseudonymize → audit. Scope defaults to 'brief_only'
   // but the caller can request more via the body.
+  // Produsent-nåbar brand-scan (agentens run_brand_scan-verktøy treffer denne).
+  // Skiller seg fra den admin-guardede /api/role-room/brand-kit/:id/scan ved å
+  // bruke prosjekt-tilgang (canReadProducerData) i stedet for requireAdmin.
+  router.post(
+    '/projects/:projectId/brand-scan',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const userId = getUserId(req);
+        const brandScanRole = await getProjectRoleRecord(
+          req.params.projectId,
+          getUserIdentifiers(req),
+        );
+        if (!canReadProducerData(req, brandScanRole)) {
+          return res
+            .status(403)
+            .json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
+        const url = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+        if (!url) return res.status(400).json({ error: 'url_required' });
+        const kit = await runBrandScan(pool, {
+          projectId: req.params.projectId,
+          workspaceOwnerUserId: userId,
+          url,
+        });
+        return res.json({ brandKit: kit });
+      } catch (err) {
+        console.error('[brand-scan producer] failed', err);
+        return res.status(500).json({ error: 'brand_scan_failed' });
+      }
+    },
+  );
+
   router.post(
     '/projects/:projectId/agent/query',
     apiKeyAuth(pool, activeSessions),
@@ -20889,6 +22896,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           return res.status(400).json({ error: 'invalid requiredScope' });
         }
 
+        const agentQueryRole = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, agentQueryRole)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
+
         try {
           checkAgentRateLimit(userId, req.params.projectId);
         } catch (rlError) {
@@ -20908,7 +22920,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           pool,
           projectId: req.params.projectId,
           userId,
-          userRole: readRoleRoomDevUserRole(req),
+          userRole: getSessionRole(req),
           action: action as RoleRoomAgentAction,
           userMessage: userMessage.trim(),
           requiredScope,
@@ -20920,7 +22932,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json(response);
       } catch (error) {
         if (error instanceof RoleRoomAgentDisabledError) {
-          return res.status(503).json({ error: 'agent_disabled', detail: error.message });
+          return res.status(503).json({ error: 'agent_disabled', detail: "internal_error" });
         }
         if (error instanceof RoleRoomAgentEntitlementError) {
           return res.status(402).json({
@@ -20930,11 +22942,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           });
         }
         if (error instanceof RoleRoomAiConsentError) {
-          return res.status(403).json({ error: error.code, detail: error.message });
+          return res.status(403).json({ error: error.code, detail: "internal_error" });
         }
         res.status(500).json({
           error: 'agent_failed',
-          detail: error instanceof Error ? error.message : String(error),
+          detail: "internal_error",
         });
       }
     },
@@ -20949,10 +22961,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        await handleAgentStream(pool, req, res, userId, readRoleRoomDevUserRole(req));
+        const agentStreamRole = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, agentStreamRole)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
+        await handleAgentStream(pool, req, res, userId, getSessionRole(req));
       } catch (error) {
         if (!res.headersSent) {
-          res.status(500).json({ error: 'stream_failed', detail: String(error) });
+          res.status(500).json({ error: 'stream_failed', detail: "internal_error" });
         } else {
           res.end();
         }
@@ -20969,6 +22985,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
+        const toolResultRole = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, toolResultRole)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
         const { toolName, toolUseId, status, errorMessage } = req.body ?? {};
         if (typeof toolName !== 'string' || toolName.trim().length === 0) {
           return res.status(400).json({ error: 'toolName required' });
@@ -20994,54 +23014,165 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'tool_result_log_failed', detail: String(error) });
+        res.status(500).json({ error: 'tool_result_log_failed', detail: "internal_error" });
       }
     },
   );
 
-  // Merch mockup generator — synchronous wrapper over Printful's
-  // mockup-generator API. Given a productId (tshirt/hoodie/...) and
-  // a public design image URL (typically the customer's logo from the
-  // bootstrap result), returns the rendered photorealistic mockup URL.
-  // Internal polling up to 30s; cached per (productId, designImageUrl).
+  // Merch catalog, concepts and mockups. Every route is project-scoped:
+  // readers can inspect provider state and saved decisions; only producer/editor
+  // roles can create provider work or change persisted production decisions.
+  router.get(
+    '/projects/:projectId/agent/merch-mockup/status',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, roleRecord)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
+        res.json({
+          configured: isPrintfulConfigured(),
+          provider: 'printful',
+          products: listMerchProductSpecs(),
+        });
+      } catch (error) {
+        res.status(500).json({ error: 'mockup_status_failed', detail: 'internal_error' });
+      }
+    },
+  );
+
+  router.get(
+    '/projects/:projectId/agent/merch-catalog/:productId',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, roleRecord)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
+        const allowedProducts = new Set<MerchMockupProductId>([
+          'tshirt', 'hoodie', 'polo', 'cap', 'totebag', 'mug',
+        ]);
+        const productId = req.params.productId as MerchMockupProductId;
+        if (!allowedProducts.has(productId)) {
+          return res.status(400).json({ error: 'invalid_product' });
+        }
+        const variants = await listMerchCatalogVariants(productId, req.query.refresh === 'true');
+        res.json({ productId, variants });
+      } catch (error) {
+        if (error instanceof PrintfulMockupError) {
+          return res.status(error.httpStatus).json({ error: 'mockup_catalog_failed', detail: error.message });
+        }
+        res.status(500).json({ error: 'mockup_catalog_failed', detail: 'internal_error' });
+      }
+    },
+  );
+
   router.post(
     '/projects/:projectId/agent/merch-mockup',
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, roleRecord)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler skrivetilgang til dette prosjektet' });
+        }
         if (!isPrintfulConfigured()) {
           return res.status(503).json({
             error: 'mockup_provider_unconfigured',
-            detail: 'Printful is not fully configured. Both PRINTFUL_API_KEY and PRINTFUL_STORE_ID must be set in Render env. Create a free Printful store under Stores → Add store, then add the numeric store id to env.',
+            detail: 'Printful is not fully configured. Both PRINTFUL_API_KEY and PRINTFUL_STORE_ID must be set in Render env.',
           });
         }
-        const { productId, designImageUrl, forceRefresh } = req.body ?? {};
+        const { productId, designImageUrl, variantId, placement, technique, printWidthMm, printHeightMm, forceRefresh } = req.body ?? {};
         const allowedProducts = new Set<MerchMockupProductId>([
           'tshirt', 'hoodie', 'polo', 'cap', 'totebag', 'mug',
         ]);
         if (typeof productId !== 'string' || !allowedProducts.has(productId as MerchMockupProductId)) {
           return res.status(400).json({ error: 'invalid_product', detail: `productId must be one of: ${Array.from(allowedProducts).join(', ')}` });
         }
-        if (typeof designImageUrl !== 'string' || !/^https?:\/\//i.test(designImageUrl)) {
-          return res.status(400).json({ error: 'invalid_design_url', detail: 'designImageUrl must be a public http(s) URL' });
+        if (typeof designImageUrl !== 'string' || !/^https:\/\//i.test(designImageUrl)) {
+          return res.status(400).json({ error: 'invalid_design_url', detail: 'designImageUrl must be a public HTTPS URL' });
         }
         const result = await generateMerchMockup(pool, {
           productId: productId as MerchMockupProductId,
           designImageUrl,
+          variantId: variantId == null ? null : Number(variantId),
+          placement: typeof placement === 'string' ? placement : null,
+          technique: typeof technique === 'string' ? technique as MerchProductionTechnique : null,
+          printWidthMm: printWidthMm == null ? null : Number(printWidthMm),
+          printHeightMm: printHeightMm == null ? null : Number(printHeightMm),
           forceRefresh: forceRefresh === true,
         });
         res.json(result);
       } catch (error) {
         if (error instanceof PrintfulMockupError) {
-          return res.status(error.httpStatus).json({
-            error: 'mockup_generation_failed',
-            detail: error.message,
-          });
+          return res.status(error.httpStatus).json({ error: 'mockup_generation_failed', detail: error.message });
         }
-        res.status(500).json({
-          error: 'mockup_generation_failed',
-          detail: error instanceof Error ? error.message : String(error),
-        });
+        res.status(500).json({ error: 'mockup_generation_failed', detail: 'internal_error' });
+      }
+    },
+  );
+
+  router.get(
+    '/projects/:projectId/agent/merch-concepts',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, roleRecord)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
+        const concepts = await listMerchConcepts(pool, req.params.projectId);
+        res.json({ concepts });
+      } catch (error) {
+        res.status(500).json({ error: 'merch_concepts_list_failed', detail: 'internal_error' });
+      }
+    },
+  );
+
+  router.post(
+    '/projects/:projectId/agent/merch-concepts',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, roleRecord)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler skrivetilgang til dette prosjektet' });
+        }
+        const result = await saveMerchConcept(pool, req.params.projectId, getUserId(req), req.body);
+        res.status(result.deduplicated ? 200 : 201).json(result);
+      } catch (error) {
+        if (error instanceof MerchConceptError) {
+          return res.status(error.httpStatus).json({ error: error.code, detail: error.message });
+        }
+        res.status(500).json({ error: 'merch_concept_save_failed', detail: 'internal_error' });
+      }
+    },
+  );
+
+  router.patch(
+    '/projects/:projectId/agent/merch-concepts/:conceptId/status',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, roleRecord)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler skrivetilgang til dette prosjektet' });
+        }
+        const concept = await setMerchConceptStatus(
+          pool,
+          req.params.projectId,
+          req.params.conceptId,
+          req.body?.status,
+          getUserId(req),
+        );
+        res.json({ concept });
+      } catch (error) {
+        if (error instanceof MerchConceptError) {
+          return res.status(error.httpStatus).json({ error: error.code, detail: error.message });
+        }
+        res.status(500).json({ error: 'merch_concept_status_failed', detail: 'internal_error' });
       }
     },
   );
@@ -21236,6 +23367,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        if (!(await canAccessProjectAds(pool, req.params.projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden' });
+        }
         const userId = getUserId(req);
         const {
           partnerOrgnr,
@@ -21296,6 +23430,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        if (!(await canAccessProjectAds(pool, req.params.projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden' });
+        }
         const userId = getUserId(req);
         const { replySummary, replyFullText, sentiment, repliedAt, autoDetectedMessageId } = req.body ?? {};
         if (typeof replySummary !== 'string' || replySummary.trim().length === 0) {
@@ -21336,6 +23473,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        if (!(await canAccessProjectAds(pool, req.params.projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden' });
+        }
         const lookbackDays = typeof req.body?.lookbackDays === 'number' ? req.body.lookbackDays : undefined;
         const result = await pollPartnerReplies(pool, { lookbackDays });
         if (!result.ok) {
@@ -21356,6 +23496,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        if (!(await canAccessProjectAds(pool, req.params.projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden' });
+        }
         const partnerOrgnr = typeof req.query.partnerOrgnr === 'string'
           ? req.query.partnerOrgnr.trim()
           : null;
@@ -21380,6 +23523,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        if (!(await canAccessProjectAds(pool, req.params.projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden' });
+        }
         const partnerOrgnr = typeof req.query.partnerOrgnr === 'string'
           ? req.query.partnerOrgnr.trim()
           : null;
@@ -21414,7 +23560,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         res.json({ threads });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list threads', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list threads', detail: "internal_error" });
       }
     },
   );
@@ -21429,7 +23575,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!data) return res.status(404).json({ error: 'Not found' });
         res.json({ thread: data.thread, messages: data.messages });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load thread', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load thread', detail: "internal_error" });
       }
     },
   );
@@ -21448,7 +23594,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!ok) return res.status(404).json({ error: 'Not found' });
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to rename thread', detail: String(error) });
+        res.status(500).json({ error: 'Failed to rename thread', detail: "internal_error" });
       }
     },
   );
@@ -21463,7 +23609,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!ok) return res.status(404).json({ error: 'Not found' });
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to archive thread', detail: String(error) });
+        res.status(500).json({ error: 'Failed to archive thread', detail: "internal_error" });
       }
     },
   );
@@ -21478,11 +23624,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         const config = getEntitlementConfig();
         res.json({ entitlement, config });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load entitlement', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load entitlement', detail: "internal_error" });
       }
     },
   );
@@ -21497,10 +23643,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!result.ok) {
           return res.status(409).json({ error: result.error });
         }
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         res.status(201).json({ trialEndsAt: result.trialEndsAt, entitlement });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to start trial', detail: String(error) });
+        res.status(500).json({ error: 'Failed to start trial', detail: "internal_error" });
       }
     },
   );
@@ -21561,7 +23707,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
         res.json({ status: 'ok', url: session.url, id: session.id });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to create checkout', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create checkout', detail: "internal_error" });
       }
     },
   );
@@ -21588,7 +23734,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to grant', detail: String(error) });
+        res.status(500).json({ error: 'Failed to grant', detail: "internal_error" });
       }
     },
   );
@@ -21608,7 +23754,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         await revokeEntitlement(pool, userId, typeof reason === 'string' ? reason : 'admin_revoke');
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to revoke', detail: String(error) });
+        res.status(500).json({ error: 'Failed to revoke', detail: "internal_error" });
       }
     },
   );
@@ -21625,7 +23771,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const rows = await listEntitlements(pool, { limit });
         res.json({ entitlements: rows });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list', detail: "internal_error" });
       }
     },
   );
@@ -21644,7 +23790,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const overview = await getAiGovernanceOverview(pool);
         res.json(overview);
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load overview', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load overview', detail: "internal_error" });
       }
     },
   );
@@ -21662,7 +23808,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const consents = await getConsentList(pool, { includeRevoked, limit });
         res.json({ consents });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load consents', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load consents', detail: "internal_error" });
       }
     },
   );
@@ -21681,7 +23827,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const rows = await getAuditTrail(pool, { limit, projectId, status });
         res.json({ rows });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load audit trail', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load audit trail', detail: "internal_error" });
       }
     },
   );
@@ -21698,7 +23844,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const rows = await listAiCallsForUser(pool, userId, { projectId, limit });
         res.json({ interactions: rows });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load AI interactions', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load AI interactions', detail: "internal_error" });
       }
     },
   );
@@ -21812,9 +23958,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ accounts });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to list Meta ad accounts', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list Meta ad accounts', detail: "internal_error" });
       }
     },
   );
@@ -21896,9 +24042,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ campaign: row });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create Meta campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create Meta campaign', detail: "internal_error" });
       }
     },
   );
@@ -21944,9 +24090,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ adSet: result });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create ad set', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create ad set', detail: "internal_error" });
       }
     },
   );
@@ -21975,9 +24121,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ ad: result });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create ad', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create ad', detail: "internal_error" });
       }
     },
   );
@@ -22004,9 +24150,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to pause campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to pause campaign', detail: "internal_error" });
       }
     },
   );
@@ -22039,12 +24185,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof BudgetExceededError) {
-          return res.status(409).json({ error: 'budget_exceeded', detail: error.message, status: error.status });
+          return res.status(409).json({ error: 'budget_exceeded', detail: "internal_error", status: error.status });
         }
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to resume campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to resume campaign', detail: "internal_error" });
       }
     },
   );
@@ -22071,9 +24217,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to end campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to end campaign', detail: "internal_error" });
       }
     },
   );
@@ -22108,9 +24254,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ customers });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to list Google customers', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list Google customers', detail: "internal_error" });
       }
     },
   );
@@ -22164,9 +24310,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to send MCC invite', detail: String(error) });
+        res.status(500).json({ error: 'Failed to send MCC invite', detail: "internal_error" });
       }
     },
   );
@@ -22191,9 +24337,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ links });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to list MCC links', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list MCC links', detail: "internal_error" });
       }
     },
   );
@@ -22225,9 +24371,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ clientCustomerId: customerId, link });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to check MCC link status', detail: String(error) });
+        res.status(500).json({ error: 'Failed to check MCC link status', detail: "internal_error" });
       }
     },
   );
@@ -22268,9 +24414,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ campaign: row, budgetResourceName: created.budgetResourceName });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create Google campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create Google campaign', detail: "internal_error" });
       }
     },
   );
@@ -22303,12 +24449,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           res.json({ campaign: updated });
         } catch (error) {
           if (error instanceof BudgetExceededError) {
-            return res.status(409).json({ error: 'budget_exceeded', detail: error.message, status: error.status });
+            return res.status(409).json({ error: 'budget_exceeded', detail: "internal_error", status: error.status });
           }
           if (error instanceof GoogleAdsApiError) {
-            return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+            return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
           }
-          res.status(500).json({ error: `Failed to ${action} Google campaign`, detail: String(error) });
+          res.status(500).json({ error: `Failed to ${action} Google campaign`, detail: "internal_error" });
         }
       },
     );
@@ -22335,9 +24481,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to end Google campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to end Google campaign', detail: "internal_error" });
       }
     },
   );
@@ -22361,7 +24507,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           .filter((a) => a.assetType === 'ad_account');
         res.json({ accounts });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list LinkedIn accounts', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list LinkedIn accounts', detail: "internal_error" });
       }
     },
   );
@@ -22379,7 +24525,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const groups = await listLinkedInCampaignGroups(auth.accessToken, accountUrn, auth.apiVersion);
         res.json({ groups });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list LinkedIn campaign groups', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list LinkedIn campaign groups', detail: "internal_error" });
       }
     },
   );
@@ -22421,9 +24567,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ campaign: row });
       } catch (error) {
         if (error instanceof LinkedInAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create LinkedIn campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create LinkedIn campaign', detail: "internal_error" });
       }
     },
   );
@@ -22453,12 +24599,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           res.json({ campaign: updated });
         } catch (error) {
           if (error instanceof BudgetExceededError) {
-            return res.status(409).json({ error: 'budget_exceeded', detail: error.message, status: error.status });
+            return res.status(409).json({ error: 'budget_exceeded', detail: "internal_error", status: error.status });
           }
           if (error instanceof LinkedInAdsApiError) {
-            return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: error.message });
+            return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: "internal_error" });
           }
-          res.status(500).json({ error: `Failed to ${action} LinkedIn campaign`, detail: String(error) });
+          res.status(500).json({ error: `Failed to ${action} LinkedIn campaign`, detail: "internal_error" });
         }
       },
     );
@@ -22482,9 +24628,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof LinkedInAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to end LinkedIn campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to end LinkedIn campaign', detail: "internal_error" });
       }
     },
   );
@@ -22506,7 +24652,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const campaigns = await listCampaignsForUser(pool, userId, { projectId, platform, status });
         res.json({ campaigns });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list campaigns', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list campaigns', detail: "internal_error" });
       }
     },
   );
@@ -22542,9 +24688,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ sync: result });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to sync campaign spend', detail: String(error) });
+        res.status(500).json({ error: 'Failed to sync campaign spend', detail: "internal_error" });
       }
     },
   );
@@ -22581,7 +24727,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         );
         res.json({ sync: result });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to sync campaign spend', detail: String(error) });
+        res.status(500).json({ error: 'Failed to sync campaign spend', detail: "internal_error" });
       }
     },
   );
@@ -22611,7 +24757,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           totalClientCostExVatNok: summary.totalSpendNok + summary.totalFeeNok,
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load spend summary', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load spend summary', detail: "internal_error" });
       }
     },
   );
@@ -22629,11 +24775,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
             ? req.query.period
             : new Date().toISOString().slice(0, 7);
+        if (!(await canAccessProjectAds(pool, projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
         const rows = await getChannelResultRows(pool, projectId, period);
         const results = buildChannelResults(rows);
         res.json({ period, ...results });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load channel results', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load channel results', detail: "internal_error" });
       }
     },
   );
@@ -22651,6 +24800,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
             ? req.query.period
             : new Date().toISOString().slice(0, 7);
+        if (!(await canAccessProjectAds(pool, projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
         const campaigns = await getCampaignResultRows(pool, projectId, period);
         const campaignsWithRoas = campaigns.map((c) => ({
           ...c,
@@ -22659,7 +24811,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }));
         res.json({ period, campaigns: campaignsWithRoas });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load campaign results', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load campaign results', detail: "internal_error" });
       }
     },
   );
@@ -22729,7 +24881,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           })),
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load comments', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load comments', detail: "internal_error" });
       }
     },
   );
@@ -22862,7 +25014,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           },
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to save comment', detail: String(error) });
+        res.status(500).json({ error: 'Failed to save comment', detail: "internal_error" });
       }
     },
   );
@@ -22895,7 +25047,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         );
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to resolve', detail: String(error) });
+        res.status(500).json({ error: 'Failed to resolve', detail: "internal_error" });
       }
     },
   );
@@ -22912,6 +25064,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
             ? req.query.period
             : new Date().toISOString().slice(0, 7);
+        if (!(await canAccessProjectAds(pool, projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
         const persisted = await fetchAdRecommendations(pool, projectId, period);
         if (!persisted) {
           return res.json({ period, recommendations: [], overallNote: null, generatedAt: null, generatedWithModel: null });
@@ -22925,7 +25080,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           generatedWithModel: persisted.generatedWithModel,
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load recommendations', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load recommendations', detail: "internal_error" });
       }
     },
   );
@@ -22946,9 +25101,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!projectId || typeof projectId !== 'string') {
           return res.status(400).json({ error: 'projectId_required' });
         }
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         if (!entitlement.allowed) {
           return res.status(402).json({ error: 'entitlement_required', entitlement });
+        }
+        if (!(await canAccessProjectAds(pool, projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
         }
         const summary = await runAdsRecommendationsForProject(pool, projectId, period);
         if (!summary) {
@@ -22956,7 +25114,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
         res.json({ period, ...summary });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to generate recommendations', detail: String(error) });
+        res.status(500).json({ error: 'Failed to generate recommendations', detail: "internal_error" });
       }
     },
   );
@@ -23007,7 +25165,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
 
         // AI-generering teller mot agent-kvoten (samme som marketing-plan).
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         if (!entitlement.allowed) {
           return res.status(402).json({ error: 'entitlement_required', entitlement });
         }
@@ -23048,7 +25206,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
         res.json({ creative });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to generate ad creatives', detail: String(error) });
+        res.status(500).json({ error: 'Failed to generate ad creatives', detail: "internal_error" });
       }
     },
   );
@@ -23075,6 +25233,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const period = typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
           ? req.query.period
           : currentPeriod();
+        if (!(await canAccessProjectAds(pool, projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
         const budget = await getBudget(pool, projectId, period);
         const actualSpendNok = await sumSpendForProjectPeriod(pool, projectId, period);
         const status = computeBudgetStatus({
@@ -23088,7 +25249,83 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const autoPauseOnCap = budget?.autoPauseOnCap ?? false;
         res.json({ period, status, pacing, autoPauseOnCap, canEdit: await isClientForProject(req, projectId) });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load budget', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load budget', detail: "internal_error" });
+      }
+    },
+  );
+
+  // Data-driven "best time to post" — aggregates a project's own historical
+  // engagement (social_metrics) into ranked weekday×hour slots per platform.
+  // Feeds the marketing-plan UI card and the agent; falls back to an empty list
+  // when there's no usable history (the UI then shows the LLM best-practice tip).
+  router.get(
+    '/best-time-to-post',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : '';
+        if (!projectId) return res.status(400).json({ error: 'projectId_required' });
+        if (!(await canAccessProjectAds(pool, projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
+        const platform = typeof req.query.platform === 'string' ? req.query.platform : undefined;
+        const windowDays = /^\d+$/.test(String(req.query.windowDays ?? ''))
+          ? Number(req.query.windowDays)
+          : undefined;
+        const results = await getBestTimesForProject(pool, projectId, { windowDays });
+        const bestTimes = platform ? results.filter((r) => r.platform === platform) : results;
+        res.json({ bestTimes });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to compute best time to post', detail: "internal_error" });
+      }
+    },
+  );
+
+  // Proactive client update — producer sends a data-driven "here's what we
+  // published and how it's doing" summary (incl. the best-time insight) to the
+  // client via email + portal timeline. Closes the proactive-communication gap.
+  router.post(
+    '/marketing-plan/:planId/client-update',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const planId = req.params.planId;
+        const accessUser = readProjectAccessUser(req);
+        const ctx = await resolvePlanContext(pool, planId);
+        if (!ctx) return res.status(404).json({ error: 'plan_not_found' });
+        if (!(await canAccessProjectAds(pool, ctx.projectId, accessUser))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
+        const producerNote =
+          typeof req.body?.producerNote === 'string' ? req.body.producerNote : null;
+        const result = await sendClientUpdate(pool, {
+          planId,
+          sentBy: accessUser?.userId ?? null,
+          producerNote,
+        });
+        res.json(result);
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to send client update', detail: "internal_error" });
+      }
+    },
+  );
+
+  // Producer-facing list of previously sent client updates (timeline).
+  router.get(
+    '/marketing-plan/:planId/client-updates',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const planId = req.params.planId;
+        const ctx = await resolvePlanContext(pool, planId);
+        if (!ctx) return res.status(404).json({ error: 'plan_not_found' });
+        if (!(await canAccessProjectAds(pool, ctx.projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
+        const updates = await listClientUpdates(pool, ctx.projectId);
+        res.json({ updates });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to list client updates', detail: "internal_error" });
       }
     },
   );
@@ -23112,7 +25349,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const budget = await setBudget(pool, projectId, period, maxSpendNok, identifiers[0] ?? 'klient');
         res.json({ budget });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to set budget', detail: String(error) });
+        res.status(500).json({ error: 'Failed to set budget', detail: "internal_error" });
       }
     },
   );
@@ -23138,7 +25375,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const budget = await setAutoPauseOnCap(pool, projectId, period, enabled, identifiers[0] ?? 'klient');
         res.json({ budget });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to set auto-pause', detail: String(error) });
+        res.status(500).json({ error: 'Failed to set auto-pause', detail: "internal_error" });
       }
     },
   );
@@ -23155,6 +25392,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!projectId || typeof requestedNok !== 'number' || requestedNok < 0) {
           return res.status(400).json({ error: 'invalid_input', detail: 'projectId + requestedNok (>=0) required' });
         }
+        if (!(await canAccessProjectAds(pool, projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
         const identifiers = getUserIdentifiers(req);
         const budget = await requestOverage(
           pool, projectId, period, requestedNok,
@@ -23164,7 +25404,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!budget) return res.status(404).json({ error: 'budget_not_set', detail: 'Kunden må sette et budsjett først.' });
         res.json({ budget });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to request overage', detail: String(error) });
+        res.status(500).json({ error: 'Failed to request overage', detail: "internal_error" });
       }
     },
   );
@@ -23189,7 +25429,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!budget) return res.status(404).json({ error: 'budget_not_set' });
         res.json({ budget });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to approve overage', detail: String(error) });
+        res.status(500).json({ error: 'Failed to approve overage', detail: "internal_error" });
       }
     },
   );
@@ -23217,7 +25457,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           })),
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list ads connections', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list ads connections', detail: "internal_error" });
       }
     },
   );
@@ -23302,7 +25542,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           platforms: { meta, linkedin },
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load granted assets', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load granted assets', detail: "internal_error" });
       }
     },
   );
@@ -23344,7 +25584,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!authorizationUrl) return res.status(400).json({ error: 'unsupported_platform' });
         res.json({ success: true, authorizationUrl, stateId, scopes: ADS_OAUTH_SCOPES[typedPlatform] });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to start ads OAuth', detail: String(error) });
+        res.status(500).json({ error: 'Failed to start ads OAuth', detail: "internal_error" });
       }
     },
   );
@@ -23389,7 +25629,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const base = state.browserOrigin ?? '';
         res.redirect(`${base}${state.returnPath}?adsOauthStatus=connected&platform=${platform}`);
       } catch (error) {
-        res.status(500).json({ error: 'ads_oauth_callback_failed', detail: String(error) });
+        res.status(500).json({ error: 'ads_oauth_callback_failed', detail: "internal_error" });
       }
     },
   );
@@ -23462,7 +25702,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const { analysisId, weekStarting } = req.body ?? {};
+        const { analysisId, weekStarting, projectId: bestTimeProjectId } = req.body ?? {};
         if (!analysisId || !weekStarting) {
           return res.status(400).json({
             error: 'invalid_input',
@@ -23481,6 +25721,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
         const brand = row.rows[0].brand_profile as unknown as Parameters<typeof generateWeekPlan>[0];
         const plan = await generateWeekPlan(brand, weekStarting);
+        await applyBestTimeOverride(pool, plan, bestTimeProjectId);
         res.json({ plan });
       } catch (error) {
         res.status(500).json({
@@ -23498,7 +25739,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const { url, weekStarting, skipClaude } = req.body ?? {};
+        const { url, weekStarting, skipClaude, focus, projectId: bestTimeProjectId } = req.body ?? {};
         if (!url || !weekStarting) {
           return res.status(400).json({
             error: 'invalid_input',
@@ -23536,8 +25777,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           analysisId = inserted.rows[0].id;
         }
 
-        // 2) Strategist
-        const plan = await generateWeekPlan(brandProfile, weekStarting);
+        // 2) Strategist (valgfritt kampanje-fokus fra katalog-produkt)
+        const plan = await generateWeekPlan(brandProfile, weekStarting, {
+          focus: typeof focus === 'string' ? focus : undefined,
+        });
+        await applyBestTimeOverride(pool, plan, bestTimeProjectId);
 
         // 3) Generator (DB transaction inside)
         const fallbackColor = brandProfile.colors?.primary ?? '#0a0617';

@@ -60,6 +60,7 @@ import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { academyPdfExportService } from '@/services/academyPdfExportService';
+import { useAcademyLocale } from './academyLocale';
 import {
   formatNOK,
   validatePayoutRequest,
@@ -102,6 +103,7 @@ const InstructorRevenueDashboard: React.FC = () => {
   const theming = useTheming('music_producer');
   const { analytics } = useEnhancedMasterIntegration();
   const queryClient = useQueryClient();
+  const { tt } = useAcademyLocale();
 
   const [payoutDialogOpen, setPayoutDialogOpen] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState<number>(0);
@@ -140,31 +142,34 @@ const InstructorRevenueDashboard: React.FC = () => {
     const now = new Date();
     await academyPdfExportService.exportReport({
       fileName: `academy-revenue-${now.toISOString().slice(0, 10)}.pdf`,
-      title: 'Inntektsoversikt',
-      subtitle: 'Instruktørinntekter, kursfordeling og utbetalingshistorikk',
-      courseLabel: `Plan: ${instructorPlan}`,
+      title: tt('Inntektsoversikt', 'Revenue overview'),
+      subtitle: tt(
+        'Instruktørinntekter, kursfordeling og utbetalingshistorikk',
+        'Instructor earnings, revenue by course and payout history',
+      ),
+      courseLabel: `${tt('Plan', 'Plan')}: ${instructorPlan}`,
       locale: 'nb-NO',
       sections: [
         {
-          title: 'Nøkkeltall',
+          title: tt('Nøkkeltall', 'Key metrics'),
           metrics: [
-            { label: 'Total opptjent', value: formatNOK(revenueStats?.totalEarnings || 0) },
-            { label: 'Til utbetaling', value: formatNOK(revenueStats?.pendingRevenue || 0) },
-            { label: 'Utbetalt', value: formatNOK(revenueStats?.paidOut || 0) },
-            { label: 'Denne måneden', value: formatNOK(revenueStats?.thisMonthEarnings || 0) },
-            { label: 'Studenter', value: revenueStats?.totalStudents || 0 },
-            { label: 'Aktive kurs', value: revenueStats?.activeCourses || 0 },
+            { label: tt('Total opptjent', 'Total earned'), value: formatNOK(revenueStats?.totalEarnings || 0) },
+            { label: tt('Til utbetaling', 'Pending payout'), value: formatNOK(revenueStats?.pendingRevenue || 0) },
+            { label: tt('Utbetalt', 'Paid out'), value: formatNOK(revenueStats?.paidOut || 0) },
+            { label: tt('Denne måneden', 'This month'), value: formatNOK(revenueStats?.thisMonthEarnings || 0) },
+            { label: tt('Studenter', 'Students'), value: revenueStats?.totalStudents || 0 },
+            { label: tt('Aktive kurs', 'Active courses'), value: revenueStats?.activeCourses || 0 },
           ],
         },
         {
-          title: 'Inntekter per kurs',
+          title: tt('Inntekter per kurs', 'Revenue by course'),
           table: {
             columns: [
-              'Kurs',
-              'Påmeldinger',
-              'Total omsetning',
-              'Instruktørandel',
-              'Plattformgebyr',
+              tt('Kurs', 'Course'),
+              tt('Påmeldinger', 'Enrollments'),
+              tt('Total omsetning', 'Total revenue'),
+              tt('Instruktørandel', 'Instructor share'),
+              tt('Plattformgebyr', 'Platform fee'),
             ],
             rows: (courseRevenue || []).map((course) => [
               course.courseTitle,
@@ -176,9 +181,9 @@ const InstructorRevenueDashboard: React.FC = () => {
           },
         },
         {
-          title: 'Utbetalingshistorikk',
+          title: tt('Utbetalingshistorikk', 'Payout history'),
           table: {
-            columns: ['Dato', 'Beløp', 'Status', 'Metode'],
+            columns: [tt('Dato', 'Date'), tt('Beløp', 'Amount'), tt('Status', 'Status'), tt('Metode', 'Method')],
             rows: (payoutHistory || []).map((payout) => [
               new Date(payout.requestedAt).toLocaleDateString('nb-NO'),
               formatNOK(payout.amount),
@@ -249,7 +254,7 @@ const InstructorRevenueDashboard: React.FC = () => {
       <Box sx={{ p: 3, textAlign: 'center' }}>
         <LinearProgress />
         <Typography variant="body2" sx={{ mt: 2 }}>
-          Laster inntektsdata...
+          {tt('Laster inntektsdata...', 'Loading revenue data...')}
         </Typography>
       </Box>
     );
@@ -263,14 +268,14 @@ const InstructorRevenueDashboard: React.FC = () => {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
-            Inntektsoversikt
+            {tt('Inntektsoversikt', 'Revenue overview')}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Spor dine kursinntekter og administrer utbetalinger
+            {tt('Spor dine kursinntekter og administrer utbetalinger', 'Track your course earnings and manage payouts')}
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} alignItems="center">
-          <Tooltip title="Oppdater alle inntektsdata">
+          <Tooltip title={tt('Oppdater alle inntektsdata', 'Refresh all revenue data')}>
             <Button
               variant="outlined"
               startIcon={<Refresh />}
@@ -279,10 +284,10 @@ const InstructorRevenueDashboard: React.FC = () => {
                 queryClient.invalidateQueries({ queryKey: ['/api/academy/revenue/by-course'] });
               }}
             >
-              Oppdater
+              {tt('Oppdater', 'Refresh')}
             </Button>
           </Tooltip>
-          <Tooltip title="Flere handlinger">
+          <Tooltip title={tt('Flere handlinger', 'More actions')}>
             <IconButton onClick={(event) => setQuickActionsAnchorEl(event.currentTarget)}>
               <MoreVert />
             </IconButton>
@@ -298,14 +303,14 @@ const InstructorRevenueDashboard: React.FC = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <MonetizationOn sx={{ color: 'success.dark', mr: 1 }} />
                 <Typography variant="caption" sx={{ color: 'success.dark', fontWeight: 'bold' }}>
-                  TOTAL INNTEKT
+                  {tt('TOTAL INNTEKT', 'TOTAL REVENUE')}
                 </Typography>
               </Box>
               <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'success.dark' }}>
                 {formatNOK(revenueStats?.totalEarnings || 0)}
               </Typography>
               <Typography variant="caption" sx={{ color: 'success.dark' }}>
-                {revenueStats?.totalStudents || 0} studenter
+                {revenueStats?.totalStudents || 0} {tt('studenter', 'students')}
               </Typography>
             </CardContent>
           </Card>
@@ -317,14 +322,14 @@ const InstructorRevenueDashboard: React.FC = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <Schedule sx={{ color: 'warning.dark', mr: 1 }} />
                 <Typography variant="caption" sx={{ color: 'warning.dark', fontWeight: 'bold' }}>
-                  VENTER PÅ UTBETALING
+                  {tt('VENTER PÅ UTBETALING', 'PENDING PAYOUT')}
                 </Typography>
               </Box>
               <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'warning.dark' }}>
                 {formatNOK(revenueStats?.pendingRevenue || 0)}
               </Typography>
               <Typography variant="caption" sx={{ color: 'warning.dark' }}>
-                {canRequestPayout ? 'Klar for utbetaling' : `Min. ${formatNOK(minimumPayout)}`}
+                {canRequestPayout ? tt('Klar for utbetaling', 'Ready for payout') : `${tt('Min.', 'Min.')} ${formatNOK(minimumPayout)}`}
               </Typography>
             </CardContent>
           </Card>
@@ -336,14 +341,14 @@ const InstructorRevenueDashboard: React.FC = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <Payment sx={{ color: 'info.dark', mr: 1 }} />
                 <Typography variant="caption" sx={{ color: 'info.dark', fontWeight: 'bold' }}>
-                  UTBETALT
+                  {tt('UTBETALT', 'PAID OUT')}
                 </Typography>
               </Box>
               <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'info.dark' }}>
                 {formatNOK(revenueStats?.paidOut || 0)}
               </Typography>
               <Typography variant="caption" sx={{ color: 'info.dark' }}>
-                Totalt utbetalt
+                {tt('Totalt utbetalt', 'Total paid out')}
               </Typography>
             </CardContent>
           </Card>
@@ -355,14 +360,14 @@ const InstructorRevenueDashboard: React.FC = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <TrendingUp sx={{ color: 'primary.dark', mr: 1 }} />
                 <Typography variant="caption" sx={{ color: 'primary.dark', fontWeight: 'bold' }}>
-                  DENNE MÅNEDEN
+                  {tt('DENNE MÅNEDEN', 'THIS MONTH')}
                 </Typography>
               </Box>
               <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'primary.dark' }}>
                 {formatNOK(revenueStats?.thisMonthEarnings || 0)}
               </Typography>
               <Typography variant="caption" sx={{ color: 'primary.dark' }}>
-                Inntekt så langt
+                {tt('Inntekt så langt', 'Revenue so far')}
               </Typography>
             </CardContent>
           </Card>
@@ -377,9 +382,9 @@ const InstructorRevenueDashboard: React.FC = () => {
           >
             <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <AccountBalance />
-              Be om utbetaling
+              {tt('Be om utbetaling', 'Request payout')}
             </Typography>
-            {canRequestPayout && <Chip label="Klar!" color="success" icon={<CheckCircle />} />}
+            {canRequestPayout && <Chip label={tt('Klar!', 'Ready!')} color="success" icon={<CheckCircle />} />}
           </Box>
 
           <Divider sx={{ mb: 2 }} />
@@ -387,8 +392,9 @@ const InstructorRevenueDashboard: React.FC = () => {
           {canRequestPayout ? (
             <Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Du har <strong>{formatNOK(revenueStats?.pendingRevenue || 0)}</strong> tilgjengelig
-                for utbetaling.
+                {tt('Du har ', 'You have ')}
+                <strong>{formatNOK(revenueStats?.pendingRevenue || 0)}</strong>
+                {tt(' tilgjengelig for utbetaling.', ' available for payout.')}
               </Typography>
               <Button
                 variant="contained"
@@ -400,15 +406,17 @@ const InstructorRevenueDashboard: React.FC = () => {
                 }}
                 sx={{ ...theming.getThemedButtonSx() }}
               >
-                Be om utbetaling
+                {tt('Be om utbetaling', 'Request payout')}
               </Button>
             </Box>
           ) : (
             <Alert severity="info" icon={<Warning />}>
               <Typography variant="body2">
-                Minimum utbetalingsbeløp er <strong>{formatNOK(minimumPayout)}</strong>. Du har for
-                øyeblikket <strong>{formatNOK(revenueStats?.pendingRevenue || 0)}</strong>{', '}
-                tilgjengelig.
+                {tt('Minimum utbetalingsbeløp er ', 'The minimum payout amount is ')}
+                <strong>{formatNOK(minimumPayout)}</strong>
+                {tt('. Du har for øyeblikket ', '. You currently have ')}
+                <strong>{formatNOK(revenueStats?.pendingRevenue || 0)}</strong>
+                {tt(' tilgjengelig.', ' available.')}
               </Typography>
               <LinearProgress
                 variant="determinate"
@@ -429,7 +437,7 @@ const InstructorRevenueDashboard: React.FC = () => {
             sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
           >
             <Assessment />
-            Inntekt per kurs
+            {tt('Inntekt per kurs', 'Revenue by course')}
           </Typography>
 
           <Divider sx={{ my: 2 }} />
@@ -442,19 +450,19 @@ const InstructorRevenueDashboard: React.FC = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell>
-                      <strong>Kurs</strong>
+                      <strong>{tt('Kurs', 'Course')}</strong>
                     </TableCell>
                     <TableCell align="right">
-                      <strong>Pris</strong>
+                      <strong>{tt('Pris', 'Price')}</strong>
                     </TableCell>
                     <TableCell align="right">
-                      <strong>Studenter</strong>
+                      <strong>{tt('Studenter', 'Students')}</strong>
                     </TableCell>
                     <TableCell align="right">
-                      <strong>Omsetning</strong>
+                      <strong>{tt('Omsetning', 'Revenue')}</strong>
                     </TableCell>
                     <TableCell align="right">
-                      <strong>Din inntekt</strong>
+                      <strong>{tt('Din inntekt', 'Your revenue')}</strong>
                     </TableCell>
                   </TableRow>
                 </TableHead>
@@ -477,7 +485,7 @@ const InstructorRevenueDashboard: React.FC = () => {
             </TableContainer>
           ) : (
             <Typography color="text.secondary">
-              Ingen kursinntekter ennå. Opprett og selg ditt første kurs!
+              {tt('Ingen kursinntekter ennå. Opprett og selg ditt første kurs!', 'No course revenue yet. Create and sell your first course!')}
             </Typography>
           )}
         </CardContent>
@@ -492,7 +500,7 @@ const InstructorRevenueDashboard: React.FC = () => {
             sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
           >
             <Download />
-            Utbetalingshistorikk
+            {tt('Utbetalingshistorikk', 'Payout history')}
           </Typography>
 
           <Divider sx={{ my: 2 }} />
@@ -505,19 +513,19 @@ const InstructorRevenueDashboard: React.FC = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell>
-                      <strong>Dato</strong>
+                      <strong>{tt('Dato', 'Date')}</strong>
                     </TableCell>
                     <TableCell>
-                      <strong>Beløp</strong>
+                      <strong>{tt('Beløp', 'Amount')}</strong>
                     </TableCell>
                     <TableCell>
-                      <strong>Metode</strong>
+                      <strong>{tt('Metode', 'Method')}</strong>
                     </TableCell>
                     <TableCell>
-                      <strong>Status</strong>
+                      <strong>{tt('Status', 'Status')}</strong>
                     </TableCell>
                     <TableCell align="right">
-                      <strong>Behandlet</strong>
+                      <strong>{tt('Behandlet', 'Processed')}</strong>
                     </TableCell>
                   </TableRow>
                 </TableHead>
@@ -531,7 +539,7 @@ const InstructorRevenueDashboard: React.FC = () => {
                       <TableCell>
                         {payout.payoutMethod === 'stripe_connect'
                           ? 'Stripe Connect'
-                          : 'Bankoverføring'}
+                          : tt('Bankoverføring', 'Bank transfer')}
                       </TableCell>
                       <TableCell>
                         <Chip
@@ -559,7 +567,7 @@ const InstructorRevenueDashboard: React.FC = () => {
               </Table>
             </TableContainer>
           ) : (
-            <Typography color="text.secondary">Ingen utbetalinger ennå</Typography>
+            <Typography color="text.secondary">{tt('Ingen utbetalinger ennå', 'No payouts yet')}</Typography>
           )}
         </CardContent>
       </Card>
@@ -573,23 +581,23 @@ const InstructorRevenueDashboard: React.FC = () => {
       >
         <DialogTitle>
           <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-            Be om utbetaling
+            {tt('Be om utbetaling', 'Request payout')}
           </Typography>
         </DialogTitle>
         <DialogContent>
           <Stack spacing={3} sx={{ mt: 2 }}>
             <Alert severity="info" icon={<Info />}>
               <Typography variant="body2">
-                Tilgjengelig balanse:{''}
+                {tt('Tilgjengelig balanse:', 'Available balance:')}{' '}
                 <strong>{formatNOK(revenueStats?.pendingRevenue || 0)}</strong>
               </Typography>
               <Typography variant="caption" display="block">
-                Minimum utbetaling: {formatNOK(minimumPayout)}
+                {tt('Minimum utbetaling:', 'Minimum payout:')} {formatNOK(minimumPayout)}
               </Typography>
             </Alert>
 
             <TextField
-              label="Utbetalingsbeløp"
+              label={tt('Utbetalingsbeløp', 'Payout amount')}
               type="number"
               value={payoutAmount}
               onChange={(e) => setPayoutAmount(Number(e.target.value))}
@@ -601,11 +609,11 @@ const InstructorRevenueDashboard: React.FC = () => {
                   </InputAdornment>
                 ),
                 endAdornment: <InputAdornment position="end">NOK</InputAdornment>}}
-              helperText={`Maks: ${formatNOK(revenueStats?.pendingRevenue || 0)}`}
+              helperText={`${tt('Maks', 'Max')}: ${formatNOK(revenueStats?.pendingRevenue || 0)}`}
             />
 
             <FormControl fullWidth>
-              <InputLabel>Utbetalingsmetode</InputLabel>
+              <InputLabel>{tt('Utbetalingsmetode', 'Payout method')}</InputLabel>
               <Select
                 value={payoutMethod}
                 onChange={(e) => {
@@ -617,38 +625,38 @@ const InstructorRevenueDashboard: React.FC = () => {
                     setPayoutMethod(selectedMethod);
                   }
                 }}
-                label="Utbetalingsmetode"
+                label={tt('Utbetalingsmetode', 'Payout method')}
               >
-                <MenuItem value="stripe_connect">Stripe Connect (automatisk, 1-2 dager)</MenuItem>
-                <MenuItem value="bank_transfer">Bankoverføring (manuell, 5-7 dager)</MenuItem>
+                <MenuItem value="stripe_connect">{tt('Stripe Connect (automatisk, 1-2 dager)', 'Stripe Connect (automatic, 1-2 days)')}</MenuItem>
+                <MenuItem value="bank_transfer">{tt('Bankoverføring (manuell, 5-7 dager)', 'Bank transfer (manual, 5-7 days)')}</MenuItem>
               </Select>
             </FormControl>
 
             <Paper sx={{ p: 2, bgcolor: 'grey.100' }}>
               <Typography variant="caption" color="text.secondary">
-                <strong>Viktig:</strong>
+                <strong>{tt('Viktig:', 'Important:')}</strong>
               </Typography>
               <Typography variant="caption" display="block" color="text.secondary">
-                • Utbetalinger behandles innen 5-7 virkedager
+                {tt('• Utbetalinger behandles innen 5-7 virkedager', '• Payouts are processed within 5-7 business days')}
               </Typography>
               <Typography variant="caption" display="block" color="text.secondary">
-                • Du må ha konfigurert betalingsinformasjon i Innstillinger
+                {tt('• Du må ha konfigurert betalingsinformasjon i Innstillinger', '• You must have configured payment details in Settings')}
               </Typography>
               <Typography variant="caption" display="block" color="text.secondary">
-                • Eventuelle refusjoner trekkes fra neste utbetaling
+                {tt('• Eventuelle refusjoner trekkes fra neste utbetaling', '• Any refunds are deducted from the next payout')}
               </Typography>
             </Paper>
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPayoutDialogOpen(false)}>Avbryt</Button>
+          <Button onClick={() => setPayoutDialogOpen(false)}>{tt('Avbryt', 'Cancel')}</Button>
           <Button
             variant="contained"
             onClick={handleRequestPayout}
             disabled={requestPayoutMutation.isPending}
             sx={{ ...theming.getThemedButtonSx() }}
           >
-            {requestPayoutMutation.isPending ? 'Behandler...': 'Send forespørsel'}
+            {requestPayoutMutation.isPending ? tt('Behandler...', 'Processing...') : tt('Send forespørsel', 'Send request')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -663,7 +671,7 @@ const InstructorRevenueDashboard: React.FC = () => {
           <ListItemIcon>
             <Download fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Eksporter rapport (PDF)</ListItemText>
+          <ListItemText>{tt('Eksporter rapport (PDF)', 'Export report (PDF)')}</ListItemText>
         </MenuItem>
         <MenuItem
           onClick={() => {
@@ -674,7 +682,7 @@ const InstructorRevenueDashboard: React.FC = () => {
           <ListItemIcon>
             <Warning fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Vis utbetalingsterskler</ListItemText>
+          <ListItemText>{tt('Vis utbetalingsterskler', 'Show payout thresholds')}</ListItemText>
         </MenuItem>
         <MenuItem
           onClick={() => {
@@ -685,7 +693,7 @@ const InstructorRevenueDashboard: React.FC = () => {
           <ListItemIcon>
             <Info fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Hvordan gebyr beregnes</ListItemText>
+          <ListItemText>{tt('Hvordan gebyr beregnes', 'How fees are calculated')}</ListItemText>
         </MenuItem>
       </Menu>
     </Box>

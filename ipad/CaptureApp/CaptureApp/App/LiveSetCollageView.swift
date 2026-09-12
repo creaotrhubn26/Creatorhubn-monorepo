@@ -27,7 +27,7 @@ struct LiveSetCollageView: View {
     }
 
     private let columns: [GridItem] = [
-        GridItem(.adaptive(minimum: 120, maximum: 200), spacing: 8),
+        GridItem(.adaptive(minimum: 120, maximum: 200), spacing: 8)
     ]
 
     var body: some View {

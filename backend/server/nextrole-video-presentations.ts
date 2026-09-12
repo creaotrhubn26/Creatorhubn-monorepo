@@ -167,6 +167,10 @@ function withinVideoRateLimit(userId: string): { allowed: boolean; retryAfterSec
 const videoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 80 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("video/")) cb(null, true);
+    else cb(new Error("Kun videofiler er tillatt") as any, false);
+  },
 });
 
 // Forhåndsdefinerte prompts. Kan utvides med JD-spesifikke i frontend.

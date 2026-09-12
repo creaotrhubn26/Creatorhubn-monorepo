@@ -43,6 +43,9 @@ import {
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
 import { NextRoleSplash } from '@/components/resume/NextRoleSplash';
+import BlockRenderer from '@/components/role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '@/components/role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '@/components/role-room/cms/blockSchema';
 
 // ════════════════════════════════════════════════════════════════════
 // SAMPLE-DATA for å vise template-preview
@@ -188,7 +191,7 @@ const STEPS = [
   {
     title: 'Last opp din nåværende CV',
     description:
-      'PDF eller DOCX. Claude leser tekstinnholdet og strukturerer det inn i NextRole på under 30 sekunder.',
+      'PDF eller DOCX. Creatorhub Intelligence leser tekstinnholdet og strukturerer det inn i NextRole på under 30 sekunder.',
     mockup: 'upload',
     icon: <PdfIcon />,
   },
@@ -335,7 +338,7 @@ const StepMockup: React.FC<{ mockup: string }> = ({ mockup }) => {
           <Typography variant="caption" sx={{ fontWeight: 700, color: '#7A5A0B' }}>BEHANDLER</Typography>
           <LinearProgress sx={{ mt: 0.7, '& .MuiLinearProgress-bar': { bgcolor: '#F5B82E' } }} />
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-            Claude leser dokumentet (12 sekunder gjenstår …)
+            Creatorhub Intelligence leser dokumentet (12 sekunder gjenstår …)
           </Typography>
         </Box>
       </Box>
@@ -601,6 +604,7 @@ const REFERRAL_REDEEMED_KEY = 'nextrole:referral-redeemed';
 const NextRoleLanding: React.FC = () => {
   const theme = useTheme();
   const { user } = useAuth();
+  const cmsBlocks = useCmsBlocks('nextrole');
   const [loading, setLoading] = useState<string | null>(null);
   // Vis splash kun én gang per sesjon (lagres i sessionStorage så
   // refresh resetter, men intern navigering ikke trigger den)
@@ -747,6 +751,10 @@ const NextRoleLanding: React.FC = () => {
     };
   }, []);
 
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box sx={{ bgcolor: '#fff' }}>
       {showSplash && <NextRoleSplash onComplete={() => setShowSplash(false)} />}
@@ -815,7 +823,7 @@ const NextRoleLanding: React.FC = () => {
               </Typography>
               <Typography variant="h6" color="text.secondary" sx={{ mb: 3, lineHeight: 1.5, fontWeight: 400 }}>
                 AI-drevet CV-bygger, ATS-optimalisering, søknadsbrev og intervjuforberedelse — alt på norsk.
-                Bygget på Claude, lagd for norske jobbsøkere.
+                Bygget på Creatorhub Intelligence, lagd for norske jobbsøkere.
               </Typography>
               <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
                 <Button
@@ -1029,7 +1037,7 @@ const NextRoleLanding: React.FC = () => {
                 Vilkår
               </Typography>
               <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                © 2026 CreatorHub Norge AS
+                © 2026 Creatorhub AS
               </Typography>
             </Stack>
           </Stack>

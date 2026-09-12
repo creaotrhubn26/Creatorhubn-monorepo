@@ -90,7 +90,7 @@ export function registerDesignTokensRoutes(
         res.json({ success: true, data: mapRow(result.rows[0]) });
       } catch (err: any) {
         console.error('[design-tokens PUT] failed:', err.message);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );

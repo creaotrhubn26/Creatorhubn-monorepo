@@ -154,7 +154,7 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
   if (loading && requests.length === 0) {
     return (
       <Stack alignItems="center" sx={{ py: 2 }}>
-        <CircularProgress size={20} sx={{ color: '#22d3ee' }} />
+        <CircularProgress size={20} sx={{ color: 'var(--role-cyan, #22d3ee)' }} />
       </Stack>
     );
   }
@@ -318,7 +318,7 @@ const ClientRequestsThread: React.FC<ClientRequestsThreadProps> = ({
                           onClick={() => void handleReply(req.id)}
                           sx={{
                             textTransform: 'none',
-                            bgcolor: '#22d3ee',
+                            bgcolor: 'var(--role-cyan, #22d3ee)',
                             color: '#0b1226',
                             fontWeight: 700,
                             '&:hover': { bgcolor: '#06b6d4' },

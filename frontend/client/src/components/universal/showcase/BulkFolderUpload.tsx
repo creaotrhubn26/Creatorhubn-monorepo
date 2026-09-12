@@ -37,6 +37,7 @@ import {
   alpha,
   Collapse,
   Tooltip,
+  Snackbar,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -157,6 +158,8 @@ const BulkFolderUpload: React.FC<BulkFolderUploadProps> = ({
   const [editingName, setEditingName] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadPhase, setUploadPhase] = useState<'idle' | 'preparing' | 'uploading' | 'finalizing'>('idle');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
   const [settings, setSettings] = useState<CollectionSettings>({
     enablePassword: false,
@@ -231,10 +234,17 @@ const BulkFolderUpload: React.FC<BulkFolderUploadProps> = ({
       return files;
     };
 
-    // Process each dropped item
+    // VIKTIG: webkitGetAsEntry() må kalles SYNKRONT for alle items før noe
+    // await — DataTransferItemList tømmes etter event-loopen, så uten dette
+    // forsvinner alle mapper unntatt den første ved fler-mappe-drop.
+    const entries: (FileSystemEntry | null)[] = [];
     for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const entry = item.webkitGetAsEntry?.();
+      entries.push(items[i].webkitGetAsEntry?.() ?? null);
+    }
+
+    // Process each dropped item
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
 
       if (entry?.isDirectory) {
         const dirEntry = entry as FileSystemDirectoryEntry;
@@ -354,14 +364,19 @@ const BulkFolderUpload: React.FC<BulkFolderUploadProps> = ({
 
     const newFolders: FolderUploadItem[] = [];
     let index = 0;
+    // Bruk SAMME profesjons-whitelist + størrelsesgrense som drag-drop-stien,
+    // slik at browse og drop oppfører seg likt.
+    const supported = (enhancedProfessionConfig as any)?.settings?.supportedFileTypes as string[] | undefined;
+    const maxMB = (enhancedProfessionConfig as any)?.settings?.maxFileSize as number | undefined;
+    const rejected: string[] = [];
 
     for (const [folderName, folderFiles] of folderMap) {
-      const validFiles = folderFiles.filter(f =>
-        f.type.startsWith('image/') ||
-        f.type.startsWith('video/') ||
-        f.type.startsWith('audio/') ||
-        /\.(raw|arw|cr2|cr3|nef|orf|rw2|dng|raf|pef|srw|x3f)$/i.test(f.name)
-      );
+      const validFiles: File[] = [];
+      for (const f of folderFiles) {
+        const reason = rejectionReason(f, supported, maxMB);
+        if (reason) rejected.push(reason);
+        else validFiles.push(f);
+      }
 
       if (validFiles.length > 0) {
         let preview: string | undefined;
@@ -385,12 +400,24 @@ const BulkFolderUpload: React.FC<BulkFolderUploadProps> = ({
 
     if (newFolders.length > 0) {
       setFolders(prev => [...prev, ...newFolders]);
-      setError(null);
+      setError(
+        rejected.length > 0
+          ? `La til ${newFolders.length} mappe(r). Hoppet over ${rejected.length} fil(er) som ikke matcher tillatte typer.`
+          : null,
+      );
+    } else {
+      // Ikke stille feil lenger — fortell brukeren hvorfor ingenting dukket opp.
+      const list = (supported && supported.length > 0) ? supported.join(', ') : 'bilder, video, lyd og RAW';
+      const sample = rejected.slice(0, 3).join('; ');
+      setError(
+        `Ingen gyldige mediefiler i den valgte mappen. Tillatt: ${list}.` +
+        (sample ? ` Avvist f.eks. — ${sample}` : ''),
+      );
     }
 
     // Reset input
-    e.target.value = ', ';
-  }, []);
+    e.target.value = '';
+  }, [enhancedProfessionConfig]);
 
   // Remove folder from list
   const handleRemoveFolder = useCallback((folderId: string) => {
@@ -416,28 +443,42 @@ const BulkFolderUpload: React.FC<BulkFolderUploadProps> = ({
       ));
     }
     setEditingFolder(null);
-    setEditingName(', ');
+    setEditingName('');
   }, [editingFolder, editingName]);
 
   // Create collections and upload
   const handleCreateAndUpload = useCallback(async () => {
     if (folders.length === 0) return;
 
+    const collectionCount = folders.length;
+    const fileCount = folders.reduce((sum, f) => sum + f.fileCount, 0);
+
     setIsUploading(true);
     setUploadProgress(0);
+    setUploadPhase('preparing');
+    setError(null);
 
     try {
+      setUploadPhase('uploading');
       await onCreateCollections(folders, settings);
+      setUploadPhase('finalizing');
 
-      // Cleanup previews
       folders.forEach(f => {
         if (f.preview) URL.revokeObjectURL(f.preview);
       });
 
       setFolders([]);
-      onClose();
+      setSuccessMessage(
+        `${collectionCount} samling${collectionCount === 1 ? '' : 'er'} opprettet med ${fileCount} fil${fileCount === 1 ? '' : 'er'}.`
+      );
+      setUploadPhase('idle');
+      setTimeout(() => onClose(), 1200);
     } catch (err) {
-      setError('Failed to create collections. Please try again.');
+      const message = err instanceof Error ? err.message : String(err);
+      setError(
+        `Kunne ikke opprette samlinger: ${message}. ${fileCount} fil${fileCount === 1 ? '' : 'er'} ble ikke lastet opp. Prøv på nytt eller fjern problemfilene.`
+      );
+      setUploadPhase('idle');
     } finally {
       setIsUploading(false);
     }
@@ -755,17 +796,19 @@ const BulkFolderUpload: React.FC<BulkFolderUploadProps> = ({
           {isUploading && (
             <Box sx={{ mb: 2 }}>
               <LinearProgress
-                variant="determinate"
-                value={uploadProgress}
+                variant="indeterminate"
                 sx={{
                   height: 8,
                   borderRadius: 4,
-                    bgcolor: alpha(accentColor, 0.1),
-                    '& .MuiLinearProgress-bar': { bgcolor: accentColor }
+                  bgcolor: alpha(accentColor, 0.1),
+                  '& .MuiLinearProgress-bar': { bgcolor: accentColor },
                 }}
               />
               <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                Creating collections... {uploadProgress}%
+                {uploadPhase === 'preparing' && `Forbereder ${folders.length} samling${folders.length === 1 ? '' : 'er'}…`}
+                {uploadPhase === 'uploading' && `Laster opp ${totalFiles} fil${totalFiles === 1 ? '' : 'er'} til ${folders.length} samling${folders.length === 1 ? '' : 'er'}… Ikke lukk vinduet.`}
+                {uploadPhase === 'finalizing' && 'Ferdigstiller…'}
+                {uploadPhase === 'idle' && 'Behandler…'}
               </Typography>
             </Box>
           )}
@@ -786,9 +829,26 @@ const BulkFolderUpload: React.FC<BulkFolderUploadProps> = ({
               '&:hover': { bgcolor: alpha(accentColor, 0.9) }
             }}
         >
-          {isUploading ? 'Creating...' : `Create & Upload (${folders.length} collections)`}
+          {isUploading
+            ? (uploadPhase === 'finalizing' ? 'Ferdigstiller…' : 'Laster opp…')
+            : `Opprett & last opp (${folders.length} samling${folders.length === 1 ? '' : 'er'}, ${totalFiles} fil${totalFiles === 1 ? '' : 'er'})`}
         </Button>
       </DialogActions>
+
+      <Snackbar
+        open={!!successMessage}
+        autoHideDuration={4000}
+        onClose={() => setSuccessMessage(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          severity="success"
+          onClose={() => setSuccessMessage(null)}
+          sx={{ width: '100%' }}
+        >
+          {successMessage}
+        </Alert>
+      </Snackbar>
     </Dialog>
   );
 };

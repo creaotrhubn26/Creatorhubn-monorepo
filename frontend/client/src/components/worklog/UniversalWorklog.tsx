@@ -13,7 +13,7 @@ import { useProject } from '../../contexts/ProjectContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useTheme as useCustomTheme } from '../../contexts/ThemeContext';
 import { useRealTime } from '../../contexts/RealTimeContext';
-import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
+import { useVisualEditorOptional } from '../admin/visual-editor/VisualEditorContext';
 import { useWorklogCollaboration } from '@/hooks/useWorklogCollaboration';
 import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 import { useTutorialPreferences } from '../../hooks/useTutorialPreferences';
@@ -305,7 +305,10 @@ export default function UniversalWorklog({
   const { settings, updateSetting } = useSettings();
   const { getProfessionTheme } = useCustomTheme();
   const { isConnected, emitEvent, onEvent, offEvent } = useRealTime();
-  const { addNotification } = useVisualEditor();
+  // Optional: worklog rendres også utenfor VisualEditorProvider (/workspace) —
+  // den kastende hooken tar da ned hele flaten til app-router-boundaryen.
+  const visualEditorContext = useVisualEditorOptional();
+  const addNotification = visualEditorContext?.addNotification ?? (() => {});
   
   // Profession adapter for feature checks and SEO integration
   const { 

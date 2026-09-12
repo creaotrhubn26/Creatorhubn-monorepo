@@ -63,7 +63,7 @@ function ann(
   width: number,
   height: number,
   label: string,
-  color = '#22d3ee',
+  color = 'var(--role-cyan, #22d3ee)',
   labelPosition: GuideAnnotationLabelPosition = 'top-left',
 ): GuideStepAnnotation {
   return {
@@ -153,7 +153,7 @@ function VideoPlaceholder({ label }: { label: string }) {
 }
 
 function Callout({
-  color = '#22d3ee',
+  color = 'var(--role-cyan, #22d3ee)',
   children,
 }: {
   color?: string;
@@ -401,7 +401,7 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
   'overview.0': {
     screenshotUrl: '/guide/location/analysis-top.png',
     annotations: [
-      ann('ao-title', 13, 6.1, 9.5, 3, 'Dialog', '#22d3ee'),
+      ann('ao-title', 13, 6.1, 9.5, 3, 'Dialog', 'var(--role-cyan, #22d3ee)'),
       ann('ao-kpi-row', 12.4, 14.5, 75.7, 8.5, 'Analyse-KPI', '#a855f7'),
       ann('ao-guide', 82.8, 7, 4.2, 3.1, 'Guide', '#34d399', 'top-right'),
     ],
@@ -409,7 +409,7 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
   'overview.1': {
     screenshotUrl: '/guide/location/analysis-top.png',
     annotations: [
-      ann('ao-presets', 14.2, 20.8, 12.2, 3.1, 'Preset-filter', '#22d3ee'),
+      ann('ao-presets', 14.2, 20.8, 12.2, 3.1, 'Preset-filter', 'var(--role-cyan, #22d3ee)'),
       ann('ao-ops-filter', 14.7, 23.6, 10.1, 3.1, 'Operasjonelt filter', '#a855f7'),
       ann('ao-risk-mode', 21.6, 23.7, 2.8, 2.8, 'Risiko-modus', '#f59e0b'),
     ],
@@ -419,14 +419,14 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
     annotations: [
       ann('sf-ready', 12.6, 14.8, 14.2, 6.8, 'Klarhet', '#34d399'),
       ann('sf-risk', 27.8, 14.8, 14.2, 6.8, 'Risiko', '#ef4444'),
-      ann('sf-cost', 58.2, 14.8, 14.2, 6.8, 'Kost', '#22d3ee'),
+      ann('sf-cost', 58.2, 14.8, 14.2, 6.8, 'Kost', 'var(--role-cyan, #22d3ee)'),
       ann('sf-actions', 73.4, 14.8, 14.2, 6.8, 'Tiltak', '#a855f7'),
     ],
   },
   'score-filters.1': {
     screenshotUrl: '/guide/location/analysis-top.png',
     annotations: [
-      ann('sf-op-filter-row', 14.6, 23.6, 15.2, 3.1, 'Klar / tiltak / risiko', '#22d3ee'),
+      ann('sf-op-filter-row', 14.6, 23.6, 15.2, 3.1, 'Klar / tiltak / risiko', 'var(--role-cyan, #22d3ee)'),
       ann('sf-tech-scout', 14.4, 20.9, 4.1, 2.5, 'Tech Scout', '#a855f7'),
       ann('sf-permits', 18.4, 20.9, 3.8, 2.5, 'Tillatelser', '#34d399'),
     ],
@@ -434,7 +434,7 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
   'manual-edit.0': {
     screenshotUrl: '/guide/location/analysis-top.png',
     annotations: [
-      ann('me-manual', 12.1, 31.8, 20.2, 3.3, 'Manuell kvalitetssikring', '#22d3ee'),
+      ann('me-manual', 12.1, 31.8, 20.2, 3.3, 'Manuell kvalitetssikring', 'var(--role-cyan, #22d3ee)'),
       ann('me-edit-btn', 80.9, 32.5, 7, 3, 'Rediger analyse', '#34d399', 'top-right'),
     ],
   },
@@ -448,7 +448,7 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
   'permits-contacts.0': {
     screenshotUrl: '/guide/location/analysis-top.png',
     annotations: [
-      ann('pc-section', 14.5, 42.2, 20.4, 3.1, 'Kontaktmodul', '#22d3ee'),
+      ann('pc-section', 14.5, 42.2, 20.4, 3.1, 'Kontaktmodul', 'var(--role-cyan, #22d3ee)'),
       ann('pc-dovre', 12.5, 60.5, 7.4, 2.1, 'Dovre kommune', '#34d399'),
       ann('pc-luftfart', 12.5, 79.9, 6.8, 2.1, 'Luftfartstilsynet', '#a855f7'),
     ],
@@ -457,14 +457,14 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
     screenshotUrl: '/guide/location/analysis-top.png',
     annotations: [
       ann('pc-save-status', 80.2, 42.9, 7.6, 3, 'Lagre tillatelsesstatus', '#34d399', 'top-right'),
-      ann('pc-status-select', 12.5, 69.7, 8.2, 3.1, 'Status', '#22d3ee'),
+      ann('pc-status-select', 12.5, 69.7, 8.2, 3.1, 'Status', 'var(--role-cyan, #22d3ee)'),
       ann('pc-copy-template', 16.7, 73.1, 4.2, 2.5, 'Kopier mal', '#a855f7'),
     ],
   },
   'permit-timeline.0': {
     screenshotUrl: '/guide/location/analysis-top.png',
     annotations: [
-      ann('pt-planned-date', 12.7, 54, 5, 2, 'Planlagt opptaksdato', '#22d3ee'),
+      ann('pt-planned-date', 12.7, 54, 5, 2, 'Planlagt opptaksdato', 'var(--role-cyan, #22d3ee)'),
       ann('pt-chip-public', 25, 54.8, 5.9, 2.8, 'Offentlig område', '#a855f7'),
       ann('pt-chip-drone', 30.8, 54.8, 3.5, 2.8, 'Drone', '#34d399'),
       ann('pt-chip-traffic', 34.2, 54.8, 3.6, 2.8, 'Trafikk', '#f59e0b'),
@@ -473,7 +473,7 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
   'permit-timeline.1': {
     screenshotUrl: '/guide/location/analysis-top.png',
     annotations: [
-      ann('pt-timeline', 57.2, 70.2, 30.4, 19.4, 'Fristlinje', '#22d3ee'),
+      ann('pt-timeline', 57.2, 70.2, 30.4, 19.4, 'Fristlinje', 'var(--role-cyan, #22d3ee)'),
       ann('pt-critical', 21.6, 66.1, 2.4, 1.8, 'Kritisk', '#ef4444'),
     ],
   },
@@ -494,7 +494,7 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
   'technical-sections.0': {
     screenshotUrl: '/guide/location/analysis-technical.png',
     annotations: [
-      ann('ts-photo', 15.1, 14.1, 7.1, 2.9, 'Fotografispotter', '#22d3ee'),
+      ann('ts-photo', 15.1, 14.1, 7.1, 2.9, 'Fotografispotter', 'var(--role-cyan, #22d3ee)'),
       ann('ts-drone', 15.1, 42.4, 68.4, 2.9, 'Drone-restriksjoner', '#34d399'),
       ann('ts-weather', 15.1, 76.1, 10.6, 2.9, 'Vær-eksponering', '#f59e0b'),
     ],
@@ -502,7 +502,7 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
   'technical-sections.1': {
     screenshotUrl: '/guide/location/analysis-technical.png',
     annotations: [
-      ann('ts-max-height', 13, 55, 74, 4, 'Maks høyde', '#22d3ee'),
+      ann('ts-max-height', 13, 55, 74, 4, 'Maks høyde', 'var(--role-cyan, #22d3ee)'),
       ann('ts-drone-allowed', 84.7, 43.5, 3.2, 2.3, 'Tillatt', '#34d399', 'top-right'),
       ann('ts-tech-card', 12.3, 39.8, 75.5, 20.6, 'Teknisk vurdering', '#a855f7'),
     ],
@@ -511,14 +511,14 @@ const DEFAULT_SECTION_ASSETS: Record<string, SectionAsset> = {
     screenshotUrl: '/guide/location/analysis-top.png',
     annotations: [
       ann('ss-save-status', 80.2, 42.9, 7.6, 3, 'Lagre tillatelsesstatus', '#34d399', 'top-right'),
-      ann('ss-sync-pane', 14.5, 42.2, 73.4, 47.2, 'Data synkes tilbake til lokasjon', '#22d3ee'),
+      ann('ss-sync-pane', 14.5, 42.2, 73.4, 47.2, 'Data synkes tilbake til lokasjon', 'var(--role-cyan, #22d3ee)'),
     ],
   },
   'save-sync.1': {
     screenshotUrl: '/guide/location/analysis-technical.png',
     annotations: [
       ann('ss-close', 83.4, 89.2, 5.6, 4.2, 'Lukk / fullfør', '#a855f7', 'top-right'),
-      ann('ss-check', 12.3, 12.8, 75.6, 74.6, 'Kjør kvalitetssjekk før lagring', '#22d3ee'),
+      ann('ss-check', 12.3, 12.8, 75.6, 74.6, 'Kjør kvalitetssjekk før lagring', 'var(--role-cyan, #22d3ee)'),
     ],
   },
 };
@@ -593,7 +593,7 @@ export function LocationAnalysisGuide({ open, onClose, initialStepId }: Location
     contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  const accent = guideConfig.accentColorOverride ?? '#22d3ee';
+  const accent = guideConfig.accentColorOverride ?? 'var(--role-cyan, #22d3ee)';
 
   return (
     <Dialog

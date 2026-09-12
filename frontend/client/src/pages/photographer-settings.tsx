@@ -15,11 +15,12 @@ import {
   Save, OpenInNew, CheckCircle, Warning, Edit, Image as ImageIcon,
   Storage, FolderSpecial, Receipt, Email, AccountBalanceWallet, Folder,
 } from '@mui/icons-material';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, apiFetch } from '@/lib/queryClient';
 import MyContributionsPanel from '@/components/photographer/MyContributionsPanel';
 import PushSettingsCard from '@/components/wedding/PushSettingsCard';
 import GoogleWorkspaceSessionBadge from '@/components/universal/GoogleWorkspaceSessionBadge';
 import UserAIUsageCard from '@/components/settings/UserAIUsageCard';
+import UserB2Panel from '@/components/settings/UserB2Panel';
 
 interface PhotographerProfile {
   id: string;
@@ -129,10 +130,9 @@ export default function PhotographerSettings() {
     mutationFn: async (file) => {
       const form = new FormData();
       form.append('logo', file);
-      const res = await fetch('/api/branding/upload-logo', {
+      const res = await apiFetch('/api/branding/upload-logo', {
         method: 'POST',
         body: form,
-        credentials: 'include',
       });
       if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
       return res.json();
@@ -667,6 +667,12 @@ export default function PhotographerSettings() {
         {/* Slice 9X.71 — Brukerens AI-forbruk */}
         <Grid2 size={{ xs: 12 }}>
           <UserAIUsageCard />
+        </Grid2>
+
+        {/* Mitt B2-arkiv — brukerens egne Backblaze B2-credentials,
+            fil-utforsker, upload/download/slett og kostnadsoversikt. */}
+        <Grid2 size={{ xs: 12 }} id="b2">
+          <UserB2Panel />
         </Grid2>
       </Grid2>
 

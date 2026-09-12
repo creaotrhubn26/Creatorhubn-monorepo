@@ -12,9 +12,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   Box,
-  Paper,
   Typography,
-  Button,
   Stack,
   List,
   ListItem,
@@ -22,7 +20,6 @@ import {
   ListItemIcon,
   ListItemText,
   IconButton,
-  Chip,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -44,12 +41,12 @@ import {
   Folder as FolderIcon,
   InsertDriveFile as InsertDriveFileIcon,
   CheckCircle as CheckCircleIcon,
-  CloudQueue as CloudQueueIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { AdminCard, AdminButton, useIsMobile } from './design-system';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TYPES
@@ -89,7 +86,8 @@ export default function GoogleDriveDocsBridge({
   currentNoteId 
 }: Props) {
   const queryClient = useQueryClient();
-  const { 
+  const isMobile = useIsMobile();
+  const {
     analytics, 
     performance, 
     auth, 
@@ -132,7 +130,8 @@ export default function GoogleDriveDocsBridge({
         endTiming();
       }
     },
-    enabled: canUseDrive
+    enabled: canUseDrive,
+    select: (d) => (Array.isArray(d) ? d : [])
   });
   
   // 📄 Fetch files in selected folder
@@ -150,7 +149,8 @@ export default function GoogleDriveDocsBridge({
         endTiming();
       }
     },
-    enabled: canUseDrive && !!selectedFolder
+    enabled: canUseDrive && !!selectedFolder,
+    select: (d) => (Array.isArray(d) ? d : [])
   });
   
   // 📥 Import doc from Google Drive
@@ -338,32 +338,30 @@ export default function GoogleDriveDocsBridge({
   }
   
   return (
-    <Paper sx={{ p: 2 }}>
-      <Stack spacing={2}>
-        {/* Header */}
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <CloudQueueIcon color="primary" />
-            <Typography variant="h6">Google Drive Bridge</Typography>
-          </Stack>
-          <Stack direction="row" spacing={1}>
-            <Tooltip title="Import docs from Drive">
-              <IconButton size="small" onClick={() => setOpenImportDialog(true)}>
-                <CloudDownloadIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Sync with Drive">
-              <IconButton 
-                size="small" 
-                onClick={() => syncWithDrive.mutate()}
-                disabled={isSyncing}
-              >
-                {isSyncing ? <CircularProgress size={20} /> : <SyncIcon />}
-              </IconButton>
-            </Tooltip>
-          </Stack>
+    <AdminCard
+      title="Google Drive Bridge"
+      action={
+        <Stack direction="row" spacing={1}>
+          <Tooltip title="Import docs from Drive">
+            <IconButton size="small" aria-label="Importer dokumenter fra Drive" onClick={() => setOpenImportDialog(true)}>
+              <CloudDownloadIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Sync with Drive">
+            <IconButton
+              size="small"
+              aria-label="Synkroniser med Drive"
+              onClick={() => syncWithDrive.mutate()}
+              disabled={isSyncing}
+            >
+              {isSyncing ? <CircularProgress size={20} /> : <SyncIcon />}
+            </IconButton>
+          </Tooltip>
         </Stack>
-        
+      }
+    >
+      <Stack spacing={2}>
+
         {/* Sync Status */}
         {syncStatus.lastSync > 0 && (
           <Alert severity="success" icon={<CheckCircleIcon />}>
@@ -378,32 +376,34 @@ export default function GoogleDriveDocsBridge({
         
         {/* Quick Actions */}
         <Stack spacing={1}>
-          <Button
+          <AdminButton
             fullWidth
-            variant="outlined"
+            tone="secondary"
             startIcon={<CloudDownloadIcon />}
             onClick={() => setOpenImportDialog(true)}
           >
             Import from Drive
-          </Button>
-          <Button
+          </AdminButton>
+          <AdminButton
             fullWidth
-            variant="outlined"
+            tone="secondary"
             startIcon={<SyncIcon />}
             onClick={() => syncWithDrive.mutate()}
+            loading={isSyncing}
             disabled={isSyncing}
           >
             {isSyncing ? 'Syncing...' : 'Sync All Docs'}
-          </Button>
+          </AdminButton>
         </Stack>
       </Stack>
       
       {/* Import Dialog */}
-      <Dialog 
-        open={openImportDialog} 
+      <Dialog
+        open={openImportDialog}
         onClose={() => setOpenImportDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Stack direction="row" alignItems="center" spacing={1}>
@@ -470,6 +470,7 @@ export default function GoogleDriveDocsBridge({
                                 <IconButton
                                   edge="end"
                                   size="small"
+                                  aria-label="Importer til dokumentasjonsleser"
                                   onClick={() => {
                                     importFromDrive.mutate(file);
                                     setOpenImportDialog(false);
@@ -484,6 +485,7 @@ export default function GoogleDriveDocsBridge({
                                   <IconButton
                                     edge="end"
                                     size="small"
+                                    aria-label="Koble til gjeldende notat"
                                     onClick={() => {
                                       linkToNote(file);
                                       setOpenImportDialog(false);
@@ -514,7 +516,7 @@ export default function GoogleDriveDocsBridge({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenImportDialog(false)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setOpenImportDialog(false)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -533,7 +535,7 @@ export default function GoogleDriveDocsBridge({
           {snackbar.message}
         </Alert>
       </Snackbar>
-    </Paper>
+    </AdminCard>
   );
 }
 

@@ -141,6 +141,9 @@ struct CCAPIPollingResponse: Sendable, Decodable {
     let apertureValue: String?     // e.g. "f5.0"
     let shutterSpeed: String?      // e.g. "1/60"
     let isoValue: String?          // e.g. "1250"
+    /// Eksponeringskompensasjon (EC), som kameraet rapporterer den, f.eks. "+0.3"
+    /// / "0" / "-1 1/3". Mirrors `/shooting/settings/exposure`.
+    let exposureCompensation: String?
 
     /// Attached lens name, mirrors `/devicestatus/lens.name`.
     let lensName: String?
@@ -152,6 +155,7 @@ struct CCAPIPollingResponse: Sendable, Decodable {
         case av
         case tv
         case iso
+        case exposure
         case lens
     }
 
@@ -163,6 +167,7 @@ struct CCAPIPollingResponse: Sendable, Decodable {
         apertureValue: String? = nil,
         shutterSpeed: String? = nil,
         isoValue: String? = nil,
+        exposureCompensation: String? = nil,
         lensName: String? = nil
     ) {
         self.addedcontents = addedcontents
@@ -172,6 +177,7 @@ struct CCAPIPollingResponse: Sendable, Decodable {
         self.apertureValue = apertureValue
         self.shutterSpeed = shutterSpeed
         self.isoValue = isoValue
+        self.exposureCompensation = exposureCompensation
         self.lensName = lensName
     }
 
@@ -192,6 +198,7 @@ struct CCAPIPollingResponse: Sendable, Decodable {
         self.apertureValue = (try? container.decodeIfPresent(CCAPIValueDiff.self, forKey: .av))?.value
         self.shutterSpeed = (try? container.decodeIfPresent(CCAPIValueDiff.self, forKey: .tv))?.value
         self.isoValue = (try? container.decodeIfPresent(CCAPIValueDiff.self, forKey: .iso))?.value
+        self.exposureCompensation = (try? container.decodeIfPresent(CCAPIValueDiff.self, forKey: .exposure))?.value
     }
 }
 

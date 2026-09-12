@@ -10,15 +10,11 @@
 
 import React from 'react';
 import {
-  Card,
-  CardContent,
   Stack,
   Typography,
-  Chip,
   Box,
   IconButton,
   Alert,
-  CircularProgress,
   Divider,
   Table,
   TableHead,
@@ -26,7 +22,10 @@ import {
   TableCell,
   TableBody,
   alpha,
+  ThemeProvider,
+  Chip,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   CheckCircle as OkIcon,
   Cancel as FailIcon,
@@ -37,7 +36,9 @@ import {
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { paymentEvents } from '@/utils/creatorhub-events';
+import { AdminCard, StatusChip, AdminLoading, AdminError, AdminTableContainer, adminTokens } from './design-system';
 
 const fmtKr = (n: number) =>
   `${Math.round(n).toLocaleString('nb-NO')} kr`;
@@ -63,45 +64,48 @@ const EVENT_LABEL: Record<string, string> = {
 };
 
 const AdminPaymentStatusCard: React.FC = () => {
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { auth } = useEnhancedMasterIntegration();
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['admin-stripe-status'],
     queryFn: async () => {
       paymentEvents.statusViewed();
-      return apiRequest('/api/admin/stripe/payment-status');
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/admin/stripe/payment-status', { headers });
     },
     refetchInterval: 60_000,
   });
 
   if (isLoading) {
     return (
-      <Card>
-        <CardContent sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress size={28} />
-        </CardContent>
-      </Card>
+      <ThemeProvider theme={adminDarkTheme}>
+        <AdminCard>
+          <AdminLoading />
+        </AdminCard>
+      </ThemeProvider>
     );
   }
 
   if (!data) {
     return (
-      <Card>
-        <CardContent>
-          <Alert severity="warning">Kunne ikke laste Stripe-status.</Alert>
-        </CardContent>
-      </Card>
+      <ThemeProvider theme={adminDarkTheme}>
+        <AdminError
+          message={error instanceof Error ? error.message : 'Kunne ikke laste Stripe-status.'}
+          onRetry={() => void refetch()}
+        />
+      </ThemeProvider>
     );
   }
 
   return (
-    <Card>
-      <CardContent>
+    <ThemeProvider theme={adminDarkTheme}>
+    <AdminCard>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha('#635bff', 0.1), color: '#635bff' }}>
-              <PaymentIcon />
+              <PaymentIcon aria-hidden="true" />
             </Box>
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>
                 Stripe-status & betalinger
               </Typography>
               <Stack direction="row" spacing={1}>
@@ -120,7 +124,7 @@ const AdminPaymentStatusCard: React.FC = () => {
               </Stack>
             </Box>
           </Stack>
-          <IconButton size="small" onClick={() => { paymentEvents.statusRefreshed(); refetch(); }} disabled={isFetching}>
+          <IconButton aria-label="Oppdater betalingsstatus" size="small" onClick={() => { paymentEvents.statusRefreshed(); refetch(); }} disabled={isFetching}>
             <RefreshIcon fontSize="small" />
           </IconButton>
         </Stack>
@@ -142,13 +146,13 @@ const AdminPaymentStatusCard: React.FC = () => {
           </Box>
           <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha('#3b82f6', 0.08), border: '1px solid', borderColor: alpha('#3b82f6', 0.2) }}>
             <Typography variant="caption" color="text.secondary">Siste 7 dager</Typography>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#2563eb' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#60a5fa' }}>
               {fmtKr(data.recentRevenue?.last7d || 0)}
             </Typography>
           </Box>
           <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha('#8b5cf6', 0.08), border: '1px solid', borderColor: alpha('#8b5cf6', 0.2) }}>
             <Typography variant="caption" color="text.secondary">Siste 30 dager</Typography>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#7c3aed' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#c084fc' }}>
               {fmtKr(data.recentRevenue?.last30d || 0)}
             </Typography>
           </Box>
@@ -185,11 +189,12 @@ const AdminPaymentStatusCard: React.FC = () => {
         <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
           Siste hendelser
         </Typography>
-        {(data.events || []).length === 0 ? (
+        {(Array.isArray(data.events) ? data.events : []).length === 0 ? (
           <Typography variant="caption" color="text.secondary">
             Ingen nylige Stripe-hendelser registrert.
           </Typography>
         ) : (
+          <AdminTableContainer ariaLabel="Siste Stripe-hendelser">
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -225,9 +230,10 @@ const AdminPaymentStatusCard: React.FC = () => {
               ))}
             </TableBody>
           </Table>
+          </AdminTableContainer>
         )}
-      </CardContent>
-    </Card>
+    </AdminCard>
+    </ThemeProvider>
   );
 };
 

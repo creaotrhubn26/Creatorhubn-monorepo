@@ -447,7 +447,7 @@ export default function ShareToCommunityDialog({
       >
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress sx={{ color: '#f5a623' }} />
+            <CircularProgress sx={{ color: '#ff8c00' }} />
           </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>

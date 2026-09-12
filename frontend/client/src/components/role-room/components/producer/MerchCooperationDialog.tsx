@@ -810,7 +810,7 @@ const MerchCooperationDialog: React.FC<MerchCooperationDialogProps> = ({
               </Stack>
 
               <Typography sx={{ mt: 2, color: 'text.secondary', fontSize: '0.74rem', lineHeight: 1.5 }}>
-                Generert av Claude {draft.model} · {new Date(draft.generatedAt).toLocaleString('nb-NO')}.
+                Generert av CI · {new Date(draft.generatedAt).toLocaleString('nb-NO')}.
                 Avtale-paragrafer er kun et første utkast — ved verdier over ~50 000 NOK skal endelig avtale gjennomgås av advokat.
               </Typography>
             </Box>

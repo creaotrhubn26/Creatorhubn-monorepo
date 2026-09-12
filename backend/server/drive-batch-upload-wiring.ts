@@ -58,7 +58,7 @@ export function makePgDriveClientResolver(pool: Pool): DriveClientResolver {
          LIMIT 1`,
         [userId, CREATORHUB_GOOGLE_OAUTH_APP],
       );
-      if (row.rowCount === 0 || !row.rows[0]) {
+      if (!row.rows.length || !row.rows[0]) {
         throw new DriveNotConnectedError(userId);
       }
       const connection = row.rows[0];

@@ -19,8 +19,17 @@ export function setupOnboardingRoutes(deps: OnboardingRoutesDeps): void {
       const status = await svc.getOnboardingStatus(pool, session.userId);
       return res.json(status);
     } catch (error) {
-      console.error("[onboarding/status] failed", error);
-      return res.status(500).json({ error: "failed" });
+      // Manglende user_onboarding_progress-tabell (eller CREATE TABLE-perm-feil)
+      // skal ikke krasje dashboard. Returner tom hidden=true-shape så wizarden
+      // ikke blokkerer brukeren — de kan jobbe videre uten onboarding-state.
+      console.warn("[onboarding/status] degraded:", (error as any)?.message || error);
+      return res.json({
+        completedSteps: [],
+        dismissedAt: null,
+        completedAt: null,
+        totalSteps: 0,
+        hidden: true,
+      });
     }
   });
 

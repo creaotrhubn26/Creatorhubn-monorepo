@@ -97,6 +97,43 @@ export interface ClientTokenSummary {
   revokedAt: Date | null;
   lastUsedAt: Date | null;
   hasPin: boolean;
+  /** Les-kvittering: når klienten FØRST åpnet galleriet (null = ikke sett enda). */
+  firstViewedAt: Date | null;
+  /** Antall ganger klienten har lastet galleriet. */
+  viewCount: number;
+}
+
+/** Én tokens les-state (fra `capture_client_tokens` view-kolonnene). */
+interface TokenViewState {
+  firstViewedAt: Date | null;
+  viewCount: number;
+}
+
+/** Fletter defensivt hentet les-state inn i token-sammendrag. Ren → testbar.
+ *  Mangler state for en token (kolonner ikke migrert enda) → ikke-sett-standard. */
+export function mergeViewState(
+  base: Omit<ClientTokenSummary, 'firstViewedAt' | 'viewCount'>[],
+  viewState: Map<string, TokenViewState>,
+): ClientTokenSummary[] {
+  return base.map((t) => {
+    const v = viewState.get(t.id);
+    return { ...t, firstViewedAt: v?.firstViewedAt ?? null, viewCount: v?.viewCount ?? 0 };
+  });
+}
+
+/** Registrer at en klient åpnet galleriet: sett first_viewed_at (én gang),
+ *  bump view_count + last_used_at. Best-effort — svelger feil (inkl. før migrasjon). */
+export async function recordClientGalleryView(db: Db, tokenId: string): Promise<void> {
+  try {
+    await db.execute(sql`
+      UPDATE capture_client_tokens
+         SET first_viewed_at = COALESCE(first_viewed_at, NOW()),
+             view_count = COALESCE(view_count, 0) + 1,
+             last_used_at = NOW()
+       WHERE id = ${tokenId}`);
+  } catch {
+    // Kolonner ikke migrert enda (el. transient) → les-kvittering degraderer stille.
+  }
 }
 
 export async function listClientTokens(
@@ -117,7 +154,7 @@ export async function listClientTokens(
       ),
     )
     .orderBy(desc(captureClientTokens.createdAt));
-  return rows.map(({ token }) => ({
+  const base = rows.map(({ token }) => ({
     id: token.id,
     clientLabel: token.clientLabel,
     createdAt: token.createdAt,
@@ -126,6 +163,26 @@ export async function listClientTokens(
     lastUsedAt: token.lastUsedAt,
     hasPin: Boolean(token.pinHash),
   }));
+
+  // Les-state hentes via defensiv raw-SQL — de nye kolonnene ligger ikke i
+  // drizzle-skjemaet (whole-row-select over), så hele token-lista forblir trygg
+  // om migrasjonen ennå ikke er kjørt. Feiler den → alle tokens vises «ikke sett».
+  const viewState = new Map<string, TokenViewState>();
+  try {
+    const vs = await db.execute(
+      sql`SELECT id, first_viewed_at, view_count FROM capture_client_tokens WHERE session_id = ${sessionId}`,
+    );
+    const vsRows = (vs.rows ?? []) as Array<{ id: string; first_viewed_at: Date | null; view_count: number | null }>;
+    for (const r of vsRows) {
+      viewState.set(r.id, {
+        firstViewedAt: r.first_viewed_at ?? null,
+        viewCount: Number(r.view_count ?? 0),
+      });
+    }
+  } catch {
+    // Kolonner ikke migrert enda → tom map → mergeViewState gir ikke-sett-standard.
+  }
+  return mergeViewState(base, viewState);
 }
 
 export async function revokeClientToken(

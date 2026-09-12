@@ -1,0 +1,13 @@
+-- 0317_partner_applications_and_benefits.sql
+--
+-- Partnerskaps-flyt: bruker-initiert søknad + superadmin-invitasjon →
+-- pending → godkjent/avslått → kopiert til leadgrid_partners ved
+-- godkjenning. Automatisk plan-oppgradering via partner_benefits.
+--
+-- Tabeller:
+--   - leadgrid_partners utvidet m/ status + approved_at + approved_by
+--   - partner_applications (søknader/invitasjoner + samtykke-bevisning)
+--   - partner_benefits (hva hver partner-type gir)
+--   - partner_terms_versions (vilkår-versjoner m/ markdown-body)
+--
+-- Body lagret direkte i DB via psql; denne filen er kun for sporbarhet.

@@ -1,14 +1,14 @@
 // @ts-nocheck
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getStoredAuthToken } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useProject } from '../../contexts/ProjectContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useTheme as useCustomTheme } from '../../contexts/ThemeContext';
 import { useRealTime } from '../../contexts/RealTimeContext';
-import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
+import { useVisualEditorOptional } from '../admin/visual-editor/VisualEditorContext';
 import PhotoBatchProcessor from '../photo-editing/PhotoBatchProcessor';
 import ImageHistogram from '../photo-editing/ImageHistogram';
 import PhotoAnalysisAndFeedback from '../photo-editing/PhotoAnalysisAndFeedback';
@@ -243,11 +243,12 @@ export default function PhotographerPhotoSuite({
   const { settings, updateSetting, getSetting } = useSettings();
   const { getProfessionTheme } = useCustomTheme();
   const { isConnected, emitEvent, onEvent, offEvent } = useRealTime();
-  const { addNotification } = useVisualEditor();
+  // Optional: kan rendres utenfor VisualEditorProvider — kastende hook = krasj.
+  const addNotification = useVisualEditorOptional()?.addNotification ?? (() => {});
   const { user } = useAuth();
   
   // Auth headers for API requests
-  const auth = user ? { Authorization: `Bearer ${user.d}` } : {};
+  const auth = user ? { Authorization: `Bearer ${getStoredAuthToken() || user?.id}` } : {};
 
   // Apply profession-specific theme
   const professionTheme = getProfessionTheme(profession);

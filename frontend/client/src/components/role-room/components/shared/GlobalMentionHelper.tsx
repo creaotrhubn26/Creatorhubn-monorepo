@@ -8,6 +8,7 @@ interface GlobalMentionHelperProps {
   onApplySuggestion: (name: string) => void;
   autoTagTitle?: string;
   suggestionTitle?: string;
+  candidateScope?: 'global' | 'local';
 }
 
 const normalizeToken = (value: string): string =>
@@ -52,6 +53,7 @@ export function GlobalMentionHelper({
   onApplySuggestion,
   autoTagTitle = 'Auto-tagget',
   suggestionTitle = 'Mener du?',
+  candidateScope = 'global',
 }: GlobalMentionHelperProps) {
   const [globalTags, setGlobalTags] = useState<string[]>([]);
 
@@ -73,6 +75,11 @@ export function GlobalMentionHelper({
   const seededCandidates = useMemo(() => rawSeededCandidates, [seedKey]);
 
   useEffect(() => {
+    if (candidateScope === 'local') {
+      setGlobalTags((previous) => (previous.length === 0 ? previous : []));
+      return;
+    }
+
     let isMounted = true;
     const syncGlobalTags = async () => {
       try {
@@ -98,18 +105,21 @@ export function GlobalMentionHelper({
     return () => {
       isMounted = false;
     };
-  }, [seedKey, seededCandidates]);
+  }, [candidateScope, seedKey, seededCandidates]);
 
   const mentionCandidates = useMemo(() => {
     const deduped = new Set<string>();
-    for (const candidate of [...seededCandidates, ...globalTags]) {
+    const candidates = candidateScope === 'local'
+      ? seededCandidates
+      : [...seededCandidates, ...globalTags];
+    for (const candidate of candidates) {
       if (typeof candidate !== 'string') continue;
       const cleaned = candidate.trim();
       if (!cleaned) continue;
       deduped.add(cleaned);
     }
     return Array.from(deduped).sort((left, right) => left.localeCompare(right, 'no-NO'));
-  }, [globalTags, seededCandidates]);
+  }, [candidateScope, globalTags, seededCandidates]);
 
   const trailingToken = useMemo(() => {
     const match = text.match(/([A-Za-zÆØÅæøå][A-Za-z0-9ÆØÅæøå'.-]*)$/u);
@@ -208,7 +218,7 @@ export function GlobalMentionHelper({
             background: 'linear-gradient(135deg, rgba(8,32,58,0.82) 0%, rgba(14,34,72,0.78) 100%)',
           }}
         >
-          <Typography sx={{ color: '#7dd3fc', fontWeight: 700, fontSize: '0.8rem', mb: 0.75 }}>
+          <Typography sx={{ color: 'var(--role-cyan, #7dd3fc)', fontWeight: 700, fontSize: '0.8rem', mb: 0.75 }}>
             {suggestionTitle}
           </Typography>
           <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">

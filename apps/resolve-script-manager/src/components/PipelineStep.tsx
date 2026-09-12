@@ -40,9 +40,9 @@ export function PipelineStep({
     if (typeof ts === "string") {
       // ISO timestamp from history
       const d = new Date(ts);
-      return isNaN(d.getTime()) ? "" : d.toLocaleTimeString();
+      return isNaN(d.getTime()) ? "" : d.toLocaleTimeString('nb-NO');
     }
-    return new Date(ts * 1000).toLocaleTimeString();
+    return new Date(ts * 1000).toLocaleTimeString('nb-NO');
   };
   const tooltip = (() => {
     if (runStatus === "success" && lastFinishedAt) {

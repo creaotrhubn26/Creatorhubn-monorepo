@@ -19,6 +19,30 @@ export interface RoleRoomDealsRoutesDeps {
   legacyProjectAgreementsByProject: Map<string, any[]>;
 }
 
+/**
+ * Owner-or-active-member gate for a casting/role-room project. Mirrors the
+ * canonical copy in role-room-broll-routes.ts / role-room-brand-assets-routes.ts.
+ * requireUserSession only proves login — without this every offer/contract/
+ * agreement endpoint here is a cross-tenant BOLA (inject into, or mutate,
+ * another tenant's project by caller-supplied projectId or global-by-id lookup).
+ */
+async function viewerCanAccessProject(
+  pool: Pool,
+  projectId: string,
+  viewerId: string,
+): Promise<boolean> {
+  const { rows } = await pool.query<{ owns: boolean; member: boolean }>(
+    `SELECT
+       EXISTS(SELECT 1 FROM casting_projects
+               WHERE id = $1 AND created_by = $2) AS owns,
+       EXISTS(SELECT 1 FROM casting_user_roles
+               WHERE project_id = $1 AND user_id = $2
+                 AND deactivated_at IS NULL) AS member`,
+    [projectId, viewerId],
+  );
+  return rows[0]?.owns === true || rows[0]?.member === true;
+}
+
 export function setupRoleRoomDealsRoutes(
   deps: RoleRoomDealsRoutesDeps,
 ): void {
@@ -41,7 +65,8 @@ export function setupRoleRoomDealsRoutes(
   } = deps;
 
   app.post("/api/role-room/offers", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const payload = req.body || {};
     const projectId =
       typeof payload.projectId === "string" ? payload.projectId : "";
@@ -49,6 +74,11 @@ export function setupRoleRoomDealsRoutes(
       typeof payload.candidateId === "string" ? payload.candidateId : "";
     if (!projectId || !candidateId) {
       res.status(400).json({ error: "projectId and candidateId are required" });
+      return;
+    }
+    // BOLA-gate: only inject offers into a project the caller owns / is a member of.
+    if (!(await viewerCanAccessProject(pool, projectId, session.userId))) {
+      res.status(403).json({ error: "ingen_tilgang" });
       return;
     }
     const offerId = `offer-${Date.now()}`;
@@ -72,7 +102,8 @@ export function setupRoleRoomDealsRoutes(
   });
 
   app.put("/api/role-room/offers/:offerId/respond", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     let location = findByIdInProjectMap(
       legacyOffersByProject,
       req.params.offerId,
@@ -95,6 +126,13 @@ export function setupRoleRoomDealsRoutes(
       res.status(404).json({ error: "Offer not found" });
       return;
     }
+    // BOLA-gate (object-first): findByIdInProjectMap/DbProjectArrays resolve the
+    // offer GLOBALLY across every tenant — verify the caller can access the
+    // project it actually belongs to before flipping its accept/decline status.
+    if (!(await viewerCanAccessProject(pool, location.projectId, session.userId))) {
+      res.status(403).json({ error: "ingen_tilgang" });
+      return;
+    }
     const current = getProjectItems(legacyOffersByProject, location.projectId);
     const status = req.body?.status === "declined" ? "declined" : "accepted";
     current[location.index] = {
@@ -108,7 +146,8 @@ export function setupRoleRoomDealsRoutes(
   });
 
   app.post("/api/role-room/contracts", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const payload = req.body || {};
     const projectId =
       typeof payload.projectId === "string" ? payload.projectId : "";
@@ -116,6 +155,11 @@ export function setupRoleRoomDealsRoutes(
       typeof payload.candidateId === "string" ? payload.candidateId : "";
     if (!projectId || !candidateId) {
       res.status(400).json({ error: "projectId and candidateId are required" });
+      return;
+    }
+    // BOLA-gate: only create contracts under a project the caller owns / is a member of.
+    if (!(await viewerCanAccessProject(pool, projectId, session.userId))) {
+      res.status(403).json({ error: "ingen_tilgang" });
       return;
     }
     const contractId = `contract-${Date.now()}`;
@@ -141,7 +185,8 @@ export function setupRoleRoomDealsRoutes(
   });
 
   app.put("/api/role-room/contracts/:contractId/sign", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     let location = findByIdInProjectMap(
       legacyContractsByProject,
       req.params.contractId,
@@ -164,6 +209,12 @@ export function setupRoleRoomDealsRoutes(
       res.status(404).json({ error: "Contract not found" });
       return;
     }
+    // BOLA-gate (object-first): the contract is resolved globally by id — verify
+    // caller access to its actual project before marking it legally signed.
+    if (!(await viewerCanAccessProject(pool, location.projectId, session.userId))) {
+      res.status(403).json({ error: "ingen_tilgang" });
+      return;
+    }
     const current = getProjectItems(legacyContractsByProject, location.projectId);
     current[location.index] = {
       ...current[location.index],
@@ -176,7 +227,8 @@ export function setupRoleRoomDealsRoutes(
   });
 
   app.post("/api/role-room/project-agreements", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     const agreement = createProjectAgreementRecord(req.body || {});
     if (!agreement) {
       res
@@ -185,6 +237,11 @@ export function setupRoleRoomDealsRoutes(
           error:
             "projectId, title, counterpartyType and counterpartyName are required",
         });
+      return;
+    }
+    // BOLA-gate: only create agreements/NDAs under a project the caller can access.
+    if (!(await viewerCanAccessProject(pool, agreement.project_id, session.userId))) {
+      res.status(403).json({ error: "ingen_tilgang" });
       return;
     }
     const current = getProjectItems(

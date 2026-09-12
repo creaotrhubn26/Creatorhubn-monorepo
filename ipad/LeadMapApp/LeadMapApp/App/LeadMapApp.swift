@@ -1,0 +1,1735 @@
+// LeadMapApp.swift
+//
+// Entry point for native iPad Lead Map. Tynt SwiftUI-lag over
+// /api/admin-room/lead-map/* — samme backend som web.
+
+import SwiftUI
+import UIKit
+@preconcurrency import UserNotifications
+
+@main
+struct LeadMapApp: App {
+    @State private var appState: AppState
+
+    // AppState opprettes i init for å garantere at AppStateBridge er
+    // registrert FØR SwiftUI-scenens `body` evalueres første gang. Dette
+    // er load-bearing for cold-start deep-linking: App Intent `.perform()`
+    // med `openAppWhenRun: true` kan starte prosessen; når scene-init er
+    // ferdig må bridge-en allerede peke på en gyldig AppState så
+    // pending deep-link kan flush-es.
+    init() {
+        let state = AppState()
+        self._appState = State(wrappedValue: state)
+        // MainActor-isolert; init er MainActor-implisitt for @main App.
+        MainActor.assumeIsolated {
+            AppStateBridge.shared.register(state)
+        }
+    }
+    @UIApplicationDelegateAdaptor(NotificationAppDelegate.self) private var delegate
+
+    var body: some Scene {
+        WindowGroup {
+            RootView()
+                .environment(appState)
+                .environment(NetworkMonitor.shared)
+                // Dark mode gjelder på alle plattformer inkl. Mac Catalyst.
+                // Var tidligere gated til !macCatalyst, men da fikk topp-
+                // menyen mørk bakgrunn + mørk system-tekst = usynlig text.
+                .preferredColorScheme(.dark)
+                // Mac Catalyst: minste vindusstørrelse 1024×768.
+                // Under dette blir Leadgrid-layouten trang (KPI-rad + kart
+                // + sidebar). No-op på iPhone/iPad hvor systemet styrer.
+                .macCatalystMinFrame()
+                .onAppear {
+                    NotificationAppDelegate.appStateRef = appState
+                    // Krasjrapportering (2026-07-18): MetricKit-abonnement —
+                    // iOS leverer krasj/heng-diagnostikk ved neste oppstart.
+                    CrashReporterService.shared.start()
+                    // Flush eventuell buffret Pondus-deep-link fra en Intent
+                    // som kjørte før scene-init var ferdig.
+                    AppStateBridge.shared.flushPendingDeepLinks()
+                    // Apple Watch-bro: aktiver + koble transkript-analyse fra
+                    // klokka til den delte TranscriptIntelligence (on-device
+                    // på telefonen, ellers backend). watchOS < 27 har ikke
+                    // Foundation Models, så klokka relayer hit.
+                    WatchSession.shared.activate()
+                    WatchSession.shared.onQuickAction = { leadId, action, actorUserId, organizationId, projectId, actionId in
+                        guard let api = appState.api else {
+                            WatchSession.shared.sendQuickActionRejection(
+                                actionId: actionId,
+                                message: "Du må være logget inn i Leadgrid på iPhone før handlingen kan lagres."
+                            )
+                            return
+                        }
+                        guard appState.currentUserId == actorUserId else {
+                            WatchSession.shared.sendQuickActionRejection(
+                                actionId: actionId,
+                                message: "Watch-handlingen tilhører en annen innlogget bruker. Åpne Leadgrid og synkroniser på nytt."
+                            )
+                            return
+                        }
+                        // Et org-bytte skal ikke omscope en Watch-handling.
+                        // Bruk payloadens opprinnelige org hvis medlemskapet
+                        // fortsatt er kjent. Før org-listen er lastet godtar
+                        // vi bare eksakt aktiv kontekst; serveren validerer
+                        // medlemskapet på nytt via X-Organization-Id.
+                        let hasOrganizationContext = appState.organizations.contains {
+                            $0.id == organizationId
+                        } || (
+                            appState.organizations.isEmpty &&
+                            appState.activeOrganizationId == organizationId
+                        )
+                        guard hasOrganizationContext else {
+                            WatchSession.shared.sendQuickActionRejection(
+                                actionId: actionId,
+                                message: "Du har ikke lenger tilgang til organisasjonen denne leaden tilhører. Handlingen ble ikke lagret."
+                            )
+                            return
+                        }
+                        let hasProjectContext = appState.projects.contains {
+                            $0.id == projectId
+                                && ($0.organizationId == nil || $0.organizationId == organizationId)
+                        } || (
+                            appState.projects.isEmpty
+                                && appState.activeOrganizationId == organizationId
+                                && appState.activeProjectId == projectId
+                        )
+                        guard hasProjectContext else {
+                            WatchSession.shared.sendQuickActionRejection(
+                                actionId: actionId,
+                                message: "Du har ikke lenger tilgang til kundeprosjektet denne leaden tilhører. Handlingen ble ikke lagret."
+                            )
+                            return
+                        }
+                        guard ["called", "visited", "meeting_booked", "declined"].contains(action) else {
+                            WatchSession.shared.sendQuickActionRejection(
+                                actionId: actionId,
+                                message: "Denne Watch-handlingen støttes ikke av Leadgrid."
+                            )
+                            return
+                        }
+                        Task { @MainActor in
+                            let disposition: OfflineResilientActions.WriteDisposition
+                            switch action {
+                            case "called":
+                                disposition = await OfflineResilientActions.logPhoneCall(
+                                    api: api,
+                                    organizationId: organizationId,
+                                    projectId: projectId,
+                                    leadId: leadId,
+                                    actionId: actionId
+                                )
+                            case "visited", "meeting_booked", "declined":
+                                disposition = await OfflineResilientActions.updateLeadStatus(
+                                    api: api,
+                                    organizationId: organizationId,
+                                    projectId: projectId,
+                                    leadId: leadId,
+                                    status: action,
+                                    actionId: actionId
+                                )
+                            default:
+                                // Ukjent Watch-action skal aldri bli tolket som
+                                // en vilkårlig CRM-status.
+                                return
+                            }
+                            if case .rejected(let message) = disposition {
+                                WatchSession.shared.sendQuickActionRejection(
+                                    actionId: actionId,
+                                    message: message
+                                )
+                            }
+                        }
+                    }
+                    WatchSession.shared.onTranscriptRequest = { leadId, transcript in
+                        guard let api = appState.api else { return nil }
+                        let intel = TranscriptIntelligenceFactory.make(api: api, leadId: leadId)
+                        return try? await intel.analyze(transcript: transcript, leadName: "")
+                    }
+                    // MapKit SwiftUI-`Map` respekterer IKKE preferredColorScheme
+                    // — flisene følger vinduets UITraitCollection. Uten dette
+                    // fikk kart-fanene lyse fliser når systemet sto i lys modus
+                    // (resten av appen er mørk-tvunget). Sett vindus-override.
+                    Self.forceDarkWindows()
+                }
+                // Re-apply ved hver aktivering — nye vinduer (iPad multi-
+                // window, Catalyst sekundær-vinduer) opprettet etter første
+                // onAppear ville ellers mangle override → lyse kart-fliser.
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        Self.forceDarkWindows()
+                        sendPresenceCheckin()
+                        // Flush bufrede krasjrapporter når API-klient finnes.
+                        if let api = appState.api {
+                            CrashReporterService.shared.flush(api: api)
+                        }
+                        Task { await appState.discoveryCoordinator.refreshAuthoritative(useServerListFallback: true) }
+                    }
+                }
+        }
+    }
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// «Sist aktiv i Leadgrid» (2026-07-18): puls ved app-aktivering i ekte
+    /// modus — driver utstyrsregisterets serienr → innehaver → posisjon-
+    /// kobling (appen kan ikke lese serienummer; tildelingen er broen).
+    /// Posisjon sendes KUN når appen allerede har en fix (ingen ny
+    /// tillatelses-prompt). Fire-and-forget — feiler stille.
+    private func sendPresenceCheckin() {
+        guard !DemoModeManager.isActiveNonisolated,
+              let api = appState.api else { return }
+        let coord = KartLocationManager.shared.currentCoordinate
+        let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? ""
+        let model = UIDevice.current.model + " (" + UIDevice.current.systemVersion + ")"
+        Task.detached(priority: .utility) {
+            try? await api.presenceCheckin(
+                lat: coord?.latitude, lng: coord?.longitude,
+                deviceModel: model, appVersion: version)
+        }
+    }
+
+    /// Tvinger `overrideUserInterfaceStyle = .dark` på alle tilkoblede
+    /// vinduer så MapKit-flisene alltid er mørke, uansett system-appearance.
+    private static func forceDarkWindows() {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows {
+                window.overrideUserInterfaceStyle = .dark
+            }
+        }
+    }
+}
+
+/// AppDelegate-shim som håndterer APNs device-token-registrering.
+/// SwiftUI får tilgang til AppState via statisk `appStateRef`.
+final class NotificationAppDelegate: NSObject, UIApplicationDelegate {
+    static weak var appStateRef: AppState?
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        // Be om push-permission + register for APNs
+        UNUserNotificationCenter.current().requestAuthorization(
+            options: [.alert, .badge, .sound]
+        ) { granted, _ in
+            if granted {
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            }
+        }
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        // Send til backend
+        Task { @MainActor in
+            guard let api = NotificationAppDelegate.appStateRef?.api else { return }
+            try? await api.registerDeviceToken(
+                token: tokenString,
+                platform: "apns",
+                deviceName: UIDevice.current.name,
+                appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+            )
+        }
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        print("[APNs] Registrering feilet: \(error.localizedDescription)")
+    }
+}
+
+extension NotificationAppDelegate: UNUserNotificationCenterDelegate {
+    /// Vis varsel selv om app er i forgrunnen.
+    /// Tar nonisolated for å unngå non-Sendable cross-actor-call på
+    /// UNUserNotificationCenter + UNNotification (Swift 6).
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping @Sendable (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .badge])
+    }
+
+    /// Brukeren tap-pet et varsel. Route deep-link basert på event_type.
+    /// Leadgrid v2-events (PR #748): lead_assigned_as_team_leader,
+    ///   lead_assigned_as_rep, lead_assigned_on_accept, lead_won,
+    ///   lead_lost, lead_status_change.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping @Sendable () -> Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+        let eventType = userInfo["event_type"] as? String ?? ""
+
+        // Notification-QA 2026-07-06: ALLE varsel-tap rutes nå (åpner
+        // inboksen), ikke bare ett hardkodet event-vokabular. Backend har
+        // TO parallelle varsel-systemer (lead-map + leadgrid) med ulike
+        // event_type-navn; den gamle prefiks-testen droppet halvparten
+        // (lead_status_changed, lead_won_on_team, follow_up_due,
+        // approaching_lead) stille → tap gjorde ingenting. Vi ruter alt
+        // som har et event_type ELLER en lead_id.
+        let leadId = userInfo["lead_id"] as? String
+        let deepLink = userInfo["deep_link"] as? String
+        let projectId = userInfo["project_id"] as? String
+        let organizationId = userInfo["organization_id"] as? String
+        let hasRoutable = !eventType.isEmpty || leadId != nil || deepLink != nil
+
+        if hasRoutable {
+            // Snap ut Sendable-felter FØR task-grensen (Swift 6 strict).
+            // Etter-møte-varselet (lokal notif) bærer selskap + møte-id.
+            let selskap = userInfo["selskap"] as? String
+            let moteId = userInfo["mote_id"] as? String
+            let safeEventType = eventType
+            Task { @MainActor in
+                var payload: [String: String] = ["event_type": safeEventType]
+                if let leadId { payload["lead_id"] = leadId }
+                if let deepLink { payload["deep_link"] = deepLink }
+                if let projectId { payload["project_id"] = projectId }
+                if let organizationId { payload["organization_id"] = organizationId }
+                if let selskap { payload["selskap"] = selskap }
+                if let moteId { payload["mote_id"] = moteId }
+                // Buffer via bridge: et cold-start-tap fyrer FØR noe view
+                // abonnerer → gikk tapt før. Bridge-en deployer så snart en
+                // header monteres.
+                AppStateBridge.shared.handleNotificationTap(payload)
+                NotificationCenter.default.post(
+                    name: .leadgridNotificationTapped,
+                    object: nil,
+                    userInfo: payload,
+                )
+            }
+        }
+        completionHandler()
+    }
+}
+
+/// NotificationCenter-events som broadcastes når APNS-varsel tap-pes.
+/// Aktive SwiftUI-views (typisk LeadgridHubView) lytter på dette og
+/// presenter relevant sheet.
+extension Notification.Name {
+    /// Brukeren tap-pet et Leadgrid-varsel. userInfo har 'event_type' og
+    /// muligens 'lead_id' / 'deep_link'.
+    static let leadgridNotificationTapped =
+        Notification.Name("LeadMapApp.leadgridNotificationTapped")
+}
+
+/// Rotvisning bestemmer hvilken skjerm som rendres basert på auth-state.
+/// iPad beholder samme NavigationSplitView gjennom rotasjon, Split View og
+/// Stage Manager. Split-viewet kollapser selv i compact; bare iPhone bruker
+/// bottom tabs. Dermed avmonteres ikke en åpen Canvas-editor ved resize.
+struct RootView: View {
+    @Environment(AppState.self) private var appState
+    #if DEBUG
+    @State private var qaFeedback = false
+    #endif
+
+    var body: some View {
+        @Bindable var bindableState = appState
+        Group {
+            if appState.isAuthenticated {
+                if UIDevice.current.userInterfaceIdiom == .pad {
+                    MainSidebarView()
+                } else {
+                    MainTabView()
+                }
+            } else {
+                PairingView()
+            }
+        }
+        // Discovery er app-global og skal ha nøyaktig én presentasjonseier.
+        // Flere fullScreenCover-modifikatorer i fanene konkurrerte på iPhone,
+        // slik at kart-FAB-en kunne oppdatere coordinator uten å vise skjermen.
+        .fullScreenCover(isPresented: Binding(
+            get: {
+                appState.isAuthenticated
+                    && appState.leadgridDiscoveryEnabled
+                    && appState.discoveryCoordinator.isPresented
+            },
+            set: { presented in
+                if presented && appState.leadgridDiscoveryEnabled {
+                    appState.discoveryCoordinator.showWorkspace()
+                } else {
+                    appState.discoveryCoordinator.dismissWorkspace()
+                }
+            }
+        )) {
+            DiscoveryWorkspaceView(coordinator: appState.discoveryCoordinator)
+        }
+        .overlay(alignment: .top) {
+            if APIClient.isNonProduction {
+                Text("STAGING")
+                    .font(.caption2.weight(.black))
+                    .tracking(1.2)
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(.yellow, in: Capsule())
+                    .padding(.top, 6)
+                    .accessibilityIdentifier("staging-environment-badge")
+                    .allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if appState.isAuthenticated {
+                LeadgridProductOnboardingGuide()
+                    .padding(.horizontal, DeviceIdiom.isPhone ? 12 : 20)
+                    .padding(.bottom, DeviceIdiom.isPhone ? 76 : 20)
+            }
+        }
+        #if DEBUG
+        .overlay(alignment: .bottomTrailing) {
+            if ProcessInfo.processInfo.environment["QA_NETWORK_CONTROLS"] == "1" {
+                HStack(spacing: 6) {
+                    Button("QA Offline") {
+                        NetworkMonitor.shared.setConnectivityForTesting(online: false)
+                    }
+                    .accessibilityIdentifier("qa-network-offline")
+                    Button("QA Online") {
+                        NetworkMonitor.shared.setConnectivityForTesting(online: true)
+                    }
+                    .accessibilityIdentifier("qa-network-online")
+                }
+                .font(.caption2.bold())
+                .buttonStyle(.borderedProminent)
+                .padding(6)
+                .background(.black.opacity(0.75), in: Capsule())
+                .padding(8)
+            }
+        }
+        #endif
+        // Session-expiry-sheet — vises når en API-call returnerer 401.
+        // Gir brukeren en synlig "Logg inn på nytt"-handling i stedet for
+        // en kryptisk "APIError error 0" eller evig spinner.
+        .sheet(isPresented: $bindableState.sessionExpired) {
+            SessionExpiredSheet(
+                onSignIn: {
+                    appState.signOut()
+                    // signOut nullstiller authToken → RootView re-renderer
+                    // PairingView automatisk. Sheet lukkes av sessionExpired=false
+                    // som signOut allerede setter.
+                }
+            )
+            .interactiveDismissDisabled()
+        }
+        #if DEBUG
+        // QA-hook (skjermbilder): `SIMCTL_CHILD_QA_FEEDBACK=1` presenterer
+        // «Hva synes du om Leadgrid?»-sheeten direkte. Reverteres m/ task #59.
+        .sheet(isPresented: $qaFeedback) {
+            LeadgridFeedbackSheet(api: appState.api ?? APIClient(token: "qa-demo"))
+        }
+        .onAppear {
+            if ProcessInfo.processInfo.environment["QA_FEEDBACK"] == "1" { qaFeedback = true }
+        }
+        #endif
+        .task {
+            await appState.bootstrap()
+            // Start Leadgrid-polling så snart auth er på plass.
+            if appState.api != nil {
+                appState.startLeadgridPolling()
+            }
+            // Leadgrid Go: gjenoppta automatisk kjørebok hvis brukeren har samtykket.
+            TripDetector.shared.startIfEnabled()
+            // Robusthet-pakke 3: drain offline-køen ved app-start hvis online,
+            // og sett opp connectivity-restore-handler.
+            if let api = appState.api,
+               let organizationId = appState.activeOrganizationId,
+               let projectId = appState.activeProjectId,
+               let actorUserId = appState.currentUserId {
+                let result = await OfflineActionQueue.shared.drain(
+                    api: api,
+                    organizationId: organizationId,
+                    actorUserId: actorUserId,
+                    projectId: projectId
+                )
+                if result.success > 0 || result.failed > 0 {
+                    print("[offline-queue] drained at boot: \(result.success) ok, \(result.failed) failed")
+                }
+            }
+            NetworkMonitor.shared.onConnectivityRestored = {
+                Task {
+                    // Stripe-webhooken kan ha gjenåpnet workspacet mens
+                    // enheten var offline. Hent alltid autoritativ billing-
+                    // og read-only-status før køen forsøker nye writes.
+                    await appState.loadWorkspacePlanSummary()
+                    guard let api = appState.api,
+                          let organizationId = appState.activeOrganizationId,
+                          let projectId = appState.activeProjectId,
+                          let actorUserId = appState.currentUserId
+                    else { return }
+                    let result = await OfflineActionQueue.shared.drain(
+                        api: api,
+                        organizationId: organizationId,
+                        actorUserId: actorUserId,
+                        projectId: projectId
+                    )
+                    print("[offline-queue] drained on reconnect: \(result.success) ok, \(result.failed) failed")
+                    await appState.discoveryCoordinator.refreshAuthoritative(useServerListFallback: true)
+                }
+            }
+            // Real-time WebSocket-subscriber (PR #874 backend).
+            // Supplerer eksisterende polling — gjør at NBA-push, lead-score
+            // og followup.due dukker opp umiddelbart uten å vente på neste
+            // polling-tick.
+            if let token = appState.authToken,
+               let orgId = appState.activeOrganizationId,
+               let api = appState.api {
+                LeadgridRealtimeClient.shared.connect(
+                    baseURL: APIClient.baseURL,
+                    sessionIdentity: token,
+                    channels: ["org:\(orgId)"],
+                    api: api
+                )
+            }
+        }
+        .onChange(of: appState.authToken) { _, newValue in
+            if newValue != nil {
+                appState.startLeadgridPolling()
+                if let token = newValue,
+                   let orgId = appState.activeOrganizationId,
+                   let api = appState.api {
+                    LeadgridRealtimeClient.shared.connect(
+                        baseURL: APIClient.baseURL,
+                        sessionIdentity: token,
+                        channels: ["org:\(orgId)"],
+                        api: api
+                    )
+                }
+            } else {
+                appState.stopLeadgridPolling()
+                LeadgridRealtimeClient.shared.disconnect()
+            }
+        }
+        .onChange(of: appState.activeOrganizationId) { _, newOrgId in
+            guard let token = appState.authToken, let newOrgId, let api = appState.api else {
+                // Ingen aktiv org betyr ingen gyldig org-kanal. Forlat gammel
+                // socket umiddelbart i stedet for å motta stale events.
+                LeadgridRealtimeClient.shared.disconnect()
+                return
+            }
+            LeadgridRealtimeClient.shared.connect(
+                baseURL: APIClient.baseURL,
+                sessionIdentity: token,
+                channels: ["org:\(newOrgId)"],
+                api: api
+            )
+        }
+        .onOpenURL { url in
+            Task { @MainActor in
+                _ = await appState.handleLeadgridURL(url)
+            }
+        }
+        // Lytt på alle WebSocket-events globalt så vi kan trigge
+        // pulse-animasjon på nye pins uavhengig av hvilken fane er åpen.
+        .onReceive(NotificationCenter.default.publisher(for: .leadgridRealtimeEvent)) { notif in
+            guard let info = notif.userInfo as? [String: String] else { return }
+            Task { @MainActor in
+                appState.discoveryCoordinator.handleRealtimeEvent(info)
+                if info["type"] == "lead.created" {
+                    appState.handleLeadCreatedEvent(userInfo: info)
+                }
+            }
+        }
+        // Mac Catalyst: Cmd+1..9 bytter de første hovedfanene. Hidden buttons
+        // registrerer shortcut uten å ta plass i layout. No-op på iOS/iPadOS
+        // (macCatalystKeyboardShortcuts gater seg selv).
+        .background { GlobalKeyboardShortcuts() }
+    }
+}
+
+// MARK: - Project-scoped product guide
+
+private struct LeadgridProductOnboardingGuide: View {
+    @Environment(AppState.self) private var appState
+    @State private var tourState: LeadgridOnboardingState?
+    @State private var isBusy = false
+    @State private var errorText: String?
+
+    private static let steps = [
+        "welcome", "choose_project", "find_candidates",
+        "approve_candidates", "work_leads", "follow_up",
+    ]
+
+    private var scopeKey: String {
+        [
+            appState.currentUserId,
+            appState.activeOrganizationId,
+            appState.activeLeadgridProjectId,
+            appState.roleInOrg,
+        ]
+        .map { $0 ?? "-" }
+        .joined(separator: "|")
+    }
+
+    private var projectName: String {
+        appState.activeLeadgridProject?.name ?? "kundeprosjektet"
+    }
+
+    private var copy: (title: String, body: String, action: String, icon: String)? {
+        switch tourState?.currentStep {
+        case "welcome":
+            return (
+                "Bli trygg i Leadgrid",
+                "Denne korte guiden viser hele veien fra søk til oppfølging. Fremdriften gjelder bare \(projectName) og rollen din her.",
+                "Start guiden",
+                "hand.wave.fill"
+            )
+        case "choose_project":
+            return (
+                "Sjekk kundeprosjektet",
+                "Du jobber nå i \(projectName). Leads, Discovery-profiler, maler og aktiviteter holdes adskilt fra andre prosjekter.",
+                "Dette er riktig prosjekt",
+                "building.2.fill"
+            )
+        case "find_candidates":
+            return (
+                "Finn bedrifter",
+                "Åpne «Hva vil du finne?» fra Kart. Enkel versjon spør bare hvem, hvor og hvor mange.",
+                "Åpne Discovery",
+                "sparkle.magnifyingglass"
+            )
+        case "approve_candidates":
+            return (
+                "Godkjenn før noe lagres",
+                "Discovery viser forslag. Kontroller treffet og godkjenn det først når bedriften passer profilen.",
+                "Se kandidatene",
+                "checkmark.seal.fill"
+            )
+        case "work_leads":
+            return (
+                "Arbeid med godkjente leads",
+                "En godkjent kandidat blir et CRM-lead under Leads og på kartet. Leadbook er kun for maler, Pondus og opplæring.",
+                "Åpne Leads",
+                "person.crop.rectangle.stack.fill"
+            )
+        case "follow_up":
+            return (
+                "Avtal neste steg",
+                "Åpne leadet, velg riktig kontaktkanal og lagre neste oppfølging. Leadgrid minner deg på det som forfaller.",
+                "Fullfør guiden",
+                "calendar.badge.checkmark"
+            )
+        default:
+            return nil
+        }
+    }
+
+    var body: some View {
+        if let tourState, let copy {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: copy.icon)
+                        .font(.appScaled(size: 18, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.75, green: 0.45, blue: 1.0))
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(copy.title)
+                            .font(.appScaled(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("Guide · \(stepNumber(tourState.currentStep)) av \(Self.steps.count)")
+                            .font(.appScaled(size: 11, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.58))
+                    }
+                    Spacer(minLength: 8)
+                    Button {
+                        Task { await skip(projectId: tourState.projectId) }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.appScaled(size: 12, weight: .bold))
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.white.opacity(0.70))
+                    .disabled(isBusy)
+                    .accessibilityLabel("Avslutt Leadgrid-guiden")
+                    .accessibilityIdentifier("product-onboarding.skip")
+                }
+
+                ProgressView(
+                    value: Double(max(0, stepNumber(tourState.currentStep) - 1)),
+                    total: Double(Self.steps.count)
+                )
+                .tint(Color(red: 0.66, green: 0.32, blue: 0.99))
+
+                Text(copy.body)
+                    .font(.appScaled(size: 13))
+                    .foregroundStyle(Color.white.opacity(0.76))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let errorText {
+                    Label(errorText, systemImage: "wifi.exclamationmark")
+                        .font(.appScaled(size: 11, weight: .medium))
+                        .foregroundStyle(Color.orange)
+                }
+
+                Button {
+                    Task { await advance(tourState) }
+                } label: {
+                    HStack {
+                        if isBusy { ProgressView().tint(.white) }
+                        Text(copy.action)
+                        Spacer()
+                        Image(systemName: "arrow.right")
+                    }
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 44)
+                    .background(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.66, green: 0.32, blue: 0.99),
+                                Color(red: 0.75, green: 0.45, blue: 1.0),
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 11)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isBusy)
+                .accessibilityIdentifier("product-onboarding.primary")
+            }
+            .padding(16)
+            .frame(maxWidth: DeviceIdiom.isPhone ? 360 : 390)
+            .background(
+                Color(red: 0.08, green: 0.06, blue: 0.13).opacity(0.98),
+                in: RoundedRectangle(cornerRadius: 18)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(Color(red: 0.66, green: 0.32, blue: 0.99).opacity(0.35), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.45), radius: 22, y: 10)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("product-onboarding.card")
+            .task(id: scopeKey) { await load() }
+        } else {
+            Color.clear
+                .frame(width: 0, height: 0)
+                .task(id: scopeKey) { await load() }
+        }
+    }
+
+    private func stepNumber(_ step: String) -> Int {
+        (Self.steps.firstIndex(of: step) ?? 0) + 1
+    }
+
+    @MainActor
+    private func load() async {
+        errorText = nil
+        guard let projectId = appState.activeLeadgridProjectId else {
+            tourState = nil
+            return
+        }
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["QA_PRODUCT_ONBOARDING"] == "1" {
+            tourState = LeadgridOnboardingState(
+                currentStep: "welcome",
+                stepsCompleted: [],
+                completed: false,
+                organizationId: appState.activeOrganizationId ?? "qa-organization",
+                projectId: projectId,
+                roleTrack: appState.roleInOrg ?? "admin",
+                onboardingVersion: 2,
+                startedAt: nil,
+                lastActivityAt: nil,
+                completedAt: nil,
+                skippedAt: nil
+            )
+            return
+        }
+        #endif
+        guard let api = appState.api else {
+            tourState = nil
+            return
+        }
+        do {
+            let response = try await api.fetchOnboardingState(projectId: projectId)
+            guard !Task.isCancelled,
+                  appState.activeLeadgridProjectId == projectId else { return }
+            let loaded = response.state
+            tourState = response.eligible
+                && loaded?.currentStep != "completed"
+                && loaded?.currentStep != "skipped"
+                ? loaded
+                : nil
+        } catch {
+            // The optional guide must never block use of the underlying CRM.
+            tourState = nil
+        }
+    }
+
+    @MainActor
+    private func advance(_ current: LeadgridOnboardingState) async {
+        guard !isBusy else { return }
+        isBusy = true
+        errorText = nil
+        defer { isBusy = false }
+        do {
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["QA_PRODUCT_ONBOARDING"] == "1" {
+                let currentIndex = Self.steps.firstIndex(of: current.currentStep) ?? 0
+                let next = Self.steps.indices.contains(currentIndex + 1)
+                    ? Self.steps[currentIndex + 1]
+                    : "completed"
+                tourState = next == "completed"
+                    ? nil
+                    : LeadgridOnboardingState(
+                        currentStep: next,
+                        stepsCompleted: current.stepsCompleted + [current.currentStep],
+                        completed: false,
+                        organizationId: current.organizationId,
+                        projectId: current.projectId,
+                        roleTrack: current.roleTrack,
+                        onboardingVersion: current.onboardingVersion,
+                        startedAt: current.startedAt,
+                        lastActivityAt: nil,
+                        completedAt: nil,
+                        skippedAt: nil
+                    )
+            } else {
+                guard let api = appState.api else {
+                    errorText = "Tilkoblingen er ikke klar. Prøv igjen."
+                    return
+                }
+                let response = try await api.advanceOnboarding(
+                    fromStep: current.currentStep,
+                    projectId: current.projectId
+                )
+                tourState = response.state.completed ? nil : response.state
+            }
+            #else
+            guard let api = appState.api else {
+                errorText = "Tilkoblingen er ikke klar. Prøv igjen."
+                return
+            }
+            let response = try await api.advanceOnboarding(
+                fromStep: current.currentStep,
+                projectId: current.projectId
+            )
+            tourState = response.state.completed ? nil : response.state
+            #endif
+
+            switch current.currentStep {
+            case "find_candidates", "approve_candidates":
+                appState.selectedSidebarItem = .kart
+                await appState.configureDiscovery()
+                appState.discoveryCoordinator.showWorkspace()
+            case "work_leads", "follow_up":
+                appState.selectedSidebarItem = .leads
+            default:
+                break
+            }
+        } catch {
+            errorText = "Kunne ikke lagre fremdriften. Prøv igjen."
+        }
+    }
+
+    @MainActor
+    private func skip(projectId: String) async {
+        guard !isBusy else { return }
+        isBusy = true
+        errorText = nil
+        defer { isBusy = false }
+        do {
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["QA_PRODUCT_ONBOARDING"] != "1" {
+                guard let api = appState.api else {
+                    errorText = "Tilkoblingen er ikke klar. Prøv igjen."
+                    return
+                }
+                try await api.skipOnboarding(projectId: projectId)
+            }
+            #else
+            guard let api = appState.api else {
+                errorText = "Tilkoblingen er ikke klar. Prøv igjen."
+                return
+            }
+            try await api.skipOnboarding(projectId: projectId)
+            #endif
+            tourState = nil
+        } catch {
+            errorText = "Kunne ikke avslutte guiden. Prøv igjen."
+        }
+    }
+}
+
+/// Hidden button-strip som registrerer keyboard shortcuts på Mac Catalyst.
+/// Cmd+1..9 = bytt mellom de første ni sidebar-elementene.
+/// Cmd+, = Innstillinger (postes som NSNotification for at aktuell fane kan reagere).
+///
+/// Alle buttons har frame(0) og opacity(0) — usynlig men reachable av
+/// UIKit accelerator-systemet på Mac. iOS/iPadOS ignorerer `.keyboardShortcut`
+/// mens en HW-tastatur ikke er parret, så dette er trygt globalt.
+struct GlobalKeyboardShortcuts: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        #if targetEnvironment(macCatalyst)
+        ZStack {
+            let shortcutItems = Array(SidebarItem.allCases.prefix(9))
+            ForEach(shortcutItems.indices, id: \.self) { idx in
+                let item = shortcutItems[idx]
+                let key = KeyEquivalent(Character("\(idx + 1)"))
+                Button {
+                    appState.selectedSidebarItem = item
+                } label: { EmptyView() }
+                    .keyboardShortcut(key, modifiers: .command)
+                    .frame(width: 0, height: 0)
+                    .opacity(0)
+                    .accessibilityHidden(true)
+            }
+            // Cmd+, = Innstillinger (broadcast — fane-hostene kan lytte).
+            Button {
+                NotificationCenter.default.post(name: .leadgridOpenSettings, object: nil)
+            } label: { EmptyView() }
+                .keyboardShortcut(",", modifiers: .command)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+            // Cmd+N = nytt lead. Bytter til Kart-fanen først, så sender
+            // broadcast som KartView plukker opp for å åpne AddLeadSheet.
+            Button {
+                appState.selectedSidebarItem = .kart
+                NotificationCenter.default.post(name: .leadgridNewLead, object: nil)
+            } label: { EmptyView() }
+                .keyboardShortcut("n", modifiers: .command)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+            // Cmd+K = søk (bytter til Leads + fokuserer søkefelt).
+            Button {
+                appState.selectedSidebarItem = .leads
+                NotificationCenter.default.post(name: .leadgridFocusSearch, object: nil)
+            } label: { EmptyView() }
+                .keyboardShortcut("k", modifiers: .command)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+            // Cmd+F = søk i aktuell tabell (broadcast — hver fane som har
+            // søkefelt lytter og focus-flagger sitt tekstfelt).
+            Button {
+                NotificationCenter.default.post(name: .leadgridFocusSearch, object: nil)
+            } label: { EmptyView() }
+                .keyboardShortcut("f", modifiers: .command)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
+        .frame(width: 0, height: 0)
+        #else
+        EmptyView()
+        #endif
+    }
+}
+
+extension Notification.Name {
+    /// Broadcast når brukeren trykker Cmd+, på Mac Catalyst.
+    static let leadgridOpenSettings =
+        Notification.Name("LeadMapApp.leadgridOpenSettings")
+    /// Broadcast når brukeren trykker Cmd+N på Mac Catalyst (Kart-fanen håndterer).
+    static let leadgridNewLead =
+        Notification.Name("LeadMapApp.leadgridNewLead")
+    /// Broadcast når brukeren trykker Cmd+K eller Cmd+F (Leads/Kart søk).
+    static let leadgridFocusSearch =
+        Notification.Name("LeadMapApp.leadgridFocusSearch")
+}
+
+/// Session-expiry-modal — vises når en API-call returnerte 401.
+/// Forklarer at økten er utløpt og leder brukeren til pairing-flyten via
+/// `signOut()`. `interactiveDismissDisabled` på sheet-en sørger for at
+/// brukeren aktivt må trykke for å fortsette (ikke utilsiktet swipe-bort).
+struct SessionExpiredSheet: View {
+    let onSignIn: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "lock.circle.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(Color(red: 0.36, green: 0.18, blue: 0.62))
+                .padding(.top, 32)
+
+            VStack(spacing: 8) {
+                Text("Din økt er utløpt")
+                    .font(.title2.bold())
+                Text("Av sikkerhetsgrunner må du logge inn på nytt for å fortsette.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+
+            Spacer()
+
+            Button {
+                onSignIn()
+            } label: {
+                Text("Logg inn på nytt")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color(red: 0.36, green: 0.18, blue: 0.62), in: RoundedRectangle(cornerRadius: 12))
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.hidden)
+    }
+}
+
+/// Tabs (Pakke 10, 2026-07-01): 6 hovedfaner portet fra preview-appene.
+/// Oversikt · Kart · Leads · Møter · Team · Leadbook.
+/// Erstatter forrige 5-tab-løsning (I dag/Kart/Leads/Research/Mer); de
+/// gamle visningene (MyDayView/LeadgridFollowUpQueueView/CalendarView/
+/// LeadgridResearchTab/MapScreen) ble slettet og overtatt av de nye
+/// preview-portene under `Views/Tabs/<Fane>/`.
+struct MainTabView: View {
+    @Environment(AppState.self) private var state
+    /// Dynamic Type (a11y 2026-07-05): fontene bygges via Font.appScaled
+    /// (UIFontMetrics) som leses når body evalueres — les env-verdien her
+    /// og `.id()` roten så HELE hierarkiet re-bygges når brukeren endrer
+    /// tekststørrelse i Innstillinger.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var selection: Int = {
+        #if DEBUG
+        // QA-hook: `SIMCTL_CHILD_QA_TAB=<0-7> simctl launch …` åpner appen
+        // rett på en gitt fane — brukes til automatiserte skjermbilde-sveip
+        // på simulator. På iPhone mapper 5/6/7 til Mer-fanens under-sider
+        // (Team/Leadbook/Salgsledelse, håndtert av PhoneMerTab).
+        // Ingen effekt i release-bygg.
+        if let raw = ProcessInfo.processInfo.environment["QA_TAB"], let idx = Int(raw) {
+            if DeviceIdiom.isPhone {
+                return min(max(idx, 0), 7) >= 4 ? 4 : min(max(idx, 0), 3)
+            }
+            return min(max(idx, 0), 6)
+        }
+        #endif
+        return 0
+    }()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            MockDataBanner()
+            TabView(selection: $selection) {
+                OversiktView()
+                    .tabItem { Label("Oversikt", systemImage: "rectangle.3.group.fill") }
+                    .tag(0)
+
+                KartView()
+                    .tabItem { Label("Kart", systemImage: "map.fill") }
+                    .tag(1)
+
+                // Leads (bedrifts-CRM) finnes ikke i opplevelsen for
+                // dørsalg-profil-orger (2026-07-18) — skjules helt, ikke
+                // lås-skjerm. Tag-ene er stabile så øvrige faner beholdes.
+                if EntitlementStore.shared.canUse(.leads) {
+                    LeadsView()
+                        .tabItem { Label("Leads", systemImage: "person.crop.rectangle.stack.fill") }
+                        .badge(state.leadgridUnreadCount > 0 ? state.leadgridUnreadCount : 0)
+                        .tag(2)
+                }
+
+                MeetingsView()
+                    .tabItem { Label("Møter", systemImage: "calendar") }
+                    .tag(3)
+
+                if DeviceIdiom.isPhone {
+                    // iPhone har bare plass til 4 faner + én til — flere enn
+                    // det gir UIKits «More»-controller (grå liste + fremmed
+                    // back-knapp oppå våre egne headere). Egen Mer-fane gir
+                    // samme innhold med Leadgrid-design.
+                    PhoneMerTab()
+                        .tabItem { Label("Mer", systemImage: "square.grid.2x2.fill") }
+                        .tag(4)
+                } else {
+                    TeamView()
+                        .tabItem { Label("Team", systemImage: "person.3.fill") }
+                        .tag(4)
+
+                    LeadbookView()
+                        .tabItem { Label("Leadbook", systemImage: "book.pages.fill") }
+                        .tag(5)
+
+                    // Salgsledelse-suite (Pakke 10.1) — provisjon, konkurranser,
+                    // premie-katalog, fulfillment. Bør role-gates til salgssjefer.
+                    SalgsledelseView()
+                        .tabItem { Label("Salgsledelse", systemImage: "rosette") }
+                        .tag(6)
+                }
+            }
+            // Møter «Naviger» → Kart-motoren. iPhone bruker lokal tab-selection
+            // (ikke sidebar), så vi speiler nav-deep-linket til Kart-fanen (tag 1).
+            .onChange(of: state.deepLinkNavRequestedAt) { _, newValue in
+                if newValue != nil { selection = 1 }
+            }
+            // Nyopprettet lead skal vises der den havnet — bytt til Kart-fanen
+            // så KartView kan konsumere `pendingMapFocus` og zoome dit (2026-08-19).
+            .onChange(of: state.pendingMapFocus) { _, newValue in
+                if newValue != nil { selection = 1 }
+            }
+            // Productguiden og øvrige globale deep-links bruker samme
+            // `selectedSidebarItem` som iPad. Speil kjernedestinasjonene til
+            // iPhones lokale tab-selection så «Åpne Leads/Kart» faktisk virker.
+            .onChange(of: state.selectedSidebarItem) { _, item in
+                switch item {
+                case .oversikt: selection = 0
+                case .kart: selection = 1
+                case .leads where EntitlementStore.shared.canUse(.leads): selection = 2
+                case .moter: selection = 3
+                default: break
+                }
+            }
+            .onChange(of: selection) { _, tab in
+                switch tab {
+                case 0: state.selectedSidebarItem = .oversikt
+                case 1: state.selectedSidebarItem = .kart
+                case 2: state.selectedSidebarItem = .leads
+                case 3: state.selectedSidebarItem = .moter
+                default: break
+                }
+            }
+        }
+        .id(dynamicTypeSize)
+        // AX1-AX5 (2026-07-05): cappen på xxxLarge er fjernet — layoutene
+        // er gjort adaptive (AXStack/axLineLimit i ScaledFont.swift) slik
+        // at kort og rader re-flyter i stedet for å knekke.
+    }
+}
+
+/// Mer-fanen på iPhone — inngangen til hovedområdene som ikke får plass i
+/// tab-baren (Team/Leadbook/Salgsledelse). Under-sidene beholder den native
+/// navigasjonslinjen på iPhone, slik at tilbakeknappen alltid er synlig.
+struct PhoneMerTab: View {
+    @Environment(AppState.self) private var state
+
+    private enum Destination: Int, Hashable {
+        case team = 5, leadbook = 6, salgsledelse = 7, leadgridGo = 8, kvalitet = 9, anbud = 10, canvas = 11, hub = 12
+    }
+
+    @State private var path: [Destination] = {
+        #if DEBUG
+        // QA-hook (se MainTabView): QA_TAB 5/6/7 → auto-push under-siden.
+        if let raw = ProcessInfo.processInfo.environment["QA_TAB"],
+           let idx = Int(raw), let dest = Destination(rawValue: idx) {
+            return [dest]
+        }
+        #endif
+        return []
+    }()
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            List {
+                Section("Hovedområder") {
+                    merRow(.team, icon: "person.3.fill", color: .blue,
+                           title: "Team", subtitle: "Områder, pipeline og aktivitet")
+                    merRow(.leadbook, icon: "book.pages.fill", color: .purple,
+                           title: "Leadbook", subtitle: "Maler, Pondus og innsikt")
+                    if ["admin", "salgssjef"].contains(state.roleInOrg ?? "") {
+                        merRow(.salgsledelse, icon: "rosette", color: .orange,
+                               title: "Salgsledelse", subtitle: "Provisjon, konkurranser og premier")
+                    }
+                    merRow(.leadgridGo, icon: "car.circle.fill", color: .green,
+                           title: "Leadgrid Go", subtitle: "Elektronisk kjørebok og kjøretøy")
+                    merRow(.kvalitet, icon: "checkmark.seal.fill", color: .teal,
+                           title: "Kvalitet", subtitle: "Verifiser salg med velkomstsamtale")
+                    merRow(.anbud, icon: "doc.text.magnifyingglass", color: .indigo,
+                           title: "Anbud", subtitle: "Offentlige anskaffelser fra Doffin")
+                    if EntitlementStore.shared.canUse(.leadgridCanvas) {
+                        merRow(.canvas, icon: "pencil.and.outline", color: .purple,
+                               title: "Canvas", subtitle: "Pencil-notater koblet til leads")
+                    }
+                    // Spesialiserte CRM-flater uten egen hovedfane eller profilplassering.
+                    merRow(.hub, icon: "magnifyingglass.circle.fill", color: .pink,
+                           title: "Verktøy", subtitle: "Research, analyse og rapportering")
+                }
+            }
+            .navigationTitle("Mer")
+            .navigationDestination(for: Destination.self) { dest in
+                // Leadgrid Go bruker system-navigasjon og pushes EMBEDDED (uten sin
+                // egen NavigationStack — nestet stack i push tripper SwiftUI-assertion).
+                switch dest {
+                case .team:
+                    TeamView()
+                        .navigationTitle("Team")
+                        .navigationBarTitleDisplayMode(.inline)
+                case .leadbook:
+                    LeadbookView()
+                        .navigationTitle("Leadbook")
+                        .navigationBarTitleDisplayMode(.inline)
+                case .salgsledelse:
+                    SalgsledelseView(embeddedInStack: true)
+                        .navigationTitle("Salgsledelse")
+                        .navigationBarTitleDisplayMode(.inline)
+                case .leadgridGo:
+                    LeadgridGoDashboardView(embedded: true)
+                        .navigationTitle("Leadgrid Go")
+                        .navigationBarTitleDisplayMode(.inline)
+                case .kvalitet:
+                    KvalitetView(embedded: true)
+                        .navigationTitle("Kvalitet")
+                        .navigationBarTitleDisplayMode(.inline)
+                case .anbud:
+                    AnbudView(embedded: true)
+                        .navigationTitle("Anbud")
+                        .navigationBarTitleDisplayMode(.inline)
+                case .canvas:
+                    CanvasView()
+                        .navigationTitle("Canvas")
+                        .navigationBarTitleDisplayMode(.inline)
+                case .hub:
+                    // I motsetning til søsknene bruker denne system-navbaren
+                    // (tittel + org-picker-toolbar), ikke egen header —
+                    // navbaren skal IKKE skjules her.
+                    LeadgridHubView(embedded: true)
+                }
+            }
+        }
+    }
+
+    private func merRow(_ dest: Destination, icon: String, color: Color,
+                        title: String, subtitle: String) -> some View {
+        NavigationLink(value: dest) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8).fill(color.opacity(0.2))
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+                .frame(width: 36, height: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 15, weight: .semibold))
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+}
+
+/// Samlefane med alt som tidligere lå som egne topp-tabs. Bygger en
+/// kategorisert liste — hver rad navigerer til den eksisterende view'en
+/// uendret, så vi ikke endrer hverken backend eller delflyter.
+struct MoreTabView: View {
+    @Environment(AppState.self) private var state
+    @State private var importSheetOpen = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Aktivitet") {
+                    NavigationLink {
+                        NotificationsView()
+                    } label: {
+                        moreRow(icon: "bell.fill", color: .red, title: "Varsler",
+                                badge: state.unreadNotificationsCount)
+                    }
+                    // Kalender: portet inn i ny `MeetingsView` (Pakke 10) —
+                    // bruk hovedfanen «Møter» istedet.
+                    NavigationLink {
+                        StaleLeadsList()
+                    } label: {
+                        moreRow(icon: "bell.badge", color: .orange, title: "Stille leads")
+                    }
+                    // Ruter — flyttet hit i Pakke 9 da bottom-tab-en
+                    // ble byttet ut med Research. Bruker eksisterende
+                    // LeadgridRoutePlannerView som tidligere var rot-tab.
+                    if let api = state.api {
+                        NavigationLink {
+                            LeadgridRoutePlannerView(api: api)
+                                .navigationTitle("Ruter")
+                        } label: {
+                            moreRow(
+                                icon: "point.topleft.down.to.point.bottomright.curvepath",
+                                color: .purple, title: "Ruter",
+                            )
+                        }
+                    }
+                    // Pin-guide — Daniel-feedback 2026-06-28: gi brukere
+                    // oversikt over hva hver pin-variant betyr.
+                    NavigationLink {
+                        PinGuideView()
+                    } label: {
+                        moreRow(icon: "mappin.and.ellipse",
+                                color: .purple, title: "Forstå pinsene")
+                    }
+                }
+                Section("Team & marked") {
+                    NavigationLink {
+                        LeaderboardView()
+                    } label: {
+                        moreRow(icon: "trophy.fill", color: .yellow, title: "Team")
+                    }
+                    if state.permissions.contains("leads.view") {
+                        NavigationLink {
+                            ProjectsPortfolioView()
+                        } label: {
+                            moreRow(icon: "rectangle.stack.fill", color: .purple,
+                                    title: "Prosjekter")
+                        }
+                    }
+                    if state.permissions.contains("marketing.deliveries.execute") {
+                        NavigationLink {
+                            MarketingInboxView()
+                        } label: {
+                            moreRow(icon: "tray.fill", color: .indigo, title: "Innboks")
+                        }
+                    }
+                    NavigationLink {
+                        LeadgridHubView()
+                    } label: {
+                        moreRow(icon: "person.crop.rectangle.stack.fill", color: .purple,
+                                title: "Leadgrid",
+                                badge: state.leadgridUnreadCount > 0 ? state.leadgridUnreadCount : 0)
+                    }
+                }
+                if state.permissions.contains("pitch_deck.access"),
+                   let orgId = state.activeOrganizationId {
+                    Section("Salg") {
+                        NavigationLink {
+                            PitchDeckStudioView(
+                                organizationId: orgId,
+                                permissions: state.permissions
+                            )
+                        } label: {
+                            moreRow(icon: "rectangle.stack.fill", color: .purple,
+                                    title: "Pitch Deck")
+                        }
+                    }
+                }
+                Section("Data") {
+                    Button {
+                        importSheetOpen = true
+                    } label: {
+                        moreRow(icon: "square.and.arrow.down.fill", color: .purple,
+                                title: "Importer leads")
+                    }
+                    .buttonStyle(.plain)
+                }
+                // Smart Workflow Builder (mig 0349, #203)
+                if state.permissions.contains("workflows.view"),
+                   let api = state.api {
+                    Section("Automatisering") {
+                        NavigationLink {
+                            LeadgridWorkflowsView(api: api)
+                        } label: {
+                            moreRow(icon: "bolt.fill", color: .purple,
+                                    title: "Workflows")
+                        }
+                    }
+                }
+                Section("Mine innstillinger") {
+                    NavigationLink {
+                        IndustryManagementView()
+                    } label: {
+                        moreRow(icon: "tag.fill", color: .purple, title: "Mine bransjer")
+                    }
+                }
+                Section("Innstillinger") {
+                    NavigationLink {
+                        OrgSettingsView()
+                    } label: {
+                        moreRow(icon: "building.2.fill", color: .gray, title: "Organisasjon")
+                    }
+                }
+            }
+            .navigationTitle("Mer")
+            .sheet(isPresented: $importSheetOpen) {
+                LeadgridImportSheet()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func moreRow(
+        icon: String,
+        color: Color,
+        title: String,
+        badge: Int = 0
+    ) -> some View {
+        HStack {
+            Image(systemName: icon)
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(color.opacity(0.9), in: RoundedRectangle(cornerRadius: 6))
+            Text(title).font(.body)
+            Spacer()
+            if badge > 0 {
+                Text("\(badge)")
+                    .font(.caption.bold())
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.red, in: Capsule())
+                    .foregroundStyle(.white)
+            }
+        }
+    }
+}
+
+// LeadsTabHost fjernet i Pakke 10 — LeadsView fra Views/Tabs/Leads/ er ny
+// hovedinngang og tar ikke api-binding (bruker LeadsData mock-seed inntil
+// backend-port). Bring tilbake senere som thin wrapper hvis vi trenger
+// api-injeksjon ved API-port.
+
+struct RoutesTabHost: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        NavigationStack {
+            if let api = state.api {
+                LeadgridRoutePlannerView(api: api)
+                    .navigationTitle("Ruter")
+            } else {
+                ContentUnavailableView(
+                    "Logger inn …",
+                    systemImage: "point.topleft.down.to.point.bottomright.curvepath",
+                    description: Text("Vent et øyeblikk mens vi henter dine ruter.")
+                )
+            }
+        }
+    }
+}
+
+// MARK: - iPad Sidebar (6 hovedfaner, Pakke 10)
+
+/// Sidebar-elementer på iPad-landscape. 6 hovedfaner portet fra preview.
+/// Hver case er en av de nye `Views/Tabs/<Fane>/`-toppvisningene.
+enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
+    case oversikt
+    case kart
+    case leads
+    case moter
+    case team
+    case leadbook
+    case salgsledelse
+    case leadgridGo
+    case kvalitet
+    case anbud
+    case canvas
+    /// Spesialiserte CRM-verktøy samlet bak Mer → Verktøy.
+    case hub
+    /// Bekreftelsesstyrt Leadgrid-agent med seks lead-skills.
+    case agent
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .oversikt:     return "Oversikt"
+        case .kart:         return "Kart"
+        case .leads:        return "Leads"
+        case .moter:        return "Møter"
+        case .team:         return "Team"
+        case .leadbook:     return "Leadbook"
+        case .salgsledelse: return "Salgsledelse"
+        case .leadgridGo:   return "Leadgrid Go"
+        case .kvalitet:     return "Kvalitet"
+        case .anbud:        return "Anbud"
+        case .canvas:       return "Canvas"
+        case .hub:          return "Verktøy"
+        case .agent:        return "Agent"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .oversikt:     return "rectangle.3.group.fill"
+        case .kart:         return "map.fill"
+        case .leads:        return "person.crop.rectangle.stack.fill"
+        case .moter:        return "calendar"
+        case .team:         return "person.3.fill"
+        case .leadbook:     return "book.pages.fill"
+        case .salgsledelse: return "rosette"
+        case .leadgridGo:   return "car.circle.fill"
+        case .kvalitet:     return "checkmark.seal.fill"
+        case .anbud:        return "doc.text.magnifyingglass"
+        case .canvas:       return "pencil.and.outline"
+        case .hub:          return "magnifyingglass.circle.fill"
+        case .agent:        return "sparkles"
+        }
+    }
+}
+
+/// Hoved-navigasjon for iPad-landscape. 8 items i venstre sidebar (matcher
+/// marketing-mock), hovedinnhold på høyre side. iPhone og iPad-portrait
+/// bruker fortsatt MainTabView (bottom-tabs).
+struct MainSidebarView: View {
+    @Environment(AppState.self) private var state
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var visibility: NavigationSplitViewVisibility = {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["QA_CAPTURE"] == "1" { return .detailOnly }
+        #endif
+        return .all
+    }()
+    @State private var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
+    @State private var showsMoreFeatures = false
+
+    var body: some View {
+        NavigationSplitView(
+            columnVisibility: $visibility,
+            preferredCompactColumn: $preferredCompactColumn
+        ) {
+            sidebarList
+                // Brand-lockup øverst i sidemenyen erstatter tekst-tittelen
+                // (wordmarken ligger i logoen — «Leadgrid»-tekst ville doblet).
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+        } detail: {
+            NavigationStack {
+                detailFor(state.selectedSidebarItem)
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            applyQATabIfNeeded()
+            revealSelectedFeatureIfNeeded(state.selectedSidebarItem)
+        }
+        .task(id: dynamicTypeSize) {
+            // NavigationSplitView må først ha fullført sitt eget layoutpass
+            // før en programmatisk kolonneendring blir respektert.
+            await Task.yield()
+            adaptSidebarForTextSize(dynamicTypeSize)
+        }
+        // Nyopprettet lead skal vises der den havnet — bytt til Kart-fanen
+        // (2026-08-19). iPad-landscape bruker DENNE sidebaren, ikke
+        // MainTabView — samme mekanisme trengs begge steder (se MainTabView).
+        .onChange(of: state.pendingMapFocus) { _, newValue in
+            if newValue != nil {
+                state.selectedSidebarItem = .kart
+                preferredCompactColumn = .detail
+            }
+        }
+        .onChange(of: state.selectedSidebarItem) { _, selected in
+            preferredCompactColumn = .detail
+            revealSelectedFeatureIfNeeded(selected)
+        }
+    }
+
+    /// QA-hook: iPad bruker sidebar (ikke MainTabView-selection), så
+    /// QA_TAB må mappes til `selectedSidebarItem` her — ellers landet
+    /// alle automatiserte sveip på Oversikt uansett indeks. SidebarItem-
+    /// rekkefølgen (0=oversikt … 6=salgsledelse) matcher QA_TAB direkte.
+    private func applyQATabIfNeeded() {
+        #if DEBUG
+        guard let raw = ProcessInfo.processInfo.environment["QA_TAB"],
+              let idx = Int(raw),
+              SidebarItem.allCases.indices.contains(idx) else { return }
+        state.selectedSidebarItem = SidebarItem.allCases[idx]
+        #endif
+    }
+
+    /// På iPad mini etterlater sidebaren for lite arbeidsbredde ved de
+    /// største tekststørrelsene. Detaljen åpnes derfor først; den native
+    /// sidebar-knappen ligger fortsatt øverst og gjør navigasjonen tilgjengelig.
+    private func adaptSidebarForTextSize(_ size: DynamicTypeSize) {
+        guard size.isAccessibilitySize else { return }
+        visibility = .detailOnly
+        preferredCompactColumn = .detail
+    }
+
+    private func revealSelectedFeatureIfNeeded(_ item: SidebarItem) {
+        let secondary: Set<SidebarItem> = [
+            .leadgridGo, .kvalitet, .anbud, .canvas, .hub,
+        ]
+        if secondary.contains(item) { showsMoreFeatures = true }
+    }
+
+    @ViewBuilder
+    private var sidebarList: some View {
+        @Bindable var bindableState = state
+        // iOS støtter ikke List(selection:content:) på den helt frie formen,
+        // så vi bruker eksplisitt ForEach + .tag() i hver Section.
+        List {
+            // Leadgrid-lockup som brand-header i sidemenyen (2026-07-04).
+            Section {
+                Image("LeadgridLockup")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 170)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+                    .accessibilityLabel("Leadgrid")
+            }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+
+            // Salgsledelse skjules for ikke-ledere (rolle-gate; viewet
+            // vakter i tillegg selv mot deep-link/persistert valg).
+            // Leads (bedrifts-CRM) skjules HELT for dørsalg-profil-orger
+            // (2026-07-18): en låst kjernefane skal ikke finnes i
+            // opplevelsen, ikke vises med lås-skjerm.
+            let visibleItems = SidebarItem.allCases.filter { item in
+                if item == .salgsledelse {
+                    return ["admin", "salgssjef"].contains(state.roleInOrg ?? "")
+                }
+                if item == .leads {
+                    return EntitlementStore.shared.canUse(.leads)
+                }
+                if item == .canvas {
+                    return EntitlementStore.shared.canUse(.leadgridCanvas)
+                }
+                if item == .agent {
+                    return EntitlementStore.shared.canUse(.leads)
+                        && state.permissions.contains("leads.view")
+                }
+                return true
+            }
+            let workItems: [SidebarItem] = [.oversikt, .kart, .leads, .moter]
+            let teamItems: [SidebarItem] = [.team, .leadbook, .salgsledelse]
+            let moreItems: [SidebarItem] = [.leadgridGo, .kvalitet, .anbud, .canvas, .hub]
+
+            Section("Arbeid") {
+                ForEach(workItems.filter(visibleItems.contains)) { item in
+                    sidebarRow(
+                        item,
+                        badge: item == .leads ? state.leadgridUnreadCount : 0,
+                        selection: $bindableState.selectedSidebarItem
+                    )
+                }
+            }
+
+            if visibleItems.contains(.agent) {
+                Section("Assistent") {
+                    sidebarRow(
+                        .agent,
+                        badge: 0,
+                        selection: $bindableState.selectedSidebarItem
+                    )
+                }
+            }
+
+            Section("Team og læring") {
+                ForEach(teamItems.filter(visibleItems.contains)) { item in
+                    sidebarRow(
+                        item,
+                        badge: 0,
+                        selection: $bindableState.selectedSidebarItem
+                    )
+                }
+            }
+
+            Section("Flere funksjoner") {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showsMoreFeatures.toggle()
+                    }
+                } label: {
+                    HStack {
+                        Label("Flere funksjoner", systemImage: "square.grid.2x2")
+                        Spacer()
+                        Image(systemName: showsMoreFeatures ? "chevron.up" : "chevron.down")
+                            .font(.caption.bold())
+                            .foregroundStyle(Color.white.opacity(0.65))
+                    }
+                    .foregroundStyle(Color.white)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("sidebar.more-features")
+
+                if showsMoreFeatures {
+                    ForEach(moreItems.filter(visibleItems.contains)) { item in
+                        sidebarRow(
+                            item,
+                            badge: 0,
+                            selection: $bindableState.selectedSidebarItem
+                        )
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .preferredColorScheme(.dark)
+    }
+
+    /// Sidebar-rad som button (alle iOS-versjoner). Highlighter aktiv valg
+    /// med lilla bakgrunn — manuell paritet med iOS standard sidebar-selection.
+    @ViewBuilder
+    private func sidebarRow(
+        _ item: SidebarItem,
+        badge: Int,
+        selection: Binding<SidebarItem>
+    ) -> some View {
+        let isActive = selection.wrappedValue == item
+        Button {
+            selection.wrappedValue = item
+            preferredCompactColumn = .detail
+        } label: {
+            HStack {
+                Label(item.label, systemImage: item.systemImage)
+                Spacer()
+                if badge > 0 {
+                    Text("\(badge)")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.red, in: Capsule())
+                        .foregroundStyle(.white)
+                }
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .frame(minHeight: 44)
+            .background(
+                isActive
+                    ? Color(red: 0.66, green: 0.32, blue: 0.99).opacity(0.20)
+                    : Color.clear,
+                in: RoundedRectangle(cornerRadius: 8)
+            )
+            // Hvit tekst på den mørke system-sidebaren består også når
+            // iPadOS legger material/dimming bak NavigationSplitView.
+            .foregroundStyle(Color.white)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("sidebar.\(item.rawValue)")
+        .macCatalystHover()
+    }
+
+    @ViewBuilder
+    private func detailFor(_ item: SidebarItem) -> some View {
+        switch item {
+        case .oversikt:     OversiktView()
+        case .kart:         KartView()
+        case .leads:        LeadsView()
+        case .moter:        MeetingsView()
+        case .team:         TeamView()
+        case .leadbook:     LeadbookView()
+        case .salgsledelse: SalgsledelseView()
+        case .leadgridGo:   LeadgridGoDashboardView()
+        case .kvalitet:     KvalitetView()
+        case .anbud:        AnbudView()
+        case .canvas:       CanvasView()
+        case .hub:          LeadgridHubView(embedded: true)
+        case .agent:        LeadgridAgentChatView(projectId: nil)
+        }
+    }
+
+    @ViewBuilder
+    private func loadingPlaceholder(_ title: String, systemImage: String) -> some View {
+        ContentUnavailableView(
+            "Logger inn …",
+            systemImage: systemImage,
+            description: Text("Vent et øyeblikk mens vi henter \(title.lowercased()).")
+        )
+    }
+}

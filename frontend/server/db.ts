@@ -6,10 +6,9 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from '../shared/database-persistence-schema';
+import { requireDatabaseUrl } from './database-url';
 
-// Neon PostgreSQL connection string
-const connectionString = process.env.DATABASE_URL ||
-  'postgresql://neondb_owner:npg_RIFOSAo81mLc@ep-divine-rice-a6k2cock.us-west-2.aws.neon.tech/neondb?sslmode=require';
+const connectionString = requireDatabaseUrl();
 
 // Create PostgreSQL connection pool
 const pool = new Pool({
@@ -35,4 +34,3 @@ pool.on('error', (err: Error) => {
 });
 
 export default db;
-

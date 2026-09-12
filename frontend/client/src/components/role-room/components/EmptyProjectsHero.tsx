@@ -60,7 +60,7 @@ export const EmptyProjectsHero = ({
             mb: 2.5,
           }}
         >
-          <SparkleIcon sx={{ fontSize: 36, color: '#b86bff' }} />
+          <SparkleIcon sx={{ fontSize: 36, color: 'var(--role-accent, #b86bff)' }} />
         </Box>
 
         <Typography
@@ -95,7 +95,7 @@ export const EmptyProjectsHero = ({
             startIcon={<AddIcon />}
             onClick={onCreateProject}
             sx={{
-              bgcolor: '#b86bff',
+              bgcolor: 'var(--role-accent, #b86bff)',
               color: '#fff',
               fontWeight: 700,
               px: 3.5,
@@ -114,7 +114,7 @@ export const EmptyProjectsHero = ({
               size="large"
               onClick={onOpenDemo}
               sx={{
-                color: '#b86bff',
+                color: 'var(--role-accent, #b86bff)',
                 borderColor: 'rgba(184,107,255,0.5)',
                 fontWeight: 600,
                 px: 3.5,
@@ -122,7 +122,7 @@ export const EmptyProjectsHero = ({
                 fontSize: '0.95rem',
                 minHeight: 48,
                 '&:hover': {
-                  borderColor: '#b86bff',
+                  borderColor: 'var(--role-accent, #b86bff)',
                   bgcolor: 'rgba(184,107,255,0.08)',
                 },
               }}

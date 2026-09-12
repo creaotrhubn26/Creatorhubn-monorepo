@@ -1,6 +1,9 @@
 import { Box, Chip, Container, Stack, Typography } from '@mui/material';
 import MovieFilterIcon from '@mui/icons-material/MovieFilter';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Etterproduksjon-pillar — Industry Data for post-prod-segmentet i norsk
@@ -63,6 +66,12 @@ const PAINS: WorkflowPain[] = [
 ];
 
 export function EtterproduksjonNorgePage() {
+  const cmsBlocks = useCmsBlocks('etterproduksjon-norge-2026');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"
