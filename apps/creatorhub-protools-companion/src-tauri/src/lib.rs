@@ -73,6 +73,7 @@ struct AppStateDto {
     easeverse_project_id: Option<String>,
     suggested_project_name: Option<String>,
     watching: bool,
+    auto_watch: bool,
     pending_bounces: usize,
     pending_session_info: bool,
     last_queue_error: Option<String>,
@@ -119,6 +120,7 @@ fn get_state(cfg: State<'_, SharedConfig>, w: State<'_, SharedWatcher>) -> AppSt
         easeverse_track_id: c.easeverse_track_id.clone(),
         audio_room_id: c.audio_room_id.clone(),
         watching: watcher::is_running(w.inner()),
+        auto_watch: c.auto_watch,
         pending_bounces: c.pending_bounces.len(),
         pending_session_info: c.session_info_pending,
         last_queue_error: c.session_info_last_error.clone().or_else(|| {
@@ -226,6 +228,7 @@ async fn list_tracks(cfg: State<'_, SharedConfig>) -> Result<Value, String> {
 
 #[tauri::command]
 async fn setup_session(
+    app: AppHandle,
     name: String,
     session_type: Option<String>,
     easeverse_track_id: Option<String>,
@@ -234,6 +237,7 @@ async fn setup_session(
     bounce_dir: Option<String>,
     protools_tier: Option<String>,
     cfg: State<'_, SharedConfig>,
+    w: State<'_, SharedWatcher>,
 ) -> Result<SessionInfoDto, String> {
     let snap = snapshot(cfg.inner());
     let token = snap.token.ok_or("Ikke paret")?;
@@ -264,6 +268,8 @@ async fn setup_session(
         .get("audio_review_project_id")
         .and_then(|v| v.as_str())
         .map(|x| x.to_string());
+    let should_auto_watch = session_info_path.as_deref().is_some_and(|path| !path.trim().is_empty())
+        || bounce_dir.as_deref().is_some_and(|path| !path.trim().is_empty());
     {
         let mut c = cfg.lock().unwrap();
         c.session_id = Some(id.clone());
@@ -273,7 +279,15 @@ async fn setup_session(
         c.easeverse_track_id = selected_track_id;
         c.audio_room_id = linked.clone();
         c.protools_tier = selected_tier;
+        c.auto_watch = should_auto_watch;
         config::save(&c)?;
+    }
+    if should_auto_watch {
+        if let Err(error) = watcher::start(app.clone(), cfg.inner().clone(), w.inner().clone()) {
+            emit_activity(&app, "error", &format!("Automatisk overvåking kunne ikke starte: {}", error));
+        } else {
+            emit_activity(&app, "info", "Automatisk overvåking er aktiv og gjenopptas etter omstart");
+        }
     }
     Ok(SessionInfoDto {
         id,
@@ -466,5 +480,14 @@ mod tests {
 
         config.device_token = Some("  ".into());
         assert!(!command_polling_ready(&config));
+    }
+
+    #[test]
+    fn new_session_can_enable_durable_watching_without_manual_start() {
+        let info_path = Some("/sessions/Mix.txt".to_string());
+        let bounce_dir: Option<String> = None;
+        let should_auto_watch = info_path.as_deref().is_some_and(|path| !path.trim().is_empty())
+            || bounce_dir.as_deref().is_some_and(|path| !path.trim().is_empty());
+        assert!(should_auto_watch);
     }
 }

@@ -261,6 +261,8 @@ const DirectorWorkspace = lazyWithRetry(() => import('./director/DirectorWorkspa
 const CinematographerWorkspace = lazyWithRetry(() => import('./cinematographer/CinematographerWorkspace').then(m => ({ default: m.CinematographerWorkspace })));
 const FirstAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-director/FirstAssistantDirectorWorkspace').then(m => ({ default: m.FirstAssistantDirectorWorkspace })));
 const SecondAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-director/SecondAssistantDirectorWorkspace').then(m => ({ default: m.SecondAssistantDirectorWorkspace })));
+const ProductionManagementWorkspace = lazyWithRetry(() => import('./production-management/ProductionManagementWorkspace').then(m => ({ default: m.ProductionManagementWorkspace })));
+const ProductionCoordinationWorkspace = lazyWithRetry(() => import('./production-coordination/ProductionCoordinationWorkspace').then(m => ({ default: m.ProductionCoordinationWorkspace })));
 const CallSheetGenerator = lazyWithRetry(() => import('./CallSheetGenerator').then(m => ({ default: m.CallSheetGenerator })));
 const SharingPanel = lazyWithRetry(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
 const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
@@ -386,6 +388,7 @@ const getCrewRoleIcon = (role: string): ReactElement => {
     producer: <BusinessIcon {...iconProps} />,
     casting_director: <SupervisorAccountIcon {...iconProps} />,
     production_manager: <SupervisorAccountIcon {...iconProps} />,
+    production_coordinator: <SupervisorAccountIcon {...iconProps} />,
     camera_operator: <CameraAltIcon {...iconProps} />,
     camera_assistant: <CameraAltIcon {...iconProps} />,
     cinematographer: <CameraAltIcon {...iconProps} />,
@@ -1492,6 +1495,7 @@ type RoleRoomProjectWorkspaceState = {
           'producer',
           'casting_director',
           'production_manager',
+          'production_coordinator',
           'camera_team',
           'writer',
           'script_editor',
@@ -1517,6 +1521,7 @@ type RoleRoomProjectWorkspaceState = {
         'producer',
         'casting_director',
         'production_manager',
+        'production_coordinator',
         'camera_team',
         'writer',
         'script_editor',
@@ -2223,6 +2228,16 @@ type RoleRoomProjectWorkspaceState = {
   const handleOpenFirstAssistantDirectorWorkspace = useCallback(() => {
     setWorkspaceLensPreference('assistant-direction');
     setFirstAssistantDirectorSurface('today');
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleOpenProductionManagementWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('production-management');
+    navigateToTab(0);
+  }, [navigateToTab]);
+
+  const handleOpenProductionCoordinationWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('production-coordination');
     navigateToTab(0);
   }, [navigateToTab]);
 
@@ -2996,6 +3011,7 @@ type RoleRoomProjectWorkspaceState = {
       producer: branding.tokens.labels.roleProducerLabel,
       casting_director: branding.tokens.labels.roleCastingDirectorLabel,
       production_manager: branding.tokens.labels.roleProductionManagerLabel,
+      production_coordinator: 'Produksjonskoordinator',
       first_ad: 'Innspillingsleder / 1st AD',
       first_assistant_director: 'Innspillingsleder / 1st AD',
       '1st_ad': 'Innspillingsleder / 1st AD',
@@ -3041,6 +3057,7 @@ type RoleRoomProjectWorkspaceState = {
         'producer',
         'casting_director',
         'production_manager',
+        'production_coordinator',
         'first_ad',
         'second_ad',
         'camera_team',
@@ -3066,6 +3083,7 @@ type RoleRoomProjectWorkspaceState = {
     if (['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalized)) return 'camera_team';
     if (normalized === 'casting_director') return 'casting_director';
     if (normalized === 'production_manager') return 'production_manager';
+    if (normalized === 'production_coordinator') return 'production_coordinator';
     if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalized)) return 'first_ad';
     if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalized)) return 'second_ad';
     if (normalized === 'camera_team' || normalized === 'camera_operator') return 'camera_team';
@@ -3126,11 +3144,16 @@ type RoleRoomProjectWorkspaceState = {
     }
 
     const permissionState = buildPermissionStateFromRole(userRole);
+    const rolePermissions = {
+      ...castingAuthService.getDefaultPermissions(userRole.role),
+      ...(userRole.permissions ?? {}),
+    };
     const hasEditAccess = permissionState.canEditCasting
       || permissionState.canEditProduction
       || permissionState.canEditShotLists
       || permissionState.canManageCrew
-      || permissionState.canManageLocations;
+      || permissionState.canManageLocations
+      || rolePermissions.canCoordinateProduction === true;
     const hasDecisionAccess = permissionState.canApprove || permissionState.canRequestChanges;
 
     if (
@@ -3183,6 +3206,14 @@ type RoleRoomProjectWorkspaceState = {
     'second_assistant_director',
     '2nd_ad',
   ].includes(normalizedRequestedProjectRole);
+  const hasProductionManagerPersona = [
+    'production_manager',
+    'production manager',
+  ].includes(normalizedRequestedProjectRole);
+  const hasProductionCoordinatorPersona = [
+    'production_coordinator',
+    'production coordinator',
+  ].includes(normalizedRequestedProjectRole);
   const accountRoleLabel = adminUser?.role ? getHeaderRoleLabel(adminUser.role) : '';
   const projectRoleLabel = currentUserRole?.role
     ? currentUserRole.role === 'camera_team' && hasCinematographerPersona
@@ -3224,10 +3255,25 @@ type RoleRoomProjectWorkspaceState = {
     '2nd_ad',
   ].includes(normalizedCurrentProjectRole)
     && (!isRoleRoomAdminSession || hasSecondAssistantDirectorPersona);
+  const isAssignedProductionManagerProjectRole = normalizedCurrentProjectRole === 'production_manager'
+    && (!isRoleRoomAdminSession || hasProductionManagerPersona || mappedSessionProjectRole === 'production_manager');
+  const isAssignedProductionCoordinatorProjectRole = normalizedCurrentProjectRole === 'production_coordinator'
+    && (!isRoleRoomAdminSession || hasProductionCoordinatorPersona || mappedSessionProjectRole === 'production_coordinator');
   const canUseDirectorWorkspace = isAssignedDirectorProjectRole || isRoleRoomAdminSession;
   const canUseCinematographerWorkspace = isAssignedCinematographerProjectRole || isRoleRoomAdminSession;
   const canUseFirstAssistantDirectorWorkspace = isAssignedFirstAssistantDirectorProjectRole || isRoleRoomAdminSession;
   const canUseAssistantDirectorWorkspace = canUseFirstAssistantDirectorWorkspace || isAssignedSecondAssistantDirectorProjectRole;
+  const canUseProductionManagementWorkspace = isAssignedProductionManagerProjectRole || isRoleRoomAdminSession;
+  const hasProductionCoordinationGrant = currentUserRole
+    ? Boolean({
+        ...castingAuthService.getDefaultPermissions(currentUserRole.role),
+        ...(currentUserRole.permissions ?? {}),
+      }.canCoordinateProduction)
+    : false;
+  const canUseProductionCoordinationWorkspace = isAssignedProductionCoordinatorProjectRole
+    || isAssignedProductionManagerProjectRole
+    || hasProductionCoordinationGrant
+    || isRoleRoomAdminSession;
   const effectiveWorkspaceLens: RoleRoomWorkspaceLens = (
     canUseDirectorWorkspace
     && (workspaceLensPreference === 'director' || (workspaceLensPreference === null && isAssignedDirectorProjectRole))
@@ -3245,7 +3291,19 @@ type RoleRoomProjectWorkspaceState = {
           || (workspaceLensPreference === null && (isAssignedFirstAssistantDirectorProjectRole || isAssignedSecondAssistantDirectorProjectRole))
         )
         ? 'assistant-direction'
-        : 'full';
+        : canUseProductionManagementWorkspace
+          && (
+            workspaceLensPreference === 'production-management'
+            || (workspaceLensPreference === null && isAssignedProductionManagerProjectRole)
+          )
+          ? 'production-management'
+          : canUseProductionCoordinationWorkspace
+            && (
+              workspaceLensPreference === 'production-coordination'
+              || (workspaceLensPreference === null && isAssignedProductionCoordinatorProjectRole)
+            )
+            ? 'production-coordination'
+            : 'full';
   const getProjectRoleDetails = useCallback((project: CastingProject): {
     roleLabel: string;
     accessLabel: string;
@@ -5247,14 +5305,20 @@ type RoleRoomProjectWorkspaceState = {
       ? 'director'
       : effectiveWorkspaceLens === 'cinematography'
         ? 'cinematography'
-        : effectiveWorkspaceLens === 'assistant-direction'
+      : effectiveWorkspaceLens === 'assistant-direction'
           ? 'assistant-direction'
+          : effectiveWorkspaceLens === 'production-management'
+            ? 'production-management'
+          : effectiveWorkspaceLens === 'production-coordination'
+            ? 'production-coordination'
           : workspaceLensPreference === 'full'
             && (
               isAssignedDirectorProjectRole
               || isAssignedCinematographerProjectRole
               || isAssignedFirstAssistantDirectorProjectRole
               || isAssignedSecondAssistantDirectorProjectRole
+              || isAssignedProductionManagerProjectRole
+              || isAssignedProductionCoordinatorProjectRole
             )
             ? 'full'
             : '';
@@ -5262,8 +5326,12 @@ type RoleRoomProjectWorkspaceState = {
       ? directorSurface
       : effectiveWorkspaceLens === 'cinematography'
         ? cinematographerSurface
-        : effectiveWorkspaceLens === 'assistant-direction'
+      : effectiveWorkspaceLens === 'assistant-direction'
           ? firstAssistantDirectorSurface
+          : effectiveWorkspaceLens === 'production-management'
+            ? ''
+          : effectiveWorkspaceLens === 'production-coordination'
+            ? ''
           : contentProducerPlannerSurface !== 'overview'
             ? contentProducerPlannerSurface
             : '';
@@ -5314,6 +5382,8 @@ type RoleRoomProjectWorkspaceState = {
     isAssignedCinematographerProjectRole,
     isAssignedDirectorProjectRole,
     isAssignedFirstAssistantDirectorProjectRole,
+    isAssignedProductionManagerProjectRole,
+    isAssignedProductionCoordinatorProjectRole,
     isAssignedSecondAssistantDirectorProjectRole,
     isExternalClientPortalMode,
     workspaceLensPreference,
@@ -10985,8 +11055,130 @@ type RoleRoomProjectWorkspaceState = {
                 onOpenFullWorkspace={handleOpenFullWorkspace}
               />
             )
+          ) : currentProject && effectiveWorkspaceLens === 'production-management' ? (
+            <ProductionManagementWorkspace
+              key={`production-management-${currentProject.id}`}
+              project={currentProject}
+              readOnly={!permissions.canEditProduction || !canManageTab(CALENDAR_TAB_INDEX)}
+              dataLoading={canonicalProductionDataProjectId !== currentProject.id}
+              deliveryRefreshSignal={callSheetDeliveryRefreshSignal}
+              onOpenCallSheet={(productionDayId) => setCanonicalCallSheetDayId(productionDayId ?? null)}
+              onOpenSchedule={() => navigateToTab(CALENDAR_TAB_INDEX)}
+              onOpenCrew={() => navigateToTab(TEAM_TAB_INDEX)}
+              onOpenCoordination={handleOpenProductionCoordinationWorkspace}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+              onSaved={(updatedDay) => {
+                const apply = (project: CastingProject): CastingProject => ({
+                  ...project,
+                  productionDays: (project.productionDays ?? []).map((day) => day.id === updatedDay.id ? updatedDay : day),
+                });
+                setCurrentProject((project) => project ? apply(project) : project);
+                setProjects((items) => items.map((project) => project.id === currentProject.id ? apply(project) : project));
+              }}
+            />
+          ) : currentProject && effectiveWorkspaceLens === 'production-coordination' ? (
+            <ProductionCoordinationWorkspace
+              key={`production-coordination-${currentProject.id}`}
+              project={currentProject}
+              readOnly={!canUseProductionCoordinationWorkspace || !canManageTab(CALENDAR_TAB_INDEX)}
+              dataLoading={canonicalProductionDataProjectId !== currentProject.id}
+              onOpenCallSheet={(productionDayId) => setCanonicalCallSheetDayId(productionDayId ?? null)}
+              onOpenSchedule={() => navigateToTab(CALENDAR_TAB_INDEX)}
+              onOpenCrew={() => navigateToTab(TEAM_TAB_INDEX)}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+              onSaved={(updatedDay) => {
+                const apply = (project: CastingProject): CastingProject => ({
+                  ...project,
+                  productionDays: (project.productionDays ?? []).map((day) => day.id === updatedDay.id ? updatedDay : day),
+                });
+                setCurrentProject((project) => project ? apply(project) : project);
+                setProjects((items) => items.map((project) => project.id === currentProject.id ? apply(project) : project));
+              }}
+            />
           ) : (
             <>
+              {currentProject && canUseProductionCoordinationWorkspace ? (
+                <Box
+                  data-testid="production-coordination-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 },
+                    mt: { xs: 1.5, sm: 2 },
+                    px: { xs: 1.5, sm: 2 },
+                    py: 1.25,
+                    display: 'flex',
+                    alignItems: { xs: 'stretch', sm: 'center' },
+                    justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    gap: 1,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(14,165,233,0.07)',
+                    border: '1px solid rgba(56,189,248,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#e0f2fe', fontWeight: 750, fontSize: '0.9rem' }}>
+                      Produksjonskoordinering
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(186,230,253,0.72)', fontSize: '0.76rem' }}>
+                      Følg opp oppgaver, crew, leverandører, dokumenter, callsheet og daglig overlevering.
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    startIcon={<FactCheckIcon />}
+                    onClick={handleOpenProductionCoordinationWorkspace}
+                    sx={{
+                      minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE,
+                      color: '#bae6fd',
+                      borderColor: 'rgba(56,189,248,0.42)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Åpne koordinatorflate
+                  </Button>
+                </Box>
+              ) : null}
+              {currentProject && canUseProductionManagementWorkspace ? (
+                <Box
+                  data-testid="production-management-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 },
+                    mt: { xs: 1.5, sm: 2 },
+                    px: { xs: 1.5, sm: 2 },
+                    py: 1.25,
+                    display: 'flex',
+                    alignItems: { xs: 'stretch', sm: 'center' },
+                    justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    gap: 1,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(20,184,166,0.07)',
+                    border: '1px solid rgba(45,212,191,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#ecfeff', fontWeight: 750, fontSize: '0.9rem' }}>
+                      Produksjonsledelse
+                    </Typography>
+                    <Typography sx={{ color: 'rgba(204,251,241,0.7)', fontSize: '0.76rem' }}>
+                      Kontroller crew, logistikk, callsheet, avvik og dagskostnader i én arbeidsflate.
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    startIcon={<FactCheckIcon />}
+                    onClick={handleOpenProductionManagementWorkspace}
+                    sx={{
+                      minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE,
+                      color: '#99f6e4',
+                      borderColor: 'rgba(45,212,191,0.42)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Åpne produksjonsledelse
+                  </Button>
+                </Box>
+              ) : null}
               {currentProject && canUseDirectorWorkspace ? (
                 <Box
                   data-testid="director-workspace-launcher"
@@ -14894,6 +15086,8 @@ type RoleRoomProjectWorkspaceState = {
               <Suspense fallback={<Box sx={{ display: 'grid', placeItems: 'center', minHeight: 320 }}><CircularProgress /></Box>}>
                 <CallSheetGenerator
                   projectId={currentProject.id}
+                  project={currentProject}
+                  canonicalDataReady={canonicalProductionDataProjectId === currentProject.id}
                   productionDay={currentProject.productionDays?.find((day) => day.id === canonicalCallSheetDayId)}
                   productionDayId={canonicalCallSheetDayId}
                   scenes={currentProject.sceneBreakdowns || []}

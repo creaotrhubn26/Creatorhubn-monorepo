@@ -55,6 +55,7 @@ export const CREW_ROLE_COLOR_PALETTE: Record<string, string> = {
   director: '#ef4444',
   producer: '#f97316',
   production_manager: '#fb7185',
+  production_coordinator: '#38bdf8',
   cinematographer: '#8b5cf6',
   camera_operator: '#6366f1',
   camera_assistant: '#4f46e5',

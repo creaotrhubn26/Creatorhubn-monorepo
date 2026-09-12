@@ -19,6 +19,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import Logout from '@mui/icons-material/Logout';
 import AccountCircle from '@mui/icons-material/AccountCircle';
 import FolderOpen from '@mui/icons-material/FolderOpen';
+import Headphones from '@mui/icons-material/Headphones';
 import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -143,6 +144,16 @@ const WorkspaceHome: React.FC = () => {
               </Typography>
             </Box>
             <Stack direction="row" spacing={1} alignItems="center">
+              {category === 'music' && (
+                <Button
+                  variant="outlined"
+                  startIcon={<Headphones />}
+                  onClick={() => navigate('/sound-room')}
+                  sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 750, color: ws.text, borderColor: ws.accentBorder }}
+                >
+                  Sound Room
+                </Button>
+              )}
               <IconButton onClick={() => navigate('/profil')} sx={{ color: ws.textDim }} aria-label="Min profil"><AccountCircle /></IconButton>
               <IconButton onClick={() => { try { (logout as any)?.(); } catch { window.location.href = '/login'; } }} sx={{ color: ws.textDim }} aria-label="Logg ut"><Logout /></IconButton>
             </Stack>

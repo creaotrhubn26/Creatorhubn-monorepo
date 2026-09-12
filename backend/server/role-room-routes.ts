@@ -4093,6 +4093,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           'content_producer',
           'producer',
           'production_manager',
+          'production_coordinator',
           'director',
         ].includes(normalizedRequestedRole)
       ) {
@@ -4883,6 +4884,24 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           canRequestChanges: false,
           canViewEconomy: false,
         };
+      case 'production_coordinator':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canCoordinateProduction: true,
+          canManageCrew: false,
+          canManageLocations: false,
+          canEditShots: false,
+          canEditShotLists: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: false,
+          canViewEconomy: false,
+        };
       case 'first_ad':
       case 'first_assistant_director':
       case '1st_ad':
@@ -5074,6 +5093,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       'director',
       'producer',
       'production_manager',
+      'production_coordinator',
       'first_ad',
       'first_assistant_director',
       '1st_ad',
@@ -5693,6 +5713,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       'director',
       'producer',
       'production_manager',
+      'production_coordinator',
       'content_producer',
     ].includes(effectiveRoleRecord.role)) {
       return ['producer_team', 'all'];

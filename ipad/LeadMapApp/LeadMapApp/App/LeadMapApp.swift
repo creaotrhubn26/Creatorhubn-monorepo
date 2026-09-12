@@ -380,6 +380,13 @@ struct RootView: View {
                     .allowsHitTesting(false)
             }
         }
+        .overlay(alignment: .bottomTrailing) {
+            if appState.isAuthenticated {
+                LeadgridProductOnboardingGuide()
+                    .padding(.horizontal, DeviceIdiom.isPhone ? 12 : 20)
+                    .padding(.bottom, DeviceIdiom.isPhone ? 76 : 20)
+            }
+        }
         #if DEBUG
         .overlay(alignment: .bottomTrailing) {
             if ProcessInfo.processInfo.environment["QA_NETWORK_CONTROLS"] == "1" {
@@ -427,6 +434,13 @@ struct RootView: View {
         #endif
         .task {
             await appState.bootstrap()
+            #if DEBUG
+            // Staging-UI-testene skal være hermetiske selv når samme simulator
+            // tidligere har blitt avbrutt med ventende eller feilede handlinger.
+            if ProcessInfo.processInfo.environment["QA_RESET_OFFLINE_QUEUE"] == "1" {
+                await OfflineActionQueue.shared.clearAll()
+            }
+            #endif
             // Start Leadgrid-polling så snart auth er på plass.
             if appState.api != nil {
                 appState.startLeadgridPolling()
@@ -537,6 +551,327 @@ struct RootView: View {
         // registrerer shortcut uten å ta plass i layout. No-op på iOS/iPadOS
         // (macCatalystKeyboardShortcuts gater seg selv).
         .background { GlobalKeyboardShortcuts() }
+    }
+}
+
+// MARK: - Project-scoped product guide
+
+private struct LeadgridProductOnboardingGuide: View {
+    @Environment(AppState.self) private var appState
+    @State private var tourState: LeadgridOnboardingState?
+    @State private var isBusy = false
+    @State private var errorText: String?
+
+    private static let steps = [
+        "welcome", "choose_project", "find_candidates",
+        "approve_candidates", "work_leads", "follow_up",
+    ]
+
+    private var scopeKey: String {
+        [
+            appState.currentUserId,
+            appState.activeOrganizationId,
+            appState.activeLeadgridProjectId,
+            appState.roleInOrg,
+        ]
+        .map { $0 ?? "-" }
+        .joined(separator: "|")
+    }
+
+    private var projectName: String {
+        appState.activeLeadgridProject?.name ?? "kundeprosjektet"
+    }
+
+    private var copy: (title: String, body: String, action: String, icon: String)? {
+        switch tourState?.currentStep {
+        case "welcome":
+            return (
+                "Bli trygg i Leadgrid",
+                "Denne korte guiden viser hele veien fra søk til oppfølging. Fremdriften gjelder bare \(projectName) og rollen din her.",
+                "Start guiden",
+                "hand.wave.fill"
+            )
+        case "choose_project":
+            return (
+                "Sjekk kundeprosjektet",
+                "Du jobber nå i \(projectName). Leads, Discovery-profiler, maler og aktiviteter holdes adskilt fra andre prosjekter.",
+                "Dette er riktig prosjekt",
+                "building.2.fill"
+            )
+        case "find_candidates":
+            return (
+                "Finn bedrifter",
+                "Åpne «Hva vil du finne?» fra Kart. Enkel versjon spør bare hvem, hvor og hvor mange.",
+                "Åpne Discovery",
+                "sparkle.magnifyingglass"
+            )
+        case "approve_candidates":
+            return (
+                "Godkjenn før noe lagres",
+                "Discovery viser forslag. Kontroller treffet og godkjenn det først når bedriften passer profilen.",
+                "Se kandidatene",
+                "checkmark.seal.fill"
+            )
+        case "work_leads":
+            return (
+                "Arbeid med godkjente leads",
+                "En godkjent kandidat blir et CRM-lead under Leads og på kartet. Leadbook er kun for maler, Pondus og opplæring.",
+                "Åpne Leads",
+                "person.crop.rectangle.stack.fill"
+            )
+        case "follow_up":
+            return (
+                "Avtal neste steg",
+                "Åpne leadet, velg riktig kontaktkanal og lagre neste oppfølging. Leadgrid minner deg på det som forfaller.",
+                "Fullfør guiden",
+                "calendar.badge.checkmark"
+            )
+        default:
+            return nil
+        }
+    }
+
+    var body: some View {
+        if let tourState, let copy {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: copy.icon)
+                        .font(.appScaled(size: 18, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.75, green: 0.45, blue: 1.0))
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(copy.title)
+                            .font(.appScaled(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("Guide · \(stepNumber(tourState.currentStep)) av \(Self.steps.count)")
+                            .font(.appScaled(size: 11, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.58))
+                    }
+                    Spacer(minLength: 8)
+                    Button {
+                        Task { await skip(projectId: tourState.projectId) }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.appScaled(size: 12, weight: .bold))
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.white.opacity(0.70))
+                    .disabled(isBusy)
+                    .accessibilityLabel("Avslutt Leadgrid-guiden")
+                    .accessibilityIdentifier("product-onboarding.skip")
+                }
+
+                ProgressView(
+                    value: Double(max(0, stepNumber(tourState.currentStep) - 1)),
+                    total: Double(Self.steps.count)
+                )
+                .tint(Color(red: 0.66, green: 0.32, blue: 0.99))
+
+                Text(copy.body)
+                    .font(.appScaled(size: 13))
+                    .foregroundStyle(Color.white.opacity(0.76))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let errorText {
+                    Label(errorText, systemImage: "wifi.exclamationmark")
+                        .font(.appScaled(size: 11, weight: .medium))
+                        .foregroundStyle(Color.orange)
+                }
+
+                Button {
+                    Task { await advance(tourState) }
+                } label: {
+                    HStack {
+                        if isBusy { ProgressView().tint(.white) }
+                        Text(copy.action)
+                        Spacer()
+                        Image(systemName: "arrow.right")
+                    }
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 44)
+                    .background(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.66, green: 0.32, blue: 0.99),
+                                Color(red: 0.75, green: 0.45, blue: 1.0),
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 11)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isBusy)
+                .accessibilityIdentifier("product-onboarding.primary")
+            }
+            .padding(16)
+            .frame(maxWidth: DeviceIdiom.isPhone ? 360 : 390)
+            .background(
+                Color(red: 0.08, green: 0.06, blue: 0.13).opacity(0.98),
+                in: RoundedRectangle(cornerRadius: 18)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(Color(red: 0.66, green: 0.32, blue: 0.99).opacity(0.35), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.45), radius: 22, y: 10)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("product-onboarding.card")
+            .task(id: scopeKey) { await load() }
+        } else {
+            Color.clear
+                .frame(width: 0, height: 0)
+                .task(id: scopeKey) { await load() }
+        }
+    }
+
+    private func stepNumber(_ step: String) -> Int {
+        (Self.steps.firstIndex(of: step) ?? 0) + 1
+    }
+
+    @MainActor
+    private func load() async {
+        errorText = nil
+        guard let projectId = appState.activeLeadgridProjectId else {
+            tourState = nil
+            return
+        }
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["QA_PRODUCT_ONBOARDING"] == "1" {
+            tourState = LeadgridOnboardingState(
+                currentStep: "welcome",
+                stepsCompleted: [],
+                completed: false,
+                organizationId: appState.activeOrganizationId ?? "qa-organization",
+                projectId: projectId,
+                roleTrack: appState.roleInOrg ?? "admin",
+                onboardingVersion: 2,
+                startedAt: nil,
+                lastActivityAt: nil,
+                completedAt: nil,
+                skippedAt: nil
+            )
+            return
+        }
+        #endif
+        guard let api = appState.api else {
+            tourState = nil
+            return
+        }
+        do {
+            let response = try await api.fetchOnboardingState(projectId: projectId)
+            guard !Task.isCancelled,
+                  appState.activeLeadgridProjectId == projectId else { return }
+            let loaded = response.state
+            tourState = response.eligible
+                && loaded?.currentStep != "completed"
+                && loaded?.currentStep != "skipped"
+                ? loaded
+                : nil
+        } catch {
+            // The optional guide must never block use of the underlying CRM.
+            tourState = nil
+        }
+    }
+
+    @MainActor
+    private func advance(_ current: LeadgridOnboardingState) async {
+        guard !isBusy else { return }
+        isBusy = true
+        errorText = nil
+        defer { isBusy = false }
+        do {
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["QA_PRODUCT_ONBOARDING"] == "1" {
+                let currentIndex = Self.steps.firstIndex(of: current.currentStep) ?? 0
+                let next = Self.steps.indices.contains(currentIndex + 1)
+                    ? Self.steps[currentIndex + 1]
+                    : "completed"
+                tourState = next == "completed"
+                    ? nil
+                    : LeadgridOnboardingState(
+                        currentStep: next,
+                        stepsCompleted: current.stepsCompleted + [current.currentStep],
+                        completed: false,
+                        organizationId: current.organizationId,
+                        projectId: current.projectId,
+                        roleTrack: current.roleTrack,
+                        onboardingVersion: current.onboardingVersion,
+                        startedAt: current.startedAt,
+                        lastActivityAt: nil,
+                        completedAt: nil,
+                        skippedAt: nil
+                    )
+            } else {
+                guard let api = appState.api else {
+                    errorText = "Tilkoblingen er ikke klar. Prøv igjen."
+                    return
+                }
+                let response = try await api.advanceOnboarding(
+                    fromStep: current.currentStep,
+                    projectId: current.projectId
+                )
+                tourState = response.state.completed ? nil : response.state
+            }
+            #else
+            guard let api = appState.api else {
+                errorText = "Tilkoblingen er ikke klar. Prøv igjen."
+                return
+            }
+            let response = try await api.advanceOnboarding(
+                fromStep: current.currentStep,
+                projectId: current.projectId
+            )
+            tourState = response.state.completed ? nil : response.state
+            #endif
+
+            switch current.currentStep {
+            case "find_candidates", "approve_candidates":
+                appState.selectedSidebarItem = .kart
+                await appState.configureDiscovery()
+                appState.discoveryCoordinator.showWorkspace()
+            case "work_leads", "follow_up":
+                appState.selectedSidebarItem = .leads
+            default:
+                break
+            }
+        } catch {
+            errorText = "Kunne ikke lagre fremdriften. Prøv igjen."
+        }
+    }
+
+    @MainActor
+    private func skip(projectId: String) async {
+        guard !isBusy else { return }
+        isBusy = true
+        errorText = nil
+        defer { isBusy = false }
+        do {
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["QA_PRODUCT_ONBOARDING"] != "1" {
+                guard let api = appState.api else {
+                    errorText = "Tilkoblingen er ikke klar. Prøv igjen."
+                    return
+                }
+                try await api.skipOnboarding(projectId: projectId)
+            }
+            #else
+            guard let api = appState.api else {
+                errorText = "Tilkoblingen er ikke klar. Prøv igjen."
+                return
+            }
+            try await api.skipOnboarding(projectId: projectId)
+            #endif
+            tourState = nil
+        } catch {
+            errorText = "Kunne ikke avslutte guiden. Prøv igjen."
+        }
     }
 }
 
@@ -755,6 +1090,27 @@ struct MainTabView: View {
             // så KartView kan konsumere `pendingMapFocus` og zoome dit (2026-08-19).
             .onChange(of: state.pendingMapFocus) { _, newValue in
                 if newValue != nil { selection = 1 }
+            }
+            // Productguiden og øvrige globale deep-links bruker samme
+            // `selectedSidebarItem` som iPad. Speil kjernedestinasjonene til
+            // iPhones lokale tab-selection så «Åpne Leads/Kart» faktisk virker.
+            .onChange(of: state.selectedSidebarItem) { _, item in
+                switch item {
+                case .oversikt: selection = 0
+                case .kart: selection = 1
+                case .leads where EntitlementStore.shared.canUse(.leads): selection = 2
+                case .moter: selection = 3
+                default: break
+                }
+            }
+            .onChange(of: selection) { _, tab in
+                switch tab {
+                case 0: state.selectedSidebarItem = .oversikt
+                case 1: state.selectedSidebarItem = .kart
+                case 2: state.selectedSidebarItem = .leads
+                case 3: state.selectedSidebarItem = .moter
+                default: break
+                }
             }
         }
         .id(dynamicTypeSize)
@@ -1133,6 +1489,7 @@ struct MainSidebarView: View {
         return .all
     }()
     @State private var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
+    @State private var showsMoreFeatures = false
 
     var body: some View {
         NavigationSplitView(
@@ -1150,7 +1507,10 @@ struct MainSidebarView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .onAppear(perform: applyQATabIfNeeded)
+        .onAppear {
+            applyQATabIfNeeded()
+            revealSelectedFeatureIfNeeded(state.selectedSidebarItem)
+        }
         .task(id: dynamicTypeSize) {
             // NavigationSplitView må først ha fullført sitt eget layoutpass
             // før en programmatisk kolonneendring blir respektert.
@@ -1166,8 +1526,9 @@ struct MainSidebarView: View {
                 preferredCompactColumn = .detail
             }
         }
-        .onChange(of: state.selectedSidebarItem) { _, _ in
+        .onChange(of: state.selectedSidebarItem) { _, selected in
             preferredCompactColumn = .detail
+            revealSelectedFeatureIfNeeded(selected)
         }
     }
 
@@ -1193,6 +1554,13 @@ struct MainSidebarView: View {
         preferredCompactColumn = .detail
     }
 
+    private func revealSelectedFeatureIfNeeded(_ item: SidebarItem) {
+        let secondary: Set<SidebarItem> = [
+            .leadgridGo, .kvalitet, .anbud, .canvas, .hub,
+        ]
+        if secondary.contains(item) { showsMoreFeatures = true }
+    }
+
     @ViewBuilder
     private var sidebarList: some View {
         @Bindable var bindableState = state
@@ -1211,15 +1579,6 @@ struct MainSidebarView: View {
             }
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
-            Text("Hovedfaner")
-                .font(.headline.weight(.bold))
-                .foregroundStyle(Color.white)
-                .textCase(nil)
-                .accessibilityAddTraits(.isHeader)
-                // Solid bakgrunn gir audit-verktøyet et entydig
-                // kontrastgrunnlag også når sidebar-materialet er transparent.
-                .listRowBackground(Color(red: 0.05, green: 0.04, blue: 0.10))
-                .listRowSeparator(.hidden)
 
             // Salgsledelse skjules for ikke-ledere (rolle-gate; viewet
             // vakter i tillegg selv mot deep-link/persistert valg).
@@ -1242,12 +1601,69 @@ struct MainSidebarView: View {
                 }
                 return true
             }
-            ForEach(visibleItems) { item in
-                sidebarRow(
-                    item,
-                    badge: item == .leads ? state.leadgridUnreadCount : 0,
-                    selection: $bindableState.selectedSidebarItem
-                )
+            let workItems: [SidebarItem] = [.oversikt, .kart, .leads, .moter]
+            let teamItems: [SidebarItem] = [.team, .leadbook, .salgsledelse]
+            let moreItems: [SidebarItem] = [.leadgridGo, .kvalitet, .anbud, .canvas, .hub]
+
+            Section("Arbeid") {
+                ForEach(workItems.filter(visibleItems.contains)) { item in
+                    sidebarRow(
+                        item,
+                        badge: item == .leads ? state.leadgridUnreadCount : 0,
+                        selection: $bindableState.selectedSidebarItem
+                    )
+                }
+            }
+
+            if visibleItems.contains(.agent) {
+                Section("Assistent") {
+                    sidebarRow(
+                        .agent,
+                        badge: 0,
+                        selection: $bindableState.selectedSidebarItem
+                    )
+                }
+            }
+
+            Section("Team og læring") {
+                ForEach(teamItems.filter(visibleItems.contains)) { item in
+                    sidebarRow(
+                        item,
+                        badge: 0,
+                        selection: $bindableState.selectedSidebarItem
+                    )
+                }
+            }
+
+            Section("Flere funksjoner") {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showsMoreFeatures.toggle()
+                    }
+                } label: {
+                    HStack {
+                        Label("Flere funksjoner", systemImage: "square.grid.2x2")
+                        Spacer()
+                        Image(systemName: showsMoreFeatures ? "chevron.up" : "chevron.down")
+                            .font(.caption.bold())
+                            .foregroundStyle(Color.white.opacity(0.65))
+                    }
+                    .foregroundStyle(Color.white)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("sidebar.more-features")
+
+                if showsMoreFeatures {
+                    ForEach(moreItems.filter(visibleItems.contains)) { item in
+                        sidebarRow(
+                            item,
+                            badge: 0,
+                            selection: $bindableState.selectedSidebarItem
+                        )
+                    }
+                }
             }
         }
         .listStyle(.sidebar)
@@ -1292,6 +1708,7 @@ struct MainSidebarView: View {
             .foregroundStyle(Color.white)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("sidebar.\(item.rawValue)")
         .macCatalystHover()
     }
 

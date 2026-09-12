@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import CryptoKit
 
 // Fase 2: sync mot The Role Room. Bruker NØYAKTIG samme HTTP-flate som
 // web-klienten (manuscriptService/settingsService):
@@ -933,9 +934,18 @@ actor RoleRoomAPIClient {
         }
     }
 
+    nonisolated static func stableImageCacheKey(for path: String) -> String {
+        let digest = SHA256.hash(data: Data(path.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        return "img-\(hex)"
+    }
+
     /// Hent remote panel-bilde (Bearer + 302-følging), disk-cachet.
     func fetchRemoteImageData(path: String) async -> Data? {
-        let key = "img-\(path.hashValue)"
+        // Swift hashValue randomiseres per prosess og ga derfor cache-miss
+        // ved hver appstart. Stabil SHA-256 gjør at fulloppløselig original
+        // er tilgjengelig umiddelbart etter første vellykkede nedlasting.
+        let key = Self.stableImageCacheKey(for: path)
         if let cached = try? Data(contentsOf: Self.cacheDirectory.appendingPathComponent("\(key).bin")) {
             return cached
         }

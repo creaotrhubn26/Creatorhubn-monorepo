@@ -177,6 +177,7 @@ const ROLE_KEYWORDS: Array<[RegExp, CrewRole]> = [
   [/produsent|produser/i, 'producer'],
   [/casting/i, 'casting_director'],
   [/produksjonsleder|line.?produ/i, 'production_manager'],
+  [/produksjonskoordinator|production.?coordinator/i, 'production_coordinator'],
   [/produksjonsassist|runner/i, 'production_assistant'],
   [/script|skript/i, 'script_supervisor'],
   [/location|lokasjon/i, 'location_manager'],

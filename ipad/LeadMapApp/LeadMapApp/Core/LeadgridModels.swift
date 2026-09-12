@@ -760,15 +760,33 @@ struct LeadsExportSummary: Codable, Hashable {
 }
 
 // ============================================================
-// MARK: - Fase 16: Onboarding-state (org-overordnet wizard)
+// MARK: - Product onboarding (user + organization + project + role)
 // ============================================================
 
 struct LeadgridOnboardingState: Codable, Hashable {
+    let currentStep: String
+    let stepsCompleted: [String]
     let completed: Bool
-    let currentStep: String?
-    let stepsCompleted: [String]?
-    let stepsRemaining: [String]?
+    let organizationId: String
+    let projectId: String
+    let roleTrack: String
+    let onboardingVersion: Int
+    let startedAt: String?
+    let lastActivityAt: String?
+    let completedAt: String?
     let skippedAt: String?
+}
+
+struct LeadgridOnboardingStateResponse: Codable, Hashable {
+    let state: LeadgridOnboardingState?
+    let eligible: Bool
+    let isNew: Bool?
+}
+
+struct LeadgridOnboardingAdvanceResponse: Codable, Hashable {
+    let ok: Bool
+    let nextStep: String
+    let state: LeadgridOnboardingState
 }
 
 // ============================================================

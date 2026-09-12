@@ -1934,11 +1934,12 @@ struct MeetingsView: View {
                 .foregroundStyle(.white)
             Text(DemoModeManager.isDentumTour
                  ? "Book neste møte fra en godkjent Dentum-lead."
-                 : "Bok et møte fra en lead, eller skru på demo-modus for eksempler.")
+                 : "Åpne en lead under Leads og velg «Book møte».")
                 .font(.appScaled(size: 12))
                 .foregroundStyle(MtBrand.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380)
+            openLeadsButton(identifier: "meetings.empty-today.open-leads")
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 44)
@@ -2009,11 +2010,12 @@ struct MeetingsView: View {
                         .foregroundStyle(MtBrand.textSecondary)
                     Text(DemoModeManager.isDentumTour
                          ? "Det finnes ingen flere møter i Dentum-prosjektet ennå."
-                         : "Bok et møte fra en lead, eller skru på demo-modus for eksempler.")
+                         : "Åpne en lead under Leads og velg «Book møte».")
                         .font(.appScaled(size: 10))
                         .foregroundStyle(MtBrand.textTertiary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 320)
+                    openLeadsButton(identifier: "meetings.empty-upcoming.open-leads")
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 26)
@@ -2022,6 +2024,21 @@ struct MeetingsView: View {
         .padding(14)
         .background(MtBrand.card, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(MtBrand.stroke, lineWidth: 1))
+    }
+
+    private func openLeadsButton(identifier: String) -> some View {
+        Button {
+            appState.selectedSidebarItem = .leads
+        } label: {
+            Label("Åpne Leads", systemImage: "person.crop.rectangle.stack")
+                .font(.appScaled(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .background(MtBrand.purple, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier)
     }
 
     private func upcomingMini(_ u: UpcomingMeetingMini) -> some View {

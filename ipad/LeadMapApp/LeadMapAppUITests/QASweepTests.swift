@@ -227,6 +227,54 @@ final class QASweepTests: XCTestCase {
         }
     }
 
+    func testIPadMiniNavigationAndProjectGuideStayUnderstandable() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip("Denne kontrollen gjelder iPad-sidebaren.")
+        }
+        let app = launchApp(
+            tab: 0,
+            environment: [
+                "QA_TOUR": "dentum-outreach",
+                "QA_DEMO": "1",
+                "QA_PRODUCT_ONBOARDING": "1",
+            ]
+        )
+
+        let title = app.staticTexts["leadgrid-screen-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 8))
+        XCTAssertEqual(title.label, "Oversikt")
+        XCTAssertGreaterThanOrEqual(
+            title.frame.width,
+            64,
+            "Skjermtittelen skal ikke bli avkortet til én bokstav i iPad mini Split View"
+        )
+
+        XCTAssertTrue(app.buttons["sidebar.agent"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["sidebar.agent"].isHittable)
+
+        let more = app.buttons["sidebar.more-features"]
+        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["sidebar.leadgridGo"].exists)
+        more.tap()
+        XCTAssertTrue(app.buttons["sidebar.leadgridGo"].waitForExistence(timeout: 3))
+
+        let guide = app.otherElements["product-onboarding.card"]
+        XCTAssertTrue(guide.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Bli trygg i Leadgrid"].exists)
+        app.buttons["product-onboarding.primary"].tap()
+        XCTAssertTrue(app.staticTexts["Sjekk kundeprosjektet"].waitForExistence(timeout: 3))
+
+        snap(app, "ipad-mini-forenklet-sidepanel-og-prosjektguide")
+
+        let hideSidebar = app.buttons["Hide Sidebar"].firstMatch
+        if hideSidebar.exists && hideSidebar.isHittable { hideSidebar.tap() }
+        XCTAssertTrue(title.waitForExistence(timeout: 3))
+        XCTAssertEqual(title.label, "Oversikt")
+
+        snap(app, "ipad-mini-forenklet-navigasjon-og-prosjektguide")
+        app.terminate()
+    }
+
     // MARK: - Leads: rad-tap → detalj-sheet
 
     func testLeadsDetaljSheet() throws {
@@ -1296,7 +1344,8 @@ final class QASweepTests: XCTestCase {
         thirty.tap()
         XCTAssertTrue(summary.waitForExistence(timeout: 3))
         XCTAssertTrue(summary.label.contains("30"))
-        XCTAssertTrue(summary.label.contains("Leadbook"))
+        XCTAssertTrue(summary.label.contains("leads") || summary.label.contains("Leads"))
+        XCTAssertFalse(summary.label.contains("Leadbook"))
         XCTAssertTrue(summary.label.localizedCaseInsensitiveContains("hele Norge"))
         XCTAssertTrue(app.buttons["discovery.simple.preview"].isEnabled)
         snap(app, "discovery-enkel-klar")
@@ -1349,10 +1398,12 @@ final class QASweepTests: XCTestCase {
         guard let stagingURL = environment["LEADGRID_STAGING_BASE_URL"],
               let token = environment["LEADGRID_STAGING_BEARER_TOKEN"],
               let organizationID = environment["LEADGRID_STAGING_ORG_ID"],
-              !stagingURL.isEmpty, !token.isEmpty, !organizationID.isEmpty
+              let projectID = environment["LEADGRID_STAGING_PROJECT_ID"],
+              !stagingURL.isEmpty, !token.isEmpty,
+              !organizationID.isEmpty, !projectID.isEmpty
         else {
             throw XCTSkip(
-                "Krever LEADGRID_STAGING_BASE_URL, LEADGRID_STAGING_BEARER_TOKEN og LEADGRID_STAGING_ORG_ID"
+                "Krever staging-URL, bearer-token, org-ID og prosjekt-ID"
             )
         }
         guard let baseURL = URL(string: stagingURL),
@@ -1363,12 +1414,20 @@ final class QASweepTests: XCTestCase {
             return
         }
 
-        let uniqueName = "[E2E] iPad reconnect \(UUID().uuidString.prefix(8))"
+        let runID = UUID()
+        let uniqueName = "[E2E] iPad reconnect \(runID.uuidString.prefix(8))"
+        let coordinateBytes = runID.uuid
+        let latitude = 58.8 + Double(coordinateBytes.0) * 0.005
+        let longitude = 9.7 + Double(coordinateBytes.1) * 0.005
         let app = XCUIApplication()
         app.launchEnvironment["QA_BEARER_TOKEN"] = token
         app.launchEnvironment["LEADGRID_API_BASE_URL"] = stagingURL
         app.launchEnvironment["QA_NETWORK_CONTROLS"] = "1"
+        app.launchEnvironment["QA_RESET_OFFLINE_QUEUE"] = "1"
         app.launchEnvironment["QA_ORGANIZATION_ID"] = organizationID
+        app.launchEnvironment["QA_PROJECT_ID"] = projectID
+        app.launchEnvironment["QA_LEAD_LATITUDE"] = String(format: "%.6f", latitude)
+        app.launchEnvironment["QA_LEAD_LONGITUDE"] = String(format: "%.6f", longitude)
         app.launchEnvironment["QA_TAB"] = "2"
         app.launch()
 
@@ -1381,30 +1440,38 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(newLead.waitForExistence(timeout: 10))
         newLead.tap()
 
-        let name = app.textFields["lead-field-name"]
+        let name = app.textFields["add-lead.field.bedriftsnavn"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
         name.typeText(uniqueName)
-        app.buttons["lead-submit"].tap()
+        let submit = app.buttons["add-lead.save"]
+        XCTAssertTrue(submit.waitForExistence(timeout: 3))
+        submit.tap()
 
         XCTAssertTrue(
             app.staticTexts.containing(
                 NSPredicate(format: "label CONTAINS[c] %@", "lagret offline")
             ).firstMatch.waitForExistence(timeout: 8)
         )
-        XCTAssertTrue(app.staticTexts["offline-queue-pending-count"].waitForExistence(timeout: 5))
+        let syncStatus = app.buttons["global-sync-status"]
+        XCTAssertTrue(syncStatus.waitForExistence(timeout: 5))
+        XCTAssertTrue(syncStatus.label.localizedCaseInsensitiveContains("lagret lokalt"))
 
         app.buttons["qa-network-online"].tap()
         let pendingGone = NSPredicate(format: "exists == false")
         let drainExpectation = expectation(
             for: pendingGone,
-            evaluatedWith: app.staticTexts["offline-queue-pending-count"]
+            evaluatedWith: syncStatus
         )
         await fulfillment(of: [drainExpectation], timeout: 20)
 
-        var request = URLRequest(
-            url: baseURL.appendingPathComponent("api/admin-room/lead-map/leads")
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("api/admin-room/lead-map/leads"),
+            resolvingAgainstBaseURL: false
         )
+        components?.queryItems = [URLQueryItem(name: "project_id", value: projectID)]
+        let scopedLeadsURL = try XCTUnwrap(components?.url)
+        var request = URLRequest(url: scopedLeadsURL)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(organizationID, forHTTPHeaderField: "X-Organization-Id")
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -1489,6 +1556,7 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_BEARER_TOKEN"] = token
         app.launchEnvironment["LEADGRID_API_BASE_URL"] = stagingURL
         app.launchEnvironment["QA_NETWORK_CONTROLS"] = "1"
+        app.launchEnvironment["QA_RESET_OFFLINE_QUEUE"] = "1"
         app.launchEnvironment["QA_ORGANIZATION_ID"] = organizationID
         app.launchEnvironment["QA_PROJECT_ID"] = projectID
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
@@ -1520,12 +1588,19 @@ final class QASweepTests: XCTestCase {
             ).firstMatch.exists
         )
         app.buttons["pondus-outcome-meeting_booked"].tap()
+        let closeCoach = app.buttons["Lukk"].firstMatch
+        XCTAssertTrue(closeCoach.waitForExistence(timeout: 5))
+        closeCoach.tap()
+        XCTAssertFalse(app.staticTexts["pondus-active-coach"].waitForExistence(timeout: 3))
+        let syncStatus = app.buttons["global-sync-status"]
+        XCTAssertTrue(syncStatus.waitForExistence(timeout: 5))
+        XCTAssertTrue(syncStatus.label.localizedCaseInsensitiveContains("lagret lokalt"))
         app.buttons["qa-network-online"].tap()
 
         let pendingGone = NSPredicate(format: "exists == false")
         let drained = expectation(
             for: pendingGone,
-            evaluatedWith: app.staticTexts["offline-queue-pending-count"]
+            evaluatedWith: syncStatus
         )
         await fulfillment(of: [drained], timeout: 20)
 

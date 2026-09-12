@@ -31,6 +31,26 @@ function text(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+function normalizeLegacyObjections(value: unknown): Array<{
+  id: string;
+  prompt: string;
+  response: string;
+}> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw, index) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const row = raw as Record<string, unknown>;
+    const prompt = text(row.prompt ?? row.objection);
+    const response = text(row.response);
+    if (!prompt || !response) return [];
+    const storedId = text(row.id).trim();
+    const id = /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(storedId)
+      ? storedId
+      : `legacy_objection_${index + 1}`;
+    return [{ id, prompt, response }];
+  });
+}
+
 function mapTemplate(row: Record<string, unknown>) {
   return {
     id: row.id,
@@ -40,7 +60,9 @@ function mapTemplate(row: Record<string, unknown>) {
     kind: row.kind,
     score: Number(row.score ?? 0),
     steps: row.steps ?? [],
-    objections: row.objections ?? [],
+    // Eldre rader kunne bruke `objection` og mangle stabil ID. Normaliser
+    // ved API-grensen slik at ett legacy-element ikke ødelegger hele malen.
+    objections: normalizeLegacyObjections(row.objections),
     analysis: row.analysis ?? {},
     analysis_meta: row.analysis_meta ?? {},
     created_by: row.created_by,

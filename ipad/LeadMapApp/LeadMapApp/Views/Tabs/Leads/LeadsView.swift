@@ -503,8 +503,8 @@ struct LeadsView: View {
             LogActivitySheet(lead: selectedLead)
         }
         .sheet(isPresented: $addLeadOpen) {
-            // Samme transaksjonelle modal som Kart-fanen: sheetet lukkes
-            // først når backend har bekreftet opprettelsen.
+            // Samme prosjektbundne modal som Kart-fanen. Ved nettbrudd lukkes
+            // skjemaet først etter at handlingen er sikkert lagret i offline-kø.
             LeadsAddLeadSheet { newLead in
                 guard !DemoModeManager.isActiveNonisolated else {
                     throw AddLeadSaveError(message: "Demo-modus — leaden blir ikke lagret")
@@ -515,11 +515,17 @@ struct LeadsView: View {
                 guard let projectId = appState.activeLeadgridProjectId else {
                     throw AddLeadSaveError(message: "Velg et kundeprosjekt før du lagrer leaden")
                 }
-                _ = try await api.createLeadAtPin(
-                    newLead.makeCreateRequest(projectID: projectId),
-                    organizationId: appState.activeOrganizationId
+                guard let organizationId = appState.activeOrganizationId else {
+                    throw AddLeadSaveError(message: "Velg en organisasjon før du lagrer leaden")
+                }
+                let leadId = try await newLead.saveResiliently(
+                    api: api,
+                    organizationID: organizationId,
+                    projectID: projectId
                 )
-                addLeadToast = "«\(newLead.companyName)» lagt til"
+                addLeadToast = leadId == nil
+                    ? "Leaden er lagret offline og sendes automatisk når nettet er tilbake."
+                    : "«\(newLead.companyName)» lagt til"
             }
         }
         .overlay(alignment: .top) {
@@ -1176,8 +1182,8 @@ struct LeadsView: View {
         .padding(.vertical, 48)
     }
 
-    /// Tom-tilstand når `LeadsData.leads.isEmpty` (typisk = demo-modus AV
-    /// og backend har enda ikke levert reelle leads).
+    /// Tre reelle veier inn i CRM-et. Eksempeldata er ikke en arbeidsflyt og
+    /// skal derfor aldri være anbefalt neste handling.
     private var emptyLeadsState: some View {
         VStack(spacing: 12) {
             Image(systemName: "person.3.sequence.fill")
@@ -1186,25 +1192,68 @@ struct LeadsView: View {
             Text("Ingen leads enda")
                 .font(.appScaled(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
-            Text("Bruk «+ Nytt lead» eller skru på demo-modus i innstillinger for å se eksempeldata.")
+            Text("Finn nye bedrifter med Discovery, importer en eksisterende liste eller legg til én bedrift manuelt.")
                 .font(.appScaled(size: 12))
                 .foregroundStyle(LdBrand.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380)
-            Button {
-                addLeadOpen = true
-            } label: {
-                Text("+ Nytt lead")
-                    .font(.appScaled(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16).padding(.vertical, 9)
-                    .background(LdBrand.purple, in: Capsule())
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { emptyLeadActions }
+                VStack(spacing: 8) { emptyLeadActions }
             }
-            .buttonStyle(.plain)
+            .frame(maxWidth: 520)
             .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 56)
+    }
+
+    @ViewBuilder
+    private var emptyLeadActions: some View {
+        Button {
+            Task {
+                await appState.configureDiscovery()
+                appState.discoveryCoordinator.showWorkspace()
+            }
+        } label: {
+            Label("Finn bedrifter", systemImage: "sparkle.magnifyingglass")
+                .font(.appScaled(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 44)
+                .background(LdBrand.purple, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(
+            appState.activeLeadgridProjectId == nil
+                || !appState.leadgridDiscoveryEnabled
+        )
+        .accessibilityIdentifier("leads.empty.discovery")
+
+        Button { importOpen = true } label: {
+            Label("Importer", systemImage: "arrow.down.circle")
+                .font(.appScaled(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 44)
+                .background(LdBrand.cardHi, in: Capsule())
+                .overlay(Capsule().stroke(LdBrand.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("leads.empty.import")
+
+        Button { addLeadOpen = true } label: {
+            Label("Legg til manuelt", systemImage: "plus")
+                .font(.appScaled(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 44)
+                .background(LdBrand.cardHi, in: Capsule())
+                .overlay(Capsule().stroke(LdBrand.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("leads.empty.manual")
     }
 
     private var tableHeader: some View {

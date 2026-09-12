@@ -113,7 +113,7 @@ export type UserEvent =
   | {
       kind: "sound-room.updated";
       projectId: string;
-      reason: "version" | "comment" | "approval" | "task";
+      reason: "version" | "comment" | "approval" | "task" | "decision" | "brief" | "collection" | "delivery";
       timestamp: string;
     }
   | {

@@ -306,6 +306,12 @@ enum BoardTool: String, CaseIterable {
     }
 }
 
+struct BoardCanvasBackground {
+    let editableBase: CGImage?
+    let referenceUnderlay: CGImage?
+    let referenceOpacity: Double
+}
+
 struct NativeBoardView: View {
     @StateObject private var board: BoardState
     @StateObject private var canvasState = CanvasState()
@@ -328,6 +334,9 @@ struct NativeBoardView: View {
     @State private var pendingDeleteFrameId: String?
     @State private var newSceneTitle = ""
     @State private var showNewScenePrompt = false
+    @State private var sceneThumbnailImages: [String: UIImage] = [:]
+    @State private var shotPreviewImages: [String: UIImage] = [:]
+    @State private var retainedEditableBaseImages: [String: UIImage] = [:]
     @Environment(\.dismiss) private var dismiss
 
     enum InitialSheet { case script, shotList, animatic, review }
@@ -344,6 +353,13 @@ struct NativeBoardView: View {
     }
 
     var body: some View {
+        boardLifecycle
+    }
+
+    /// Keep the large board view split into smaller opaque view types. Xcode
+    /// 26.3 otherwise times out while type-checking the full modifier chain on
+    /// CI, even though newer local toolchains compile the same expression.
+    private var boardLayout: some View {
         VStack(spacing: 0) {
             topbar
             Divider().overlay(BoardBrand.border)
@@ -359,6 +375,10 @@ struct NativeBoardView: View {
         }
         .background(BoardBrand.chrome)
         .navigationBarHidden(true)
+    }
+
+    private var boardPresentations: some View {
+        boardLayout
         .fullScreenCover(isPresented: $showAnimatic) {
             AnimaticView(sceneHeading: board.scene?.heading ?? "",
                          frames: board.scene?.frames ?? [],
@@ -371,17 +391,43 @@ struct NativeBoardView: View {
         .fullScreenCover(isPresented: $showFullscreenDraw) {
             if let frame = board.frame {
                 FullscreenDrawView(canvasState: canvasState, frame: frame,
-                                   underlay: composedUnderlay())
+                                   background: composedCanvasBackground())
             }
         }
+    }
+
+    private var boardDataTasks: some View {
+        boardPresentations
         .task { await board.reload() }
+        .task(id: scenePreviewTaskKey) { await rebuildSceneThumbnails() }
+        .task(id: shotPreviewTaskKey) { await rebuildShotPreviews() }
+        .task(id: activeRasterTaskKey) { await loadActiveRaster() }
+    }
+
+    private var boardFrameObservers: some View {
+        boardDataTasks
         .onChange(of: board.activeFrameIndex) { loadActiveFrameIntoCanvas() }
         .onChange(of: board.selectedSceneIndex) { board.activeFrameIndex = 0; loadActiveFrameIntoCanvas() }
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
         .onChange(of: canvasState.revision) { scheduleAutosync() }
+        .onChange(of: board.frame?.imageUrl) { loadActiveFrameIntoCanvas() }
+    }
+
+    private var boardBackgroundObservers: some View {
+        boardFrameObservers
         .onChange(of: onionMode) { applyUnderlay(to: renderer) }
+        .onChange(of: board.frame?.underlayDataURL) { applyUnderlay(to: renderer) }
+        .onChange(of: board.frame?.underlayOpacity) { applyUnderlay(to: renderer) }
+    }
+
+    private var boardChangeObservers: some View {
+        boardBackgroundObservers
         .onChange(of: perspectiveMode) { persistPerspective(); updateSnapState() }
         .onChange(of: perspectiveSnap) { updateSnapState() }
+    }
+
+    private var boardLifecycle: some View {
+        boardChangeObservers
         .task {
             // Retry-løkke for usynkede frames (nett tilbake / feilet synk).
             while !Task.isCancelled {
@@ -450,13 +496,12 @@ struct NativeBoardView: View {
             board.frame.map { (scene.id, $0.id) }
         }
         loadedFrameUpdatedAt = board.frame?.updatedAt
-        // Remote panel-bilde: hent async og re-render når det lander.
-        if let imageUrl = board.frame?.imageUrl, !imageUrl.hasPrefix("data:"),
-           FrameImageCache.images[imageUrl] == nil, let frame = board.frame {
-            Task {
-                await FrameImageCache.prefetch(frames: [frame])
-                applyUnderlay(to: renderer)
-            }
+        // Behold siste dekodede raster for samme frame mens en ny URL
+        // lastes. Da blinker ikke aktivt shot (typisk 1A) til blankt når
+        // live-polling eller en ny bildeversjon trigger canvas-rebuild.
+        if let frame = board.frame,
+           let image = FrameImageCache.image(for: frame.imageUrl) {
+            retainedEditableBaseImages[frame.id] = image
         }
         perspectiveMode = board.frame?.perspectiveMode ?? 0
         vanishingPoints = (board.frame?.vanishingPoints ?? []).compactMap { pair in
@@ -473,6 +518,28 @@ struct NativeBoardView: View {
             loadedRevision = -1
             scheduleAutosync()
         }
+    }
+
+    /// Én SwiftUI-eid lastesyklus per aktiv rasterkilde. Den gamle ad-hoc
+    /// Task-en kunne bli kansellert etter at en parallell thumbnail-request
+    /// hadde fylt cachen, men før Metal fikk den nye basen. Resultatet var et
+    /// hvitt aktivt shot selv om previewen til venstre var synlig.
+    private var activeRasterTaskKey: String {
+        guard let scene = board.scene, let frame = board.frame else { return "none" }
+        return [scene.id, frame.id, frame.imageUrl ?? "none"].joined(separator: "|")
+    }
+
+    private func loadActiveRaster() async {
+        guard let frame = board.frame,
+              let imageUrl = frame.imageUrl else { return }
+        let frameId = frame.id
+        await FrameImageCache.prefetch(frames: [frame])
+        guard !Task.isCancelled,
+              board.frame?.id == frameId,
+              board.frame?.imageUrl == imageUrl,
+              let image = FrameImageCache.image(for: imageUrl) else { return }
+        retainedEditableBaseImages[frameId] = image
+        applyUnderlay(to: renderer)
     }
 
     /// Gjenopprett en historikk-versjon: vanlig strokes-lagring (dagens
@@ -585,8 +652,32 @@ struct NativeBoardView: View {
     /// Dekod frame-underlag + ev. onion-skin (forrige shot) og sett på
     /// gitt renderer (inline og fullskjerm har hver sin instans).
     private func applyUnderlay(to target: MetalStrokeRenderer?) {
-        let (image, opacity) = composedUnderlay()
-        target?.setUnderlay(cgImage: image, opacity: opacity)
+        let background = composedCanvasBackground()
+        target?.setEditableBase(cgImage: background.editableBase)
+        target?.setUnderlay(cgImage: background.referenceUnderlay,
+                            opacity: background.referenceOpacity)
+        // Shot-radene flytter den samme renderer-instansen mellom SwiftUI-
+        // celler. Dersom drawable-størrelsen er uendret, kalles ikke alltid
+        // layoutSubviews på nytt. Bygg derfor den nye rasterbasen direkte inn
+        // i eksisterende Metal-akkumulator i stedet for å vente på layout.
+        if let target, let texture = target.committedTexture {
+            let contentWidth = max(1, board.frame?.drawingWidth ?? 1920)
+            let scale = Double(texture.width) / contentWidth
+            target.rebuild(strokes: canvasState.visibleStrokes(), scale: scale)
+        }
+        canvasState.backgroundRevision += 1
+    }
+
+    /// Et faktisk panelbilde går inn i rasterakkumulatoren og kan viskes i.
+    /// Referansefoto/onion uten panelbilde forblir et skjerm-underlag.
+    private func composedCanvasBackground() -> BoardCanvasBackground {
+        let (composed, opacity) = composedUnderlay()
+        if board.frame?.imageUrl != nil {
+            return BoardCanvasBackground(editableBase: composed,
+                                         referenceUnderlay: nil, referenceOpacity: 0)
+        }
+        return BoardCanvasBackground(editableBase: nil,
+                                     referenceUnderlay: composed, referenceOpacity: opacity)
     }
 
     /// Komponert underlag (referansefoto + onion-lag) for aktiv frame —
@@ -595,7 +686,11 @@ struct NativeBoardView: View {
         // Bilde-frame: statisk innhold tegnes underst med full opacity
         // (i motsetning til referanse-underlaget følger det med i eksport
         // via FrameRenderService).
-        let frameImage = FrameImageCache.image(for: board.frame?.imageUrl)
+        let frameImage = board.frame.flatMap { frame in
+            FrameImageCache.image(for: frame.imageUrl)
+                ?? retainedEditableBaseImages[frame.id]
+                ?? frame.thumbnailDataURL.flatMap(decodeDataURL)
+        }
         let underlayImage = board.frame?.underlayDataURL.flatMap(decodeDataURL)
         // Onion-kilder med alpha: forrige tydeligst, nabo nummer to svakere.
         var onionLayers: [(image: UIImage, alpha: CGFloat)] = []
@@ -611,6 +706,12 @@ struct NativeBoardView: View {
             if onionMode == 3, let older = render(current - 2) { onionLayers.append((older, 0.2)) }
         }
         let opacity = board.frame?.underlayOpacity ?? 0.4
+        // Ingen kompositt nødvendig: behold originalens faktiske piksler.
+        // Tidligere ble også rene panelbilder først rasterisert til 1120 px,
+        // som gjorde 1B og øvrige shots uklare i Retina/fullskjerm.
+        if let frameImage, underlayImage == nil, onionLayers.isEmpty {
+            return (frameImage.cgImage, 1)
+        }
         switch (underlayImage, onionLayers.isEmpty && frameImage == nil) {
         case (nil, true):
             return (nil, 0)
@@ -618,7 +719,9 @@ struct NativeBoardView: View {
             return (underlay.cgImage, opacity)
         default:
             // Komponer på papirfarget flate (samlet opacity 1 i shaderen).
-            let width = 1120.0
+            let logicalWidth = board.frame?.drawingWidth ?? 1920
+            let sourceWidth = Double(frameImage?.cgImage?.width ?? 0)
+            let width = min(4096, max(logicalWidth, max(sourceWidth, 1120)))
             let height = width * (board.frame.map { $0.drawingHeight / max(1, $0.drawingWidth) } ?? 9.0 / 16)
             let size = CGSize(width: width, height: height)
             let format = UIGraphicsImageRendererFormat()
@@ -897,6 +1000,125 @@ struct NativeBoardView: View {
         .buttonStyle(.plain)
     }
 
+    /// Fingerprinten gjør at SwiftUI avbryter gammel preview-lasting når
+    /// scene-/frame-data byttes av live-synk.
+    private var scenePreviewTaskKey: String {
+        board.scenes.map { scene in
+            guard let frame = StoryboardPreviewPolicy.representativeFrame(in: scene.frames) else {
+                return scene.id
+            }
+            let thumbnailKey = frame.thumbnailDataURL.map {
+                "\($0.count):\($0.prefix(24))"
+            } ?? ""
+            return [scene.id, frame.id, frame.updatedAt ?? "",
+                    frame.imageUrl ?? "", thumbnailKey].joined(separator: "|")
+        }.joined(separator: ";")
+    }
+
+    /// Scene-listen viser et faktisk kompositt (original + strøk) når det
+    /// finnes. Gamle/blanke thumbnailUrl-data brukes bare som siste fallback.
+    private func rebuildSceneThumbnails() async {
+        let scenes = board.scenes
+        let representatives = scenes.compactMap {
+            StoryboardPreviewPolicy.representativeFrame(in: $0.frames)
+        }
+        await FrameImageCache.prefetchPreviewSources(frames: representatives)
+        guard !Task.isCancelled else { return }
+
+        var rendered: [String: UIImage] = [:]
+        for scene in scenes {
+            guard let frame = StoryboardPreviewPolicy.representativeFrame(in: scene.frames) else {
+                continue
+            }
+            if let image = FrameRenderService.image(for: frame, maxWidth: 248)
+                ?? StoryboardPreviewPolicy.sourceURLs(for: frame).lazy.compactMap({
+                    FrameImageCache.image(for: $0)
+                }).first {
+                rendered[scene.id] = image
+            }
+        }
+        guard !Task.isCancelled else { return }
+        let activeSceneIds = Set(scenes.map(\.id))
+        var next = sceneThumbnailImages.filter { activeSceneIds.contains($0.key) }
+        for (sceneId, image) in rendered { next[sceneId] = image }
+        sceneThumbnailImages = next
+    }
+
+    private func scenePreviewFallbackImage(for scene: SceneSummary) -> UIImage? {
+        guard let frame = StoryboardPreviewPolicy.representativeFrame(in: scene.frames) else {
+            return nil
+        }
+        return StoryboardPreviewPolicy.sourceURLs(for: frame).lazy.compactMap {
+            FrameImageCache.image(for: $0)
+        }.first
+    }
+
+    /// Alle shot-rader i valgt scene får en fulloppløselig preview. Dette er
+    /// separat fra 280 px thumbnailDataURL, som kun er en rask placeholder.
+    private var shotPreviewTaskKey: String {
+        guard let scene = board.scene else { return "none" }
+        let frameKeys = scene.frames.map { frame in
+            [frame.id, frame.updatedAt ?? "", frame.imageUrl ?? "",
+             String(frame.strokesJSON?.count ?? 0)].joined(separator: "|")
+        }
+        return ([scene.id] + frameKeys).joined(separator: ";")
+    }
+
+    private func rebuildShotPreviews() async {
+        guard let scene = board.scene else {
+            shotPreviewImages = [:]
+            return
+        }
+        let sceneId = scene.id
+        let frames = scene.frames
+        await FrameImageCache.prefetch(frames: frames)
+        guard !Task.isCancelled, board.scene?.id == sceneId else { return }
+
+        var rendered: [String: UIImage] = [:]
+        for frame in frames {
+            let previewWidth = min(1920, max(1280, CGFloat(frame.drawingWidth)))
+            if let image = FrameRenderService.image(for: frame, maxWidth: previewWidth)
+                ?? FrameImageCache.image(for: frame.imageUrl) {
+                rendered[frame.id] = image
+            }
+        }
+        guard !Task.isCancelled, board.scene?.id == sceneId else { return }
+        shotPreviewImages = rendered
+
+        // Dersom shot-prefetchen vant løpet mot aktiv-frame-tasken, må Metal
+        // likevel få den fulloppløselige basen med én gang.
+        if let active = board.frame,
+           let image = FrameImageCache.image(for: active.imageUrl) {
+            retainedEditableBaseImages[active.id] = image
+            applyUnderlay(to: renderer)
+        }
+    }
+
+    private func fullResolutionRaster(for frame: FrameSummary) -> UIImage? {
+        FrameImageCache.image(for: frame.imageUrl)
+            ?? retainedEditableBaseImages[frame.id]
+    }
+
+    @ViewBuilder
+    private func inactiveShotPreview(frame: FrameSummary) -> some View {
+        if let image = shotPreviewImages[frame.id]
+            ?? fullResolutionRaster(for: frame) {
+            Image(uiImage: image).resizable().interpolation(.high).scaledToFill()
+        } else if let placeholder = decodeDataURL(frame.thumbnailDataURL) {
+            ZStack {
+                Image(uiImage: placeholder).resizable().interpolation(.high).scaledToFill()
+                if frame.imageUrl != nil {
+                    ProgressView().controlSize(.small).tint(BoardBrand.accent)
+                        .padding(7).background(.black.opacity(0.48), in: Capsule())
+                }
+            }
+        } else {
+            Color(white: 0.925)
+            Text(frame.imageUrl == nil ? "Trykk for å tegne" : "Laster original …")
+                .font(.system(size: 11)).foregroundStyle(Color(white: 0.6))
+        }
+    }
+
     // MARK: SCENES
 
     private var scenesColumn: some View {
@@ -918,14 +1140,22 @@ struct NativeBoardView: View {
                         Button { board.selectedSceneIndex = index } label: {
                             HStack(spacing: 10) {
                                 Group {
-                                    if let image = decodeDataURL(scene.frames.compactMap(\.thumbnailDataURL).first) {
+                                    if let image = sceneThumbnailImages[scene.id]
+                                        ?? scenePreviewFallbackImage(for: scene) {
                                         Image(uiImage: image).resizable().scaledToFill()
                                     } else {
-                                        Color.white.opacity(0.06)
+                                        ZStack {
+                                            Color.white.opacity(0.06)
+                                            ProgressView().controlSize(.mini).tint(BoardBrand.dim)
+                                        }
                                     }
                                 }
                                 .frame(width: 62, height: 40)
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityIdentifier("scene-thumbnail-\(scene.id)")
+                                .accessibilityLabel("Scene-thumbnail \(index + 1)")
+                                .accessibilityValue(sceneThumbnailImages[scene.id] == nil ? "loading" : "loaded")
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(String(format: "%02d", index + 1))
                                         .font(.system(size: 10, weight: .bold)).foregroundStyle(BoardBrand.label)
@@ -1038,8 +1268,11 @@ struct NativeBoardView: View {
         return Button {
             boardTool = tool
             // Tegn/viskelær speiles i pensel-valget (samme kobling som web).
-            if tool == .eraser { canvasState.brushType = .eraser }
-            if tool == .draw && canvasState.brushType == .eraser { canvasState.brushType = .pencil }
+            if tool == .eraser { canvasState.selectBrush(.eraser) }
+            if tool == .draw,
+               [.eraser, .kneaded, .lightlift].contains(canvasState.brushType) {
+                canvasState.selectBrush(.pencil)
+            }
         } label: {
             Image(systemName: tool.icon)
                 .font(.system(size: 14))
@@ -1527,13 +1760,8 @@ struct NativeBoardView: View {
             ZStack {
                 if isActive, renderer != nil {
                     activeCanvas(frame: frame)
-                } else if let image = decodeDataURL(frame.thumbnailDataURL)
-                    ?? FrameImageCache.image(for: frame.imageUrl) {
-                    Image(uiImage: image).resizable().scaledToFill()
                 } else {
-                    Color(white: 0.925)
-                    Text("Trykk for å tegne")
-                        .font(.system(size: 11)).foregroundStyle(Color(white: 0.6))
+                    inactiveShotPreview(frame: frame)
                 }
             }
             .aspectRatio(CGFloat(frame.drawingWidth / max(1, frame.drawingHeight)), contentMode: .fit)
@@ -1605,10 +1833,32 @@ struct NativeBoardView: View {
     private func activeCanvas(frame: FrameSummary) -> some View {
         GeometryReader { geo in
             let scale = geo.size.width / CGFloat(max(1, frame.drawingWidth))
+            let rasterPending = frame.imageUrl != nil
+                && fullResolutionRaster(for: frame) == nil
             ZStack(alignment: .topTrailing) {
                 PencilCanvasView(state: canvasState, renderer: renderer)
                     .background(Color(red: 0.992, green: 0.992, blue: 0.984))
-                    .allowsHitTesting(boardTool == .draw || boardTool == .eraser)
+                    .allowsHitTesting(!rasterPending
+                        && (boardTool == .draw || boardTool == .eraser))
+                // Den lille server-thumbnailen er kun en eksplisitt
+                // lasteplaceholder. Tegning/visking aktiveres først når den
+                // fulloppløselige, redigerbare rasterbasen er i Metal.
+                if rasterPending {
+                    ZStack {
+                        if let placeholder = decodeDataURL(frame.thumbnailDataURL) {
+                            Image(uiImage: placeholder)
+                                .resizable().interpolation(.high).scaledToFill()
+                        }
+                        ProgressView("Laster original …")
+                            .font(.system(size: 11, weight: .semibold))
+                            .tint(BoardBrand.accent)
+                            .padding(9)
+                            .background(.black.opacity(0.58), in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped().allowsHitTesting(false)
+                }
                 // Tekst-annotasjoner: Metal tegner ikke tekst — SwiftUI-overlay
                 // i samme håndskrift som web (Caveat ↔ Bradley Hand).
                 ForEach(canvasState.strokes.filter {
@@ -2360,6 +2610,12 @@ struct NativeBoardView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(BoardBrand.accent.opacity(0.25), in: Capsule())
+                if board.frame?.imageUrl != nil {
+                    Label("Bilde redigeres", systemImage: "photo.badge.checkmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.green)
+                        .accessibilityLabel("Panelbildet er redigerbart")
+                }
                 Spacer()
                 Button { canvasState.undo() } label: {
                     Image(systemName: "arrow.uturn.backward")
@@ -2387,7 +2643,12 @@ struct NativeBoardView: View {
                             ForEach(Array(chips[(row * 5)..<min(row * 5 + 5, chips.count)]), id: \.0) { type, name in
                                 let selected = canvasState.brushType == type
                                 let favorite = canvasState.favoriteBrushes.contains(type.rawValue)
-                                Button { canvasState.selectBrush(type) } label: {
+                                Button {
+                                    canvasState.selectBrush(type)
+                                    boardTool = [.eraser, .kneaded, .lightlift].contains(type)
+                                        ? .eraser
+                                        : .draw
+                                } label: {
                                     BrushTipGlyph(type: type)
                                         .frame(width: 44, height: 26)
                                         .background(selected ? Color.white.opacity(0.12) : Color.white.opacity(0.04),
@@ -3395,10 +3656,11 @@ private struct StrokePreview: View {
 struct FullscreenDrawView: View {
     @ObservedObject var canvasState: CanvasState
     let frame: FrameSummary
-    // Komponert av boardet (underlag + onion) — samme bilde begge steder.
+    // Komponert av boardet — panelbildet er redigerbar base, mens et rent
+    // referanseunderlag forblir skjerm-only.
     // Perspektiv-overlay følger bevisst IKKE med hit: fullskjerm zoomer i
     // UIScrollView-rommet der et SwiftUI-overlay ikke ville fulgt canvasen.
-    var underlay: (CGImage?, Double) = (nil, 0)
+    let background: BoardCanvasBackground
     @State private var renderer = MetalStrokeRenderer()
     @State private var fingerDraws = false
     @Environment(\.dismiss) private var dismiss
@@ -3406,7 +3668,10 @@ struct FullscreenDrawView: View {
     private var aspect: CGFloat { CGFloat(frame.drawingWidth / max(1, frame.drawingHeight)) }
 
     private func applyUnderlay() {
-        renderer?.setUnderlay(cgImage: underlay.0, opacity: underlay.1)
+        renderer?.setEditableBase(cgImage: background.editableBase)
+        renderer?.setUnderlay(cgImage: background.referenceUnderlay,
+                              opacity: background.referenceOpacity)
+        canvasState.backgroundRevision += 1
     }
 
     var body: some View {
@@ -3754,6 +4019,29 @@ enum PresentationFooter {
     }
 }
 
+/// Felles preview-policy for scene-listen. Bildekilden kommer før en lagret
+/// thumbnail fordi eldre iPad-versjoner kunne lagre en hvit thumbnail før
+/// det eksterne originalbildet var ferdig lastet.
+enum StoryboardPreviewPolicy {
+    static func sourceURLs(for frame: FrameSummary) -> [String] {
+        var seen = Set<String>()
+        return [frame.imageUrl, frame.thumbnailDataURL]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    static func representativeFrame(in frames: [FrameSummary]) -> FrameSummary? {
+        frames.first(where: hasVisualContent) ?? frames.first
+    }
+
+    private static func hasVisualContent(_ frame: FrameSummary) -> Bool {
+        if !sourceURLs(for: frame).isEmpty { return true }
+        guard let strokes = frame.strokesJSON?.trimmingCharacters(in: .whitespacesAndNewlines)
+        else { return false }
+        return !strokes.isEmpty && strokes != "[]"
+    }
+}
+
 // Minne-cache for remote panel-bilder (B2 download-stier) — de synkrone
 // render-veiene (canvas, celler, eksport) leser herfra; async prefetch
 // fyller den. dataURL-er dekodes direkte og trenger ikke cachen.
@@ -3769,9 +4057,21 @@ enum FrameImageCache {
 
     /// Hent remote-bilder som mangler i cachen (før render/eksport).
     static func prefetch(frames: [FrameSummary]) async {
-        for frame in frames {
-            guard let imageUrl = frame.imageUrl, !imageUrl.hasPrefix("data:"),
-                  images[imageUrl] == nil else { continue }
+        await prefetch(urls: frames.compactMap(\.imageUrl))
+    }
+
+    /// Scene-preview trenger også remote thumbnailUrl for eldre/drawn-only
+    /// frames. Kildene dedupliseres før sekvensiell nedlasting.
+    static func prefetchPreviewSources(frames: [FrameSummary]) async {
+        await prefetch(urls: frames.flatMap(StoryboardPreviewPolicy.sourceURLs(for:)))
+    }
+
+    private static func prefetch(urls: [String]) async {
+        var seen = Set<String>()
+        for imageUrl in urls where !imageUrl.hasPrefix("data:")
+            && seen.insert(imageUrl).inserted {
+            guard !Task.isCancelled else { return }
+            guard images[imageUrl] == nil else { continue }
             if let data = await RoleRoomAPIClient.shared.fetchRemoteImageData(path: imageUrl),
                let image = UIImage(data: data) {
                 images[imageUrl] = image
@@ -3807,6 +4107,7 @@ enum FrameRenderService {
         guard frame.drawingWidth > 0,
               !drawable.isEmpty || frameImage != nil else { return nil }
         let scale = maxWidth / frame.drawingWidth
+        renderer.setEditableBase(cgImage: frameImage?.cgImage)
         renderer.resizeCanvas(width: Int(maxWidth),
                               height: Int(frame.drawingHeight * scale))
         renderer.rebuild(strokes: drawable, scale: scale)
@@ -3815,16 +4116,13 @@ enum FrameRenderService {
 
         let annotations = strokes.filter { ($0.textAnnotation ?? "").isEmpty == false }
         let underlayImage = includeUnderlay ? frame.underlayDataURL.flatMap(decodeDataURL) : nil
-        guard underlayImage != nil || !annotations.isEmpty || frameImage != nil else { return base }
+        guard underlayImage != nil || !annotations.isEmpty else { return base }
         let size = base.size
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         return UIGraphicsImageRenderer(size: size, format: format).image { context in
             UIColor.white.setFill()
             context.fill(CGRect(origin: .zero, size: size))
-            if let frameImage {
-                frameImage.draw(in: CGRect(origin: .zero, size: size))
-            }
             if let underlay = underlayImage {
                 underlay.draw(in: CGRect(origin: .zero, size: size), blendMode: .normal,
                               alpha: CGFloat(frame.underlayOpacity ?? 0.4))
@@ -4100,13 +4398,18 @@ enum BoardPDFExporter {
         var rows = ["Scene;Shot;Beskrivelse;Type;Lens;Bevegelse;Varighet (s);Beat;Status;Tags"]
         for scene in scenes {
             for frame in scene.frames {
-                let cells = [
+                let lens = frame.lensMm.map { String($0) + "mm" } ?? ""
+                let duration = String(format: "%.1f", frame.durationSec)
+                let rawCells: [String] = [
                     scene.heading, frame.shotNumber, frame.description,
-                    frame.shotType ?? "", frame.lensMm.map { "\($0)mm" } ?? "",
-                    frame.movement ?? "", String(format: "%.1f", frame.durationSec),
+                    frame.shotType ?? "", lens,
+                    frame.movement ?? "", duration,
                     frame.beatTag ?? "", frame.frameStatus ?? "",
                     frame.tags.joined(separator: ", "),
-                ].map { $0.replacingOccurrences(of: ";", with: ",") }
+                ]
+                let cells = rawCells.map {
+                    $0.replacingOccurrences(of: ";", with: ",")
+                }
                 rows.append(cells.joined(separator: ";"))
             }
         }

@@ -316,6 +316,99 @@ function buildSecondAssistantDirectorTrollSeedProject(): CastingProject {
   } as unknown as CastingProject;
 }
 
+function buildProductionManagerTrollSeedProject(): CastingProject {
+  const project = buildSecondAssistantDirectorTrollSeedProject();
+  return {
+    ...project,
+    description: 'Autentisert CI-prosjekt for produksjonsledelse og dagskontroll',
+    crew: [
+      {
+        id: 'troll-production-manager',
+        projectId: project.id,
+        name: 'Liv Produksjon',
+        role: 'production_manager',
+        department: 'production',
+        status: 'confirmed',
+        contactInfo: { email: 'liv@example.test' },
+      },
+      {
+        id: 'troll-gaffer',
+        projectId: project.id,
+        name: 'Guro Lys',
+        role: 'gaffer',
+        department: 'lighting',
+        status: 'confirmed',
+        contactInfo: { email: 'guro@example.test' },
+      },
+    ],
+    productionDays: (project.productionDays ?? []).map((day) => ({
+      ...day,
+      crew: ['troll-production-manager', 'troll-gaffer'],
+      managementVersion: 0,
+      productionManagement: {
+        dayStatus: 'at_risk',
+        callSheetApproval: 'ready_for_review',
+        crewConfirmations: [
+          { crewId: 'troll-production-manager', status: 'confirmed' },
+          { crewId: 'troll-gaffer', status: 'pending' },
+        ],
+        checkpoints: [
+          { id: 'troll-location-check', category: 'location', title: 'Trollskogen', status: 'ready' },
+          { id: 'troll-transport-check', category: 'transport', title: 'Transport og parkering', status: 'blocked' },
+        ],
+        issues: [{ id: 'troll-issue-1', title: 'Manglende parkeringstillatelse', severity: 'high', status: 'open' }],
+        costItems: [{ id: 'troll-cost-1', category: 'Transport', title: 'Ekstra minibuss', estimatedCost: 5000, actualCost: 6500, status: 'pending' }],
+        notes: 'Avklar parkering før publisering.',
+        activity: [],
+      },
+    })),
+    userRoles: [{
+      id: 'troll-production-manager-user-role',
+      projectId: project.id,
+      userId: 'e2e-test-user',
+      role: 'production_manager',
+    }],
+  } as CastingProject;
+}
+
+function buildProductionCoordinatorTrollSeedProject(): CastingProject {
+  const project = buildProductionManagerTrollSeedProject();
+  return {
+    ...project,
+    description: 'Autentisert CI-prosjekt for produksjonskoordinatorens dagsflyt',
+    crew: [
+      {
+        id: 'troll-production-coordinator', projectId: project.id, name: 'Kari Koordinator',
+        role: 'production_coordinator', department: 'production', status: 'confirmed',
+        contactInfo: { email: 'kari@example.test' },
+      },
+      ...((project.crew ?? []).filter((member) => member.id === 'troll-gaffer')),
+    ],
+    productionDays: (project.productionDays ?? []).map((day) => ({
+      ...day,
+      crew: ['troll-production-coordinator', 'troll-gaffer'],
+      coordinationVersion: 0,
+      productionCoordination: {
+        tasks: [{ id: 'troll-task-transport', title: 'Bekreft minibuss med leverandør', category: 'transport', status: 'in_progress', priority: 'high', dueAt: '2026-09-13T14:00' }],
+        crewFollowUps: [
+          { crewId: 'troll-production-coordinator', status: 'confirmed' },
+          { crewId: 'troll-gaffer', status: 'contacted' },
+        ],
+        logistics: [{ id: 'troll-logistics-transport', category: 'transport', title: 'Transport og parkering', status: 'blocked' }],
+        documents: [{ id: 'troll-document-permit', title: 'Parkeringstillatelse', category: 'permit', status: 'requested' }],
+        callSheetChecklist: [{ id: 'troll-callsheet-times', title: 'Scener, rekkefølge og tider er kontrollert', status: 'in_progress' }],
+        escalations: [{ id: 'troll-escalation-parking', title: 'Parkering er ikke bekreftet', severity: 'critical', status: 'open' }],
+        handover: { status: 'draft', summary: 'Transport og parkering følges opp.' },
+        activity: [],
+      },
+    })),
+    userRoles: [{
+      id: 'troll-production-coordinator-user-role', projectId: project.id,
+      userId: 'e2e-test-user', role: 'production_coordinator',
+    }],
+  } as CastingProject;
+}
+
 /**
  * Wrapper that pre-seeds a mock auth session before rendering CastingPlannerPanel.
  * This prevents the "no adminUser → redirect to /casting.html" path that fires
@@ -338,6 +431,8 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       const isCinematographerSession = sessionMode === 'cinematographer';
       const isFirstAssistantDirectorSession = sessionMode === 'first-ad';
       const isSecondAssistantDirectorSession = sessionMode === 'second-ad';
+      const isProductionManagerSession = sessionMode === 'production-manager';
+      const isProductionCoordinatorSession = sessionMode === 'production-coordinator';
 
       // Pre-seed admin user so CastingPlannerPanel won't redirect when isStandalone=true
       await authSessionService.setAdminUser({
@@ -347,13 +442,17 @@ function SessionSeeder({ children }: { children: ReactNode }) {
           ? 'first_ad'
           : isSecondAssistantDirectorSession
             ? 'second_ad'
+          : isProductionManagerSession
+            ? 'production_manager'
+          : isProductionCoordinatorSession
+            ? 'production_coordinator'
           : isCinematographerSession
             ? 'cinematographer'
             : 'admin',
         display_name: 'E2E Tester',
         loginAs: isContentProducerSession
           ? 'content_producer'
-          : isCinematographerSession || isFirstAssistantDirectorSession || isSecondAssistantDirectorSession
+          : isCinematographerSession || isFirstAssistantDirectorSession || isSecondAssistantDirectorSession || isProductionManagerSession || isProductionCoordinatorSession
             ? 'production_team'
             : undefined,
         requestedRole: isContentProducerSession
@@ -364,6 +463,10 @@ function SessionSeeder({ children }: { children: ReactNode }) {
               ? 'first_ad'
               : isSecondAssistantDirectorSession
                 ? 'second_ad'
+                : isProductionManagerSession
+                  ? 'production_manager'
+                : isProductionCoordinatorSession
+                  ? 'production_coordinator'
               : null,
       });
       // Lokal backend (NODE_ENV≠production) godtar dette dev-token-et som
@@ -384,7 +487,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       // 'photographer' ellers — vi setter begge for å være trygge.
       await settingsService.setSetting(
         'roleRoom_onboardingCompleted',
-        { photographer: true, producer: true, director: true, cinematographer: true, first_ad: true, second_ad: true, general: true },
+        { photographer: true, producer: true, director: true, cinematographer: true, first_ad: true, second_ad: true, production_manager: true, production_coordinator: true, general: true },
         { userId: 'e2e-test-user' },
       );
 
@@ -393,7 +496,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         ? 'roleRoom_workspaceState_content_producer'
         : 'roleRoom_workspaceState_production_team';
 
-      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad' || seedFlag === 'second-ad-troll') {
+      if (seedFlag === 'basic' || seedFlag === 'demo' || seedFlag === 'story-writer' || seedFlag === 'director' || seedFlag === 'cinematographer' || seedFlag === 'first-ad' || seedFlag === 'second-ad-troll' || seedFlag === 'production-manager-troll' || seedFlag === 'production-coordinator-troll') {
         try {
           const seedProject = seedFlag === 'director'
             ? buildDirectorSeedProject()
@@ -403,6 +506,10 @@ function SessionSeeder({ children }: { children: ReactNode }) {
                 ? buildFirstAssistantDirectorSeedProject()
               : seedFlag === 'second-ad-troll'
                 ? buildSecondAssistantDirectorTrollSeedProject()
+              : seedFlag === 'production-manager-troll'
+                ? buildProductionManagerTrollSeedProject()
+              : seedFlag === 'production-coordinator-troll'
+                ? buildProductionCoordinatorTrollSeedProject()
               : buildBasicSeedProject();
           await castingService.saveProject(seedProject);
 
@@ -414,7 +521,13 @@ function SessionSeeder({ children }: { children: ReactNode }) {
               projectId: seedProject.id,
               lastRealProjectId: seedProject.id,
               activeTab: 0,
-              workspaceLens: seedFlag === 'second-ad-troll' ? 'assistant-direction' : undefined,
+              workspaceLens: seedFlag === 'second-ad-troll'
+                ? 'assistant-direction'
+                : seedFlag === 'production-manager-troll'
+                  ? 'production-management'
+                : seedFlag === 'production-coordinator-troll'
+                  ? 'production-coordination'
+                  : undefined,
               firstAssistantDirectorSurface: seedFlag === 'second-ad-troll' ? 'today' : undefined,
               storyArcView: 'main',
               updatedAt: new Date().toISOString(),

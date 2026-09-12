@@ -22,6 +22,7 @@
 import React, { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { OnboardingTour } from "@/components/leadgrid/OnboardingTour";
 import {
   Box,
   Container,
@@ -501,6 +502,7 @@ export default function LeadgridWorkflowsPage(): JSX.Element {
           onClose={() => setSelectedWorkflow(null)}
         />
       )}
+      <OnboardingTour projectId={projectId} />
     </Container>
   );
 }
