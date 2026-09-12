@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   userCanAccessCastingProject,
   userCanEditCastingProduction,
+  userCanManageCastingProduction,
 } from "./casting-project-ownership.js";
 
 describe("userCanAccessCastingProject", () => {
@@ -108,5 +109,38 @@ describe("userCanEditCastingProduction", () => {
       "owner-1",
     )).resolves.toBe(true);
     expect(query).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("userCanManageCastingProduction", () => {
+  it("limits the management lane to owners, producer roles and an explicit grant", async () => {
+    const query = vi.fn(async (text: string, params?: unknown[]) => {
+      expect(text).toContain("'production_manager'");
+      expect(text).toContain("'producer'");
+      expect(text).toContain("canManageProduction");
+      expect(text).not.toContain("'first_ad'");
+      expect(text).not.toContain("'second_ad'");
+      expect(params).toEqual(["project-1", "manager-1"]);
+      return { rows: [{ project_exists: true, can_manage_production: true }] };
+    });
+
+    await expect(userCanManageCastingProduction(
+      { query },
+      "project-1",
+      "manager-1",
+    )).resolves.toBe(true);
+  });
+
+  it("denies canonical production editors without management authority", async () => {
+    const query = vi.fn(async () => ({
+      rows: [{ project_exists: true, can_manage_production: false }],
+    }));
+
+    await expect(userCanManageCastingProduction(
+      { query },
+      "project-1",
+      "first-ad-1",
+    )).resolves.toBe(false);
+    expect(query).toHaveBeenCalledTimes(1);
   });
 });
