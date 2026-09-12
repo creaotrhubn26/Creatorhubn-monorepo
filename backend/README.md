@@ -83,6 +83,15 @@ LEADGRID_DISCOVERY_ENABLED=false
 LEADGRID_DISCOVERY_MAX_AUTO_PROFILES_PER_ORG=5
 LEADGRID_DISCOVERY_ORG_MONTHLY_CANDIDATE_BUDGET=500
 
+# MedSide fastlegeprofil: NHNs offentlige Fastlegeregister via Maskinporten.
+# Hold kilden deaktivert til nhn:flr/export og skriftlige gjenbruksvilkår er
+# godkjent. Nøkkelen er server-side only og kan oppgis med escaped \n.
+LEADGRID_DISCOVERY_FLR_ENABLED=false
+LEADGRID_FLR_ENVIRONMENT=test
+LEADGRID_FLR_MASKINPORTEN_CLIENT_ID=
+LEADGRID_FLR_MASKINPORTEN_KEY_ID=
+LEADGRID_FLR_MASKINPORTEN_PRIVATE_KEY=
+
 # Legacy shared Google OAuth envs are deprecated and should not be used in production.
 # Keep them only if an older local helper script still requires them during transition.
 GOOGLE_CLIENT_ID=
@@ -268,6 +277,26 @@ Use this expand-first release sequence:
 This checklist is a release gate, not deployment evidence. A migration or source
 file being present in this repository does not mean it has run in production,
 and no backend deployment or TestFlight upload is implied by this document.
+
+### MedSide, Fastlegeregisteret and Legelisten
+
+The `medside.gp_offices` profile uses the authorized NHN public FLR endpoint;
+all other MedSide profiles use BRREG/SSB/Geonorge. FLR is fail-closed unless all
+five `LEADGRID_*FLR*` values above are valid. Production activation also
+requires written confirmation covering commercial reuse, retention,
+attribution, updates/deletion and HPR handling. Deploy configuration changes
+must follow the repository's single-key PUT rule; never replace the complete
+Render environment map.
+
+Leadgrid stores the office as the CRM account. Named doctors are added only
+after manual office approval, without raw HPR, gender, patient capacity or
+waiting-list data. They are marked `notice_required` / `not_requested` for
+privacy review before outreach.
+
+Legelisten is not a Discovery provider. Its published terms prohibit repeated
+or systematic copying without written consent, so no scraping, consumer API
+calls, ratings or profile imports may be added. A future integration requires a
+written partner contract and a separately reviewed provider implementation.
 
 ### External contact and calendar proof boundaries
 

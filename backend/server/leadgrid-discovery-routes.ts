@@ -303,6 +303,20 @@ function profilePlacesDetailsEnabled(value: unknown): boolean {
   return places.enabled === true && places.mode === "transient_details_only";
 }
 
+function profileSourceConfig(
+  brief: z.infer<typeof discoveryBriefSchema>,
+  placesDetailsEnabled: boolean,
+) {
+  return {
+    brreg_open_data: { enabled: brief.registry_source === "brreg_open_data" },
+    nhn_flr_public: { enabled: brief.registry_source === "nhn_flr_public" },
+    google_places: {
+      enabled: placesDetailsEnabled,
+      mode: "transient_details_only",
+    },
+  };
+}
+
 function profileDto(row: ProfileRow) {
   const canonicalBrief = canonicalDiscoveryProfileBrief(row);
   return {
@@ -1242,13 +1256,12 @@ export function registerLeadgridDiscoveryRoutes({
               JSON.stringify(profile.brief),
               JSON.stringify(values.desiredSignals),
               JSON.stringify(values.exclusionRules),
-              JSON.stringify({
-                brreg_open_data: { enabled: true },
-                google_places: {
-                  enabled: profile.places_details_enabled,
-                  mode: "transient_details_only",
-                },
-              }),
+              JSON.stringify(
+                profileSourceConfig(
+                  profile.brief,
+                  profile.places_details_enabled,
+                ),
+              ),
               profile.approval_mode,
               JSON.stringify({}),
               values.targetCount,
@@ -1370,13 +1383,9 @@ export function registerLeadgridDiscoveryRoutes({
             JSON.stringify(body.brief),
             JSON.stringify(values.desiredSignals),
             JSON.stringify(values.exclusionRules),
-            JSON.stringify({
-              brreg_open_data: { enabled: true },
-              google_places: {
-                enabled: body.places_details_enabled,
-                mode: "transient_details_only",
-              },
-            }),
+            JSON.stringify(
+              profileSourceConfig(body.brief, body.places_details_enabled),
+            ),
             body.approval_mode,
             JSON.stringify({}),
             values.targetCount,
@@ -1506,9 +1515,17 @@ export function registerLeadgridDiscoveryRoutes({
         if (body.places_details_enabled !== undefined) {
           params.push(body.places_details_enabled);
           const placesEnabledParam = params.length;
-          sets.push(
-            `source_config = jsonb_set(source_config, '{google_places}', jsonb_build_object('enabled', $${placesEnabledParam}::boolean, 'mode', 'transient_details_only'), true)`,
-          );
+          if (body.brief !== undefined) {
+            params.push(body.brief.registry_source);
+            const sourceParam = params.length;
+            sets.push(
+              `source_config = jsonb_set(source_config || jsonb_build_object('brreg_open_data', jsonb_build_object('enabled', $${sourceParam}::text = 'brreg_open_data'), 'nhn_flr_public', jsonb_build_object('enabled', $${sourceParam}::text = 'nhn_flr_public')), '{google_places}', jsonb_build_object('enabled', $${placesEnabledParam}::boolean, 'mode', 'transient_details_only'), true)`,
+            );
+          } else {
+            sets.push(
+              `source_config = jsonb_set(source_config, '{google_places}', jsonb_build_object('enabled', $${placesEnabledParam}::boolean, 'mode', 'transient_details_only'), true)`,
+            );
+          }
         }
 
         if (body.auto_discover_enabled !== undefined) {
@@ -1553,10 +1570,7 @@ export function registerLeadgridDiscoveryRoutes({
           set("country_code", values.countryCode);
           set("subject_kind", values.subjectKind);
           set("qualification_terms", values.qualificationTerms, "::text[]");
-          set(
-            "qualification_requirement",
-            values.qualificationRequirement,
-          );
+          set("qualification_requirement", values.qualificationRequirement);
           set(
             "desired_signals",
             JSON.stringify(values.desiredSignals),
@@ -1569,6 +1583,13 @@ export function registerLeadgridDiscoveryRoutes({
           );
           set("max_candidates_per_run", values.targetCount);
           set("enrichment_count", values.enrichmentCount);
+          if (body.places_details_enabled === undefined) {
+            params.push(body.brief.registry_source);
+            const sourceParam = params.length;
+            sets.push(
+              `source_config = source_config || jsonb_build_object('brreg_open_data', jsonb_build_object('enabled', $${sourceParam}::text = 'brreg_open_data'), 'nhn_flr_public', jsonb_build_object('enabled', $${sourceParam}::text = 'nhn_flr_public'))`,
+            );
+          }
         }
 
         const updated = await client.query<ProfileRow>(

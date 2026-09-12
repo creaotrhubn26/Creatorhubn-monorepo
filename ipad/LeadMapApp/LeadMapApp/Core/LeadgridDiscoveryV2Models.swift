@@ -91,6 +91,7 @@ enum DiscoveryV2QualificationRequirement: String, Codable, CaseIterable, Sendabl
 }
 
 struct DiscoveryV2Brief: Codable, Hashable, Sendable {
+    var registrySource: String? = nil
     var industryQueries: [String]
     var organizationNameQueries: [String] = []
     var exclusionTerms: [String]
@@ -118,6 +119,7 @@ struct DiscoveryV2Brief: Codable, Hashable, Sendable {
         registeredInBusinessRegister: nil)
 
     enum CodingKeys: String, CodingKey {
+        case registrySource = "registry_source"
         case industryQueries = "industry_queries"
         case organizationNameQueries = "organization_name_queries"
         case exclusionTerms = "exclusion_terms"
@@ -363,6 +365,7 @@ extension DiscoveryV2Brief {
     /// Keep the product default when decoding migrated profile/run snapshots.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        registrySource = try container.decodeIfPresent(String.self, forKey: .registrySource)
         industryQueries = try container.decode([String].self, forKey: .industryQueries)
         organizationNameQueries = try container.decodeIfPresent(
             [String].self,

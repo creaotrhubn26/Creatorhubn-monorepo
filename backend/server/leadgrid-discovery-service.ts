@@ -46,6 +46,10 @@ import {
   type DiscoveryClinicGroupCandidate,
   type DiscoveryEntityKind,
 } from "./leadgrid-discovery-clinic-grouping.js";
+import {
+  createDiscoveryFlrProvider,
+  NHN_FLR_DATA_SOURCE,
+} from "./leadgrid-discovery-flr-provider.js";
 
 export const LEADGRID_DISCOVERY_JOB_TYPE = "leadgrid_discovery_run";
 
@@ -367,7 +371,7 @@ export interface DiscoveryCandidateDto {
   website_url: string | null;
   phone: string | null;
   email: string | null;
-  source: "brreg_open_data";
+  source: "brreg_open_data" | "nhn_flr_public";
   source_uri: string | null;
   organization_number: string | null;
   organization_form: string | null;
@@ -413,7 +417,7 @@ export interface DiscoveryCandidateDto {
 }
 
 export interface DiscoveryDataSourceDto {
-  id: "brreg" | "ssb_klass" | "kartverket_geonorge";
+  id: "brreg" | "ssb_klass" | "kartverket_geonorge" | "nhn_flr_public";
   provider: string;
   provider_uri: string;
   license: string;
@@ -430,6 +434,25 @@ export const DISCOVERY_DATA_SOURCES: DiscoveryDataSourceDto[] =
     license_uri: source.licenseUri,
     notice: source.notice,
   }));
+
+export const DISCOVERY_FLR_DATA_SOURCES: DiscoveryDataSourceDto[] = [
+  {
+    id: NHN_FLR_DATA_SOURCE.id,
+    provider: NHN_FLR_DATA_SOURCE.provider,
+    provider_uri: NHN_FLR_DATA_SOURCE.providerUri,
+    license: NHN_FLR_DATA_SOURCE.license,
+    license_uri: NHN_FLR_DATA_SOURCE.licenseUri,
+    notice: NHN_FLR_DATA_SOURCE.notice,
+  },
+];
+
+function dataSourcesForRegistry(
+  source: DiscoveryBrief["registry_source"],
+): DiscoveryDataSourceDto[] {
+  return source === "nhn_flr_public"
+    ? DISCOVERY_FLR_DATA_SOURCES
+    : DISCOVERY_DATA_SOURCES;
+}
 
 export interface DiscoveryDecisionResultDto {
   candidate_id: string;
@@ -577,7 +600,7 @@ export function discoverySourceQueryFingerprint(
 ): string {
   return discoveryHash({
     version: 1,
-    source: "brreg_open_data",
+    source: brief.registry_source,
     query_mode: queryMode,
     query: queryText,
     area: {
@@ -820,7 +843,7 @@ export function previewDiscovery(briefValue: unknown): DiscoveryPreviewDto {
     brief,
     plan,
     plan_hash: discoveryHash(plan),
-    sources: DISCOVERY_DATA_SOURCES,
+    sources: dataSourcesForRegistry(brief.registry_source),
   };
 }
 
@@ -1091,8 +1114,10 @@ export async function createDiscoveryRun(
           query_results: {},
         }),
         JSON.stringify({
-          source: "brreg_open_data",
-          sources: DISCOVERY_DATA_SOURCES,
+          source: effectivePreview.brief.registry_source,
+          sources: dataSourcesForRegistry(
+            effectivePreview.brief.registry_source,
+          ),
           derived_by_leadgrid: ["industry_fit", "distance", "fit_score"],
         }),
       ],
@@ -1398,6 +1423,7 @@ interface CandidateListRow {
   phone: string | null;
   email: string | null;
   source_uri: string | null;
+  source: string | null;
   organization_number: string | null;
   organization_form: string | null;
   organization_form_code: string | null;
@@ -1576,6 +1602,8 @@ function toCandidateDto(
     row.organization_structure === "chain"
       ? row.organization_structure
       : "unknown";
+  const source =
+    row.source === "nhn_flr_public" ? "nhn_flr_public" : "brreg_open_data";
   return {
     id: row.id,
     run_id: row.run_id,
@@ -1589,7 +1617,7 @@ function toCandidateDto(
     website_url: row.website_url,
     phone: row.phone,
     email: row.email,
-    source: "brreg_open_data",
+    source,
     source_uri: row.source_uri,
     organization_number: row.organization_number,
     organization_form: row.organization_form,
@@ -1626,7 +1654,7 @@ function toCandidateDto(
     },
     observed_run_count: numberValue(row.observed_run_count),
     observed_in_profiles: observedInProfiles,
-    sources: DISCOVERY_DATA_SOURCES,
+    sources: dataSourcesForRegistry(source),
     status: row.status,
     research_status: row.research_status,
     disposition: row.disposition,
@@ -1750,6 +1778,7 @@ export async function listDiscoveryCandidates(
             observation.phone,
             observation.email,
             observation.raw_data->>'source_uri' AS source_uri,
+            observation.raw_data->>'source' AS source,
             observation.organization_number,
             observation.raw_data->>'organization_form' AS organization_form,
             observation.raw_data->>'organization_form_code' AS organization_form_code,
@@ -2024,6 +2053,7 @@ interface DecisionCandidateRow {
   source_hits: unknown[] | null;
   provenance: unknown[] | null;
   enrichment_data: Record<string, unknown> | null;
+  raw_data: Record<string, unknown> | null;
   imported_lead_id: string | null;
   existing_lead_id: string | null;
 }
@@ -2068,6 +2098,7 @@ async function loadDecisionCandidate(
             rc.source_hits,
             observation.provenance,
             observation.enrichment_data,
+            observation.raw_data,
             c.imported_lead_id::text,
             c.existing_lead_id::text
        FROM leadgrid_discovery_runs r
@@ -2123,7 +2154,12 @@ async function loadDecisionCandidate(
                   ) = 'object'
                     THEN rc.observation_snapshot->'enrichment_data'
                   ELSE '{}'::jsonb
-                END AS enrichment_data
+                END AS enrichment_data,
+                CASE
+                  WHEN jsonb_typeof(rc.observation_snapshot->'raw_data') = 'object'
+                    THEN rc.observation_snapshot->'raw_data'
+                  ELSE '{}'::jsonb
+                END AS raw_data
        ) observation ON TRUE
       WHERE r.organization_id = $1::uuid
         AND r.project_id = $2
@@ -2186,10 +2222,12 @@ function safePromotionEnrichment(
   );
   const data = objectValue(candidate.enrichment_data);
   const company = objectValue(data.company);
+  const trustedSource =
+    data.source === "brreg" || data.source === "nhn_flr_public";
   if (
     !organizationNumber ||
     data.found !== true ||
-    data.source !== "brreg" ||
+    !trustedSource ||
     data.autoLinked !== true ||
     norwegianOrganizationNumber(company.orgNr) !== organizationNumber ||
     typeof company.name !== "string" ||
@@ -2422,6 +2460,89 @@ async function attachTalentProspect(
       input.userId,
     ],
   );
+}
+
+function flrProviderContacts(value: unknown): Array<{
+  name: string;
+  sourceReference: string;
+}> {
+  if (!Array.isArray(value)) return [];
+  const contacts = new Map<string, { name: string; sourceReference: string }>();
+  for (const item of value) {
+    const record = objectValue(item);
+    const name = nullableText(record.name)?.slice(0, 240) ?? null;
+    const sourceReference = nullableText(record.sourceReference);
+    if (!name || !sourceReference || !/^[a-f0-9]{64}$/.test(sourceReference)) {
+      continue;
+    }
+    contacts.set(sourceReference, { name, sourceReference });
+  }
+  return [...contacts.values()].sort((left, right) =>
+    left.name.localeCompare(right.name, "nb-NO"),
+  );
+}
+
+async function attachFlrPractitioners(
+  client: PoolClient,
+  input: {
+    project: LeadgridAccessibleProject;
+    userId: string;
+    leadId: string;
+    rawData: Record<string, unknown> | null;
+  },
+): Promise<number> {
+  const rawData = objectValue(input.rawData);
+  if (rawData.source !== "nhn_flr_public") return 0;
+  const contacts = flrProviderContacts(rawData.provider_contacts);
+  for (const contact of contacts) {
+    await client.query(
+      `INSERT INTO leadgrid_customer_contacts (
+         organization_id, project_id, customer_id, name, role,
+         source, source_reference, relationship_confidence,
+         relationship_evidence, confirmed_by, subject_kind,
+         privacy_status, consent_status, privacy_review_due_at
+       ) VALUES (
+         $1::uuid, $2, $3::uuid, $4, 'Fastlege',
+         'discovery', $5, 'high',
+         '["nhn_flr_active_office_affiliation","manual_account_approval"]'::jsonb,
+         $6, 'person', 'notice_required', 'not_requested',
+         NOW() + INTERVAL '30 days'
+       )
+       ON CONFLICT (
+         organization_id, project_id, customer_id, source, source_reference
+       ) WHERE source_reference IS NOT NULL
+       DO UPDATE SET
+         name = EXCLUDED.name,
+         role = EXCLUDED.role,
+         relationship_confidence = EXCLUDED.relationship_confidence,
+         relationship_evidence = EXCLUDED.relationship_evidence,
+         privacy_status = CASE
+           WHEN leadgrid_customer_contacts.privacy_status IN ('opted_out', 'expired')
+             THEN leadgrid_customer_contacts.privacy_status
+           ELSE 'notice_required'
+         END,
+         consent_status = CASE
+           WHEN leadgrid_customer_contacts.consent_status IN ('received', 'withdrawn')
+             THEN leadgrid_customer_contacts.consent_status
+           ELSE 'not_requested'
+         END,
+         privacy_review_due_at = COALESCE(
+           leadgrid_customer_contacts.privacy_review_due_at,
+           EXCLUDED.privacy_review_due_at
+         ),
+         confirmed_by = EXCLUDED.confirmed_by,
+         updated_at = NOW()`,
+      [
+        input.project.organizationId,
+        input.project.id,
+        input.leadId,
+        contact.name,
+        contact.sourceReference,
+        input.userId,
+      ],
+    );
+  }
+  return contacts.length;
 }
 
 export async function decideDiscoveryCandidate(
@@ -2664,6 +2785,11 @@ export async function decideDiscoveryCandidate(
         ? new Date().toISOString()
         : null;
       const briefSnapshot = objectValue(candidate.brief_snapshot);
+      const candidateRawData = objectValue(candidate.raw_data);
+      const discoverySource =
+        candidateRawData.source === "nhn_flr_public"
+          ? "nhn_flr_public"
+          : "brreg_open_data";
       const subjectKind =
         briefSnapshot.subject_kind === "person" ? "person" : "organization";
       const territoryCode = nullableText(briefSnapshot.territory_code);
@@ -2694,12 +2820,12 @@ export async function decideDiscoveryCandidate(
           territory_code: territoryCode,
           municipality_numbers: municipalityNumbers,
           municipality_names: municipalityNames,
-          source: "brreg_open_data",
+          source: discoverySource,
           subject_kind: subjectKind,
           privacy:
             subjectKind === "person"
               ? {
-                  source: "brreg_open_data",
+                  source: discoverySource,
                   purpose: "b2b_prospecting",
                   role_room_talent_profile_created: false,
                   consent_status: "not_requested",
@@ -2931,6 +3057,15 @@ export async function decideDiscoveryCandidate(
           organizationNumber: promotionEnrichment.organizationNumber,
         });
         groupedContactCount = Math.max(groupedContactCount, 1);
+      }
+
+      if (leadId && discoverySource === "nhn_flr_public") {
+        groupedContactCount = await attachFlrPractitioners(client, {
+          project: input.project,
+          userId,
+          leadId,
+          rawData: candidate.raw_data,
+        });
       }
 
       if (confirmedGooglePlaceId) {
@@ -3542,7 +3677,8 @@ function scoreEvidence(score: DiscoveryCandidateScore): unknown[] {
 
 function rawCandidateData(
   candidate: DiscoveryRegistryCandidate,
-  classification = classifyDiscoveryEntity({
+  classification = candidate.entityClassification ??
+    classifyDiscoveryEntity({
     name: candidate.name,
     address: candidate.address,
     postalCode: candidate.postalCode,
@@ -3554,8 +3690,9 @@ function rawCandidateData(
     website: candidate.website,
   }),
 ): Record<string, unknown> {
+  const source = candidate.source ?? "brreg_open_data";
   return {
-    source: "brreg_open_data",
+    source,
     source_uri: candidate.sourceUri,
     organization_number: candidate.organizationNumber,
     organization_form: candidate.organizationForm,
@@ -3592,6 +3729,8 @@ function rawCandidateData(
     entity_kind_confidence: classification.confidence,
     entity_kind_evidence: classification.evidence,
     normalized_location_key: classification.normalizedLocationKey,
+    provider_contacts:
+      source === "nhn_flr_public" ? (candidate.providerContacts ?? []) : [],
   };
 }
 
@@ -3965,6 +4104,7 @@ async function updateCheckpoint(
   pool: Pool,
   runId: string,
   checkpoint: ExecutionCheckpoint,
+  registrySource: DiscoveryBrief["registry_source"],
   executionLeaseToken?: string,
 ): Promise<void> {
   const summaries = Object.values(checkpoint.query_results);
@@ -3998,7 +4138,7 @@ async function updateCheckpoint(
       raw,
       duplicates,
       JSON.stringify({
-        source: "brreg_open_data",
+        source: registrySource,
         query_count: checkpoint.completed_queries.length,
         source_cursor_start: checkpoint.source_cursor_start,
         source_cursor_next: checkpoint.source_cursor_next,
@@ -4016,7 +4156,7 @@ async function updateCheckpoint(
         source_limit_reached: summaries.some(
           (item) => item.source_limit_reached,
         ),
-        sources: DISCOVERY_DATA_SOURCES,
+        sources: dataSourcesForRegistry(registrySource),
       }),
       executionLeaseToken ?? null,
     ],
@@ -4129,12 +4269,18 @@ async function persistProviderCandidate(
       source_uri: municipality.sourceUri,
     }),
   );
+  const providerSource = input.candidate.source ?? "brreg_open_data";
+  const providerLicense =
+    input.candidate.sourceLicense ??
+    (providerSource === "brreg_open_data"
+      ? "NLOD 2.0"
+      : "Avtalebasert tilgang");
   const provenance = [
     {
-      source: "brreg_open_data",
+      source: providerSource,
       organization_number: input.candidate.organizationNumber,
       source_uri: input.candidate.sourceUri,
-      license: "NLOD 2.0",
+      license: providerLicense,
       run_id: input.run.id,
       profile_id: input.run.profile_id,
       profile_version: input.run.profile_version,
@@ -4144,7 +4290,9 @@ async function persistProviderCandidate(
       query: input.queryText,
     },
   ];
-  const entityClassification = classifyDiscoveryEntity({
+  const entityClassification =
+    input.candidate.entityClassification ??
+    classifyDiscoveryEntity({
     name: input.candidate.name,
     address: input.candidate.address,
     postalCode: input.candidate.postalCode,
@@ -4158,7 +4306,7 @@ async function persistProviderCandidate(
   const rawData = rawCandidateData(input.candidate, entityClassification);
   const enrichmentData = {
     found: true,
-    source: "brreg",
+    source: providerSource === "nhn_flr_public" ? "nhn_flr_public" : "brreg",
     fetchedAt: observedAt,
     autoLinked: true,
     matchedName: input.candidate.name,
@@ -4190,7 +4338,7 @@ async function persistProviderCandidate(
     latitude: input.candidate.location?.latitude ?? null,
     longitude: input.candidate.location?.longitude ?? null,
     website_url: input.candidate.website,
-    phone: null,
+    phone: input.candidate.phone ?? null,
     email: null,
     organization_number: input.candidate.organizationNumber,
     raw_data: rawData,
@@ -4368,7 +4516,7 @@ async function persistProviderCandidate(
 
     const sourceHits = [
       {
-        source: "brreg_open_data",
+        source: input.candidate.source ?? "brreg_open_data",
         query_index: input.queryIndex,
         organization_number: input.candidate.organizationNumber,
         nace_code: input.candidate.naceCode,
@@ -4503,7 +4651,10 @@ export async function executeDiscoveryRun(
   const plan = buildDiscoverySearchPlan(brief);
   const checkpoint = executionCheckpoint(run.checkpoint, brief, plan);
   const searchRegistry =
-    overrides.searchRegistry ?? createDiscoveryRegistryProvider().search;
+    overrides.searchRegistry ??
+    (brief.registry_source === "nhn_flr_public"
+      ? createDiscoveryFlrProvider().search
+      : createDiscoveryRegistryProvider().search);
 
   if (["queued", "searching"].includes(run.status)) {
     assertExecutionActive(overrides.signal);
@@ -4646,6 +4797,7 @@ export async function executeDiscoveryRun(
           pool,
           run.id,
           checkpoint,
+          brief.registry_source,
           overrides.executionLease?.leaseToken,
         );
         emitRunProgress(emit, run, {
@@ -4745,6 +4897,7 @@ export async function executeDiscoveryRun(
         pool,
         run.id,
         checkpoint,
+        brief.registry_source,
         overrides.executionLease?.leaseToken,
       );
       await refreshRunCounts(pool, run.id);

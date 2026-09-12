@@ -227,6 +227,25 @@ describe("Leadgrid Discovery service", () => {
     );
   });
 
+  it("previews the authorized NHN Fastlegeregister source explicitly", () => {
+    const preview = previewDiscovery({
+      ...brief,
+      registry_source: "nhn_flr_public",
+      country_code: "NO",
+      city: null,
+      industry_queries: ["86.210"],
+    });
+
+    expect(preview.plan.source).toBe("nhn_flr_public");
+    expect(preview.plan.estimated_search_pages).toBe(1);
+    expect(preview.plan.warnings).toContainEqual(
+      expect.objectContaining({ code: "nhn_flr_authorized_source" }),
+    );
+    expect(preview.sources.map((source) => source.id)).toEqual([
+      "nhn_flr_public",
+    ]);
+  });
+
   it("keeps production producers disabled until the explicit phase-two flag", async () => {
     expect(isLeadgridDiscoveryEnabled({ NODE_ENV: "production" })).toBe(false);
     expect(
@@ -1377,6 +1396,88 @@ describe("Leadgrid Discovery service", () => {
         },
       },
     });
+  });
+
+  it("creates privacy-reviewed Fastlegeregister contacts only after office approval", async () => {
+    const firstReference = "a".repeat(64);
+    const secondReference = "b".repeat(64);
+    const { pool, query } = transactionPool((sql) => {
+      if (sql.includes("SELECT c.id::text AS candidate_id")) {
+        return {
+          rows: [
+            {
+              ...decisionCandidate(),
+              name: "Eksempel legesenter",
+              entity_kind: "clinic",
+              entity_kind_confidence: "high",
+              raw_data: {
+                source: "nhn_flr_public",
+                provider_contacts: [
+                  {
+                    name: "Ada Lovelace",
+                    sourceReference: firstReference,
+                  },
+                  {
+                    name: "Grace Hopper",
+                    sourceReference: secondReference,
+                  },
+                  { name: "Ugyldig", sourceReference: "raw-hpr-123" },
+                ],
+              },
+              enrichment_data: {
+                found: true,
+                source: "nhn_flr_public",
+                fetchedAt: "2026-09-12T10:00:00.000Z",
+                autoLinked: true,
+                company: {
+                  name: "Eksempel legesenter",
+                  orgNr: "999888777",
+                },
+              },
+            },
+          ],
+        };
+      }
+      if (sql.includes("FROM leadgrid_discovery_feedback")) return { rows: [] };
+      if (sql.includes("FROM crm_customers")) return { rows: [] };
+      if (sql.includes("INSERT INTO crm_customers")) {
+        return { rows: [{ id: LEAD_ID }], rowCount: 1 };
+      }
+      return undefined;
+    });
+
+    const result = await decideDiscoveryCandidate(pool, {
+      project,
+      userId: "user-a",
+      runId: RUN_ID,
+      candidateId: CANDIDATE_ID,
+      idempotencyKey: "approve-flr-office-key",
+      decision: { decision: "approve", reason_code: "good_fit" },
+    });
+
+    expect(result).toMatchObject({
+      decision: "approve",
+      lead_id: LEAD_ID,
+      contact_count: 2,
+    });
+    const contactCalls = query.mock.calls.filter(([queryValue]) =>
+      textOf(queryValue).includes("INSERT INTO leadgrid_customer_contacts"),
+    );
+    expect(contactCalls).toHaveLength(2);
+    expect(contactCalls.map((call) => call[1]?.[4])).toEqual([
+      firstReference,
+      secondReference,
+    ]);
+    expect(textOf(contactCalls[0]?.[0])).toContain("source_reference");
+    expect(textOf(contactCalls[0]?.[0])).toContain("'notice_required'");
+    expect(textOf(contactCalls[0]?.[0])).toContain("'not_requested'");
+    expect(textOf(contactCalls[0]?.[0])).toContain("INTERVAL '30 days'");
+    expect(JSON.stringify(contactCalls)).not.toContain("raw-hpr-123");
+    const crmInsert = query.mock.calls.find(([queryValue]) =>
+      textOf(queryValue).includes("INSERT INTO crm_customers"),
+    );
+    const metadata = JSON.parse(String(crmInsert?.[1]?.at(-1)));
+    expect(metadata.discovery.source).toBe("nhn_flr_public");
   });
 
   it("requires approval through the clinic group for a linked practitioner", async () => {

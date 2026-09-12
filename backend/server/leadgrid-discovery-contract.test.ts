@@ -236,6 +236,44 @@ describe("Discovery wire contract", () => {
     ).toBe(true);
   });
 
+  it("keeps Fastlegeregister profiles inside the filters documented by NHN", () => {
+    const brief = discoveryBriefSchema.parse({
+      registry_source: "nhn_flr_public",
+      industry_queries: ["86.210"],
+      country_code: "NO",
+      target_count: 60,
+      enrichment_count: 30,
+    });
+    const plan = buildDiscoverySearchPlan(brief);
+
+    expect(plan.source).toBe("nhn_flr_public");
+    expect(plan.estimated_search_pages).toBe(1);
+    expect(plan.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "nhn_flr_authorized_source" }),
+      ]),
+    );
+    expect(
+      discoveryBriefSchema.safeParse({
+        ...brief,
+        geo: { latitude: 59.91, longitude: 10.75, radius_km: 15 },
+        country_code: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      discoveryBriefSchema.safeParse({
+        ...brief,
+        employee_count: { minimum: 5, maximum: 50 },
+      }).success,
+    ).toBe(false);
+    expect(
+      discoveryBriefSchema.safeParse({
+        ...brief,
+        industry_queries: ["86.221"],
+      }).success,
+    ).toBe(false);
+  });
+
   it("hashes equivalent objects identically", () => {
     expect(discoveryHash({ b: 2, a: { y: 1, x: 0 } })).toBe(
       discoveryHash({ a: { x: 0, y: 1 }, b: 2 }),
