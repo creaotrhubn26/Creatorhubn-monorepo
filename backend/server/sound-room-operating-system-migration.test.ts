@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(
-  new URL("../migrations/0588_sound_room_producer_operating_system.sql", import.meta.url),
+  new URL("../migrations/0589_sound_room_producer_operating_system.sql", import.meta.url),
   "utf8",
 );
 

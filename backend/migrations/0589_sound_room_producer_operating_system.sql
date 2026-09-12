@@ -1,4 +1,4 @@
--- 0588_sound_room_producer_operating_system.sql
+-- 0589_sound_room_producer_operating_system.sql
 --
 -- Sound Room Producer OS: durable producer inbox, listening receipts,
 -- revision briefs, blind multi-version decisions, album/EP sequencing,

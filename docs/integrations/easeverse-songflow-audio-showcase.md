@@ -170,7 +170,7 @@ Migrasjon `0572_music_artifact_lineage_and_companion_actions.sql` legger til:
 - markørkvittering på Sound Room-kommentarer
 - kobling fra bounce til kanonisk artefakt
 
-Migrasjon `0588_sound_room_producer_operating_system.sql` legger til:
+Migrasjon `0589_sound_room_producer_operating_system.sql` legger til:
 
 - produsentaktivitet og reelle lyttekvitteringer
 - revisjonsbriefer og blind Decision Room med én stemme per reviewer
