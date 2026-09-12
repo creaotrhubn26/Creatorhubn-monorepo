@@ -239,6 +239,114 @@ export async function userCanCoordinateCastingProduction(
   return userOwnsCastingProject(pool, projectId, userId);
 }
 
+/**
+ * True when the user owns the script-supervisor continuity lane. General
+ * production edit access is intentionally insufficient because take logs,
+ * lined-script deviations and continuity history must have one clear owner.
+ */
+export async function userCanManageCastingContinuity(
+  pool: QueryablePool,
+  projectId: string,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  if (!projectId || !userId) return false;
+  try {
+    const result = await pool.query(
+      `SELECT
+         EXISTS (
+           SELECT 1 FROM casting_projects cp WHERE cp.id = $1
+         ) AS project_exists,
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+             LEFT JOIN casting_user_roles cur
+               ON cur.project_id = cp.id
+              AND cur.user_id = $2
+              AND cur.deactivated_at IS NULL
+              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
+            WHERE cp.id = $1
+              AND (
+                cp.created_by = $2
+                OR (
+                  cur.user_id IS NOT NULL
+                  AND (
+                    cur.role = 'script_supervisor'
+                    OR cur.permissions -> 'canManageContinuity' = 'true'::jsonb
+                  )
+                )
+              )
+         ) AS can_manage_continuity`,
+      [projectId, userId],
+    );
+    const status = result.rows[0];
+    if (status?.project_exists === true) {
+      return status.can_manage_continuity === true;
+    }
+  } catch {
+    // Legacy-only installs remain owner-only.
+  }
+  return userOwnsCastingProject(pool, projectId, userId);
+}
+
+/**
+ * Directors and ADs may add scoped comments without gaining write access to
+ * the canonical take log. Producers can comment and consume reports.
+ */
+export async function userCanCommentCastingContinuity(
+  pool: QueryablePool,
+  projectId: string,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  if (!projectId || !userId) return false;
+  try {
+    const result = await pool.query(
+      `SELECT
+         EXISTS (
+           SELECT 1 FROM casting_projects cp WHERE cp.id = $1
+         ) AS project_exists,
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+             LEFT JOIN casting_user_roles cur
+               ON cur.project_id = cp.id
+              AND cur.user_id = $2
+              AND cur.deactivated_at IS NULL
+              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
+            WHERE cp.id = $1
+              AND (
+                cp.created_by = $2
+                OR (
+                  cur.user_id IS NOT NULL
+                  AND (
+                    cur.role IN (
+                      'script_supervisor',
+                      'director',
+                      'producer',
+                      'first_ad',
+                      'first_assistant_director',
+                      '1st_ad',
+                      'second_ad',
+                      'second_assistant_director',
+                      '2nd_ad'
+                    )
+                    OR cur.permissions -> 'canManageContinuity' = 'true'::jsonb
+                    OR cur.permissions -> 'canComment' = 'true'::jsonb
+                  )
+                )
+              )
+         ) AS can_comment_continuity`,
+      [projectId, userId],
+    );
+    const status = result.rows[0];
+    if (status?.project_exists === true) {
+      return status.can_comment_continuity === true;
+    }
+  } catch {
+    // Legacy-only installs remain owner-only.
+  }
+  return userOwnsCastingProject(pool, projectId, userId);
+}
+
 /** Returns the owning user id for a casting project, or null if unknown. */
 export async function getCastingProjectOwner(
   pool: QueryablePool,

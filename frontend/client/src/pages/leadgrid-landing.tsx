@@ -32,6 +32,8 @@ import { useEffect, useState } from 'react';
 import { useLandingBrand } from '@/hooks/useLandingAccent';
 import { useElementEdits } from '@/components/workspace/elementEdits';
 import WorkspaceDesignOverlay from '@/components/workspace/WorkspaceDesignOverlay';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
+import { reportHandledError } from '@/utils/installFrontendErrorReporter';
 import { fireGoogleAdsConversion } from '@/utils/google-ads-conversions';
 import { trackEvent, trackPageView } from '@/utils/ga4-client-tracking';
 import {
@@ -188,17 +190,6 @@ export default function LeadgridLanding() {
     window.addEventListener('leadgrid:book-demo', open);
     return () => window.removeEventListener('leadgrid:book-demo', open);
   }, []);
-  // Header "Logg inn" pekte til creatorhubn.com (web-appen). Leadgrid er nå
-  // en iOS-app i TestFlight, ikke på App Store ennå — venteliste-modal
-  // erstatter web-login-lenken til appen er live. Custom-event samme
-  // mønster som «Book demo» over — StickyHeader er en egen komponent uten
-  // tilgang til denne state-en direkte.
-  const [appWaitlistOpen, setAppWaitlistOpen] = useState(false);
-  useEffect(() => {
-    const open = () => setAppWaitlistOpen(true);
-    window.addEventListener('leadgrid:app-waitlist', open);
-    return () => window.removeEventListener('leadgrid:app-waitlist', open);
-  }, []);
   useEffect(() => {
     // GA4 page view (ekspl. tracket fordi SPA-routing ikke fyrer auto)
     trackPageView('/leadgrid', 'Leadgrid: Gjør kartet om til kunder');
@@ -321,10 +312,34 @@ export default function LeadgridLanding() {
     }}>
       {designMode && <WorkspaceDesignOverlay workspace="leadgrid" targetFile="frontend/client/src/pages/leadgrid-landing.tsx" onClose={() => setDesignMode(false)} />}
       <StickyHeader />
-      <LeadgridExperience onStartFree={() => setExpStartOpen(true)} />
+      {/* Scroll-filmen er dekorativ, men er den eneste framer-motion-bruken på
+          denne siden. iOS Safari kaster TypeError («Type error») fra native
+          Element.animate() når framer-motion binder motion-verdier ved mount
+          (error_log ea5174ab, kun iPhone, viewport 430x745). Uten egen
+          boundary boblet den helt opp til casting-main-root, som byttet ut
+          HELE leadgrid.no med «Oops! Something went wrong». Egen boundary her
+          gjør at filmen faller bort mens resten av landingssiden består. */}
+      <ErrorBoundary
+        componentName="leadgrid-landing-experience"
+        // IKKE fallback={null}: ErrorBoundary gjør `if (this.props.fallback)`,
+        // så null er falsy og faller gjennom til standard «Oops!»-panelet —
+        // altså nøyaktig boksen vi prøver å bli kvitt, bare inline midt på
+        // siden. Et tomt fragment er truthy og rendrer ingenting.
+        fallback={<></>}
+        // ErrorBoundary rapporterer kun til Sentry, som er en no-op uten
+        // VITE_SENTRY_DSN. Derfor sluttet denne krasjen å dukke opp i
+        // error_log den dagen root-boundaryen ble lagt inn (siste window.error
+        // 2026-08-23) selv om brukerne fortsatt traff den. Rapporter eksplisitt
+        // til in-house-reporteren så Admin Room Observability ser den igjen.
+        onError={(error) => reportHandledError(error, {
+          component: 'LeadgridExperience',
+          action: 'leadgrid-landing-render',
+        })}
+      >
+        <LeadgridExperience onStartFree={() => setExpStartOpen(true)} />
+      </ErrorBoundary>
       <StartFreeDialog open={expStartOpen} onClose={() => setExpStartOpen(false)} />
       <BookDemoDialog open={demoOpen} onClose={() => setDemoOpen(false)} />
-      <AppWaitlistDialog open={appWaitlistOpen} onClose={() => setAppWaitlistOpen(false)} />
       <HeroSection />
       <TrustStrip />
       <HowItWorksSection />
@@ -401,9 +416,10 @@ function StickyHeader() {
 
           <Stack direction="row" spacing={1.5} alignItems="center">
             <Button
+              component="a"
+              href="/login"
               variant="text"
               sx={{ color: PALETTE.textMuted, fontWeight: 500, textTransform: 'none' }}
-              onClick={() => window.dispatchEvent(new Event('leadgrid:app-waitlist'))}
             >
               Logg inn
             </Button>
@@ -493,7 +509,7 @@ function HeroSection() {
                 mb: 3,
               }}
             >
-              Gjør kartet<br />om til{' '}
+              Gjør kartet<br />{' '}om til{' '}
               <Box component="span" sx={{ color: PALETTE.accent }}>
                 kunder.
               </Box>
@@ -636,18 +652,13 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
         });
       } catch { /* swallow */ }
 
-      // Hvis Stripe Checkout-URL kom tilbake — redirect dit. Hvis ikke,
-      // vis fallback-melding.
-      if (data.checkout_url) {
-        window.location.href = data.checkout_url;
-        return;
-      }
-      // Ingen checkout-url — fortell brukeren sjekk e-post for magic link
+      // Solo Free krever aldri betalingskort eller Checkout. Betalt
+      // abonnement startes senere av organisasjonsadmin fra innstillingene.
       setError(null);
       alert(
         data.magic_link_sent
-          ? 'Sjekk e-posten din. Vi sendte deg en magic link til Leadgrid.'
-          : 'Klar! Gå til /leadgrid/welcome for å komme i gang.',
+          ? 'Sjekk e-posten din. Vi sendte deg en sikker lenke for å velge passord.'
+          : 'Klar! Du kan logge inn i Leadgrid nå.',
       );
       onClose();
     } catch (e: any) {
@@ -736,8 +747,8 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
             }}
           />
           <Typography variant="caption" sx={{ color: PALETTE.textFaint }}>
-            Vi tar betalingskortet ditt i neste steg via Stripe. Du blir
-            ikke belastet før du oppgraderer. Avslutt når som helst.
+            Ingen betalingskort. Vi oppretter organisasjonen og sender en
+            sikker innloggingslenke til e-posten din.
           </Typography>
         </Stack>
       </DialogContent>
@@ -753,7 +764,7 @@ function StartFreeDialog({ open, onClose }: { open: boolean; onClose: () => void
             '&:hover': { bgcolor: PALETTE.accentBright },
           }}
         >
-          {submitting ? <CircularProgress size={20} sx={{ color: '#1a0535' }} /> : 'Fortsett til Stripe'}
+          {submitting ? <CircularProgress size={20} sx={{ color: '#1a0535' }} /> : 'Opprett gratis konto'}
         </Button>
       </DialogActions>
     </Dialog>
@@ -868,83 +879,6 @@ function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void 
           <Button variant="contained" disabled={!canSend || submitting} onClick={submit}
             sx={{ bgcolor: PALETTE.accent, color: '#1a0535', fontWeight: 700, px: 3, borderRadius: 999, '&:hover': { bgcolor: PALETTE.accentBright } }}>
             {submitting ? <CircularProgress size={20} sx={{ color: '#1a0535' }} /> : 'Send forespørsel'}
-          </Button>
-        )}
-      </DialogActions>
-    </Dialog>
-  );
-}
-
-// Leadgrid-appen (iOS) er i TestFlight, ikke live på App Store ennå.
-// Header-«Logg inn» åpner denne i stedet for å lenke til creatorhubn.com —
-// samler e-post og varsler ved lansering.
-function AppWaitlistDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [email, setEmail] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
-
-  const canSend = email.includes('@') && email.includes('.');
-
-  async function submit() {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const r = await fetch('/api/leadgrid/app-waitlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) { setError(data.error === 'invalid_email' ? 'Ugyldig e-post' : 'Noe gikk galt, prøv igjen'); setSubmitting(false); return; }
-      try { trackEvent('leadgrid_app_waitlist_joined', {}); } catch { /* */ }
-      setDone(true);
-    } catch (e: any) {
-      setError(String(e?.message ?? e));
-    }
-    setSubmitting(false);
-  }
-
-  function close() {
-    setDone(false); setError(null); setSubmitting(false); setEmail('');
-    onClose();
-  }
-
-  return (
-    <Dialog
-      open={open} onClose={close} maxWidth="sm" fullWidth
-      PaperProps={{ sx: { bgcolor: '#0a0512', color: '#fff', border: '1px solid rgba(167, 139, 250, 0.20)', borderRadius: 3 } }}
-    >
-      <DialogTitle sx={{ pb: 1 }}>
-        <Typography variant="overline" sx={{ color: PALETTE.accent, letterSpacing: 2 }}>Leadgrid-appen</Typography>
-        <Typography variant="h5" fontWeight={700}>{done ? 'Du er på listen!' : 'Kommer snart til App Store'}</Typography>
-        {!done && (
-          <Typography variant="body2" sx={{ color: PALETTE.textMuted, mt: 1 }}>
-            Leadgrid for iPhone/iPad testes i TestFlight nå. Legg igjen e-posten din, så varsler vi deg
-            i det appen er live på App Store.
-          </Typography>
-        )}
-      </DialogTitle>
-      <DialogContent>
-        {done ? (
-          <Alert severity="success" sx={{ mb: 1 }}>
-            Vi varsler <b>{email}</b> så snart appen er tilgjengelig på App Store.
-          </Alert>
-        ) : (
-          <>
-            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-            <TextField fullWidth required label="E-post" type="email" value={email}
-              onChange={(e) => setEmail(e.target.value)} placeholder="ola@bedrift.no"
-              InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={{ ...lgField, mt: 1 }} />
-          </>
-        )}
-      </DialogContent>
-      <DialogActions sx={{ p: 3, pt: 1 }}>
-        <Button onClick={close} sx={{ color: PALETTE.textMuted }}>{done ? 'Lukk' : 'Avbryt'}</Button>
-        {!done && (
-          <Button variant="contained" disabled={!canSend || submitting} onClick={submit}
-            sx={{ bgcolor: PALETTE.accent, color: '#1a0535', fontWeight: 700, px: 3, borderRadius: 999, '&:hover': { bgcolor: PALETTE.accentBright } }}>
-            {submitting ? <CircularProgress size={20} sx={{ color: '#1a0535' }} /> : 'Varsle meg'}
           </Button>
         )}
       </DialogActions>
@@ -1858,7 +1792,7 @@ function Footer() {
                 { label: 'Funksjoner', href: '#losninger' },
                 { label: 'Priser', href: '#priser' },
                 { label: 'Integrasjoner', href: '/leadgrid/connectors' },
-                { label: 'For utviklere', href: '/leadgrid/developers' },
+                { label: 'For utviklere', href: '/leadgrid/utviklere' },
               ],
             },
             {

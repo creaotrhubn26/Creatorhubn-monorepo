@@ -20,7 +20,6 @@ import {
   useScroll,
   useTransform,
   useSpring,
-  useReducedMotion,
   useMotionValueEvent,
   type MotionValue,
 } from 'framer-motion';
@@ -54,16 +53,53 @@ function useExperienceMedia(): Scene[] {
   return scenes;
 }
 
+const NARROW_QUERY = '(max-width: 700px)';
+
+function matchesNarrow(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia(NARROW_QUERY).matches;
+}
+
 function useIsNarrow() {
-  const [narrow, setNarrow] = useState(false);
+  // Lazy init, IKKE useState(false): med false i første render er narrow
+  // fortsatt usann under den aller første commiten på telefon, og det er
+  // nettopp da framer-motion monterer og Element.animate() kaster. En
+  // passiv useEffect kommer for sent til å rekke å skru av animasjonene.
+  const [narrow, setNarrow] = useState(matchesNarrow);
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 700px)');
+    const mq = window.matchMedia(NARROW_QUERY);
     const apply = () => setNarrow(mq.matches);
     apply();
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
   }, []);
   return narrow;
+}
+
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
+function matchesReducedMotion(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia(REDUCED_MOTION_QUERY).matches;
+}
+
+/**
+ * Les preferansen synkront ved første render. Framer Motion sin egen hook kan
+ * først oppdatere etter at motion-treet er montert; på enkelte WebKit-/Chrome-
+ * kombinasjoner rekker Element.animate() da å kaste før redusert modus slår inn.
+ */
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(matchesReducedMotion);
+  useEffect(() => {
+    const mq = window.matchMedia(REDUCED_MOTION_QUERY);
+    const apply = () => setReduced(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+  return reduced;
 }
 
 const P = {
@@ -188,19 +224,42 @@ export default function LeadgridExperience({
 }: {
   onStartFree?: () => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
   const narrow = useIsNarrow();
-  const reduced = useReducedMotion();
+  const reduced = usePrefersReducedMotion();
   const scenes = useExperienceMedia();
+
+  // Telefoner og brukere som ber om redusert bevegelse får et komplett,
+  // statisk produktløp. Ingen motion-komponenter monteres i det hele tatt.
+  // Dette er både tilgjengelighetsoppførselen og den harde garantien mot
+  // Element.animate()-krasjen som tidligere tok ned hele landingssiden.
+  if (narrow || reduced) {
+    return (
+      <StaticLeadgridExperience
+        scenes={scenes}
+        narrow={narrow}
+        onStartFree={onStartFree}
+      />
+    );
+  }
+
+  return <AnimatedLeadgridExperience scenes={scenes} onStartFree={onStartFree} />;
+}
+
+function AnimatedLeadgridExperience({
+  scenes,
+  onStartFree,
+}: {
+  scenes: Scene[];
+  onStartFree?: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ['start start', 'end end'],
   });
   // Myk demping så scroll-koblede transformasjoner ikke rykker.
-  // prefers-reduced-motion: rå progress uten fjæring — scenene følger
-  // scrollen direkte i stedet for å svinge etter.
   const spring = useSpring(scrollYProgress, { stiffness: 120, damping: 30, mass: 0.4 });
-  const smooth = reduced ? scrollYProgress : spring;
+  const smooth = spring;
 
   return (
     <section
@@ -227,7 +286,7 @@ export default function LeadgridExperience({
         {scenes.map((s, i) => (
           <SceneLayer
             key={s.id} scene={s} index={i} progress={smooth}
-            narrow={narrow} reduced={!!reduced}
+            narrow={false} reduced={false}
           />
         ))}
 
@@ -235,10 +294,119 @@ export default function LeadgridExperience({
         <CtaLayer progress={smooth} onStartFree={onStartFree} />
 
         {/* Scene-prikker: hvor i reisen du er + hopp (skjules på telefon) */}
-        {!narrow && <ProgressDots progress={smooth} sectionRef={ref} />}
+        <ProgressDots progress={smooth} sectionRef={ref} />
 
         {/* Scroll-hint (kun helt i starten) */}
-        <ScrollHint progress={smooth} />
+        {/* iOS Safari kaster TypeError («Type error») fra native
+            Element.animate() mens framer-motion monterer denne filmen
+            (error_log ea5174ab: 12 treff, KUN iPhone, viewport 430x745;
+            Chromium/Firefox kaster ikke — derfor er desktop upåvirket).
+            Stacken peker på bindToMotionValue/addValue, så vi vet ikke
+            sikkert hvilken enkelt-animasjon som utløser den. Disse
+            repeterende loopene er de eneste WAAPI-animasjonene som starter
+            ved mount her, så vi dropper dem på telefon for å krympe
+            angrepsflaten. Selve garantien mot hvit side er ErrorBoundary-en
+            rundt <LeadgridExperience> i leadgrid-landing.tsx. */}
+        <ScrollHint progress={smooth} still={false} />
+      </div>
+    </section>
+  );
+}
+
+function StaticLeadgridExperience({
+  scenes,
+  narrow,
+  onStartFree,
+}: {
+  scenes: Scene[];
+  narrow: boolean;
+  onStartFree?: () => void;
+}) {
+  return (
+    <section
+      aria-label="Leadgrid: en dag i feltet"
+      data-leadgrid-experience="static"
+      style={{ background: P.bg, color: P.text, padding: narrow ? '72px 20px' : '96px 6vw' }}
+    >
+      <div style={{ width: '100%', maxWidth: 1180, margin: '0 auto' }}>
+        <div style={{ maxWidth: 760, marginBottom: 48 }}>
+          <div
+            style={{
+              display: 'inline-block', marginBottom: 16, color: P.accentBright,
+              fontSize: 13, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase',
+            }}
+          >
+            Leadgrid
+          </div>
+          <h2
+            style={{
+              margin: 0, fontSize: narrow ? 42 : 64, lineHeight: 1.04,
+              letterSpacing: -1, fontWeight: 800,
+            }}
+          >
+            Feltet ditt er et grid.
+          </h2>
+          <p style={{ margin: '20px 0 0', maxWidth: 650, color: P.muted, fontSize: 19, lineHeight: 1.55 }}>
+            Finn de riktige bedriftene, planlegg dagen og følg hvert lead fra første signal til vunnet kunde.
+          </p>
+        </div>
+
+        <div
+          style={{
+            display: 'grid', gridTemplateColumns: narrow ? '1fr' : 'repeat(2, minmax(0, 1fr))',
+            gap: narrow ? 22 : 30,
+          }}
+        >
+          {scenes.slice(1).map((scene) => (
+            <article
+              key={scene.id}
+              style={{
+                overflow: 'hidden', borderRadius: 24,
+                border: `1px solid ${P.accent}33`, background: `${P.accent}0d`,
+              }}
+            >
+              <img
+                src={scene.image}
+                alt=""
+                loading="lazy"
+                style={{ display: 'block', width: '100%', aspectRatio: '16 / 10', objectFit: 'cover', background: '#0b0518' }}
+              />
+              <div style={{ padding: narrow ? 22 : 28 }}>
+                {scene.eyebrow && (
+                  <div style={{ color: P.accentBright, fontSize: 12, fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+                    {scene.eyebrow}
+                  </div>
+                )}
+                <h3 style={{ margin: '10px 0 0', fontSize: narrow ? 25 : 30, lineHeight: 1.15 }}>
+                  {scene.title}
+                </h3>
+                <p style={{ margin: '12px 0 0', color: P.muted, fontSize: 16, lineHeight: 1.55 }}>
+                  {scene.body}
+                </p>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div style={{ textAlign: 'center', paddingTop: narrow ? 64 : 88 }}>
+          <h2 style={{ margin: 0, fontSize: narrow ? 38 : 56, lineHeight: 1.05 }}>
+            Gjør kartet om til kunder.
+          </h2>
+          <p style={{ color: P.muted, margin: '18px 0 0', fontSize: 18 }}>
+            Gratis å starte. Ingen kortkrav. Native iPad-app inkludert.
+          </p>
+          <button
+            type="button"
+            onClick={onStartFree}
+            style={{
+              marginTop: 26, cursor: 'pointer', border: 'none', padding: '16px 28px',
+              borderRadius: 999, fontSize: 17, fontWeight: 800, color: '#1a0535',
+              background: P.accentBright,
+            }}
+          >
+            Start gratis
+          </button>
+        </div>
       </div>
     </section>
   );
@@ -548,7 +716,7 @@ function DeviceVisual({
               position: 'absolute', left: '30%', top: '36%',
               transform: 'translate(-50%, -100%)',
             }}
-            animate={reduced ? undefined : { y: [0, -6, 0] }}
+            animate={reduced || narrow ? undefined : { y: [0, -6, 0] }}
             transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
           >
             {/* pulserende ring i pin-tuppen */}
@@ -558,7 +726,7 @@ function DeviceVisual({
                 width: 12, height: 12, borderRadius: '50%',
                 transform: 'translate(-50%, 50%)', background: P.magenta,
               }}
-              animate={reduced ? undefined : {
+              animate={reduced || narrow ? undefined : {
                 boxShadow: [`0 0 0 0 ${P.magenta}aa`, `0 0 0 20px ${P.magenta}00`],
               }}
               transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
@@ -777,7 +945,12 @@ function CtaLayer({
 }
 
 // ── Scroll-hint ───────────────────────────────────────────────────────
-function ScrollHint({ progress }: { progress: MotionValue<number> }) {
+function ScrollHint({ progress, still }: {
+  progress: MotionValue<number>;
+  /** Telefon eller prefers-reduced-motion: dropp den repeterende
+   *  mount-animasjonen helt (se kommentar ved kallstedet). */
+  still?: boolean;
+}) {
   const opacity = useTransform(progress, [0, 0.04], [1, 0]);
   return (
     <motion.div
@@ -800,7 +973,7 @@ function ScrollHint({ progress }: { progress: MotionValue<number> }) {
             position: 'absolute', left: '50%', top: 8, x: '-50%',
             width: 4, height: 8, borderRadius: 2, background: P.accentBright,
           }}
-          animate={{ y: [0, 12, 0], opacity: [1, 0.3, 1] }}
+          animate={still ? undefined : { y: [0, 12, 0], opacity: [1, 0.3, 1] }}
           transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
         />
       </motion.div>

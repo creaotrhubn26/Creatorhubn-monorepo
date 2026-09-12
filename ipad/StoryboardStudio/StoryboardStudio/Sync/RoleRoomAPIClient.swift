@@ -2005,6 +2005,16 @@ actor RoleRoomAPIClient {
         return try decodeStoryboardSkillPayload(data, as: [StoryboardReviewRoundDTO].self)
     }
 
+    func fetchStoryboardReviewRound(
+        projectId: String, manuscriptId: String, roundId: String
+    ) async throws -> StoryboardReviewRoundDTO {
+        let payload = try await getJSON(
+            path: "/api/role-room/projects/\(projectId)/manuscripts/\(manuscriptId)/storyboard-review-rounds/\(roundId)",
+            query: [:])
+        guard let data = payload["data"] else { throw SyncError.malformed("storyboard review round") }
+        return try decodeStoryboardSkillPayload(data, as: StoryboardReviewRoundDTO.self)
+    }
+
     func createStoryboardReviewRound(
         projectId: String, manuscriptId: String, label: String, summary: String
     ) async throws -> StoryboardReviewRoundDTO {
@@ -2023,6 +2033,27 @@ actor RoleRoomAPIClient {
             query: [:])
         guard let data = payload["data"] else { throw SyncError.malformed("storyboard review diff") }
         return try decodeStoryboardSkillPayload(data, as: StoryboardReviewDiffDTO.self)
+    }
+
+    func updateStoryboardReviewComment(
+        projectId: String, manuscriptId: String, roundId: String,
+        commentId: String, changes: StoryboardReviewCommentChanges
+    ) async throws -> StoryboardReviewCommentDTO {
+        var body: [String: Any] = [:]
+        if let status = changes.status { body["status"] = status }
+        func apply(_ update: StoryboardReviewFieldUpdate, key: String) {
+            guard case let .value(value) = update else { return }
+            body[key] = value ?? NSNull()
+        }
+        apply(changes.assignedTo, key: "assignedTo")
+        apply(changes.dueAt, key: "dueAt")
+        apply(changes.resolutionNote, key: "resolutionNote")
+        apply(changes.resolvedInRoundId, key: "resolvedInRoundId")
+        let payload = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/manuscripts/\(manuscriptId)/storyboard-review-rounds/\(roundId)/comments/\(commentId)",
+            method: "PATCH", body: body)
+        guard let data = payload["data"] else { throw SyncError.malformed("storyboard review comment") }
+        return try decodeStoryboardSkillPayload(data, as: StoryboardReviewCommentDTO.self)
     }
 
     func createStoryboardReviewShareLink(

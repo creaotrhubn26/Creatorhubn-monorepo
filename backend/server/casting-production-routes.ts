@@ -12,6 +12,10 @@
  *   • POST   /production-days                       → { productionDay }
  *   • PATCH  /projects/:projectId/production-days/:dayId/production-management
  *   • PATCH  /projects/:projectId/production-days/:dayId/production-coordination
+ *   • PATCH  /projects/:projectId/production-days/:dayId/continuity
+ *   • POST   /projects/:projectId/production-days/:dayId/continuity/comments
+ *   • POST   /projects/:projectId/production-days/:dayId/continuity/media
+ *   • GET    /projects/:projectId/production-days/:dayId/continuity/media/:fileId/url
  *   • DELETE /production-days/:dayId
  *
  * Schema er smalere enn frontend-modellene, så en `data JSONB`-kolonne lagrer hele
@@ -28,14 +32,39 @@ import {
 } from 'express';
 import type { Pool } from 'pg';
 import { randomBytes } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { unlink } from 'node:fs/promises';
+import multer from 'multer';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import {
   userCanAccessCastingProject,
+  userCanCommentCastingContinuity,
   userCanCoordinateCastingProduction,
   userCanEditCastingProduction,
+  userCanManageCastingContinuity,
   userCanManageCastingProduction,
   userOwnsCastingProject,
 } from './casting-project-ownership.js';
+import {
+  continuityObject,
+  normalizeContinuityComment,
+  normalizeProductionContinuityOperations,
+  ProductionContinuityValidationError,
+  readContinuityActivity,
+  readContinuityComments,
+  readContinuityRevisions,
+  summarizeContinuityChanges,
+} from './casting-production-continuity.js';
+import {
+  CONTINUITY_MEDIA_MAX_VIDEO_BYTES,
+  CONTINUITY_MEDIA_MIME_TYPES,
+  inspectContinuityMediaFile,
+  ProductionContinuityMediaValidationError,
+} from './casting-production-continuity-media.js';
+import {
+  getContinuityMediaS3DownloadUrl,
+  uploadContinuityMediaToS3,
+} from './casting-production-continuity-s3.js';
 
 interface SessionData {
   userId: string;
@@ -46,6 +75,41 @@ interface SessionData {
   [key: string]: unknown;
 }
 type AuthedRequest = Request & { userId: string };
+type ContinuityMediaRequest = AuthedRequest & { file?: Express.Multer.File };
+
+const continuityMediaUpload = multer({
+  storage: multer.diskStorage({
+    destination: tmpdir(),
+    filename: (_req, _file, callback) => callback(
+      null,
+      `role-room-continuity-${Date.now()}-${randomBytes(8).toString('hex')}.upload`,
+    ),
+  }),
+  limits: {
+    fileSize: CONTINUITY_MEDIA_MAX_VIDEO_BYTES,
+    files: 1,
+    fields: 8,
+    fieldSize: 2_048,
+  },
+  fileFilter: (_req, file, callback) => {
+    if (CONTINUITY_MEDIA_MIME_TYPES.has(file.mimetype)) callback(null, true);
+    else callback(new ProductionContinuityMediaValidationError('Filtypen er ikke tillatt.'));
+  },
+});
+
+function receiveContinuityMedia(req: Request, res: Response, next: NextFunction): void {
+  continuityMediaUpload.single('file')(req, res, (error: unknown) => {
+    if (!error) { next(); return; }
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      res.status(413).json({ error: 'file_too_large', message: 'Filen kan ikke være større enn 250 MB.' });
+      return;
+    }
+    res.status(415).json({
+      error: 'unsupported_media',
+      message: error instanceof Error ? error.message : 'Filtypen er ikke tillatt.',
+    });
+  });
+}
 
 async function resolveUser(
   pool: Pool,
@@ -82,7 +146,10 @@ async function ensureSchema(pool: Pool): Promise<void> {
     ADD COLUMN IF NOT EXISTS management_updated_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS coordination_version INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS coordination_updated_by VARCHAR(255),
-    ADD COLUMN IF NOT EXISTS coordination_updated_at TIMESTAMPTZ`);
+    ADD COLUMN IF NOT EXISTS coordination_updated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS continuity_version INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS continuity_updated_by VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS continuity_updated_at TIMESTAMPTZ`);
 }
 function schemaReady(pool: Pool): Promise<void> {
   if (!schemaReadyPromise) {
@@ -97,6 +164,11 @@ function genId(prefix: string): string {
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function toDateString(value: unknown): string {
@@ -160,6 +232,9 @@ function mapDayRow(row: Record<string, any>) {
     coordinationVersion: Number(row.coordination_version ?? 0),
     coordinationUpdatedBy: row.coordination_updated_by ?? undefined,
     coordinationUpdatedAt: row.coordination_updated_at ?? undefined,
+    continuityVersion: Number(row.continuity_version ?? 0),
+    continuityUpdatedBy: row.continuity_updated_by ?? undefined,
+    continuityUpdatedAt: row.continuity_updated_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -455,11 +530,17 @@ function productionDayDataWithoutProtectedOperations(body: Record<string, any>):
   delete data.coordinationVersion;
   delete data.coordinationUpdatedAt;
   delete data.coordinationUpdatedBy;
+  delete data.productionContinuity;
+  delete data.continuityVersion;
+  delete data.continuityUpdatedAt;
+  delete data.continuityUpdatedBy;
   return data;
 }
 
 export interface CreateCastingProductionRouterDeps {
   activeSessions?: Map<string, SessionData>;
+  uploadContinuityMedia?: typeof uploadContinuityMediaToS3;
+  getContinuityMediaDownloadUrl?: typeof getContinuityMediaS3DownloadUrl;
 }
 
 export function createCastingProductionRouter(
@@ -468,6 +549,8 @@ export function createCastingProductionRouter(
 ): ExpressRouter {
   const router = Router();
   const auth = requireAuth(pool, deps.activeSessions);
+  const uploadContinuityMedia = deps.uploadContinuityMedia ?? uploadContinuityMediaToS3;
+  const getContinuityMediaDownloadUrl = deps.getContinuityMediaDownloadUrl ?? getContinuityMediaS3DownloadUrl;
 
   // Props remain owner-scoped. Production days also support active project
   // members, with an explicit production-write check for mutations. Auth alone
@@ -533,6 +616,26 @@ export function createCastingProductionRouter(
     const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
     const allowed = normalizedProjectId
       ? await userCanCoordinateCastingProduction(pool, normalizedProjectId, userId)
+      : false;
+    if (!allowed) {
+      res.status(404).json({ error: 'not_found' });
+      return false;
+    }
+    return true;
+  }
+
+  async function ensureContinuityAccess(
+    req: Request,
+    res: Response,
+    projectId: unknown,
+    mode: 'manage' | 'comment',
+  ): Promise<boolean> {
+    const userId = (req as AuthedRequest).userId;
+    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
+    const allowed = normalizedProjectId
+      ? mode === 'manage'
+        ? await userCanManageCastingContinuity(pool, normalizedProjectId, userId)
+        : await userCanCommentCastingContinuity(pool, normalizedProjectId, userId)
       : false;
     if (!allowed) {
       res.status(404).json({ error: 'not_found' });
@@ -641,6 +744,10 @@ export function createCastingProductionRouter(
            END || CASE
              WHEN casting_production_days.data ? 'productionCoordination'
              THEN jsonb_build_object('productionCoordination', casting_production_days.data -> 'productionCoordination')
+             ELSE '{}'::jsonb
+           END || CASE
+             WHEN casting_production_days.data ? 'productionContinuity'
+             THEN jsonb_build_object('productionContinuity', casting_production_days.data -> 'productionContinuity')
              ELSE '{}'::jsonb
            END,
            updated_at = NOW()
@@ -893,6 +1000,414 @@ export function createCastingProductionRouter(
         return;
       }
       res.status(500).json({ error: 'Kunne ikke lagre koordinatorflaten', detail: 'internal_error' });
+    }
+  });
+
+  router.patch('/projects/:projectId/production-days/:dayId/continuity', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const { projectId, dayId } = req.params;
+      if (!(await ensureContinuityAccess(req, res, projectId, 'manage'))) return;
+
+      const body = asObject(req.body);
+      if (!body || Buffer.byteLength(JSON.stringify(body), 'utf8') > 256 * 1024) {
+        res.status(400).json({ error: 'invalid_payload', message: 'Kontinuitetsloggen er ugyldig eller for stor.' });
+        return;
+      }
+      const expectedVersion = Number(body.expectedVersion);
+      if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+        res.status(400).json({ error: 'invalid_payload', message: 'expectedVersion må være et ikke-negativt heltall.' });
+        return;
+      }
+      const normalized = normalizeProductionContinuityOperations(body.operations);
+      const currentResult = await pool.query(
+        'SELECT * FROM casting_production_days WHERE project_id = $1 AND id = $2',
+        [projectId, dayId],
+      );
+      if (currentResult.rowCount === 0) {
+        res.status(404).json({ error: 'Produksjonsdag ikke funnet' });
+        return;
+      }
+
+      const currentRow = currentResult.rows[0] as Record<string, any>;
+      const currentVersion = Number(currentRow.continuity_version ?? 0);
+      if (currentVersion !== expectedVersion) {
+        res.status(409).json({
+          error: 'version_conflict',
+          message: 'Kontinuitetsloggen er endret av en annen bruker.',
+          productionDay: mapDayRow(currentRow),
+        });
+        return;
+      }
+
+      const assignedSceneIds = new Set(asArray(currentRow.scene_ids).map((sceneId) => String(sceneId)));
+      if (
+        normalized.sceneRecords.length !== assignedSceneIds.size
+        || normalized.sceneRecords.some((entry) => !assignedSceneIds.has(entry.sceneId))
+      ) {
+        res.status(400).json({
+          error: 'invalid_payload',
+          message: 'Kontinuitet kan bare registreres for scener som er tildelt produksjonsdagen.',
+        });
+        return;
+      }
+
+      const storageFileIds = [...new Set(normalized.entries.flatMap((entry) =>
+        entry.references.flatMap((reference) => reference.storageFileId ? [reference.storageFileId] : []),
+      ))];
+      if (storageFileIds.length > 0) {
+        const mediaResult = await pool.query<{
+          id: string;
+          display_name: string;
+          content_type: string;
+          size_bytes: string;
+          scene_id: string;
+        }>(
+          `SELECT id::text AS id, display_name, content_type, size_bytes, scene_id
+             FROM casting_production_continuity_media
+            WHERE id = ANY($1::uuid[])
+              AND project_id = $2
+              AND production_day_id = $3
+              AND storage_provider = 'aws_s3'
+              AND content_type = ANY($4::text[])
+              AND deleted_at IS NULL`,
+          [storageFileIds, projectId, dayId, [...CONTINUITY_MEDIA_MIME_TYPES]],
+        );
+        if (mediaResult.rows.length !== storageFileIds.length) {
+          res.status(400).json({
+            error: 'invalid_payload',
+            message: 'En eller flere mediereferanser tilhører ikke denne produksjonsdagen.',
+          });
+          return;
+        }
+        const mediaById = new Map(mediaResult.rows.map((row) => [row.id, row]));
+        const hasSceneMismatch = normalized.entries.some((entry) => entry.references.some((reference) =>
+          reference.storageFileId && mediaById.get(reference.storageFileId)?.scene_id !== entry.sceneId,
+        ));
+        if (hasSceneMismatch) {
+          res.status(400).json({
+            error: 'invalid_payload',
+            message: 'En mediereferanse er knyttet til en annen scene.',
+          });
+          return;
+        }
+        for (const entry of normalized.entries) {
+          for (const reference of entry.references) {
+            if (!reference.storageFileId) continue;
+            const stored = mediaById.get(reference.storageFileId);
+            if (!stored) continue;
+            reference.kind = stored.content_type.startsWith('image/') ? 'photo' : 'video';
+            reference.storageProvider = 'aws_s3';
+            reference.contentType = stored.content_type;
+            reference.sizeBytes = Number(stored.size_bytes);
+            reference.label = stored.display_name.slice(0, 160);
+          }
+        }
+      }
+
+      const previousOperations = continuityObject(continuityObject(currentRow.data)?.productionContinuity);
+      const previousActivity = readContinuityActivity(previousOperations?.activity);
+      const previousComments = readContinuityComments(previousOperations?.comments);
+      const previousRevisions = readContinuityRevisions(previousOperations?.revisions);
+      let previousSnapshot: ReturnType<typeof normalizeProductionContinuityOperations> | null = null;
+      if (previousOperations) {
+        try {
+          previousSnapshot = normalizeProductionContinuityOperations(previousOperations);
+        } catch {
+          previousSnapshot = null;
+        }
+      }
+      const actorUserId = (req as AuthedRequest).userId;
+      const now = new Date().toISOString();
+      const changeMessage = summarizeContinuityChanges(previousOperations, normalized);
+      const revisions = previousSnapshot
+        ? [...previousRevisions, {
+            id: genId('continuity-revision'),
+            version: currentVersion,
+            message: `Versjon ${currentVersion} før ${changeMessage.toLocaleLowerCase('nb-NO')}`,
+            actorUserId: currentRow.continuity_updated_by ?? undefined,
+            createdAt: currentRow.continuity_updated_at ?? now,
+            snapshot: previousSnapshot,
+          }].slice(-8)
+        : previousRevisions;
+      const nextOperations = {
+        ...normalized,
+        comments: previousComments,
+        revisions,
+        activity: [...previousActivity, {
+          id: genId('continuity-activity'),
+          type: 'workspace_saved',
+          message: changeMessage,
+          actorUserId,
+          createdAt: now,
+        }].slice(-100),
+      };
+      const updateResult = await pool.query(
+        `UPDATE casting_production_days
+         SET data = jsonb_set(COALESCE(data, '{}'::jsonb), '{productionContinuity}', $4::jsonb, true),
+             continuity_version = continuity_version + 1,
+             continuity_updated_by = $5,
+             continuity_updated_at = NOW(),
+             updated_at = NOW()
+         WHERE project_id = $1 AND id = $2 AND continuity_version = $3
+         RETURNING *`,
+        [projectId, dayId, expectedVersion, JSON.stringify(nextOperations), actorUserId],
+      );
+      if (updateResult.rowCount === 0) {
+        const latest = await pool.query(
+          'SELECT * FROM casting_production_days WHERE project_id = $1 AND id = $2',
+          [projectId, dayId],
+        );
+        if (latest.rowCount === 0) {
+          res.status(404).json({ error: 'Produksjonsdag ikke funnet' });
+          return;
+        }
+        res.status(409).json({
+          error: 'version_conflict',
+          message: 'Kontinuitetsloggen er endret av en annen bruker.',
+          productionDay: mapDayRow(latest.rows[0]),
+        });
+        return;
+      }
+      res.json({ productionDay: mapDayRow(updateResult.rows[0]) });
+    } catch (err) {
+      if (err instanceof ProductionContinuityValidationError) {
+        res.status(400).json({ error: 'invalid_payload', message: err.message });
+        return;
+      }
+      res.status(500).json({ error: 'Kunne ikke lagre kontinuitetsloggen', detail: 'internal_error' });
+    }
+  });
+
+  router.post('/projects/:projectId/production-days/:dayId/continuity/comments', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const { projectId, dayId } = req.params;
+      if (!(await ensureContinuityAccess(req, res, projectId, 'comment'))) return;
+      const body = asObject(req.body);
+      if (!body || Buffer.byteLength(JSON.stringify(body), 'utf8') > 8 * 1024) {
+        res.status(400).json({ error: 'invalid_payload', message: 'Kommentaren er ugyldig eller for stor.' });
+        return;
+      }
+      const expectedVersion = Number(body.expectedVersion);
+      if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+        res.status(400).json({ error: 'invalid_payload', message: 'expectedVersion må være et ikke-negativt heltall.' });
+        return;
+      }
+      const commentInput = normalizeContinuityComment(body.comment);
+      const currentResult = await pool.query(
+        'SELECT * FROM casting_production_days WHERE project_id = $1 AND id = $2',
+        [projectId, dayId],
+      );
+      if (currentResult.rowCount === 0) {
+        res.status(404).json({ error: 'Produksjonsdag ikke funnet' });
+        return;
+      }
+      const currentRow = currentResult.rows[0] as Record<string, any>;
+      const currentVersion = Number(currentRow.continuity_version ?? 0);
+      if (currentVersion !== expectedVersion) {
+        res.status(409).json({
+          error: 'version_conflict',
+          message: 'Kontinuitetsloggen er endret av en annen bruker.',
+          productionDay: mapDayRow(currentRow),
+        });
+        return;
+      }
+      const assignedSceneIds = new Set(asArray(currentRow.scene_ids).map((sceneId) => String(sceneId)));
+      if (commentInput.sceneId && !assignedSceneIds.has(commentInput.sceneId)) {
+        res.status(400).json({ error: 'invalid_payload', message: 'Kommentaren peker på en scene utenfor produksjonsdagen.' });
+        return;
+      }
+
+      const previousOperations = continuityObject(continuityObject(currentRow.data)?.productionContinuity);
+      let core: ReturnType<typeof normalizeProductionContinuityOperations>;
+      try {
+        core = normalizeProductionContinuityOperations(previousOperations);
+      } catch {
+        core = normalizeProductionContinuityOperations({
+          sceneRecords: [...assignedSceneIds].map((sceneId) => ({ sceneId, status: 'not_started' })),
+          takes: [], entries: [], deviations: [],
+        });
+      }
+      const takeById = new Map(core.takes.map((take) => [take.id, take]));
+      if (commentInput.takeId && !takeById.has(commentInput.takeId)) {
+        res.status(400).json({ error: 'invalid_payload', message: 'Kommentaren peker på en take som ikke finnes.' });
+        return;
+      }
+      if (commentInput.takeId && commentInput.sceneId && takeById.get(commentInput.takeId)?.sceneId !== commentInput.sceneId) {
+        res.status(400).json({ error: 'invalid_payload', message: 'Kommentaren peker på en take i en annen scene.' });
+        return;
+      }
+      const actorUserId = (req as AuthedRequest).userId;
+      const now = new Date().toISOString();
+      const comment = {
+        id: genId('continuity-comment'),
+        ...commentInput,
+        actorUserId,
+        createdAt: now,
+      };
+      const nextOperations = {
+        ...core,
+        comments: [...readContinuityComments(previousOperations?.comments), comment].slice(-500),
+        revisions: readContinuityRevisions(previousOperations?.revisions),
+        activity: [...readContinuityActivity(previousOperations?.activity), {
+          id: genId('continuity-activity'),
+          type: 'comment_added',
+          message: commentInput.sceneId ? `La til kommentar på scene ${commentInput.sceneId}.` : 'La til kommentar på produksjonsdagen.',
+          actorUserId,
+          createdAt: now,
+        }].slice(-100),
+      };
+      const updateResult = await pool.query(
+        `UPDATE casting_production_days
+         SET data = jsonb_set(COALESCE(data, '{}'::jsonb), '{productionContinuity}', $4::jsonb, true),
+             continuity_version = continuity_version + 1,
+             continuity_updated_by = $5,
+             continuity_updated_at = NOW(),
+             updated_at = NOW()
+         WHERE project_id = $1 AND id = $2 AND continuity_version = $3
+         RETURNING *`,
+        [projectId, dayId, expectedVersion, JSON.stringify(nextOperations), actorUserId],
+      );
+      if (updateResult.rowCount === 0) {
+        const latest = await pool.query(
+          'SELECT * FROM casting_production_days WHERE project_id = $1 AND id = $2',
+          [projectId, dayId],
+        );
+        if (latest.rowCount === 0) {
+          res.status(404).json({ error: 'Produksjonsdag ikke funnet' });
+          return;
+        }
+        res.status(409).json({ error: 'version_conflict', message: 'Kontinuitetsloggen er endret av en annen bruker.', productionDay: mapDayRow(latest.rows[0]) });
+        return;
+      }
+      res.status(201).json({ productionDay: mapDayRow(updateResult.rows[0]), comment });
+    } catch (err) {
+      if (err instanceof ProductionContinuityValidationError) {
+        res.status(400).json({ error: 'invalid_payload', message: err.message });
+        return;
+      }
+      res.status(500).json({ error: 'Kunne ikke lagre kommentaren', detail: 'internal_error' });
+    }
+  });
+
+  router.post(
+    '/projects/:projectId/production-days/:dayId/continuity/media',
+    auth,
+    async (req, res, next) => {
+      try {
+        await schemaReady(pool);
+        if (!(await ensureContinuityAccess(req, res, req.params.projectId, 'manage'))) return;
+        next();
+      } catch {
+        res.status(500).json({ error: 'Kunne ikke kontrollere medietilgang', detail: 'internal_error' });
+      }
+    },
+    receiveContinuityMedia,
+    async (req, res) => {
+      const uploadRequest = req as ContinuityMediaRequest;
+      const file = uploadRequest.file;
+      if (!file?.path || file.size < 1) {
+        res.status(400).json({ error: 'missing_file', message: 'Velg et bilde eller en video.' });
+        return;
+      }
+      try {
+        const projectId = String(req.params.projectId);
+        const dayId = String(req.params.dayId);
+        const sceneId = typeof req.body?.sceneId === 'string' ? req.body.sceneId.trim().slice(0, 255) : '';
+        if (!sceneId) {
+          res.status(400).json({ error: 'invalid_payload', message: 'sceneId er påkrevd.' });
+          return;
+        }
+        const dayResult = await pool.query(
+          'SELECT scene_ids FROM casting_production_days WHERE project_id = $1 AND id = $2',
+          [projectId, dayId],
+        );
+        if (dayResult.rowCount === 0) {
+          res.status(404).json({ error: 'Produksjonsdag ikke funnet' });
+          return;
+        }
+        const assignedScenes = new Set(asArray(dayResult.rows[0].scene_ids).map((id) => String(id)));
+        if (!assignedScenes.has(sceneId)) {
+          res.status(400).json({ error: 'invalid_payload', message: 'Mediet må knyttes til en scene på produksjonsdagen.' });
+          return;
+        }
+
+        const inspected = await inspectContinuityMediaFile(file.path, file.mimetype, file.size);
+        const result = await uploadContinuityMedia(pool, {
+          userId: uploadRequest.userId,
+          projectId,
+          productionDayId: dayId,
+          sceneId,
+          displayName: String(file.originalname || 'kontinuitetsreferanse').slice(0, 255),
+          filePath: file.path,
+          sizeBytes: file.size,
+          contentType: inspected.contentType,
+          kind: inspected.kind,
+        });
+        if (!result.ok) {
+          if (result.reason === 'storage_not_configured') {
+            res.status(503).json({ error: 'storage_not_configured', message: 'Medielagring er ikke konfigurert.' });
+            return;
+          }
+          res.status(502).json({ error: 'upload_failed', message: 'Kunne ikke laste opp mediet.' });
+          return;
+        }
+        res.status(201).json({
+          reference: {
+            id: result.media.id,
+            kind: inspected.kind,
+            storageFileId: result.media.id,
+            storageProvider: 'aws_s3',
+            contentType: inspected.contentType,
+            sizeBytes: result.media.sizeBytes,
+            label: result.media.displayName.slice(0, 160),
+          },
+        });
+      } catch (error) {
+        if (error instanceof ProductionContinuityMediaValidationError) {
+          res.status(415).json({ error: 'unsupported_media', message: error.message });
+          return;
+        }
+        res.status(500).json({ error: 'upload_failed', message: 'Kunne ikke laste opp mediet.' });
+      } finally {
+        await unlink(file.path).catch(() => {});
+      }
+    },
+  );
+
+  router.get('/projects/:projectId/production-days/:dayId/continuity/media/:fileId/url', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const projectId = String(req.params.projectId);
+      const dayId = String(req.params.dayId);
+      const fileId = String(req.params.fileId);
+      if (!(await ensureProductionAccess(req, res, projectId, 'read'))) return;
+      if (!isUuid(fileId)) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      const result = await getContinuityMediaDownloadUrl(pool, {
+        fileId,
+        projectId,
+        productionDayId: dayId,
+        expiresInSeconds: 300,
+      });
+      if (!result.ok) {
+        res.status(result.reason === 'not_found' ? 404 : 503).json({
+          error: result.reason === 'not_found' ? 'not_found' : 'storage_unavailable',
+        });
+        return;
+      }
+      res.json({
+        url: result.url,
+        displayName: result.displayName,
+        contentType: result.contentType,
+        sizeBytes: result.sizeBytes,
+        expiresInSeconds: 300,
+      });
+    } catch {
+      res.status(500).json({ error: 'Kunne ikke åpne mediet', detail: 'internal_error' });
     }
   });
 

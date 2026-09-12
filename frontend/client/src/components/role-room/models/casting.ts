@@ -11,6 +11,7 @@ export type UserRoleType =
   | 'casting_director'
   | 'production_manager'
   | 'production_coordinator'
+  | 'script_supervisor'
   | 'first_ad'
   | 'second_ad'
   | 'camera_team'
@@ -26,6 +27,7 @@ export interface UserRolePermissions {
   canEditCasting?: boolean;
   canEditProduction?: boolean;
   canCoordinateProduction?: boolean;
+  canManageContinuity?: boolean;
   canManageCrew?: boolean;
   canManageLocations?: boolean;
   canEditShots?: boolean;
@@ -1085,6 +1087,11 @@ export interface ProductionDay {
   coordinationVersion?: number;
   coordinationUpdatedAt?: string;
   coordinationUpdatedBy?: string;
+  productionContinuity?: ProductionContinuityOperations;
+  /** Server-owned optimistic concurrency counter for script-supervisor edits. */
+  continuityVersion?: number;
+  continuityUpdatedAt?: string;
+  continuityUpdatedBy?: string;
   lastModifiedBy?: string;
   createdBy?: string;
   changeLog?: Array<{
@@ -1266,6 +1273,134 @@ export interface ProductionCoordinationOperations {
   escalations: ProductionCoordinationEscalation[];
   handover: ProductionCoordinationHandover;
   activity: ProductionCoordinationActivityEntry[];
+}
+
+export type ProductionContinuitySceneStatus = 'not_started' | 'in_progress' | 'complete';
+export type ProductionContinuityTakeStatus = 'good' | 'hold' | 'ng' | 'false_start';
+export type ProductionContinuityEntryCategory =
+  | 'costume'
+  | 'hair'
+  | 'makeup'
+  | 'props'
+  | 'blocking'
+  | 'action'
+  | 'eyeline'
+  | 'set';
+export type ProductionContinuitySeverity = 'info' | 'warning' | 'critical';
+export type ProductionContinuityDeviationType =
+  | 'improvised_dialogue'
+  | 'missing_line'
+  | 'dialogue_change'
+  | 'action_change'
+  | 'continuity_risk'
+  | 'other';
+
+export interface ProductionContinuitySceneRecord {
+  sceneId: string;
+  status: ProductionContinuitySceneStatus;
+  pagesPlanned?: number;
+  pagesShot?: number;
+  setup?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionContinuityTake {
+  id: string;
+  sceneId: string;
+  takeNumber: number;
+  slate?: string;
+  cameraRoll?: string;
+  soundRoll?: string;
+  timecodeStart?: string;
+  timecodeEnd?: string;
+  durationSeconds?: number;
+  status: ProductionContinuityTakeStatus;
+  circled: boolean;
+  continuityNotes?: string;
+  performanceNotes?: string;
+  technicalNotes?: string;
+  soundNotes?: string;
+  recordedAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionContinuityReference {
+  id: string;
+  kind: 'photo' | 'video' | 'other';
+  url?: string;
+  storageFileId?: string;
+  storageProvider?: 'aws_s3';
+  contentType?: string;
+  sizeBytes?: number;
+  label?: string;
+}
+
+export interface ProductionContinuityEntry {
+  id: string;
+  sceneId: string;
+  takeId?: string;
+  category: ProductionContinuityEntryCategory;
+  subject?: string;
+  description: string;
+  severity: ProductionContinuitySeverity;
+  references: ProductionContinuityReference[];
+  updatedAt?: string;
+}
+
+export interface ProductionContinuityDeviation {
+  id: string;
+  sceneId: string;
+  takeId?: string;
+  type: ProductionContinuityDeviationType;
+  character?: string;
+  originalText?: string;
+  performedText?: string;
+  note?: string;
+  timecode?: string;
+  accepted: boolean;
+  updatedAt?: string;
+}
+
+export interface ProductionContinuityComment {
+  id: string;
+  sceneId?: string;
+  takeId?: string;
+  message: string;
+  actorUserId?: string;
+  createdAt: string;
+}
+
+export interface ProductionContinuitySnapshot {
+  sceneRecords: ProductionContinuitySceneRecord[];
+  takes: ProductionContinuityTake[];
+  entries: ProductionContinuityEntry[];
+  deviations: ProductionContinuityDeviation[];
+  dailyNotes?: string;
+  editorNotes?: string;
+}
+
+export interface ProductionContinuityRevision {
+  id: string;
+  version: number;
+  message: string;
+  actorUserId?: string;
+  createdAt: string;
+  snapshot: ProductionContinuitySnapshot;
+}
+
+export interface ProductionContinuityActivityEntry {
+  id: string;
+  type: 'workspace_saved' | 'comment_added';
+  message: string;
+  actorUserId?: string;
+  createdAt: string;
+}
+
+export interface ProductionContinuityOperations extends ProductionContinuitySnapshot {
+  comments: ProductionContinuityComment[];
+  revisions: ProductionContinuityRevision[];
+  activity: ProductionContinuityActivityEntry[];
 }
 
 export type SecondAdMovementStatus =

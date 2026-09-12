@@ -389,7 +389,9 @@ function CastingStandaloneAppContent() {
   }
   // Developer-docs (public)
   if (leadgridPath === '/leadgrid/utviklere' ||
-      leadgridPath === '/leadgrid/utviklere/') {
+      leadgridPath === '/leadgrid/utviklere/' ||
+      leadgridPath === '/leadgrid/developers' ||
+      leadgridPath === '/leadgrid/developers/') {
     return <LeadgridDevelopersPage />;
   }
   // Utvikler-søknadsskjema (public)
