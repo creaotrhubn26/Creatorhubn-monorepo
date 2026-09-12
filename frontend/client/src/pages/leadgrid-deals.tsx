@@ -21,6 +21,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { OnboardingTour } from "@/components/leadgrid/OnboardingTour";
 import {
   Box,
   Container,
@@ -432,6 +433,7 @@ export default function LeadgridDealsPage(): JSX.Element {
           })}
         </Box>
       )}
+      <OnboardingTour projectId={projectId} />
     </Container>
   );
 }

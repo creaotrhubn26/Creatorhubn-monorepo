@@ -1,199 +1,248 @@
-/**
- * OnboardingTour.tsx — Floating in-app guide for nye Leadgrid-brukere.
- *
- * Henter state fra /api/leadgrid/onboarding/state ved mount.
- * Hvis eligible + not completed/skipped → vis floating-card i hjørnet.
- *
- * Steps:
- *   welcome → add_first_customer → see_portal → try_playbook → view_apis → completed
- */
+/** Project- and role-scoped product guide for authenticated Leadgrid pages. */
 
 import React, { useEffect, useState } from "react";
 import {
-  Box, Card, CardContent, Stack, Typography, Button, IconButton,
-  LinearProgress, Chip, Slide, Snackbar,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  IconButton,
+  LinearProgress,
+  Slide,
+  Snackbar,
+  Stack,
+  Typography,
 } from "@mui/material";
-import CloseIcon from "@mui/icons-material/Close";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CloseIcon from "@mui/icons-material/Close";
 
 interface TourState {
   current_step: string;
   steps_completed: string[];
+  organization_id: string;
+  project_id: string;
+  role_track: string;
+  onboarding_version: number;
+}
+
+interface StateResponse {
+  state: TourState | null;
+  eligible: boolean;
+}
+
+interface AdvanceResponse {
+  next_step: string;
+  state: TourState;
 }
 
 const STEP_CONTENT: Record<string, {
-  title: string; body: string; cta: string; cta_href?: string;
+  title: string;
+  body: string;
+  action: string;
+  href?: string;
 }> = {
   welcome: {
-    title: "Velkommen til Leadgrid 👋",
-    body: "Vi tar deg gjennom de 4 viktigste tingene du må vite. Tar 2 minutter.",
-    cta: "Start tour",
+    title: "Bli trygg i Leadgrid",
+    body: "Denne korte guiden viser veien fra søk til oppfølging. Fremdriften gjelder bare det valgte kundeprosjektet og rollen din der.",
+    action: "Start guiden",
   },
-  add_first_customer: {
-    title: "Legg til din første kunde",
-    body: "Trykk på + i Prosjekter-fanen. Skriv inn website + e-post → Leadgrid gjør resten på 30 sekunder.",
-    cta: "Vis meg →",
-    cta_href: "/role-room",
+  choose_project: {
+    title: "Sjekk kundeprosjektet",
+    body: "Prosjektvelgeren bestemmer hvor leads, Discovery-profiler, maler og aktiviteter lagres. Kontroller den før du begynner.",
+    action: "Prosjektet er riktig",
   },
-  see_portal: {
-    title: "Hver kunde får en egen portal",
-    body: "Når kunden klikker lenken i e-posten ser de score, behov og leveranser real-time. Ingen pålogging.",
-    cta: "Hvordan ser den ut?",
-    cta_href: "/leadgrid",
+  find_candidates: {
+    title: "Finn riktige bedrifter",
+    body: "Bruk «Hva vil du finne?» i iPad-appen for et enkelt Discovery-søk. På web kan du importere en eksisterende, prosjektavgrenset liste.",
+    action: "Åpne import",
+    href: "/leadgrid/import",
   },
-  try_playbook: {
-    title: "Markedsfører-playbooks",
-    body: "Når kunden ber om fokus, får du en steg-for-steg-playbook for Meta Pixel, GA4, Google Ads osv.",
-    cta: "Vis playbooks",
+  approve_candidates: {
+    title: "Godkjenn før noe lagres",
+    body: "Discovery-resultater er forslag. Først når du godkjenner et treff blir det et CRM-lead under Leads og på kartet.",
+    action: "Jeg forstår",
   },
-  view_apis: {
-    title: "Vil dere integrere?",
-    body: "Vi har et fullt Partners API + webhooks for å koble Leadgrid mot egne systemer.",
-    cta: "Se developer-docs",
-    cta_href: "/leadgrid/utviklere",
+  work_leads: {
+    title: "Arbeid med godkjente leads",
+    body: "Leads er CRM-flaten. Leadbook brukes til maler, Pondus og opplæring – ikke som lagringssted for leads.",
+    action: "Åpne pipeline",
+    href: "/leadgrid/deals",
   },
-  completed: {
-    title: "Du er klar! ✓",
-    body: "Du har nå sett de viktigste delene. Lykke til!",
-    cta: "Avslutt",
+  follow_up: {
+    title: "Avtal neste steg",
+    body: "Sett en konkret oppfølging på leadet. Workflows kan automatisere interne varsler og sikre at avtalen ikke blir glemt.",
+    action: "Fullfør guiden",
+    href: "/leadgrid/workflows",
   },
 };
 
-const STEPS_ORDER = [
-  "welcome", "add_first_customer", "see_portal",
-  "try_playbook", "view_apis", "completed",
+const STEPS = [
+  "welcome",
+  "choose_project",
+  "find_candidates",
+  "approve_candidates",
+  "work_leads",
+  "follow_up",
 ];
 
-export function OnboardingTour() {
+function authHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const token = window.localStorage.getItem("creatorhub_auth_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export function OnboardingTour({ projectId }: { projectId: string | null }) {
   const [state, setState] = useState<TourState | null>(null);
   const [visible, setVisible] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [snack, setSnack] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/leadgrid/onboarding/state", { credentials: "include" })
-      .then((r) => r.ok ? r.json() : { state: null, eligible: false })
-      .then((d) => {
-        if (d.eligible && d.state &&
-            d.state.current_step !== "completed" &&
-            d.state.current_step !== "skipped") {
-          setState(d.state);
+    setState(null);
+    setVisible(false);
+    if (!projectId) return;
+    const controller = new AbortController();
+    fetch(
+      `/api/leadgrid/onboarding/state?projectId=${encodeURIComponent(projectId)}`,
+      { credentials: "include", headers: authHeaders(), signal: controller.signal },
+    )
+      .then(async (response) => response.ok
+        ? response.json() as Promise<StateResponse>
+        : { state: null, eligible: false })
+      .then((data) => {
+        if (data.eligible && data.state
+            && data.state.current_step !== "completed"
+            && data.state.current_step !== "skipped") {
+          setState(data.state);
           setVisible(true);
         }
       })
       .catch(() => {});
-  }, []);
+    return () => controller.abort();
+  }, [projectId]);
 
-  if (!state || !visible) return null;
-
-  const cur = STEP_CONTENT[state.current_step];
-  if (!cur) return null;
-  const curIdx = STEPS_ORDER.indexOf(state.current_step);
-  const totalSteps = STEPS_ORDER.length - 1; // exklusiv 'completed'
-  const progressPct = (curIdx / totalSteps) * 100;
+  if (!projectId || !state || !visible) return null;
+  const current = STEP_CONTENT[state.current_step];
+  if (!current) return null;
+  const index = Math.max(0, STEPS.indexOf(state.current_step));
 
   const advance = async () => {
-    const r = await fetch("/api/leadgrid/onboarding/advance", {
-      method: "POST", credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fromStep: state.current_step }),
-    });
-    if (r.ok) {
-      const d = await r.json();
-      if (d.next_step === "completed") {
-        setSnack("Onboarding fullført!");
+    setBusy(true);
+    try {
+      const response = await fetch("/api/leadgrid/onboarding/advance", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ fromStep: state.current_step, projectId }),
+      });
+      if (!response.ok) throw new Error("advance_failed");
+      const data = await response.json() as AdvanceResponse;
+      if (data.next_step === "completed") {
+        setSnack("Leadgrid-guiden er fullført");
         setVisible(false);
       } else {
-        setState({ ...state, current_step: d.next_step,
-                    steps_completed: [...state.steps_completed, state.current_step] });
+        setState(data.state);
       }
+      if (current.href) window.location.assign(current.href);
+    } catch {
+      setSnack("Kunne ikke lagre fremdriften. Prøv igjen.");
+    } finally {
+      setBusy(false);
     }
   };
 
   const skip = async () => {
-    await fetch("/api/leadgrid/onboarding/skip", {
-      method: "POST", credentials: "include",
-    });
-    setVisible(false);
+    setBusy(true);
+    try {
+      const response = await fetch("/api/leadgrid/onboarding/skip", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ projectId }),
+      });
+      if (!response.ok) throw new Error("skip_failed");
+      setVisible(false);
+    } catch {
+      setSnack("Kunne ikke avslutte guiden. Prøv igjen.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <>
       <Slide direction="up" in={visible}>
-        <Box sx={{ position: "fixed", bottom: 24, right: 24, zIndex: 9999,
-                    maxWidth: 360 }}>
+        <Box sx={{
+          position: "fixed",
+          right: { xs: 12, md: 24 },
+          bottom: { xs: 12, md: 24 },
+          zIndex: 1400,
+          width: { xs: "calc(100vw - 24px)", sm: 380 },
+        }}>
           <Card sx={{
-            bgcolor: "rgba(10, 5, 18, 0.96)",
+            bgcolor: "rgba(10, 5, 18, 0.97)",
             color: "#fff",
-            border: "1px solid rgba(167, 139, 250, 0.30)",
-            boxShadow: "0 24px 60px rgba(0,0,0,0.6)",
+            border: "1px solid rgba(167, 139, 250, 0.32)",
+            boxShadow: "0 24px 60px rgba(0,0,0,0.55)",
             backdropFilter: "blur(12px)",
           }}>
-            <Box sx={{ position: "absolute", top: 8, right: 8 }}>
-              <IconButton size="small" onClick={skip}
-                          sx={{ color: "rgba(255,255,255,0.5)" }}>
-                <CloseIcon fontSize="small" />
-              </IconButton>
-            </Box>
+            <IconButton
+              aria-label="Avslutt Leadgrid-guiden"
+              disabled={busy}
+              onClick={() => { void skip(); }}
+              sx={{ position: "absolute", top: 8, right: 8, color: "rgba(255,255,255,0.7)" }}
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
             <CardContent sx={{ p: 3 }}>
               <Stack direction="row" alignItems="center" spacing={1} mb={1.5}>
-                <Chip size="small" label={`${curIdx + 1}/${totalSteps}`}
-                      sx={{ bgcolor: "rgba(167,139,250,0.20)", color: "var(--lgl-accent, #a78bfa)",
-                            fontWeight: 600 }} />
-                <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.5)" }}>
-                  Leadgrid-onboarding
+                <Chip
+                  size="small"
+                  label={`${index + 1}/${STEPS.length}`}
+                  sx={{ bgcolor: "rgba(167,139,250,0.20)", color: "#c4b5fd", fontWeight: 700 }}
+                />
+                <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.58)" }}>
+                  Prosjektguide · {state.role_track}
                 </Typography>
               </Stack>
-              <LinearProgress variant="determinate" value={progressPct}
-                              sx={{ mb: 2, height: 3, borderRadius: 2,
-                                    bgcolor: "rgba(255,255,255,0.08)",
-                                    "& .MuiLinearProgress-bar": { bgcolor: "var(--lgl-accent, #a78bfa)" } }} />
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
-                {cur.title}
+              <LinearProgress
+                variant="determinate"
+                value={(index / STEPS.length) * 100}
+                sx={{
+                  mb: 2,
+                  height: 4,
+                  borderRadius: 2,
+                  bgcolor: "rgba(255,255,255,0.08)",
+                  "& .MuiLinearProgress-bar": { bgcolor: "#a78bfa" },
+                }}
+              />
+              <Typography variant="h6" fontWeight={750} mb={1} pr={3}>
+                {current.title}
               </Typography>
-              <Typography variant="body2"
-                          sx={{ color: "rgba(255,255,255,0.75)", mb: 2, lineHeight: 1.5 }}>
-                {cur.body}
+              <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.76)", lineHeight: 1.55, mb: 2 }}>
+                {current.body}
               </Typography>
-              <Stack direction="row" spacing={1}>
-                <Button variant="contained" endIcon={<ArrowForwardIcon />}
-                        onClick={() => {
-                          if (cur.cta_href) window.open(cur.cta_href, "_blank");
-                          advance();
-                        }}
-                        sx={{ bgcolor: "var(--lgl-accent, #a78bfa)", color: "#0a0512", fontWeight: 700,
-                              flex: 1, "&:hover": { bgcolor: "#9171e6" } }}>
-                  {cur.cta}
-                </Button>
-                <Button size="small" onClick={skip}
-                        sx={{ color: "rgba(255,255,255,0.5)" }}>
-                  Hopp over
-                </Button>
-              </Stack>
-
-              {state.steps_completed.length > 0 && (
-                <Box sx={{ mt: 2, pt: 1.5, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-                  <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.4)",
-                              display: "block", mb: 0.5 }}>
-                    Fullført:
-                  </Typography>
-                  <Stack direction="row" spacing={0.5} flexWrap="wrap" rowGap={0.5}>
-                    {state.steps_completed.map((s) => (
-                      <Chip key={s} size="small"
-                            icon={<CheckCircleIcon sx={{ fontSize: 12 }} />}
-                            label={STEP_CONTENT[s]?.title.substring(0, 20) ?? s}
-                            sx={{ bgcolor: "rgba(155,225,93,0.10)", color: "#9be15d",
-                                  height: 18, fontSize: 10 }} />
-                    ))}
-                  </Stack>
-                </Box>
-              )}
+              <Button
+                fullWidth
+                variant="contained"
+                endIcon={<ArrowForwardIcon />}
+                disabled={busy}
+                onClick={() => { void advance(); }}
+                sx={{ bgcolor: "#a78bfa", color: "#10081c", fontWeight: 750, minHeight: 44 }}
+              >
+                {current.action}
+              </Button>
             </CardContent>
           </Card>
         </Box>
       </Slide>
-      <Snackbar open={!!snack} autoHideDuration={3000} onClose={() => setSnack(null)}
-                message={snack} />
+      <Snackbar
+        open={Boolean(snack)}
+        autoHideDuration={3500}
+        onClose={() => setSnack(null)}
+        message={snack}
+      />
     </>
   );
 }

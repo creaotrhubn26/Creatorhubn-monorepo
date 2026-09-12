@@ -2463,22 +2463,37 @@ actor APIClient {
         try await get("/api/leadgrid/customers/\(customerId)/assignment-history")
     }
 
-    // -- Onboarding-state (Fase 16: org-overordnet wizard) -----------
+    // -- Product onboarding (bruker + org + prosjekt + rolle) --------
 
-    /// Hent org-overordnet onboarding-state (har de fullført wizard?).
-    func fetchOnboardingState() async throws -> LeadgridOnboardingState {
-        try await get("/api/leadgrid/onboarding/state")
+    /// Hent guide-status for det eksakte, server-verifiserte kundeprosjektet.
+    func fetchOnboardingState(
+        projectId: String
+    ) async throws -> LeadgridOnboardingStateResponse {
+        let encoded = projectId.addingPercentEncoding(
+            withAllowedCharacters: .urlQueryAllowed
+        ) ?? projectId
+        return try await get("/api/leadgrid/onboarding/state?projectId=\(encoded)")
     }
 
-    /// Avansere onboarding-wizard fra steg X → Y.
-    func advanceOnboarding(fromStep: String) async throws {
-        try await post("/api/leadgrid/onboarding/advance",
-                       body: ["from_step": fromStep])
+    /// Avanser bare hvis klientens steg fortsatt er serverens aktive steg.
+    /// `fromStep` er bevisst camelCase: dette er produktguidens kontrakt,
+    /// ikke den separate kanal-onboardingen som bruker `from_step`.
+    func advanceOnboarding(
+        fromStep: String,
+        projectId: String
+    ) async throws -> LeadgridOnboardingAdvanceResponse {
+        try await post(
+            "/api/leadgrid/onboarding/advance",
+            body: ["fromStep": fromStep, "projectId": projectId]
+        )
     }
 
-    /// Skip wizard (markerer den som fullført uten å fullføre alle steg).
-    func skipOnboarding() async throws {
-        try await post("/api/leadgrid/onboarding/skip", body: [:])
+    /// Avslutt guiden bare i aktivt kundeprosjekt og aktiv rolle.
+    func skipOnboarding(projectId: String) async throws {
+        try await post(
+            "/api/leadgrid/onboarding/skip",
+            body: ["projectId": projectId]
+        )
     }
 
     // -- Billing (Fase 16: faktura-historikk + Stripe portal) --------

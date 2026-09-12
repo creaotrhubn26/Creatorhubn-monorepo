@@ -227,6 +227,54 @@ final class QASweepTests: XCTestCase {
         }
     }
 
+    func testIPadMiniNavigationAndProjectGuideStayUnderstandable() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip("Denne kontrollen gjelder iPad-sidebaren.")
+        }
+        let app = launchApp(
+            tab: 0,
+            environment: [
+                "QA_TOUR": "dentum-outreach",
+                "QA_DEMO": "1",
+                "QA_PRODUCT_ONBOARDING": "1",
+            ]
+        )
+
+        let title = app.staticTexts["leadgrid-screen-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 8))
+        XCTAssertEqual(title.label, "Oversikt")
+        XCTAssertGreaterThanOrEqual(
+            title.frame.width,
+            64,
+            "Skjermtittelen skal ikke bli avkortet til én bokstav i iPad mini Split View"
+        )
+
+        XCTAssertTrue(app.buttons["sidebar.agent"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["sidebar.agent"].isHittable)
+
+        let more = app.buttons["sidebar.more-features"]
+        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["sidebar.leadgridGo"].exists)
+        more.tap()
+        XCTAssertTrue(app.buttons["sidebar.leadgridGo"].waitForExistence(timeout: 3))
+
+        let guide = app.otherElements["product-onboarding.card"]
+        XCTAssertTrue(guide.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Bli trygg i Leadgrid"].exists)
+        app.buttons["product-onboarding.primary"].tap()
+        XCTAssertTrue(app.staticTexts["Sjekk kundeprosjektet"].waitForExistence(timeout: 3))
+
+        snap(app, "ipad-mini-forenklet-sidepanel-og-prosjektguide")
+
+        let hideSidebar = app.buttons["Hide Sidebar"].firstMatch
+        if hideSidebar.exists && hideSidebar.isHittable { hideSidebar.tap() }
+        XCTAssertTrue(title.waitForExistence(timeout: 3))
+        XCTAssertEqual(title.label, "Oversikt")
+
+        snap(app, "ipad-mini-forenklet-navigasjon-og-prosjektguide")
+        app.terminate()
+    }
+
     // MARK: - Leads: rad-tap → detalj-sheet
 
     func testLeadsDetaljSheet() throws {
@@ -1296,7 +1344,8 @@ final class QASweepTests: XCTestCase {
         thirty.tap()
         XCTAssertTrue(summary.waitForExistence(timeout: 3))
         XCTAssertTrue(summary.label.contains("30"))
-        XCTAssertTrue(summary.label.contains("Leadbook"))
+        XCTAssertTrue(summary.label.contains("leads") || summary.label.contains("Leads"))
+        XCTAssertFalse(summary.label.contains("Leadbook"))
         XCTAssertTrue(summary.label.localizedCaseInsensitiveContains("hele Norge"))
         XCTAssertTrue(app.buttons["discovery.simple.preview"].isEnabled)
         snap(app, "discovery-enkel-klar")

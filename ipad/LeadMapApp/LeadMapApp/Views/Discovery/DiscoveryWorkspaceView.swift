@@ -479,7 +479,7 @@ struct DiscoveryWorkspaceView: View {
                     .foregroundStyle(LeadgridDiscoveryTheme.success)
                 Text("Leadgrid leter etter \(simpleCustomerSummary) \(simpleAreaSummary). Du får opptil \(coordinator.brief.targetCount) forslag.")
                     .font(.subheadline)
-                Text("Ingenting legges i Leadbook før du godkjenner det.")
+                Text("Ingen forslag blir leads eller kartnåler før du godkjenner dem.")
                     .font(.caption.bold())
                     .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
             }
@@ -1149,7 +1149,7 @@ struct DiscoveryWorkspaceView: View {
                 && $0.clinicGroup?.clinicLeadId != nil
         }.count
         if contactsForExistingClinics > 0 {
-            return "\(contactsForExistingClinics) tannlegekontakter kan godkjennes inn på klinikker som allerede ligger i Leadbook."
+            return "\(contactsForExistingClinics) tannlegekontakter kan godkjennes inn på klinikker som allerede ligger under Leads."
         }
         if groupedPractitionerCount > 0 {
             return "\(groupedPractitionerCount) tannlegevirksomheter er samlet under klinikkene. Én godkjenning oppretter én lead med kontakter."
@@ -1713,7 +1713,7 @@ private var clinicClassification: some View {
                     .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
             } else if group.role == .practitionerContact,
                       group.clinicLeadId != nil {
-                Text("Klinikken ligger allerede i Leadbook. Godkjenning legger tannlegen til som kontakt uten å opprette en ny lead.")
+                Text("Klinikken ligger allerede under Leads. Godkjenning legger tannlegen til som kontakt uten å opprette en ny lead.")
                     .font(.caption2)
                     .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
             } else if group.role == .practitionerContact {

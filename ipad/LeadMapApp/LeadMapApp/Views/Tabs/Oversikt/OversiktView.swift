@@ -3632,7 +3632,7 @@ private struct LeadsOversiktCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Text("Leads i området").font(.headline).foregroundStyle(.white)
-                Text("\(leads.count) leads")
+                Text("\(leads.count) \(leads.count == 1 ? "lead" : "leads")")
                     .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(Brand.purpleLight)
                 Spacer()

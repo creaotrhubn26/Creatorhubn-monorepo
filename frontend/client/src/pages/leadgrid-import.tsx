@@ -14,6 +14,7 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { OnboardingTour } from "@/components/leadgrid/OnboardingTour";
 import {
   Box, Container, Stack, Typography, Card, CardContent, Button, Tabs, Tab,
   Stepper, Step, StepLabel, Alert, LinearProgress, CircularProgress,
@@ -224,6 +225,7 @@ export default function LeadgridImportPage() {
           </Stack>
         </Stack>
       </Container>
+      <OnboardingTour projectId={projectId} />
     </Box>
   );
 }
