@@ -164,6 +164,35 @@ describe('Storyboard professional skills', () => {
     expect(JSON.stringify(result)).not.toMatch(/estimatedBudget|estimatedCostNok/i);
   });
 
+  it('reconciles against an immutable revision without applying changes automatically', () => {
+    const input = fixture();
+    input.revisionBaseline = {
+      snapshotHash: 'a'.repeat(64),
+      scene: {
+        id: input.scene.id,
+        heading: input.scene.heading,
+        action: input.scene.action,
+        dialogue: input.scene.dialogue,
+      },
+      frames: input.frames.map((frame) => ({ ...frame })),
+    };
+    input.frames[0].description = 'Nora stopper foran et knust vindu.';
+    input.frames.push({
+      id: 'frame-new', shotNumber: '3D', description: 'Ny insert', duration: 1,
+      scriptLineRange: [14, 14],
+    });
+    const snapshot = structuredClone(input);
+    const result = runStoryboardSkill('reconcile_storyboard_revision', input);
+
+    expect(result.evidence.some((entry) => entry.id === 'revision-stale-frame-a')).toBe(true);
+    expect(result.evidence.some((entry) => entry.id === 'revision-added-frame-new')).toBe(true);
+    expect(result.recommendedChanges).toEqual(expect.arrayContaining([
+      expect.objectContaining({ frameId: 'frame-a', patch: expect.objectContaining({ revisionStatus: 'stale' }) }),
+      expect.objectContaining({ frameId: 'frame-new', patch: expect.objectContaining({ revisionStatus: 'unmapped' }) }),
+    ]));
+    expect(input).toEqual(snapshot);
+  });
+
   it('fingerprints canonical content independent of object key order', () => {
     const context = fixture();
     const reordered = JSON.parse(JSON.stringify(context)) as StoryboardSkillContext;

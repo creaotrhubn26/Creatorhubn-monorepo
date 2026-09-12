@@ -333,6 +333,7 @@ struct NativeBoardView: View {
     @State private var showShotList = false
     @State private var showScript = false
     @State private var showReview = false
+    @State private var showReviewRounds = false
     @State private var showSkills = false
     @State private var showAIStudio = false
     @State private var exportPDFURL: URL?
@@ -1017,6 +1018,7 @@ struct NativeBoardView: View {
                 topTab("Script", icon: "doc.text", active: false) { showScript = true }
                 topTab("Shot List", icon: "list.bullet", active: false) { showShotList = true }
                 topTab("Review", icon: "checkmark.bubble", active: false) { showReview = true }
+                topTab("Rounds", icon: "clock.arrow.circlepath", active: false) { showReviewRounds = true }
                 topTab("Skills", icon: "sparkles", active: false) { showSkills = true }
                 topTab("AI Studio", icon: "wand.and.stars", active: false) { showAIStudio = true }
                     .accessibilityLabel("Åpne AI Studio for aktivt shot")
@@ -1027,6 +1029,7 @@ struct NativeBoardView: View {
                 Button("Script", systemImage: "doc.text") { showScript = true }
                 Button("Shot List", systemImage: "list.bullet") { showShotList = true }
                 Button("Review", systemImage: "checkmark.bubble") { showReview = true }
+                Button("Review-runder", systemImage: "clock.arrow.circlepath") { showReviewRounds = true }
                 Button("Skills", systemImage: "sparkles") { showSkills = true }
                 Button("AI Studio", systemImage: "wand.and.stars") { showAIStudio = true }
                     .accessibilityLabel("Åpne AI Studio for aktivt shot")
@@ -1389,6 +1392,19 @@ struct NativeBoardView: View {
                             }
                         }
                     }
+            }
+        }
+        .sheet(isPresented: $showReviewRounds) {
+            if let projectId = board.projectId {
+                StoryboardReviewRoundsView(
+                    projectId: projectId,
+                    manuscriptId: board.manuscript.id,
+                    onRestored: { await board.reload() })
+            } else {
+                ContentUnavailableView(
+                    "Prosjekt mangler",
+                    systemImage: "rectangle.badge.xmark",
+                    description: Text("Koble storyboardet til et Role Room-prosjekt før du oppretter en review-runde."))
             }
         }
         .sheet(isPresented: $showBrushEditor) {

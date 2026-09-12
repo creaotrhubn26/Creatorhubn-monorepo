@@ -37,6 +37,8 @@ const framePatchSchema = z.object({
   productionNotes: optionalText(2_000),
   vfxNotes: optionalText(2_000),
   tags: z.array(text(100)).max(30).optional(),
+  revisionStatus: z.enum(['current', 'stale', 'unmapped']).optional(),
+  revisionReason: optionalText(2_000),
 }).strict();
 
 const productionMarkSchema = z.object({
@@ -90,6 +92,20 @@ export const storyboardSkillContextSchema = z.object({
   frames: z.array(frameSchema).max(500),
   activeFrameId: optionalText(200),
   userIntent: optionalText(1_200),
+  revisionBaseline: z.object({
+    snapshotHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+    scene: z.object({
+      id: text(200).min(1),
+      heading: text(500),
+      action: optionalText(4_000),
+      dialogue: z.array(z.object({
+        lineNumber: z.number().int().nonnegative().optional(),
+        characterName: optionalText(200),
+        text: text(2_000),
+      }).strict()).max(500).optional(),
+    }).strict(),
+    frames: z.array(frameSchema).max(500),
+  }).strict().optional(),
 }).strict();
 
 export const storyboardSkillRunBodySchema = z.object({
@@ -795,6 +811,112 @@ function auditProductionFeasibility(context: StoryboardSkillContext): Storyboard
   });
 }
 
+function revisionFrameFingerprint(frame: StoryboardSkillFrame): string {
+  const { revisionStatus: _status, revisionReason: _reason, ...source } = frame as StoryboardSkillFrame & {
+    revisionStatus?: string;
+    revisionReason?: string;
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(canonicalize(source))).digest('hex');
+}
+
+function reconcileStoryboardRevision(context: StoryboardSkillContext): StoryboardSkillResult {
+  const baseline = context.revisionBaseline;
+  if (!baseline) {
+    return baseResult('reconcile_storyboard_revision', context, {
+      title: 'Velg en review-revisjon først',
+      summary: 'Revisjonsvakten trenger en uforanderlig review-runde som sammenligningsgrunnlag.',
+      rationale: 'Uten en eksplisitt baseline kan skillen ikke skille en tilsiktet endring fra en uferdig tegning.',
+      confidence: 1,
+      severity: 'info',
+      evidence: [],
+      recommendedChanges: [],
+      alternatives: [],
+      warnings: ['Opprett eller åpne en review-runde og kjør revisjonsvakten på nytt.'],
+    });
+  }
+
+  const before = new Map(baseline.frames.map((frame, index) => [frame.id, { frame, index }]));
+  const after = new Map(context.frames.map((frame, index) => [frame.id, { frame, index }]));
+  const evidenceItems: StoryboardSkillEvidence[] = [];
+  const changes: StoryboardSkillChange[] = [];
+  const scriptChanged = normalize(JSON.stringify({
+    heading: baseline.scene.heading,
+    action: baseline.scene.action,
+    dialogue: baseline.scene.dialogue,
+  })) !== normalize(JSON.stringify({
+    heading: context.scene.heading,
+    action: context.scene.action,
+    dialogue: context.scene.dialogue,
+  }));
+
+  for (const [frameId, current] of after) {
+    const previous = before.get(frameId);
+    if (!previous) {
+      evidenceItems.push(evidence(
+        `revision-added-${frameId}`,
+        'Nytt shot uten baseline',
+        `${current.frame.shotNumber || frameId} finnes ikke i review-revisjonen.`,
+        [frameId], current.frame.scriptLineRange,
+      ));
+      changes.push(change(
+        `revision-mark-unmapped-${frameId}`, 'update-frame',
+        `Merk ${current.frame.shotNumber || frameId} som ikke avstemt`,
+        'Shotet må vurderes eksplisitt før neste sign-off.',
+        { revisionStatus: 'unmapped', revisionReason: 'Nytt etter review-baseline; må avstemmes.' }, frameId,
+      ));
+      continue;
+    }
+    const contentChanged = revisionFrameFingerprint(previous.frame) !== revisionFrameFingerprint(current.frame);
+    const moved = previous.index !== current.index;
+    const linkedToScript = Boolean(current.frame.scriptLineRange ?? previous.frame.scriptLineRange);
+    if (contentChanged || moved || (scriptChanged && linkedToScript)) {
+      const reasons = [
+        contentChanged ? 'shotdata er endret' : '',
+        moved ? 'rekkefølgen er endret' : '',
+        scriptChanged && linkedToScript ? 'tilknyttet manusområde er revidert' : '',
+      ].filter(Boolean);
+      evidenceItems.push(evidence(
+        `revision-stale-${frameId}`,
+        'Shot må avstemmes',
+        `${current.frame.shotNumber || frameId}: ${reasons.join(', ')}.`,
+        [frameId], current.frame.scriptLineRange ?? previous.frame.scriptLineRange,
+      ));
+      changes.push(change(
+        `revision-mark-stale-${frameId}`, 'update-frame',
+        `Merk ${current.frame.shotNumber || frameId} for ny vurdering`,
+        reasons.join(', '),
+        { revisionStatus: 'stale', revisionReason: reasons.join('; ') }, frameId,
+      ));
+    }
+  }
+
+  for (const [frameId, previous] of before) {
+    if (after.has(frameId)) continue;
+    evidenceItems.push(evidence(
+      `revision-removed-${frameId}`,
+      'Shot er fjernet siden review',
+      `${previous.frame.shotNumber || frameId} finnes bare i review-revisjonen.`,
+      [frameId], previous.frame.scriptLineRange,
+    ));
+  }
+
+  return baseResult('reconcile_storyboard_revision', context, {
+    title: evidenceItems.length ? `${evidenceItems.length} revisjonspunkt` : 'Storyboardet samsvarer med review-revisjonen',
+    summary: evidenceItems.length
+      ? 'Endringer er sporet mot den eksakte review-baselinen; ingenting endres før forslagene godkjennes.'
+      : 'Ingen shot- eller manuskoblinger krever ny avstemming.',
+    rationale: `Sammenlignet frame-ID, rekkefølge, shotdata og manuskoblinger${baseline.snapshotHash ? ` mot ${baseline.snapshotHash.slice(0, 10)}…` : ''}.`,
+    confidence: 0.98,
+    severity: evidenceItems.length ? 'warning' : 'info',
+    evidence: evidenceItems,
+    recommendedChanges: changes,
+    alternatives: [],
+    warnings: scriptChanged
+      ? ['Manuset er endret siden baselinen. Godkjenn hvert berørt shot før ny sign-off.']
+      : [],
+  });
+}
+
 const RUNNERS: Record<StoryboardSkillId, (context: StoryboardSkillContext) => StoryboardSkillResult> = {
   plan_scene_coverage: planSceneCoverage,
   audit_visual_continuity: auditVisualContinuity,
@@ -803,6 +925,7 @@ const RUNNERS: Record<StoryboardSkillId, (context: StoryboardSkillContext) => St
   audit_board_readability: auditBoardReadability,
   build_animatic_pass: buildAnimaticPass,
   audit_production_feasibility: auditProductionFeasibility,
+  reconcile_storyboard_revision: reconcileStoryboardRevision,
 };
 
 export function runStoryboardSkill(

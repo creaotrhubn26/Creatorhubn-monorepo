@@ -8,6 +8,7 @@ enum StoryboardSkillID: String, CaseIterable, Identifiable, Codable, Sendable {
     case auditBoardReadability = "audit_board_readability"
     case buildAnimaticPass = "build_animatic_pass"
     case auditProductionFeasibility = "audit_production_feasibility"
+    case reconcileStoryboardRevision = "reconcile_storyboard_revision"
 
     var id: String { rawValue }
     var title: String {
@@ -19,6 +20,7 @@ enum StoryboardSkillID: String, CaseIterable, Identifiable, Codable, Sendable {
         case .auditBoardReadability: return "Lesbarhet"
         case .buildAnimaticPass: return "Animatic"
         case .auditProductionFeasibility: return "Gjennomføring"
+        case .reconcileStoryboardRevision: return "Revisjonsvakt"
         }
     }
     var detail: String {
@@ -30,6 +32,7 @@ enum StoryboardSkillID: String, CaseIterable, Identifiable, Codable, Sendable {
         case .auditBoardReadability: return "Sjekk fokus, dybde og sekvensvariasjon."
         case .buildAnimaticPass: return "Foreslå varighet og overganger."
         case .auditProductionFeasibility: return "Flagg rigg, stunt, vær og VFX."
+        case .reconcileStoryboardRevision: return "Avstem shots mot en låst review-revisjon."
         }
     }
     var icon: String {
@@ -41,6 +44,7 @@ enum StoryboardSkillID: String, CaseIterable, Identifiable, Codable, Sendable {
         case .auditBoardReadability: return "eye"
         case .buildAnimaticPass: return "play.rectangle"
         case .auditProductionFeasibility: return "checklist.checked"
+        case .reconcileStoryboardRevision: return "arrow.triangle.2.circlepath"
         }
     }
     var requiresFrame: Bool {
@@ -126,6 +130,8 @@ struct StoryboardSkillFramePatchDTO: Decodable, Sendable {
     let productionNotes: String?
     let vfxNotes: String?
     let tags: [String]?
+    let revisionStatus: String?
+    let revisionReason: String?
 
     var fields: [String: any Sendable] {
         var result: [String: any Sendable] = [:]
@@ -147,6 +153,8 @@ struct StoryboardSkillFramePatchDTO: Decodable, Sendable {
         if let productionNotes { result["productionNotes"] = productionNotes }
         if let vfxNotes { result["vfxNotes"] = vfxNotes }
         if let tags { result["tags"] = tags }
+        if let revisionStatus { result["revisionStatus"] = revisionStatus }
+        if let revisionReason { result["revisionReason"] = revisionReason }
         return result
     }
 }
@@ -163,6 +171,7 @@ extension StoryboardSkillFramePatchDTO {
         focusDepth = nil; location = nil; timeOfDay = nil; weather = nil
         screenDirection = nil; beatTag = nil; continuityNotes = nil
         productionNotes = nil; vfxNotes = nil; tags = nil
+        revisionStatus = nil; revisionReason = nil
     }
 }
 
