@@ -367,6 +367,16 @@ fn understand_note(
     let mut base = base().ok();
     let biter = understand::split(&content);
 
+    // Er kilden en samtale, er hvert avsnitt ett innlegg med avsenderen først.
+    // Da bæres avsenderen med hele veien: inn i `avsnitt`-raden, ut i panelet,
+    // og videre til det strukturerte søket. Er den det ikke, er alt som før.
+    let er_samtale = samtale::er_samtale(&content);
+    let avsendere: Vec<Option<String>> = if er_samtale {
+        biter.iter().map(|c| samtale::avsender(&c.text)).collect()
+    } else {
+        Vec::new()
+    };
+
     // Låsen tas før noe skrives. To lagringer som kommer tett skal ikke skrive
     // avsnittsradene for den samme kilden samtidig.
     let mut memo = understand::memo().lock().unwrap_or_else(|e| e.into_inner());
@@ -382,7 +392,7 @@ fn understand_note(
     // klassifiseringen lykkes.
     let ider: Option<Vec<i64>> = base.as_mut().and_then(|conn| {
         let tekster: Vec<String> = biter.iter().map(|c| c.text.clone()).collect();
-        minne::synk(conn, &path, &tekster).ok()
+        minne::synk(conn, &path, &tekster, &avsendere).ok()
     });
 
     // Alt som er forstått før hentes inn før klassifiseringen. Det er dette
@@ -396,7 +406,11 @@ fn understand_note(
         }
     }
 
-    let cli = understand::Cli::new(eksempler);
+    let cli = if er_samtale {
+        understand::Cli::over_samtale(eksempler)
+    } else {
+        understand::Cli::new(eksempler)
+    };
     let tittel = derive_title(&path, &content);
 
     // Etter hver pakke: skriv, si ifra, og se om lesningen fortsatt gjelder.
@@ -411,6 +425,7 @@ fn understand_note(
         let mut etter_pakke = |ferske: &[understand::Paragraph], lest, totalt| {
             let mut ferske = ferske.to_vec();
             understand::sett_ider(&mut ferske, biter, ider);
+            sett_avsendere(&mut ferske, er_samtale);
             if let Some(conn) = base {
                 let _ = minne::lagre(conn, tittel, &ferske);
             }
@@ -433,6 +448,7 @@ fn understand_note(
         return Ok(understand::Understanding::off());
     };
     understand::sett_ider(&mut avsnitt, &biter, ider.as_deref().unwrap_or(&[]));
+    sett_avsendere(&mut avsnitt, er_samtale);
     // Hukommelsen holdes låst hele veien. Det serialiserer to lagringer som
     // kommer tett — som er det man vil: den andre finner arbeidet den første
     // gjorde, i stedet for å betale for det på nytt.
@@ -470,6 +486,45 @@ fn understand_note(
     ut.earlier = tidligere;
     ut.lesning = min;
     Ok(ut)
+}
+
+/// Hvem som sa hva, satt på linjene panelet får. Avsenderen leses ut av
+/// avsnittsteksten, som er nøyaktig den linja som står i fila — det er derfor
+/// den overlever at appen lukkes, uten at noe måtte lagres for å få den fram.
+///
+/// Bare når kilden er en samtale. Et vanlig notat med «Marius: ja» i seg skal
+/// ikke plutselig få deltakere.
+fn sett_avsendere(avsnitt: &mut [understand::Paragraph], er_samtale: bool) {
+    for a in avsnitt.iter_mut() {
+        a.avsender = if er_samtale { samtale::avsender(&a.text) } else { None };
+    }
+}
+
+/// Er dette limt inn en samtale? Svarer med innleggene skrevet om til
+/// markdown, eller `null` når teksten ikke er gjenkjent som en samtale — da
+/// limes den inn som den er, og blir et vanlig notat.
+///
+/// Regelbasert og umiddelbar: ingen modell, ingen nettverk. Den kjører mellom
+/// ⌘V og at teksten står på skjermen.
+#[tauri::command]
+fn importer_samtale(tekst: String) -> Option<String> {
+    samtale::del(&tekst).map(|innlegg| samtale::skriv(&innlegg))
+}
+
+/// Hvordan notatet leses nå — som samtale eller som notat, gjenkjent eller
+/// bestemt av brukeren, og med hvem som er med.
+#[tauri::command]
+fn samtaleform(innhold: String) -> samtale::Form {
+    samtale::form(&innhold)
+}
+
+/// Brukerens overstyring: «dette er en samtale» eller «dette er det ikke».
+/// Svaret er hele notatet med `kilde` satt i toppfeltet, slik at valget står i
+/// fila og gjelder neste gang også.
+#[tauri::command]
+fn sett_samtale(innhold: String, er_samtale: bool) -> String {
+    let verdi = if er_samtale { samtale::SAMTALE } else { samtale::NOTAT };
+    samtale::sett_kilde(&innhold, verdi)
 }
 
 /// Brukeren har gått videre. Lesningen som kjører forlates ved neste
@@ -547,7 +602,10 @@ pub fn run() {
             avbryt_lesning,
             rett_avsnitt,
             spor_notater,
-            finn_avsnitt
+            finn_avsnitt,
+            importer_samtale,
+            samtaleform,
+            sett_samtale
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -647,7 +705,7 @@ mod tests {
         rettelser::sørg_for_tabell(&conn).unwrap();
         minne::sørg_for_tabeller(&conn).unwrap();
 
-        let id = minne::synk(&mut conn, "notat.md", &["En tanke.".to_string()]).unwrap()[0];
+        let id = minne::synk(&mut conn, "notat.md", &["En tanke.".to_string()], &[]).unwrap()[0];
         rettelser::lagre(
             &conn,
             &rettelser::Retting {
@@ -698,7 +756,7 @@ mod tests {
             rettelser::sørg_for_tabell(&conn).unwrap();
             minne::sørg_for_tabeller(&conn).unwrap();
             minne::sørg_for_tabeller(&conn).unwrap();
-            let id = minne::synk(&mut conn, "notat.md", &[tekst.to_string()]).unwrap()[0];
+            let id = minne::synk(&mut conn, "notat.md", &[tekst.to_string()], &[]).unwrap()[0];
             let avsnitt = vec![understand::Paragraph {
                 id,
                 start: 0,
@@ -706,6 +764,7 @@ mod tests {
                 hash: understand::nøkkel(tekst),
                 text: tekst.into(),
                 summary: "Depositum".into(),
+                avsender: None,
                 kind: "tvil".into(),
                 action: "marker_åpent".into(),
                 dependency: None,
@@ -805,7 +864,7 @@ mod tests {
         let mut conn = base_i(&tmp.path().join("notater.db"));
         let biter = understand::split(&doc);
         let tekster: Vec<String> = biter.iter().map(|c| c.text.clone()).collect();
-        let ider = minne::synk(&mut conn, "samtale.md", &tekster).unwrap();
+        let ider = minne::synk(&mut conn, "samtale.md", &tekster, &[]).unwrap();
 
         let mut memo = understand::Memo::new();
         understand::understand(
@@ -848,5 +907,52 @@ mod tests {
         rettelser::sørg_for_tabell(&conn).unwrap();
         minne::sørg_for_tabeller(&conn).unwrap();
         conn
+    }
+
+    /// Avsenderen følger med hele veien til panelet: fra fila, gjennom
+    /// lesningen, ut i linjene grensesnittet viser. Og to like setninger fra
+    /// to avsendere er to linjer, ikke én — det er beviset på at
+    /// identitetsarbeidet løste det det skulle.
+    #[test]
+    fn avsenderen_følger_med_til_panelet() {
+        let limt = "Marius: Vi går for Stripe.\n\
+                    Kari: Vi går for Stripe.\n\
+                    Marius: Da er vi enige.";
+        let innlegg = samtale::del(limt).expect("dette er en samtale");
+        let fil = format!(
+            "---\nid: 2026-09-13-betaling\nkilde: samtale\n---\n\n# Betaling\n\n{}\n",
+            samtale::skriv(&innlegg)
+        );
+        assert!(samtale::er_samtale(&fil));
+
+        struct Alle;
+        impl understand::Classifier for Alle {
+            fn ask(&self, texts: &[String]) -> Result<String, String> {
+                Ok(texts
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| format!("{}|beslutning|bygg|{}", i + 1, t.trim()))
+                    .collect::<Vec<_>>()
+                    .join("\n"))
+            }
+        }
+
+        let mut memo = understand::Memo::new();
+        let mut avsnitt = understand::les(&fil, &Alle, &mut memo).unwrap();
+        assert_eq!(avsnitt.len(), 3, "overskriften og toppfeltet er ikke innlegg");
+        sett_avsendere(&mut avsnitt, true);
+
+        let sagt_av: Vec<Option<&str>> =
+            avsnitt.iter().map(|a| a.avsender.as_deref()).collect();
+        assert_eq!(sagt_av, vec![Some("Marius"), Some("Kari"), Some("Marius")]);
+
+        // Samme setning fra to avsendere: to linjer, to klassifiseringer.
+        assert_ne!(avsnitt[0].hash, avsnitt[1].hash);
+        assert_eq!(memo.len(), 3);
+
+        // Og i et vanlig notat står det ingen avsender, selv om teksten
+        // skulle ligne.
+        sett_avsendere(&mut avsnitt, false);
+        assert!(avsnitt.iter().all(|a| a.avsender.is_none()));
     }
 }

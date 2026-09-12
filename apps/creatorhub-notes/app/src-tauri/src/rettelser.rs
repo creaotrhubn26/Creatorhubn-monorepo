@@ -193,7 +193,7 @@ mod tests {
     fn les(conn: &mut Connection, sti: &str, doc: &str) -> Vec<Paragraph> {
         let biter = understand::split(doc);
         let tekster: Vec<String> = biter.iter().map(|b| b.text.clone()).collect();
-        let ider = minne::synk(conn, sti, &tekster).unwrap();
+        let ider = minne::synk(conn, sti, &tekster, &[]).unwrap();
         let mut memo = Memo::new();
         let mut avsnitt = understand::les(doc, &Fast, &mut memo).unwrap();
         understand::sett_ider(&mut avsnitt, &biter, &ider);

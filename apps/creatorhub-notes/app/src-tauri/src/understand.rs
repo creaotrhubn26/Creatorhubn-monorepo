@@ -33,10 +33,16 @@ pub const MODEL: &str = "claude-haiku-4-5-20251001";
 /// med denne som annenlesning faller det til 0, 0 og 10 %.
 pub const STOR_MODEL: &str = "claude-sonnet-5";
 
-/// Romslig: tretten sekunder er normalen for en håndfull avsnitt, og et helt
-/// notat på én gang er tregere. Overskrides den, er panelet av — ingen får se
-/// en feilmelding for det.
-const TIMEOUT: Duration = Duration::from_secs(120);
+/// Romslig, og romsligere enn den ser ut som den trenger å være. Målingen
+/// under viste 78 sekunder på ett enkelt avsnitt: nesten alt er oppstart, og
+/// spredningen mellom kall er stor nok til at 120 sekunder ga tynnere margin
+/// enn tallene antyder. Ingen venter på kallet — det er asynkront, og panelet
+/// fylles ut pakke for pakke — så en romslig grense koster ingenting og fjerner
+/// en mystisk feil brukeren ellers møter på verst tenkelig tidspunkt.
+///
+/// Overskrides den likevel, er panelet av for den pakken. Ingen får se en
+/// feilmelding for det.
+const TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Avsnitt per kall. Målt mot ekte `claude`-kommandolinje 13. september 2026
 /// (`måling_av_pakkestørrelse` nedenfor kjører målingen på nytt):
@@ -53,7 +59,7 @@ const TIMEOUT: Duration = Duration::from_secs(120);
 /// mindre pakker, og tokenbudsjettet alene ville valgt for smått.
 ///
 /// Åtti, ikke hundre og tjue: det halverer antall kall mot førti, verste
-/// målte kall er 45 sekunder mot [`TIMEOUT`] på 120, og en pakke som feiler
+/// målte kall er 45 sekunder mot [`TIMEOUT`], og en pakke som feiler
 /// eller forlates koster ikke mer enn det. Tre hundre avsnitt blir fire kall.
 ///
 /// Grensen er antall, ikke bare tokener, fordi svaret må ha én linje per
@@ -118,6 +124,32 @@ Bare oppgaver kan ha pil, og høyst én.
 Svar med nøyaktig én linje per avsnitt, og ingenting annet:
 <nummer>|<type>|<handling>|<kortform>";
 
+/// Legges til prompten når kilden er en samtale, ikke et notat.
+///
+/// Uten den leser modellen innleggene som om brukeren hadde skrevet dem selv,
+/// og «Marius: vi går for Stripe» blir hennes beslutning. Med den vet den at
+/// avsenderen står i teksten og allerede er notert.
+///
+/// Merk hva den *ikke* sier: den sier ikke at et innlegg fra en annen er en
+/// `gjengivelse`. Det var nærliggende — taksonomien har «refererer andres
+/// syn» — men det ville tømt beslutningsloggen: hele tråden ville landet
+/// under «Idéer og alternativer», og «hva ble bestemt i tråden» ville ikke
+/// funnet noe. `gjengivelse` er for innlegg som refererer en *tredjepart*.
+/// Hvem som sa det bærer `avsender`, ikke typen.
+const SAMTALE: &str = "
+
+Dette er en samtale, ikke et notat. Hvert avsnitt er ett innlegg, skrevet som \
+«Navn: det personen sa», og et klokkeslett kan stå i parentes etter navnet.
+
+Avsenderen er allerede notert, så la navnet stå utenfor kortformen. Merk \
+innlegget etter hva det er for den som sa det: sier Marius at de skal bruke \
+Stripe, er innlegget hans en beslutning. `gjengivelse` er for innlegg som \
+refererer en tredjepart — «Kunden ønsker innlogging».
+
+Regelen om tvil gjelder her også, og strengere: at noe er nevnt i en tråd \
+betyr ikke at det ble bestemt. Er det uklart om tråden landet på noe, er det \
+ikke en beslutning.";
+
 const KINDS: [&str; 9] = [
     "beslutning",
     "spørsmål",
@@ -157,6 +189,10 @@ pub struct Paragraph {
     pub summary: String,
     pub kind: String,
     pub action: String,
+    /// Hvem som sa det, når kilden er en samtale. `None` for et vanlig notat:
+    /// der er avsenderen brukeren selv, og å skrive navnet hennes foran hver
+    /// linje ville vært støy.
+    pub avsender: Option<String>,
     /// Bare oppgaver: hva oppgaven venter på, om modellen leste det ut.
     pub dependency: Option<String>,
     /// Brukerens egen retting, når hun har gjort en. Den vinner over
@@ -403,6 +439,7 @@ fn avsnittet(chunk: &Chunk, label: &Label) -> Paragraph {
         summary: label.summary.clone(),
         kind: label.kind.clone(),
         action: label.action.clone(),
+        avsender: None,
         dependency: label.dependency.clone(),
         text: chunk.text.clone(),
         correction: None,
@@ -524,11 +561,18 @@ pub fn sett_ider(avsnitt: &mut [Paragraph], chunks: &[Chunk], ider: &[i64]) {
 /// neste krav av samme slag lande riktig uten at hun retter det igjen.
 pub struct Cli {
     pub eksempler: Vec<crate::minne::Eksempel>,
+    /// Er kilden en samtale? Da får prompten vite det, og hvert avsnitt er
+    /// ett innlegg med avsenderen først.
+    pub samtale: bool,
 }
 
 impl Cli {
     pub fn new(eksempler: Vec<crate::minne::Eksempel>) -> Self {
-        Cli { eksempler }
+        Cli { eksempler, samtale: false }
+    }
+    /// Samme kommandolinje, men over en importert samtale.
+    pub fn over_samtale(eksempler: Vec<crate::minne::Eksempel>) -> Self {
+        Cli { eksempler, samtale: true }
     }
 }
 
@@ -554,7 +598,7 @@ fn binary() -> std::path::PathBuf {
     "claude".into()
 }
 
-pub fn prompt(texts: &[String], eksempler: &[crate::minne::Eksempel]) -> String {
+pub fn prompt(texts: &[String], eksempler: &[crate::minne::Eksempel], samtale: bool) -> String {
     let avsnitt = texts
         .iter()
         .enumerate()
@@ -578,7 +622,8 @@ pub fn prompt(texts: &[String], eksempler: &[crate::minne::Eksempel]) -> String 
         )
     };
 
-    format!("{SYSTEM}{lært}\n\nAvsnittene:\n\n{avsnitt}")
+    let kilde = if samtale { SAMTALE } else { "" };
+    format!("{SYSTEM}{kilde}{lært}\n\nAvsnittene:\n\n{avsnitt}")
 }
 
 /// Ett kall til kommandolinja. Ingen verktøy, ingen arbeidskatalog med et
@@ -618,7 +663,7 @@ pub fn kjør(model: &str, prompt: &str) -> Result<String, String> {
 
 impl Classifier for Cli {
     fn ask(&self, texts: &[String]) -> Result<String, String> {
-        kjør(MODEL, &prompt(texts, &self.eksempler))
+        kjør(MODEL, &prompt(texts, &self.eksempler, self.samtale))
     }
 }
 
@@ -817,12 +862,29 @@ mod tests {
     /// nummerert slik svaret refererer til dem.
     #[test]
     fn prompten_har_taksonomien_regelen_og_nummererte_avsnitt() {
-        let p = prompt(&["Vi skal ha innlogging.".into(), "Kanskje depositum.".into()], &[]);
+        let p = prompt(&["Vi skal ha innlogging.".into(), "Kanskje depositum.".into()], &[], false);
         assert!(p.contains("velg det som gjør minst"));
         assert!(p.contains("marker_åpent"));
         assert!(p.contains("<nummer>|<type>|<handling>|<kortform>"));
         assert!(p.contains("1. Vi skal ha innlogging."));
         assert!(p.contains("2. Kanskje depositum."));
+    }
+
+    /// Er kilden en samtale, skal prompten vite det — ellers leser modellen
+    /// «Marius: vi går for Stripe» som brukerens egen beslutning. Er den det
+    /// ikke, skal prompten være nøyaktig som før.
+    #[test]
+    fn prompten_vet_om_kilden_er_en_samtale() {
+        let innlegg = vec!["Marius (10:32): Vi går for Stripe.".to_string()];
+        let som_samtale = prompt(&innlegg, &[], true);
+        assert!(som_samtale.contains("Dette er en samtale"));
+        assert!(som_samtale.contains("la navnet stå utenfor kortformen"));
+        assert!(som_samtale.contains("refererer en tredjepart"));
+        assert!(som_samtale.contains("velg det som gjør minst"), "regelen står fortsatt");
+
+        let som_notat = prompt(&innlegg, &[], false);
+        assert!(!som_notat.contains("Dette er en samtale"));
+        assert_eq!(som_notat, prompt(&innlegg, &[], false), "uendret for et notat");
     }
 
     /// Sløyfa som gjør at appen kjenner *henne* og ikke bare språket: har hun
@@ -834,14 +896,14 @@ mod tests {
             lest: "begrensning|hold|Bestemorvennlig grensesnitt".into(),
             rettet: "beslutning|bygg|Bestemorvennlig grensesnitt".into(),
         }];
-        let p = prompt(&["Det må være enkelt nok for mor.".into()], &eksempler);
+        let p = prompt(&["Det må være enkelt nok for mor.".into()], &eksempler, false);
         assert!(p.contains("ux og ui må være bestemorvennlig"));
         assert!(p.contains("du svarte begrensning|hold|Bestemorvennlig grensesnitt"));
         assert!(p.contains("hun rettet det til beslutning|bygg|Bestemorvennlig grensesnitt"));
         assert!(p.contains("velg det som gjør minst"), "regelen skal fortsatt stå");
 
         // Uten rettelser skal prompten være nøyaktig som før.
-        assert!(!prompt(&["En tanke.".into()], &[]).contains("rettet det til"));
+        assert!(!prompt(&["En tanke.".into()], &[], false).contains("rettet det til"));
     }
 
     #[test]

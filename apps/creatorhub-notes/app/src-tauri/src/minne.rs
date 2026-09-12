@@ -113,7 +113,15 @@ pub fn sørg_for_tabeller(conn: &Connection) -> Result<()> {
 /// med de samme id-ene. Det er enklere enn å flytte `rekkefolge` rundt uten å
 /// bryte `unique(kilde, rekkefolge)` underveis, og `autoincrement` gjør at en
 /// id som forsvinner aldri dukker opp igjen på noe annet.
-pub fn synk(conn: &mut Connection, kilde: &str, tekster: &[String]) -> Result<Vec<i64>> {
+///
+/// `avsendere` er parvis med `tekster` når kilden er en samtale, og tom ellers
+/// — et vanlig notat har ingen avsender, og kolonnen skal stå tom.
+pub fn synk(
+    conn: &mut Connection,
+    kilde: &str,
+    tekster: &[String],
+    avsendere: &[Option<String>],
+) -> Result<Vec<i64>> {
     let kjente: Vec<Kjent> = conn
         .prepare("select id, rekkefolge, tekst from avsnitt where kilde = ?1 order by rekkefolge")?
         .query_map([kilde], |r| {
@@ -146,12 +154,13 @@ pub fn synk(conn: &mut Connection, kilde: &str, tekster: &[String]) -> Result<Ve
     let mut ut = Vec::with_capacity(nye.len());
     for (i, (ny, m)) in nye.iter().zip(&treff).enumerate() {
         let hash = crate::understand::nøkkel(&ny.tekst);
+        let avsender = avsendere.get(i).cloned().flatten();
         let id = match m {
             Match::Samme(id) | Match::Endret(id) => {
                 tx.execute(
-                    "insert into avsnitt (id, kilde, rekkefolge, innhold_hash, tekst) \
-                     values (?1, ?2, ?3, ?4, ?5)",
-                    rusqlite::params![id, kilde, i as i64, hash, ny.tekst],
+                    "insert into avsnitt (id, kilde, rekkefolge, avsender, innhold_hash, tekst) \
+                     values (?1, ?2, ?3, ?4, ?5, ?6)",
+                    rusqlite::params![id, kilde, i as i64, avsender, hash, ny.tekst],
                 )?;
                 // Teksten i `forstatt` er kopien `forstatt_fts` indekserer.
                 // Uten denne ville ordsøket lett i teksten slik den var før
@@ -166,9 +175,9 @@ pub fn synk(conn: &mut Connection, kilde: &str, tekster: &[String]) -> Result<Ve
             }
             Match::Nytt => {
                 tx.execute(
-                    "insert into avsnitt (kilde, rekkefolge, innhold_hash, tekst) \
-                     values (?1, ?2, ?3, ?4)",
-                    rusqlite::params![kilde, i as i64, hash, ny.tekst],
+                    "insert into avsnitt (kilde, rekkefolge, avsender, innhold_hash, tekst) \
+                     values (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![kilde, i as i64, avsender, hash, ny.tekst],
                 )?;
                 tx.last_insert_rowid()
             }
@@ -715,6 +724,9 @@ const BINDEORD: &[&str] = &[
     "hva", "hvilke", "hvilken", "hvem", "har", "jeg", "vi", "er", "som", "om", "på", "noe",
     "alt", "det", "de", "en", "et", "og", "i", "for", "til", "min", "mine", "står", "ligger",
     "finnes", "ennå", "fortsatt", "igjen", "nå", "hos", "meg",
+    // «hva ble bestemt» er den naturlige måten å spørre om en samtale på.
+    // Uten disse snevrer «ble» inn treffene til ingenting.
+    "ble", "blir", "var", "her", "tråden", "samtalen", "møtet",
 ];
 
 fn inneholder(q: &str, ord: &[&str]) -> bool {
@@ -764,6 +776,9 @@ pub fn mønster(q: &str) -> Option<(Mønster, Vec<String>)> {
 #[serde(rename_all = "camelCase")]
 pub struct Linje {
     pub kortform: String,
+    /// Hvem som sa det, når treffet står i en importert samtale. Uten den er
+    /// en beslutningslogg bare en haug med løsrevne påstander.
+    pub avsender: Option<String>,
     pub sti: String,
     pub tittel: String,
     pub hash: String,
@@ -835,7 +850,7 @@ pub fn spør(conn: &Connection, q: &str) -> Result<Option<Svar>> {
 
     let sql = format!(
         "select coalesce(nullif(r.kortform, ''), f.kortform), a.kilde, f.tittel, \
-                a.innhold_hash, f.tidspunkt, f.venter \
+                a.innhold_hash, f.tidspunkt, f.venter, a.avsender \
          from forstatt f \
          join avsnitt a on a.id = f.avsnitt_id \
          left join rettelser r on r.avsnitt_id = f.avsnitt_id and r.foreldet = 0 \
@@ -847,6 +862,7 @@ pub fn spør(conn: &Connection, q: &str) -> Result<Option<Svar>> {
         let venter: String = r.get(5)?;
         Ok(Linje {
             kortform: r.get(0)?,
+            avsender: r.get(6)?,
             sti: r.get(1)?,
             tittel: r.get(2)?,
             hash: r.get(3)?,
@@ -948,6 +964,7 @@ mod tests {
             hash: understand::nøkkel(tekst),
             text: tekst.to_string(),
             summary: kortform.to_string(),
+            avsender: None,
             kind: "beslutning".into(),
             action: "bygg".into(),
             dependency: None,
@@ -958,7 +975,7 @@ mod tests {
     /// Gir avsnittene id-ene kilden gir dem, slik appen gjør ved hver lesning.
     fn med_ider(conn: &mut Connection, sti: &str, mut avsnitt: Vec<Paragraph>) -> Vec<Paragraph> {
         let tekster: Vec<String> = avsnitt.iter().map(|a| a.text.clone()).collect();
-        let ider = synk(conn, sti, &tekster).unwrap();
+        let ider = synk(conn, sti, &tekster, &[]).unwrap();
         for (a, id) in avsnitt.iter_mut().zip(ider) {
             a.id = id;
         }
@@ -979,7 +996,7 @@ mod tests {
     fn legg_inn(conn: &mut Connection, sti: &str, tittel: &str, tekst: &str, kortform: &str) -> i64 {
         let mut tekster = tekster_i(conn, sti);
         tekster.push(tekst.to_string());
-        let id = *synk(conn, sti, &tekster).unwrap().last().unwrap();
+        let id = *synk(conn, sti, &tekster, &[]).unwrap().last().unwrap();
         lagre(conn, tittel, &[Paragraph { id, ..p(tekst, kortform) }]).unwrap();
         id
     }
@@ -1285,11 +1302,12 @@ mod tests {
         let b = "Vi bør bruke Stripe til betaling fordi det er raskest å sette opp.";
         let ny = "Møtet med Marius flyttes til torsdag klokka ni.";
 
-        let før = synk(&mut conn, "notat.md", &[a.to_string(), b.to_string()]).unwrap();
+        let før = synk(&mut conn, "notat.md", &[a.to_string(), b.to_string()], &[]).unwrap();
         let etter = synk(
             &mut conn,
             "notat.md",
             &[ny.to_string(), a.to_string(), b.to_string()],
+            &[],
         )
         .unwrap();
 
@@ -1307,9 +1325,10 @@ mod tests {
     #[test]
     fn en_id_som_forsvinner_kommer_aldri_tilbake_på_noe_annet() {
         let mut conn = base();
-        let første = synk(&mut conn, "a.md", &["Depositum blir for høy terskel.".into()]).unwrap();
-        synk(&mut conn, "a.md", &[]).unwrap();
-        let senere = synk(&mut conn, "a.md", &["Alle bilder leveres i full oppløsning.".into()]).unwrap();
+        let første = synk(&mut conn, "a.md", &["Depositum blir for høy terskel.".into()], &[]).unwrap();
+        synk(&mut conn, "a.md", &[], &[]).unwrap();
+        let senere = synk(&mut conn, "a.md", &["Alle bilder leveres i full oppløsning.".into()], &[])
+            .unwrap();
         assert_ne!(senere[0], første[0]);
     }
 
@@ -1321,5 +1340,84 @@ mod tests {
         let enheter: Vec<u16> = doc.encode_utf16().collect();
         assert_eq!(String::from_utf16(&enheter[from..to]).unwrap(), "Andre tanke her.");
         assert_eq!(posisjon(doc, "finnesikke"), None);
+    }
+
+    /// En importert samtale, hele veien: fila på disk deles i innlegg, hvert
+    /// innlegg får sin egen id med avsenderen på, og det strukturerte søket
+    /// svarer på hva som ble bestemt i tråden og hvem som venter på hva.
+    ///
+    /// Det er dette som skiller en beslutningslogg fra en haug med løsrevne
+    /// påstander: linja sier hvem som sa det.
+    #[test]
+    fn en_importert_samtale_svarer_på_hva_som_ble_bestemt_og_hvem_som_venter() {
+        let mut conn = base();
+        let limt = "Marius: Vi går for Stripe.\n\
+                    Kari: Vi går for Stripe.\n\
+                    Marius: Jeg sender faktura når avtalen er signert.\n\
+                    Kari: Trenger vi Vipps også?";
+        let innlegg = crate::samtale::del(limt).expect("dette er en samtale");
+        let fil = crate::samtale::skriv(&innlegg);
+
+        // Fila deles i ett avsnitt per innlegg, uten at noe vet om samtaler.
+        let biter = understand::split(&fil);
+        assert_eq!(biter.len(), 4);
+        let tekster: Vec<String> = biter.iter().map(|b| b.text.clone()).collect();
+        let avsendere: Vec<Option<String>> =
+            biter.iter().map(|b| crate::samtale::avsender(&b.text)).collect();
+        let ider = synk(&mut conn, "samtale.md", &tekster, &avsendere).unwrap();
+
+        // Samme setning fra to avsendere er to avsnitt, ikke ett.
+        assert_ne!(ider[0], ider[1]);
+        let lagret: Vec<(String, Option<String>)> = conn
+            .prepare("select tekst, avsender from avsnitt where kilde = 'samtale.md' order by rekkefolge")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<Result<_>>()
+            .unwrap();
+        assert_eq!(lagret[0].1.as_deref(), Some("Marius"));
+        assert_eq!(lagret[1].1.as_deref(), Some("Kari"));
+
+        // Forståelsen, slik lesningen ville lagret den.
+        let merker = [
+            ("beslutning", "bygg", "Stripe som betalingsløsning", None),
+            ("beslutning", "bygg", "Stripe som betalingsløsning", None),
+            ("oppgave", "ingenting", "Sende faktura", Some("signert avtale")),
+            ("spørsmål", "marker_åpent", "Vipps i tillegg", None),
+        ];
+        let avsnitt: Vec<Paragraph> = ider
+            .iter()
+            .zip(merker)
+            .zip(&tekster)
+            .map(|((id, (kind, action, kortform, venter)), tekst)| Paragraph {
+                id: *id,
+                kind: kind.into(),
+                action: action.into(),
+                dependency: venter.map(str::to_string),
+                ..p(tekst, kortform)
+            })
+            .collect();
+        lagre(&conn, "Samtale om betaling", &avsnitt).unwrap();
+
+        let bestemt = spør(&conn, "hva ble bestemt").unwrap().unwrap();
+        assert_eq!(bestemt.overskrift, "Bestemt");
+        assert_eq!(bestemt.treff.len(), 2, "begge sa det, og begge står");
+        let sagt_av: HashSet<Option<String>> =
+            bestemt.treff.iter().map(|t| t.avsender.clone()).collect();
+        assert_eq!(
+            sagt_av,
+            HashSet::from([Some("Marius".to_string()), Some("Kari".to_string())])
+        );
+
+        let venter = spør(&conn, "hva venter på noe").unwrap().unwrap();
+        assert_eq!(venter.treff.len(), 1);
+        assert_eq!(venter.treff[0].avsender.as_deref(), Some("Marius"));
+        assert_eq!(venter.treff[0].kortform, "Sende faktura");
+        assert_eq!(venter.treff[0].venter.as_deref(), Some("signert avtale"));
+
+        let uavklart = spør(&conn, "hva er uavklart").unwrap().unwrap();
+        assert_eq!(uavklart.treff.len(), 1);
+        assert_eq!(uavklart.treff[0].avsender.as_deref(), Some("Kari"));
+        assert_eq!(uavklart.treff[0].kortform, "Vipps i tillegg");
     }
 }
