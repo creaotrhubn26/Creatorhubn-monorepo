@@ -90,6 +90,7 @@ import {
   readStripeInvoicePaymentReferences,
   registerRoleRoomAffiliatePayoutRoutes,
 } from "./role-room-affiliate-payouts.js";
+import { registerRoleRoomStorageObjectRoutes } from "./role-room-storage-object-routes.js";
 import { registerRoleRoomByoStorageRoutes } from "./role-room-byo-storage-routes.js";
 import { startInProcessCleanupLoop as startRoleRoomStorageCleanupLoop } from "./role-room-storage-cleanup-worker.js";
 import { registerRoleRoomPublishedGuidesRoutes } from "./role-room-published-guides-routes.js";
@@ -562,6 +563,7 @@ import { setupPhotographerStripeConnectRoutes } from "./photographer-stripe-conn
 import { setupPhotographerReviewsRoutes } from "./photographer-reviews-routes";
 import { setupAudioShowcaseRoutes } from "./audio-showcase-routes";
 import { setupSoundRoomOperatingSystemRoutes } from "./sound-room-operating-system-routes";
+import { setupSoundRoomStorageRoutes } from "./sound-room-storage-routes";
 import { sendTransactionalEmail as sendAudioReviewEmail, sendTransactionalEmail } from "./transactional-email-service";
 import { setupShowcaseSmartAlbumsRoutes } from "./showcase-smart-albums-routes";
 import { setupShowcaseBatchOperationsRoutes } from "./showcase-batch-operations-routes";
@@ -1004,6 +1006,7 @@ import { setupPhotographerMiscRoutes } from "./photographer-misc-routes";
 import { setupProjectTeamRoutes, canAccessProject } from "./project-team-routes";
 import { requireProjectAccess } from "./project-access";
 import { setupProjectWorkspaceRoutes } from "./project-workspace-routes";
+import { setupProjectVideoCollaborationRoutes } from "./project-video-collaboration-routes";
 import { setupProToolsCompanionRoutes } from "./protools-companion-routes";
 import { startProToolsSyncWorker } from "./protools-companion-sync-worker";
 import { setupGoogleDriveSyncRoutes } from "./google-drive-sync-routes";
@@ -2737,6 +2740,7 @@ registerRoleRoomAffiliatePayoutRoutes({
   stripe: getRoleRoomStripeClient(),
   requireAdminSession,
 });
+registerRoleRoomStorageObjectRoutes({ app, pool, activeSessions });
 registerRoleRoomByoStorageRoutes(app, { pool, activeSessions });
 // Start in-process cleanup-loop hvis ROLE_ROOM_STORAGE_CLEANUP_INTERVAL_MS er satt
 startRoleRoomStorageCleanupLoop(pool);
@@ -68511,6 +68515,12 @@ setupWorkspaceParticipantClearanceRoutes({
 // Team Workspace egne panel-data (board-tasks/checklist/deliverables/shot-list GET)
 // — project_id-scopet, UAVHENGIG av Role Room.
 setupProjectWorkspaceRoutes({ app, pool, requireUserSession });
+setupProjectVideoCollaborationRoutes({
+  app,
+  pool,
+  requireUserSession,
+  resolveUserSession: resolveActiveSessionFromRequest,
+});
 // Webklienter veksler vanlig Authorization-header mot en 30 sekunders,
 // engangs WebSocket-billett. Session-tokenet skal aldri inn i WS-URL-en.
 setupUserEventsTicketRoute({
@@ -68522,6 +68532,7 @@ setupUserEventsTicketRoute({
 setupLeadgridRealtimeTicketRoute({ app, pool, requireUserSession });
 // Pro Tools Companion (native desktop-agent) + EaseVerse/Sound Room-kobling.
 setupProToolsCompanionRoutes({ app, pool, requireUserSession });
+setupSoundRoomStorageRoutes({ app, pool, requireUserSession });
 setupPhotographerMiscRoutes({
   app,
   pool,

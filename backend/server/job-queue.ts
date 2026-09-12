@@ -17,7 +17,9 @@
  * idempotent — den KAN bli kjørt igjen etter en restart midt i.
  */
 
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
+
+export type JobQueueQueryable = Pick<PoolClient, "query">;
 
 export interface BackgroundJob {
   id: string;
@@ -104,7 +106,7 @@ export function transitionForMissingHandler(
 // ─────────────────────────────────────────────────────────────────────
 
 export async function enqueueJob(
-  pool: Pool,
+  pool: JobQueueQueryable,
   input: {
     jobType: string;
     payload?: Record<string, unknown>;

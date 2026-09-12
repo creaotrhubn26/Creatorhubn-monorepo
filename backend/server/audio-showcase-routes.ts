@@ -473,6 +473,18 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   // same-origin, tilgangskontrollert stream i stedet for den rå objekt-URL-en.
   const playableVersion = (row: any, shareToken?: string): any => {
     const { protools_bounce_id: bounceId, ...version } = row || {};
+    if (version.storage_object_id) {
+      const base = shareToken
+        ? `/api/audio-review-shared/${encodeURIComponent(shareToken)}/versions/${version.id}`
+        : `/api/audio-versions/${version.id}`;
+      return {
+        ...version,
+        file_url: `${base}/media`,
+        preview_url: version.preview_storage_object_id
+          ? `${base}/media?preview=1`
+          : version.preview_url,
+      };
+    }
     if (!bounceId) return version;
     const share = shareToken ? `?share=${encodeURIComponent(shareToken)}` : "";
     return { ...version, file_url: `/api/protools/bounces/${bounceId}/file${share}` };
@@ -734,47 +746,10 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   // ── Versjon (bounce) ──────────────────────────────────────────────────────
   app.post("/api/audio-versions", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
-    const projectId = str(req.body?.projectId, 64);
-    const fileUrl = str(req.body?.fileUrl, 1000);
-    if (!projectId || !fileUrl) return res.status(400).json({ error: "projectId_and_fileUrl_required" });
-    try {
-      const owns = await pool.query(
-        `SELECT 1 FROM audio_review_projects WHERE id = $1::uuid AND owner_user_id = $2 LIMIT 1`, [projectId, s.userId]);
-      if (!owns.rows.length) return res.status(404).json({ error: "project_not_found" });
-
-      // §14 — kun én current review-versjon: sett tidligere under_review → superseded.
-      await pool.query(
-        `UPDATE audio_review_versions SET status = 'superseded'
-          WHERE project_id = $1::uuid AND status = 'under_review'`, [projectId]);
-      const nextNo = await pool.query(
-        `SELECT COALESCE(MAX(version_number),0)+1 AS n FROM audio_review_versions WHERE project_id = $1::uuid`, [projectId]);
-      const vn = nextNo.rows[0].n;
-      const r = await pool.query(
-        `INSERT INTO audio_review_versions
-           (project_id, version_label, version_number, file_name, file_url, preview_url, duration, sample_rate, bit_depth, channels, codec, file_size, uploaded_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-        [projectId, str(req.body?.versionLabel, 80) || `Mix V${vn}`, vn, str(req.body?.fileName, 300) || null, fileUrl,
-         str(req.body?.previewUrl, 1000) || null, num(req.body?.duration), num(req.body?.sampleRate), num(req.body?.bitDepth),
-         num(req.body?.channels), str(req.body?.codec, 40) || null, num(req.body?.fileSize), s.userId],
-      );
-      await pool.query(`UPDATE audio_review_projects SET status='under_review', updated_at=NOW() WHERE id=$1::uuid`, [projectId]);
-      // Varsle bandet om at en ny versjon er klar å høre (best-effort).
-      void notifyBandNewVersion(projectId, r.rows[0]).catch(() => {});
-      void recordSoundRoomActivity(pool, {
-        projectId,
-        eventType: "version_uploaded",
-        summary: `${r.rows[0].version_label} ble lastet opp`,
-        actorId: s.userId,
-        actorName: s.name,
-        metadata: { versionId: r.rows[0].id, versionNumber: vn },
-      });
-      void broadcastSoundRoomUpdated(pool, projectId, "version");
-      return res.status(201).json(r.rows[0]);
-    } catch (e) {
-      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
-      console.error("[audio-showcase] create version failed:", e);
-      return res.status(500).json({ error: "create_version_failed" });
-    }
+    return res.status(410).json({
+      error: "verified_storage_upload_required",
+      initiateUrl: `/api/audio-showcases/${encodeURIComponent(str(req.body?.projectId, 64))}/storage/initiate`,
+    });
   });
 
   app.get("/api/audio-versions/:id", async (req, res) => {

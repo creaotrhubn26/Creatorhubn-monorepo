@@ -22,6 +22,50 @@ import {
 } from "./leadgrid-discovery-campaign-service.js";
 
 export function registerCoreJobHandlers(): void {
+  // Full-file Video Room QC. The user-facing result row is created before
+  // enqueue, so it survives deploys and remains pollable while retries run.
+  registerJobHandler("project_video_qc", async (pool, payload, job) => {
+    const qcResultId =
+      typeof payload.qcResultId === "string" ? payload.qcResultId : null;
+    if (!qcResultId) throw new Error("payload mangler qcResultId");
+    try {
+      const { processProjectVideoQc } = await import(
+        "./project-video-qc-service.js"
+      );
+      return await processProjectVideoQc(pool, qcResultId);
+    } catch (error) {
+      if (job.attempts >= job.max_attempts) {
+        const errorCode = String(
+          (error as Error)?.message || "video_qc_failed",
+        ).slice(0, 120);
+        await pool
+          .query(
+            `UPDATE project_video_qc_results
+                SET status='failed',summary=$2::jsonb,
+                    findings=$3::jsonb,completed_at=NOW()
+              WHERE id=$1 AND status='running'`,
+            [
+              qcResultId,
+              JSON.stringify({
+                phase: "failed",
+                findingCount: 1,
+                errorCode,
+              }),
+              JSON.stringify([
+                {
+                  severity: "error",
+                  code: errorCode,
+                  message: "Teknisk QC kunne ikke fullføres.",
+                },
+              ]),
+            ],
+          )
+          .catch(() => undefined);
+      }
+      throw error;
+    }
+  });
+
   // Discovery-runs opprettes og køes atomisk av v2-tjenesten. Direkte
   // registrering her gjør clearJobHandlers() + ny registrering testbar;
   // en modulglobal "allerede registrert"-bool ville skjult en tom registry.

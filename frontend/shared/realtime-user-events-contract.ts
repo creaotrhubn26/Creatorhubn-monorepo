@@ -107,7 +107,7 @@ export type UserEvent =
   | {
       kind: "video-room.updated";
       projectId: string;
-      reason: "version" | "comment" | "approval" | "chapters";
+      reason: "version" | "comment" | "approval" | "chapters" | "share";
       timestamp: string;
     }
   | {
