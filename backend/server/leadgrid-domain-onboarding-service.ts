@@ -301,9 +301,13 @@ const CATEGORY_RULES: CategoryRule[] = [
   },
 ];
 
-function profileSourceConfig(placesDetailsEnabled: boolean) {
+function profileSourceConfig(
+  placesDetailsEnabled: boolean,
+  registrySource: DiscoveryBrief["registry_source"],
+) {
   return {
-    brreg_open_data: { enabled: true },
+    brreg_open_data: { enabled: registrySource === "brreg_open_data" },
+    nhn_flr_public: { enabled: registrySource === "nhn_flr_public" },
     google_places: {
       enabled: placesDetailsEnabled,
       mode: "transient_details_only",
@@ -367,7 +371,7 @@ function fallbackCategory(profile: BrandProfile): CategoryRule {
   };
 }
 
-function roleRoomBrief(input: {
+function nationalDiscoveryBrief(input: {
   industryQueries?: string[];
   organizationNameQueries?: string[];
   exclusions: string[];
@@ -376,11 +380,15 @@ function roleRoomBrief(input: {
   targetCount?: number;
   minimumFitScore?: number;
   requireBusinessRegistration?: boolean | null;
+  registrySource?: DiscoveryBrief["registry_source"];
   subjectKind?: "organization" | "person";
   qualificationTerms?: string[];
   qualificationRequirement?: "preferred" | "required";
+  organizationForms?: string[];
+  employeeCount?: { minimum: number | null; maximum: number | null } | null;
 }): DiscoveryBrief {
   return discoveryBriefSchema.parse({
+    registry_source: input.registrySource ?? "brreg_open_data",
     industry_queries: input.industryQueries ?? [],
     organization_name_queries: input.organizationNameQueries ?? [],
     exclusion_terms: input.exclusions,
@@ -395,8 +403,8 @@ function roleRoomBrief(input: {
     minimum_fit_score: input.minimumFitScore ?? 65,
     ideal_customer: input.idealCustomer,
     goal: input.goal,
-    organization_forms: [],
-    employee_count: null,
+    organization_forms: input.organizationForms ?? [],
+    employee_count: input.employeeCount ?? null,
     organization_structure: "any",
     website_requirement: "any",
     website_quality: { minimum_score: null },
@@ -413,7 +421,7 @@ function roleRoomBrief(input: {
   });
 }
 
-function roleRoomProfilePlan(
+function nationalDiscoveryProfilePlan(
   templateKey: string,
   name: string,
   brief: DiscoveryBrief,
@@ -489,10 +497,10 @@ function buildRoleRoomOnboardingPlan(
     ],
     brand_profile: brandProfile,
     recommended_profiles: [
-      roleRoomProfilePlan(
+      nationalDiscoveryProfilePlan(
         "role_room.production",
         "Film- og TV-produksjon – Norge",
-        roleRoomBrief({
+        nationalDiscoveryBrief({
           industryQueries: ["59.110", "59.120", "60.200"],
           exclusions: ["kino", "filmklubb"],
           idealCustomer:
@@ -508,10 +516,10 @@ function buildRoleRoomOnboardingPlan(
         }),
         true,
       ),
-      roleRoomProfilePlan(
+      nationalDiscoveryProfilePlan(
         "role_room.agencies",
         "Reklame- og innholdsbyråer – Norge",
-        roleRoomBrief({
+        nationalDiscoveryBrief({
           industryQueries: ["73.110", "74.200"],
           exclusions: ["avis", "trykkeri", "fotobutikk", "hobbyklubb"],
           idealCustomer:
@@ -522,10 +530,10 @@ function buildRoleRoomOnboardingPlan(
           qualificationRequirement: "required",
         }),
       ),
-      roleRoomProfilePlan(
+      nationalDiscoveryProfilePlan(
         "role_room.casting",
         "Casting- og talentmiljøer – Norge",
-        roleRoomBrief({
+        nationalDiscoveryBrief({
           organizationNameQueries: ["casting"],
           exclusions: [
             "reboa",
@@ -555,10 +563,10 @@ function buildRoleRoomOnboardingPlan(
           qualificationRequirement: "required",
         }),
       ),
-      roleRoomProfilePlan(
+      nationalDiscoveryProfilePlan(
         "role_room.education",
         "Film- og medieutdanning – Norge",
-        roleRoomBrief({
+        nationalDiscoveryBrief({
           organizationNameQueries: [
             "filmskule",
             "universitet",
@@ -601,10 +609,10 @@ function buildRoleRoomOnboardingPlan(
           qualificationRequirement: "required",
         }),
       ),
-      roleRoomProfilePlan(
+      nationalDiscoveryProfilePlan(
         "role_room.dance",
         "Dansestudioer og danseskoler – Norge",
-        roleRoomBrief({
+        nationalDiscoveryBrief({
           organizationNameQueries: [
             "dansestudio",
             "danseskole",
@@ -631,10 +639,10 @@ function buildRoleRoomOnboardingPlan(
           qualificationRequirement: "required",
         }),
       ),
-      roleRoomProfilePlan(
+      nationalDiscoveryProfilePlan(
         "role_room.talents",
         "Skuespillere og talenter – Norge",
-        roleRoomBrief({
+        nationalDiscoveryBrief({
           organizationNameQueries: ["skuespiller", "actor"],
           exclusions: [
             "forbund",
@@ -656,6 +664,304 @@ function buildRoleRoomOnboardingPlan(
           subjectKind: "person",
           qualificationTerms: ["skuespiller", "actor", "talent", "film", "scene"],
           qualificationRequirement: "required",
+        }),
+      ),
+    ],
+    skills: LEADGRID_ONBOARDING_SKILLS,
+  };
+}
+
+function buildTidumOnboardingPlan(
+  websiteUrl: string,
+  profile: BrandProfile,
+): ProjectOnboardingPlan {
+  const privateOrganizationForms = ["AS", "IKS", "STI"];
+  const privateEmployeeCount = { minimum: 5, maximum: null };
+  const commonPrivateExclusions = [
+    "holding",
+    "eiendom",
+    "renhold",
+    "bemanning",
+  ];
+  const brandProfile: BrandProfile = {
+    ...profile,
+    url: websiteUrl,
+    businessName: "Tidum",
+    tagline: "Arbeidstidssystem for barn, omsorg og miljøarbeid",
+    description:
+      "Tidum gir virksomheter innen barn, omsorg og miljøarbeid enkel timeføring, trygg dokumentasjon og oversikt for ledere og feltteam.",
+    toneOfVoice: "professional",
+    usps: [
+      "Enkel timeregistrering med ett trykk",
+      "Trygg dokumentasjon med sporbar historikk",
+      "Oversikt for ledere, feltteam og turnusarbeid",
+      "Rapportering og eksport til videre oppfølging",
+    ],
+    primaryCTA: "Be om tilgang",
+    colors: {
+      ...profile.colors,
+      primary: "#1F6B73",
+    },
+    fonts: { heading: "Inter", body: "Inter" },
+    logoUrl: "https://tidum.no/apple-touch-icon.png",
+    faviconUrl: "https://tidum.no/favicon.ico",
+    productCategories: [
+      "Arbeidstid og timeføring",
+      "Omsorg og miljøarbeid",
+      "Dokumentasjon og rapportering",
+      "Team- og lederoversikt",
+    ],
+    hasShop: false,
+    industry: "workforce_management_for_care",
+    targetAudience:
+      "Private omsorgsaktører, barneverns- og avlastningstjenester, BPA-virksomheter og kommunale tjenester med felt- eller turnusarbeid i Norge.",
+  };
+
+  return {
+    version: 1,
+    website_url: websiteUrl,
+    website_domain: "tidum.no",
+    project_name: "Tidum",
+    project_description: brandProfile.description,
+    category: "Arbeidstid, omsorg og miljøarbeid",
+    category_confidence: "high",
+    classification_reasons: [
+      "Domenet er verifisert som Tidum.",
+      "Nettsiden beskriver arbeidstid, dokumentasjon og lederoversikt for barn, omsorg og miljøarbeid.",
+      "Private omsorgsaktører og kommunale tjenester er delt i egne profiler for presis Discovery.",
+    ],
+    brand_profile: brandProfile,
+    recommended_profiles: [
+      nationalDiscoveryProfilePlan(
+        "tidum.child_welfare",
+        "Barnevern og avlastning – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["87.104", "87.105", "87.991", "88.991"],
+          exclusions: commonPrivateExclusions,
+          idealCustomer:
+            "Norsk barneverns-, barnebolig- eller avlastningsvirksomhet med minst fem ansatte og døgn-, felt- eller turnusbasert arbeid.",
+          goal:
+            "Finne barneverns- og avlastningsaktører som trenger enklere arbeidstidsregistrering, dokumentasjon og lederoversikt.",
+          targetCount: 60,
+          minimumFitScore: 70,
+          qualificationTerms: [
+            "barnevern",
+            "barnebolig",
+            "avlastning",
+            "omsorg",
+            "miljøarbeid",
+          ],
+          organizationForms: privateOrganizationForms,
+          employeeCount: privateEmployeeCount,
+        }),
+        true,
+      ),
+      nationalDiscoveryProfilePlan(
+        "tidum.residential_care",
+        "Bofellesskap og miljøarbeid – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["87.106", "87.201", "87.202", "87.999"],
+          exclusions: commonPrivateExclusions,
+          idealCustomer:
+            "Norsk virksomhet med minst fem ansatte som driver bofellesskap, døgnbemannet botilbud eller miljøarbeid innen psykisk helse, rus eller tilrettelagt omsorg.",
+          goal:
+            "Finne omsorgs- og miljøarbeidsvirksomheter som trenger sporbar timeføring og oversikt på tvers av ansatte og tiltak.",
+          targetCount: 60,
+          minimumFitScore: 70,
+          qualificationTerms: [
+            "bofellesskap",
+            "botilbud",
+            "omsorg",
+            "miljøarbeid",
+            "døgnbemannet",
+          ],
+          organizationForms: privateOrganizationForms,
+          employeeCount: privateEmployeeCount,
+        }),
+      ),
+      nationalDiscoveryProfilePlan(
+        "tidum.bpa_field_services",
+        "BPA og feltbasert omsorg – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["88.104", "88.105", "88.106"],
+          exclusions: commonPrivateExclusions,
+          idealCustomer:
+            "Norsk BPA-, støttekontakt- eller avlastningsvirksomhet med minst fem ansatte som koordinerer arbeid ute hos brukere.",
+          goal:
+            "Finne feltbaserte omsorgsteam som trenger enkel registrering, dokumentasjon og lederoppfølging.",
+          targetCount: 40,
+          minimumFitScore: 70,
+          qualificationTerms: [
+            "BPA",
+            "brukerstyrt personlig assistanse",
+            "støttekontakt",
+            "avlastning",
+            "omsorg",
+          ],
+          organizationForms: privateOrganizationForms,
+          employeeCount: privateEmployeeCount,
+        }),
+      ),
+      nationalDiscoveryProfilePlan(
+        "tidum.municipal_services",
+        "Kommunale omsorgstjenester – Norge",
+        nationalDiscoveryBrief({
+          organizationNameQueries: ["kommune"],
+          exclusions: [],
+          idealCustomer:
+            "Norsk kommune med tjenester innen barnevern, avlastning, bofellesskap, BPA eller miljøarbeid og behov for trygg arbeidstidsdokumentasjon.",
+          goal:
+            "Finne kommuner der relevante omsorgs- og miljøtjenester kan kvalifiseres videre før kontakt.",
+          targetCount: 60,
+          minimumFitScore: 65,
+          requireBusinessRegistration: null,
+          organizationForms: ["KOMM"],
+        }),
+      ),
+    ],
+    skills: LEADGRID_ONBOARDING_SKILLS,
+  };
+}
+
+function buildMedSideOnboardingPlan(
+  websiteUrl: string,
+  profile: BrandProfile,
+): ProjectOnboardingPlan {
+  const commonExclusions = [
+    "sykehus",
+    "helseforetak",
+    "tannlege",
+    "tannklinikk",
+    "veterinær",
+    "apotek",
+    "laboratorium",
+    "bemanning",
+    "holding",
+    "eiendom",
+  ];
+  const brandProfile: BrandProfile = {
+    ...profile,
+    url: websiteUrl,
+    businessName: "MedSide",
+    tagline: "KI-basert klinisk dokumentasjon",
+    description:
+      "MedSide hjelper helsepersonell med sikker, KI-basert klinisk dokumentasjon og mindre administrasjon i arbeidshverdagen.",
+    toneOfVoice: "professional",
+    usps: [
+      "Mindre tid på klinisk dokumentasjon",
+      "Tilpasset norsk helsepraksis",
+      "Sikker arbeidsflyt for helsepersonell",
+    ],
+    primaryCTA: "Start gratis prøveperiode",
+    colors: {
+      primary: "#212A42",
+      secondary: "#7A5C16",
+      accent: "#A9842E",
+      background: "#FFFFFF",
+      text: "#212A42",
+    },
+    fonts: { heading: "Inter", body: "Inter" },
+    logoUrl: "https://medside.no/medside-logo.svg",
+    faviconUrl: "https://medside.no/favicon.ico",
+    productCategories: [
+      "KI-basert journaldokumentasjon",
+      "Klinisk arbeidsflyt",
+      "Helsepersonell og klinikker",
+    ],
+    hasShop: false,
+    industry: "ai_clinical_documentation",
+    targetAudience:
+      "Fastlegekontor, private spesialistklinikker, fysioterapi- og ergoterapivirksomheter, kiropraktorer og psykologpraksiser i Norge.",
+  };
+
+  return {
+    version: 1,
+    website_url: websiteUrl,
+    website_domain: "medside.no",
+    project_name: "MedSide",
+    project_description: brandProfile.description,
+    category: "KI-basert klinisk dokumentasjon",
+    category_confidence: "high",
+    classification_reasons: [
+      "Domenet er verifisert som MedSide.",
+      "Nettsiden beskriver KI-basert klinisk dokumentasjon for helsepersonell.",
+      "Målgruppene er delt i fem autoritative, nasjonale Discovery-profiler.",
+    ],
+    brand_profile: brandProfile,
+    recommended_profiles: [
+      nationalDiscoveryProfilePlan(
+        "medside.gp_offices",
+        "Fastlegekontor – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["86.210"],
+          exclusions: commonExclusions,
+          idealCustomer:
+            "Aktivt norsk fastlegekontor eller legesenter med klinisk dokumentasjonsbehov. Kontoret er kundekonto; tilknyttede leger behandles som kontakter.",
+          goal: "Finne fastlegekontor fra det offentlige Fastlegeregisteret og kvalifisere dem for MedSide.",
+          targetCount: 60,
+          minimumFitScore: 70,
+          requireBusinessRegistration: null,
+          registrySource: "nhn_flr_public",
+        }),
+        true,
+      ),
+      nationalDiscoveryProfilePlan(
+        "medside.medical_specialists",
+        "Private spesialistklinikker – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["86.221", "86.222"],
+          exclusions: commonExclusions,
+          idealCustomer:
+            "Aktiv privat spesialistklinikk innen somatikk eller psykisk helse med gjentakende behov for sikker klinisk dokumentasjon.",
+          goal: "Finne private spesialistklinikker som kan redusere dokumentasjonstiden med MedSide.",
+          minimumFitScore: 70,
+          qualificationTerms: ["klinikk", "spesialist", "lege"],
+        }),
+      ),
+      nationalDiscoveryProfilePlan(
+        "medside.physiotherapy",
+        "Fysioterapi og ergoterapi – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["86.950"],
+          exclusions: commonExclusions,
+          idealCustomer:
+            "Aktiv fysioterapi- eller ergoterapiklinikk som dokumenterer konsultasjoner og oppfølging i en travel klinisk hverdag.",
+          goal: "Finne fysioterapi- og ergoterapivirksomheter som passer MedSides dokumentasjonsflyt.",
+          minimumFitScore: 70,
+          qualificationTerms: ["fysioterapi", "ergoterapi", "klinikk"],
+        }),
+      ),
+      nationalDiscoveryProfilePlan(
+        "medside.chiropractic",
+        "Kiropraktorer – Norge",
+        nationalDiscoveryBrief({
+          organizationNameQueries: [
+            "kiropraktor",
+            "kiropraktikk",
+            "kiropraktorklinikk",
+          ],
+          exclusions: commonExclusions,
+          idealCustomer:
+            "Aktiv norsk kiropraktor eller kiropraktorklinikk med behov for effektiv og sikker konsultasjonsdokumentasjon.",
+          goal: "Finne kiropraktorvirksomheter som kan bruke MedSide i den kliniske arbeidshverdagen.",
+          targetCount: 50,
+          minimumFitScore: 70,
+          qualificationTerms: ["kiropraktor", "kiropraktikk"],
+          qualificationRequirement: "required",
+          requireBusinessRegistration: null,
+        }),
+      ),
+      nationalDiscoveryProfilePlan(
+        "medside.psychology",
+        "Psykolog- og psykoterapitjenester – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["86.930"],
+          exclusions: commonExclusions,
+          idealCustomer:
+            "Aktiv privat psykolog- eller psykoterapipraksis med konsultasjoner som krever strukturert, sikker klinisk dokumentasjon.",
+          goal: "Finne psykolog- og psykoterapitjenester som kan redusere administrativt arbeid med MedSide.",
+          minimumFitScore: 70,
+          qualificationTerms: ["psykolog", "psykoterapi", "klinikk"],
         }),
       ),
     ],
@@ -694,6 +1000,12 @@ export function buildProjectOnboardingPlan(
 ): ProjectOnboardingPlan {
   if (websiteDomain === "theroleroom.com") {
     return buildRoleRoomOnboardingPlan(websiteUrl, profile);
+  }
+  if (websiteDomain === "tidum.no") {
+    return buildTidumOnboardingPlan(websiteUrl, profile);
+  }
+  if (websiteDomain === "medside.no") {
+    return buildMedSideOnboardingPlan(websiteUrl, profile);
   }
   const corpus = normalizedSearchText(
     [
@@ -1145,7 +1457,12 @@ async function ensureRecommendedProfiles(
         JSON.stringify(brief),
         JSON.stringify(values.desiredSignals),
         JSON.stringify({ terms: brief.exclusion_terms }),
-        JSON.stringify(profileSourceConfig(plan.places_details_enabled)),
+        JSON.stringify(
+          profileSourceConfig(
+            plan.places_details_enabled,
+            plan.brief.registry_source,
+          ),
+        ),
         brief.target_count,
         brief.enrichment_count,
         plan.schedule_cron,

@@ -1,0 +1,85 @@
+name: Leadgrid Tidum staging E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_discovery_campaign:
+        description: "Kjør alle fire Tidum-profiler mot ekte BRREG"
+        required: true
+        default: true
+        type: boolean
+      run_simulator_e2e:
+        description: "Kjør native offline/reconnect og Tidum-flyt på iPad mini"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leadgrid-tidum-staging-e2e
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify Tidum through staging, PostgreSQL, BRREG, and iPad mini
+    if: github.ref == 'refs/heads/main'
+    environment: Staging
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Wait for staging to run the selected commit
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+          STAGING_URL: ${{ secrets.LEADGRID_STAGING_BASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Expected commit is not a full Git SHA"
+            exit 1
+          fi
+          if [[ "$STAGING_URL" != https://* ]] || \
+             [[ "$STAGING_URL" == "https://creatorhub-backend-rtbl.onrender.com" ]]; then
+            echo "::error::Staging URL is missing, invalid, or points to production"
+            exit 1
+          fi
+          staging_base="${STAGING_URL%/}"
+          observed=""
+          for attempt in $(seq 1 120); do
+            version_json="$(curl -fsS --connect-timeout 3 --max-time 15 \
+              -H "Accept: application/json" \
+              -H "Cache-Control: no-cache" \
+              "$staging_base/api/version?expected=$EXPECTED_COMMIT&attempt=$attempt" 2>/dev/null || true)"
+            observed="$(jq -r '.commit // ""' <<<"$version_json" 2>/dev/null || true)"
+            if [[ "$observed" == "$EXPECTED_COMMIT" ]]; then
+              echo "Staging runs the exact selected commit."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Staging did not reach the selected commit within 20 minutes"
+          exit 1
+
+      - name: Install XcodeGen
+        if: inputs.run_simulator_e2e
+        run: brew install xcodegen
+
+      - name: Run complete Tidum staging workflow
+        working-directory: ipad/LeadMapApp
+        env:
+          LEADGRID_STAGING_BASE_URL: ${{ secrets.LEADGRID_STAGING_BASE_URL }}
+          LEADGRID_STAGING_EMAIL: ${{ secrets.LEADGRID_STAGING_EMAIL }}
+          LEADGRID_STAGING_PASSWORD: ${{ secrets.LEADGRID_STAGING_PASSWORD }}
+          LEADGRID_STAGING_ORG_ID: ${{ secrets.LEADGRID_STAGING_ORG_ID }}
+          LEADGRID_RUN_TIDUM_E2E: "1"
+          LEADGRID_RUN_TIDUM_CAMPAIGN_E2E: ${{ inputs.run_discovery_campaign && '1' || '0' }}
+          LEADGRID_RUN_SIMULATOR_E2E: ${{ inputs.run_simulator_e2e && '1' || '0' }}
+          LEADGRID_STAGING_SIMULATOR_DESTINATION: "platform=iOS Simulator,name=iPad mini (A17 Pro),OS=26.5"
+        run: ./scripts/staging-testflight-e2e.sh

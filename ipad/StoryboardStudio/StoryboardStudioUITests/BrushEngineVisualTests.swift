@@ -7,8 +7,8 @@ final class BrushEngineVisualTests: XCTestCase {
     @MainActor
     func testDrawWithStoryBrushes() throws {
         let app = XCUIApplication()
+        app.launchEnvironment["SB_FREE_CANVAS_DEMO"] = "1"
         app.launch()
-        app.staticTexts["Frikanvas"].tap()
         XCTAssertTrue(app.staticTexts["0 strøk"].waitForExistence(timeout: 5))
 
         let canvas = app.otherElements["tegneflate"].firstMatch

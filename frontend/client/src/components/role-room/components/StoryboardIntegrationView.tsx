@@ -55,6 +55,12 @@ import type { SceneBreakdown, StoryboardFrame as StoryboardFrameModel } from '..
 import { FrameDrawingEditor } from './FrameDrawingEditor';
 // Sprint A.7: Creative Studio-panel — shot-forslag, coverage-gaps, refs
 import { CreativeSuggestionsPanel } from './drawing/CreativeSuggestionsPanel';
+import { StoryboardSkillsPanel } from './drawing/StoryboardSkillsPanel';
+import type {
+  StoryboardSkillChange,
+  StoryboardSkillContext,
+  StoryboardSkillProductionMark,
+} from '@shared/storyboard-skills';
 // Sprint A.7: Continuity strip + style consistency
 import { ContinuityStrip } from './drawing/ContinuityStrip';
 import { StyleConsistencyIndicator } from './drawing/StyleConsistencyIndicator';
@@ -83,11 +89,13 @@ import {
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import storyboardEmptyPng from './icons/Keep/roleroom_storyboard.png';
 import { StoryboardBoardPage } from './StoryboardBoardPage';
+import { StoryboardReviewRoundsDialog } from './StoryboardReviewRoundsDialog';
 
 interface StoryboardIntegrationViewProps {
   scene: SceneBreakdown;
   onUpdate: (scene: SceneBreakdown) => void;
   projectId?: string;
+  manuscriptId?: string;
   /**
    * Prosjekt-nivå cinema-format som propageres til FrameDrawingEditor.
    * Storyboard-artister for film/commercial trenger 2.39:1/1.85:1 osv. —
@@ -525,6 +533,19 @@ const createStoryboardDraftFrame = (
     dialogueCharacter: overrides.dialogueCharacter,
     variantGroupId: overrides.variantGroupId,
     variantLabel: overrides.variantLabel?.trim() || undefined,
+    shotType: overrides.shotType,
+    lensMm: overrides.lensMm,
+    beatTag: overrides.beatTag,
+    frameStatus: overrides.frameStatus,
+    location: overrides.location,
+    timeOfDay: overrides.timeOfDay,
+    weather: overrides.weather,
+    transition: overrides.transition,
+    focusDepth: overrides.focusDepth,
+    tags: overrides.tags,
+    continuityNotes: overrides.continuityNotes,
+    vfxNotes: overrides.vfxNotes,
+    productionNotes: overrides.productionNotes,
     createdAt: overrides.createdAt || now,
     updatedAt: overrides.updatedAt || now,
   };
@@ -572,6 +593,46 @@ const createCreditEvent = (
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
+
+const extractSkillProductionMarks = (
+  frame: StoryboardFrame,
+): StoryboardSkillProductionMark[] => {
+  const records = frame.drawingData?.document?.strokes;
+  if (!Array.isArray(records)) return [];
+  return records.flatMap((record) => {
+    const stroke = isObject(record) && isObject(record.stroke) ? record.stroke : null;
+    const brush = stroke && isObject(stroke.brush) ? stroke.brush : null;
+    const mark = brush && isObject(brush.productionMark) ? brush.productionMark : null;
+    if (!mark || typeof mark.kind !== 'string') return [];
+    const direction = isObject(mark.direction) &&
+      typeof mark.direction.dx === 'number' &&
+      typeof mark.direction.dy === 'number' &&
+      typeof mark.direction.angleDegrees === 'number'
+      ? {
+        dx: mark.direction.dx,
+        dy: mark.direction.dy,
+        angleDegrees: mark.direction.angleDegrees,
+      }
+      : null;
+    const stamp = isObject(mark.stamp) ? {
+      variantName: typeof mark.stamp.variantName === 'string' ? mark.stamp.variantName : undefined,
+      depth: ['foreground', 'midground', 'background'].includes(String(mark.stamp.depth))
+        ? mark.stamp.depth as 'foreground' | 'midground' | 'background'
+        : undefined,
+      continuityId: typeof mark.stamp.continuityId === 'string' ? mark.stamp.continuityId : null,
+      parameters: isObject(mark.stamp.parameters)
+        ? Object.fromEntries(Object.entries(mark.stamp.parameters)
+          .filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+        : undefined,
+    } : null;
+    return [{
+      strokeId: typeof record.id === 'string' ? record.id : `mark-${records.indexOf(record)}`,
+      kind: mark.kind,
+      direction,
+      stamp,
+    }];
+  });
+};
 
 const parseStoredStrokes = (value: unknown): PencilStroke[] | undefined => {
   if (typeof value !== 'string' || value.trim().length === 0) return undefined;
@@ -1132,6 +1193,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
   scene,
   onUpdate,
   projectId,
+  manuscriptId,
   projectCinemaFormat,
   allScenes,
   sceneDialogue,
@@ -1479,6 +1541,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
             onFrameDrawingComplete={handleFrameDrawingComplete}
             sceneId={scene.id}
             projectId={projectId || scene.projectId}
+            manuscriptId={manuscriptId || scene.manuscriptId}
             sceneNumber={scene.sceneNumber}
             sceneHeading={scene.heading || scene.sceneName}
             libraryScopeKey={String(scene.projectId || scene.manuscriptId || 'global')}
@@ -1552,6 +1615,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
                 onFrameDrawingComplete={handleFrameDrawingComplete}
                 sceneId={scene.id}
                 projectId={projectId || scene.projectId}
+                manuscriptId={manuscriptId || scene.manuscriptId}
                 sceneNumber={scene.sceneNumber}
                 sceneHeading={scene.heading || scene.sceneName}
                 libraryScopeKey={String(scene.projectId || scene.manuscriptId || 'global')}
@@ -1671,6 +1735,7 @@ const StoryboardView: React.FC<{
   onFrameDrawingComplete: (frameId: string, drawingData: FrameDrawingData, imageUrl: string) => void;
   sceneId: string;
   projectId?: string;
+  manuscriptId?: string;
   sceneNumber?: number | string;
   sceneHeading?: string;
   libraryScopeKey: string;
@@ -1692,6 +1757,7 @@ const StoryboardView: React.FC<{
   onFrameDrawingComplete,
   sceneId,
   projectId,
+  manuscriptId,
   sceneNumber,
   sceneHeading,
   libraryScopeKey,
@@ -1717,6 +1783,8 @@ const StoryboardView: React.FC<{
     () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('boardpro') === '1',
   );
   const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [reviewBaseline, setReviewBaseline] = useState<StoryboardSkillContext['revisionBaseline']>();
   const [versionSummary, setVersionSummary] = useState('');
   const [drawingFrameId, setDrawingFrameId] = useState<string | null>(null);
   const [pendingPoseStrokes, setPendingPoseStrokes] = useState<PencilStroke[] | null>(null);
@@ -1752,6 +1820,103 @@ const StoryboardView: React.FC<{
   const editingFrame = frames.find((frame) => frame.id === editingFrameId) || null;
   const quickViewFrame = frames.find((frame) => frame.id === quickViewFrameId) || null;
   const activeFrame = frames[activeFrameIndex] || null;
+  const storyboardSkillContext = useMemo<StoryboardSkillContext>(() => ({
+    project: {
+      id: projectId ?? '',
+      title: projectTitle,
+      cinemaFormat: projectCinemaFormat,
+    },
+    scene: {
+      id: sceneId,
+      heading: sceneHeading?.trim()
+        || scene.sceneHeading
+        || scene.heading
+        || `Scene ${sceneNumber ?? sceneId}`,
+      action: scene.description,
+      intExt: scene.intExt,
+      location: scene.locationName ?? scene.location,
+      timeOfDay: scene.timeOfDay,
+      characters: Array.isArray(scene.characters)
+        ? scene.characters.map((character) => String(character))
+        : [],
+      dialogue: (sceneDialogue ?? []).map((line) => ({
+        lineNumber: line.lineNumber,
+        characterName: line.characterName,
+        text: line.dialogueText || line.text || '',
+      })),
+    },
+    activeFrameId: activeFrame?.id,
+    revisionBaseline: reviewBaseline,
+    frames: frames.map((frame) => ({
+      id: frame.id,
+      shotNumber: frame.shotNumber,
+      description: frame.description || '',
+      notes: frame.notes,
+      shotType: frame.shotType,
+      cameraAngle: frame.cameraAngle,
+      movement: frame.movement,
+      lensMm: frame.lensMm,
+      duration: frame.duration,
+      transition: frame.transition,
+      focusDepth: frame.focusDepth,
+      location: frame.location,
+      timeOfDay: frame.timeOfDay,
+      weather: frame.weather,
+      screenDirection: frame.screenDirection,
+      beatTag: frame.beatTag,
+      continuityNotes: frame.continuityNotes,
+      productionNotes: frame.productionNotes,
+      vfxNotes: frame.vfxNotes,
+      tags: frame.tags,
+      imageUrl: frame.imageUrl,
+      scriptLineRange: frame.scriptLineRange,
+      productionMarks: extractSkillProductionMarks(frame),
+    })),
+  }), [
+    activeFrame?.id,
+    frames,
+    projectCinemaFormat,
+    projectId,
+    projectTitle,
+    scene,
+    sceneDialogue,
+    sceneHeading,
+    sceneId,
+    sceneNumber,
+    reviewBaseline,
+  ]);
+
+  const applyStoryboardSkillChanges = useCallback((changes: StoryboardSkillChange[]) => {
+    let nextFrames = frames.map((frame) => ({ ...frame }));
+    const insertionOffsets = new Map<string, number>();
+    const now = new Date().toISOString();
+    for (const proposed of changes) {
+      if (proposed.operation === 'update-frame' && proposed.frameId) {
+        nextFrames = nextFrames.map((frame) => frame.id === proposed.frameId
+          ? { ...frame, ...proposed.patch, updatedAt: now }
+          : frame);
+        continue;
+      }
+      if (proposed.operation === 'create-frame') {
+        const created = createStoryboardDraftFrame(nextFrames, {
+          ...proposed.patch,
+          sceneId,
+          detailLevel: 'idea',
+        });
+        const afterIndex = proposed.afterFrameId
+          ? nextFrames.findIndex((frame) => frame.id === proposed.afterFrameId)
+          : -1;
+        if (afterIndex >= 0 && proposed.afterFrameId) {
+          const priorInsertions = insertionOffsets.get(proposed.afterFrameId) ?? 0;
+          nextFrames.splice(afterIndex + priorInsertions + 1, 0, created);
+          insertionOffsets.set(proposed.afterFrameId, priorInsertions + 1);
+        } else {
+          nextFrames.push(created);
+        }
+      }
+    }
+    onUpdate(nextFrames);
+  }, [frames, onUpdate, sceneId]);
   // AI-image-gen state. Når knappen klikkes, kaller vi backend's DALL-E 3-
   // route med scene-context + valgt frames metadata. Resultat-bilde lagres
   // som backgroundImage på framet via patchFrame, så tegneren kan tegne over.
@@ -2611,6 +2776,17 @@ const StoryboardView: React.FC<{
                 Versions ({versionLog?.length ?? 0})
               </Button>
             )}
+            {projectId && manuscriptId && (
+              <Button
+                size="small"
+                variant="outlined"
+                data-testid="storyboard-review-rounds-button"
+                onClick={() => setReviewDialogOpen(true)}
+                sx={{ borderColor: 'rgba(34,197,94,0.5)', color: '#86efac', textTransform: 'none', flexShrink: 0 }}
+              >
+                Review-runder
+              </Button>
+            )}
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="stretch" sx={{ flex: 1 }}>
               <Button
@@ -2972,6 +3148,15 @@ const StoryboardView: React.FC<{
           sx={{ mt: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 1.5 }}
           data-testid="creative-studio-mount"
         >
+          {projectId && (
+            <Box sx={{ gridColumn: { xs: '1', md: '1 / -1' } }}>
+              <StoryboardSkillsPanel
+                context={storyboardSkillContext}
+                onApplyChanges={applyStoryboardSkillChanges}
+                compact
+              />
+            </Box>
+          )}
           <CreativeSuggestionsPanel
             activeScene={scene}
             allScenes={allScenes ?? [scene]}
@@ -4099,7 +4284,19 @@ const StoryboardView: React.FC<{
           onAddFrame={handleAddFrame}
           onOpenScript={onSwitchViewMode ? () => { setBoardProOpen(false); onSwitchViewMode('script'); } : undefined}
           onOpenShotList={onSwitchViewMode ? () => { setBoardProOpen(false); onSwitchViewMode('shotlist'); } : undefined}
+          onShare={projectId && manuscriptId ? () => setReviewDialogOpen(true) : undefined}
           onClose={() => setBoardProOpen(false)}
+        />
+      )}
+
+      {projectId && manuscriptId && (
+        <StoryboardReviewRoundsDialog
+          open={reviewDialogOpen}
+          projectId={projectId}
+          manuscriptId={manuscriptId}
+          sceneId={sceneId}
+          onClose={() => setReviewDialogOpen(false)}
+          onBaselineChange={setReviewBaseline}
         />
       )}
 

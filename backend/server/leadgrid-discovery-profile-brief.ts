@@ -155,8 +155,13 @@ export function canonicalDiscoveryProfileBrief(
     "required"
       ? "required"
       : "preferred";
+  const registrySource =
+    storedBrief.registry_source === "nhn_flr_public"
+      ? "nhn_flr_public"
+      : "brreg_open_data";
 
   return discoveryBriefSchema.parse({
+    registry_source: registrySource,
     industry_queries: row.target_customer_types,
     organization_name_queries:
       row.organization_name_queries ??

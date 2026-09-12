@@ -26,8 +26,8 @@
  *
  *   setupAISuggestionRoutes({ app, aiSuggestionService });
  *
- * Auth: matcher eksisterende role-room-konvensjon — leser
- * `x-role-room-user-id`-header. Manglende header → 401.
+ * Auth: bruker den verifiserte server-sesjonen og prosjektmedlemskap. Klient-
+ * headere brukes aldri som autoritativ identitet.
  *
  * Validering: input parses defensivt; ugyldig payload → 400 med tydelig
  * melding. Tjenestelaget kan kaste `Error` med deskriptive meldinger —
@@ -36,6 +36,8 @@
 
 import type express from "express";
 import type { Request } from "express";
+import type { Pool } from "pg";
+import { canAccessRoleRoomProject } from "./role-room-projects-routes.js";
 
 import type {
   AIAgentInput,
@@ -47,26 +49,16 @@ import type {
 
 export interface AISuggestionRoutesDeps {
   app: express.Application;
-  requireUserSession: (req: any, res: any) => any;
+  pool: Pool;
+  requireUserSession: (req: any, res: any) => { userId: string } | null;
   aiSuggestionService: AISuggestionService;
+  canAccessProject?: typeof canAccessRoleRoomProject;
 }
 
 // ─────────────────────────────────────────────────────────────────────
 // Helpers (self-contained — duplikerer bevisst readOptionalHeaderValue
 // fra role-room-routes for å holde denne modulen uavhengig)
 // ─────────────────────────────────────────────────────────────────────
-
-function readHeader(req: Request, name: string): string | undefined {
-  const raw = req.headers[name.toLowerCase()];
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function readUserId(req: Request): string | undefined {
-  return readHeader(req, "x-role-room-user-id") ?? readHeader(req, "x-user-id");
-}
 
 const VALID_SOURCE_TYPES: AISuggestionSourceType[] = [
   "scene",
@@ -154,7 +146,27 @@ function statusFromError(err: unknown): number {
 // ─────────────────────────────────────────────────────────────────────
 
 export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
-  const { app, aiSuggestionService, requireUserSession } = deps;
+  const {
+    app,
+    pool,
+    aiSuggestionService,
+    requireUserSession,
+    canAccessProject = canAccessRoleRoomProject,
+  } = deps;
+
+  async function requireProjectAccess(
+    req: any,
+    res: any,
+    projectId: string,
+  ): Promise<{ userId: string } | null> {
+    const session = requireUserSession(req, res);
+    if (!session) return null;
+    if (!(await canAccessProject(pool, session.userId, projectId))) {
+      res.status(403).json({ error: "forbidden" });
+      return null;
+    }
+    return session;
+  }
 
   // ── List pending suggestions for a project ─────────────────────────
   app.get(
@@ -166,6 +178,7 @@ export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
           res.status(400).json({ error: "projectId is required" });
           return;
         }
+        if (!(await requireProjectAccess(req, res, projectId))) return;
         const filter = parseFilter(req);
         const suggestions = await aiSuggestionService.listPending(
           projectId,
@@ -183,19 +196,14 @@ export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
   app.post(
     "/api/role-room/projects/:projectId/ai-suggestions/generate",
     async (req, res) => {
-    if (!requireUserSession(req, res)) return;
       try {
-        const userId = readUserId(req);
-        if (!userId) {
-          res.status(401).json({ error: "Missing x-role-room-user-id header" });
-          return;
-        }
-
         const projectId = req.params.projectId?.trim();
         if (!projectId) {
           res.status(400).json({ error: "projectId is required" });
           return;
         }
+        const session = await requireProjectAccess(req, res, projectId);
+        if (!session) return;
 
         const body = req.body && typeof req.body === "object" ? req.body : {};
 
@@ -223,7 +231,7 @@ export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
 
         const input: AIAgentInput = {
           projectId,
-          userId,
+          userId: session.userId,
           sourceType,
           sourceId,
           payload: body.payload,
@@ -243,17 +251,22 @@ export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
 
   // ── Accept a suggestion (triggers applier in same transaction) ─────
   app.post("/api/role-room/ai-suggestions/:id/accept", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
     try {
-      const userId = readUserId(req);
-      if (!userId) {
-        res.status(401).json({ error: "Missing x-role-room-user-id header" });
-        return;
-      }
-
       const id = req.params.id?.trim();
       if (!id) {
         res.status(400).json({ error: "suggestion id is required" });
+        return;
+      }
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const current = await aiSuggestionService.get(id);
+      if (!current) {
+        res.status(404).json({ error: "suggestion_not_found" });
+        return;
+      }
+      if (!(await canAccessProject(pool, session.userId, current.projectId))) {
+        // Do not expose suggestion contents across project boundaries.
+        res.status(403).json({ error: "forbidden" });
         return;
       }
 
@@ -263,7 +276,11 @@ export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
           ? body.note.trim()
           : undefined;
 
-      const suggestion = await aiSuggestionService.accept(id, userId, note);
+      const suggestion = await aiSuggestionService.accept(
+        id,
+        session.userId,
+        note,
+      );
       res.json(suggestion);
     } catch (error) {
       console.error("Error accepting AI suggestion:", error);
@@ -276,17 +293,22 @@ export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
 
   // ── Reject a suggestion ────────────────────────────────────────────
   app.post("/api/role-room/ai-suggestions/:id/reject", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
     try {
-      const userId = readUserId(req);
-      if (!userId) {
-        res.status(401).json({ error: "Missing x-role-room-user-id header" });
-        return;
-      }
-
       const id = req.params.id?.trim();
       if (!id) {
         res.status(400).json({ error: "suggestion id is required" });
+        return;
+      }
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const current = await aiSuggestionService.get(id);
+      if (!current) {
+        res.status(404).json({ error: "suggestion_not_found" });
+        return;
+      }
+      if (!(await canAccessProject(pool, session.userId, current.projectId))) {
+        // Do not expose suggestion contents across project boundaries.
+        res.status(403).json({ error: "forbidden" });
         return;
       }
 
@@ -296,7 +318,11 @@ export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
           ? body.note.trim()
           : undefined;
 
-      const suggestion = await aiSuggestionService.reject(id, userId, note);
+      const suggestion = await aiSuggestionService.reject(
+        id,
+        session.userId,
+        note,
+      );
       res.json(suggestion);
     } catch (error) {
       console.error("Error rejecting AI suggestion:", error);

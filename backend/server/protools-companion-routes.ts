@@ -758,6 +758,226 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     res.json({ ok: true, ...(easeverseSync ? { easeverseSync } : {}) });
   });
 
+  // Session Snapshot/Recall: a version-addressable, tenant-scoped description
+  // of the exact Pro Tools state that produced a mix.
+  app.post("/api/protools/sessions/:id/snapshots", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id);
+    if (!sess) return res.status(404).json({ error: "session_not_found" });
+    const raw = req.body?.snapshot;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return res.status(400).json({ error: "snapshot_required" });
+    const encoded = JSON.stringify(raw);
+    if (Buffer.byteLength(encoded, "utf8") > 512_000) return res.status(413).json({ error: "snapshot_too_large" });
+    const reason = ["manual", "session_opened", "session_changed", "pre_publish", "pre_recall", "post_recall", "intro_copy"].includes(String(req.body?.reason))
+      ? String(req.body.reason) : "manual";
+    const reviewVersionId = strOrNull(req.body?.reviewVersionId, 160);
+    if (reviewVersionId && !isUuid(reviewVersionId)) return res.status(400).json({ error: "invalid_review_version_id" });
+    if (reviewVersionId && sess.audio_review_project_id) {
+      const version = await pool.query(
+        `SELECT 1 FROM audio_review_versions WHERE id=$1::uuid AND project_id=$2::uuid LIMIT 1`,
+        [reviewVersionId, sess.audio_review_project_id],
+      ).catch(() => ({ rows: [] }));
+      if (!version.rows.length) return res.status(404).json({ error: "review_version_not_found" });
+    }
+    const tracks = Array.isArray(raw.tracks) ? raw.tracks.slice(0, 1024) : [];
+    const playlists = Array.isArray(raw.playlists) ? raw.playlists.slice(0, 4096) : [];
+    const routing = Array.isArray(raw.routing) ? raw.routing.slice(0, 2048) : [];
+    const bounceSources = Array.isArray(raw.bounceSources) ? raw.bounceSources.slice(0, 256) : [];
+    const plugins = Array.isArray(raw.plugins) ? raw.plugins.slice(0, 4096) : [];
+    const normalized = {
+      sessionName: strOrNull(raw.sessionName, 300), sessionPath: strOrNull(raw.sessionPath, 2000),
+      sampleRate: intOrNull(raw.sampleRate), bitDepth: intOrNull(raw.bitDepth), tracks, playlists,
+      routing, bounceSources, plugins, capturedAt: strOrNull(raw.capturedAt, 80),
+    };
+    const { capturedAt: _capturedAt, ...fingerprintState } = normalized;
+    const fingerprint = crypto.createHash("sha256").update(JSON.stringify(fingerprintState)).digest("hex");
+    try {
+      const result = await pool.query(
+        `INSERT INTO protools_session_snapshots
+           (session_id,user_id,review_version_id,fingerprint,reason,session_name,session_path,sample_rate,bit_depth,
+            track_count,tracks,playlists,routing,bounce_sources,plugin_inventory,metadata)
+         VALUES ($1::uuid,$2,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,$15::jsonb,$16::jsonb)
+         ON CONFLICT(session_id,fingerprint) DO UPDATE SET
+           review_version_id=COALESCE(EXCLUDED.review_version_id,protools_session_snapshots.review_version_id)
+         RETURNING *`,
+        [sess.id, d.userId, reviewVersionId, fingerprint, reason, normalized.sessionName, normalized.sessionPath,
+         normalized.sampleRate, normalized.bitDepth, tracks.length, JSON.stringify(tracks), JSON.stringify(playlists),
+         JSON.stringify(routing), JSON.stringify(bounceSources), JSON.stringify(plugins),
+         JSON.stringify({ capturedAt: normalized.capturedAt, clientFingerprint: strOrNull(req.body?.fingerprint, 128) })],
+      );
+      await pool.query(`UPDATE protools_companion_sessions SET last_activity=NOW(),updated_at=NOW() WHERE id=$1::uuid`, [sess.id]);
+      res.status(201).json({ snapshot: result.rows[0] });
+    } catch (error) {
+      console.error("[protools-companion] create snapshot:", error);
+      res.status(503).json({ error: "snapshot_store_failed" });
+    }
+  });
+
+  app.get("/api/protools/sessions/:id/snapshots", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id);
+    if (!sess) return res.status(404).json({ error: "session_not_found" });
+    const result = await pool.query(
+      `SELECT id,review_version_id,fingerprint,reason,session_name,session_path,sample_rate,bit_depth,track_count,
+              tracks,playlists,routing,bounce_sources,plugin_inventory,metadata,created_at
+         FROM protools_session_snapshots WHERE session_id=$1::uuid AND user_id=$2
+        ORDER BY created_at DESC LIMIT 100`,
+      [sess.id, d.userId],
+    ).catch(() => ({ rows: [] }));
+    res.json({ snapshots: result.rows });
+  });
+
+  // Delivery factory job journal. Rendering happens locally through PTSL; the
+  // server owns durable status so Sound Room and Companion agree after restart.
+  app.post("/api/protools/sessions/:id/delivery-jobs", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id);
+    if (!sess) return res.status(404).json({ error: "session_not_found" });
+    const preset = ["review", "label", "sync", "stems", "custom"].includes(String(req.body?.preset))
+      ? String(req.body.preset) : null;
+    const outputs = Array.isArray(req.body?.outputs) ? req.body.outputs.slice(0, 32) : [];
+    if (!preset || !outputs.length) return res.status(400).json({ error: "preset_and_outputs_required" });
+    const allowedKinds = new Set(["review", "master", "mix", "instrumental", "acapella", "clean", "tv", "stem", "custom"]);
+    const normalizedOutputs: Array<{ kind: string; fileName: string; source: string }> = [];
+    const fileNames = new Set<string>();
+    for (const output of outputs) {
+      const kind = strOrNull(output?.kind, 48);
+      const fileName = strOrNull(output?.fileName, 300);
+      const source = strOrNull(output?.source, 300);
+      if (!kind || !allowedKinds.has(kind) || !fileName || !/\.wav$/i.test(fileName)
+        || /[/\\]/.test(fileName) || !source || fileNames.has(fileName.toLowerCase())) {
+        return res.status(400).json({ error: "invalid_delivery_output" });
+      }
+      fileNames.add(fileName.toLowerCase());
+      normalizedOutputs.push({ kind, fileName, source });
+    }
+    const encoded = JSON.stringify(normalizedOutputs);
+    if (Buffer.byteLength(encoded, "utf8") > 64_000) return res.status(413).json({ error: "outputs_too_large" });
+    const result = await pool.query(
+      `INSERT INTO protools_delivery_jobs
+         (session_id,user_id,audio_review_project_id,preset,requested_outputs,status,progress,started_at)
+       VALUES ($1::uuid,$2,$3::uuid,$4,$5::jsonb,'running',0,NOW()) RETURNING *`,
+      [sess.id, d.userId, sess.audio_review_project_id || null, preset, encoded],
+    );
+    res.status(201).json({ job: result.rows[0] });
+  });
+
+  app.get("/api/protools/sessions/:id/delivery-jobs", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id);
+    if (!sess) return res.status(404).json({ error: "session_not_found" });
+    const result = await pool.query(
+      `SELECT * FROM protools_delivery_jobs WHERE session_id=$1::uuid AND user_id=$2 ORDER BY created_at DESC LIMIT 30`,
+      [sess.id, d.userId],
+    ).catch(() => ({ rows: [] }));
+    res.json({ jobs: result.rows });
+  });
+
+  app.patch("/api/protools/sessions/:id/delivery-jobs/:jobId", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id);
+    const jobId = String(req.params.jobId || "");
+    if (!sess || !isUuid(jobId)) return res.status(404).json({ error: "delivery_job_not_found" });
+    const status = ["running", "completed", "failed", "cancelled"].includes(String(req.body?.status))
+      ? String(req.body.status) : null;
+    const progress = Math.max(0, Math.min(100, intOrNull(req.body?.progress) ?? 0));
+    const outputFiles = Array.isArray(req.body?.outputFiles) ? req.body.outputFiles.slice(0, 64) : [];
+    const qcReports = Array.isArray(req.body?.qcReports) ? req.body.qcReports.slice(0, 64) : [];
+    const errorMessage = strOrNull(req.body?.error, 4000);
+    if (!status) return res.status(400).json({ error: "valid_status_required" });
+    if (Buffer.byteLength(JSON.stringify(outputFiles), "utf8") > 128_000
+      || Buffer.byteLength(JSON.stringify(qcReports), "utf8") > 128_000) {
+      return res.status(413).json({ error: "delivery_result_too_large" });
+    }
+    if (status === "completed") {
+      if (!outputFiles.length || outputFiles.length !== qcReports.length
+        || qcReports.some((report: any) => report?.passed !== true)) {
+        return res.status(400).json({ error: "qc_passed_outputs_required" });
+      }
+      for (const file of outputFiles) {
+        const bounceId = strOrNull(file?.bounceId, 160);
+        const fileName = strOrNull(file?.fileName, 300);
+        const fileUrl = strOrNull(file?.fileUrl, 2000);
+        const checksum = strOrNull(file?.checksum, 160);
+        if (!bounceId || !isUuid(bounceId) || !fileName || /[/\\]/.test(fileName)
+          || file?.format !== "wav" || !fileUrl
+          || fileUrl !== `/api/protools/bounces/${bounceId}/file`
+          || !checksum || !/^[a-f0-9]{64}$/i.test(checksum)
+          || (intOrNull(file?.sizeBytes) || 0) <= 0) {
+          return res.status(400).json({ error: "invalid_delivery_result" });
+        }
+      }
+    }
+    const result = await pool.query(
+      `UPDATE protools_delivery_jobs SET status=$4,progress=$5,output_files=$6::jsonb,qc_reports=$7::jsonb,last_error=$8,
+              completed_at=CASE WHEN $4 IN ('completed','failed','cancelled') THEN NOW() ELSE completed_at END,updated_at=NOW()
+        WHERE id=$1::uuid AND session_id=$2::uuid AND user_id=$3
+          AND (status IN ('queued','running') OR status=$4) RETURNING *`,
+      [jobId, sess.id, d.userId, status, progress, JSON.stringify(outputFiles), JSON.stringify(qcReports), errorMessage],
+    );
+    if (!result.rows.length) return res.status(404).json({ error: "delivery_job_not_found" });
+    let job = result.rows[0];
+    if (status === "completed" && job.audio_review_project_id && !job.manifest_id) {
+      const client = typeof pool.connect === "function" ? await pool.connect() : pool;
+      try {
+        await client.query("BEGIN");
+        const locked = await client.query(
+          `SELECT * FROM protools_delivery_jobs WHERE id=$1::uuid AND session_id=$2::uuid AND user_id=$3 FOR UPDATE`,
+          [jobId, sess.id, d.userId],
+        );
+        job = locked.rows[0] || job;
+        if (!job.manifest_id) {
+          const bounceIds = outputFiles.map((file: any) => String(file.bounceId));
+          const ownedBounces = await client.query(
+            `SELECT COUNT(*)::int AS count FROM protools_companion_bounces
+              WHERE delivery_job_id=$1::uuid AND session_id=$2::uuid AND id=ANY($3::uuid[])`,
+            [jobId, sess.id, bounceIds],
+          );
+          if (Number(ownedBounces.rows[0]?.count || 0) !== bounceIds.length) {
+            throw new Error("delivery_bounce_ownership_mismatch");
+          }
+          const next = await client.query(
+            `SELECT COALESCE(MAX(manifest_number),0)+1 AS number FROM audio_delivery_manifests WHERE project_id=$1::uuid`,
+            [job.audio_review_project_id],
+          );
+          const manifest = await client.query(
+            `INSERT INTO audio_delivery_manifests (project_id,manifest_number,title,status,metadata,created_by)
+             VALUES ($1::uuid,$2,$3,'ready',$4::jsonb,$5) RETURNING id`,
+            [job.audio_review_project_id, Number(next.rows[0]?.number || 1),
+             `Pro Tools ${job.preset} delivery`, JSON.stringify({ source: "protools-companion", jobId }), d.userId],
+          );
+          const manifestId = String(manifest.rows[0].id);
+          for (let index = 0; index < outputFiles.length; index += 1) {
+            const file = outputFiles[index] || {};
+            const fileName = strOrNull(file.fileName, 300);
+            const fileUrl = strOrNull(file.fileUrl, 2000);
+            if (!fileName || !fileUrl) continue;
+            await client.query(
+              `INSERT INTO audio_delivery_manifest_items (manifest_id,file_name,file_url,format,file_size,checksum,order_index)
+               VALUES ($1::uuid,$2,$3,$4,$5,$6,$7)`,
+              [manifestId, fileName, fileUrl, strOrNull(file.format, 40) || "wav",
+               intOrNull(file.sizeBytes), strOrNull(file.checksum, 160), index],
+            );
+          }
+          const updated = await client.query(
+            `UPDATE protools_delivery_jobs SET manifest_id=$2::uuid,updated_at=NOW() WHERE id=$1::uuid RETURNING *`,
+            [jobId, manifestId],
+          );
+          job = updated.rows[0] || { ...job, manifest_id: manifestId };
+        }
+        await client.query("COMMIT");
+        void broadcastSoundRoomUpdated(pool, String(job.audio_review_project_id), "delivery");
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        console.error("[protools-companion] delivery manifest:", error);
+        return res.status(503).json({ error: "delivery_manifest_failed" });
+      } finally {
+        if (client !== pool && typeof client.release === "function") client.release();
+      }
+    }
+    res.json({ job });
+  });
+
   // POST /api/protools/sessions/:id/playhead — { timecode?, seconds?, isPlaying? } (best-effort live)
   app.post("/api/protools/sessions/:id/playhead", async (req, res) => {
     const d = await deviceAuth(req, res); if (!d) return;
@@ -860,7 +1080,8 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     const requestedStatus = ["unresolved", "in_progress", "resolved"].includes(String(req.body?.status))
       ? String(req.body.status) : null;
     const replyBody = strOrNull(req.body?.body, 4000);
-    if (!requestedStatus && !replyBody) return res.status(400).json({ error: "status_or_body_required" });
+    const markerId = strOrNull(req.body?.protoolsMarkerId, 160);
+    if (!requestedStatus && !replyBody && !markerId) return res.status(400).json({ error: "status_body_or_marker_required" });
     try {
       let updated = current;
       let reply: any = null;
@@ -879,6 +1100,15 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
           [current.version_id, commentId, d.userId, d.email, current.timecode_seconds, replyBody, current.category || "general"],
         );
         reply = result.rows[0];
+      }
+      if (markerId) {
+        const result = await pool.query(
+          `UPDATE audio_review_comments SET protools_marker_id=$2,protools_sync_status='synced',
+                  protools_synced_at=NOW(),status=CASE WHEN status='unresolved' THEN 'in_progress' ELSE status END,updated_at=NOW()
+            WHERE id=$1::uuid RETURNING *`,
+          [commentId, markerId],
+        );
+        updated = result.rows[0] || updated;
       }
       void broadcastSoundRoomUpdated(pool, String(sess.audio_review_project_id), "comment");
       res.json({ comment: updated, reply });
@@ -1144,7 +1374,8 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     const client = typeof pool.connect === "function" ? await pool.connect() : pool;
     try {
       await client.query("BEGIN");
-      if (reviewId) {
+      const registerAsReview = req.body?.registerAsReview !== false;
+      if (reviewId && registerAsReview) {
         const locked = await client.query(`SELECT id FROM audio_review_projects WHERE id=$1::uuid FOR UPDATE`, [reviewId]);
         if (!locked.rows.length) throw new Error("audio_room_not_found");
         await client.query(`UPDATE audio_review_versions SET status='superseded' WHERE project_id=$1::uuid AND status='under_review'`, [reviewId]);
@@ -1162,12 +1393,36 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
         await client.query(`UPDATE audio_review_projects SET status='under_review',updated_at=NOW() WHERE id=$1::uuid`, [reviewId]);
         sectionsSynced = await syncMarkersToVersion(sess.id, versionId, client);
       }
+      const snapshotId = strOrNull(req.body?.snapshotId, 160);
+      const deliveryJobId = strOrNull(req.body?.deliveryJobId, 160);
+      const deliveryKind = strOrNull(req.body?.deliveryKind, 48);
+      const qcReport = req.body?.qcReport && typeof req.body.qcReport === "object" && !Array.isArray(req.body.qcReport)
+        ? req.body.qcReport : {};
+      if ((snapshotId && !isUuid(snapshotId)) || (deliveryJobId && !isUuid(deliveryJobId))) {
+        throw new Error("invalid_lineage_reference");
+      }
+      if (snapshotId) {
+        const ownedSnapshot = await client.query(
+          `SELECT 1 FROM protools_session_snapshots WHERE id=$1::uuid AND session_id=$2::uuid AND user_id=$3 LIMIT 1`,
+          [snapshotId, sess.id, d.userId],
+        );
+        if (!ownedSnapshot.rows.length) throw new Error("snapshot_not_found");
+      }
+      if (deliveryJobId) {
+        const ownedJob = await client.query(
+          `SELECT 1 FROM protools_delivery_jobs WHERE id=$1::uuid AND session_id=$2::uuid AND user_id=$3 LIMIT 1`,
+          [deliveryJobId, sess.id, d.userId],
+        );
+        if (!ownedJob.rows.length) throw new Error("delivery_job_not_found");
+      }
       const bounce = await client.query(
         `INSERT INTO protools_companion_bounces
-           (session_id,file_name,file_url,storage_key,size_bytes,duration_seconds,review_version_id,client_event_id,content_fingerprint)
-         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+           (session_id,file_name,file_url,storage_key,size_bytes,duration_seconds,review_version_id,client_event_id,content_fingerprint,
+            snapshot_id,delivery_job_id,delivery_kind,qc_report)
+         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10::uuid,$11::uuid,$12,$13::jsonb) RETURNING id`,
         [sess.id, fileName, fileUrl, storageKey, intOrNull(req.body?.sizeBytes),
-         numOrNull(req.body?.durationSeconds), versionId, clientEventId, contentFingerprint],
+         numOrNull(req.body?.durationSeconds), versionId, clientEventId, contentFingerprint,
+         snapshotId, deliveryJobId, deliveryKind, JSON.stringify(qcReport)],
       );
       const parentArtifactId = await latestParentArtifactId(client, {
         ownerUserId: d.userId,
@@ -1184,7 +1439,7 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
         companionSessionId: String(sess.id),
         reviewVersionId: versionId,
         parentArtifactId,
-        kind: sess.session_type === "mastering" ? "master" : "mix",
+        kind: deliveryKind === "master" ? "master" : deliveryKind === "stem" ? "stem" : sess.session_type === "mastering" ? "master" : "mix",
         sourceSystem: "protools",
         sourceArtifactId: `bounce:${String(bounce.rows[0].id)}`,
         fileName,
@@ -1196,10 +1451,21 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
           bitDepth: intOrNull(req.body?.bitDepth) || sess.bit_depth || null,
           durationSeconds: numOrNull(req.body?.durationSeconds),
           versionNumber,
+          deliveryKind,
+          deliveryJobId,
+          snapshotId,
+          qcReport,
         },
         createdBy: d.userId,
       });
       await client.query(`UPDATE protools_companion_bounces SET artifact_id=$2::uuid WHERE id=$1::uuid`, [bounce.rows[0].id, artifact.id]);
+      if (snapshotId && versionId) {
+        await client.query(
+          `UPDATE protools_session_snapshots SET review_version_id=$3::uuid
+            WHERE id=$1::uuid AND session_id=$2::uuid AND user_id=$4`,
+          [snapshotId, sess.id, versionId, d.userId],
+        );
+      }
       await client.query(
         `UPDATE protools_companion_sessions SET audio_review_project_id=COALESCE($2::uuid,audio_review_project_id),last_activity=NOW(),updated_at=NOW() WHERE id=$1::uuid`,
         [sess.id, reviewId],

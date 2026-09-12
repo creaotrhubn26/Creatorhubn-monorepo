@@ -69,6 +69,22 @@ describe('upsertProducerProjectNotification', () => {
     expect(JSON.stringify(insert!.params)).toContain('u3');
   });
 
+  it('keeps a self-created event read for its actor while resetting everyone else', async () => {
+    const { pool, calls } = makePool(async (sql) => {
+      if (sql.includes('RETURNING id')) return { rows: [{ id: 'notification-self' }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    });
+    await upsertProducerProjectNotification(pool, {
+      projectId: 'p1', audience: 'producer_team', eventType: 'storyboard_review_round_created',
+      title: 'Storyboard sendt til review', initiallyReadByUserId: 'owner-1',
+    });
+    const resetIndex = calls.findIndex((call) => call.sql.includes('DELETE FROM role_room_project_notification_reads'));
+    const readIndex = calls.findIndex((call) => call.sql.includes('INSERT INTO role_room_project_notification_reads'));
+    expect(resetIndex).toBeGreaterThan(-1);
+    expect(readIndex).toBeGreaterThan(resetIndex);
+    expect(calls[readIndex].params).toEqual(['notification-self', 'owner-1']);
+  });
+
   it('never throws when the DB query fails (best-effort)', async () => {
     const { pool } = makePool(async () => {
       throw new Error('db down');

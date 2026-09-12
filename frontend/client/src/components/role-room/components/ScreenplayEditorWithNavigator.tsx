@@ -1576,6 +1576,8 @@ const ScreenplayEditorWithNavigatorComponent: FC<ScreenplayEditorWithNavigatorPr
               {rightPanel === 'storyboard' && selectedScene && (
                 <StoryboardIntegrationView
                   scene={selectedScene}
+                  projectId={projectId}
+                  manuscriptId={manuscriptId}
                   onUpdate={(updatedScene) => setSelectedScene(updatedScene)}
                   projectCinemaFormat={projectCinemaFormat}
                   scriptContent={value}

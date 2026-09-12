@@ -83,6 +83,9 @@ export const discoveryGeoSchema = z
 
 export const discoveryBriefSchema = z
   .object({
+    registry_source: z
+      .enum(["brreg_open_data", "nhn_flr_public"])
+      .default("brreg_open_data"),
     industry_queries: z.array(nonEmpty(120)).max(8).default([]),
     organization_name_queries: z.array(nonEmpty(120)).max(8).default([]),
     exclusion_terms: z.array(nonEmpty(80)).max(30).default([]),
@@ -179,11 +182,17 @@ export const discoveryBriefSchema = z
         message: "En profil kan avgrenses til maksimalt 30 kommuner.",
       });
     }
-    if (!brief.geo && !brief.city && !hasMunicipalities && !brief.country_code) {
+    if (
+      !brief.geo &&
+      !brief.city &&
+      !hasMunicipalities &&
+      !brief.country_code
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["geo"],
-        message: "Velg hele Norge, et kartområde, en by eller minst én kommune.",
+        message:
+          "Velg hele Norge, et kartområde, en by eller minst én kommune.",
       });
     }
     const areaSelectors = [
@@ -218,6 +227,45 @@ export const discoveryBriefSchema = z
         message:
           "Nettsidekvalitet kan ikke kreves når profilen bare skal finne virksomheter uten registrert nettside.",
       });
+    }
+    if (brief.registry_source === "nhn_flr_public") {
+      if (
+        brief.industry_queries.length !== 1 ||
+        brief.industry_queries[0] !== "86.210" ||
+        brief.organization_name_queries.length > 0
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["industry_queries"],
+          message:
+            "Fastlegeregister-profilen må bruke den autoritative fastlegekategorien 86.210.",
+        });
+      }
+      if (brief.geo) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["geo"],
+          message:
+            "Fastlegeregisteret kan avgrenses til Norge, by eller kommune – ikke et kartpunkt.",
+        });
+      }
+      const hasUnsupportedCompanyFilters =
+        brief.organization_forms.length > 0 ||
+        brief.employee_count !== null ||
+        brief.organization_structure !== "any" ||
+        brief.website_requirement !== "any" ||
+        brief.website_quality.minimum_score !== null ||
+        brief.qualification_terms.length > 0 ||
+        brief.commercial_signals.registered_in_vat_register !== null ||
+        brief.commercial_signals.registered_in_business_register !== null;
+      if (hasUnsupportedCompanyFilters) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["registry_source"],
+          message:
+            "Fastlegeregister-profilen kan ikke bruke filtre som kilden ikke dokumenterer.",
+        });
+      }
     }
   })
   .transform((brief) => {
@@ -369,7 +417,7 @@ export interface DiscoverySearchPlan {
     query_mode: "industry" | "organization_name";
     hard_geo_filter: boolean;
   }>;
-  source: "brreg_open_data";
+  source: "brreg_open_data" | "nhn_flr_public";
   requested_candidates: number;
   enrichment_candidates: number;
   estimated_search_pages: number;
@@ -451,6 +499,13 @@ export function buildDiscoverySearchPlan(
         "Søkemålet fordeles mellom flere kundetyper og kan bruke flere registerkall.",
     });
   }
+  if (brief.registry_source === "nhn_flr_public") {
+    warnings.push({
+      code: "nhn_flr_authorized_source",
+      message:
+        "Fastlegekontor hentes fra NHNs offentlige Fastlegeregister. Kilden krever godkjent Maskinporten-tilgang; kandidater må fortsatt godkjennes manuelt.",
+    });
+  }
   if (brief.organization_structure !== "any") {
     warnings.push({
       code: "organization_structure_evidence_limited",
@@ -477,18 +532,19 @@ export function buildDiscoverySearchPlan(
           municipality_numbers: brief.municipality_numbers,
           municipality_names: brief.municipality_names,
         }
-      : brief.geo ??
+      : (brief.geo ??
         (brief.city
           ? { city: brief.city }
-          : { country_code: brief.country_code as "NO" });
+          : { country_code: brief.country_code as "NO" }));
   return {
     version: 2,
     queries,
-    source: "brreg_open_data",
+    source: brief.registry_source,
     requested_candidates: brief.target_count,
     enrichment_candidates: brief.enrichment_count,
     // The preview reports the hard page ceiling, never a best-case estimate.
-    estimated_search_pages: 3 * queries.length,
+    estimated_search_pages:
+      brief.registry_source === "nhn_flr_public" ? 1 : 3 * queries.length,
     maximum_external_requests: 200,
     maximum_geocodes: 120,
     area,

@@ -120,9 +120,7 @@ export interface DiscoveryRegistrySearchInput {
 }
 
 export type DiscoveryOrganizationStructure =
-  | "independent"
-  | "chain"
-  | "unknown";
+  "independent" | "chain" | "unknown";
 
 export interface DiscoveryOrganizationStructureEvidence {
   source: "brreg_group_structure";
@@ -169,6 +167,20 @@ export interface DiscoveryWebsiteQualityAssessment {
 }
 
 export interface DiscoveryRegistryCandidate {
+  source?: "brreg_open_data" | "nhn_flr_public";
+  sourceLicense?: string;
+  phone?: string | null;
+  providerContacts?: Array<{
+    name: string;
+    role: "Fastlege";
+    sourceReference: string;
+  }>;
+  entityClassification?: {
+    kind: "clinic" | "practitioner" | "unknown";
+    confidence: "high" | "medium" | "low";
+    evidence: string[];
+    normalizedLocationKey: string | null;
+  };
   organizationNumber: string;
   name: string;
   organizationForm: string | null;
@@ -187,8 +199,8 @@ export interface DiscoveryRegistryCandidate {
   naceCode: string | null;
   naceDescription: string | null;
   registeredAt: string | null;
-  registeredInVatRegister: boolean;
-  registeredInBusinessRegister: boolean;
+  registeredInVatRegister: boolean | null;
+  registeredInBusinessRegister: boolean | null;
   registeredInVatRegisterKnown?: boolean;
   registeredInBusinessRegisterKnown?: boolean;
   organizationStructure?: DiscoveryOrganizationStructure;
@@ -1310,8 +1322,10 @@ function matchedWebsiteQualificationTerms(
   const boundedVisibleText = ` ${visibleText} `;
   return requestedTerms.filter((term) => {
     const normalizedTerm = normalizeForSearch(term);
-    return normalizedTerm.length > 0 &&
-      boundedVisibleText.includes(` ${normalizedTerm} `);
+    return (
+      normalizedTerm.length > 0 &&
+      boundedVisibleText.includes(` ${normalizedTerm} `)
+    );
   });
 }
 

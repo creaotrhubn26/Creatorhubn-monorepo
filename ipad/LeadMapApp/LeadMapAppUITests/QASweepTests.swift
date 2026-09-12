@@ -1264,6 +1264,72 @@ final class QASweepTests: XCTestCase {
         app.terminate()
     }
 
+    func testSuperAdminTidumOnboardingCreatesFourNationalProfilesAndOpensDiscovery() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_TOUR"] = "domain-onboarding"
+        app.launchEnvironment["QA_TAB"] = "0"
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Nytt kundeprosjekt"].waitForExistence(timeout: 12))
+        let domain = app.textFields["project-onboarding.domain"]
+        XCTAssertTrue(domain.waitForExistence(timeout: 3))
+        domain.tap()
+        domain.typeText("tidum.no")
+        dismissKeyboard(in: app)
+        app.buttons["project-onboarding.analyze"].tap()
+
+        let category = app.descendants(matching: .any)["project-onboarding.category"]
+        XCTAssertTrue(category.waitForExistence(timeout: 5))
+        XCTAssertTrue(displayedText(of: category).contains("Arbeidstid, omsorg og miljøarbeid"))
+        let projectName = app.descendants(matching: .any)["project-onboarding.project-name"]
+        XCTAssertTrue(projectName.waitForExistence(timeout: 3))
+        XCTAssertTrue(displayedText(of: projectName).contains("Tidum"))
+
+        let expectedProfiles = [
+            "Barnevern og avlastning – Norge",
+            "Bofellesskap og miljøarbeid – Norge",
+            "BPA og feltbasert omsorg – Norge",
+            "Kommunale omsorgstjenester – Norge",
+        ]
+        for (profileIndex, profileName) in expectedProfiles.enumerated() {
+            let profileTitle = app.staticTexts[
+                "project-onboarding.profile.\(profileIndex).title"
+            ]
+            for _ in 0..<12 where !profileTitle.exists {
+                app.swipeUp()
+            }
+            XCTAssertTrue(profileTitle.exists, "Mangler Discovery-profilen \(profileName)")
+            XCTAssertEqual(profileTitle.label, profileName)
+        }
+
+        XCTAssertTrue(app.staticTexts["Finn duplikater"].exists)
+        XCTAssertTrue(app.staticTexts["Sjekk datakvalitet"].exists)
+        let commit = app.buttons["project-onboarding.commit"]
+        for _ in 0..<12 where !commit.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(commit.isHittable)
+        commit.tap()
+
+        XCTAssertTrue(
+            app.buttons["discovery.close"].waitForExistence(timeout: 8),
+            "Et bekreftet Tidum-prosjekt skal åpnes direkte i Discovery"
+        )
+        let customerType = app.textFields["discovery.simple.customer-type"]
+        XCTAssertTrue(customerType.waitForExistence(timeout: 5))
+        XCTAssertTrue((customerType.value as? String)?.contains("87.104") == true)
+        let customerNext = app.buttons["discovery.simple.next.customer-type"]
+        for _ in 0..<4 where !customerNext.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(customerNext.isHittable)
+        customerNext.tap()
+        let nationwide = app.buttons["discovery.simple.area.nationwide"]
+        XCTAssertTrue(nationwide.waitForExistence(timeout: 5))
+        XCTAssertTrue(nationwide.isSelected)
+        app.terminate()
+    }
+
     func testDiscoverySimpleModeUsesThreeClearStepsAndKeepsAdvancedMode() throws {
         #if !targetEnvironment(macCatalyst)
         XCUIDevice.shared.orientation = .portrait
@@ -1527,6 +1593,56 @@ final class QASweepTests: XCTestCase {
         let profileCount = app.staticTexts["discovery.profile.count"]
         XCTAssertTrue(profileCount.waitForExistence(timeout: 12))
         XCTAssertEqual(profileCount.label, "6 profiler")
+        XCTAssertTrue(app.buttons["discovery.campaign.start"].exists)
+        app.terminate()
+    }
+
+    /// Verifiserer den virkelige native kjeden etter at shell-harnessen har
+    /// opprettet eller gjenbrukt Tidum via staging-API og PostgreSQL.
+    func testStagingTidumProjectOpensAllDiscoveryProfiles() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let stagingURL = environment["LEADGRID_STAGING_BASE_URL"],
+              let token = environment["LEADGRID_STAGING_BEARER_TOKEN"],
+              let organizationID = environment["LEADGRID_STAGING_ORG_ID"],
+              let projectID = environment["LEADGRID_STAGING_TIDUM_PROJECT_ID"],
+              !stagingURL.isEmpty,
+              !token.isEmpty,
+              !organizationID.isEmpty,
+              !projectID.isEmpty
+        else {
+            throw XCTSkip("Krever verifisert Tidum staging-prosjekt")
+        }
+        guard let baseURL = URL(string: stagingURL),
+              baseURL.scheme == "https",
+              baseURL.host != "creatorhub-backend-rtbl.onrender.com"
+        else {
+            XCTFail("Tidum-E2E nekter ugyldig eller produksjons-URL")
+            return
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_BEARER_TOKEN"] = token
+        app.launchEnvironment["LEADGRID_API_BASE_URL"] = stagingURL
+        app.launchEnvironment["QA_ORGANIZATION_ID"] = organizationID
+        app.launchEnvironment["QA_PROJECT_ID"] = projectID
+        app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "12" : "11"
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["staging-environment-badge"].waitForExistence(timeout: 12))
+        XCTAssertTrue(app.navigationBars["Verktøy"].waitForExistence(timeout: 15))
+        let discovery = app.buttons["Profiler, kandidater og markedsinnsikt"]
+        XCTAssertTrue(discovery.waitForExistence(timeout: 10))
+        discovery.tap()
+
+        XCTAssertTrue(app.buttons["discovery.close"].waitForExistence(timeout: 12))
+        XCTAssertTrue(
+            app.staticTexts["Tidum"].waitForExistence(timeout: 12),
+            "Det autoritative Tidum-prosjektet skal være aktivt i Discovery"
+        )
+        let profileCount = app.staticTexts["discovery.profile.count"]
+        XCTAssertTrue(profileCount.waitForExistence(timeout: 12))
+        let visibleProfileCount = Int(profileCount.label.split(separator: " ").first ?? "0") ?? 0
+        XCTAssertGreaterThanOrEqual(visibleProfileCount, 4)
         XCTAssertTrue(app.buttons["discovery.campaign.start"].exists)
         app.terminate()
     }

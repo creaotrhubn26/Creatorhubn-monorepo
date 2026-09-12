@@ -112,6 +112,176 @@ describe("Leadgrid domain onboarding classification", () => {
     expect(plan.recommended_profiles[0].approval_mode).toBe("manual");
   });
 
+  it("repairs analyzer fallback data and creates four precise national profiles for Tidum", () => {
+    const plan = buildProjectOnboardingPlan(
+      "https://tidum.no",
+      "tidum.no",
+      profile({
+        url: "https://tidum.no",
+        businessName: "Tidum – arbeidstidssystem for barn, omsorg og miljøarbeid",
+        description:
+          "Tidum er et arbeidstidssystem for virksomheter innen barn, omsorg og miljøarbeid.",
+        industry: "other",
+        targetAudience: "",
+        usps: [],
+      }),
+    );
+
+    expect(plan).toMatchObject({
+      project_name: "Tidum",
+      category: "Arbeidstid, omsorg og miljøarbeid",
+      category_confidence: "high",
+      brand_profile: {
+        businessName: "Tidum",
+        primaryCTA: "Be om tilgang",
+        industry: "workforce_management_for_care",
+        logoUrl: "https://tidum.no/apple-touch-icon.png",
+        faviconUrl: "https://tidum.no/favicon.ico",
+      },
+    });
+    expect(plan.brand_profile.targetAudience).toContain("kommunale tjenester");
+    expect(plan.recommended_profiles).toHaveLength(4);
+    expect(plan.recommended_profiles.map((item) => item.template_key)).toEqual([
+      "tidum.child_welfare",
+      "tidum.residential_care",
+      "tidum.bpa_field_services",
+      "tidum.municipal_services",
+    ]);
+    expect(plan.recommended_profiles.map((item) => item.name)).toEqual([
+      "Barnevern og avlastning – Norge",
+      "Bofellesskap og miljøarbeid – Norge",
+      "BPA og feltbasert omsorg – Norge",
+      "Kommunale omsorgstjenester – Norge",
+    ]);
+    expect(plan.recommended_profiles.filter((item) => item.is_default)).toHaveLength(1);
+    expect(
+      plan.recommended_profiles.every(
+        (item) =>
+          item.brief.country_code === "NO" &&
+          item.brief.city == null &&
+          item.approval_mode === "manual" &&
+          item.auto_discover_enabled === false,
+      ),
+    ).toBe(true);
+    expect(plan.recommended_profiles[0].brief).toMatchObject({
+      industry_queries: ["87.104", "87.105", "87.991", "88.991"],
+      organization_forms: ["AS", "IKS", "STI"],
+      employee_count: { minimum: 5, maximum: null },
+      target_count: 60,
+      minimum_fit_score: 70,
+      qualification_requirement: "preferred",
+      commercial_signals: {
+        registered_in_business_register: true,
+      },
+    });
+    expect(plan.recommended_profiles[1].brief.industry_queries).toEqual([
+      "87.106",
+      "87.201",
+      "87.202",
+      "87.999",
+    ]);
+    expect(plan.recommended_profiles[2].brief).toMatchObject({
+      industry_queries: ["88.104", "88.105", "88.106"],
+      target_count: 40,
+      organization_forms: ["AS", "IKS", "STI"],
+      employee_count: { minimum: 5, maximum: null },
+    });
+    expect(plan.recommended_profiles[3].brief).toMatchObject({
+      industry_queries: [],
+      organization_name_queries: ["kommune"],
+      organization_forms: ["KOMM"],
+      employee_count: null,
+      commercial_signals: {
+        registered_in_business_register: null,
+      },
+    });
+    expect(plan.skills.map((skill) => skill.key)).toEqual(
+      LEADGRID_ONBOARDING_SKILLS.map((skill) => skill.key),
+    );
+  });
+
+  it("repairs MedSide metadata and creates five medical Discovery profiles", () => {
+    const plan = buildProjectOnboardingPlan(
+      "https://medside.no",
+      "medside.no",
+      profile({
+        url: "https://medside.no",
+        businessName: "Ukjent helseprodukt",
+        description: "Generisk helse og klinikk",
+        industry: "other",
+        targetAudience: "",
+        logoUrl: "https://storage.googleapis.com/wrong-logo.png",
+        hasShop: true,
+      }),
+    );
+
+    expect(plan).toMatchObject({
+      project_name: "MedSide",
+      category: "KI-basert klinisk dokumentasjon",
+      category_confidence: "high",
+      brand_profile: {
+        businessName: "MedSide",
+        primaryCTA: "Start gratis prøveperiode",
+        industry: "ai_clinical_documentation",
+        logoUrl: "https://medside.no/medside-logo.svg",
+        hasShop: false,
+      },
+    });
+    expect(plan.recommended_profiles.map((item) => item.template_key)).toEqual([
+      "medside.gp_offices",
+      "medside.medical_specialists",
+      "medside.physiotherapy",
+      "medside.chiropractic",
+      "medside.psychology",
+    ]);
+    expect(plan.recommended_profiles.map((item) => item.name)).toEqual([
+      "Fastlegekontor – Norge",
+      "Private spesialistklinikker – Norge",
+      "Fysioterapi og ergoterapi – Norge",
+      "Kiropraktorer – Norge",
+      "Psykolog- og psykoterapitjenester – Norge",
+    ]);
+    expect(plan.recommended_profiles).toHaveLength(5);
+    expect(
+      plan.recommended_profiles.filter((item) => item.is_default),
+    ).toHaveLength(1);
+    expect(
+      plan.recommended_profiles.every(
+        (item) =>
+          item.brief.country_code === "NO" &&
+          item.brief.city == null &&
+          item.brief.subject_kind === "organization" &&
+          item.approval_mode === "manual" &&
+          item.auto_discover_enabled === false,
+      ),
+    ).toBe(true);
+    expect(plan.recommended_profiles[0].brief).toMatchObject({
+      registry_source: "nhn_flr_public",
+      industry_queries: ["86.210"],
+      commercial_signals: { registered_in_business_register: null },
+      target_count: 60,
+      minimum_fit_score: 70,
+    });
+    expect(plan.recommended_profiles[1].brief.industry_queries).toEqual([
+      "86.221",
+      "86.222",
+    ]);
+    expect(plan.recommended_profiles[2].brief.industry_queries).toEqual([
+      "86.950",
+    ]);
+    expect(plan.recommended_profiles[3].brief).toMatchObject({
+      organization_name_queries: [
+        "kiropraktor",
+        "kiropraktikk",
+        "kiropraktorklinikk",
+      ],
+      qualification_requirement: "required",
+    });
+    expect(plan.recommended_profiles[4].brief.industry_queries).toEqual([
+      "86.930",
+    ]);
+  });
+
   it("repairs misleading static metadata and creates six precise national profiles for The Role Room", () => {
     const plan = buildProjectOnboardingPlan(
       "https://theroleroom.com",
