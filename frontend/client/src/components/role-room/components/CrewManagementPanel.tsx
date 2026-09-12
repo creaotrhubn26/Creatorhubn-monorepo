@@ -272,7 +272,7 @@ const DEPT_ICONS: Record<DeptKey, React.ElementType> = {
 
 const ROLE_TO_DEPT: Record<CrewRole, DeptKey> = {
   director: 'production', producer: 'production', casting_director: 'production',
-  production_manager: 'production', production_assistant: 'production',
+  production_manager: 'production', production_coordinator: 'production', production_assistant: 'production',
   script_supervisor: 'production', location_manager: 'production',
   camera_operator: 'camera', camera_assistant: 'camera',
   cinematographer: 'camera', drone_pilot: 'camera',
@@ -1553,6 +1553,7 @@ export function CrewManagementPanel({
       'producer',
       'casting_director',
       'production_manager',
+      'production_coordinator',
       'cinematographer',
       'camera_operator',
       'camera_assistant',
@@ -1586,6 +1587,7 @@ export function CrewManagementPanel({
         'wardrobe',
         'producer',
         'production_manager',
+        'production_coordinator',
         'gaffer',
         'grip',
         'director',
@@ -1617,6 +1619,7 @@ export function CrewManagementPanel({
         'vfx_artist',
         'motion_graphics',
         'production_manager',
+        'production_coordinator',
         'casting_director',
         'makeup_artist',
         'wardrobe',
@@ -1637,6 +1640,7 @@ export function CrewManagementPanel({
       producer: 'Produsent',
       casting_director: 'Castingansvarlig',
       production_manager: 'Produksjonsleder',
+      production_coordinator: 'Produksjonskoordinator',
       cinematographer: 'Filmfotograf',
       camera_operator: 'Kameraoperatør',
       camera_assistant: 'Kameraassistent',
@@ -1667,6 +1671,7 @@ export function CrewManagementPanel({
     producer:              '/role-room-assets/roleroom_producer.webp',
     casting_director:      '/role-room-assets/roleroom_casting_director.webp',
     production_manager:    '/role-room-assets/roleroom_photo_director.webp',
+    production_coordinator:'/role-room-assets/roleroom_photo_director.webp',
     cinematographer:       '/role-room-assets/roleroom_filmfotograf.webp',
     camera_operator:       '/role-room-assets/roleroom_photographer.webp',
     camera_assistant:      '/role-room-assets/roleroom_photo_assistant.webp',
@@ -2383,6 +2388,7 @@ export function CrewManagementPanel({
       producer: '#ef4444', // Red for leadership
       casting_director: '#673ab7',
       production_manager: '#3f51b5',
+      production_coordinator: '#0284c7',
       cinematographer: '#8b5cf6', // Purple for camera
       camera_operator: '#8b5cf6', // Purple for camera
       camera_assistant: '#a78bfa',

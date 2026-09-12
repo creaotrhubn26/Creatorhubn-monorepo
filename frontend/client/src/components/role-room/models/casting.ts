@@ -10,6 +10,7 @@ export type UserRoleType =
   | 'producer'
   | 'casting_director'
   | 'production_manager'
+  | 'production_coordinator'
   | 'first_ad'
   | 'second_ad'
   | 'camera_team'
@@ -24,6 +25,7 @@ export interface UserRolePermissions {
   canViewAll?: boolean;
   canEditCasting?: boolean;
   canEditProduction?: boolean;
+  canCoordinateProduction?: boolean;
   canManageCrew?: boolean;
   canManageLocations?: boolean;
   canEditShots?: boolean;
@@ -403,6 +405,7 @@ export type CrewRole =
   | 'producer'
   | 'casting_director'
   | 'production_manager'
+  | 'production_coordinator'
   | 'production_assistant'
   | 'script_supervisor'
   | 'location_manager'
@@ -1077,6 +1080,11 @@ export interface ProductionDay {
   managementVersion?: number;
   managementUpdatedAt?: string;
   managementUpdatedBy?: string;
+  productionCoordination?: ProductionCoordinationOperations;
+  /** Server-owned optimistic concurrency counter for production-coordination edits. */
+  coordinationVersion?: number;
+  coordinationUpdatedAt?: string;
+  coordinationUpdatedBy?: string;
   lastModifiedBy?: string;
   createdBy?: string;
   changeLog?: Array<{
@@ -1154,6 +1162,110 @@ export interface ProductionManagementOperations {
   costItems: ProductionManagementCostItem[];
   notes?: string;
   activity: ProductionManagementActivityEntry[];
+}
+
+export type ProductionCoordinationTaskCategory =
+  | 'crew'
+  | 'supplier'
+  | 'transport'
+  | 'catering'
+  | 'equipment'
+  | 'permit'
+  | 'document'
+  | 'other';
+export type ProductionCoordinationTaskStatus = 'todo' | 'in_progress' | 'blocked' | 'done';
+export type ProductionCoordinationPriority = 'low' | 'normal' | 'high' | 'urgent';
+export type ProductionCoordinationCrewStatus = 'pending' | 'contacted' | 'confirmed' | 'problem';
+export type ProductionCoordinationReadinessStatus = 'not_started' | 'in_progress' | 'ready' | 'blocked';
+export type ProductionCoordinationDocumentStatus = 'missing' | 'requested' | 'received' | 'verified';
+export type ProductionCoordinationEscalationStatus = 'open' | 'acknowledged' | 'resolved';
+
+export interface ProductionCoordinationTask {
+  id: string;
+  title: string;
+  category: ProductionCoordinationTaskCategory;
+  status: ProductionCoordinationTaskStatus;
+  priority: ProductionCoordinationPriority;
+  assignee?: string;
+  dueAt?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionCoordinationCrewFollowUp {
+  crewId: string;
+  status: ProductionCoordinationCrewStatus;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionCoordinationLogisticsItem {
+  id: string;
+  category: 'transport' | 'catering' | 'equipment' | 'permit' | 'supplier' | 'other';
+  title: string;
+  status: ProductionCoordinationReadinessStatus;
+  supplier?: string;
+  contact?: string;
+  dueAt?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionCoordinationDocument {
+  id: string;
+  title: string;
+  category: 'permit' | 'agreement' | 'insurance' | 'safety' | 'schedule' | 'other';
+  status: ProductionCoordinationDocumentStatus;
+  owner?: string;
+  dueAt?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionCoordinationCallSheetItem {
+  id: string;
+  title: string;
+  status: ProductionCoordinationReadinessStatus;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionCoordinationEscalation {
+  id: string;
+  title: string;
+  severity: 'info' | 'warning' | 'critical';
+  status: ProductionCoordinationEscalationStatus;
+  owner?: string;
+  dueAt?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionCoordinationHandover {
+  status: 'draft' | 'ready_for_review';
+  summary?: string;
+  blockers?: string;
+  nextActions?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionCoordinationActivityEntry {
+  id: string;
+  type: 'workspace_saved';
+  message: string;
+  actorUserId?: string;
+  createdAt: string;
+}
+
+export interface ProductionCoordinationOperations {
+  tasks: ProductionCoordinationTask[];
+  crewFollowUps: ProductionCoordinationCrewFollowUp[];
+  logistics: ProductionCoordinationLogisticsItem[];
+  documents: ProductionCoordinationDocument[];
+  callSheetChecklist: ProductionCoordinationCallSheetItem[];
+  escalations: ProductionCoordinationEscalation[];
+  handover: ProductionCoordinationHandover;
+  activity: ProductionCoordinationActivityEntry[];
 }
 
 export type SecondAdMovementStatus =

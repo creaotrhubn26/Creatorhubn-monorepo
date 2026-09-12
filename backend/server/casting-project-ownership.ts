@@ -190,6 +190,55 @@ export async function userCanManageCastingProduction(
   return userOwnsCastingProject(pool, projectId, userId);
 }
 
+/**
+ * True when the user may update the production-coordination lane. This is
+ * deliberately separate from production management: coordinators can prepare
+ * and follow up the day, but cannot alter approvals, costs or PM audit data.
+ */
+export async function userCanCoordinateCastingProduction(
+  pool: QueryablePool,
+  projectId: string,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  if (!projectId || !userId) return false;
+  try {
+    const result = await pool.query(
+      `SELECT
+         EXISTS (
+           SELECT 1 FROM casting_projects cp WHERE cp.id = $1
+         ) AS project_exists,
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+             LEFT JOIN casting_user_roles cur
+               ON cur.project_id = cp.id
+              AND cur.user_id = $2
+              AND cur.deactivated_at IS NULL
+              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
+            WHERE cp.id = $1
+              AND (
+                cp.created_by = $2
+                OR (
+                  cur.user_id IS NOT NULL
+                  AND (
+                    cur.role IN ('producer', 'production_manager', 'production_coordinator')
+                    OR cur.permissions -> 'canCoordinateProduction' = 'true'::jsonb
+                  )
+                )
+              )
+         ) AS can_coordinate_production`,
+      [projectId, userId],
+    );
+    const status = result.rows[0];
+    if (status?.project_exists === true) {
+      return status.can_coordinate_production === true;
+    }
+  } catch {
+    // Legacy-only installs remain owner-only.
+  }
+  return userOwnsCastingProject(pool, projectId, userId);
+}
+
 /** Returns the owning user id for a casting project, or null if unknown. */
 export async function getCastingProjectOwner(
   pool: QueryablePool,
