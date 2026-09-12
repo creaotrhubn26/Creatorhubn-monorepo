@@ -266,7 +266,7 @@ pub fn hash(s: &str) -> u64 {
 
 /// Linjer i toppfeltblokka (`---` … `---`), som ikke er noe brukeren har
 /// tenkt og derfor ikke skal klassifiseres.
-fn frontmatter_lines(doc: &str) -> usize {
+pub(crate) fn frontmatter_lines(doc: &str) -> usize {
     let mut lines = doc.split('\n');
     if lines.next().map(str::trim) != Some("---") {
         return 0;

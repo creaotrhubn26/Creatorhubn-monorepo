@@ -7,6 +7,7 @@
 mod migrering;
 mod minne;
 mod rettelser;
+mod samtale;
 mod understand;
 
 use creatorhub_notes_indexer::{db, index, search, sti};
