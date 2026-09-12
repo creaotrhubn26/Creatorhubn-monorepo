@@ -141,6 +141,55 @@ export async function userCanEditCastingProduction(
   return userOwnsCastingProject(pool, projectId, userId);
 }
 
+/**
+ * True when the user owns the operational production-management lane.
+ * AD roles may edit the shared production day, but must not be able to alter
+ * the production manager's approvals, cost deviations or audit trail.
+ */
+export async function userCanManageCastingProduction(
+  pool: QueryablePool,
+  projectId: string,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  if (!projectId || !userId) return false;
+  try {
+    const result = await pool.query(
+      `SELECT
+         EXISTS (
+           SELECT 1 FROM casting_projects cp WHERE cp.id = $1
+         ) AS project_exists,
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+             LEFT JOIN casting_user_roles cur
+               ON cur.project_id = cp.id
+              AND cur.user_id = $2
+              AND cur.deactivated_at IS NULL
+              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
+            WHERE cp.id = $1
+              AND (
+                cp.created_by = $2
+                OR (
+                  cur.user_id IS NOT NULL
+                  AND (
+                    cur.role IN ('producer', 'production_manager')
+                    OR cur.permissions -> 'canManageProduction' = 'true'::jsonb
+                  )
+                )
+              )
+         ) AS can_manage_production`,
+      [projectId, userId],
+    );
+    const status = result.rows[0];
+    if (status?.project_exists === true) {
+      return status.can_manage_production === true;
+    }
+  } catch {
+    // Legacy-only installs remain owner-only.
+  }
+  return userOwnsCastingProject(pool, projectId, userId);
+}
+
 /** Returns the owning user id for a casting project, or null if unknown. */
 export async function getCastingProjectOwner(
   pool: QueryablePool,

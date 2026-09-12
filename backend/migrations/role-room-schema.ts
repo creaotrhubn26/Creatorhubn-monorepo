@@ -166,10 +166,19 @@ export const castingProductionDays = pgTable('casting_production_days', {
   notes: text('notes'),
   weatherForecast: jsonb('weather_forecast'),
   auditLog: jsonb('audit_log').default([]),
+  /** Rich production-day payload used by the REST service. */
+  data: jsonb('data').default({}),
+  /** Independent concurrency lane for production-management operations. */
+  managementVersion: integer('management_version').default(0).notNull(),
+  managementUpdatedBy: varchar('management_updated_by', { length: 255 }),
+  managementUpdatedAt: timestamp('management_updated_at', { withTimezone: true, mode: 'string' }),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
   index('casting_production_days_project_id_idx').using('btree', table.projectId),
+  index('idx_casting_production_days_management_updated')
+    .using('btree', table.projectId, table.managementUpdatedAt.desc())
+    .where(sql`${table.managementUpdatedAt} IS NOT NULL`),
 ]);
 
 export const castingShotLists = pgTable('casting_shot_lists', {
