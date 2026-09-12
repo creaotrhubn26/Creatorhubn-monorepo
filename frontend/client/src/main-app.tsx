@@ -81,6 +81,13 @@ const shouldUseRoleRoomDedicatedHostBootstrap = (
     return false;
   }
   if (LOCALHOST_HOSTNAME_SET.has(hostname)) {
+    // Lokal utvikling må kunne åpne de samme prefiksede Leadgrid-rutene som
+    // produksjonshostet. Uten dette gikk /leadgrid og /leadgrid/import via
+    // CreatorHub-routeren og endte som 404, så ekte browser-regresjonstester
+    // kunne ikke treffe Leadgrid-flaten.
+    if (/^\/leadgrid(?:\/|$)/i.test(pathname)) {
+      return true;
+    }
     return isRoleRoomStandalonePathname(pathname, locationLike);
   }
   // Leadgrid-dedikerte hoster (leadgrid.no) bruker samme bootstrap —
