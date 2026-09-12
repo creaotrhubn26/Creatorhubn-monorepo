@@ -1967,6 +1967,73 @@ actor RoleRoomAPIClient {
 
     // MARK: Storyboard professional skills
 
+    // MARK: Immutable storyboard review rounds
+
+    func fetchStoryboardReviewRounds(
+        projectId: String, manuscriptId: String
+    ) async throws -> [StoryboardReviewRoundDTO] {
+        let payload = try await getJSON(
+            path: "/api/role-room/projects/\(projectId)/manuscripts/\(manuscriptId)/storyboard-review-rounds",
+            query: [:])
+        guard let data = payload["data"] else { throw SyncError.malformed("storyboard review rounds") }
+        return try decodeStoryboardSkillPayload(data, as: [StoryboardReviewRoundDTO].self)
+    }
+
+    func createStoryboardReviewRound(
+        projectId: String, manuscriptId: String, label: String, summary: String
+    ) async throws -> StoryboardReviewRoundDTO {
+        let payload = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/manuscripts/\(manuscriptId)/storyboard-review-rounds",
+            method: "POST", body: ["label": label, "summary": summary])
+        guard let data = payload["data"] else { throw SyncError.malformed("storyboard review round") }
+        return try decodeStoryboardSkillPayload(data, as: StoryboardReviewRoundDTO.self)
+    }
+
+    func fetchStoryboardReviewDiff(
+        projectId: String, manuscriptId: String, roundId: String
+    ) async throws -> StoryboardReviewDiffDTO {
+        let payload = try await getJSON(
+            path: "/api/role-room/projects/\(projectId)/manuscripts/\(manuscriptId)/storyboard-review-rounds/\(roundId)/diff",
+            query: [:])
+        guard let data = payload["data"] else { throw SyncError.malformed("storyboard review diff") }
+        return try decodeStoryboardSkillPayload(data, as: StoryboardReviewDiffDTO.self)
+    }
+
+    func createStoryboardReviewShareLink(
+        projectId: String, manuscriptId: String, roundId: String,
+        accessMode: String, requireIdentity: Bool
+    ) async throws -> StoryboardReviewShareDTO {
+        let expiresAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(14 * 86_400))
+        let payload = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/manuscripts/\(manuscriptId)/storyboard-review-rounds/\(roundId)/share-links",
+            method: "POST", body: ["accessMode": accessMode,
+                                   "requireIdentity": requireIdentity,
+                                   "expiresAt": expiresAt])
+        guard let data = payload["data"] else { throw SyncError.malformed("storyboard review share") }
+        return try decodeStoryboardSkillPayload(data, as: StoryboardReviewShareDTO.self)
+    }
+
+    func restoreStoryboardReviewRound(
+        projectId: String, manuscriptId: String, roundId: String,
+        snapshotHash: String, expectedCurrentHash: String
+    ) async throws {
+        _ = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/manuscripts/\(manuscriptId)/storyboard-review-rounds/\(roundId)/restore",
+            method: "POST", body: ["confirmSnapshotHash": snapshotHash,
+                                   "expectedCurrentHash": expectedCurrentHash])
+    }
+
+    func storyboardReviewURL(token: String) throws -> URL {
+        guard let baseURL, var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            throw SyncError.notConfigured
+        }
+        components.path = "/storyboard-review/\(token)"
+        components.query = nil
+        components.fragment = nil
+        guard let result = components.url else { throw SyncError.notConfigured }
+        return result
+    }
+
     func fetchStoryboardSkillCatalog(
         projectId: String
     ) async throws -> [StoryboardSkillDefinitionDTO] {

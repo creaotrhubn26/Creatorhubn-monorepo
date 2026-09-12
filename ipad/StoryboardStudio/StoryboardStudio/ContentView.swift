@@ -125,6 +125,10 @@ struct ContentView: View {
         #if DEBUG
         if ProcessInfo.processInfo.environment["SB_AI_VIDEO_DEMO"] == "1" {
             AIStoryboardVideoDemoView()
+        } else if ProcessInfo.processInfo.environment["SB_REVIEW_ROUNDS_DEMO"] == "1" {
+            StoryboardReviewRoundsView(
+                projectId: "project-demo", manuscriptId: "manuscript-demo",
+                onRestored: {})
         } else if ProcessInfo.processInfo.environment["SB_FREE_CANVAS_DEMO"] == "1" {
             NavigationStack { FreeCanvasView() }
         } else {

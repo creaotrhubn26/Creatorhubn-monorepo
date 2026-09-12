@@ -13,6 +13,7 @@ export const STORYBOARD_SKILL_IDS = [
   'audit_board_readability',
   'build_animatic_pass',
   'audit_production_feasibility',
+  'reconcile_storyboard_revision',
 ] as const;
 
 export type StoryboardSkillId = (typeof STORYBOARD_SKILL_IDS)[number];
@@ -77,6 +78,8 @@ export interface StoryboardSkillFramePatch {
   productionNotes?: string;
   vfxNotes?: string;
   tags?: string[];
+  revisionStatus?: 'current' | 'stale' | 'unmapped';
+  revisionReason?: string;
 }
 
 export interface StoryboardSkillFrame {
@@ -124,6 +127,16 @@ export interface StoryboardSkillContext {
   frames: StoryboardSkillFrame[];
   activeFrameId?: string;
   userIntent?: string;
+  revisionBaseline?: {
+    snapshotHash?: string;
+    scene: {
+      id: string;
+      heading: string;
+      action?: string;
+      dialogue?: StoryboardSkillDialogueLine[];
+    };
+    frames: StoryboardSkillFrame[];
+  };
 }
 
 export interface StoryboardSkillEvidence {
@@ -285,6 +298,20 @@ export const STORYBOARD_SKILL_DEFINITIONS: readonly StoryboardSkillDefinition[] 
     dependsOn: ['scene.action', 'frames.productionNotes', 'frames.vfxNotes'],
     outputCapabilities: ['analysis', 'frame-patch'],
     evaluationCriteria: ['evidence-not-assumption', 'actionable-alternative', 'safety-first'],
+    provider: 'local',
+    estimatedCostUsd: 0,
+  },
+  {
+    id: 'reconcile_storyboard_revision',
+    version: '1.0.0',
+    title: 'Avstem storyboard mot revisjon',
+    shortTitle: 'Revisjonsvakt',
+    description: 'Finner nye, fjernede og endrede shots og markerer hva som må vurderes etter en manusrevisjon.',
+    scope: 'scene',
+    icon: 'revision',
+    dependsOn: ['revisionBaseline', 'scene.action', 'scene.dialogue', 'frames'],
+    outputCapabilities: ['analysis', 'frame-patch'],
+    evaluationCriteria: ['immutable-baseline', 'frame-traceability', 'no-automatic-overwrite'],
     provider: 'local',
     estimatedCostUsd: 0,
   },

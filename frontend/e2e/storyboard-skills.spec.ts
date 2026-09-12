@@ -8,6 +8,7 @@ const skills = [
   ['audit_board_readability', 'Lesbarhet'],
   ['build_animatic_pass', 'Animatic'],
   ['audit_production_feasibility', 'Gjennomføring'],
+  ['reconcile_storyboard_revision', 'Revisjonsvakt'],
 ] as const;
 
 const catalog = skills.map(([id, shortTitle]) => ({
@@ -112,7 +113,7 @@ async function installApi(page: Page) {
   });
 }
 
-test('all seven storyboard skills run, explain evidence and require review before apply', async ({ page }) => {
+test('all eight storyboard skills run, explain evidence and require review before apply', async ({ page }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await installApi(page);
@@ -131,10 +132,10 @@ test('all seven storyboard skills run, explain evidence and require review befor
 
   await page.getByTestId('apply-storyboard-skill').click();
   await expect(page.getByTestId('storyboard-skills-applied')).toContainText(
-    'change-audit_production_feasibility',
+    'change-reconcile_storyboard_revision',
   );
   await expect(page.getByTestId('storyboard-skills-frames')).toContainText(
-    'Godkjent audit_production_feasibility',
+    'Godkjent reconcile_storyboard_revision',
   );
   await expect(page.getByText('Forslaget er godkjent og brukt.')).toBeVisible();
 

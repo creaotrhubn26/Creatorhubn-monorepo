@@ -199,6 +199,7 @@ import {
 } from "./dance-team-routes.js";
 import { createDanceAddonRouter } from "./dance-addon-routes.js";
 import { createStoryboardRouter } from "./storyboard-routes.js";
+import { createStoryboardReviewRouter } from "./storyboard-review-routes.js";
 import { createStoryboardAiRouter } from "./storyboard-ai-routes.js";
 import { createCrewNotificationsRouter } from "./crew-notifications-routes.js";
 import { createEducationCohortsRouter } from "./role-room-education-cohorts-routes.js";
@@ -15470,6 +15471,14 @@ const manuscriptsService = createCastingManuscriptsService({
   compatStoreListByPrefix,
   compatStoreSetStrict,
 });
+
+// Storyboard review-runder må monteres etter at manuskript-servicen finnes.
+// De vanlige storyboard-rutene monteres tidligere, men deler samme prosjekt-
+// og fanetilgangskontroll gjennom storyboard-routes.ts.
+app.use(
+  "/api/role-room",
+  createStoryboardReviewRouter(pool, { activeSessions, manuscriptsService }),
+);
 
 // Revisions-service for diff/restore-API. Avhenger av manuscriptsService.
 const manuscriptRevisionsService = createCastingManuscriptRevisionsService({

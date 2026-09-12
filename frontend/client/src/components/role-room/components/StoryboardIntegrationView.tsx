@@ -89,11 +89,13 @@ import {
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import storyboardEmptyPng from './icons/Keep/roleroom_storyboard.png';
 import { StoryboardBoardPage } from './StoryboardBoardPage';
+import { StoryboardReviewRoundsDialog } from './StoryboardReviewRoundsDialog';
 
 interface StoryboardIntegrationViewProps {
   scene: SceneBreakdown;
   onUpdate: (scene: SceneBreakdown) => void;
   projectId?: string;
+  manuscriptId?: string;
   /**
    * Prosjekt-nivå cinema-format som propageres til FrameDrawingEditor.
    * Storyboard-artister for film/commercial trenger 2.39:1/1.85:1 osv. —
@@ -1191,6 +1193,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
   scene,
   onUpdate,
   projectId,
+  manuscriptId,
   projectCinemaFormat,
   allScenes,
   sceneDialogue,
@@ -1538,6 +1541,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
             onFrameDrawingComplete={handleFrameDrawingComplete}
             sceneId={scene.id}
             projectId={projectId || scene.projectId}
+            manuscriptId={manuscriptId || scene.manuscriptId}
             sceneNumber={scene.sceneNumber}
             sceneHeading={scene.heading || scene.sceneName}
             libraryScopeKey={String(scene.projectId || scene.manuscriptId || 'global')}
@@ -1611,6 +1615,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
                 onFrameDrawingComplete={handleFrameDrawingComplete}
                 sceneId={scene.id}
                 projectId={projectId || scene.projectId}
+                manuscriptId={manuscriptId || scene.manuscriptId}
                 sceneNumber={scene.sceneNumber}
                 sceneHeading={scene.heading || scene.sceneName}
                 libraryScopeKey={String(scene.projectId || scene.manuscriptId || 'global')}
@@ -1730,6 +1735,7 @@ const StoryboardView: React.FC<{
   onFrameDrawingComplete: (frameId: string, drawingData: FrameDrawingData, imageUrl: string) => void;
   sceneId: string;
   projectId?: string;
+  manuscriptId?: string;
   sceneNumber?: number | string;
   sceneHeading?: string;
   libraryScopeKey: string;
@@ -1751,6 +1757,7 @@ const StoryboardView: React.FC<{
   onFrameDrawingComplete,
   sceneId,
   projectId,
+  manuscriptId,
   sceneNumber,
   sceneHeading,
   libraryScopeKey,
@@ -1776,6 +1783,8 @@ const StoryboardView: React.FC<{
     () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('boardpro') === '1',
   );
   const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [reviewBaseline, setReviewBaseline] = useState<StoryboardSkillContext['revisionBaseline']>();
   const [versionSummary, setVersionSummary] = useState('');
   const [drawingFrameId, setDrawingFrameId] = useState<string | null>(null);
   const [pendingPoseStrokes, setPendingPoseStrokes] = useState<PencilStroke[] | null>(null);
@@ -1837,6 +1846,7 @@ const StoryboardView: React.FC<{
       })),
     },
     activeFrameId: activeFrame?.id,
+    revisionBaseline: reviewBaseline,
     frames: frames.map((frame) => ({
       id: frame.id,
       shotNumber: frame.shotNumber,
@@ -1873,6 +1883,7 @@ const StoryboardView: React.FC<{
     sceneHeading,
     sceneId,
     sceneNumber,
+    reviewBaseline,
   ]);
 
   const applyStoryboardSkillChanges = useCallback((changes: StoryboardSkillChange[]) => {
@@ -2763,6 +2774,17 @@ const StoryboardView: React.FC<{
                 sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#a78bfa', textTransform: 'none', flexShrink: 0 }}
               >
                 Versions ({versionLog?.length ?? 0})
+              </Button>
+            )}
+            {projectId && manuscriptId && (
+              <Button
+                size="small"
+                variant="outlined"
+                data-testid="storyboard-review-rounds-button"
+                onClick={() => setReviewDialogOpen(true)}
+                sx={{ borderColor: 'rgba(34,197,94,0.5)', color: '#86efac', textTransform: 'none', flexShrink: 0 }}
+              >
+                Review-runder
               </Button>
             )}
 
@@ -4262,7 +4284,19 @@ const StoryboardView: React.FC<{
           onAddFrame={handleAddFrame}
           onOpenScript={onSwitchViewMode ? () => { setBoardProOpen(false); onSwitchViewMode('script'); } : undefined}
           onOpenShotList={onSwitchViewMode ? () => { setBoardProOpen(false); onSwitchViewMode('shotlist'); } : undefined}
+          onShare={projectId && manuscriptId ? () => setReviewDialogOpen(true) : undefined}
           onClose={() => setBoardProOpen(false)}
+        />
+      )}
+
+      {projectId && manuscriptId && (
+        <StoryboardReviewRoundsDialog
+          open={reviewDialogOpen}
+          projectId={projectId}
+          manuscriptId={manuscriptId}
+          sceneId={sceneId}
+          onClose={() => setReviewDialogOpen(false)}
+          onBaselineChange={setReviewBaseline}
         />
       )}
 

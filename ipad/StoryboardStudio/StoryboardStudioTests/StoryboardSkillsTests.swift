@@ -3,11 +3,12 @@ import XCTest
 
 final class StoryboardSkillsTests: XCTestCase {
     func testAllProfessionalSkillsHaveStableUniqueIdentifiers() {
-        XCTAssertEqual(StoryboardSkillID.allCases.count, 7)
-        XCTAssertEqual(Set(StoryboardSkillID.allCases.map(\.rawValue)).count, 7)
+        XCTAssertEqual(StoryboardSkillID.allCases.count, 8)
+        XCTAssertEqual(Set(StoryboardSkillID.allCases.map(\.rawValue)).count, 8)
         XCTAssertTrue(StoryboardSkillID.designShotVariants.requiresFrame)
         XCTAssertTrue(StoryboardSkillID.translateArtistMarks.requiresFrame)
         XCTAssertFalse(StoryboardSkillID.planSceneCoverage.requiresFrame)
+        XCTAssertFalse(StoryboardSkillID.reconcileStoryboardRevision.requiresFrame)
     }
 
     func testSuggestionContractDecodesEvidenceAlternativesAndCost() throws {

@@ -36,6 +36,7 @@ export const StoryboardTabView: React.FC<StoryboardTabViewProps> = ({
   const { showError } = useToast();
   const [scenes, setScenes] = useState<SceneBreakdown[]>([]);
   const [selectedScene, setSelectedScene] = useState<SceneBreakdown | null>(null);
+  const [manuscriptId, setManuscriptId] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Sceneliste: foretrekk allerede-loaded sceneBreakdowns på prosjektet,
@@ -44,6 +45,7 @@ export const StoryboardTabView: React.FC<StoryboardTabViewProps> = ({
     let cancelled = false;
     setSelectedScene(null);
     setScenes([]);
+    setManuscriptId('');
 
     if (!currentProject?.id) {
       return undefined;
@@ -51,6 +53,7 @@ export const StoryboardTabView: React.FC<StoryboardTabViewProps> = ({
 
     const preloaded = currentProject.sceneBreakdowns ?? [];
     if (preloaded.length > 0) {
+      setManuscriptId(String(preloaded[0]?.manuscriptId || ''));
       setScenes(preloaded);
       setSelectedScene(preloaded[0]);
       return undefined;
@@ -66,6 +69,7 @@ export const StoryboardTabView: React.FC<StoryboardTabViewProps> = ({
           setScenes([]);
           return;
         }
+        setManuscriptId(firstManuscript.id);
         const loaded = await manuscriptService.getScenes(firstManuscript.id);
         if (cancelled) return;
         setScenes(loaded);
@@ -250,6 +254,7 @@ export const StoryboardTabView: React.FC<StoryboardTabViewProps> = ({
           scene={selectedScene}
           onUpdate={handleSceneUpdate}
           projectId={currentProject.id}
+          manuscriptId={manuscriptId || selectedScene.manuscriptId}
           projectCinemaFormat={projectCinemaFormat}
           allScenes={scenes}
           sceneDialogue={dialogueLines}
