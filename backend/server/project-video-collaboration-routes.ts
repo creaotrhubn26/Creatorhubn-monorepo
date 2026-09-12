@@ -162,46 +162,51 @@ export function setupProjectVideoCollaborationRoutes(input: {
   // Desktop NLE clients need one access-scoped project/version picker. The
   // response deliberately contains no media URLs or share credentials.
   app.get("/api/video-nle/projects", async (req, res) => {
-    const session = await sessionFor(req, res); if (!session) return;
-    const result = await pool.query(
-      `SELECT project.id::text project_id,
-              COALESCE(NULLIF(project.title,''),NULLIF(project.name,''),'Uten navn') project_name,
-              project.project_type,
-              version.id::text version_id,version.version_label,version.version_number,
-              version.status version_status,version.created_at,
-              (project.user_id=$1 OR EXISTS (
-                SELECT 1 FROM project_team_members editable
-                 WHERE editable.project_id=project.id::text AND editable.user_id=$1
-                   AND editable.status='active' AND editable.deactivated_at IS NULL
-                   AND (editable.role='editor' OR editable.permissions @> '{"canEdit":true}'::jsonb)
-              )) can_edit
-         FROM project_video_versions version
-         JOIN projects project ON project.id=version.project_id
-        WHERE project.user_id=$1 OR EXISTS (
-          SELECT 1 FROM project_team_members member
-           WHERE member.project_id=project.id::text AND member.user_id=$1
-             AND member.status='active' AND member.deactivated_at IS NULL
-        )
-        ORDER BY project.created_at DESC NULLS LAST,version.version_number DESC,version.created_at DESC
-        LIMIT 500`,
-      [session.userId],
-    );
-    const projects = new Map<string, any>();
-    for (const row of result.rows) {
-      let project = projects.get(row.project_id);
-      if (!project) {
-        project = { id: row.project_id, name: row.project_name, projectType: row.project_type || null, canEdit: !!row.can_edit, versions: [] };
-        projects.set(row.project_id, project);
+    try {
+      const session = await sessionFor(req, res); if (!session) return;
+      const result = await pool.query(
+        `SELECT project.id::text project_id,
+                COALESCE(NULLIF(project.title,''),NULLIF(project.name,''),'Uten navn') project_name,
+                project.project_type,
+                version.id::text version_id,version.version_label,version.version_number,
+                version.status version_status,version.created_at,
+                (project.user_id=$1 OR EXISTS (
+                  SELECT 1 FROM project_team_members editable
+                   WHERE editable.project_id=project.id::text AND editable.user_id=$1
+                     AND editable.status='active' AND editable.deactivated_at IS NULL
+                     AND (editable.role='editor' OR editable.permissions @> '{"canEdit":true}'::jsonb)
+                )) can_edit
+           FROM project_video_versions version
+           JOIN projects project ON project.id=version.project_id::text
+          WHERE project.user_id=$1 OR EXISTS (
+            SELECT 1 FROM project_team_members member
+             WHERE member.project_id=project.id::text AND member.user_id=$1
+               AND member.status='active' AND member.deactivated_at IS NULL
+          )
+          ORDER BY project.created_at DESC NULLS LAST,version.version_number DESC,version.created_at DESC
+          LIMIT 500`,
+        [session.userId],
+      );
+      const projects = new Map<string, any>();
+      for (const row of result.rows) {
+        let project = projects.get(row.project_id);
+        if (!project) {
+          project = { id: row.project_id, name: row.project_name, projectType: row.project_type || null, canEdit: !!row.can_edit, versions: [] };
+          projects.set(row.project_id, project);
+        }
+        project.versions.push({
+          id: row.version_id,
+          label: row.version_label || `V${row.version_number}`,
+          number: Number(row.version_number || 0),
+          status: row.version_status,
+          createdAt: row.created_at,
+        });
       }
-      project.versions.push({
-        id: row.version_id,
-        label: row.version_label || `V${row.version_number}`,
-        number: Number(row.version_number || 0),
-        status: row.version_status,
-        createdAt: row.created_at,
-      });
+      res.json({ projects: Array.from(projects.values()).slice(0, 100) });
+    } catch (error) {
+      console.error("[video-nle] project picker failed", error);
+      if (!res.headersSent) res.status(500).json({ error: "project_list_failed" });
     }
-    res.json({ projects: Array.from(projects.values()).slice(0, 100) });
   });
 
   app.get("/api/projects/:projectId/video-collaboration", async (req, res) => {
