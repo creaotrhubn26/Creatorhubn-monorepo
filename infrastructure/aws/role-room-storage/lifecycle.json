@@ -1,0 +1,31 @@
+{
+  "Rules": [
+    {
+      "ID": "AbortIncompleteMultipartUploads",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    },
+    {
+      "ID": "ExpireTemporaryUploads",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "temporary/" },
+      "Expiration": { "Days": 1 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 1 }
+    },
+    {
+      "ID": "ExpireDataExports",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "exports/" },
+      "Expiration": { "Days": 7 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 7 }
+    },
+    {
+      "ID": "ExpireQuarantinedUploads",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "quarantine/" },
+      "Expiration": { "Days": 14 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 14 }
+    }
+  ]
+}

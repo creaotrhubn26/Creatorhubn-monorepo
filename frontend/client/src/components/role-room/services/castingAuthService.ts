@@ -95,6 +95,13 @@ export const castingAuthService = {
            await this.hasPermission(projectId, 'canEditProduction', userId);
   },
 
+  async canManageContinuity(projectId: string, userId?: string): Promise<boolean> {
+    const userRole = await this.getUserRole(projectId, userId);
+    if (!userRole) return false;
+    return userRole.role === 'script_supervisor'
+      || userRole.permissions?.canManageContinuity === true;
+  },
+
   /**
    * Check if user can edit shot lists
    */
@@ -308,6 +315,25 @@ export const castingAuthService = {
           canEditCasting: false,
           canEditProduction: false,
           canCoordinateProduction: true,
+          canEditShots: false,
+          canEditShotLists: false,
+          canManageCrew: false,
+          canManageLocations: false,
+          canApprove: false,
+          canEditScript: false,
+          canLockScript: false,
+          canRunTableRead: false,
+          canComment: true,
+          canRequestChanges: false,
+          canViewEconomy: false,
+        };
+      case 'script_supervisor':
+        return {
+          canViewAll: true,
+          canEditCasting: false,
+          canEditProduction: false,
+          canCoordinateProduction: false,
+          canManageContinuity: true,
           canEditShots: false,
           canEditShotLists: false,
           canManageCrew: false,

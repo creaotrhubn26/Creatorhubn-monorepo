@@ -52,6 +52,7 @@ describe('productionRoleCatalog', () => {
     expect(getProductionWorkspaceForRole('director')).toBe('director');
     expect(getProductionWorkspaceForRole('director_of_photography')).toBe('cinematography');
     expect(getProductionWorkspaceForRole('production_coordinator')).toBe('production_coordination');
+    expect(getProductionWorkspaceForRole('script_supervisor')).toBe('continuity');
     expect(getProductionRoleDefinition('DoP')?.reportsTo).toBe('director');
     expect(PRODUCTION_WORKSPACE_DELIVERY_ORDER.slice(0, 2)).toEqual([
       'director',
