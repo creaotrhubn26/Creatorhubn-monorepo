@@ -1,4 +1,4 @@
--- 0586_leadgrid_product_onboarding_scope.sql
+-- 0587_leadgrid_product_onboarding_scope.sql
 --
 -- The legacy tour stored one row per user and described an obsolete customer
 -- portal/API workflow. Product onboarding is now isolated by the same tenant,

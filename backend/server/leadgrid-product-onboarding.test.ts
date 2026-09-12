@@ -213,7 +213,7 @@ describe("Leadgrid product onboarding", () => {
 
   it("declares the complete composite scope and project foreign key in migration 0586", () => {
     const migration = readFileSync(
-      new URL("../migrations/0586_leadgrid_product_onboarding_scope.sql", import.meta.url),
+      new URL("../migrations/0587_leadgrid_product_onboarding_scope.sql", import.meta.url),
       "utf8",
     );
     expect(migration).toContain(
