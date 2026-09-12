@@ -15,7 +15,7 @@ on:
       - 'backend/server/casting-project-ownership.test.ts'
       - 'backend/migrations/0583_role_room_call_sheet_reminders.sql'
       - 'backend/migrations/0584_role_room_call_sheet_revisions.sql'
-      - 'backend/migrations/0585_role_room_production_management.sql'
+      - 'backend/migrations/0586_role_room_production_management.sql'
       - 'backend/migrations/role-room-schema.ts'
       - 'scripts/role-room-*-live-e2e.mjs'
       - 'scripts/role-room-live-smoke.mjs'
