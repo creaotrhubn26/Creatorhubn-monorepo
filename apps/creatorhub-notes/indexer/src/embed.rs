@@ -40,14 +40,31 @@ pub fn est_tokens(s: &str) -> usize {
 }
 
 pub fn batches(texts: &[String]) -> Vec<Range<usize>> {
+    batches_med(texts, MAX_TEXTS_PER_REQUEST, MAX_TOKENS_PER_REQUEST)
+}
+
+/// Deler i sammenhengende pakker som holder seg under begge grensene.
+///
+/// Grensene er argumenter fordi de er egenskaper ved mottakeren, ikke ved
+/// oppdelingen: Voyage tåler tusen tekster og 120 000 tokener, en modell bak
+/// en kommandolinje tåler noe ganske annet. Formen er den samme.
+///
+/// Et enkelt element større enn tokenbudsjettet havner alene i sin egen pakke
+/// i stedet for å blokkere alt bak seg.
+pub fn batches_med(
+    texts: &[String],
+    maks_antall: usize,
+    maks_tokener: usize,
+) -> Vec<Range<usize>> {
+    let maks_antall = maks_antall.max(1);
     let mut out = Vec::new();
     let mut start = 0usize;
     while start < texts.len() {
         let mut end = start;
         let mut tokens = 0usize;
-        while end < texts.len() && end - start < MAX_TEXTS_PER_REQUEST {
+        while end < texts.len() && end - start < maks_antall {
             let t = est_tokens(&texts[end]);
-            if end > start && tokens + t > MAX_TOKENS_PER_REQUEST {
+            if end > start && tokens + t > maks_tokener {
                 break;
             }
             tokens += t;
