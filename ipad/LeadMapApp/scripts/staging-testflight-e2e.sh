@@ -529,13 +529,29 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
       echo "Resultatpakken finnes allerede: $result_bundle" >&2
       exit 9
     fi
-    xcodebuild test-without-building -quiet \
+    if xcodebuild test-without-building -quiet \
       -xctestrun "$test_xctestrun" \
       -destination "$simulator_destination" \
       -resultBundlePath "$result_bundle" \
-      "${simulator_tests[@]}"
+      "${simulator_tests[@]}"; then
+      simulator_test_status=0
+    else
+      simulator_test_status=$?
+    fi
 
     test_summary="$(xcrun xcresulttool get test-results summary --path "$result_bundle")"
+    if [[ "$simulator_test_status" -ne 0 ]]; then
+      echo "STAGING_E2E_SIMULATOR_SUMMARY=$test_summary" >&2
+      echo "STAGING_E2E_SIMULATOR_FAILURES_BEGIN" >&2
+      xcrun xcresulttool get test-results tests --path "$result_bundle" | jq -r '
+        .. | objects |
+        select(.nodeType? == "Test Case" and .result? == "Failed") |
+        "TEST: \(.name)\n" +
+        ([.children[]? | select(.nodeType? == "Failure Message") | .name] | join("\n"))
+      ' >&2 || true
+      echo "STAGING_E2E_SIMULATOR_FAILURES_END" >&2
+      exit "$simulator_test_status"
+    fi
     expected_tests="${#simulator_tests[@]}"
     jq -e --argjson expected "$expected_tests" '
       .result == "Passed" and
