@@ -1,4 +1,4 @@
-# Creatorhub Pro Tools Companion
+# CreatorHub Pro Tools Companion 0.3
 
 Native macOS/Windows-companion (Tauri 2) som kjører ved siden av **Pro Tools** og
 synker arbeidet inn i den koblede EaseVerse-låtens **Sound Room** i CreatorHub:
@@ -10,6 +10,12 @@ synker arbeidet inn i den koblede EaseVerse-låtens **Sound Room** i CreatorHub:
 - **Keeper/reference** → sikker lokal staging og import på nytt lydspor
 - **Export til review** → 24-bit WAV i den valgte `Bounced Files`-mappa
 - **Pro Tools Intro-preflight** → spor-/routinggrenser og konkrete stem-tiltak
+- **Review Console** → revisjonsbrief, oppgaver, sign-off, A/B-status og neste uløste kommentar i samme vindu som DAW-arbeidet
+- **Ett trykk til review** → snapshot, `ExportMix`, EBU R128/true-peak-QC, opplasting og ny Sound Room-versjon
+- **Session Snapshot / Recall** → versjonskoblet spor-, playlist-, routing- og eksportkildetilstand; recall forhåndsviser og gjenoppretter mute/solo/aktiv/synlig/mappe-status etter et automatisk recovery-snapshot
+- **Leveransefabrikk** → eksplisitte master/instrumental/acapella/clean/TV-busser eller alle oppdagede stems; aldri skjult master-fallback
+- **Intro-sikker kopi** → `SaveSessionAs` før overskytende spor settes inaktive; originalsesjonen forblir urørt
+- **Bakgrunnsdrift** → systemstatusfelt, valgfri oppstart ved innlogging, offline feedback-cache og diagnosepakke uten tokens
 
 ## PTSL og robust filmodus
 
@@ -19,6 +25,10 @@ rammeverk ligger aldri i dette repoet. Lokalt forventes klienten her:
 
 - macOS/Linux: `~/.creatorhub-protools-companion/ptsl/ptslcmd`
 - Windows: `%USERPROFILE%\.creatorhub-protools-companion\ptsl\ptslcmd.exe`
+
+På utviklermaskiner oppdages også en bygget `ptslcmd` under
+`~/Downloads/PTSL_SDK_CPP.*/install/*/Release/ptslcmd/`. Dette er kun lokal
+oppdagelse; Avid-SDK-en blir aldri pakket inn i Companion.
 
 Alternativt kan `CREATORHUB_PTSLCMD` peke til en lisensiert lokal build.
 
@@ -31,8 +41,26 @@ Companionen overvåker den eksporterte fila. Hver gang du re-eksporterer (eller
 lagrer over den), synkes markørene på nytt. Bounce-mappa overvåkes separat for
 nye lydfiler.
 
-Watcher-køen er atomisk, fortsetter etter omstart og bruker stabil
+Watcher-køen er atomisk, fortsetter etter app-/maskinomstart og bruker stabil
 filfingerprint/idempotens slik at offline arbeid ikke dupliseres.
+
+PTSL-tilstanden observeres adaptivt hvert 12. sekund og et nytt snapshot lagres
+bare når den kanoniske tilstanden endrer fingerprint. Avids `ptslcmd` åpner én
+tilkobling per kjøring; ekte, vedvarende `PollEvents` krever derfor en fremtidig
+oppdatering av den lisensierte lokale helperen. Companion hevder ikke native
+event-stream når den kjører denne adaptive modusen.
+
+## AAX Review Console-grense
+
+`apps/creatorhub-protools-aax/` inneholder en kompilert og testet C++17-adapter,
+protokollskjema og kontrakttest for en tynn AAX-visning. Den kobler bare til
+`127.0.0.1:31417`, bruker en separat 256-bit hemmelighet fra macOS Keychain eller
+Windows Credential Manager og får aldri CreatorHub device-tokenet.
+
+En distribuerbar `.aaxplugin` er med vilje ikke generert: Avids lisensierte AAX
+SDK, AAX-wrapper/signering og iLok-autorisasjon må legges til i en lukket
+Avid-releasejobb. Adapteren er den ferdige, leverandørnøytrale grensen denne
+wrapperen skal kalle fra en worker-tråd, aldri fra audio-tråden.
 
 ## Slik kobler du til
 
@@ -73,6 +101,9 @@ alle støttede installere er bygget og kontrollert:
 - **Windows install-smoke:** MSI pakkes ut og kontrolleres; NSIS installeres,
   appen startes og avinstalleres på den disposable Windows-runneren.
 - **Integritet:** `SHA256SUMS.txt` publiseres sammen med installerne.
+- **Automatiske oppdateringer:** app-/installerarkiv signeres med Companionens
+  egen Tauri/minisign-nøkkel og beskrives i `protools-companion-latest.json` for
+  `darwin-aarch64`, `darwin-x86_64` og `windows-x86_64`.
 
 Windows-releasen feiler lukket dersom app-binæren, EXE-installerens eller MSI-ens
 Authenticode-signatur/tidsstempel ikke er gyldig. Signering bruker GitHub OIDC;
@@ -81,6 +112,8 @@ ingen privat kode-signeringnøkkel lagres i repoet eller på runneren.
 Følgende GitHub-konfigurasjon må finnes før en release-tag opprettes:
 
 - Secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
+- Updater-secrets: `TAURI_SIGNING_PRIVATE_KEY_PROTOOLS`,
+  `TAURI_SIGNING_PRIVATE_KEY_PROTOOLS_PASSWORD`
 - Variables: `AZURE_ARTIFACT_SIGNING_ENDPOINT`,
   `AZURE_ARTIFACT_SIGNING_RESOURCE_GROUP`, `AZURE_ARTIFACT_SIGNING_ACCOUNT`,
   `AZURE_ARTIFACT_SIGNING_PROFILE`
@@ -108,9 +141,15 @@ og `src-tauri/Cargo.toml`; `package-lock.json` og `Cargo.lock` skal være commit
 | `src-tauri/src/intro_preflight.rs` | Pro Tools Intro-grenser og stem/flatten-anbefalinger |
 | `src-tauri/src/watcher.rs` | `notify`-fil-overvåking + debounce/stabilitets-sjekk |
 | `src-tauri/src/config.rs` | Persistert config i `~/.creatorhub-protools-companion/` |
-| `src/App.tsx` | Paring → sesjons-oppsett → dashboard + aktivitetslogg |
+| `src-tauri/src/local_ipc.rs` | Autentisert og størrelsesbegrenset AAX ↔ Companion-loopback |
+| `src/ReviewConsole.tsx` | Sound Room-feedback, markører, oppgaver, sign-off og beslutninger |
+| `src/ProducerTools.tsx` | Ett-trykks-review, snapshot, Intro-kopi og leveransefabrikk |
+| `src/OperationsPanel.tsx` | Autostart, signert updater og sanert diagnostikk |
+| `src/App.tsx` | Paring → sesjons-oppsett → samlet produsentarbeidsflate |
 
 Backend: `backend/server/protools-companion-routes.ts` (paring, sesjoner, markører,
-metadata, bounce-presign/complete). Companion-auth gjenbruker `desktop_device_tokens`.
+snapshot, delivery jobs/manifester, feedback og bounce-presign/complete).
+Companion-auth gjenbruker `desktop_device_tokens`; snapshots, bounces og jobs
+valideres alltid mot samme bruker og Companion-session.
 
 > Ikonene er midlertidig kopiert fra One Desk — bytt til egne før release.

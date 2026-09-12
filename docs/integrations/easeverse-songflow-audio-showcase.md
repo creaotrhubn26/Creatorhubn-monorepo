@@ -35,9 +35,15 @@ Den kanoniske flyten er:
 | Sign-off og levering | ✅ | Rollebasert mix/master/delivery-sign-off og atomiske, nummererte leveringsmanifest gjør beslutning og overlevering eksplisitt. |
 | Auth-recovery | ✅ | 401 og auth-relaterte 403-responser ugyldiggjør den lokale CreatorHub-sesjonen og viser felles innlogging på nytt; rollebaserte 403-responser logger ikke brukeren ut. |
 | Companion-feedback | ✅ | Companion viser kommentarer, oppgaver, revisjonsbrief, beslutningsrom og sign-off, kan locate/svare/løse, og reagerer på den brukeravgrensede WebSocket-strømmen; 60 sekunders polling er kun fallback. |
+| DAW Review Console | ✅ / SDK-grense | Companion 0.3 har samlet Review Console og en autentisert loopback-protokoll/C++17-adapter for en tynn AAX-visning. Selve `.aaxplugin`-wrapperen krever fortsatt Avid AAX SDK, Avid-signering og iLok. |
+| Ett-trykks-review og QC | ✅ | Companion tar pre-publish snapshot, eksporterer valgt PTSL-kilde, analyserer faktisk WAV med EBU R128/true peak/clipping/stillhet og publiserer deretter ny review-versjon. |
+| Session Snapshot / Recall | ✅ | Fingerprintet spor-, playlist-, routing- og bouncekildetilstand lagres tenant-/session-scopet og kobles til review-versjonen. Recall avviser feil sesjon, forhåndsviser endringer og gjenoppretter mute/solo/aktiv/synlig/mappe-status etter et automatisk recovery-snapshot; playlistmål, pluginparametre, automasjon og routing rapporteres eksplisitt som dokumentert, men ikke automatisk gjenopprettet. |
+| Stem-/leveransefabrikk | ✅ | Label/sync/custom krever eksplisitt buss per fil; stem-profil bruker alle oppdagede eksportkilder. Bare QC-godkjente, session-eide bounces kan bli Sound Room-manifest. |
+| Intro-sikker kopi | ✅ | Companion bruker `SaveSessionAs` før overskytende Intro-spor settes inaktive. Originalsesjonen endres ikke. |
+| Desktop hardening | ✅ lokalt | Device-token og separat AAX-IPC-hemmelighet ligger i OS-nøkkelring, CSP er låst, appen har tray/autostart, offline feedback-cache, sanitert diagnostikk og Companion-spesifikk signert updater. |
 | Realtime-sikkerhet | ✅ | Web-klienten henter en tilfeldig 30-sekunders engangsticket før WebSocket-oppkobling; OAuth-token legges ikke i URL-en. |
 | Legacy EaseVerse-paring | ✅ | Gamle Clerk-/lokale Companion-kort er fjernet fra aktiv EaseVerse-UI. Paring administreres i Workspace/Sound Room. |
-| Desktop-distribusjon | 🟡 | macOS-DMG-er for v0.1.3 er Developer ID-signert/notarisert i et GitHub-utkast. Windows x64 bygget, men publisering stoppet før Authenticode fordi den konfigurerte Public Trust-profilen ennå ikke finnes i Azure. Releasen forblir utkast til profilen er opprettet og Windows-smoken passerer. |
+| Desktop-distribusjon | 🟡 | Companion 0.3 er implementert og lokalt bygget/testet, men ikke publisert ennå. Forrige v0.2-utkast har Developer ID-signerte/notariserte macOS-assets; Windows/publisering er fortsatt fail-closed til den konfigurerte Azure Public Trust-profilen finnes og native smoke passerer. |
 
 ## 3. Systemkart og ansvar
 
@@ -95,6 +101,16 @@ PTSL-forbindelse per operasjon og støtter:
 - opprettelse av en minnelokasjon/markør fra kommentaren
 - sikker nedlasting og import av keeper/reference på nytt lydspor
 - 24-bit WAV-export av aktiv mix-output til valgt `Bounced Files`-mappe
+- oppdagelse av fysiske utganger og busser før eksplisitt kildevalg
+- fingerprintet Session Snapshot med spor, playlists og output-routing, pluss sikker, spor-ID-basert recall av støttede track states
+- sekvensiert multi-`ExportMix` for QC-sikrede leveranser
+- `SaveSessionAs`-basert, ikke-destruktiv Intro-kopi
+
+`ptslcmd` åpner en ny forbindelse per operasjon. Companion 0.3 oppnår derfor
+event-awareness med 12-sekunders PTSL-probe og snapshot-diff, og skriver bare
+ved endret fingerprint. Den rapporterer ikke dette som Avid `PollEvents`.
+Vedvarende native event-stream krever en ny versjon av den lisensierte lokale
+helperen med nøyaktig én aktiv `PollEvents` per PTSL-session.
 
 SDK, generert Avid-klient og rammeverk skal ikke committes eller publiseres fra
 repoet. Lokalt ligger den bygde CLI-broen under
@@ -111,6 +127,11 @@ og må bygges med Windows-utgaven av samme lisensierte SDK.
 - `GET /api/protools/sessions/:id/commands`
 - `POST /api/protools/sessions/:id/commands/:commandId/complete`
 - `POST /api/protools/sessions/:id/feedback/comments/:commentId`
+- `POST /api/protools/sessions/:id/snapshots`
+- `GET /api/protools/sessions/:id/snapshots`
+- `POST /api/protools/sessions/:id/delivery-jobs`
+- `GET /api/protools/sessions/:id/delivery-jobs`
+- `PATCH /api/protools/sessions/:id/delivery-jobs/:jobId`
 - `GET /api/protools/sessions/:id/artifacts`
 - `GET /api/protools/sessions/:id/artifacts/:artifactId/file`
 
@@ -178,6 +199,12 @@ Migrasjon `0589_sound_room_producer_operating_system.sql` legger til:
 - EP-/albumsamlinger med eksplisitt sporrekkefølge
 - atomiske leveringsmanifest med metadata-identitetskontroll
 
+Migrasjon `0590_protools_producer_suite.sql` legger til:
+
+- dedupliserte og versjonskoblede Pro Tools-session snapshots
+- varig status/progress/QC for lokale delivery jobs
+- snapshot-, delivery job-, leveransetype- og QC-linje på hver Companion-bounce
+
 EaseVerse-migrasjon `0002_creatorhub_sync_outbox.sql` etablerer varig keeper-levering tilbake til CreatorHub. Collaboration-lageret lagrer prosjektkontekst, canonical Pro Tools snapshot, referansemiks og lyrics-revisjon.
 
 ## 8. Objektlagring og tenant-hierarki
@@ -204,6 +231,7 @@ Før produksjonsrelease skal følgende passere:
 | CreatorHub backend | `npm run build` | Passerer |
 | CreatorHub web | `npm run build` | Passerer |
 | Companion Rust | `cargo test` | Alle passerer |
+| AAX-adapter | CMake build + CTest på host-nøytral C++17-bro | Inputvalidering og autentisert loopback-kontrakt passerer uten å distribuere Avid SDK |
 | Companion + ekte Pro Tools | lisensiert lokal PTSL live-test | locate, marker, import og 24-bit WAV-export bekreftes av Pro Tools |
 | Companion webview | `npm run typecheck && npm run build` | Passerer |
 | Companion Windows | native Windows build → Artifact Signing → install/start/uninstall-smoke | App-EXE, NSIS EXE og MSI har samme gyldige publisher; installert app starter |
@@ -239,6 +267,9 @@ Før produksjonsrelease skal følgende passere:
   validerer og sjekker alltid ut den eksplisitte immutable release-taggen.
 - Azure Artifact Signing bruker en ferdig identitetsvalidert Public Trust-profil.
 - Repository secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`.
+- Updater-secrets: `TAURI_SIGNING_PRIVATE_KEY_PROTOOLS` og
+  `TAURI_SIGNING_PRIVATE_KEY_PROTOOLS_PASSWORD`; offentlig nøkkel er pinnet i
+  appkonfigurasjonen og er separat fra andre CreatorHub-apper.
 - Repository variables: `AZURE_ARTIFACT_SIGNING_ENDPOINT`,
   `AZURE_ARTIFACT_SIGNING_RESOURCE_GROUP`, `AZURE_ARTIFACT_SIGNING_ACCOUNT`,
   `AZURE_ARTIFACT_SIGNING_PROFILE`.
@@ -246,6 +277,9 @@ Før produksjonsrelease skal følgende passere:
   avviser releasen dersom Authenticode eller RFC3161-tidsstempelet ikke er gyldig.
 - Azure-profilen kontrolleres etter OIDC-innlogging og før native Windows-bygg,
   slik at manglende/ikke-aktiv profil feiler tidlig.
+- Releasejobben publiserer `protools-companion-latest.json` først etter at begge
+  macOS updater-arkivene og Windows NSIS-updateren er plattformsignert,
+  kryptografisk signert og verifisert. Appen godtar ingen usignert update.
 
 ### Verifisert live-flyt 11. september 2026
 

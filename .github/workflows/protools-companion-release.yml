@@ -15,7 +15,7 @@ on:
       tag:
         description: 'Release-tag (f.eks. protools-companion-v0.1.3)'
         required: true
-        default: 'protools-companion-v0.2.0'
+        default: 'protools-companion-v0.3.0'
 
 permissions:
   contents: write
@@ -103,6 +103,8 @@ jobs:
           - følger take → mix → review → keeper/master i en kanonisk artefaktlinje
           - sjekker Pro Tools Intro-grenser før handoff
           - beholder Session Info- og bounce-watchere som robust offline fallback
+          - tilbyr Session Snapshot/Recall, QC-sikret ett-trykks-review og eksplisitt stem-/leveransefabrikk
+          - kjører i menylinjen/systemstatusfeltet, kan starte ved innlogging og har signerte automatiske oppdateringer
           - **macOS:** Developer ID-signert og Apple-notarisert for Apple Silicon og Intel
           - **Windows x64:** Authenticode-signert EXE-installer og MSI for administrert utrulling
 
@@ -237,6 +239,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PROTOOLS }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PROTOOLS_PASSWORD }}
         with:
           projectPath: apps/creatorhub-protools-companion
           releaseId: ${{ needs.prepare.outputs.release_id }}
@@ -305,6 +309,33 @@ jobs:
             "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$asset_name")
           jq -e --arg name "$asset_name" '.name == $name and .state == "uploaded"' \
             <<<"$upload_response" >/dev/null
+
+          updater_archive=$(find "$bundle_root" -type f -name '*.app.tar.gz' -print -quit)
+          if [[ -z "$updater_archive" || ! -s "$updater_archive" || ! -s "$updater_archive.sig" ]]; then
+            echo "::error::Signert Tauri updater-arkiv mangler for $TARGET"
+            exit 1
+          fi
+          updater_name="CreatorHub-ProTools-Companion_${RELEASE_VERSION}_${release_arch}.app.tar.gz"
+          updater_copy="$RUNNER_TEMP/$updater_name"
+          updater_signature="$updater_copy.sig"
+          cp "$updater_archive" "$updater_copy"
+          cp "$updater_archive.sig" "$updater_signature"
+          for updater_asset in "$updater_copy" "$updater_signature"; do
+            updater_asset_name=$(basename "$updater_asset")
+            gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+              --jq ".[] | select(.name == \"$updater_asset_name\") | .id" | while read -r asset_id; do
+                [[ -n "$asset_id" ]] && gh api --method DELETE \
+                  "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+              done
+            curl --fail-with-body --silent --show-error \
+              --request POST \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "Accept: application/vnd.github+json" \
+              --header "Content-Type: application/octet-stream" \
+              --data-binary "@$updater_asset" \
+              "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$updater_asset_name" \
+              | jq -e --arg name "$updater_asset_name" '.name == $name and .state == "uploaded"' >/dev/null
+          done
 
       - name: Remove temporary Apple signing material
         if: always() && matrix.family == 'macos'
@@ -451,6 +482,9 @@ jobs:
 
       - name: Bundle Windows MSI and NSIS installers
         working-directory: apps/creatorhub-protools-companion
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PROTOOLS }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PROTOOLS_PASSWORD }}
         run: npm run tauri -- bundle --bundles msi nsis --ci
 
       - name: Authenticode-sign Windows installers
@@ -467,6 +501,29 @@ jobs:
           timestamp-digest: SHA256
           description: CreatorHub Pro Tools Companion
           description-url: https://www.creatorhubn.com
+
+      - name: Package and sign Windows updater
+        working-directory: apps/creatorhub-protools-companion
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PROTOOLS }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PROTOOLS_PASSWORD }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY) -or [string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+            throw 'Dedicated Pro Tools Companion updater signing secrets are missing'
+          }
+          $bundleRoot = Resolve-Path 'src-tauri/target/release/bundle'
+          $nsis = @(Get-ChildItem -Path $bundleRoot -Recurse -File -Filter '*-setup.exe')
+          if ($nsis.Count -ne 1 -or (Get-AuthenticodeSignature $nsis[0].FullName).Status -ne 'Valid') {
+            throw 'A single Authenticode-valid NSIS installer is required before updater packaging'
+          }
+          $updaterZip = Join-Path $env:RUNNER_TEMP "CreatorHub-ProTools-Companion_$($env:RELEASE_VERSION)_x64-setup.exe.zip"
+          Compress-Archive -LiteralPath $nsis[0].FullName -DestinationPath $updaterZip -CompressionLevel Optimal -Force
+          npm run tauri -- signer sign $updaterZip
+          if (-not (Test-Path "$updaterZip.sig")) { throw 'Tauri updater signature was not generated' }
+          "WINDOWS_UPDATER_ZIP=$updaterZip" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Smoke-test Windows installers and installed application
         working-directory: apps/creatorhub-protools-companion
@@ -579,7 +636,9 @@ jobs:
 
           $releaseAssets = @(
             @{ Path = $exe[0].FullName; Name = "CreatorHub-ProTools-Companion_$($env:RELEASE_VERSION)_x64_signed.exe" },
-            @{ Path = $msi[0].FullName; Name = "CreatorHub-ProTools-Companion_$($env:RELEASE_VERSION)_x64_signed.msi" }
+            @{ Path = $msi[0].FullName; Name = "CreatorHub-ProTools-Companion_$($env:RELEASE_VERSION)_x64_signed.msi" },
+            @{ Path = $env:WINDOWS_UPDATER_ZIP; Name = "CreatorHub-ProTools-Companion_$($env:RELEASE_VERSION)_x64-setup.exe.zip" },
+            @{ Path = "$env:WINDOWS_UPDATER_ZIP.sig"; Name = "CreatorHub-ProTools-Companion_$($env:RELEASE_VERSION)_x64-setup.exe.zip.sig" }
           )
           $existingAssets = @(gh api "repos/$env:GITHUB_REPOSITORY/releases/$env:RELEASE_ID/assets?per_page=100" | ConvertFrom-Json)
           foreach ($asset in $releaseAssets) {
@@ -607,6 +666,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
       RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - name: Download draft assets
         shell: bash
@@ -651,6 +711,51 @@ jobs:
           require_one '*x64*signed-notarized*.dmg' 'Intel DMG'
           require_one '*x64_signed.msi' 'Authenticode-signert Windows MSI'
           require_one '*x64_signed.exe' 'Authenticode-signert Windows EXE'
+          require_one "CreatorHub-ProTools-Companion_${RELEASE_VERSION}_aarch64.app.tar.gz" 'signert Apple Silicon updater'
+          require_one "CreatorHub-ProTools-Companion_${RELEASE_VERSION}_aarch64.app.tar.gz.sig" 'Apple Silicon updater-signatur'
+          require_one "CreatorHub-ProTools-Companion_${RELEASE_VERSION}_x64.app.tar.gz" 'signert Intel updater'
+          require_one "CreatorHub-ProTools-Companion_${RELEASE_VERSION}_x64.app.tar.gz.sig" 'Intel updater-signatur'
+          require_one "CreatorHub-ProTools-Companion_${RELEASE_VERSION}_x64-setup.exe.zip" 'signert Windows updater'
+          require_one "CreatorHub-ProTools-Companion_${RELEASE_VERSION}_x64-setup.exe.zip.sig" 'Windows updater-signatur'
+
+      - name: Generate and upload updater manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mac_arm="CreatorHub-ProTools-Companion_${RELEASE_VERSION}_aarch64.app.tar.gz"
+          mac_intel="CreatorHub-ProTools-Companion_${RELEASE_VERSION}_x64.app.tar.gz"
+          windows="CreatorHub-ProTools-Companion_${RELEASE_VERSION}_x64-setup.exe.zip"
+          release_base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}"
+          jq -n \
+            --arg version "$RELEASE_VERSION" \
+            --arg pub_date "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg notes "CreatorHub Pro Tools Companion ${RELEASE_VERSION}" \
+            --arg mac_arm_url "$release_base/$mac_arm" \
+            --arg mac_arm_sig "$(<"artifacts/$mac_arm.sig")" \
+            --arg mac_intel_url "$release_base/$mac_intel" \
+            --arg mac_intel_sig "$(<"artifacts/$mac_intel.sig")" \
+            --arg windows_url "$release_base/$windows" \
+            --arg windows_sig "$(<"artifacts/$windows.sig")" \
+            '{version:$version,notes:$notes,pub_date:$pub_date,platforms:{
+              "darwin-aarch64":{signature:$mac_arm_sig,url:$mac_arm_url},
+              "darwin-x86_64":{signature:$mac_intel_sig,url:$mac_intel_url},
+              "windows-x86_64":{signature:$windows_sig,url:$windows_url}
+            }}' > artifacts/protools-companion-latest.json
+          jq -e '.version and (.platforms | length == 3) and (.platforms[] | .signature != "" and (.url | startswith("https://")))' \
+            artifacts/protools-companion-latest.json >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+            --jq '.[] | select(.name == "protools-companion-latest.json") | .id' | while read -r asset_id; do
+              [[ -n "$asset_id" ]] && gh api --method DELETE \
+                "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+            done
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "Content-Type: application/json" \
+            --data-binary '@artifacts/protools-companion-latest.json' \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=protools-companion-latest.json" \
+            | jq -e '.name == "protools-companion-latest.json" and .state == "uploaded"' >/dev/null
 
       - name: Generate and upload checksums
         shell: bash

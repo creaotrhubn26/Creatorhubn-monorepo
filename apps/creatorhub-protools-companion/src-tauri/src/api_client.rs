@@ -161,6 +161,147 @@ pub async fn post_metadata(
     Ok(())
 }
 
+pub async fn create_snapshot(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+    snapshot: Value,
+    reason: &str,
+) -> Result<Value, String> {
+    let resp = client()
+        .post(format!(
+            "{}/api/protools/sessions/{}/snapshots",
+            base(api_base),
+            session_id
+        ))
+        .bearer_auth(token)
+        .json(&json!({ "snapshot": snapshot, "reason": reason }))
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    let value: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))?;
+    Ok(value.get("snapshot").cloned().unwrap_or(value))
+}
+
+pub async fn list_snapshots(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+) -> Result<Value, String> {
+    let resp = client()
+        .get(format!(
+            "{}/api/protools/sessions/{}/snapshots",
+            base(api_base),
+            session_id
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    let value: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))?;
+    Ok(value
+        .get("snapshots")
+        .cloned()
+        .unwrap_or_else(|| Value::Array(vec![])))
+}
+
+pub async fn create_delivery_job(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+    preset: &str,
+    outputs: Value,
+) -> Result<Value, String> {
+    let resp = client()
+        .post(format!(
+            "{}/api/protools/sessions/{}/delivery-jobs",
+            base(api_base),
+            session_id
+        ))
+        .bearer_auth(token)
+        .json(&json!({ "preset": preset, "outputs": outputs }))
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    let value: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))?;
+    Ok(value.get("job").cloned().unwrap_or(value))
+}
+
+pub async fn update_delivery_job(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+    job_id: &str,
+    payload: Value,
+) -> Result<Value, String> {
+    let resp = client()
+        .patch(format!(
+            "{}/api/protools/sessions/{}/delivery-jobs/{}",
+            base(api_base),
+            session_id,
+            job_id
+        ))
+        .bearer_auth(token)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    let value: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))?;
+    Ok(value.get("job").cloned().unwrap_or(value))
+}
+
+pub async fn list_delivery_jobs(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+) -> Result<Value, String> {
+    let resp = client()
+        .get(format!(
+            "{}/api/protools/sessions/{}/delivery-jobs",
+            base(api_base),
+            session_id
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    let value: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Ugyldig svar: {}", e))?;
+    Ok(value
+        .get("jobs")
+        .cloned()
+        .unwrap_or_else(|| Value::Array(vec![])))
+}
+
 /// POST /api/protools/sessions/:id/bounce/presign → (upload_url, file_url, storage_key)
 pub async fn presign_bounce(
     api_base: &str,
