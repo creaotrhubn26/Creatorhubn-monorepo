@@ -251,6 +251,19 @@ final class BoardState: ObservableObject {
         patchFrame(frameId: frame.id, fields: fields)
     }
 
+    /// Awaitable variant used by proposal/apply and AI version workflows.
+    /// It keeps the existing lossless scene patch path and only reports
+    /// success after the server state has been reloaded.
+    func patchFrameNow(frameId: String, fields: [String: any Sendable]) async throws {
+        guard let scene else { throw SyncError.malformed("aktiv scene") }
+        syncStatus = "…"
+        try await RoleRoomAPIClient.shared.saveFramePatch(
+            manuscriptId: manuscript.id, sceneId: scene.id,
+            frameId: frameId, fields: fields)
+        await reload()
+        syncStatus = "Synket ✓"
+    }
+
     func patchFrame(frameId: String, fields: [String: any Sendable]) {
         guard let scene else { return }
         syncStatus = "…"
@@ -321,6 +334,7 @@ struct NativeBoardView: View {
     @State private var showScript = false
     @State private var showReview = false
     @State private var showSkills = false
+    @State private var showAIStudio = false
     @State private var exportPDFURL: URL?
     @State private var boardTool: BoardTool = .draw
     @State private var textPromptShown = false
@@ -1004,6 +1018,8 @@ struct NativeBoardView: View {
                 topTab("Shot List", icon: "list.bullet", active: false) { showShotList = true }
                 topTab("Review", icon: "checkmark.bubble", active: false) { showReview = true }
                 topTab("Skills", icon: "sparkles", active: false) { showSkills = true }
+                topTab("AI Studio", icon: "wand.and.stars", active: false) { showAIStudio = true }
+                    .accessibilityLabel("Åpne AI Studio for aktivt shot")
                 topTab("Animatic", icon: "play.rectangle", active: false) { showAnimatic = true }
             }
             Menu {
@@ -1012,6 +1028,8 @@ struct NativeBoardView: View {
                 Button("Shot List", systemImage: "list.bullet") { showShotList = true }
                 Button("Review", systemImage: "checkmark.bubble") { showReview = true }
                 Button("Skills", systemImage: "sparkles") { showSkills = true }
+                Button("AI Studio", systemImage: "wand.and.stars") { showAIStudio = true }
+                    .accessibilityLabel("Åpne AI Studio for aktivt shot")
                 Button("Animatic", systemImage: "play.rectangle") { showAnimatic = true }
             } label: {
                 Label("Arbeidsflater", systemImage: "square.grid.2x2")
@@ -1337,6 +1355,23 @@ struct NativeBoardView: View {
                     "Prosjekt mangler",
                     systemImage: "rectangle.badge.xmark",
                     description: Text("Koble storyboardet til et Role Room-prosjekt før du kjører skills."))
+            }
+        }
+        .sheet(isPresented: $showAIStudio) {
+            if let projectId = board.projectId,
+               let scene = board.scene,
+               let frame = board.frame {
+                AIStoryboardStudioView(
+                    board: board,
+                    projectId: projectId,
+                    sceneId: scene.id,
+                    frameId: frame.id,
+                    initialPrompt: frame.description)
+            } else {
+                ContentUnavailableView(
+                    "Aktivt shot mangler",
+                    systemImage: "wand.and.stars.inverse",
+                    description: Text("Velg et prosjekt, en scene og et shot før AI Studio åpnes."))
             }
         }
         .fullScreenCover(isPresented: $showReview) {
