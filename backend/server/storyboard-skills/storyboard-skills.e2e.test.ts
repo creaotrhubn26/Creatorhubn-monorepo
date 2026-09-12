@@ -121,7 +121,7 @@ describe('Storyboard skills HTTP workflow', () => {
     const catalog = await request(app)
       .get('/api/role-room/projects/legacy-project-troll/storyboard-skills/catalog')
       .expect(200);
-    expect(catalog.body.data).toHaveLength(7);
+    expect(catalog.body.data).toHaveLength(8);
 
     const generated = await request(app)
       .post('/api/role-room/projects/legacy-project-troll/storyboard-skills/plan_scene_coverage/run')

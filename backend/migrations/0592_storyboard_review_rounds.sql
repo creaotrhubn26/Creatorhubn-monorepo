@@ -139,6 +139,11 @@ CREATE TRIGGER protect_storyboard_review_snapshot_update
 CREATE OR REPLACE FUNCTION protect_storyboard_review_decision()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Direct mutation is forbidden, but a project/manuscript deletion must be
+  -- able to complete its FK cascade (for example account/privacy deletion).
+  IF TG_OP = 'DELETE' AND pg_trigger_depth() > 1 THEN
+    RETURN OLD;
+  END IF;
   RAISE EXCEPTION 'storyboard review decisions are append-only';
 END;
 $$ LANGUAGE plpgsql;

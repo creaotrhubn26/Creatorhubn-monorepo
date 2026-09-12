@@ -49,11 +49,12 @@ function source() {
 
 describe('storyboard review snapshots', () => {
   it('ships tenant-scoped immutable SQL with hashed tokens and append-only decisions', () => {
-    const sql = readFileSync(new URL('../migrations/0590_storyboard_review_rounds.sql', import.meta.url), 'utf8');
+    const sql = readFileSync(new URL('../migrations/0592_storyboard_review_rounds.sql', import.meta.url), 'utf8');
     expect(sql).toContain('FOREIGN KEY (manuscript_id, project_id)');
     expect(sql).toContain('token_hash CHAR(64) NOT NULL UNIQUE');
     expect(sql).toContain('storyboard review snapshots are immutable');
     expect(sql).toContain('storyboard review decisions are append-only');
+    expect(sql).toContain("TG_OP = 'DELETE' AND pg_trigger_depth() > 1");
     expect(sql).not.toMatch(/\btoken\s+(?:TEXT|VARCHAR)/i);
     expect(registerStoryboardReviewRoutes.toString()).toContain('rejectIfRateLimited');
     expect(registerStoryboardReviewRoutes.toString()).toContain('Cache-Control');
