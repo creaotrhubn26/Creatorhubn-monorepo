@@ -357,6 +357,7 @@ jobs:
             fi
 
             app=$(jq -r '.app // ""' <<<"$build_info" 2>/dev/null || true)
+            surface=$(jq -r '.surface // ""' <<<"$build_info" 2>/dev/null || true)
             source=$(jq -r '.source // ""' <<<"$build_info" 2>/dev/null || true)
             published_sha=$(jq -r '.gitSha // ""' <<<"$build_info" 2>/dev/null || true)
             published_branch=$(jq -r '.branch // ""' <<<"$build_info" 2>/dev/null || true)
@@ -364,6 +365,7 @@ jobs:
 
             echo "Netlify publish attempt=$attempt sha=${published_sha:0:8} branch=${published_branch:-<unknown>}"
             if [ "$app" = "creatorhub-frontend" ] && \
+               [ "$surface" = "creatorhub" ] && \
                [ "$source" = "netlify" ] && \
                [ "$published_sha" = "$TARGET_SHA" ] && \
                [ "$published_branch" = "live/creatorhub" ] && \

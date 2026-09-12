@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync, statSync } from 'fs';
 import { Buffer } from 'buffer';
 import { execSync } from 'node:child_process';
+import { resolveCreatorHubBuildSurface } from './client/src/lib/buildSurface';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,9 +47,10 @@ const buildInfoPlugin = (): Plugin => ({
       process.env.BRANCH ||
       process.env.RENDER_GIT_BRANCH ||
       readGitValue('git rev-parse --abbrev-ref HEAD');
+    const siteName = process.env.SITE_NAME || null;
     const buildInfo = {
       app: 'creatorhub-frontend',
-      surface: 'the-role-room',
+      surface: resolveCreatorHubBuildSurface(branch, siteName),
       gitSha,
       shortSha: gitSha ? gitSha.slice(0, 7) : null,
       branch,
@@ -58,7 +60,7 @@ const buildInfoPlugin = (): Plugin => ({
         context: process.env.CONTEXT || null,
         deployId: process.env.DEPLOY_ID || null,
         deployUrl: process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || process.env.URL || null,
-        siteName: process.env.SITE_NAME || null,
+        siteName,
       },
     };
 
