@@ -4,6 +4,7 @@ Leadgrid 2.2 gjør Discovery og oppfølging enklere på iPhone og iPad:
 • De 13 hovedområdene er samlet i tydelige grupper, Agent er synlig uten scrolling, og skjermtittelen beholdes på iPad mini og i Split View.
 • «Hvem vil du finne?» har en enkel standardmodus med tre tydelige steg, mens alle profesjonelle filtre fortsatt finnes i avansertmodus.
 • Skriv inn et domene for å opprette eller gjenbruke kundeprosjektet og få forslag til bransje, kundetyper, geografi og eksklusjoner.
+• Tidum får fire ferdige nasjonale Discovery-profiler for barnevern og avlastning, bofellesskap og miljøarbeid, BPA og kommunale omsorgstjenester.
 • Dentum har fått et komplett oppfølgingsoppsett med sju e-postmaler laget for tannklinikker.
 • Malene tilpasses automatisk valgt klinikk, kontaktperson, område og leadstatus, og kan redigeres før de åpnes i e-postappen.
 • Ny personvernkontroll blokkerer markedsføring til personadresser og uavklarte adresser uten dokumentert grunnlag. «Nei takk» gjelder i hele organisasjonen.
