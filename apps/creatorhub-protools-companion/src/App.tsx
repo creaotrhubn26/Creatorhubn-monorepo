@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
-  Box, Stack, Typography, Button, TextField, MenuItem, Chip, Divider,
-  CircularProgress, IconButton, Tooltip, LinearProgress,
+  Box, Stack, Typography, Button, TextField, MenuItem, Chip, Tabs, Tab,
+  CircularProgress, IconButton, Tooltip, LinearProgress, Alert,
 } from "@mui/material";
 import GraphicEq from "@mui/icons-material/GraphicEq";
 import FolderOpen from "@mui/icons-material/FolderOpen";
@@ -10,12 +10,13 @@ import PlayArrow from "@mui/icons-material/PlayArrow";
 import Stop from "@mui/icons-material/Stop";
 import Sync from "@mui/icons-material/Sync";
 import LinkOff from "@mui/icons-material/LinkOff";
-import ForumOutlined from "@mui/icons-material/ForumOutlined";
-import TaskAlt from "@mui/icons-material/TaskAlt";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import * as api from "./api";
 import type { AppState, TrackInfo, ActivityEntry, FeedbackInbox } from "./api";
+import { ReviewConsole } from "./ReviewConsole";
+import { ProducerTools } from "./ProducerTools";
+import { OperationsPanel } from "./OperationsPanel";
 
 const ORANGE = "#ff8c00";
 
@@ -25,6 +26,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [feedback, setFeedback] = useState<FeedbackInbox | null>(null);
+  const [activeTab, setActiveTab] = useState(0);
 
   // Pairing
   const [code, setCode] = useState("");
@@ -282,6 +284,7 @@ export default function App() {
               {(state.pending_bounces > 0 || state.pending_session_info) && (
                 <Chip size="small" label={`${state.pending_bounces + (state.pending_session_info ? 1 : 0)} i synk-kø`} sx={{ bgcolor: "rgba(63,167,214,0.14)", color: "#3fa7d6" }} />
               )}
+              {state.local_ipc.listening && <Chip size="small" label="AAX Review Console klar" sx={{ bgcolor: "rgba(155,125,226,.15)", color: "#b69dea" }} />}
             </Stack>
             <Row label="Session Info" value={state.session_info_path} />
             <Row label="Bounced Files" value={state.bounce_dir} />
@@ -308,50 +311,17 @@ export default function App() {
         </Panel>
       )}
 
-      {state?.paired && state?.session_id && state.audio_room_id && (
-        <Panel title="Sound Room-feedback">
-          <Stack direction="row" spacing={1} sx={{ mb: 1.5, alignItems: "center" }}>
-            <ForumOutlined sx={{ color: ORANGE, fontSize: 20 }} />
-            <Typography sx={{ fontSize: 13, flex: 1 }}>
-              {feedback?.version ? `${feedback.version.version_label} · ${feedback.project?.status || feedback.version.status}` : "Ingen review-versjon ennå"}
-            </Typography>
-            <Button size="small" onClick={() => void refreshFeedback()} sx={{ color: ORANGE }}>Oppdater</Button>
-          </Stack>
-          {!feedback || (!feedback.comments.length && !feedback.approvals.length && !feedback.tasks.length) ? (
-            <Typography sx={{ fontSize: 12.5, color: "text.secondary" }}>Ingen kommentarer, godkjenninger eller oppgaver ennå.</Typography>
-          ) : (
-            <Stack spacing={1.2}>
-              {feedback.approvals.slice(0, 3).map((approval) => (
-                <FeedbackRow key={approval.id} color="#5fb88a" title={approval.approval_type.replace(/_/g, " ")} body={approval.note || `Fra ${approval.approved_by || "reviewer"}`} />
-              ))}
-              {feedback.tasks.filter((task) => task.status !== "done").slice(0, 5).map((task) => (
-                <FeedbackRow key={task.id} color="#3fa7d6" title={task.status === "in_progress" ? "Pågår" : "Oppgave"} body={task.title} icon={<TaskAlt sx={{ fontSize: 16 }} />} />
-              ))}
-              {feedback.comments.slice(0, 8).map((comment) => (
-                <FeedbackRow key={comment.id} color={comment.is_decision ? "#5fb88a" : ORANGE} title={`${formatTimecode(comment.timecode_seconds)} · ${comment.author || "Reviewer"}`} body={comment.body}
-                  actions={<>
-                    <Button size="small" onClick={() => void api.locateFeedback(comment.timecode_seconds).catch((error) => logLocal("error", `Kunne ikke flytte playhead: ${error}`))} sx={{ color: ORANGE, minWidth: 0, p: 0 }}>Finn i PT</Button>
-                    <Button size="small" disabled={comment.status === "resolved"} onClick={() => void api.resolveFeedback(comment.id).then(refreshFeedback).catch((error) => logLocal("error", `Kunne ikke løse kommentar: ${error}`))} sx={{ color: "#5fb88a", minWidth: 0, p: 0 }}>Løst</Button>
-                    <Button size="small" onClick={() => { const body = window.prompt("Svar i Sound Room"); if (body?.trim()) void api.replyFeedback(comment.id, body.trim()).then(refreshFeedback).catch((error) => logLocal("error", `Svar feilet: ${error}`)); }} sx={{ color: "#3fa7d6", minWidth: 0, p: 0 }}>Svar</Button>
-                  </>} />
-              ))}
-            </Stack>
-          )}
-          {feedback?.brief && (
-            <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 1.5, bgcolor: "rgba(255,140,0,0.07)", border: "1px solid rgba(255,140,0,0.22)" }}>
-              <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: ORANGE }}>{feedback.brief.title}</Typography>
-              <Typography sx={{ fontSize: 11.5, color: "text.secondary", my: 0.5 }}>{feedback.brief.summary}</Typography>
-              {feedback.brief.priorities.slice(0, 5).map((priority, index) => (
-                <Typography key={`${priority.title}-${index}`} sx={{ fontSize: 11.5, mt: 0.4 }}><strong>{index + 1}. {priority.title}</strong> · {priority.detail}</Typography>
-              ))}
-            </Box>
-          )}
-          {(feedback?.decisions?.length || feedback?.signoffs?.length) ? (
-            <Stack direction="row" spacing={1} useFlexGap sx={{ mt: 1.5, flexWrap: "wrap" }}>
-              {feedback.decisions.map((decision) => <Chip key={decision.id} size="small" label={`${decision.status === "open" ? "Avstemning åpen" : "Avstemning lukket"} · ${decision.vote_count || 0} stemmer`} sx={{ color: decision.status === "open" ? ORANGE : "#5fb88a" }} />)}
-              {feedback.signoffs.map((signoff) => <Chip key={signoff.id} size="small" label={`${signoff.member_name || "Reviewer"}: ${signoff.stage} ${signoff.status}`} sx={{ color: signoff.status === "approved" ? "#5fb88a" : "text.secondary" }} />)}
-            </Stack>
-          ) : null}
+      {state?.paired && state?.session_id && (
+        <Panel title="Producer Workspace">
+          <Tabs value={activeTab} onChange={(_, value) => setActiveTab(value)} variant="scrollable" scrollButtons="auto"
+            sx={{ mb: 2, minHeight: 38, "& .MuiTab-root": { minHeight: 38, fontSize: 11.5, fontWeight: 800 }, "& .Mui-selected": { color: `${ORANGE}!important` }, "& .MuiTabs-indicator": { bgcolor: ORANGE } }}>
+            <Tab label="Review Console" /><Tab label="Publiser og lever" /><Tab label="Drift" />
+          </Tabs>
+          {activeTab === 0 && (state.audio_room_id
+            ? <ReviewConsole feedback={feedback} refresh={refreshFeedback} report={logLocal} />
+            : <Alert severity="info">Koble sesjonen til en EaseVerse-låt / Sound Room for å bruke Review Console.</Alert>)}
+          {activeTab === 1 && <ProducerTools state={state} report={logLocal} refreshState={refresh} />}
+          {activeTab === 2 && <OperationsPanel state={state} report={logLocal} />}
         </Panel>
       )}
 
@@ -410,22 +380,4 @@ function Row({ label, value }: { label: string; value: string | null }) {
 
 function Center({ children }: { children: React.ReactNode }) {
   return <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", bgcolor: "background.default" }}>{children}</Box>;
-}
-
-function FeedbackRow({ color, title, body, icon, actions }: { color: string; title: string; body: string; icon?: React.ReactNode; actions?: React.ReactNode }) {
-  return (
-    <Stack direction="row" spacing={1.1} sx={{ p: 1.1, borderRadius: 1.5, bgcolor: "rgba(255,255,255,0.025)", alignItems: "flex-start" }}>
-      <Box sx={{ color, mt: 0.1 }}>{icon || <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: color, mt: 0.7 }} />}</Box>
-      <Box sx={{ minWidth: 0 }}>
-        <Typography sx={{ fontSize: 10.5, color, textTransform: "uppercase", fontWeight: 700 }}>{title}</Typography>
-        <Typography sx={{ fontSize: 12.5, overflowWrap: "anywhere" }}>{body}</Typography>
-        {actions && <Stack direction="row" spacing={1.25} sx={{ mt: 0.5 }}>{actions}</Stack>}
-      </Box>
-    </Stack>
-  );
-}
-
-function formatTimecode(seconds: number): string {
-  const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
-  return `${Math.floor(safe / 60)}:${String(Math.floor(safe % 60)).padStart(2, "0")}`;
 }

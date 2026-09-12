@@ -5,6 +5,7 @@
 //! bridge or Avid's locally built `ptslcmd`; Session Info and bounce watchers
 //! remain available when neither local bridge is present.
 
+use std::collections::HashMap;
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
@@ -62,6 +63,45 @@ fn bridge() -> Option<Bridge> {
         BridgeKind::AvidCli,
     ) {
         return Some(found);
+    }
+
+    // Developer/user installations created by Avid's SDK installer. The SDK
+    // itself is never copied into the repository or the distributable app.
+    if let Some(downloads) = dirs::download_dir() {
+        let mut candidates = std::fs::read_dir(downloads)
+            .ok()
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|entry| {
+                let name = entry.file_name();
+                name.to_string_lossy()
+                    .starts_with("PTSL_SDK_CPP.")
+                    .then(|| entry.path())
+            })
+            .collect::<Vec<_>>();
+        candidates.sort();
+        for root in candidates.into_iter().rev() {
+            #[cfg(target_os = "macos")]
+            let candidate = root
+                .join("install")
+                .join("x86_64_arm64")
+                .join("Release")
+                .join("ptslcmd")
+                .join(ptslcmd_name);
+            #[cfg(target_os = "windows")]
+            let candidate = root
+                .join("install")
+                .join("x86_64")
+                .join("Release")
+                .join("ptslcmd")
+                .join(ptslcmd_name);
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            let candidate = root.join("install").join("ptslcmd").join(ptslcmd_name);
+            if let Some(found) = existing(candidate, BridgeKind::AvidCli) {
+                return Some(found);
+            }
+        }
     }
 
     let executable = std::env::current_exe().ok()?;
@@ -267,6 +307,243 @@ fn sample_rate_from(responses: &[Value]) -> Result<(u64, String), String> {
     Ok((numeric, label.to_string()))
 }
 
+fn response_body<'a>(responses: &'a [Value], command: &str) -> Option<&'a Value> {
+    completed_response(responses, command)?.get("responseBodyJson")
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct RecallOperation {
+    command: &'static str,
+    field: &'static str,
+    enabled: bool,
+    track_ids: Vec<String>,
+    track_names: Vec<String>,
+}
+
+fn attribute_state(value: Option<&Value>) -> Option<bool> {
+    let value = value?;
+    if let Some(enabled) = value.as_bool() {
+        return Some(enabled);
+    }
+    if let Some(number) = value.as_i64() {
+        return match number {
+            1 => Some(false),
+            2..=4 => Some(true),
+            _ => None,
+        };
+    }
+    match value.as_str()? {
+        "None" | "TAState_None" => Some(false),
+        "SetExplicitly"
+        | "SetImplicitly"
+        | "SetExplicitlyAndImplicitly"
+        | "TAState_SetExplicitly"
+        | "TAState_SetImplicitly"
+        | "TAState_SetExplicitlyAndImplicitly" => Some(true),
+        _ => None,
+    }
+}
+
+fn track_state(track: &Value, field: &str) -> Option<bool> {
+    let attributes = track.get("track_attributes")?;
+    match field {
+        "is_muted" | "is_soloed" | "is_open" => attributes.get(field)?.as_bool(),
+        "is_inactive" | "is_hidden" => attribute_state(attributes.get(field)),
+        _ => None,
+    }
+}
+
+fn supports_recall(track: &Value, field: &str) -> bool {
+    let track_type = track.get("type").and_then(Value::as_str).unwrap_or("");
+    match field {
+        "is_muted" | "is_soloed" => !track_type.contains("Video") && !track_type.contains("Master"),
+        "is_inactive" => !track_type.contains("Video"),
+        "is_open" => track_type.contains("Folder"),
+        _ => true,
+    }
+}
+
+fn recall_operations(
+    snapshot_tracks: &[Value],
+    current_tracks: &[Value],
+) -> (Vec<RecallOperation>, Vec<String>, usize) {
+    let current_by_id: HashMap<&str, &Value> = current_tracks
+        .iter()
+        .filter_map(|track| Some((track.get("id")?.as_str()?, track)))
+        .collect();
+    let mut current_by_name: HashMap<&str, Vec<&Value>> = HashMap::new();
+    for track in current_tracks {
+        if let Some(name) = track.get("name").and_then(Value::as_str) {
+            current_by_name.entry(name).or_default().push(track);
+        }
+    }
+    let descriptors = [
+        ("CId_SetTrackMuteState", "is_muted"),
+        ("CId_SetTrackSoloState", "is_soloed"),
+        ("CId_SetTrackInactiveState", "is_inactive"),
+        ("CId_SetTrackHiddenState", "is_hidden"),
+        ("CId_SetTrackOpenState", "is_open"),
+    ];
+    let mut operations: Vec<RecallOperation> = Vec::new();
+    let mut missing = Vec::new();
+    let mut matched = 0usize;
+
+    for snapshot_track in snapshot_tracks.iter().take(1024) {
+        let snapshot_id = snapshot_track.get("id").and_then(Value::as_str);
+        let snapshot_name = snapshot_track
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("Ukjent spor");
+        let current = snapshot_id
+            .and_then(|id| current_by_id.get(id).copied())
+            .or_else(|| {
+                current_by_name
+                    .get(snapshot_name)
+                    .filter(|candidates| candidates.len() == 1)
+                    .and_then(|candidates| candidates.first().copied())
+            });
+        let Some(current) = current else {
+            missing.push(snapshot_name.to_string());
+            continue;
+        };
+        let Some(current_id) = current.get("id").and_then(Value::as_str) else {
+            missing.push(snapshot_name.to_string());
+            continue;
+        };
+        matched += 1;
+        for (command, field) in descriptors {
+            if !supports_recall(current, field) {
+                continue;
+            }
+            let Some(desired) = track_state(snapshot_track, field) else {
+                continue;
+            };
+            if track_state(current, field) == Some(desired) {
+                continue;
+            }
+            if let Some(operation) = operations
+                .iter_mut()
+                .find(|item| item.command == command && item.enabled == desired)
+            {
+                operation.track_ids.push(current_id.to_string());
+                operation.track_names.push(snapshot_name.to_string());
+            } else {
+                operations.push(RecallOperation {
+                    command,
+                    field,
+                    enabled: desired,
+                    track_ids: vec![current_id.to_string()],
+                    track_names: vec![snapshot_name.to_string()],
+                });
+            }
+        }
+    }
+    (operations, missing, matched)
+}
+
+fn normalized_session_path(value: &str) -> String {
+    let path = value.trim_end_matches(['/', '\\']);
+    if cfg!(target_os = "windows") {
+        path.to_lowercase()
+    } else {
+        path.to_string()
+    }
+}
+
+fn safe_output_stem(value: &str) -> String {
+    let stem = value
+        .strip_suffix(".wav")
+        .or_else(|| value.strip_suffix(".WAV"))
+        .unwrap_or(value);
+    let safe: String = stem
+        .chars()
+        .take(160)
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, ' ' | '-' | '_' | '.') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    safe.trim_matches('.').trim().to_string()
+}
+
+fn mix_sources(responses: &[Value]) -> Vec<Value> {
+    responses
+        .iter()
+        .filter(|response| {
+            response.pointer("/header/status").and_then(Value::as_str) == Some("Completed")
+                && response
+                    .pointer("/header/command")
+                    .and_then(Value::as_str)
+                    .is_some_and(|command| {
+                        command.trim_start_matches("CId_") == "GetExportMixSourceList"
+                    })
+        })
+        .enumerate()
+        .flat_map(|(index, response)| {
+            // Discovery always requests PhysicalOut first and Bus second.
+            let source_type = if index == 0 {
+                "EMSType_PhysicalOut"
+            } else {
+                "EMSType_Bus"
+            }
+            .to_string();
+            response
+                .pointer("/responseBodyJson/source_list")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(move |name| {
+                    name.as_str()
+                        .map(|value| json!({ "name": value, "sourceType": source_type }))
+                })
+        })
+        .collect()
+}
+
+fn export_mix_command(
+    output_directory: &str,
+    file_name: &str,
+    source_name: &str,
+    source_type: &str,
+    sample_rate: &str,
+) -> Result<Value, String> {
+    let file_stem = safe_output_stem(file_name);
+    if file_stem.is_empty() {
+        return Err("Invalid export file name".into());
+    }
+    let mut directory = output_directory.to_string();
+    if !directory.ends_with(std::path::MAIN_SEPARATOR) {
+        directory.push(std::path::MAIN_SEPARATOR);
+    }
+    Ok(avid_command(
+        "ExportMix",
+        json!({
+            "file_name": file_stem,
+            "file_type": "EMFType_WAV",
+            "location_info": {
+                "file_destination": "EMFDestination_Directory",
+                "directory": directory,
+                "import_after_bounce": "TBool_False"
+            },
+            "audio_info": {
+                "export_format": "EFormat_Interleaved",
+                "bit_depth": "BDepth_24",
+                "sample_rate": sample_rate,
+                "pad_to_frame_boundary": "TBool_False",
+                "delivery_format": "EMDFormat_FilePerMixSource"
+            },
+            "video_info": { "include_video": "TBool_False" },
+            "offline_bounce": "TBool_True",
+            "mix_source_list": [{ "source_type": source_type, "name": source_name }],
+            "audio_encoding_options": {}
+        }),
+    ))
+}
+
 fn marker_number() -> i64 {
     let milliseconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -313,6 +590,11 @@ fn execute_avid_cli(
                 .get("name")
                 .and_then(Value::as_str)
                 .unwrap_or("Sound Room feedback");
+            let color_index = payload
+                .get("colorIndex")
+                .and_then(Value::as_i64)
+                .filter(|value| (0..=23).contains(value))
+                .unwrap_or(5);
             let responses = run_avid_cli(
                 executable,
                 vec![avid_command(
@@ -325,7 +607,7 @@ fn execute_avid_cli(
                         "time_properties": "TProperties_Marker",
                         "reference": "MLReference_Absolute",
                         "comments": "Synced from CreatorHub Sound Room",
-                        "color_index": 5,
+                        "color_index": color_index,
                         "location": "MarkerLocation_NamedRuler",
                         "track_name": "Markers",
                         "general_properties": {
@@ -389,58 +671,473 @@ fn execute_avid_cli(
                         "CId_GetExportMixSourceList",
                         json!({ "type": "EMSType_PhysicalOut" }),
                     ),
+                    avid_command(
+                        "CId_GetExportMixSourceList",
+                        json!({ "type": "EMSType_Bus" }),
+                    ),
                     avid_command("GetSessionSampleRate", json!({})),
                 ],
             )?;
-            let source = completed_response(&discovery, "GetExportMixSourceList")
-                .and_then(|value| value.pointer("/responseBodyJson/source_list"))
-                .and_then(Value::as_array)
-                .and_then(|items| items.first())
-                .and_then(Value::as_str)
+            let available_sources = mix_sources(&discovery);
+            let requested_source = payload.get("source").and_then(Value::as_str);
+            let selected = available_sources
+                .iter()
+                .find(|entry| {
+                    requested_source.is_some_and(|requested| {
+                        entry.get("name").and_then(Value::as_str) == Some(requested)
+                    })
+                })
+                .or_else(|| available_sources.first())
                 .ok_or("Pro Tools has no physical mix output available")?;
+            let source = selected
+                .get("name")
+                .and_then(Value::as_str)
+                .ok_or("Invalid mix source")?;
+            let source_type = selected
+                .get("sourceType")
+                .and_then(Value::as_str)
+                .unwrap_or("EMSType_PhysicalOut");
             let (_, sample_rate) = sample_rate_from(&discovery)?;
             let requested_name = payload
                 .get("fileName")
                 .and_then(Value::as_str)
                 .unwrap_or("Sound Room Mix.wav");
-            let file_stem = requested_name
-                .strip_suffix(".wav")
-                .or_else(|| requested_name.strip_suffix(".WAV"))
-                .unwrap_or(requested_name);
-            let mut directory = output_directory.to_string();
-            if !directory.ends_with(std::path::MAIN_SEPARATOR) {
-                directory.push(std::path::MAIN_SEPARATOR);
-            }
-            let responses = run_avid_cli(
-                executable,
-                vec![avid_command(
-                    "ExportMix",
-                    json!({
-                        "file_name": file_stem,
-                        "file_type": "EMFType_WAV",
-                        "location_info": {
-                            "file_destination": "EMFDestination_Directory",
-                            "directory": directory,
-                            "import_after_bounce": "TBool_False"
-                        },
-                        "audio_info": {
-                            "export_format": "EFormat_Interleaved",
-                            "bit_depth": "BDepth_24",
-                            "sample_rate": sample_rate,
-                            "pad_to_frame_boundary": "TBool_False",
-                            "delivery_format": "EMDFormat_FilePerMixSource"
-                        },
-                        "video_info": { "include_video": "TBool_False" },
-                        "offline_bounce": "TBool_True",
-                        "mix_source_list": [{ "source_type": "EMSType_PhysicalOut", "name": source }],
-                        "audio_encoding_options": {}
-                    }),
-                )],
+            let file_stem = safe_output_stem(requested_name);
+            let command = export_mix_command(
+                output_directory,
+                requested_name,
+                source,
+                source_type,
+                &sample_rate,
             )?;
+            let responses = run_avid_cli(executable, vec![command])?;
             completed_response(&responses, "ExportMix")
                 .ok_or("Pro Tools did not confirm the mix export")?;
             let output_path = Path::new(output_directory).join(format!("{}.wav", file_stem));
-            Ok(json!({ "execution": "ptsl", "outputPath": output_path, "exported": true }))
+            Ok(
+                json!({ "execution": "ptsl", "outputPath": output_path, "source": source, "exported": true }),
+            )
+        }
+        "list_export_sources" => {
+            let responses = run_avid_cli(
+                executable,
+                vec![
+                    avid_command(
+                        "CId_GetExportMixSourceList",
+                        json!({ "type": "EMSType_PhysicalOut" }),
+                    ),
+                    avid_command(
+                        "CId_GetExportMixSourceList",
+                        json!({ "type": "EMSType_Bus" }),
+                    ),
+                ],
+            )?;
+            Ok(json!({ "execution": "ptsl", "sources": mix_sources(&responses) }))
+        }
+        "session_snapshot" => {
+            let responses = run_avid_cli(
+                executable,
+                vec![
+                    avid_command("CId_GetSessionName", json!({})),
+                    avid_command("CId_GetSessionPath", json!({})),
+                    avid_command("CId_GetSessionSampleRate", json!({})),
+                    avid_command("CId_GetSessionBitDepth", json!({})),
+                    avid_command(
+                        "CId_GetTrackList",
+                        json!({ "pagination_request": { "limit": 1024, "offset": 0 } }),
+                    ),
+                    avid_command(
+                        "CId_GetExportMixSourceList",
+                        json!({ "type": "EMSType_PhysicalOut" }),
+                    ),
+                    avid_command(
+                        "CId_GetExportMixSourceList",
+                        json!({ "type": "EMSType_Bus" }),
+                    ),
+                ],
+            )?;
+            let tracks = response_body(&responses, "GetTrackList")
+                .and_then(|body| body.get("track_list"))
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let session_name = response_body(&responses, "GetSessionName")
+                .and_then(|body| body.get("session_name"))
+                .and_then(Value::as_str);
+            let session_path = response_body(&responses, "GetSessionPath")
+                .and_then(|body| body.pointer("/session_path/path"))
+                .and_then(Value::as_str);
+            let bit_depth = response_body(&responses, "GetSessionBitDepth")
+                .and_then(|body| body.get("current_setting"))
+                .and_then(Value::as_str);
+            let bit_depth_number = bit_depth.and_then(|value| {
+                value
+                    .strip_prefix("BDepth_")
+                    .unwrap_or(value)
+                    .parse::<u16>()
+                    .ok()
+            });
+            let (sample_rate_number, sample_rate) = sample_rate_from(&responses)?;
+            let detailed_commands: Vec<Value> = tracks.iter().flat_map(|track| {
+                let id = track.get("id").and_then(Value::as_str).unwrap_or("");
+                [
+                    avid_command("CId_GetTrackPlaylists", json!({ "track_id": id, "pagination_request": { "limit": 256, "offset": 0 } })),
+                    avid_command("CId_GetTrackMainOutputAssignments", json!({ "track_ids": [id] })),
+                ]
+            }).collect();
+            let detailed = if detailed_commands.is_empty() {
+                vec![]
+            } else {
+                run_avid_cli(executable, detailed_commands)?
+            };
+            let playlists: Vec<Value> = detailed
+                .iter()
+                .filter(|response| {
+                    response
+                        .pointer("/header/command")
+                        .and_then(Value::as_str)
+                        .is_some_and(|value| {
+                            value.trim_start_matches("CId_") == "GetTrackPlaylists"
+                        })
+                })
+                .enumerate()
+                .map(|(index, response)| {
+                    let track = tracks.get(index);
+                    json!({
+                        "trackId": track.and_then(|item| item.get("id")).and_then(Value::as_str),
+                        "trackName": track.and_then(|item| item.get("name")).and_then(Value::as_str),
+                        "playlists": response.pointer("/responseBodyJson/playlists")
+                            .cloned().unwrap_or_else(|| json!([])),
+                    })
+                })
+                .collect();
+            let routing: Vec<Value> = detailed
+                .iter()
+                .filter(|response| {
+                    response
+                        .pointer("/header/command")
+                        .and_then(Value::as_str)
+                        .is_some_and(|value| {
+                            value.trim_start_matches("CId_") == "GetTrackMainOutputAssignments"
+                        })
+                })
+                .enumerate()
+                .map(|(index, response)| {
+                    let track = tracks.get(index);
+                    json!({
+                        "trackId": track.and_then(|item| item.get("id")).and_then(Value::as_str),
+                        "trackName": track.and_then(|item| item.get("name")).and_then(Value::as_str),
+                        "signalpathIds": response.pointer("/responseBodyJson/signalpath_ids")
+                            .cloned().unwrap_or_else(|| json!([])),
+                    })
+                })
+                .collect();
+            Ok(json!({
+                "execution": "ptsl", "sessionName": session_name, "sessionPath": session_path,
+                "sampleRate": sample_rate_number, "sampleRateLabel": sample_rate,
+                "bitDepth": bit_depth_number, "bitDepthLabel": bit_depth,
+                "tracks": tracks, "playlists": playlists, "routing": routing,
+                "bounceSources": mix_sources(&responses), "plugins": [],
+                "pluginInventoryStatus": "not_exposed_by_ptsl_2026_4"
+            }))
+        }
+        "recall_snapshot" => {
+            let snapshot = payload
+                .get("snapshot")
+                .filter(|value| value.is_object())
+                .ok_or("Session Snapshot mangler")?;
+            let snapshot_tracks = snapshot
+                .get("tracks")
+                .and_then(Value::as_array)
+                .filter(|tracks| !tracks.is_empty() && tracks.len() <= 1024)
+                .ok_or("Snapshotet har ingen gyldige Pro Tools-spor")?;
+            let dry_run = payload
+                .get("dryRun")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            let current = run_avid_cli(
+                executable,
+                vec![
+                    avid_command("CId_GetSessionName", json!({})),
+                    avid_command("CId_GetSessionPath", json!({})),
+                    avid_command(
+                        "CId_GetTrackList",
+                        json!({ "pagination_request": { "limit": 1024, "offset": 0 } }),
+                    ),
+                ],
+            )?;
+            let current_name = response_body(&current, "GetSessionName")
+                .and_then(|body| body.get("session_name"))
+                .and_then(Value::as_str);
+            let snapshot_name = snapshot
+                .get("session_name")
+                .or_else(|| snapshot.get("sessionName"))
+                .and_then(Value::as_str);
+            if let (Some(expected), Some(actual)) = (snapshot_name, current_name) {
+                if !expected.trim().eq_ignore_ascii_case(actual.trim()) {
+                    return Err(format!(
+                        "Snapshotet tilhører «{}», men åpen sesjon er «{}»",
+                        expected, actual
+                    ));
+                }
+            }
+            let current_path = response_body(&current, "GetSessionPath")
+                .and_then(|body| body.get("session_path"))
+                .and_then(|value| {
+                    value
+                        .as_str()
+                        .or_else(|| value.get("path").and_then(Value::as_str))
+                });
+            let snapshot_path = snapshot
+                .get("session_path")
+                .or_else(|| snapshot.get("sessionPath"))
+                .and_then(Value::as_str);
+            if let (Some(expected), Some(actual)) = (snapshot_path, current_path) {
+                if normalized_session_path(expected) != normalized_session_path(actual) {
+                    return Err(
+                        "Snapshotets sesjonssti samsvarer ikke med den åpne Pro Tools-sesjonen"
+                            .into(),
+                    );
+                }
+            }
+            let current_tracks = response_body(&current, "GetTrackList")
+                .and_then(|body| body.get("track_list"))
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let (operations, missing_tracks, matched_tracks) =
+                recall_operations(snapshot_tracks, &current_tracks);
+            if matched_tracks == 0 {
+                return Err("Ingen snapshot-spor matcher den åpne Pro Tools-sesjonen".into());
+            }
+            let changes: Vec<Value> = operations
+                .iter()
+                .map(|operation| {
+                    json!({
+                        "field": operation.field,
+                        "enabled": operation.enabled,
+                        "trackCount": operation.track_ids.len(),
+                        "trackNames": operation.track_names,
+                    })
+                })
+                .collect();
+            if dry_run || operations.is_empty() {
+                return Ok(json!({
+                    "execution": "ptsl", "dryRun": true, "applied": false,
+                    "sessionName": current_name, "matchedTracks": matched_tracks,
+                    "missingTracks": missing_tracks, "changes": changes,
+                    "unsupportedFields": ["playlist target", "plugin parameters", "automation", "routing"]
+                }));
+            }
+            let commands: Vec<Value> = operations
+                .iter()
+                .map(|operation| {
+                    avid_command(
+                        operation.command,
+                        json!({ "track_ids": operation.track_ids, "enabled": operation.enabled }),
+                    )
+                })
+                .collect();
+            let expected = commands.len();
+            let responses = run_avid_cli(executable, commands)?;
+            let completed = responses
+                .iter()
+                .filter(|response| {
+                    response.pointer("/header/status").and_then(Value::as_str) == Some("Completed")
+                        && response
+                            .pointer("/header/command")
+                            .and_then(Value::as_str)
+                            .is_some_and(|command| {
+                                operations.iter().any(|operation| {
+                                    command.trim_start_matches("CId_")
+                                        == operation.command.trim_start_matches("CId_")
+                                })
+                            })
+                })
+                .count();
+            if completed != expected {
+                return Err(format!(
+                    "Pro Tools bekreftet {} av {} recall-operasjoner",
+                    completed, expected
+                ));
+            }
+            Ok(json!({
+                "execution": "ptsl", "dryRun": false, "applied": true,
+                "sessionName": current_name, "matchedTracks": matched_tracks,
+                "missingTracks": missing_tracks, "changes": changes,
+                "unsupportedFields": ["playlist target", "plugin parameters", "automation", "routing"]
+            }))
+        }
+        "make_intro_copy" => {
+            let output_directory = payload
+                .get("outputDirectory")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or("Choose a folder for the Intro-safe copy")?;
+            std::fs::create_dir_all(output_directory)
+                .map_err(|error| format!("Create Intro copy directory: {}", error))?;
+            let requested_name = payload
+                .get("sessionName")
+                .and_then(Value::as_str)
+                .unwrap_or("Intro Safe Copy");
+            let session_name = safe_output_stem(requested_name);
+            let mut session_location = output_directory.to_string();
+            if !session_location.ends_with(std::path::MAIN_SEPARATOR) {
+                session_location.push(std::path::MAIN_SEPARATOR);
+            }
+            let discovery = run_avid_cli(
+                executable,
+                vec![avid_command(
+                    "CId_GetTrackList",
+                    json!({ "pagination_request": { "limit": 1024, "offset": 0 } }),
+                )],
+            )?;
+            let tracks = response_body(&discovery, "GetTrackList")
+                .and_then(|body| body.get("track_list"))
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let mut counts = std::collections::HashMap::<String, usize>::new();
+            let mut excess_ids = Vec::<String>::new();
+            for track in &tracks {
+                let kind = track
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .unwrap_or("TType_Unknown")
+                    .to_string();
+                let limit = match kind.as_str() {
+                    "TType_Audio" | "TT_Audio" | "AudioTrack" => Some(8),
+                    "TType_Instrument" | "TT_Instrument" | "Instrument" => Some(8),
+                    "TType_Midi" | "TT_Midi" | "Midi" => Some(8),
+                    "TType_Aux" | "TT_Aux" | "Aux" => Some(4),
+                    _ => None,
+                };
+                if let Some(limit) = limit {
+                    let count = counts.entry(kind).or_default();
+                    *count += 1;
+                    if *count > limit {
+                        if let Some(id) = track.get("id").and_then(Value::as_str) {
+                            excess_ids.push(id.to_string());
+                        }
+                    }
+                }
+            }
+            let mut commands = vec![avid_command(
+                "CId_SaveSessionAs",
+                json!({
+                    "session_name": session_name.clone(), "session_location": session_location
+                }),
+            )];
+            if !excess_ids.is_empty() {
+                commands.push(avid_command(
+                    "CId_SetTrackInactiveState",
+                    json!({ "track_ids": excess_ids.clone(), "enabled": true }),
+                ));
+            }
+            let responses = run_avid_cli(executable, commands)?;
+            completed_response(&responses, "SaveSessionAs")
+                .ok_or("Pro Tools did not create the Intro-safe copy")?;
+            if !excess_ids.is_empty() {
+                completed_response(&responses, "SetTrackInactiveState").ok_or(
+                    "Intro copy was created, but excess tracks could not be made inactive",
+                )?;
+            }
+            Ok(
+                json!({ "execution": "ptsl", "sessionName": session_name, "outputDirectory": output_directory,
+                "deactivatedTrackIds": excess_ids, "originalPreserved": true }),
+            )
+        }
+        "export_delivery" => {
+            let output_directory = payload
+                .get("outputDirectory")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or("Choose a delivery folder")?;
+            let outputs = payload
+                .get("outputs")
+                .and_then(Value::as_array)
+                .ok_or("Delivery outputs are missing")?;
+            if outputs.is_empty() || outputs.len() > 32 {
+                return Err("Choose between 1 and 32 delivery outputs".into());
+            }
+            std::fs::create_dir_all(output_directory)
+                .map_err(|error| format!("Create delivery directory: {}", error))?;
+            let discovery = run_avid_cli(
+                executable,
+                vec![
+                    avid_command(
+                        "CId_GetExportMixSourceList",
+                        json!({ "type": "EMSType_PhysicalOut" }),
+                    ),
+                    avid_command(
+                        "CId_GetExportMixSourceList",
+                        json!({ "type": "EMSType_Bus" }),
+                    ),
+                    avid_command("CId_GetSessionSampleRate", json!({})),
+                ],
+            )?;
+            let sources = mix_sources(&discovery);
+            let (_, sample_rate) = sample_rate_from(&discovery)?;
+            let mut commands = Vec::new();
+            let mut paths = Vec::new();
+            for output in outputs {
+                let file_name = output
+                    .get("fileName")
+                    .and_then(Value::as_str)
+                    .ok_or("Delivery fileName is missing")?;
+                let requested_source = output
+                    .get("source")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or("Every delivery output must select an explicit Pro Tools source")?;
+                let selected = sources
+                    .iter()
+                    .find(|entry| {
+                        entry.get("name").and_then(Value::as_str) == Some(requested_source)
+                    })
+                    .ok_or_else(|| {
+                        format!(
+                            "Pro Tools export source '{}' was not found",
+                            requested_source
+                        )
+                    })?;
+                let source = selected
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or("Invalid export source")?;
+                let source_type = selected
+                    .get("sourceType")
+                    .and_then(Value::as_str)
+                    .unwrap_or("EMSType_PhysicalOut");
+                commands.push(export_mix_command(
+                    output_directory,
+                    file_name,
+                    source,
+                    source_type,
+                    &sample_rate,
+                )?);
+                paths.push(json!({ "kind": output.get("kind").cloned().unwrap_or_else(|| json!("custom")),
+                    "source": source, "path": Path::new(output_directory).join(format!("{}.wav", safe_output_stem(file_name))) }));
+            }
+            let responses = run_avid_cli(executable, commands)?;
+            let completed = responses
+                .iter()
+                .filter(|response| {
+                    response.pointer("/header/status").and_then(Value::as_str) == Some("Completed")
+                        && response
+                            .pointer("/header/command")
+                            .and_then(Value::as_str)
+                            .is_some_and(|value| value.trim_start_matches("CId_") == "ExportMix")
+                })
+                .count();
+            if completed != paths.len() {
+                return Err(format!(
+                    "Pro Tools completed {} of {} delivery exports",
+                    completed,
+                    paths.len()
+                ));
+            }
+            Ok(json!({ "execution": "ptsl", "outputs": paths, "completed": completed }))
         }
         _ => Err("Unsupported PTSL command".into()),
     }
@@ -538,6 +1235,82 @@ mod tests {
     }
 
     #[test]
+    fn recall_plan_only_changes_supported_differences() {
+        let snapshot_tracks = vec![
+            json!({
+                "id": "track-1", "name": "Lead Vocal", "type": "TType_Audio",
+                "track_attributes": {
+                    "is_muted": true, "is_soloed": false, "is_inactive": "TAState_SetExplicitly",
+                    "is_hidden": "TAState_None", "is_open": false
+                }
+            }),
+            json!({
+                "id": "video-1", "name": "Video", "type": "TType_Video",
+                "track_attributes": {
+                    "is_muted": true, "is_soloed": true, "is_inactive": "TAState_SetExplicitly",
+                    "is_hidden": "TAState_SetExplicitly", "is_open": false
+                }
+            }),
+        ];
+        let current_tracks = vec![
+            json!({
+                "id": "track-1", "name": "Lead Vocal", "type": "TType_Audio",
+                "track_attributes": {
+                    "is_muted": false, "is_soloed": false, "is_inactive": "TAState_None",
+                    "is_hidden": "TAState_None", "is_open": false
+                }
+            }),
+            json!({
+                "id": "video-1", "name": "Video", "type": "TType_Video",
+                "track_attributes": {
+                    "is_muted": false, "is_soloed": false, "is_inactive": "TAState_None",
+                    "is_hidden": "TAState_None", "is_open": false
+                }
+            }),
+        ];
+        let (operations, missing, matched) = recall_operations(&snapshot_tracks, &current_tracks);
+        assert_eq!(matched, 2);
+        assert!(missing.is_empty());
+        assert!(operations.iter().any(|operation| {
+            operation.command == "CId_SetTrackMuteState"
+                && operation.enabled
+                && operation.track_ids == ["track-1"]
+        }));
+        assert!(operations.iter().any(|operation| {
+            operation.command == "CId_SetTrackInactiveState"
+                && operation.enabled
+                && operation.track_ids == ["track-1"]
+        }));
+        assert!(operations.iter().any(|operation| {
+            operation.command == "CId_SetTrackHiddenState"
+                && operation.enabled
+                && operation.track_ids == ["video-1"]
+        }));
+        assert!(!operations.iter().any(|operation| {
+            (operation.command == "CId_SetTrackMuteState"
+                || operation.command == "CId_SetTrackSoloState"
+                || operation.command == "CId_SetTrackInactiveState")
+                && operation.track_ids == ["video-1"]
+        }));
+    }
+
+    #[test]
+    fn recall_plan_falls_back_to_unique_track_name() {
+        let snapshot_tracks = vec![json!({
+            "id": "old-id", "name": "Bass", "type": "TType_Audio",
+            "track_attributes": { "is_muted": true }
+        })];
+        let current_tracks = vec![json!({
+            "id": "new-id", "name": "Bass", "type": "TType_Audio",
+            "track_attributes": { "is_muted": false }
+        })];
+        let (operations, missing, matched) = recall_operations(&snapshot_tracks, &current_tracks);
+        assert_eq!(matched, 1);
+        assert!(missing.is_empty());
+        assert_eq!(operations[0].track_ids, ["new-id"]);
+    }
+
+    #[test]
     #[ignore = "requires an open Pro Tools session and a locally licensed Avid CLI"]
     fn live_bridge_runs_the_full_command_set() {
         let bridge = bridge().expect("local PTSL bridge");
@@ -553,6 +1326,66 @@ mod tests {
             marker.get("execution").and_then(Value::as_str),
             Some("ptsl")
         );
+        let sources = execute_avid_cli(&bridge.path, "list_export_sources", json!({})).unwrap();
+        let source_name = sources
+            .get("sources")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("name"))
+            .and_then(Value::as_str)
+            .expect("at least one Pro Tools export source")
+            .to_string();
+        let snapshot = execute_avid_cli(&bridge.path, "session_snapshot", json!({})).unwrap();
+        assert!(snapshot
+            .get("sessionName")
+            .and_then(Value::as_str)
+            .is_some_and(|name| !name.trim().is_empty()));
+        assert!(snapshot.get("tracks").and_then(Value::as_array).is_some());
+        if let Some((track_id, was_muted)) = snapshot
+            .get("tracks")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .find_map(|track| {
+                let track_type = track.get("type")?.as_str()?;
+                if track_type.contains("Video") || track_type.contains("Master") {
+                    return None;
+                }
+                Some((
+                    track.get("id")?.as_str()?.to_string(),
+                    track.pointer("/track_attributes/is_muted")?.as_bool()?,
+                ))
+            })
+        {
+            run_avid_cli(
+                &bridge.path,
+                vec![avid_command(
+                    "CId_SetTrackMuteState",
+                    json!({ "track_ids": [track_id.clone()], "enabled": !was_muted }),
+                )],
+            )
+            .unwrap();
+            let recall = execute_avid_cli(
+                &bridge.path,
+                "recall_snapshot",
+                json!({ "snapshot": snapshot.clone(), "dryRun": false }),
+            );
+            let emergency_restore = run_avid_cli(
+                &bridge.path,
+                vec![avid_command(
+                    "CId_SetTrackMuteState",
+                    json!({ "track_ids": [track_id], "enabled": was_muted }),
+                )],
+            );
+            emergency_restore.expect("restore live-test mute state");
+            assert_eq!(
+                recall
+                    .expect("recall the captured live snapshot")
+                    .get("applied")
+                    .and_then(Value::as_bool),
+                Some(true)
+            );
+        }
 
         if let Ok(audio_path) = std::env::var("CREATORHUB_PTSL_LIVE_AUDIO") {
             execute_avid_cli(
@@ -578,6 +1411,41 @@ mod tests {
             let metadata = crate::processing::wav_metadata(&bytes)
                 .expect("expected ExportMix to create a readable WAV");
             assert_eq!(metadata.bit_depth, 24);
+
+            let delivery = execute_avid_cli(
+                &bridge.path,
+                "export_delivery",
+                json!({
+                    "outputDirectory": output_directory,
+                    "outputs": [{
+                        "kind": "master",
+                        "fileName": format!("CreatorHub-delivery-e2e-{}-{}.wav", std::process::id(), marker_number()),
+                        "source": source_name
+                    }]
+                }),
+            )
+            .unwrap();
+            let delivery_path = delivery
+                .pointer("/outputs/0/path")
+                .and_then(Value::as_str)
+                .expect("delivery output path");
+            let delivery_bytes = std::fs::read(delivery_path).unwrap();
+            assert!(crate::processing::analyze_wav(&delivery_bytes).analyzable);
+        }
+        if let Ok(output_directory) = std::env::var("CREATORHUB_PTSL_LIVE_INTRO_COPY_DIR") {
+            let intro_copy = execute_avid_cli(
+                &bridge.path,
+                "make_intro_copy",
+                json!({
+                    "outputDirectory": output_directory,
+                    "sessionName": format!("CreatorHub Intro Safe E2E {}", marker_number())
+                }),
+            )
+            .unwrap();
+            assert_eq!(
+                intro_copy.get("originalPreserved").and_then(Value::as_bool),
+                Some(true)
+            );
         }
     }
 }

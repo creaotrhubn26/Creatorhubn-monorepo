@@ -32,9 +32,14 @@ platform :ios do
     sh("cd .. && xcodegen generate")
   end
 
-  desc "Bump CFBundleVersion by 1"
+  desc "Set a monotonic UTC-based CFBundleVersion"
   lane :bump_build do
-    increment_build_number(xcodeproj: PROJECT)
+    build_number = Time.now.utc.strftime("%Y%m%d%H%M%S")
+    increment_build_number(
+      build_number: build_number,
+      xcodeproj: PROJECT,
+    )
+    UI.message("LeadMap buildnummer: #{build_number}")
   end
 
   desc "Archive + upload til TestFlight"
@@ -84,7 +89,7 @@ platform :ios do
 
     setup_api_key
     download_app_store_profiles
-    build_number = Time.now.utc.strftime("%Y%m%d%H%M")
+    build_number = Time.now.utc.strftime("%Y%m%d%H%M%S")
     staging_xcargs = [
       xcodebuild_auth_xcargs,
       "LEAD_MAP_API_BASE=#{Shellwords.escape(staging_base_url)}",
