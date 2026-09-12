@@ -503,8 +503,8 @@ struct LeadsView: View {
             LogActivitySheet(lead: selectedLead)
         }
         .sheet(isPresented: $addLeadOpen) {
-            // Samme transaksjonelle modal som Kart-fanen: sheetet lukkes
-            // først når backend har bekreftet opprettelsen.
+            // Samme prosjektbundne modal som Kart-fanen. Ved nettbrudd lukkes
+            // skjemaet først etter at handlingen er sikkert lagret i offline-kø.
             LeadsAddLeadSheet { newLead in
                 guard !DemoModeManager.isActiveNonisolated else {
                     throw AddLeadSaveError(message: "Demo-modus — leaden blir ikke lagret")
@@ -515,11 +515,17 @@ struct LeadsView: View {
                 guard let projectId = appState.activeLeadgridProjectId else {
                     throw AddLeadSaveError(message: "Velg et kundeprosjekt før du lagrer leaden")
                 }
-                _ = try await api.createLeadAtPin(
-                    newLead.makeCreateRequest(projectID: projectId),
-                    organizationId: appState.activeOrganizationId
+                guard let organizationId = appState.activeOrganizationId else {
+                    throw AddLeadSaveError(message: "Velg en organisasjon før du lagrer leaden")
+                }
+                let leadId = try await newLead.saveResiliently(
+                    api: api,
+                    organizationID: organizationId,
+                    projectID: projectId
                 )
-                addLeadToast = "«\(newLead.companyName)» lagt til"
+                addLeadToast = leadId == nil
+                    ? "Leaden er lagret offline og sendes automatisk når nettet er tilbake."
+                    : "«\(newLead.companyName)» lagt til"
             }
         }
         .overlay(alignment: .top) {

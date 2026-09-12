@@ -1398,10 +1398,12 @@ final class QASweepTests: XCTestCase {
         guard let stagingURL = environment["LEADGRID_STAGING_BASE_URL"],
               let token = environment["LEADGRID_STAGING_BEARER_TOKEN"],
               let organizationID = environment["LEADGRID_STAGING_ORG_ID"],
-              !stagingURL.isEmpty, !token.isEmpty, !organizationID.isEmpty
+              let projectID = environment["LEADGRID_STAGING_PROJECT_ID"],
+              !stagingURL.isEmpty, !token.isEmpty,
+              !organizationID.isEmpty, !projectID.isEmpty
         else {
             throw XCTSkip(
-                "Krever LEADGRID_STAGING_BASE_URL, LEADGRID_STAGING_BEARER_TOKEN og LEADGRID_STAGING_ORG_ID"
+                "Krever staging-URL, bearer-token, org-ID og prosjekt-ID"
             )
         }
         guard let baseURL = URL(string: stagingURL),
@@ -1418,6 +1420,9 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["LEADGRID_API_BASE_URL"] = stagingURL
         app.launchEnvironment["QA_NETWORK_CONTROLS"] = "1"
         app.launchEnvironment["QA_ORGANIZATION_ID"] = organizationID
+        app.launchEnvironment["QA_PROJECT_ID"] = projectID
+        app.launchEnvironment["QA_LEAD_LATITUDE"] = "59.9139"
+        app.launchEnvironment["QA_LEAD_LONGITUDE"] = "10.7522"
         app.launchEnvironment["QA_TAB"] = "2"
         app.launch()
 
@@ -1430,11 +1435,13 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(newLead.waitForExistence(timeout: 10))
         newLead.tap()
 
-        let name = app.textFields["lead-field-name"]
+        let name = app.textFields["add-lead.field.bedriftsnavn"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
         name.typeText(uniqueName)
-        app.buttons["lead-submit"].tap()
+        let submit = app.buttons["add-lead.save"]
+        XCTAssertTrue(submit.waitForExistence(timeout: 3))
+        submit.tap()
 
         XCTAssertTrue(
             app.staticTexts.containing(
@@ -1451,9 +1458,13 @@ final class QASweepTests: XCTestCase {
         )
         await fulfillment(of: [drainExpectation], timeout: 20)
 
-        var request = URLRequest(
-            url: baseURL.appendingPathComponent("api/admin-room/lead-map/leads")
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("api/admin-room/lead-map/leads"),
+            resolvingAgainstBaseURL: false
         )
+        components?.queryItems = [URLQueryItem(name: "project_id", value: projectID)]
+        let scopedLeadsURL = try XCTUnwrap(components?.url)
+        var request = URLRequest(url: scopedLeadsURL)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(organizationID, forHTTPHeaderField: "X-Organization-Id")
         let (data, response) = try await URLSession.shared.data(for: request)
