@@ -62,7 +62,10 @@ const LEADGRID_PUBLIC_HOSTS = new Set([
 
 function isLeadgridPublicHost(): boolean {
   if (typeof window === 'undefined') return false;
-  return LEADGRID_PUBLIC_HOSTS.has(window.location.hostname.trim().toLowerCase());
+  const hostname = window.location.hostname.trim().toLowerCase();
+  const isLocalLeadgridRoute = (hostname === 'localhost' || hostname === '127.0.0.1')
+    && /^\/leadgrid(?:\/|$)/i.test(window.location.pathname);
+  return LEADGRID_PUBLIC_HOSTS.has(hostname) || isLocalLeadgridRoute;
 }
 
 function getTermsBrand(): TermsBrand {
@@ -173,12 +176,14 @@ function getTermsBrand(): TermsBrand {
 }
 
 const TermsAndConditions: React.FC = () => {
-  const cmsBlocks = useCmsBlocks('terms-and-conditions');
+  const isLeadgrid = isLeadgridPublicHost();
+  // Leadgrid-vilkårene er en egen, statisk juridisk flate. Et CMS-oppslag
+  // her ga en forventet 404 som Chrome likevel rapporterte som en konsollfeil.
+  const cmsBlocks = useCmsBlocks('terms-and-conditions', !isLeadgrid);
   const [, setLocation] = useLocation();
   const theming = useTheming('photographer');
   const brandKey = resolvePublicBrandFromWindow();
   const brand = getTermsBrand();
-  const isLeadgrid = isLeadgridPublicHost();
   const privacyHref = isLeadgrid ? '/leadgrid/personvern' : '/privacy-policy';
   const socialLinks = isLeadgrid ? [] : getPublicSocialProfiles(brandKey);
 
