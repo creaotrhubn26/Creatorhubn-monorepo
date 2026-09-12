@@ -161,6 +161,7 @@ const RrResetPassword = React.lazy(() => import('@/pages/reset-passord'));
 // Personvern — offentlig privacy-URL kreves for Google OAuth-verifisering
 // (dekker Google Ads/Workspace-data). Var KUN App.tsx-rute → død på theroleroom.
 const RrPrivacyPolicy = React.lazy(() => import('@/pages/privacy-policy'));
+const LeadgridTermsAndConditions = React.lazy(() => import('@/pages/terms-and-conditions'));
 // Offentlig Review Room-lenke fra Post Agent. theroleroom.com bruker denne
 // dedikerte bootstrapen i stedet for App.tsx, så ruten må finnes begge steder.
 const RrMockupReview = React.lazy(() => import('@/pages/mockup-review'));
@@ -297,6 +298,20 @@ function CastingStandaloneAppContent() {
       || leadgridPath === '/leadgrid/personvern/') {
     return <LeadgridPersonvern />;
   }
+  if (leadgridPath === '/leadgrid/privacy-policy'
+      || leadgridPath === '/leadgrid/privacy-policy/') {
+    return <LeadgridPersonvern />;
+  }
+  if (leadgridPath === '/leadgrid/terms-and-conditions'
+      || leadgridPath === '/leadgrid/terms-and-conditions/') {
+    return (
+      <ErrorBoundary componentName="casting-main-leadgrid-terms">
+        <React.Suspense fallback={null}>
+          <LeadgridTermsAndConditions />
+        </React.Suspense>
+      </ErrorBoundary>
+    );
+  }
   if (localeCtx.pathname === '/personvern/automatisk-research'
       || localeCtx.pathname === '/personvern/automatisk-research/') {
     const LeadgridResearchConsent = React.lazy(
@@ -338,6 +353,25 @@ function CastingStandaloneAppContent() {
 
   if (leadgridPath === '/leadgrid' || leadgridPath === '/leadgrid/') {
     return <LeadgridLanding />;
+  }
+  // Public landing CTA-er og velkomstmail bruker disse rene URL-ene på
+  // leadgrid.no. De må matches før den ukjente-sti-fallbacken nedenfor.
+  if (leadgridPath === '/leadgrid/login' || leadgridPath === '/leadgrid/login/') {
+    return (
+      <React.Suspense fallback={null}>
+        <RrLoginPage />
+      </React.Suspense>
+    );
+  }
+  if (/^\/leadgrid\/reset-passord\/[^/]+\/?$/.test(leadgridPath)) {
+    return (
+      <React.Suspense fallback={null}>
+        <Route
+          path={leadgridHost ? '/reset-passord/:token' : '/leadgrid/reset-passord/:token'}
+          component={RrResetPassword}
+        />
+      </React.Suspense>
+    );
   }
   if (localeCtx.pathname === '/superadmin' || localeCtx.pathname === '/superadmin/') {
     return <LeadgridSuperadminPage />;
