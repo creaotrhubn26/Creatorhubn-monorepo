@@ -1264,6 +1264,72 @@ final class QASweepTests: XCTestCase {
         app.terminate()
     }
 
+    func testSuperAdminTidumOnboardingCreatesFourNationalProfilesAndOpensDiscovery() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_TOUR"] = "domain-onboarding"
+        app.launchEnvironment["QA_TAB"] = "0"
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Nytt kundeprosjekt"].waitForExistence(timeout: 12))
+        let domain = app.textFields["project-onboarding.domain"]
+        XCTAssertTrue(domain.waitForExistence(timeout: 3))
+        domain.tap()
+        domain.typeText("tidum.no")
+        dismissKeyboard(in: app)
+        app.buttons["project-onboarding.analyze"].tap()
+
+        let category = app.descendants(matching: .any)["project-onboarding.category"]
+        XCTAssertTrue(category.waitForExistence(timeout: 5))
+        XCTAssertTrue(displayedText(of: category).contains("Arbeidstid, omsorg og miljøarbeid"))
+        let projectName = app.descendants(matching: .any)["project-onboarding.project-name"]
+        XCTAssertTrue(projectName.waitForExistence(timeout: 3))
+        XCTAssertTrue(displayedText(of: projectName).contains("Tidum"))
+
+        let expectedProfiles = [
+            "Barnevern og avlastning – Norge",
+            "Bofellesskap og miljøarbeid – Norge",
+            "BPA og feltbasert omsorg – Norge",
+            "Kommunale omsorgstjenester – Norge",
+        ]
+        for (profileIndex, profileName) in expectedProfiles.enumerated() {
+            let profileTitle = app.staticTexts[
+                "project-onboarding.profile.\(profileIndex).title"
+            ]
+            for _ in 0..<12 where !profileTitle.exists {
+                app.swipeUp()
+            }
+            XCTAssertTrue(profileTitle.exists, "Mangler Discovery-profilen \(profileName)")
+            XCTAssertEqual(profileTitle.label, profileName)
+        }
+
+        XCTAssertTrue(app.staticTexts["Finn duplikater"].exists)
+        XCTAssertTrue(app.staticTexts["Sjekk datakvalitet"].exists)
+        let commit = app.buttons["project-onboarding.commit"]
+        for _ in 0..<12 where !commit.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(commit.isHittable)
+        commit.tap()
+
+        XCTAssertTrue(
+            app.buttons["discovery.close"].waitForExistence(timeout: 8),
+            "Et bekreftet Tidum-prosjekt skal åpnes direkte i Discovery"
+        )
+        let customerType = app.textFields["discovery.simple.customer-type"]
+        XCTAssertTrue(customerType.waitForExistence(timeout: 5))
+        XCTAssertTrue((customerType.value as? String)?.contains("87.104") == true)
+        let customerNext = app.buttons["discovery.simple.next.customer-type"]
+        for _ in 0..<4 where !customerNext.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(customerNext.isHittable)
+        customerNext.tap()
+        let nationwide = app.buttons["discovery.simple.area.nationwide"]
+        XCTAssertTrue(nationwide.waitForExistence(timeout: 5))
+        XCTAssertTrue(nationwide.isSelected)
+        app.terminate()
+    }
+
     func testDiscoverySimpleModeUsesThreeClearStepsAndKeepsAdvancedMode() throws {
         #if !targetEnvironment(macCatalyst)
         XCUIDevice.shared.orientation = .portrait

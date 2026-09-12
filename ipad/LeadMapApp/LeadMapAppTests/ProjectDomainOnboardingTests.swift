@@ -162,6 +162,128 @@ final class ProjectDomainOnboardingTests: XCTestCase {
         )
     }
 
+    func testTidumPreviewDecodesFourNationalDiscoveryProfiles() throws {
+        let names = [
+            "Barnevern og avlastning – Norge",
+            "Bofellesskap og miljøarbeid – Norge",
+            "BPA og feltbasert omsorg – Norge",
+            "Kommunale omsorgstjenester – Norge",
+        ]
+        let templateKeys = [
+            "tidum.child_welfare",
+            "tidum.residential_care",
+            "tidum.bpa_field_services",
+            "tidum.municipal_services",
+        ]
+        let industryQueries = [
+            ["87.104", "87.105", "87.991", "88.991"],
+            ["87.106", "87.201", "87.202", "87.999"],
+            ["88.104", "88.105", "88.106"],
+            [],
+        ]
+        let profilePayloads: [[String: Any]] = names.enumerated().map { index, name in
+            let municipalityProfile = index == 3
+            let employeeCount: Any
+            let businessRegisterRequirement: Any
+            if municipalityProfile {
+                employeeCount = NSNull()
+                businessRegisterRequirement = NSNull()
+            } else {
+                employeeCount = ["minimum": 5, "maximum": NSNull()]
+                businessRegisterRequirement = true
+            }
+            return [
+                "name": name,
+                "is_default": index == 0,
+                "status": "active",
+                "template_key": templateKeys[index],
+                "template_version": 1,
+                "brief": [
+                    "industry_queries": industryQueries[index],
+                    "organization_name_queries": municipalityProfile ? ["kommune"] : [],
+                    "exclusion_terms": municipalityProfile
+                        ? []
+                        : ["holding", "eiendom", "renhold", "bemanning"],
+                    "country_code": "NO",
+                    "city": NSNull(),
+                    "geo": NSNull(),
+                    "territory_code": NSNull(),
+                    "municipality_numbers": [],
+                    "municipality_names": [],
+                    "target_count": index == 2 ? 40 : 60,
+                    "enrichment_count": 30,
+                    "minimum_fit_score": municipalityProfile ? 65 : 70,
+                    "ideal_customer": "Norsk omsorgsaktør med felt- eller turnusarbeid.",
+                    "goal": "Finne presise kandidater for Tidum.",
+                    "organization_forms": municipalityProfile ? ["KOMM"] : ["AS", "IKS", "STI"],
+                    "employee_count": employeeCount,
+                    "organization_structure": "any",
+                    "website_requirement": "any",
+                    "website_quality": ["minimum_score": NSNull()],
+                    "subject_kind": "organization",
+                    "qualification_terms": municipalityProfile ? [] : ["omsorg", "miljøarbeid"],
+                    "qualification_requirement": "preferred",
+                    "commercial_signals": [
+                        "registered_in_vat_register": NSNull(),
+                        "registered_in_business_register": businessRegisterRequirement,
+                    ],
+                ],
+                "approval_mode": "manual",
+                "places_details_enabled": false,
+                "auto_discover_enabled": false,
+                "schedule_cron": "0 6 * * *",
+                "schedule_timezone": "Europe/Oslo",
+            ]
+        }
+        let payload: [String: Any] = [
+            "id": "22222222-2222-4222-8222-222222222222",
+            "website_url": "https://tidum.no",
+            "website_domain": "tidum.no",
+            "project_name": "Tidum",
+            "project_description": "Arbeidstidssystem for barn, omsorg og miljøarbeid.",
+            "category": "Arbeidstid, omsorg og miljøarbeid",
+            "category_confidence": "high",
+            "classification_reasons": ["Domenet er verifisert som Tidum."],
+            "brand_profile": [
+                "targetAudience": "Private omsorgsaktører og kommunale tjenester i Norge.",
+            ],
+            "recommended_profiles": profilePayloads,
+            "skills": [],
+            "expires_at": "2026-09-12T12:00:00.000Z",
+            "can_manage_multiple_profiles": true,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload)
+
+        let preview = try JSONDecoder().decode(
+            LeadgridProjectOnboardingPreview.self,
+            from: data
+        )
+
+        XCTAssertEqual(preview.websiteDomain, "tidum.no")
+        XCTAssertEqual(preview.projectName, "Tidum")
+        XCTAssertEqual(preview.category, "Arbeidstid, omsorg og miljøarbeid")
+        XCTAssertEqual(preview.brandProfile?.targetAudience, "Private omsorgsaktører og kommunale tjenester i Norge.")
+        XCTAssertEqual(preview.recommendedProfiles.map(\.name), names)
+        XCTAssertEqual(preview.recommendedProfiles.compactMap(\.templateKey), templateKeys)
+        XCTAssertTrue(preview.recommendedProfiles.allSatisfy {
+            $0.brief.countryCode == "NO"
+                && $0.brief.areaSummary == "Hele Norge"
+                && $0.brief.validationMessage == nil
+        })
+        XCTAssertEqual(
+            preview.recommendedProfiles[0].brief.industryQueries,
+            ["87.104", "87.105", "87.991", "88.991"]
+        )
+        XCTAssertEqual(preview.recommendedProfiles[0].brief.organizationForms, ["AS", "IKS", "STI"])
+        XCTAssertEqual(preview.recommendedProfiles[0].brief.employeeCount?.minimum, 5)
+        XCTAssertEqual(preview.recommendedProfiles[3].brief.organizationNameQueries, ["kommune"])
+        XCTAssertEqual(preview.recommendedProfiles[3].brief.organizationForms, ["KOMM"])
+        XCTAssertNil(preview.recommendedProfiles[3].brief.employeeCount)
+        XCTAssertNil(
+            preview.recommendedProfiles[3].brief.commercialSignals.registeredInBusinessRegister
+        )
+    }
+
     func testRoleRoomPreviewDecodesSixEditableNationalProfiles() throws {
         let profileNames = [
             "Film- og TV-produksjon – Norge",
