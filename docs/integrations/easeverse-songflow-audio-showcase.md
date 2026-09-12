@@ -1,7 +1,7 @@
 # Integrasjon: EaseVerse ⇄ Workspace/Sound Room ⇄ Pro Tools Companion
 
 > Implementert arkitektur og driftsrunbook for den samlede musikkprodusentflyten.
-> Sist oppdatert: 2026-09-10.
+> Sist oppdatert: 2026-09-12.
 
 ## 1. Mål
 
@@ -29,8 +29,12 @@ Den kanoniske flyten er:
 | Pro Tools Intro-preflight | ✅ | Companion teller audio-, instrument-, MIDI-, aux- og I/O-ressurser og viser konkrete stem/flatten-tiltak før handoff. |
 | Lyrics | ✅ | Revisjons-/tidsstempelstyrt last-write-wins hindrer eldre offlineutkast fra å overskrive nyere tekst. |
 | Robust synk | ✅ | Companion har atomisk lokal outbox og auto-resume etter omstart. CreatorHub og EaseVerse har DB-outbox med leasing, eksponentiell retry, dead-letter og bakgrunnsworker/Netlify-cron. |
+| Produsentinnboks | ✅ | `/sound-room` samler nye hendelser, åpne innspill, oppgaver, sign-off, lyttegrad og EP-/albumrekkefølge på tvers av låter. |
+| Revisjonsbrief | ✅ | Sound Room grupperer tidskodet feedback i en handlingsklar brief. AI brukes server-side når tilgjengelig, med deterministisk fallback uten datatap. |
+| Decision Room | ✅ | To til fire versjoner kan blindtestes. Delings-API-et skjuler kandidatnavn og stemmetall, og webspilleren måler faktisk loudness før nivåmatching aktiveres. |
+| Sign-off og levering | ✅ | Rollebasert mix/master/delivery-sign-off og atomiske, nummererte leveringsmanifest gjør beslutning og overlevering eksplisitt. |
 | Auth-recovery | ✅ | 401 og auth-relaterte 403-responser ugyldiggjør den lokale CreatorHub-sesjonen og viser felles innlogging på nytt; rollebaserte 403-responser logger ikke brukeren ut. |
-| Companion-feedback | ✅ | Companion viser kommentarer, tasks og godkjenninger, kan locate/svare/løse, og reagerer på den brukeravgrensede WebSocket-strømmen; 60 sekunders polling er kun fallback. |
+| Companion-feedback | ✅ | Companion viser kommentarer, oppgaver, revisjonsbrief, beslutningsrom og sign-off, kan locate/svare/løse, og reagerer på den brukeravgrensede WebSocket-strømmen; 60 sekunders polling er kun fallback. |
 | Realtime-sikkerhet | ✅ | Web-klienten henter en tilfeldig 30-sekunders engangsticket før WebSocket-oppkobling; OAuth-token legges ikke i URL-en. |
 | Legacy EaseVerse-paring | ✅ | Gamle Clerk-/lokale Companion-kort er fjernet fra aktiv EaseVerse-UI. Paring administreres i Workspace/Sound Room. |
 | Desktop-distribusjon | 🟡 | macOS-DMG-er for v0.1.3 er Developer ID-signert/notarisert i et GitHub-utkast. Windows x64 bygget, men publisering stoppet før Authenticode fordi den konfigurerte Public Trust-profilen ennå ikke finnes i Azure. Releasen forblir utkast til profilen er opprettet og Windows-smoken passerer. |
@@ -110,6 +114,17 @@ og må bygges med Windows-utgaven av samme lisensierte SDK.
 - `GET /api/protools/sessions/:id/artifacts`
 - `GET /api/protools/sessions/:id/artifacts/:artifactId/file`
 
+Sound Room sitt produsentlag bruker i tillegg:
+
+- `GET /api/sound-room/command-center`
+- `GET /api/sound-room/projects/:projectId`
+- `POST /api/sound-room/projects/:projectId/briefs`
+- `POST /api/sound-room/projects/:projectId/decisions`
+- `POST /api/sound-room/projects/:projectId/signoffs`
+- `POST /api/sound-room/projects/:projectId/manifests`
+- `POST /api/sound-room/collections` og `PUT /api/sound-room/collections/:id/tracks`
+- token-avgrensede `/api/audio-review-shared/:token/os`, lytte-, stemme- og sign-off-endepunkter
+
 Watcher markerer ikke en fil som ferdig behandlet før serveren har bekreftet mottak. Session Info og bounces legges først i en atomisk lokal JSON-outbox. Køen og `auto_watch` overlever app-/maskinomstart, skannes ved oppstart og retries eksponentielt i opptil 15-minutters intervaller. Markør-/metadataeventer og bounces har stabile event-ID-er basert på innhold, ikke lokal filsti.
 
 ### Administrasjon i Sound Room
@@ -154,6 +169,14 @@ Migrasjon `0572_music_artifact_lineage_and_companion_actions.sql` legger til:
 - PTSL-status, Pro Tools-utgave og Intro-preflight på Companion-session
 - markørkvittering på Sound Room-kommentarer
 - kobling fra bounce til kanonisk artefakt
+
+Migrasjon `0588_sound_room_producer_operating_system.sql` legger til:
+
+- produsentaktivitet og reelle lyttekvitteringer
+- revisjonsbriefer og blind Decision Room med én stemme per reviewer
+- rollebasert sign-off per versjon og produksjonssteg
+- EP-/albumsamlinger med eksplisitt sporrekkefølge
+- atomiske leveringsmanifest med metadata-identitetskontroll
 
 EaseVerse-migrasjon `0002_creatorhub_sync_outbox.sql` etablerer varig keeper-levering tilbake til CreatorHub. Collaboration-lageret lagrer prosjektkontekst, canonical Pro Tools snapshot, referansemiks og lyrics-revisjon.
 
