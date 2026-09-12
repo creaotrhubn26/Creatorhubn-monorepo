@@ -132,15 +132,32 @@ struct LeadgridTabHeader<Extra: View>: View {
     var body: some View {
         GeometryReader { geo in
             let isNarrow = geo.size.width < 1100
+            // I stående Split View på iPad mini er kundeprosjekt og aktiv
+            // skjerm viktigere enn en egen datopille (datoen står også i
+            // systemstatusen). Pillen kommer tilbake så snart detaljkolonnen
+            // har nok plass, for eksempel når sidebaren skjules.
+            let showsTabletDate = geo.size.width >= 600
             HStack(alignment: .top, spacing: DeviceIdiom.isPhone ? 8 : 14) {
                 if !isNarrow { LeadgridHeaderMark().padding(.top, 4) }
-                // Fanetittelen er fjernet — tab-baren/sidebaren viser hvor du er.
-                if !isNarrow {
-                    Text(subtitle)
-                        .font(.appScaled(size: 13))
-                        .foregroundStyle(Brand.textSecondary)
-                        .lineLimit(1)
-                        .padding(.top, 12)
+                // Sidebaren kan skjules i Split View og på iPad mini. Den
+                // aktive arbeidsflaten må derfor identifisere seg selv.
+                if !DeviceIdiom.isPhone {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(state.selectedSidebarItem.label)
+                            .font(.appScaled(size: 17, weight: .bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .accessibilityAddTraits(.isHeader)
+                            .accessibilityIdentifier("leadgrid-screen-title")
+                        if !isNarrow {
+                            Text(subtitle)
+                                .font(.appScaled(size: 12))
+                                .foregroundStyle(Brand.textSecondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.top, isNarrow ? 9 : 5)
+                    .layoutPriority(2)
                 }
                 // iPhone: dato-pill + fane-knapper venstrejustert i en
                 // horisontal scroller — kontekst venstre, handlinger høyre.
@@ -162,7 +179,9 @@ struct LeadgridTabHeader<Extra: View>: View {
                 Spacer(minLength: DeviceIdiom.isPhone ? 0 : 8)
                 HStack(spacing: 8) {
                     if !DeviceIdiom.isPhone {
-                        dateButton(isNarrow: isNarrow)
+                        if showsTabletDate {
+                            dateButton(isNarrow: isNarrow)
+                        }
                         // Prosjektet er en del av arbeidskonteksten på alle
                         // Leadgrid-flater, også Pondus. Det skal aldri måtte
                         // gjettes fra innholdet hvilket kundeprosjekt som er aktivt.

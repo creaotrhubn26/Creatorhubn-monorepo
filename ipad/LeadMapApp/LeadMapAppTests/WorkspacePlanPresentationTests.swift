@@ -2,6 +2,41 @@ import XCTest
 @testable import LeadMapApp
 
 final class WorkspacePlanPresentationTests: XCTestCase {
+    func testProjectScopedProductOnboardingEnvelopeDecodes() throws {
+        let data = Data(#"""
+        {
+          "state": {
+            "current_step": "find_candidates",
+            "steps_completed": ["welcome", "choose_project"],
+            "completed": false,
+            "organization_id": "11111111-1111-4111-8111-111111111111",
+            "project_id": "dentum-oslo",
+            "role_track": "admin",
+            "onboarding_version": 2,
+            "started_at": "2026-09-12T08:00:00.000Z",
+            "last_activity_at": "2026-09-12T08:01:00.000Z",
+            "completed_at": null,
+            "skipped_at": null
+          },
+          "eligible": true,
+          "is_new": false
+        }
+        """#.utf8)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let response = try decoder.decode(
+            LeadgridOnboardingStateResponse.self,
+            from: data
+        )
+
+        XCTAssertTrue(response.eligible)
+        XCTAssertEqual(response.state?.projectId, "dentum-oslo")
+        XCTAssertEqual(response.state?.roleTrack, "admin")
+        XCTAssertEqual(response.state?.currentStep, "find_candidates")
+        XCTAssertEqual(response.state?.stepsCompleted.count, 2)
+        XCTAssertEqual(response.state?.onboardingVersion, 2)
+    }
+
     @MainActor
     func testOnlyOrganizationAdminCanManageWorkspaceBilling() {
         let appState = AppState()

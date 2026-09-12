@@ -4958,7 +4958,7 @@ struct KartView: View {
                                     .foregroundStyle(KrBrand.textSecondary)
                                 Text(hasAnyLeads
                                      ? "Flytt kartet, eller juster søk og filtre"
-                                     : "Bruk «Legg til»-menyen eller skru på demo-modus")
+                                     : "Finn nye bedrifter med «Hva vil du finne?», eller legg til en du kjenner")
                                     .font(.appScaled(size: 10))
                                     .foregroundStyle(KrBrand.textTertiary)
                                     .multilineTextAlignment(.center)
