@@ -36,6 +36,8 @@ export type {
 } from './creativeSuggestions';
 export { CreativeSuggestionsPanel } from './CreativeSuggestionsPanel';
 export type { CreativeSuggestionsPanelProps } from './CreativeSuggestionsPanel';
+export { StoryboardSkillsPanel } from './StoryboardSkillsPanel';
+export type { StoryboardSkillsPanelProps } from './StoryboardSkillsPanel';
 
 // Sprint A.7: Continuity strip — nabo-frame-thumbnails i editor
 export {

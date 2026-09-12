@@ -513,6 +513,7 @@ export const StoryboardBoardPage: React.FC<{
   onAddFrame: () => void;
   onOpenScript?: () => void;
   onOpenShotList?: () => void;
+  onShare?: () => void;
   onClose: () => void;
 }> = ({
   projectName = 'The Role Room',
@@ -528,6 +529,7 @@ export const StoryboardBoardPage: React.FC<{
   onAddFrame,
   onOpenScript,
   onOpenShotList,
+  onShare,
   onClose,
 }) => {
   const [zoom, setZoom] = useState(0.75);
@@ -710,7 +712,7 @@ export const StoryboardBoardPage: React.FC<{
             {(typeof window !== 'undefined' ? (window.localStorage.getItem('userEmail') || 'U') : 'U').slice(0, 2).toUpperCase()}
           </Box>
         </Tooltip>
-        <Button size="small" startIcon={<ShareIcon sx={{ fontSize: 16 }} />} sx={{ color: '#fff', bgcolor: 'rgba(255,255,255,0.08)', borderRadius: 2, px: 1.75, textTransform: 'none', fontWeight: 600, mr: 1 }}>
+        <Button size="small" startIcon={<ShareIcon sx={{ fontSize: 16 }} />} onClick={onShare} disabled={!onShare} data-testid="board-page-share" sx={{ color: '#fff', bgcolor: 'rgba(255,255,255,0.08)', borderRadius: 2, px: 1.75, textTransform: 'none', fontWeight: 600, mr: 1 }}>
           Share
         </Button>
         <IconButton size="small" sx={{ color: TEXT_DIM, mr: 0.5 }}><MoreHorizIcon /></IconButton>

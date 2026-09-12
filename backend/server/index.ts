@@ -199,6 +199,7 @@ import {
 } from "./dance-team-routes.js";
 import { createDanceAddonRouter } from "./dance-addon-routes.js";
 import { createStoryboardRouter } from "./storyboard-routes.js";
+import { createStoryboardReviewRouter } from "./storyboard-review-routes.js";
 import { createStoryboardAiRouter } from "./storyboard-ai-routes.js";
 import { createCrewNotificationsRouter } from "./crew-notifications-routes.js";
 import { createEducationCohortsRouter } from "./role-room-education-cohorts-routes.js";
@@ -804,6 +805,8 @@ import { setupCastingProjectsRoutes } from "./casting-projects-routes";
 import { createCastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
 import { createAISuggestionService } from "./ai-suggestion-service.js";
 import { setupAISuggestionRoutes } from "./ai-suggestion-routes.js";
+import { createStoryboardSkillAgents } from "./storyboard-skills/storyboard-skills.js";
+import { setupStoryboardSkillRoutes } from "./storyboard-skills/storyboard-skill-routes.js";
 import {
   breakdownAgent,
   breakdownPropApplier,
@@ -15469,6 +15472,14 @@ const manuscriptsService = createCastingManuscriptsService({
   compatStoreSetStrict,
 });
 
+// Storyboard review-runder må monteres etter at manuskript-servicen finnes.
+// De vanlige storyboard-rutene monteres tidligere, men deler samme prosjekt-
+// og fanetilgangskontroll gjennom storyboard-routes.ts.
+app.use(
+  "/api/role-room",
+  createStoryboardReviewRouter(pool, { activeSessions, manuscriptsService }),
+);
+
 // Revisions-service for diff/restore-API. Avhenger av manuscriptsService.
 const manuscriptRevisionsService = createCastingManuscriptRevisionsService({
   manuscriptsService,
@@ -15493,6 +15504,9 @@ aiSuggestionService.registerAgent(createDialogPacingAgent(pool));
 aiSuggestionService.registerAgent(createMusicBedAgent(pool));
 aiSuggestionService.registerAgent(createSfxSuggestionAgent(pool));
 aiSuggestionService.registerAgent(createSceneReadinessAgent(pool));
+for (const storyboardSkillAgent of createStoryboardSkillAgents()) {
+  aiSuggestionService.registerAgent(storyboardSkillAgent);
+}
 aiSuggestionService.registerApplier(breakdownPropApplier);
 aiSuggestionService.registerApplier(breakdownRiskFlagApplier);
 aiSuggestionService.registerApplier(breakdownLocationApplier);
@@ -32682,6 +32696,13 @@ setupRoleRoomCallSheetRoutes({ app, pool, requireUserSession });
 //   registrerte agenter. 4 endpoints: list / generate / accept / reject.
 setupAISuggestionRoutes({
   app,
+  pool,
+  requireUserSession,
+  aiSuggestionService,
+});
+setupStoryboardSkillRoutes({
+  app,
+  pool,
   requireUserSession,
   aiSuggestionService,
 });

@@ -201,6 +201,13 @@ LEADGRID_RUN_SIMULATOR_E2E=1 \
 Sett også `LEADGRID_RUN_ROLE_ROOM_CAMPAIGN_E2E=1` for å kjøre alle seks
 profilene autoritativt. Da venter testen i inntil ti minutter og krever seks
 fullførte profilkjøringer, ingen feilede profiler og minst ett samlet resultat.
+For Tidum brukes `LEADGRID_RUN_TIDUM_E2E=1` og eventuelt
+`LEADGRID_RUN_TIDUM_CAMPAIGN_E2E=1`. Det verifiserer fire nasjonale
+Discovery-profiler, PostgreSQL-persistens, gjenbruk uten duplikater, faktiske
+BRREG-resultater og den native prosjektflyten på iPad mini. Den manuelle
+workflowen «Leadgrid Tidum staging E2E» kjører denne kjeden med hemmelighetene
+fra GitHub-miljøet `Staging`.
+
 Dette flagget bruker faktiske Discovery-kilder og skal derfor bare kjøres i et
 isolert staging-miljø. En TestFlight-installasjon på fysisk iPad må til slutt
 bekrefte skjerm, nettverksbrudd og reconnect; simulatorløpet alene dekker ikke

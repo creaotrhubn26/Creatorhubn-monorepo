@@ -453,6 +453,122 @@ private var roleRoomOnboardingQAPreview: LeadgridProjectOnboardingPreview {
     )
 }
 
+private func tidumOnboardingQABrief(
+    industryQueries: [String] = [],
+    organizationNameQueries: [String] = [],
+    targetCount: Int = 60,
+    minimumFitScore: Int = 70,
+    organizationForms: [String] = ["AS", "IKS", "STI"],
+    employeeCount: DiscoveryV2EmployeeCountFilter? = .init(minimum: 5, maximum: nil),
+    requireBusinessRegistration: Bool? = true
+) -> DiscoveryV2Brief {
+    DiscoveryV2Brief(
+        industryQueries: industryQueries,
+        organizationNameQueries: organizationNameQueries,
+        exclusionTerms: organizationForms == ["KOMM"]
+            ? []
+            : ["holding", "eiendom", "renhold", "bemanning"],
+        countryCode: "NO",
+        city: nil,
+        geo: nil,
+        targetCount: targetCount,
+        enrichmentCount: min(30, targetCount),
+        minimumFitScore: minimumFitScore,
+        idealCustomer: "Norsk omsorgsaktør med felt- eller turnusarbeid.",
+        goal: "Finne presise kandidater for Tidum.",
+        organizationForms: organizationForms,
+        employeeCount: employeeCount,
+        qualificationTerms: organizationForms == ["KOMM"]
+            ? []
+            : ["omsorg", "miljøarbeid", "avlastning", "BPA"],
+        commercialSignals: .init(
+            registeredInVatRegister: nil,
+            registeredInBusinessRegister: requireBusinessRegistration
+        )
+    )
+}
+
+private var tidumOnboardingQAWriteProfiles: [DiscoveryV2ProfileWrite] {
+    [
+        .init(
+            name: "Barnevern og avlastning – Norge",
+            isDefault: true,
+            expectedVersion: nil,
+            brief: tidumOnboardingQABrief(
+                industryQueries: ["87.104", "87.105", "87.991", "88.991"]
+            ),
+            placesDetailsEnabled: false,
+            status: .active,
+            templateKey: "tidum.child_welfare",
+            templateVersion: 1
+        ),
+        .init(
+            name: "Bofellesskap og miljøarbeid – Norge",
+            isDefault: false,
+            expectedVersion: nil,
+            brief: tidumOnboardingQABrief(
+                industryQueries: ["87.106", "87.201", "87.202", "87.999"]
+            ),
+            placesDetailsEnabled: false,
+            status: .active,
+            templateKey: "tidum.residential_care",
+            templateVersion: 1
+        ),
+        .init(
+            name: "BPA og feltbasert omsorg – Norge",
+            isDefault: false,
+            expectedVersion: nil,
+            brief: tidumOnboardingQABrief(
+                industryQueries: ["88.104", "88.105", "88.106"],
+                targetCount: 40
+            ),
+            placesDetailsEnabled: false,
+            status: .active,
+            templateKey: "tidum.bpa_field_services",
+            templateVersion: 1
+        ),
+        .init(
+            name: "Kommunale omsorgstjenester – Norge",
+            isDefault: false,
+            expectedVersion: nil,
+            brief: tidumOnboardingQABrief(
+                organizationNameQueries: ["kommune"],
+                minimumFitScore: 65,
+                organizationForms: ["KOMM"],
+                employeeCount: nil,
+                requireBusinessRegistration: nil
+            ),
+            placesDetailsEnabled: false,
+            status: .active,
+            templateKey: "tidum.municipal_services",
+            templateVersion: 1
+        ),
+    ]
+}
+
+private var tidumOnboardingQAPreview: LeadgridProjectOnboardingPreview {
+    LeadgridProjectOnboardingPreview(
+        id: "55555555-5555-4555-8555-555555555555",
+        websiteURL: "https://tidum.no",
+        websiteDomain: "tidum.no",
+        projectName: "Tidum",
+        projectDescription: "Arbeidstidssystem for barn, omsorg og miljøarbeid.",
+        category: "Arbeidstid, omsorg og miljøarbeid",
+        categoryConfidence: "high",
+        classificationReasons: [
+            "Domenet er verifisert som Tidum.",
+            "Private omsorgsaktører og kommunale tjenester er delt i egne profiler.",
+        ],
+        recommendedProfiles: tidumOnboardingQAWriteProfiles,
+        skills: domainOnboardingQASkills,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        canManageMultipleProfiles: true,
+        brandProfile: .init(
+            targetAudience: "Private omsorgsaktører og kommunale tjenester i Norge."
+        )
+    )
+}
+
 private func domainOnboardingQAResult(
     profiles: [DiscoveryV2ProfileWrite]?
 ) -> LeadgridProjectOnboardingResult {
@@ -537,6 +653,56 @@ private func roleRoomOnboardingQAResult(
                 reused: false
             ),
             team: .init(id: "role-room-salg", name: "The Role Room salg", reused: false),
+            administrator: .init(
+                email: "superadmin@leadgrid.no",
+                status: "active",
+                organizationRole: "admin",
+                projectRole: "owner",
+                emailStatus: "not_required"
+            ),
+            invitations: [],
+            discoveryAccessVerified: true
+        )
+    )
+}
+
+private func tidumOnboardingQAResult(
+    profiles: [DiscoveryV2ProfileWrite]
+) -> LeadgridProjectOnboardingResult {
+    LeadgridProjectOnboardingResult(
+        project: ProjectListItem(
+            id: "qa-tidum-project",
+            organizationId: "44444444-4444-4444-8444-444444444444",
+            name: "Tidum",
+            description: "Arbeidstidssystem for barn, omsorg og miljøarbeid.",
+            status: "active",
+            hasBrandKit: true,
+            leadCount: 0,
+            competitorCount: 0
+        ),
+        profiles: profiles.enumerated().map { index, write in
+            DiscoveryV2Profile(
+                id: "qa-tidum-profile-\(index + 1)",
+                name: write.name,
+                isDefault: index == 0,
+                version: 1,
+                brief: write.brief,
+                placesDetailsEnabled: write.placesDetailsEnabled,
+                status: .active,
+                templateKey: write.templateKey,
+                templateVersion: write.templateVersion
+            )
+        },
+        skills: domainOnboardingQASkills,
+        reusedProject: false,
+        replayed: false,
+        access: LeadgridProjectOnboardingAccessResult(
+            organization: .init(
+                id: "44444444-4444-4444-8444-444444444444",
+                name: "Tidum",
+                reused: false
+            ),
+            team: .init(id: "tidum-salg", name: "Tidum salg", reused: false),
             administrator: .init(
                 email: "superadmin@leadgrid.no",
                 status: "active",
@@ -652,9 +818,14 @@ extension APIClient {
     ) async throws -> LeadgridProjectOnboardingPreview {
         #if DEBUG
         if usesDomainOnboardingQAFixture {
-            return websiteURL.lowercased().contains("theroleroom.com")
-                ? roleRoomOnboardingQAPreview
-                : domainOnboardingQAPreview
+            let domain = websiteURL.lowercased()
+            if domain.contains("theroleroom.com") {
+                return roleRoomOnboardingQAPreview
+            }
+            if domain.contains("tidum.no") {
+                return tidumOnboardingQAPreview
+            }
+            return domainOnboardingQAPreview
         }
         #endif
         struct Body: Encodable {
@@ -700,6 +871,17 @@ extension APIClient {
                     throw URLError(.badServerResponse)
                 }
                 return roleRoomOnboardingQAResult(profiles: profiles)
+            }
+            if previewId == tidumOnboardingQAPreview.id {
+                guard let profiles,
+                      profiles.map(\.name) == tidumOnboardingQAWriteProfiles.map(\.name),
+                      accessSetup?.organization.mode == "create",
+                      accessSetup?.administratorEmail == "superadmin@leadgrid.no",
+                      accessSetup?.team.mode == "create"
+                else {
+                    throw URLError(.badServerResponse)
+                }
+                return tidumOnboardingQAResult(profiles: profiles)
             }
             guard let profiles,
                   profiles.count == 2,

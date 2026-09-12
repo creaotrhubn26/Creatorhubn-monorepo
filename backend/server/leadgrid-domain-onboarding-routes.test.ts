@@ -40,6 +40,21 @@ function dentumProfile(): BrandProfile {
   };
 }
 
+function tidumFallbackProfile(): BrandProfile {
+  return {
+    ...dentumProfile(),
+    url: "https://tidum.no",
+    businessName: "Tidum – arbeidstidssystem for barn, omsorg og miljøarbeid",
+    tagline: "Arbeidstidssystem for barn, omsorg og miljøarbeid",
+    description:
+      "Tidum gir enkel timeføring, trygg dokumentasjon og oversikt for ledere og miljøarbeidere.",
+    usps: [],
+    primaryCTA: "",
+    industry: "other",
+    targetAudience: "",
+  };
+}
+
 function harness(args: {
   pool: Pool;
   analyzer?: (url: string) => Promise<BrandProfile>;
@@ -225,6 +240,59 @@ describe("Leadgrid domain onboarding routes", () => {
       },
     });
     expect(analyzer).toHaveBeenCalledWith("https://dentum.no");
+    const statements = (pool.query as ReturnType<typeof vi.fn>).mock.calls
+      .map(([sql]) => String(sql));
+    expect(statements.some((sql) => sql.includes("INSERT INTO leadgrid_projects"))).toBe(false);
+    expect(statements.some((sql) => sql.includes("INSERT INTO crm_customers"))).toBe(false);
+  });
+
+  it("previews Tidum with four isolated national profiles despite analyzer fallback", async () => {
+    const pool = permissionPool();
+    const analyzer = vi.fn(async () => tidumFallbackProfile());
+    const response = await harness({ pool, analyzer }).post(
+      "/api/leadgrid/project-onboarding/preview",
+      { organization_id: organizationId, website_url: "tidum.no" },
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.payload).toMatchObject({
+      preview: {
+        website_domain: "tidum.no",
+        project_name: "Tidum",
+        category: "Arbeidstid, omsorg og miljøarbeid",
+        category_confidence: "high",
+        can_manage_multiple_profiles: true,
+        recommended_profiles: [
+          {
+            template_key: "tidum.child_welfare",
+            name: "Barnevern og avlastning – Norge",
+            is_default: true,
+            approval_mode: "manual",
+            brief: {
+              industry_queries: ["87.104", "87.105", "87.991", "88.991"],
+              country_code: "NO",
+              city: null,
+              organization_forms: ["AS", "IKS", "STI"],
+              employee_count: { minimum: 5, maximum: null },
+            },
+          },
+          { template_key: "tidum.residential_care" },
+          { template_key: "tidum.bpa_field_services" },
+          {
+            template_key: "tidum.municipal_services",
+            brief: {
+              organization_name_queries: ["kommune"],
+              organization_forms: ["KOMM"],
+            },
+          },
+        ],
+        skills: expect.arrayContaining([
+          expect.objectContaining({ key: "leadgrid_data_quality" }),
+          expect.objectContaining({ key: "leadgrid_sync_offline_actions" }),
+        ]),
+      },
+    });
+    expect(analyzer).toHaveBeenCalledWith("https://tidum.no");
     const statements = (pool.query as ReturnType<typeof vi.fn>).mock.calls
       .map(([sql]) => String(sql));
     expect(statements.some((sql) => sql.includes("INSERT INTO leadgrid_projects"))).toBe(false);

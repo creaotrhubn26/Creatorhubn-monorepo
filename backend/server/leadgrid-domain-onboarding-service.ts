@@ -367,7 +367,7 @@ function fallbackCategory(profile: BrandProfile): CategoryRule {
   };
 }
 
-function roleRoomBrief(input: {
+function nationalDiscoveryBrief(input: {
   industryQueries?: string[];
   organizationNameQueries?: string[];
   exclusions: string[];
@@ -379,6 +379,8 @@ function roleRoomBrief(input: {
   subjectKind?: "organization" | "person";
   qualificationTerms?: string[];
   qualificationRequirement?: "preferred" | "required";
+  organizationForms?: string[];
+  employeeCount?: { minimum: number | null; maximum: number | null } | null;
 }): DiscoveryBrief {
   return discoveryBriefSchema.parse({
     industry_queries: input.industryQueries ?? [],
@@ -395,8 +397,8 @@ function roleRoomBrief(input: {
     minimum_fit_score: input.minimumFitScore ?? 65,
     ideal_customer: input.idealCustomer,
     goal: input.goal,
-    organization_forms: [],
-    employee_count: null,
+    organization_forms: input.organizationForms ?? [],
+    employee_count: input.employeeCount ?? null,
     organization_structure: "any",
     website_requirement: "any",
     website_quality: { minimum_score: null },
@@ -413,7 +415,7 @@ function roleRoomBrief(input: {
   });
 }
 
-function roleRoomProfilePlan(
+function nationalDiscoveryProfilePlan(
   templateKey: string,
   name: string,
   brief: DiscoveryBrief,
@@ -489,10 +491,10 @@ function buildRoleRoomOnboardingPlan(
     ],
     brand_profile: brandProfile,
     recommended_profiles: [
-      roleRoomProfilePlan(
+      nationalDiscoveryProfilePlan(
         "role_room.production",
         "Film- og TV-produksjon – Norge",
-        roleRoomBrief({
+        nationalDiscoveryBrief({
           industryQueries: ["59.110", "59.120", "60.200"],
           exclusions: ["kino", "filmklubb"],
           idealCustomer:
@@ -508,10 +510,10 @@ function buildRoleRoomOnboardingPlan(
         }),
         true,
       ),
-      roleRoomProfilePlan(
+      nationalDiscoveryProfilePlan(
         "role_room.agencies",
         "Reklame- og innholdsbyråer – Norge",
-        roleRoomBrief({
+        nationalDiscoveryBrief({
           industryQueries: ["73.110", "74.200"],
           exclusions: ["avis", "trykkeri", "fotobutikk", "hobbyklubb"],
           idealCustomer:
@@ -522,10 +524,10 @@ function buildRoleRoomOnboardingPlan(
           qualificationRequirement: "required",
         }),
       ),
-      roleRoomProfilePlan(
+      nationalDiscoveryProfilePlan(
         "role_room.casting",
         "Casting- og talentmiljøer – Norge",
-        roleRoomBrief({
+        nationalDiscoveryBrief({
           organizationNameQueries: ["casting"],
           exclusions: [
             "reboa",
@@ -555,10 +557,10 @@ function buildRoleRoomOnboardingPlan(
           qualificationRequirement: "required",
         }),
       ),
-      roleRoomProfilePlan(
+      nationalDiscoveryProfilePlan(
         "role_room.education",
         "Film- og medieutdanning – Norge",
-        roleRoomBrief({
+        nationalDiscoveryBrief({
           organizationNameQueries: [
             "filmskule",
             "universitet",
@@ -601,10 +603,10 @@ function buildRoleRoomOnboardingPlan(
           qualificationRequirement: "required",
         }),
       ),
-      roleRoomProfilePlan(
+      nationalDiscoveryProfilePlan(
         "role_room.dance",
         "Dansestudioer og danseskoler – Norge",
-        roleRoomBrief({
+        nationalDiscoveryBrief({
           organizationNameQueries: [
             "dansestudio",
             "danseskole",
@@ -631,10 +633,10 @@ function buildRoleRoomOnboardingPlan(
           qualificationRequirement: "required",
         }),
       ),
-      roleRoomProfilePlan(
+      nationalDiscoveryProfilePlan(
         "role_room.talents",
         "Skuespillere og talenter – Norge",
-        roleRoomBrief({
+        nationalDiscoveryBrief({
           organizationNameQueries: ["skuespiller", "actor"],
           exclusions: [
             "forbund",
@@ -656,6 +658,158 @@ function buildRoleRoomOnboardingPlan(
           subjectKind: "person",
           qualificationTerms: ["skuespiller", "actor", "talent", "film", "scene"],
           qualificationRequirement: "required",
+        }),
+      ),
+    ],
+    skills: LEADGRID_ONBOARDING_SKILLS,
+  };
+}
+
+function buildTidumOnboardingPlan(
+  websiteUrl: string,
+  profile: BrandProfile,
+): ProjectOnboardingPlan {
+  const privateOrganizationForms = ["AS", "IKS", "STI"];
+  const privateEmployeeCount = { minimum: 5, maximum: null };
+  const commonPrivateExclusions = [
+    "holding",
+    "eiendom",
+    "renhold",
+    "bemanning",
+  ];
+  const brandProfile: BrandProfile = {
+    ...profile,
+    url: websiteUrl,
+    businessName: "Tidum",
+    tagline: "Arbeidstidssystem for barn, omsorg og miljøarbeid",
+    description:
+      "Tidum gir virksomheter innen barn, omsorg og miljøarbeid enkel timeføring, trygg dokumentasjon og oversikt for ledere og feltteam.",
+    toneOfVoice: "professional",
+    usps: [
+      "Enkel timeregistrering med ett trykk",
+      "Trygg dokumentasjon med sporbar historikk",
+      "Oversikt for ledere, feltteam og turnusarbeid",
+      "Rapportering og eksport til videre oppfølging",
+    ],
+    primaryCTA: "Be om tilgang",
+    colors: {
+      ...profile.colors,
+      primary: "#1F6B73",
+    },
+    fonts: { heading: "Inter", body: "Inter" },
+    logoUrl: "https://tidum.no/apple-touch-icon.png",
+    faviconUrl: "https://tidum.no/favicon.ico",
+    productCategories: [
+      "Arbeidstid og timeføring",
+      "Omsorg og miljøarbeid",
+      "Dokumentasjon og rapportering",
+      "Team- og lederoversikt",
+    ],
+    hasShop: false,
+    industry: "workforce_management_for_care",
+    targetAudience:
+      "Private omsorgsaktører, barneverns- og avlastningstjenester, BPA-virksomheter og kommunale tjenester med felt- eller turnusarbeid i Norge.",
+  };
+
+  return {
+    version: 1,
+    website_url: websiteUrl,
+    website_domain: "tidum.no",
+    project_name: "Tidum",
+    project_description: brandProfile.description,
+    category: "Arbeidstid, omsorg og miljøarbeid",
+    category_confidence: "high",
+    classification_reasons: [
+      "Domenet er verifisert som Tidum.",
+      "Nettsiden beskriver arbeidstid, dokumentasjon og lederoversikt for barn, omsorg og miljøarbeid.",
+      "Private omsorgsaktører og kommunale tjenester er delt i egne profiler for presis Discovery.",
+    ],
+    brand_profile: brandProfile,
+    recommended_profiles: [
+      nationalDiscoveryProfilePlan(
+        "tidum.child_welfare",
+        "Barnevern og avlastning – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["87.104", "87.105", "87.991", "88.991"],
+          exclusions: commonPrivateExclusions,
+          idealCustomer:
+            "Norsk barneverns-, barnebolig- eller avlastningsvirksomhet med minst fem ansatte og døgn-, felt- eller turnusbasert arbeid.",
+          goal:
+            "Finne barneverns- og avlastningsaktører som trenger enklere arbeidstidsregistrering, dokumentasjon og lederoversikt.",
+          targetCount: 60,
+          minimumFitScore: 70,
+          qualificationTerms: [
+            "barnevern",
+            "barnebolig",
+            "avlastning",
+            "omsorg",
+            "miljøarbeid",
+          ],
+          organizationForms: privateOrganizationForms,
+          employeeCount: privateEmployeeCount,
+        }),
+        true,
+      ),
+      nationalDiscoveryProfilePlan(
+        "tidum.residential_care",
+        "Bofellesskap og miljøarbeid – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["87.106", "87.201", "87.202", "87.999"],
+          exclusions: commonPrivateExclusions,
+          idealCustomer:
+            "Norsk virksomhet med minst fem ansatte som driver bofellesskap, døgnbemannet botilbud eller miljøarbeid innen psykisk helse, rus eller tilrettelagt omsorg.",
+          goal:
+            "Finne omsorgs- og miljøarbeidsvirksomheter som trenger sporbar timeføring og oversikt på tvers av ansatte og tiltak.",
+          targetCount: 60,
+          minimumFitScore: 70,
+          qualificationTerms: [
+            "bofellesskap",
+            "botilbud",
+            "omsorg",
+            "miljøarbeid",
+            "døgnbemannet",
+          ],
+          organizationForms: privateOrganizationForms,
+          employeeCount: privateEmployeeCount,
+        }),
+      ),
+      nationalDiscoveryProfilePlan(
+        "tidum.bpa_field_services",
+        "BPA og feltbasert omsorg – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["88.104", "88.105", "88.106"],
+          exclusions: commonPrivateExclusions,
+          idealCustomer:
+            "Norsk BPA-, støttekontakt- eller avlastningsvirksomhet med minst fem ansatte som koordinerer arbeid ute hos brukere.",
+          goal:
+            "Finne feltbaserte omsorgsteam som trenger enkel registrering, dokumentasjon og lederoppfølging.",
+          targetCount: 40,
+          minimumFitScore: 70,
+          qualificationTerms: [
+            "BPA",
+            "brukerstyrt personlig assistanse",
+            "støttekontakt",
+            "avlastning",
+            "omsorg",
+          ],
+          organizationForms: privateOrganizationForms,
+          employeeCount: privateEmployeeCount,
+        }),
+      ),
+      nationalDiscoveryProfilePlan(
+        "tidum.municipal_services",
+        "Kommunale omsorgstjenester – Norge",
+        nationalDiscoveryBrief({
+          organizationNameQueries: ["kommune"],
+          exclusions: [],
+          idealCustomer:
+            "Norsk kommune med tjenester innen barnevern, avlastning, bofellesskap, BPA eller miljøarbeid og behov for trygg arbeidstidsdokumentasjon.",
+          goal:
+            "Finne kommuner der relevante omsorgs- og miljøtjenester kan kvalifiseres videre før kontakt.",
+          targetCount: 60,
+          minimumFitScore: 65,
+          requireBusinessRegistration: null,
+          organizationForms: ["KOMM"],
         }),
       ),
     ],
@@ -694,6 +848,9 @@ export function buildProjectOnboardingPlan(
 ): ProjectOnboardingPlan {
   if (websiteDomain === "theroleroom.com") {
     return buildRoleRoomOnboardingPlan(websiteUrl, profile);
+  }
+  if (websiteDomain === "tidum.no") {
+    return buildTidumOnboardingPlan(websiteUrl, profile);
   }
   const corpus = normalizedSearchText(
     [
