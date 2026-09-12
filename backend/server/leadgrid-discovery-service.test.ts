@@ -958,6 +958,7 @@ describe("Leadgrid Discovery service", () => {
       reasons: ["Bransje samsvarer"],
     });
     expect(first.items[0]).not.toHaveProperty("google_place_id");
+    expect(first.items[0]).not.toHaveProperty("clinic_group");
     expect(first.items[0].sources.map((source) => source.id)).toEqual([
       "brreg",
       "ssb_klass",
@@ -1157,6 +1158,9 @@ describe("Leadgrid Discovery service", () => {
       source: "brreg",
       autoLinked: true,
     });
+    expect(
+      JSON.parse(String(promotionCall?.[1]?.[19])).discovery,
+    ).not.toHaveProperty("clinic_group");
     expect(promotionCall?.[1]?.[12]).toBe("2026-08-30T09:00:00.000Z");
     expect(sequence.indexOf("COMMIT")).toBeLessThan(
       sequence.findIndex((entry) => entry.startsWith("EVENT")),
@@ -1328,14 +1332,16 @@ describe("Leadgrid Discovery service", () => {
     const { pool, query } = transactionPool((sql) => {
       if (sql.includes("SELECT c.id::text AS candidate_id")) {
         return {
-          rows: [{
-            ...decisionCandidate(),
-            name: "Nora Skuespiller",
-            brief_snapshot: {
-              ...brief,
-              subject_kind: "person",
+          rows: [
+            {
+              ...decisionCandidate(),
+              name: "Nora Skuespiller",
+              brief_snapshot: {
+                ...brief,
+                subject_kind: "person",
+              },
             },
-          }],
+          ],
         };
       }
       if (sql.includes("FROM leadgrid_discovery_feedback")) {
@@ -1365,7 +1371,9 @@ describe("Leadgrid Discovery service", () => {
     const talentProspect = query.mock.calls.find(([queryValue]) =>
       textOf(queryValue).includes("INSERT INTO leadgrid_customer_contacts"),
     );
-    expect(textOf(talentProspect?.[0])).toContain("'talent', 'notice_required'");
+    expect(textOf(talentProspect?.[0])).toContain(
+      "'talent', 'notice_required'",
+    );
     expect(textOf(talentProspect?.[0])).toContain("INTERVAL '90 days'");
     expect(talentProspect?.[1]).toEqual([
       ORGANIZATION_ID,
@@ -2336,10 +2344,9 @@ describe("Leadgrid Discovery service", () => {
     expect(textOf(cursorWrite?.[0])).not.toContain(
       "profile.source_cursor_map ->> expected.key",
     );
-    expect(searchRegistry.mock.calls.map(([input]) => input.queryMode)).toEqual([
-      "industry",
-      "organization_name",
-    ]);
+    expect(searchRegistry.mock.calls.map(([input]) => input.queryMode)).toEqual(
+      ["industry", "organization_name"],
+    );
     expect(
       searchRegistry.mock.calls.every(([input]) => input.countryCode === "NO"),
     ).toBe(true);

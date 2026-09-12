@@ -682,12 +682,29 @@ struct LeadOutreachContext: Hashable {
 }
 
 struct LeadOutreachKit: Hashable {
+    enum ProjectKind: Hashable {
+        case dentum
+        case tidum
+        case generic
+
+        var icon: String {
+            switch self {
+            case .dentum: return "cross.case.fill"
+            case .tidum: return "clock.badge.checkmark.fill"
+            case .generic: return "wand.and.stars"
+            }
+        }
+    }
+
     let title: String
     let audience: String
-    let isDentum: Bool
+    let projectKind: ProjectKind
     let recommendedTemplateID: String
     let templates: [LeadOutreachTemplate]
     let personalizationFacts: [String]
+
+    var isDentum: Bool { projectKind == .dentum }
+    var isTidum: Bool { projectKind == .tidum }
 }
 
 enum LeadOutreachTemplateEngine {
@@ -697,16 +714,27 @@ enum LeadOutreachTemplateEngine {
             return LeadOutreachKit(
                 title: "Dentum-oppsett",
                 audience: "7 maler for tannklinikker",
-                isDentum: true,
+                projectKind: .dentum,
                 recommendedTemplateID: dentumRecommendation(for: c.status),
                 templates: dentumTemplates(c),
+                personalizationFacts: facts(c)
+            )
+        }
+        let isTidum = c.projectName.localizedCaseInsensitiveContains("tidum")
+        if isTidum {
+            return LeadOutreachKit(
+                title: "Tidum-oppsett",
+                audience: "7 maler for omsorg og feltarbeid",
+                projectKind: .tidum,
+                recommendedTemplateID: tidumRecommendation(for: c),
+                templates: tidumTemplates(c),
                 personalizationFacts: facts(c)
             )
         }
         return LeadOutreachKit(
             title: c.projectName.isEmpty ? "Standardoppsett" : "\(c.projectName)-oppsett",
             audience: "6 generelle B2B-maler",
-            isDentum: false,
+            projectKind: .generic,
             recommendedTemplateID: genericRecommendation(for: c.status),
             templates: genericTemplates(c),
             personalizationFacts: facts(c)
@@ -733,6 +761,29 @@ enum LeadOutreachTemplateEngine {
         case .interested: return "generic-proposal"
         case .hot, .warm: return "generic-short-call"
         case .newLead, .notContacted: return "generic-introduction"
+        }
+    }
+
+    private static func tidumRecommendation(for context: LeadOutreachContext) -> String {
+        switch context.status {
+        case .contacted: return "tidum-follow-up"
+        case .interested: return "tidum-next-step"
+        case .hot, .warm: return "tidum-next-step"
+        case .newLead, .notContacted:
+            let category = context.category.lowercased()
+            if category.contains("barnevern") || category.contains("avlast") {
+                return "tidum-child-welfare"
+            }
+            if category.contains("bpa") || category.contains("assistanse") {
+                return "tidum-bpa"
+            }
+            if category.contains("kommun") || category.contains("offentlig") {
+                return "tidum-municipality"
+            }
+            if category.contains("bofellesskap") || category.contains("miljø") {
+                return "tidum-residential-care"
+            }
+            return "tidum-introduction"
         }
     }
 
@@ -862,6 +913,131 @@ enum LeadOutreachTemplateEngine {
                 Neste steg er at vi lager et profilutkast for \(c.company). For å gjøre det trenger vi kontaktinformasjon, åpningstider, behandlingsområder, veiledende priser og lenken dere ønsker å bruke for timebestilling.
 
                 Dere får kontrollere alt før noe publiseres. Send gjerne informasjonen i svar på denne e-posten, så setter vi opp første utkast.
+
+                \(signoff)
+                """
+            ),
+        ]
+    }
+
+    private static func tidumTemplates(_ c: LeadOutreachContext) -> [LeadOutreachTemplate] {
+        let signoff = "Med vennlig hilsen,\n\(c.senderName)\nTidum"
+        return [
+            .init(
+                id: "tidum-introduction",
+                title: "Kort introduksjon",
+                description: "Første kontakt med en konkret invitasjon til behovsavklaring.",
+                icon: "clock.badge.checkmark.fill",
+                accent: .purpleLight,
+                subject: "Enklere timeføring og dokumentasjon for \(c.company)",
+                body: """
+                \(c.greeting)
+
+                Jeg tar kontakt fra Tidum fordi \(c.company) arbeider innen \(c.category.lowercased()) i \(c.location). Tidum gjør det enklere for ansatte å registrere arbeidstid og for ledere å følge opp timer og dokumentasjon med sporbar historikk.
+
+                Kan vi bruke 15 minutter på å avklare hvordan dere håndterer dette i dag, og om en kort demonstrasjon er relevant?
+
+                \(signoff)
+                """
+            ),
+            .init(
+                id: "tidum-child-welfare",
+                title: "Barnevern og avlastning",
+                description: "Tilpasset døgn-, avlastnings- og tiltaksarbeid.",
+                icon: "figure.2.and.child.holdinghands",
+                accent: .blue,
+                subject: "Arbeidstid og dokumentasjon i tiltakene til \(c.company)",
+                body: """
+                \(c.greeting)
+
+                For barneverns- og avlastningstjenester blir timeføring ofte fordelt på ansatte, tiltak og vakter. Tidum gir \(c.company) i \(c.location) én enkel arbeidsflyt for registrering, kontroll og sporbar dokumentasjon uten at feltteamet må bruke unødvendig tid på administrasjon.
+
+                Hvordan registrerer og godkjenner dere timer på tvers av tiltak i dag? Jeg viser gjerne et konkret oppsett for \(c.company).
+
+                \(signoff)
+                """
+            ),
+            .init(
+                id: "tidum-residential-care",
+                title: "Bofellesskap og miljøarbeid",
+                description: "Tilpasset døgnbemanning, miljøarbeid og flere tiltak.",
+                icon: "house.and.flag.fill",
+                accent: .green,
+                subject: "Bedre oversikt på tvers av vakter hos \(c.company)",
+                body: """
+                \(c.greeting)
+
+                I bofellesskap og miljøarbeid må ledere ha kontroll på timer og dokumentasjon samtidig som registreringen må være enkel for ansatte i vakt. Tidum kan gi \(c.company) i \(c.location) en samlet, sporbar oversikt på tvers av ansatte og tiltak.
+
+                Har dere anledning til en kort kartlegging av dagens arbeidsflyt? Da kan vi vise bare de delene som er relevante for \(c.company).
+
+                \(signoff)
+                """
+            ),
+            .init(
+                id: "tidum-bpa",
+                title: "BPA og feltteam",
+                description: "For team som registrerer arbeid ute hos brukere.",
+                icon: "person.2.wave.2.fill",
+                accent: .orange,
+                subject: "Enklere registrering for feltteamet til \(c.company)",
+                body: """
+                \(c.greeting)
+
+                Når ansatte jobber ute hos brukere, må registreringen være rask og samtidig gi ledelsen trygg oversikt. Tidum lar feltteamet til \(c.company) i \(c.location) registrere arbeidstid enkelt, mens ansvarlige får sporbar historikk og et ryddig grunnlag for oppfølging.
+
+                Kan vi se på hvordan timer registreres, korrigeres og godkjennes hos dere i dag?
+
+                \(signoff)
+                """
+            ),
+            .init(
+                id: "tidum-municipality",
+                title: "Kommunal tjeneste",
+                description: "Ber om riktig tjenestested før løsningsdialogen starter.",
+                icon: "building.columns.fill",
+                accent: .yellow,
+                subject: "Riktig kontakt for omsorgs- og miljøtjenester i \(c.company)",
+                body: """
+                \(c.greeting)
+
+                Jeg kontakter \(c.company) i \(c.location) fra Tidum. Vi hjelper tjenester innen barnevern, avlastning, bofellesskap, BPA og miljøarbeid med enkel timeføring og sporbar dokumentasjon.
+
+                Hvem har ansvar for arbeidstidsregistrering eller fag-/tjenesteoppfølging på dette området hos dere? Jeg sender gjerne en kort oversikt til riktig fellesadresse eller avtaler en behovsavklaring dersom det er relevant.
+
+                \(signoff)
+                """
+            ),
+            .init(
+                id: "tidum-follow-up",
+                title: "Vennlig oppfølging",
+                description: "Følger opp uten å anta interesse eller samtykke.",
+                icon: "hand.wave.fill",
+                accent: .purple,
+                subject: "Følger opp Tidum for \(c.company)",
+                body: """
+                \(c.greeting)
+
+                Jeg følger kort opp henvendelsen om timeføring og dokumentasjon for \(c.company) i \(c.location). Er dette et område dere vurderer nå, eller passer det bedre at jeg avslutter oppfølgingen?
+
+                Hvis det er relevant, kan vi ta en kort behovsavklaring før dere eventuelt ser en demonstrasjon av Tidum.
+
+                \(signoff)
+                """
+            ),
+            .init(
+                id: "tidum-next-step",
+                title: "Møte og neste steg",
+                description: "Kvalifiserer behovet før demo eller pilot.",
+                icon: "checkmark.seal.fill",
+                accent: .green,
+                subject: "Neste steg for \(c.company) og Tidum",
+                body: """
+                \(c.greeting)
+
+                Takk for interessen fra \(c.company) i \(c.location). I neste samtale foreslår jeg at vi avklarer hvilke team og tiltak som omfattes, hvordan timer registreres og godkjennes i dag, hvilke rapporter dere trenger, og hvem som skal eie en eventuell pilot.
+
+                Deretter kan vi vise et avgrenset Tidum-oppsett og bli enige om deltakere, datagrunnlag og tydelige kriterier for en pilot. Hvilket tidspunkt passer best?
 
                 \(signoff)
                 """
@@ -1180,7 +1356,7 @@ struct EmailTemplatePicker: View {
             // Prosjekt-/bransjemerket er eget innhold, ikke et overlay.
             // Overlayet traff mottakerkortets kant på iPad mini.
             HStack(spacing: 5) {
-                Image(systemName: outreachKit.isDentum ? "cross.case.fill" : "wand.and.stars")
+                Image(systemName: outreachKit.projectKind.icon)
                 Text(outreachKit.title)
                 Text("·")
                 Text(outreachContext.category)

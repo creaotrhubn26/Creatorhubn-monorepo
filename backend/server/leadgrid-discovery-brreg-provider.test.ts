@@ -165,6 +165,100 @@ describe("Discovery BRREG provider", () => {
     expect(dentalBrregUrl).toBeDefined();
   });
 
+  it("searches named public service sites through BRREG subunits", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      expect(url.pathname).toBe("/enhetsregisteret/api/underenheter");
+      return jsonResponse({
+        _embedded: {
+          underenheter: [
+            {
+              organisasjonsnummer: "999999991",
+              navn: "OSLO BARNEVERNTJENESTE",
+              organisasjonsform: {
+                kode: "BEDR",
+                beskrivelse: "Bedrift",
+              },
+              overordnetEnhet: "999999990",
+              beliggenhetsadresse: {
+                adresse: ["Testgata 2"],
+                postnummer: "0150",
+                poststed: "OSLO",
+                kommune: "OSLO",
+                kommunenummer: "0301",
+              },
+              epostadresse: "POST@EXAMPLE.NO",
+              telefon: "22000000",
+              antallAnsatte: 18,
+              harRegistrertAntallAnsatte: true,
+              naeringskode1: {
+                kode: "88.991",
+                beskrivelse: "Barnevernstjenester",
+              },
+              _links: {
+                self: {
+                  href: "https://data.brreg.no/enhetsregisteret/api/underenheter/999999991",
+                },
+              },
+            },
+            {
+              organisasjonsnummer: "999999992",
+              navn: "GAMMEL BARNEVERNTJENESTE",
+              organisasjonsform: { kode: "BEDR", beskrivelse: "Bedrift" },
+              nedleggelsesdato: "2024-01-01",
+            },
+          ],
+        },
+        page: { totalPages: 1 },
+      });
+    });
+    const provider = createDiscoveryRegistryProvider({
+      fetchImpl: fetchImpl as typeof fetch,
+      maxAttempts: 1,
+    });
+
+    const result = await provider.search({
+      query: "barneverntjeneste",
+      queryMode: "organization_name",
+      city: "Oslo",
+      organizationForms: ["BEDR"],
+      registeredInBusinessRegister: null,
+      maxResults: 20,
+    });
+
+    const requestUrl = new URL(String(fetchImpl.mock.calls[0]?.[0]));
+    expect(requestUrl.searchParams.get("navn")).toBe("barneverntjeneste");
+    expect(requestUrl.searchParams.get("navnMetodeForSoek")).toBe(
+      "FORTLOEPENDE",
+    );
+    expect(requestUrl.searchParams.get("beliggenhetsadresse.poststed")).toBe(
+      "OSLO",
+    );
+    expect(requestUrl.searchParams.get("organisasjonsform")).toBe("BEDR");
+    expect(requestUrl.searchParams.has("konkurs")).toBe(false);
+    expect(requestUrl.searchParams.has("registrertIForetaksregisteret")).toBe(
+      false,
+    );
+    expect(result.invalidResultsSkipped).toBe(1);
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        organizationNumber: "999999991",
+        parentOrganizationNumber: "999999990",
+        name: "OSLO BARNEVERNTJENESTE",
+        organizationFormCode: "BEDR",
+        address: "Testgata 2",
+        postalCode: "0150",
+        city: "OSLO",
+        municipalityNumber: "0301",
+        email: "post@example.no",
+        phone: "22000000",
+        naceCode: "88.991",
+        sourceUri:
+          "https://data.brreg.no/enhetsregisteret/api/underenheter/999999991",
+      }),
+    ]);
+  });
+
   it("rotates deterministically from an absolute offset and wraps after the last page", async () => {
     const requestedPages: number[] = [];
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
@@ -488,7 +582,9 @@ describe("Discovery BRREG provider", () => {
     expect(result.companyFilteredResults).toBe(2);
     const brregUrl = new URL(String(fetchImpl.mock.calls[0][0]));
     expect(brregUrl.searchParams.get("navn")).toBe("casting");
-    expect(brregUrl.searchParams.has("forretningsadresse.poststed")).toBe(false);
+    expect(brregUrl.searchParams.has("forretningsadresse.poststed")).toBe(
+      false,
+    );
     expect(brregUrl.searchParams.has("kommunenummer")).toBe(false);
   });
 

@@ -280,9 +280,16 @@ describe("Leadgrid domain onboarding routes", () => {
           { template_key: "tidum.bpa_field_services" },
           {
             template_key: "tidum.municipal_services",
+            name: "Kommunale tjenestesteder – Norge",
             brief: {
-              organization_name_queries: ["kommune"],
-              organization_forms: ["KOMM"],
+              organization_name_queries: [
+                "barneverntjeneste",
+                "avlastning",
+                "bofellesskap",
+                "BPA",
+                "miljøarbeidertjeneste",
+              ],
+              organization_forms: ["BEDR"],
             },
           },
         ],

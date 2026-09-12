@@ -38,7 +38,7 @@ struct ProjectDomainOnboardingView: View {
         if trimmedWebsite.count > 2_048 { return "Nettadressen er for lang." }
         let withoutScheme = trimmedWebsite
             .replacingOccurrences(of: #"^https?://"#, with: "", options: .regularExpression)
-        if !withoutScheme.contains(".") { return "Skriv inn et domene, for eksempel dentum.no." }
+        if !withoutScheme.contains(".") { return "Skriv inn et domene, for eksempel kunde.no." }
         return nil
     }
 
@@ -108,7 +108,7 @@ struct ProjectDomainOnboardingView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("dentum.no", text: $website)
+                    TextField("kunde.no", text: $website)
                         .textContentType(.URL)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
