@@ -125,6 +125,102 @@ describe('storyboard review snapshots', () => {
 });
 
 describe('storyboard review share security', () => {
+  it('publishes a new review round to teammates while keeping it read for the creator', async () => {
+    const current = source();
+    const manuscriptsService = {
+      getManuscript: vi.fn().mockResolvedValue(current.manuscript),
+      getScenes: vi.fn().mockResolvedValue(current.scenes),
+      getDialogue: vi.fn().mockResolvedValue(current.dialogue),
+    };
+    const createdAt = new Date('2026-09-12T12:00:00Z');
+    const client = {
+      release: vi.fn(),
+      query: vi.fn(async (sql: string) => {
+        if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] };
+        if (sql.includes('pg_advisory_xact_lock')) return { rows: [] };
+        if (sql.includes("SET status = 'superseded'")) return { rows: [] };
+        if (sql.includes('COALESCE(MAX(version)')) return { rows: [{ version: 3 }] };
+        if (sql.includes('INSERT INTO storyboard_review_rounds')) return { rows: [{
+          id: 'round-3', project_id: 'project-1', manuscript_id: 'manuscript-1', version: 3,
+          label: 'Kundegjennomgang', summary: 'Ny kameradekning',
+          snapshot: buildStoryboardReviewSnapshot(current), snapshot_hash: 'a'.repeat(64),
+          script_fingerprint: 'b'.repeat(64), status: 'in_review', frame_count: 1,
+          total_duration_seconds: 2, created_by: 'owner-1', approved_by: null,
+          submitted_at: createdAt, approved_at: null, created_at: createdAt,
+        }] };
+        throw new Error(`unexpected client query: ${sql}`);
+      }),
+    };
+    const upsertNotification = vi.fn().mockResolvedValue(undefined);
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { connect: async () => client } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: manuscriptsService as any,
+      upsertNotification,
+    });
+    const handler = routeHandler(router, 'post',
+      '/projects/:projectId/manuscripts/:manuscriptId/storyboard-review-rounds');
+    const res = response();
+    await handler({
+      params: { projectId: 'project-1', manuscriptId: 'manuscript-1' },
+      body: { label: 'Kundegjennomgang', summary: 'Ny kameradekning' }, userId: 'owner-1',
+    }, res, (error: unknown) => { throw error; });
+
+    expect(res.statusCode).toBe(201);
+    expect(upsertNotification).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'project-1', eventType: 'storyboard_review_round_created',
+      linkedEntityId: 'round-3', initiallyReadByUserId: 'owner-1',
+      metadata: expect.objectContaining({
+        inboxType: 'storyboard_review', manuscriptId: 'manuscript-1',
+        reviewRoundId: 'round-3', roundVersion: 3,
+      }),
+    }));
+  });
+
+  it('returns a manuscript-scoped inbox with per-user unread state', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{
+      id: 'notification-1', event_type: 'storyboard_review_comment_added',
+      title: 'Kari kommenterte storyboard v2', message: 'Hold bildet.',
+      metadata: { reviewRoundId: 'round-1', roundVersion: 2, manuscriptId: 'manuscript-1',
+        frameId: 'frame-a', actorDisplayName: 'Kari' },
+      created_at: new Date('2026-09-12T12:01:00Z'), read: false, read_at: null,
+    }] });
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { query } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: unusedManuscripts,
+    });
+    const handler = routeHandler(router, 'get',
+      '/projects/:projectId/manuscripts/:manuscriptId/storyboard-review-inbox');
+    const res = response();
+    await handler({
+      params: { projectId: 'project-1', manuscriptId: 'manuscript-1' }, userId: 'user-1',
+    }, res, (error: unknown) => { throw error; });
+
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("notification.inbox_type = 'storyboard_review'"),
+      ['project-1', 'manuscript-1', 'user-1']);
+    expect(res.body.data.unreadCount).toBe(1);
+    expect(res.body.data.items[0]).toMatchObject({
+      reviewRoundId: 'round-1', roundVersion: 2, frameId: 'frame-a', read: false,
+    });
+  });
+
+  it('does not mark a notification read outside the requested manuscript scope', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { query } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: unusedManuscripts,
+    });
+    const handler = routeHandler(router, 'post',
+      '/projects/:projectId/manuscripts/:manuscriptId/storyboard-review-inbox/:notificationId/read');
+    const res = response();
+    await handler({ params: {
+      projectId: 'project-1', manuscriptId: 'manuscript-1', notificationId: 'notification-other',
+    }, userId: 'user-1' }, res, (error: unknown) => { throw error; });
+
+    expect(res.statusCode).toBe(404);
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0][1]).toEqual(['notification-other', 'project-1', 'manuscript-1']);
+  });
+
   it('rate-limits unauthenticated review traffic before repeated database lookups', async () => {
     const query = vi.fn().mockResolvedValue({ rows: [] });
     const router = Router();
@@ -173,6 +269,53 @@ describe('storyboard review share security', () => {
     expect(JSON.stringify(res.body)).not.toContain(insertedValues[3]);
   });
 
+  it('publishes guest comments to the shared producer and storyboard inbox', async () => {
+    const share = {
+      ...source(), id: 'round-1', project_id: 'project-1', manuscript_id: 'manuscript-1',
+      version: 2, snapshot: buildStoryboardReviewSnapshot(source()), share_link_id: 'share-1',
+      share_access_mode: 'comment', share_require_identity: true,
+    };
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('JOIN storyboard_review_rounds')) return { rows: [share] };
+      if (sql.includes('UPDATE storyboard_review_sessions')) {
+        return { rows: [{ id: 'reviewer-1', display_name: 'Kari Klient', email: null }] };
+      }
+      throw new Error(`unexpected pool query: ${sql}`);
+    });
+    const client = {
+      release: vi.fn(),
+      query: vi.fn(async (sql: string, values?: unknown[]) => {
+        if (sql === 'BEGIN' || sql === 'ROLLBACK' || sql === 'COMMIT') return { rows: [] };
+        if (sql.includes('FOR UPDATE')) return { rows: [{ status: 'in_review' }] };
+        if (sql.includes('INSERT INTO storyboard_review_comments')) return { rows: [{
+          id: 'comment-1', review_round_id: 'round-1', frame_id: 'frame-a', parent_id: null,
+          author_display_name: 'Kari Klient', body: values?.[5], visibility: 'client',
+          anchor_x: null, anchor_y: null, status: 'open', created_at: new Date('2026-09-12T12:01:00Z'),
+        }] };
+        throw new Error(`unexpected client query: ${sql}`);
+      }),
+    };
+    const upsertNotification = vi.fn().mockResolvedValue(undefined);
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { query, connect: async () => client } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: unusedManuscripts,
+      upsertNotification,
+    });
+    const handler = routeHandler(router, 'post', '/storyboard-review/:token/comments');
+    const res = response();
+    await handler({
+      params: { token: 'raw-share-token' }, body: { frameId: 'frame-a', body: 'Hold bildet lenger.' },
+      header: () => 'raw-reviewer-token',
+    }, res, (error: any) => { res.status(error.status || 500).json({ error: error.message }); });
+
+    expect(res.statusCode).toBe(201);
+    expect(upsertNotification).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'project-1', eventType: 'storyboard_review_comment_added',
+      message: 'Hold bildet lenger.', linkedEntityId: 'comment-1',
+      metadata: expect.objectContaining({ manuscriptId: 'manuscript-1', frameId: 'frame-a' }),
+    }));
+  });
+
   it('binds sign-off to the exact hash and locks all later decisions', async () => {
     let status = 'in_review';
     let inserts = 0;
@@ -214,8 +357,10 @@ describe('storyboard review share security', () => {
       }),
     };
     const router = Router();
+    const upsertNotification = vi.fn().mockResolvedValue(undefined);
     registerStoryboardReviewRoutes(router, { query, connect: async () => client } as any, {
       auth: pass, canView: pass, canManage: pass, manuscriptsService: unusedManuscripts,
+      upsertNotification,
     });
     const handler = routeHandler(router, 'post', '/storyboard-review/:token/decisions');
 
@@ -239,6 +384,12 @@ describe('storyboard review share security', () => {
     expect(approved.statusCode).toBe(201);
     expect(inserts).toBe(1);
     expect(status).toBe('approved');
+    expect(upsertNotification).toHaveBeenCalledTimes(1);
+    expect(upsertNotification).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'project-1', eventType: 'storyboard_review_approved',
+      linkedEntityType: 'storyboard_review_decision',
+      metadata: expect.objectContaining({ manuscriptId: 'manuscript-1', reviewRoundId: 'round-1' }),
+    }));
     const statusUpdate = client.query.mock.calls.find(([sql]) =>
       String(sql).includes('UPDATE storyboard_review_rounds'));
     expect(statusUpdate?.[1]).toEqual(['round-1', 'approved', 'Kari Klient', true]);

@@ -1969,6 +1969,32 @@ actor RoleRoomAPIClient {
 
     // MARK: Immutable storyboard review rounds
 
+    func fetchStoryboardReviewInbox(
+        projectId: String, manuscriptId: String
+    ) async throws -> StoryboardReviewInboxDTO {
+        let payload = try await getJSON(
+            path: "/api/role-room/projects/\(projectId)/manuscripts/\(manuscriptId)/storyboard-review-inbox",
+            query: [:])
+        guard let data = payload["data"] else { throw SyncError.malformed("storyboard review inbox") }
+        return try decodeStoryboardSkillPayload(data, as: StoryboardReviewInboxDTO.self)
+    }
+
+    func markStoryboardReviewNotificationRead(
+        projectId: String, manuscriptId: String, notificationId: String
+    ) async throws {
+        _ = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/manuscripts/\(manuscriptId)/storyboard-review-inbox/\(notificationId)/read",
+            method: "POST", body: [:])
+    }
+
+    func markAllStoryboardReviewNotificationsRead(
+        projectId: String, manuscriptId: String
+    ) async throws {
+        _ = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/manuscripts/\(manuscriptId)/storyboard-review-inbox/read-all",
+            method: "POST", body: [:])
+    }
+
     func fetchStoryboardReviewRounds(
         projectId: String, manuscriptId: String
     ) async throws -> [StoryboardReviewRoundDTO] {

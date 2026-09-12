@@ -3,6 +3,10 @@ import express, { type NextFunction, type Request, type Response, type Router } 
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
 import type { CastingManuscriptsService } from './casting-manuscripts-service.js';
+import {
+  upsertProducerProjectNotification,
+  type UpsertProducerNotificationInput,
+} from './role-room-producer-notifications.js';
 import { requireStoryboardAccess, requireStoryboardAuth } from './storyboard-routes.js';
 import type {
   StoryboardReviewDiff,
@@ -263,6 +267,24 @@ function mapDecision(row: JsonRecord) {
   };
 }
 
+function mapInboxItem(row: JsonRecord) {
+  const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+  return {
+    id: String(row.id),
+    eventType: String(row.event_type),
+    title: String(row.title),
+    message: row.message == null ? null : String(row.message),
+    reviewRoundId: String(metadata.reviewRoundId ?? ''),
+    roundVersion: Number(metadata.roundVersion ?? 0),
+    frameId: metadata.frameId == null ? null : String(metadata.frameId),
+    actorDisplayName: metadata.actorDisplayName == null ? null : String(metadata.actorDisplayName),
+    decision: metadata.decision == null ? null : String(metadata.decision),
+    createdAt: new Date(row.created_at).toISOString(),
+    read: Boolean(row.read),
+    readAt: row.read_at ? new Date(row.read_at).toISOString() : null,
+  };
+}
+
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
@@ -381,9 +403,93 @@ export function registerStoryboardReviewRoutes(
     canView: Middleware;
     canManage: Middleware;
     manuscriptsService: CastingManuscriptsService;
+    upsertNotification?: (input: UpsertProducerNotificationInput) => Promise<void>;
   },
 ): void {
   const base = '/projects/:projectId/manuscripts/:manuscriptId/storyboard-review-rounds';
+  const inboxBase = '/projects/:projectId/manuscripts/:manuscriptId/storyboard-review-inbox';
+  const upsertNotification = deps.upsertNotification
+    ?? ((input: UpsertProducerNotificationInput) => upsertProducerProjectNotification(pool, input));
+
+  router.get(inboxBase, deps.auth, deps.canView, asyncHandler(async (req, res) => {
+    const userId = String((req as AuthedRequest).userId ?? '');
+    const result = await pool.query(
+      `SELECT notification.*,
+              reads.read_at,
+              CASE WHEN reads.read_at IS NULL THEN FALSE ELSE TRUE END AS read
+         FROM role_room_project_notifications notification
+         JOIN storyboard_review_rounds review_round
+           ON review_round.id::text = notification.metadata->>'reviewRoundId'
+          AND review_round.project_id = notification.project_id
+          AND review_round.manuscript_id = $2
+         LEFT JOIN role_room_project_notification_reads reads
+           ON reads.notification_id = notification.id
+          AND reads.user_id = $3
+        WHERE notification.project_id = $1
+          AND notification.audience IN ('producer_team', 'all')
+          AND notification.inbox_type = 'storyboard_review'
+          AND notification.archived_at IS NULL
+        ORDER BY notification.updated_at DESC, notification.created_at DESC
+        LIMIT 100`,
+      [req.params.projectId, req.params.manuscriptId, userId],
+    );
+    const items = result.rows.map(mapInboxItem);
+    res.json({ success: true, data: {
+      items,
+      unreadCount: items.filter((item) => !item.read).length,
+    } });
+  }));
+
+  router.post(`${inboxBase}/read-all`, deps.auth, deps.canView, asyncHandler(async (req, res) => {
+    const userId = String((req as AuthedRequest).userId ?? '');
+    await pool.query(
+      `INSERT INTO role_room_project_notification_reads (notification_id, user_id, read_at)
+       SELECT notification.id, $3, NOW()
+         FROM role_room_project_notifications notification
+         JOIN storyboard_review_rounds review_round
+           ON review_round.id::text = notification.metadata->>'reviewRoundId'
+          AND review_round.project_id = notification.project_id
+          AND review_round.manuscript_id = $2
+        WHERE notification.project_id = $1
+          AND notification.audience IN ('producer_team', 'all')
+          AND notification.inbox_type = 'storyboard_review'
+          AND notification.archived_at IS NULL
+       ON CONFLICT (notification_id, user_id)
+       DO UPDATE SET read_at = EXCLUDED.read_at`,
+      [req.params.projectId, req.params.manuscriptId, userId],
+    );
+    res.json({ success: true });
+  }));
+
+  router.post(`${inboxBase}/:notificationId/read`, deps.auth, deps.canView, asyncHandler(async (req, res) => {
+    const userId = String((req as AuthedRequest).userId ?? '');
+    const notification = await pool.query(
+      `SELECT notification.id
+         FROM role_room_project_notifications notification
+         JOIN storyboard_review_rounds review_round
+           ON review_round.id::text = notification.metadata->>'reviewRoundId'
+          AND review_round.project_id = notification.project_id
+          AND review_round.manuscript_id = $3
+        WHERE notification.id = $1
+          AND notification.project_id = $2
+          AND notification.audience IN ('producer_team', 'all')
+          AND notification.inbox_type = 'storyboard_review'
+          AND notification.archived_at IS NULL
+        LIMIT 1`,
+      [req.params.notificationId, req.params.projectId, req.params.manuscriptId],
+    );
+    if (!notification.rows[0]) {
+      res.status(404).json({ error: 'storyboard_review_notification_not_found' }); return;
+    }
+    await pool.query(
+      `INSERT INTO role_room_project_notification_reads (notification_id, user_id, read_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (notification_id, user_id)
+       DO UPDATE SET read_at = EXCLUDED.read_at`,
+      [req.params.notificationId, userId],
+    );
+    res.json({ success: true });
+  }));
 
   router.get(base, deps.auth, deps.canView, asyncHandler(async (req, res) => {
     const snapshot = await loadCurrentSnapshot(
@@ -442,6 +548,23 @@ export function registerStoryboardReviewRoutes(
         await client.query('ROLLBACK');
         throw error;
       }
+    });
+    const actorUserId = String((req as AuthedRequest).userId ?? '');
+    await upsertNotification({
+      projectId,
+      audience: 'producer_team',
+      eventType: 'storyboard_review_round_created',
+      title: `Storyboard v${Number(row.version)} er sendt til review`,
+      message: row.summary || `${Number(row.frame_count)} shots er låst for tilbakemelding.`,
+      linkedEntityType: 'storyboard_review_round',
+      linkedEntityId: String(row.id),
+      createdByUserId: actorUserId,
+      createdByRole: 'storyboard_manager',
+      initiallyReadByUserId: actorUserId,
+      metadata: {
+        inboxType: 'storyboard_review', manuscriptId, reviewRoundId: String(row.id),
+        roundVersion: Number(row.version), snapshotHash: String(row.snapshot_hash),
+      },
     });
     res.status(201).json({ success: true, data: mapRound(row, true) });
   }));
@@ -659,6 +782,21 @@ export function registerStoryboardReviewRoutes(
         await client.query('ROLLBACK'); throw error;
       }
     });
+    await upsertNotification({
+      projectId: String(share.project_id),
+      audience: 'producer_team',
+      eventType: 'storyboard_review_comment_added',
+      title: `${reviewer.display_name} kommenterte storyboard v${Number(share.version)}`,
+      message: String(inserted.body).slice(0, 500),
+      linkedEntityType: 'storyboard_review_comment',
+      linkedEntityId: String(inserted.id),
+      createdByRole: 'client_reviewer',
+      metadata: {
+        inboxType: 'storyboard_review', manuscriptId: String(share.manuscript_id),
+        reviewRoundId: String(share.id), roundVersion: Number(share.version),
+        frameId: inserted.frame_id ?? null, actorDisplayName: String(reviewer.display_name),
+      },
+    });
     res.status(201).json({ success: true, data: mapComment(inserted) });
   }));
 
@@ -712,6 +850,23 @@ export function registerStoryboardReviewRoutes(
       } catch (error) {
         await client.query('ROLLBACK'); throw error;
       }
+    });
+    const approved = decision.decision === 'approved';
+    await upsertNotification({
+      projectId: String(share.project_id),
+      audience: 'producer_team',
+      eventType: approved ? 'storyboard_review_approved' : 'storyboard_review_changes_requested',
+      title: `${reviewer.display_name} ${approved ? 'godkjente' : 'ba om endringer på'} storyboard v${Number(share.version)}`,
+      message: decision.note || (approved ? 'Den låste revisjonen er godkjent.' : 'Revisjonen trenger en ny gjennomgang.'),
+      linkedEntityType: 'storyboard_review_decision',
+      linkedEntityId: String(decision.id),
+      createdByRole: 'client_reviewer',
+      metadata: {
+        inboxType: 'storyboard_review', manuscriptId: String(share.manuscript_id),
+        reviewRoundId: String(share.id), roundVersion: Number(share.version),
+        actorDisplayName: String(reviewer.display_name), decision: String(decision.decision),
+        snapshotHash: String(decision.expected_snapshot_hash),
+      },
     });
     res.status(201).json({ success: true, data: mapDecision(decision) });
   }));

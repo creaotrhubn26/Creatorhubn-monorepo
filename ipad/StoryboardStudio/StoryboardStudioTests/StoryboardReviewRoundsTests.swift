@@ -42,4 +42,24 @@ final class StoryboardReviewRoundsTests: XCTestCase {
         XCTAssertEqual(patch.fields["revisionReason"] as? String, "Manuslinje 10–12 er endret")
         XCTAssertEqual(patch.fields.count, 2)
     }
+
+    func testReviewInboxDecodesUnreadActivityAndRoundTarget() throws {
+        let data = Data(#"""
+        {
+          "items":[{
+            "id":"notification-1","eventType":"storyboard_review_comment_added",
+            "title":"Kari kommenterte storyboard v4","message":"Hold bildet lenger.",
+            "reviewRoundId":"round-1","roundVersion":4,"frameId":"frame-a",
+            "actorDisplayName":"Kari","decision":null,
+            "createdAt":"2026-09-12T12:01:00Z","read":false,"readAt":null
+          }],
+          "unreadCount":1
+        }
+        """#.utf8)
+        let inbox = try JSONDecoder().decode(StoryboardReviewInboxDTO.self, from: data)
+        XCTAssertEqual(inbox.unreadCount, 1)
+        XCTAssertEqual(inbox.items.first?.reviewRoundId, "round-1")
+        XCTAssertEqual(inbox.items.first?.frameId, "frame-a")
+        XCTAssertFalse(inbox.items.first?.read ?? true)
+    }
 }
