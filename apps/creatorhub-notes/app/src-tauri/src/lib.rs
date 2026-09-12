@@ -923,7 +923,15 @@ mod tests {
             "---\nid: 2026-09-13-betaling\nkilde: samtale\n---\n\n# Betaling\n\n{}\n",
             samtale::skriv(&innlegg)
         );
-        assert!(samtale::er_samtale(&fil));
+        // Sannheten er markdown på disk. Går appen bort, står samtalen igjen i
+        // lesbar tekst — og appen leser den tilbake til de samme innleggene.
+        let tmp = tempfile::tempdir().unwrap();
+        let sti = tmp.path().join("2026-09-13-betaling.md");
+        std::fs::write(&sti, &fil).unwrap();
+        let fra_disk = std::fs::read_to_string(&sti).unwrap();
+        assert!(fra_disk.contains("Marius: Vi går for Stripe."), "et menneske kan lese den");
+        assert!(samtale::er_samtale(&fra_disk));
+        let fil = fra_disk;
 
         struct Alle;
         impl understand::Classifier for Alle {

@@ -133,6 +133,27 @@ Hviler helt på fiks 1 og 2. Med dem er den liten:
 
 Uten dem er den umulig, uansett hvor mye UI som bygges.
 
+**Bygget 13. september 2026** (`app/src-tauri/src/samtale.rs`), og den ble
+liten, som grunnmuren var ment å gjøre den. Ingen ny kilde-type: en importert
+samtale er en fil i notatmappa, ett avsnitt per innlegg, skrevet som
+`Marius (10:32): det han sa`. Da deler `understand::split` den uten å vite noe
+om samtaler, hashen skiller to avsendere som sier det samme, og
+`avsnitt.avsender` — kolonnen som sto ubrukt — er det eneste nye som lagres.
+
+Gjenkjenningen er regelbasert og kjører på innliming. Tre former dekkes:
+`Navn: tekst`, Slacks eksportform, og møtetranskript med tidsstempel. Tre krav
+må holde samtidig — minst tre innlegg, minst to avsendere der én tar ordet
+igjen, og at nesten hele teksten er innlegg — pluss en stoppordliste som holder
+«Konklusjon:» og e-posthodet «Fra:» utenfor. Kjenner den ikke igjen noe, er
+teksten et vanlig notat; det er den viktige feilretningen. Brukeren kan
+overstyre begge veier, og valget står som `kilde:` i toppfeltet.
+
+Prompten får vite at kilden er en samtale. Målt to kjøringer hver vei: ingen
+forskjell i type. Den står som forsikring mot at oppførselen driver, ikke som
+en fiks. Den sier bevisst *ikke* at et innlegg fra en annen er `gjengivelse` —
+det ville tømt beslutningsloggen. `gjengivelse` er for innlegg som refererer en
+tredjepart; hvem som sa det bærer `avsender`.
+
 ### Strukturert spørring
 
 `forstatt` har type, handling, kortform, avhengighet og tid. Det er nok til å
