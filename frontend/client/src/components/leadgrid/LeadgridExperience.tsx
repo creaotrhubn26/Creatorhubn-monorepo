@@ -54,10 +54,22 @@ function useExperienceMedia(): Scene[] {
   return scenes;
 }
 
+const NARROW_QUERY = '(max-width: 700px)';
+
+function matchesNarrow(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia(NARROW_QUERY).matches;
+}
+
 function useIsNarrow() {
-  const [narrow, setNarrow] = useState(false);
+  // Lazy init, IKKE useState(false): med false i første render er narrow
+  // fortsatt usann under den aller første commiten på telefon, og det er
+  // nettopp da framer-motion monterer og Element.animate() kaster. En
+  // passiv useEffect kommer for sent til å rekke å skru av animasjonene.
+  const [narrow, setNarrow] = useState(matchesNarrow);
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 700px)');
+    const mq = window.matchMedia(NARROW_QUERY);
     const apply = () => setNarrow(mq.matches);
     apply();
     mq.addEventListener('change', apply);
@@ -238,7 +250,17 @@ export default function LeadgridExperience({
         {!narrow && <ProgressDots progress={smooth} sectionRef={ref} />}
 
         {/* Scroll-hint (kun helt i starten) */}
-        <ScrollHint progress={smooth} />
+        {/* iOS Safari kaster TypeError («Type error») fra native
+            Element.animate() mens framer-motion monterer denne filmen
+            (error_log ea5174ab: 12 treff, KUN iPhone, viewport 430x745;
+            Chromium/Firefox kaster ikke — derfor er desktop upåvirket).
+            Stacken peker på bindToMotionValue/addValue, så vi vet ikke
+            sikkert hvilken enkelt-animasjon som utløser den. Disse
+            repeterende loopene er de eneste WAAPI-animasjonene som starter
+            ved mount her, så vi dropper dem på telefon for å krympe
+            angrepsflaten. Selve garantien mot hvit side er ErrorBoundary-en
+            rundt <LeadgridExperience> i leadgrid-landing.tsx. */}
+        <ScrollHint progress={smooth} still={narrow || !!reduced} />
       </div>
     </section>
   );
@@ -548,7 +570,7 @@ function DeviceVisual({
               position: 'absolute', left: '30%', top: '36%',
               transform: 'translate(-50%, -100%)',
             }}
-            animate={reduced ? undefined : { y: [0, -6, 0] }}
+            animate={reduced || narrow ? undefined : { y: [0, -6, 0] }}
             transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
           >
             {/* pulserende ring i pin-tuppen */}
@@ -558,7 +580,7 @@ function DeviceVisual({
                 width: 12, height: 12, borderRadius: '50%',
                 transform: 'translate(-50%, 50%)', background: P.magenta,
               }}
-              animate={reduced ? undefined : {
+              animate={reduced || narrow ? undefined : {
                 boxShadow: [`0 0 0 0 ${P.magenta}aa`, `0 0 0 20px ${P.magenta}00`],
               }}
               transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
@@ -777,7 +799,12 @@ function CtaLayer({
 }
 
 // ── Scroll-hint ───────────────────────────────────────────────────────
-function ScrollHint({ progress }: { progress: MotionValue<number> }) {
+function ScrollHint({ progress, still }: {
+  progress: MotionValue<number>;
+  /** Telefon eller prefers-reduced-motion: dropp den repeterende
+   *  mount-animasjonen helt (se kommentar ved kallstedet). */
+  still?: boolean;
+}) {
   const opacity = useTransform(progress, [0, 0.04], [1, 0]);
   return (
     <motion.div
@@ -800,7 +827,7 @@ function ScrollHint({ progress }: { progress: MotionValue<number> }) {
             position: 'absolute', left: '50%', top: 8, x: '-50%',
             width: 4, height: 8, borderRadius: 2, background: P.accentBright,
           }}
-          animate={{ y: [0, 12, 0], opacity: [1, 0.3, 1] }}
+          animate={still ? undefined : { y: [0, 12, 0], opacity: [1, 0.3, 1] }}
           transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
         />
       </motion.div>

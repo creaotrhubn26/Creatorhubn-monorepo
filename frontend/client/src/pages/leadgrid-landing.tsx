@@ -32,6 +32,8 @@ import { useEffect, useState } from 'react';
 import { useLandingBrand } from '@/hooks/useLandingAccent';
 import { useElementEdits } from '@/components/workspace/elementEdits';
 import WorkspaceDesignOverlay from '@/components/workspace/WorkspaceDesignOverlay';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
+import { reportHandledError } from '@/utils/installFrontendErrorReporter';
 import { fireGoogleAdsConversion } from '@/utils/google-ads-conversions';
 import { trackEvent, trackPageView } from '@/utils/ga4-client-tracking';
 import {
@@ -321,7 +323,32 @@ export default function LeadgridLanding() {
     }}>
       {designMode && <WorkspaceDesignOverlay workspace="leadgrid" targetFile="frontend/client/src/pages/leadgrid-landing.tsx" onClose={() => setDesignMode(false)} />}
       <StickyHeader />
-      <LeadgridExperience onStartFree={() => setExpStartOpen(true)} />
+      {/* Scroll-filmen er dekorativ, men er den eneste framer-motion-bruken på
+          denne siden. iOS Safari kaster TypeError («Type error») fra native
+          Element.animate() når framer-motion binder motion-verdier ved mount
+          (error_log ea5174ab, kun iPhone, viewport 430x745). Uten egen
+          boundary boblet den helt opp til casting-main-root, som byttet ut
+          HELE leadgrid.no med «Oops! Something went wrong». Egen boundary her
+          gjør at filmen faller bort mens resten av landingssiden består. */}
+      <ErrorBoundary
+        componentName="leadgrid-landing-experience"
+        // IKKE fallback={null}: ErrorBoundary gjør `if (this.props.fallback)`,
+        // så null er falsy og faller gjennom til standard «Oops!»-panelet —
+        // altså nøyaktig boksen vi prøver å bli kvitt, bare inline midt på
+        // siden. Et tomt fragment er truthy og rendrer ingenting.
+        fallback={<></>}
+        // ErrorBoundary rapporterer kun til Sentry, som er en no-op uten
+        // VITE_SENTRY_DSN. Derfor sluttet denne krasjen å dukke opp i
+        // error_log den dagen root-boundaryen ble lagt inn (siste window.error
+        // 2026-08-23) selv om brukerne fortsatt traff den. Rapporter eksplisitt
+        // til in-house-reporteren så Admin Room Observability ser den igjen.
+        onError={(error) => reportHandledError(error, {
+          component: 'LeadgridExperience',
+          action: 'leadgrid-landing-render',
+        })}
+      >
+        <LeadgridExperience onStartFree={() => setExpStartOpen(true)} />
+      </ErrorBoundary>
       <StartFreeDialog open={expStartOpen} onClose={() => setExpStartOpen(false)} />
       <BookDemoDialog open={demoOpen} onClose={() => setDemoOpen(false)} />
       <AppWaitlistDialog open={appWaitlistOpen} onClose={() => setAppWaitlistOpen(false)} />
