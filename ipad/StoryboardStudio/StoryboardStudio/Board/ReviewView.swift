@@ -88,10 +88,18 @@ final class ReviewState: ObservableObject {
         if let fetched = try? await RoleRoomAPIClient.shared
             .fetchScenes(manuscriptId: manuscript.id) {
             scenes = fetched
-            if selected == nil,
+            let selectionStillExists = selected.map { selection in
+                fetched.contains { scene in
+                    scene.id == selection.sceneId
+                        && scene.frames.contains { $0.id == selection.frameId }
+                }
+            } ?? false
+            if !selectionStillExists,
                let first = allFrames.first(where: { ($0.frame.frameStatus ?? "planned") != "done" })
                 ?? allFrames.first {
                 selected = (first.scene.id, first.frame.id)
+            } else if !selectionStillExists {
+                selected = nil
             }
         }
         await FrameImageCache.prefetch(frames: Array(allFrames.map(\.frame).prefix(24)))
@@ -294,6 +302,21 @@ final class ReviewState: ObservableObject {
     }
 }
 
+enum StoryboardReviewWorkspaceSection: String, CaseIterable, Identifiable {
+    case shots
+    case revisions
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .shots: return "Shots"
+        case .revisions: return "Låste revisjoner"
+        }
+    }
+
+}
+
 struct ReviewView: View {
     @StateObject private var state: ReviewState
     var storageUsed = 0
@@ -316,6 +339,7 @@ struct ReviewView: View {
     @State private var fullscreenPreview = false
     @State private var exportShareURL: URL?
     @State private var showTeamEditor = false
+    @State private var workspaceSection: StoryboardReviewWorkspaceSection = .shots
 
     private static let roles = ["Director", "DP", "Producer", "Editor", "Artist"]
 
@@ -330,30 +354,26 @@ struct ReviewView: View {
 
     var body: some View {
         NavigationStack {
-            HStack(spacing: 0) {
-                if let onNavigate {
-                    HubSidebar(projectName: state.project.name,
-                               storageUsed: storageUsed, storageQuota: storageQuota,
-                               active: .review) { destination in
-                        onNavigate(destination)
-                    }
-                    Divider().overlay(BoardBrand.border)
-                }
-                queue
-                Divider().overlay(BoardBrand.border)
-                centerPane
-                Divider().overlay(BoardBrand.border)
-                inspector
-            }
-            .background(BoardBrand.chrome)
+            reviewWorkspace
             .navigationTitle("Review — \(state.manuscript.title)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    if let status = state.status {
+                    if workspaceSection == .shots, let status = state.status {
                         Text(status).font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
                     }
+                }
+                ToolbarItem(placement: .principal) {
+                    Picker("Review-område", selection: $workspaceSection) {
+                        ForEach(StoryboardReviewWorkspaceSection.allCases) { section in
+                            Text(section.title).tag(section)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 360)
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("storyboard.review.workspacePicker")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Lukk") { dismiss() }
@@ -398,6 +418,50 @@ struct ReviewView: View {
             pendingPin = nil
             historyVersions = []
             loadHistory()
+        }
+    }
+
+    private var reviewWorkspace: some View {
+        HStack(spacing: 0) {
+            if let onNavigate {
+                HubSidebar(projectName: state.project.name,
+                           storageUsed: storageUsed, storageQuota: storageQuota,
+                           active: .review) { destination in
+                    onNavigate(destination)
+                }
+                Divider().overlay(BoardBrand.border)
+            }
+            reviewWorkspaceContent
+        }
+        .background(BoardBrand.chrome)
+    }
+
+    @ViewBuilder
+    private var reviewWorkspaceContent: some View {
+        switch workspaceSection {
+        case .shots:
+            HStack(spacing: 0) {
+                queue
+                Divider().overlay(BoardBrand.border)
+                centerPane
+                Divider().overlay(BoardBrand.border)
+                inspector
+            }
+        case .revisions:
+            if state.project.id.isEmpty {
+                ContentUnavailableView(
+                    "Prosjekt mangler",
+                    systemImage: "rectangle.badge.xmark",
+                    description: Text("Koble storyboardet til et Role Room-prosjekt før du oppretter en revisjon."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .foregroundStyle(.white)
+            } else {
+                StoryboardReviewRoundsView(
+                    projectId: state.project.id,
+                    manuscriptId: state.manuscript.id,
+                    onRestored: { await state.load() },
+                    embedded: true)
+            }
         }
     }
 
@@ -620,7 +684,7 @@ struct ReviewView: View {
                             }
                         }
                     } label: {
-                        Label("Versjoner", systemImage: "clock.arrow.circlepath")
+                        Label("Tegnehistorikk", systemImage: "clock.arrow.circlepath")
                     }
                     Button {
                         compareMode.toggle()
@@ -1354,7 +1418,7 @@ struct ReviewView: View {
                             }
                         }
                     }
-                    inspectorSection("REVIEW-STATUS") {
+                    inspectorSection("SHOTSTATUS") {
                         HStack {
                             Text("Status").font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
                             Spacer()

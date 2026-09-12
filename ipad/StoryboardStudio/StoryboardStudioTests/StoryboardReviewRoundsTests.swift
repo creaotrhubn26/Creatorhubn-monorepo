@@ -2,6 +2,31 @@ import XCTest
 @testable import StoryboardStudio
 
 final class StoryboardReviewRoundsTests: XCTestCase {
+    func testReviewWorkspaceKeepsRevisionsInsideOneDestination() {
+        XCTAssertEqual(StoryboardReviewWorkspaceSection.allCases, [.shots, .revisions])
+        XCTAssertEqual(StoryboardReviewWorkspaceSection.shots.title, "Shots")
+        XCTAssertEqual(StoryboardReviewWorkspaceSection.revisions.title, "Låste revisjoner")
+    }
+
+    func testSnapshotFramePreservesDrawingFallbackAndImageAliases() throws {
+        let data = Data(#"""
+        {
+          "id":"frame-drawing","shotNumber":"4A","description":"Nora ser opp",
+          "imageURL":"/api/storage/frame.png",
+          "thumbnailDataURL":"data:image/jpeg;base64,cHJldmlldw==",
+          "drawingData":{"strokes":"[]","width":2048,"height":1152}
+        }
+        """#.utf8)
+
+        let frame = try JSONDecoder().decode(StoryboardReviewSnapshotFrameDTO.self, from: data)
+
+        XCTAssertEqual(frame.imageUrl, "/api/storage/frame.png")
+        XCTAssertEqual(frame.thumbnailUrl, "data:image/jpeg;base64,cHJldmlldw==")
+        XCTAssertEqual(frame.drawingData?.strokes, "[]")
+        XCTAssertEqual(frame.drawingData?.width, 2048)
+        XCTAssertEqual(frame.drawingData?.height, 1152)
+    }
+
     func testReviewRoundAndDiffContractsDecodeWithoutDroppingIntegrityFields() throws {
         let roundData = Data(#"""
         {

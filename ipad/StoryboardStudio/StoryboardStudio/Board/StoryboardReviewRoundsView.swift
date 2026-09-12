@@ -14,12 +14,53 @@ struct StoryboardReviewAnnotationDTO: Decodable, Identifiable, Sendable {
     let points: [StoryboardReviewAnnotationPointDTO]
 }
 
+struct StoryboardReviewDrawingDataDTO: Decodable, Sendable {
+    let strokes: String?
+    let width: Double?
+    let height: Double?
+}
+
 struct StoryboardReviewSnapshotFrameDTO: Decodable, Identifiable, Sendable {
     let id: String
     let shotNumber: String?
     let description: String?
     let imageUrl: String?
     let thumbnailUrl: String?
+    let drawingData: StoryboardReviewDrawingDataDTO?
+
+    init(
+        id: String,
+        shotNumber: String?,
+        description: String?,
+        imageUrl: String?,
+        thumbnailUrl: String?,
+        drawingData: StoryboardReviewDrawingDataDTO? = nil
+    ) {
+        self.id = id
+        self.shotNumber = shotNumber
+        self.description = description
+        self.imageUrl = imageUrl
+        self.thumbnailUrl = thumbnailUrl
+        self.drawingData = drawingData
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, shotNumber, description, imageUrl, imageURL
+        case thumbnailUrl, thumbnailDataURL, drawingData
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        shotNumber = try values.decodeIfPresent(String.self, forKey: .shotNumber)
+        description = try values.decodeIfPresent(String.self, forKey: .description)
+        imageUrl = try values.decodeIfPresent(String.self, forKey: .imageUrl)
+            ?? values.decodeIfPresent(String.self, forKey: .imageURL)
+        thumbnailUrl = try values.decodeIfPresent(String.self, forKey: .thumbnailUrl)
+            ?? values.decodeIfPresent(String.self, forKey: .thumbnailDataURL)
+        drawingData = try values.decodeIfPresent(
+            StoryboardReviewDrawingDataDTO.self, forKey: .drawingData)
+    }
 }
 
 struct StoryboardReviewSnapshotSceneDTO: Decodable, Identifiable, Sendable {
@@ -133,6 +174,7 @@ struct StoryboardReviewRoundsView: View {
     let projectId: String
     let manuscriptId: String
     let onRestored: () async -> Void
+    var embedded = false
 
     @State private var rounds: [StoryboardReviewRoundDTO] = []
     @State private var inbox: [StoryboardReviewInboxItemDTO] = []
@@ -175,43 +217,32 @@ struct StoryboardReviewRoundsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            GeometryReader { proxy in
-                if proxy.size.width >= 820 {
-                    HStack(spacing: 0) {
-                        reviewRail
-                            .frame(width: min(320, max(270, proxy.size.width * 0.25)))
-                        Rectangle().fill(BoardBrand.border).frame(width: 1)
-                        detailSurface
-                    }
-                } else {
-                    VStack(spacing: 0) {
-                        compactRoundStrip
-                        Rectangle().fill(BoardBrand.border).frame(height: 1)
-                        detailSurface
-                    }
-                }
-            }
-            .background(BoardBrand.chrome)
-            .foregroundStyle(.white)
-            .navigationTitle("Review-runder")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbarBackground(BoardBrand.panel, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    if busy {
-                        HStack(spacing: 7) {
-                            ProgressView().controlSize(.small).tint(BoardBrand.accent)
-                            Text("Synkroniserer")
-                                .font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
+        Group {
+            if embedded {
+                reviewContent
+            } else {
+                NavigationStack {
+                    reviewContent
+                        .navigationTitle("Review-runder")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbarColorScheme(.dark, for: .navigationBar)
+                        .toolbarBackground(BoardBrand.panel, for: .navigationBar)
+                        .toolbarBackground(.visible, for: .navigationBar)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                if busy {
+                                    HStack(spacing: 7) {
+                                        ProgressView().controlSize(.small).tint(BoardBrand.accent)
+                                        Text("Synkroniserer")
+                                            .font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
+                                    }
+                                }
+                            }
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Board") { dismiss() }
+                                    .foregroundStyle(BoardBrand.accent)
+                            }
                         }
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Board") { dismiss() }
-                        .foregroundStyle(BoardBrand.accent)
                 }
             }
         }
@@ -433,6 +464,37 @@ struct StoryboardReviewRoundsView: View {
                     .buttonStyle(.plain)
                     .padding(.top, 2)
                     .accessibilityIdentifier("storyboard.review.inbox.readAll")
+            }
+        }
+    }
+
+    private var reviewContent: some View {
+        GeometryReader { proxy in
+            if proxy.size.width >= 820 {
+                HStack(spacing: 0) {
+                    reviewRail
+                        .frame(width: min(320, max(270, proxy.size.width * 0.25)))
+                    Rectangle().fill(BoardBrand.border).frame(width: 1)
+                    detailSurface
+                }
+            } else {
+                VStack(spacing: 0) {
+                    compactRoundStrip
+                    Rectangle().fill(BoardBrand.border).frame(height: 1)
+                    detailSurface
+                }
+            }
+        }
+        .background(BoardBrand.chrome)
+        .foregroundStyle(.white)
+        .overlay(alignment: .topTrailing) {
+            if embedded && busy {
+                Label("Synkroniserer", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .background(BoardBrand.panel.opacity(0.96), in: Capsule())
+                    .padding(10)
             }
         }
     }
@@ -1199,24 +1261,56 @@ private struct StoryboardReviewAnnotationPreview: View {
 
     @MainActor
     private func loadImage() async {
-        guard let imagePath else { image = nil; return }
-        if let cached = FrameImageCache.image(for: imagePath) {
-            image = cached
-            return
-        }
-        let data: Data?
-        if let remoteURL = URL(string: imagePath), remoteURL.scheme == "https" {
-            if let (downloaded, response) = try? await URLSession.shared.data(from: remoteURL),
-               (response as? HTTPURLResponse)?.statusCode == 200 {
-                data = downloaded
-            } else {
-                data = nil
+        if let imagePath {
+            if let cached = FrameImageCache.image(for: imagePath) {
+                image = cached
+                return
             }
-        } else {
-            data = await RoleRoomAPIClient.shared.fetchRemoteImageData(path: imagePath)
+            if let embeddedImage = decodeDataURL(imagePath) {
+                FrameImageCache.images[imagePath] = embeddedImage
+                image = embeddedImage
+                return
+            }
+            let data: Data?
+            if let remoteURL = URL(string: imagePath), remoteURL.scheme == "https" {
+                if let (downloaded, response) = try? await URLSession.shared.data(from: remoteURL),
+                   (response as? HTTPURLResponse)?.statusCode == 200 {
+                    data = downloaded
+                } else {
+                    data = nil
+                }
+            } else {
+                data = await RoleRoomAPIClient.shared.fetchRemoteImageData(path: imagePath)
+            }
+            if let data, let downloaded = UIImage(data: data) {
+                FrameImageCache.images[imagePath] = downloaded
+                image = downloaded
+                return
+            }
         }
-        guard let data, let downloaded = UIImage(data: data) else { return }
-        FrameImageCache.images[imagePath] = downloaded
-        image = downloaded
+        image = renderSnapshotDrawing()
+    }
+
+    @MainActor
+    private func renderSnapshotDrawing() -> UIImage? {
+        guard let strokes = frame.drawingData?.strokes,
+              !strokes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let drawingWidth = frame.drawingData?.width ?? 1920
+        let drawingHeight = frame.drawingData?.height ?? 1080
+        let renderable = FrameSummary(
+            id: frame.id, shotNumber: frame.shotNumber ?? "?", detail: "",
+            strokesJSON: strokes, description: frame.description ?? "", notes: nil,
+            shotType: nil, lensMm: nil, movement: nil, durationSec: 0,
+            transition: nil, focusDepth: nil, timeOfDay: nil, weather: nil,
+            beatTag: nil, tags: [], thumbnailDataURL: frame.thumbnailUrl,
+            drawingWidth: drawingWidth, drawingHeight: drawingHeight,
+            frameStatus: nil, comments: [], updatedAt: nil,
+            underlayDataURL: nil, underlayOpacity: nil, perspectiveMode: nil,
+            vanishingPoints: nil, voiceoverDataURL: nil, imageUrl: frame.imageUrl,
+            reviewPriority: nil, reviewDueAt: nil, reviewApprovedBy: nil,
+            reviewApprovedAt: nil, reviewStarred: nil, reviewAssignee: nil,
+            reviewColorLabel: nil, reviewSnoozedUntil: nil)
+        return FrameRenderService.image(
+            for: renderable, maxWidth: 900, includeReviewLayer: true)
     }
 }

@@ -123,7 +123,11 @@ struct ContentView: View {
 
     var body: some View {
         #if DEBUG
-        if ProcessInfo.processInfo.environment["SB_AI_VIDEO_DEMO"] == "1" {
+        if ProcessInfo.processInfo.environment["SB_REVIEW_WORKSPACE_DEMO"] == "1" {
+            ReviewView(
+                project: ProjectSummary(id: "project-demo", name: "TROLL"),
+                manuscript: ManuscriptSummary(id: "manuscript-demo", title: "TROLL"))
+        } else if ProcessInfo.processInfo.environment["SB_AI_VIDEO_DEMO"] == "1" {
             AIStoryboardVideoDemoView()
         } else if ProcessInfo.processInfo.environment["SB_REVIEW_ROUNDS_DEMO"] == "1" {
             StoryboardReviewRoundsView(

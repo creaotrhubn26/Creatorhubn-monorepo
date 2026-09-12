@@ -2,6 +2,34 @@ import XCTest
 
 final class StoryboardReviewRoundsUITests: XCTestCase {
     @MainActor
+    func testReviewWorkspaceContainsShotsAndRevisions() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["SB_REVIEW_WORKSPACE_DEMO"] = "1"
+        app.launchEnvironment["SB_REVIEW_ROUNDS_DEMO"] = "1"
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Review — TROLL"].waitForExistence(timeout: 8))
+        let workspacePicker = app.segmentedControls["storyboard.review.workspacePicker"]
+        XCTAssertTrue(workspacePicker.waitForExistence(timeout: 5))
+        XCTAssertEqual(workspacePicker.buttons.count, 2)
+        XCTAssertTrue(workspacePicker.buttons["Shots"].isSelected)
+
+        workspacePicker.buttons["Låste revisjoner"].tap()
+
+        XCTAssertTrue(workspacePicker.buttons["Låste revisjoner"].isSelected)
+        XCTAssertTrue(app.staticTexts["v3 · Regissørens sign-off"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["Review-runder"].exists)
+
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Samlet Review — låste revisjoner"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        workspacePicker.buttons["Shots"].tap()
+        XCTAssertTrue(workspacePicker.buttons["Shots"].isSelected)
+    }
+
+    @MainActor
     func testImmutableReviewRoundSurfaceRunsOnIPadSimulator() throws {
         let app = XCUIApplication()
         app.launchEnvironment["SB_REVIEW_ROUNDS_DEMO"] = "1"
