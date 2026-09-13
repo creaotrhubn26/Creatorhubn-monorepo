@@ -18,6 +18,8 @@ serde = { version = "1", features = ["derive"] }
 creatorhub-notes-indexer = { path = "../../indexer" }
 # Samme versjon som indekseren, slik at det er én sqlite i binæren.
 rusqlite = { version = "0.32", features = ["bundled"] }
+# Overvåker notatmappen mens appen kjører, se `overvaking`-modulen.
+notify = "6"
 
 [dev-dependencies]
 tempfile = "3"

@@ -6,16 +6,18 @@
 
 mod migrering;
 mod minne;
+mod overvaking;
 mod rettelser;
 mod samtale;
 mod understand;
 
 use creatorhub_notes_indexer::{db, index, search, sti};
+use overvaking::Selvskrift;
 use serde::Serialize;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// Én indeksering av gangen. Tauri kjører kommandoer på en trådpool, og to
 /// samtidige kjøringer ville kjempe om den samme skrivetransaksjonen.
@@ -49,6 +51,11 @@ pub struct SearchHit {
 }
 
 /// Notatmappen, opprettet og git-initiert om den mangler — som `notat` gjør.
+///
+/// Kanonisert før den returneres: `write_note` og `create_note` merker seg i
+/// [`Selvskrift`] med den samme kanoniske stien vokteren i [`overvaking`]
+/// sammenligner mot, og de to må stemme overens for at et eget skriv skal
+/// bli gjenkjent som eget.
 fn notes_dir() -> Result<PathBuf, String> {
     let dir = match std::env::var("CREATORHUB_NOTATER") {
         Ok(p) if !p.is_empty() => PathBuf::from(p),
@@ -60,7 +67,8 @@ fn notes_dir() -> Result<PathBuf, String> {
     if !dir.join(".git").exists() {
         git(&dir, &["init", "-q"])?;
     }
-    Ok(dir)
+    dir.canonicalize()
+        .map_err(|e| format!("finner ikke notatmappen: {e}"))
 }
 
 fn home() -> Result<PathBuf, String> {
@@ -180,7 +188,11 @@ fn slug(title: &str) -> String {
 /// samme tittel to ganger samme dag åpner det samme notatet. Uten tittel er
 /// det motsatte riktig: to trykk på «nytt notat» skal gi to notater, så navnet
 /// får et løpenummer til det er ledig.
-fn create_note_in(dir: &Path, title: &str, date: &str) -> Result<String, String> {
+///
+/// `selv` merkes rett før fila skrives, ikke etterpå — se [`write_note`] for
+/// hvorfor rekkefølgen er det som gjør skrivet trygt. `None` i tester, som
+/// ikke har noen voktertråd å forveksle skrivet med.
+fn create_note_in(dir: &Path, title: &str, date: &str, selv: Option<&Selvskrift>) -> Result<String, String> {
     let title = title.trim();
     let (base, heading) = if title.is_empty() {
         (format!("{date}-uten-tittel"), "Uten tittel")
@@ -201,6 +213,9 @@ fn create_note_in(dir: &Path, title: &str, date: &str) -> Result<String, String>
     if !full.exists() {
         let id = name.trim_end_matches(".md");
         let body = format!("---\nid: {id}\ntype: \n---\n\n# {heading}\n\n");
+        if let Some(selv) = selv {
+            selv.merk(&full);
+        }
         std::fs::write(&full, body).map_err(|e| format!("kunne ikke skrive {name}: {e}"))?;
     }
     Ok(name)
@@ -290,17 +305,21 @@ fn read_note(path: String) -> Result<String, String> {
     std::fs::read_to_string(&full).map_err(|e| format!("kunne ikke lese {path}: {e}"))
 }
 
+/// Merket settes *før* skrivet, aldri etter — det er dette som gjør at
+/// vokteren i [`overvaking`] aldri kan rekke å se hendelsen før merket er
+/// satt. Uten den rekkefølgen ville dette bare vært usannsynlig, ikke umulig.
 #[tauri::command]
-fn write_note(path: String, content: String) -> Result<(), String> {
+fn write_note(selv: tauri::State<Arc<Selvskrift>>, path: String, content: String) -> Result<(), String> {
     let dir = notes_dir()?;
     let full = resolve_in(&dir, &path)?;
+    selv.merk(&full);
     std::fs::write(&full, content).map_err(|e| format!("kunne ikke lagre {path}: {e}"))
 }
 
 #[tauri::command]
-fn create_note(title: String) -> Result<String, String> {
+fn create_note(selv: tauri::State<Arc<Selvskrift>>, title: String) -> Result<String, String> {
     let dir = notes_dir()?;
-    create_note_in(&dir, &title, &today())
+    create_note_in(&dir, &title, &today(), Some(&selv))
 }
 
 #[tauri::command]
@@ -588,9 +607,39 @@ fn reindex() -> Result<String, String> {
     reindex_in(&dir, &db_path())
 }
 
+/// Holder `notify`-vakten i live for appens levetid. Slipper man den, stopper
+/// overvåkingen — det er derfor den legges i Tauris egen tilstand og aldri
+/// tas ut igjen.
+struct Vokter(#[allow(dead_code)] notify::RecommendedWatcher);
+
+/// Setter overvåkingen i gang, om den kan. Feiler notatmappen å finnes, eller
+/// feiler vakten å starte, skjer ingenting mer her: appen faller tilbake til
+/// å lese ved oppstart og etter lagring, akkurat som før denne fantes. Ingen
+/// feilmelding — brukeren kan ikke gjøre noe med det uansett.
+fn start_overvaking(app: &tauri::AppHandle, selv: Arc<Selvskrift>) {
+    let Ok(dir) = notes_dir() else { return };
+    let for_hendelser = app.clone();
+    let resultat = overvaking::start(dir, selv, move |stier| {
+        let relative: Vec<String> = stier
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        let _ = for_hendelser.emit("notat-endret", relative);
+    });
+    if let Ok(watcher) = resultat {
+        app.manage(Vokter(watcher));
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(Arc::new(Selvskrift::default()))
+        .setup(|app| {
+            let selv = app.state::<Arc<Selvskrift>>().inner().clone();
+            start_overvaking(&app.handle().clone(), selv);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             list_notes,
             read_note,
@@ -663,7 +712,7 @@ mod tests {
     #[test]
     fn nytt_notat_far_dato_frontmatter_og_overskrift() {
         let tmp = tempfile::tempdir().unwrap();
-        let name = create_note_in(tmp.path(), "Utstyrs-tab: bør ryddes", "2026-09-10").unwrap();
+        let name = create_note_in(tmp.path(), "Utstyrs-tab: bør ryddes", "2026-09-10", None).unwrap();
         assert_eq!(name, "2026-09-10-utstyrs-tab-bør-ryddes.md");
 
         let body = std::fs::read_to_string(tmp.path().join(&name)).unwrap();
@@ -673,7 +722,7 @@ mod tests {
 
         // Samme tittel samme dag åpner det samme notatet, uten å nullstille det.
         std::fs::write(tmp.path().join(&name), "# endret\n").unwrap();
-        let igjen = create_note_in(tmp.path(), "Utstyrs-tab: bør ryddes", "2026-09-10").unwrap();
+        let igjen = create_note_in(tmp.path(), "Utstyrs-tab: bør ryddes", "2026-09-10", None).unwrap();
         assert_eq!(igjen, name);
         assert_eq!(
             std::fs::read_to_string(tmp.path().join(&name)).unwrap(),
@@ -684,8 +733,8 @@ mod tests {
     #[test]
     fn to_notater_uten_tittel_samme_dag_blir_to_filer() {
         let tmp = tempfile::tempdir().unwrap();
-        let a = create_note_in(tmp.path(), "   ", "2026-09-10").unwrap();
-        let b = create_note_in(tmp.path(), "", "2026-09-10").unwrap();
+        let a = create_note_in(tmp.path(), "   ", "2026-09-10", None).unwrap();
+        let b = create_note_in(tmp.path(), "", "2026-09-10", None).unwrap();
         assert_eq!(a, "2026-09-10-uten-tittel.md");
         assert_eq!(b, "2026-09-10-uten-tittel-2.md");
         assert!(std::fs::read_to_string(tmp.path().join(&a))
@@ -802,7 +851,7 @@ mod tests {
         git(&notes, &["init", "-q"]).unwrap();
         let db_file = tmp.path().join("notater.db");
 
-        let name = create_note_in(&notes, "Forhandler-firmware", "2026-09-10").unwrap();
+        let name = create_note_in(&notes, "Forhandler-firmware", "2026-09-10", None).unwrap();
         std::fs::write(
             notes.join(&name),
             "# Forhandler-firmware\n\nMotoren låste seg på ratatoskr-oppdateringen.\n",
