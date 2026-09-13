@@ -57,6 +57,9 @@ describe('casting production-day access', () => {
         projectId: PROJECT_ID,
         locationId: 'location-1',
         uploadedBy: 'first-ad-1',
+        clientUploadId: '11111111-1111-4111-8111-111111111111',
+        kind: 'photo',
+        captureMetadata: { source: 'camera', sceneIds: ['12A'] },
         displayName: 'scout.png',
         contentType: 'image/png',
         sizeBytes: 33,
@@ -78,13 +81,39 @@ describe('casting production-day access', () => {
     const response = await request(createApp(query, { uploadLocationScoutPhoto }))
       .post(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/media`)
       .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .field('clientUploadId', '11111111-1111-4111-8111-111111111111')
+      .field('kind', 'photo')
+      .field('metadata', JSON.stringify({ source: 'camera', sceneIds: ['12A'] }))
       .attach('file', png, { filename: 'scout.png', contentType: 'image/png' });
 
     expect(response.status).toBe(201);
     expect(response.body.media).toEqual(expect.objectContaining({ displayName: 'scout.png', contentType: 'image/png' }));
     expect(uploadLocationScoutPhoto).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       userId: 'first-ad-1', projectId: PROJECT_ID, locationId: 'location-1', contentType: 'image/png',
+      clientUploadId: '11111111-1111-4111-8111-111111111111', kind: 'photo',
+      captureMetadata: expect.objectContaining({ source: 'camera', sceneIds: ['12A'] }),
     }));
+  });
+
+  it('rejects a declared panorama when the uploaded bytes are audio', async () => {
+    const uploadLocationScoutPhoto = vi.fn();
+    const query = vi.fn(async (text: string) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('AS can_manage_locations')) return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      if (text.includes('FROM casting_locations')) return { rows: [{ '?column?': 1 }], rowCount: 1 };
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+    const wav = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WAVE'), Buffer.alloc(20)]);
+
+    const response = await request(createApp(query, { uploadLocationScoutPhoto }))
+      .post(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/media`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .field('kind', 'panorama')
+      .attach('file', wav, { filename: 'room.wav', contentType: 'audio/wav' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toMatch(/samsvarer ikke/i);
+    expect(uploadLocationScoutPhoto).not.toHaveBeenCalled();
   });
 
   it('hides scout media from users without project access', async () => {

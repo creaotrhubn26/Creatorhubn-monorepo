@@ -821,6 +821,38 @@ export interface LocationRisk {
 }
 
 export type LocationScoutCheckStatus = 'unchecked' | 'pass' | 'concern' | 'not_applicable';
+export type LocationScoutEvidenceStatus = 'unknown' | 'observed' | 'verified';
+export type LocationScoutObservationCategory = 'access' | 'parking' | 'power' | 'signal' | 'noise' | 'light' | 'weather' | 'safety' | 'other';
+
+export interface LocationScoutObservation {
+  id: string;
+  category: LocationScoutObservationCategory;
+  status: LocationScoutEvidenceStatus;
+  value: string;
+  source: 'field_observation' | 'measurement' | 'document' | 'manual';
+  observedAt: string;
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+    accuracyMeters?: number;
+  };
+  mediaIds: string[];
+  sceneIds: string[];
+  checkId?: string;
+}
+
+export interface LocationScoutPin {
+  id: string;
+  mediaId: string;
+  x: number;
+  y: number;
+  label: string;
+  note?: string;
+  status: Exclude<LocationScoutEvidenceStatus, 'unknown'>;
+  sceneIds: string[];
+  checkId?: string;
+  createdAt: string;
+}
 
 export interface LocationScoutCapture {
   capturedAt?: string;
@@ -845,6 +877,8 @@ export interface LocationScoutCapture {
     notes?: string;
     updatedAt?: string;
   }>;
+  observations: LocationScoutObservation[];
+  pins: LocationScoutPin[];
   notes?: string;
 }
 

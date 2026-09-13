@@ -1,4 +1,5 @@
 import type { LocationManagerOperations } from '../models/casting';
+import type { LocationScoutMediaUpload } from './locationManagerService';
 
 export interface PendingLocationOperation {
   id: string;
@@ -10,9 +11,23 @@ export interface PendingLocationOperation {
   attempts: number;
 }
 
+export interface PendingLocationMedia {
+  id: string;
+  projectId: string;
+  locationId: string;
+  displayName: string;
+  contentType: string;
+  sizeBytes: number;
+  blob: Blob;
+  upload: LocationScoutMediaUpload;
+  createdAt: string;
+  attempts: number;
+}
+
 const DB_NAME = 'role-room-location-manager';
-const DB_VERSION = 1;
-const STORE_NAME = 'pending-operations';
+const DB_VERSION = 2;
+const OPERATIONS_STORE_NAME = 'pending-operations';
+const MEDIA_STORE_NAME = 'pending-media';
 const FALLBACK_KEY = 'role-room:location-manager:pending:v1';
 
 const operationId = (projectId: string, locationId: string) => `${projectId}:${locationId}`;
@@ -42,8 +57,12 @@ function openDatabase(): Promise<IDBDatabase> {
     request.onerror = () => reject(request.error ?? new Error('Kunne ikke åpne lokal feltlagring.'));
     request.onupgradeneeded = () => {
       const database = request.result;
-      if (!database.objectStoreNames.contains(STORE_NAME)) {
-        const store = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      if (!database.objectStoreNames.contains(OPERATIONS_STORE_NAME)) {
+        const store = database.createObjectStore(OPERATIONS_STORE_NAME, { keyPath: 'id' });
+        store.createIndex('projectId', 'projectId', { unique: false });
+      }
+      if (!database.objectStoreNames.contains(MEDIA_STORE_NAME)) {
+        const store = database.createObjectStore(MEDIA_STORE_NAME, { keyPath: 'id' });
         store.createIndex('projectId', 'projectId', { unique: false });
       }
     };
@@ -52,23 +71,24 @@ function openDatabase(): Promise<IDBDatabase> {
 }
 
 async function runStore<T>(
+  storeName: typeof OPERATIONS_STORE_NAME | typeof MEDIA_STORE_NAME,
   mode: IDBTransactionMode,
   operation: (store: IDBObjectStore, resolve: (value: T) => void, reject: (reason?: unknown) => void) => void,
 ): Promise<T> {
   const database = await openDatabase();
   return new Promise<T>((resolve, reject) => {
-    const transaction = database.transaction(STORE_NAME, mode);
+    const transaction = database.transaction(storeName, mode);
     transaction.oncomplete = () => database.close();
     transaction.onerror = () => {
       database.close();
       reject(transaction.error ?? new Error('Lokal feltlagring feilet.'));
     };
-    operation(transaction.objectStore(STORE_NAME), resolve, reject);
+    operation(transaction.objectStore(storeName), resolve, reject);
   });
 }
 
 async function listFromDatabase(): Promise<PendingLocationOperation[]> {
-  return runStore<PendingLocationOperation[]>('readonly', (store, resolve, reject) => {
+  return runStore<PendingLocationOperation[]>(OPERATIONS_STORE_NAME, 'readonly', (store, resolve, reject) => {
     const request = store.getAll();
     request.onsuccess = () => resolve(request.result as PendingLocationOperation[]);
     request.onerror = () => reject(request.error);
@@ -99,7 +119,7 @@ export const locationManagerOfflineStore = {
       attempts: existing?.attempts ?? 0,
     };
     try {
-      await runStore<void>('readwrite', (store, resolve, reject) => {
+      await runStore<void>(OPERATIONS_STORE_NAME, 'readwrite', (store, resolve, reject) => {
         const request = store.put(item);
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
@@ -113,7 +133,7 @@ export const locationManagerOfflineStore = {
 
   async remove(id: string): Promise<void> {
     try {
-      await runStore<void>('readwrite', (store, resolve, reject) => {
+      await runStore<void>(OPERATIONS_STORE_NAME, 'readwrite', (store, resolve, reject) => {
         const request = store.delete(id);
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
@@ -126,7 +146,7 @@ export const locationManagerOfflineStore = {
   async incrementAttempts(item: PendingLocationOperation): Promise<void> {
     const updated = { ...item, attempts: item.attempts + 1 };
     try {
-      await runStore<void>('readwrite', (store, resolve, reject) => {
+      await runStore<void>(OPERATIONS_STORE_NAME, 'readwrite', (store, resolve, reject) => {
         const request = store.put(updated);
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
@@ -135,5 +155,47 @@ export const locationManagerOfflineStore = {
       const items = readFallback().filter((entry) => entry.id !== item.id);
       writeFallback([...items, updated]);
     }
+  },
+
+  async listMedia(projectId?: string): Promise<PendingLocationMedia[]> {
+    const items = await runStore<PendingLocationMedia[]>(MEDIA_STORE_NAME, 'readonly', (store, resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result as PendingLocationMedia[]);
+      request.onerror = () => reject(request.error);
+    });
+    return items
+      .filter((item) => !projectId || item.projectId === projectId)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  },
+
+  async putMedia(input: Omit<PendingLocationMedia, 'id' | 'createdAt' | 'attempts'>): Promise<PendingLocationMedia> {
+    const item: PendingLocationMedia = {
+      ...input,
+      id: input.upload.clientUploadId,
+      createdAt: new Date().toISOString(),
+      attempts: 0,
+    };
+    await runStore<void>(MEDIA_STORE_NAME, 'readwrite', (store, resolve, reject) => {
+      const request = store.put(item);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+    return item;
+  },
+
+  async removeMedia(id: string): Promise<void> {
+    await runStore<void>(MEDIA_STORE_NAME, 'readwrite', (store, resolve, reject) => {
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  },
+
+  async incrementMediaAttempts(item: PendingLocationMedia): Promise<void> {
+    await runStore<void>(MEDIA_STORE_NAME, 'readwrite', (store, resolve, reject) => {
+      const request = store.put({ ...item, attempts: item.attempts + 1 });
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
   },
 };

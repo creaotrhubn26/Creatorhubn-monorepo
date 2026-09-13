@@ -6,12 +6,12 @@ import type { CastingProject } from '../../models/casting';
 import { buildLocationManagerOperations } from './locationManagerWorkspaceModel';
 import { LocationManagerWorkspace } from './LocationManagerWorkspace';
 
-const { list, save, listMedia, uploadPhoto, getMediaUrl } = vi.hoisted(() => ({
-  list: vi.fn(), save: vi.fn(), listMedia: vi.fn(), uploadPhoto: vi.fn(), getMediaUrl: vi.fn(),
+const { list, save, listMedia, uploadMedia, uploadPhoto, getMediaUrl } = vi.hoisted(() => ({
+  list: vi.fn(), save: vi.fn(), listMedia: vi.fn(), uploadMedia: vi.fn(), uploadPhoto: vi.fn(), getMediaUrl: vi.fn(),
 }));
 
 vi.mock('../../services/locationManagerService', () => ({
-  locationManagerService: { list, save, listMedia, uploadPhoto, getMediaUrl },
+  locationManagerService: { list, save, listMedia, uploadMedia, uploadPhoto, getMediaUrl },
   LocationOperationsConflictError: class LocationOperationsConflictError extends Error {},
   LocationOperationsNetworkError: class LocationOperationsNetworkError extends Error {},
 }));
@@ -40,6 +40,7 @@ describe('LocationManagerWorkspace', () => {
     save.mockReset();
     listMedia.mockReset().mockResolvedValue([]);
     uploadPhoto.mockReset();
+    uploadMedia.mockReset();
     getMediaUrl.mockReset();
   });
 
@@ -99,5 +100,19 @@ describe('LocationManagerWorkspace', () => {
     ));
     expect(await screen.findByText('Lokasjonsberedskapen er lagret som versjon 1.')).toBeInTheDocument();
     expect(savedOperations.stage).toBe('need');
+  });
+
+  it('keeps observed and verified evidence distinct in the field journal', async () => {
+    renderWorkspace();
+    await screen.findByRole('heading', { name: 'Scout Capture' });
+
+    fireEvent.change(screen.getByLabelText('Hva ble observert eller målt?'), { target: { value: '62 dBA ved nordport' } });
+    fireEvent.mouseDown(screen.getByLabelText('Evidensstatus'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Verifisert' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Legg til' }));
+
+    expect(screen.getByText(/62 dBA ved nordport/)).toBeInTheDocument();
+    expect(screen.getAllByText('Verifisert').length).toBeGreaterThan(0);
+    expect(screen.getByText('Ulagrede endringer')).toBeInTheDocument();
   });
 });

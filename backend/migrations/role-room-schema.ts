@@ -161,12 +161,15 @@ export const roleRoomLocationOperations = pgTable('role_room_location_operations
   index('role_room_location_operations_project_updated_idx').using('btree', table.projectId, table.updatedAt),
 ]);
 
-/** Private, checksum-verified location scout photos in the Role Room S3 bucket. */
+/** Private, checksum-verified and retry-safe scout evidence in the Role Room S3 bucket. */
 export const castingLocationScoutMedia = pgTable('casting_location_scout_media', {
   id: uuid('id').defaultRandom().primaryKey().notNull(),
   projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
   locationId: varchar('location_id', { length: 255 }).notNull().references(() => castingLocations.id, { onDelete: 'cascade' }),
   uploadedBy: varchar('uploaded_by', { length: 255 }),
+  clientUploadId: uuid('client_upload_id'),
+  mediaKind: varchar('media_kind', { length: 20 }).default('photo').notNull(),
+  captureMetadata: jsonb('capture_metadata').default({}).notNull(),
   storageProvider: varchar('storage_provider', { length: 20 }).default('aws_s3').notNull(),
   bucketName: text('bucket_name').notNull(),
   objectKey: text('object_key').notNull(),
@@ -179,10 +182,13 @@ export const castingLocationScoutMedia = pgTable('casting_location_scout_media',
 }, (table) => [
   unique('uq_casting_location_scout_media_provider_key').on(table.storageProvider, table.objectKey),
   check('chk_casting_location_scout_media_provider', sql`${table.storageProvider} = 'aws_s3'`),
-  check('chk_casting_location_scout_media_size', sql`${table.sizeBytes} > 0 AND ${table.sizeBytes} <= 26214400`),
+  check('chk_casting_location_scout_media_size', sql`${table.sizeBytes} > 0 AND ${table.sizeBytes} <= 262144000`),
   check('chk_casting_location_scout_media_type', sql`${table.contentType} IN (
-    'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/avif'
+    'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/avif',
+    'video/mp4', 'video/quicktime', 'video/webm',
+    'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a'
   )`),
+  check('chk_casting_location_scout_media_kind', sql`${table.mediaKind} IN ('photo', 'video', 'audio', 'panorama')`),
   check('chk_casting_location_scout_media_checksum', sql`${table.checksumSha256} ~ '^[0-9a-f]{64}$'`),
   check('chk_casting_location_scout_media_s3_contract', sql`
     ${table.bucketName} = 'the-role-room-prod-745600963362-eu-north-1'
@@ -191,6 +197,9 @@ export const castingLocationScoutMedia = pgTable('casting_location_scout_media',
   index('idx_casting_location_scout_media_active')
     .using('btree', table.projectId, table.locationId, table.createdAt.desc())
     .where(sql`${table.deletedAt} IS NULL`),
+  uniqueIndex('uq_casting_location_scout_media_client_upload')
+    .using('btree', table.projectId, table.locationId, table.clientUploadId)
+    .where(sql`${table.clientUploadId} IS NOT NULL`),
 ]);
 
 export const castingProps = pgTable('casting_props', {

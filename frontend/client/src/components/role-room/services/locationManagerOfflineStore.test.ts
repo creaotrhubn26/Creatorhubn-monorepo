@@ -17,6 +17,8 @@ const operations = (nextAction: string): LocationManagerOperations => ({
   scoutCapture: {
     conditions: { ambientNoise: 'unknown', mobileSignal: 'unknown', power: 'unknown' },
     checks: [],
+    observations: [],
+    pins: [],
   },
   nextAction,
   activity: [],
@@ -41,5 +43,23 @@ describe('locationManagerOfflineStore', () => {
     expect(pending).toHaveLength(1);
     expect(pending[0]).toEqual(expect.objectContaining({ expectedVersion: 4 }));
     expect(pending[0].operations.nextAction).toBe('Siste feltendring');
+  });
+
+  it('never falls back to localStorage for queued media blobs', async () => {
+    vi.stubGlobal('indexedDB', undefined);
+    await expect(locationManagerOfflineStore.putMedia({
+      projectId: 'troll',
+      locationId: 'dovre',
+      displayName: 'room.wav',
+      contentType: 'audio/wav',
+      sizeBytes: 12,
+      blob: new Blob(['RIFF0000WAVE'], { type: 'audio/wav' }),
+      upload: {
+        clientUploadId: '11111111-1111-4111-8111-111111111111',
+        kind: 'audio',
+        metadata: { source: 'recorder', sceneIds: ['12A'] },
+      },
+    })).rejects.toThrow('IndexedDB');
+    expect(localStorage.length).toBe(0);
   });
 });

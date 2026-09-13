@@ -31,10 +31,11 @@ import {
   type Router as ExpressRouter,
 } from 'express';
 import type { Pool } from 'pg';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { unlink } from 'node:fs/promises';
 import multer from 'multer';
+import { rateLimit } from 'express-rate-limit';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import {
   userCanAccessCastingProject,
@@ -57,7 +58,6 @@ import {
   summarizeContinuityChanges,
 } from './casting-production-continuity.js';
 import {
-  CONTINUITY_MEDIA_MAX_IMAGE_BYTES,
   CONTINUITY_MEDIA_MAX_VIDEO_BYTES,
   CONTINUITY_MEDIA_MIME_TYPES,
   inspectContinuityMediaFile,
@@ -68,10 +68,18 @@ import {
   uploadContinuityMediaToS3,
 } from './casting-production-continuity-s3.js';
 import {
-  getLocationScoutPhotoDownloadUrl,
-  listLocationScoutPhotos,
-  uploadLocationScoutPhotoToS3,
+  getLocationScoutMediaDownloadUrl,
+  listLocationScoutMedia,
+  uploadLocationScoutMediaToS3,
+  type LocationScoutCaptureMetadata,
 } from './casting-production-location-s3.js';
+import {
+  inspectLocationScoutMediaFile,
+  LOCATION_SCOUT_MEDIA_MAX_VIDEO_BYTES,
+  LOCATION_SCOUT_MEDIA_MIME_TYPES,
+  LocationScoutMediaValidationError,
+  type LocationScoutMediaKind,
+} from './casting-production-location-media.js';
 
 interface SessionData {
   userId: string;
@@ -119,7 +127,7 @@ function receiveContinuityMedia(req: Request, res: Response, next: NextFunction)
   });
 }
 
-const locationScoutPhotoUpload = multer({
+const locationScoutMediaUpload = multer({
   storage: multer.diskStorage({
     destination: tmpdir(),
     filename: (_req, _file, callback) => callback(
@@ -127,18 +135,18 @@ const locationScoutPhotoUpload = multer({
       `role-room-location-scout-${Date.now()}-${randomBytes(8).toString('hex')}.upload`,
     ),
   }),
-  limits: { fileSize: CONTINUITY_MEDIA_MAX_IMAGE_BYTES, files: 1, fields: 4, fieldSize: 2_048 },
+  limits: { fileSize: LOCATION_SCOUT_MEDIA_MAX_VIDEO_BYTES, files: 1, fields: 8, fieldSize: 8_192 },
   fileFilter: (_req, file, callback) => {
-    if (CONTINUITY_MEDIA_MIME_TYPES.has(file.mimetype) && file.mimetype.startsWith('image/')) callback(null, true);
-    else callback(new ProductionContinuityMediaValidationError('Kun bildeformater er tillatt for Scout Capture.'));
+    if (LOCATION_SCOUT_MEDIA_MIME_TYPES.has(file.mimetype)) callback(null, true);
+    else callback(new LocationScoutMediaValidationError('Filtypen er ikke tillatt i Scout Capture.'));
   },
 });
 
-function receiveLocationScoutPhoto(req: Request, res: Response, next: NextFunction): void {
-  locationScoutPhotoUpload.single('file')(req, res, (error: unknown) => {
+function receiveLocationScoutMedia(req: Request, res: Response, next: NextFunction): void {
+  locationScoutMediaUpload.single('file')(req, res, (error: unknown) => {
     if (!error) { next(); return; }
     if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-      res.status(413).json({ error: 'file_too_large', message: 'Scout-bilder kan ikke være større enn 25 MB.' });
+      res.status(413).json({ error: 'file_too_large', message: 'Scout-filer kan ikke være større enn 250 MB.' });
       return;
     }
     res.status(415).json({
@@ -147,6 +155,18 @@ function receiveLocationScoutPhoto(req: Request, res: Response, next: NextFuncti
     });
   });
 }
+
+const locationScoutMediaUploadLimiter = rateLimit({
+  windowMs: 10 * 60_000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as AuthedRequest).userId || 'unauthenticated',
+  handler: (_req, res) => res.status(429).json({
+    error: 'rate_limited',
+    message: 'For mange scout-opplastinger på kort tid. Vent litt og prøv igjen.',
+  }),
+});
 
 async function resolveUser(
   pool: Pool,
@@ -206,16 +226,24 @@ async function ensureSchema(pool: Pool): Promise<void> {
     project_id VARCHAR(255) NOT NULL REFERENCES casting_projects(id) ON DELETE CASCADE,
     location_id VARCHAR(255) NOT NULL REFERENCES casting_locations(id) ON DELETE CASCADE,
     uploaded_by VARCHAR(255),
+    client_upload_id UUID,
+    media_kind VARCHAR(20) NOT NULL DEFAULT 'photo'
+      CONSTRAINT chk_casting_location_scout_media_kind CHECK (media_kind IN ('photo', 'video', 'audio', 'panorama')),
+    capture_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     storage_provider VARCHAR(20) NOT NULL DEFAULT 'aws_s3'
       CONSTRAINT chk_casting_location_scout_media_provider CHECK (storage_provider = 'aws_s3'),
     bucket_name TEXT NOT NULL,
     object_key TEXT NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     size_bytes BIGINT NOT NULL
-      CONSTRAINT chk_casting_location_scout_media_size CHECK (size_bytes > 0 AND size_bytes <= 26214400),
+      CONSTRAINT chk_casting_location_scout_media_size CHECK (size_bytes > 0 AND size_bytes <= 262144000),
     content_type VARCHAR(120) NOT NULL
       CONSTRAINT chk_casting_location_scout_media_type CHECK (
-        content_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/avif')
+        content_type IN (
+          'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/avif',
+          'video/mp4', 'video/quicktime', 'video/webm',
+          'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a'
+        )
       ),
     checksum_sha256 CHAR(64) NOT NULL
       CONSTRAINT chk_casting_location_scout_media_checksum CHECK (checksum_sha256 ~ '^[0-9a-f]{64}$'),
@@ -227,9 +255,16 @@ async function ensureSchema(pool: Pool): Promise<void> {
     ),
     UNIQUE (storage_provider, object_key)
   )`);
+  await pool.query(`ALTER TABLE casting_location_scout_media
+    ADD COLUMN IF NOT EXISTS client_upload_id UUID,
+    ADD COLUMN IF NOT EXISTS media_kind VARCHAR(20) NOT NULL DEFAULT 'photo',
+    ADD COLUMN IF NOT EXISTS capture_metadata JSONB NOT NULL DEFAULT '{}'::jsonb`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_casting_location_scout_media_active
     ON casting_location_scout_media(project_id, location_id, created_at DESC)
     WHERE deleted_at IS NULL`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_casting_location_scout_media_client_upload
+    ON casting_location_scout_media(project_id, location_id, client_upload_id)
+    WHERE client_upload_id IS NOT NULL`);
 }
 function schemaReady(pool: Pool): Promise<void> {
   if (!schemaReadyPromise) {
@@ -354,6 +389,10 @@ const LOCATION_SCOUT_CHECK_STATUSES = new Set(['unchecked', 'pass', 'concern', '
 const LOCATION_SCOUT_NOISE_LEVELS = new Set(['unknown', 'quiet', 'moderate', 'loud', 'unusable']);
 const LOCATION_SCOUT_SIGNAL_LEVELS = new Set(['unknown', 'none', 'weak', 'usable', 'strong']);
 const LOCATION_SCOUT_POWER_LEVELS = new Set(['unknown', 'unavailable', 'limited', 'production_ready']);
+const LOCATION_SCOUT_EVIDENCE_STATUSES = new Set(['unknown', 'observed', 'verified']);
+const LOCATION_SCOUT_PIN_STATUSES = new Set(['observed', 'verified']);
+const LOCATION_SCOUT_OBSERVATION_CATEGORIES = new Set(['access', 'parking', 'power', 'signal', 'noise', 'light', 'weather', 'safety', 'other']);
+const LOCATION_SCOUT_OBSERVATION_SOURCES = new Set(['field_observation', 'measurement', 'document', 'manual']);
 
 function asObject(value: unknown): Record<string, any> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -376,6 +415,14 @@ function optionalString(value: unknown, field: string, maxLength = 2_000): strin
     throw new ProductionManagementValidationError(`${field} kan ikke være lengre enn ${maxLength} tegn.`);
   }
   return normalized || undefined;
+}
+
+function isoTimestamp(value: unknown, field: string, required = false): string | undefined {
+  const normalized = required ? requiredString(value, field, 40) : optionalString(value, field, 40);
+  if (normalized && !Number.isFinite(Date.parse(normalized))) {
+    throw new ProductionManagementValidationError(`${field} må være et gyldig tidspunkt.`);
+  }
+  return normalized;
 }
 
 function enumValue(value: unknown, allowed: Set<string>, field: string): string {
@@ -403,6 +450,73 @@ function uniqueBy<T>(items: T[], key: (item: T) => string, field: string): T[] {
     ids.add(id);
   }
   return items;
+}
+
+function normalizeLocationScoutMediaUpload(
+  body: Record<string, unknown>,
+  detectedKind: 'photo' | 'video' | 'audio',
+): { clientUploadId: string; kind: LocationScoutMediaKind; captureMetadata: LocationScoutCaptureMetadata } {
+  const rawClientUploadId = typeof body.clientUploadId === 'string' ? body.clientUploadId.trim() : '';
+  if (rawClientUploadId && !isUuid(rawClientUploadId)) {
+    throw new ProductionManagementValidationError('clientUploadId er ugyldig.');
+  }
+  const declaredKind = typeof body.kind === 'string' && body.kind.trim() ? body.kind.trim() : detectedKind;
+  const allowedKinds = new Set(['photo', 'video', 'audio', 'panorama']);
+  if (!allowedKinds.has(declaredKind)) {
+    throw new ProductionManagementValidationError('Medietypen er ugyldig.');
+  }
+  if ((declaredKind === 'panorama' ? 'photo' : declaredKind) !== detectedKind) {
+    throw new ProductionManagementValidationError('Medietypen samsvarer ikke med filinnholdet.');
+  }
+
+  let parsedMetadata: Record<string, unknown> = {};
+  if (typeof body.metadata === 'string' && body.metadata.trim()) {
+    try {
+      parsedMetadata = asObject(JSON.parse(body.metadata)) ?? {};
+    } catch {
+      throw new ProductionManagementValidationError('Opptaksmetadata er ugyldig JSON.');
+    }
+  }
+  const source = typeof parsedMetadata.source === 'string' ? parsedMetadata.source : 'import';
+  if (!new Set(['camera', 'library', 'recorder', 'import']).has(source)) {
+    throw new ProductionManagementValidationError('Opptakskilden er ugyldig.');
+  }
+  const coordinates = parsedMetadata.coordinates === undefined ? undefined : asObject(parsedMetadata.coordinates);
+  if (parsedMetadata.coordinates !== undefined && !coordinates) {
+    throw new ProductionManagementValidationError('Opptakskoordinater må være et objekt.');
+  }
+  const numberInRange = (raw: unknown, field: string, min: number, max: number): number => {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+      throw new ProductionManagementValidationError(`${field} er ugyldig.`);
+    }
+    return parsed;
+  };
+  const sceneIds = limitedArray(parsedMetadata.sceneIds ?? [], 'metadata.sceneIds', 80)
+    .map((entry, index) => requiredString(entry, `metadata.sceneIds[${index}]`, 120));
+
+  return {
+    clientUploadId: rawClientUploadId || randomUUID(),
+    kind: declaredKind as LocationScoutMediaKind,
+    captureMetadata: {
+      capturedAt: isoTimestamp(parsedMetadata.capturedAt, 'metadata.capturedAt'),
+      coordinates: coordinates ? {
+        latitude: numberInRange(coordinates.latitude, 'metadata.coordinates.latitude', -90, 90),
+        longitude: numberInRange(coordinates.longitude, 'metadata.coordinates.longitude', -180, 180),
+        accuracyMeters: coordinates.accuracyMeters === undefined
+          ? undefined
+          : numberInRange(coordinates.accuracyMeters, 'metadata.coordinates.accuracyMeters', 0, 100_000),
+      } : undefined,
+      bearingDegrees: parsedMetadata.bearingDegrees === undefined
+        ? undefined
+        : numberInRange(parsedMetadata.bearingDegrees, 'metadata.bearingDegrees', 0, 360),
+      source: source as LocationScoutCaptureMetadata['source'],
+      deviceLabel: optionalString(parsedMetadata.deviceLabel, 'metadata.deviceLabel', 120),
+      sceneIds,
+      checkId: optionalString(parsedMetadata.checkId, 'metadata.checkId', 120),
+      note: optionalString(parsedMetadata.note, 'metadata.note', 1_000),
+    },
+  };
 }
 
 function normalizeProductionManagementOperations(value: unknown) {
@@ -492,7 +606,7 @@ function normalizeLocationManagerOperations(value: unknown) {
   const logistics = asObject(input.logistics);
   const finance = asObject(input.finance);
   const scoutCapture = input.scoutCapture === undefined
-    ? { conditions: { ambientNoise: 'unknown', mobileSignal: 'unknown', power: 'unknown' }, checks: [] }
+    ? { conditions: { ambientNoise: 'unknown', mobileSignal: 'unknown', power: 'unknown' }, checks: [], observations: [], pins: [] }
     : asObject(input.scoutCapture);
   if (!ownerCommunication || !dateAvailability || !recce || !logistics || !finance || !scoutCapture) {
     throw new ProductionManagementValidationError('Lokasjonsoperasjonen mangler påkrevde deler.');
@@ -530,6 +644,49 @@ function normalizeLocationManagerOperations(value: unknown) {
       updatedAt: optionalString(item.updatedAt, `scoutCapture.checks[${index}].updatedAt`, 40),
     };
   }), (item) => item.id, 'scoutCapture.checks');
+  const scoutObservations = uniqueBy(limitedArray(scoutCapture.observations ?? [], 'scoutCapture.observations', 300).map((entry, index) => {
+    const item = asObject(entry);
+    if (!item) throw new ProductionManagementValidationError(`scoutCapture.observations[${index}] er ugyldig.`);
+    const coordinates = item.coordinates === undefined ? undefined : asObject(item.coordinates);
+    if (item.coordinates !== undefined && !coordinates) {
+      throw new ProductionManagementValidationError(`scoutCapture.observations[${index}].coordinates må være et objekt.`);
+    }
+    return {
+      id: requiredString(item.id, `scoutCapture.observations[${index}].id`, 120),
+      category: enumValue(item.category, LOCATION_SCOUT_OBSERVATION_CATEGORIES, `scoutCapture.observations[${index}].category`),
+      status: enumValue(item.status, LOCATION_SCOUT_EVIDENCE_STATUSES, `scoutCapture.observations[${index}].status`),
+      value: requiredString(item.value, `scoutCapture.observations[${index}].value`, 1_000),
+      source: enumValue(item.source, LOCATION_SCOUT_OBSERVATION_SOURCES, `scoutCapture.observations[${index}].source`),
+      observedAt: isoTimestamp(item.observedAt, `scoutCapture.observations[${index}].observedAt`, true)!,
+      coordinates: coordinates ? {
+        latitude: coordinate(coordinates.latitude, `scoutCapture.observations[${index}].coordinates.latitude`, -90, 90),
+        longitude: coordinate(coordinates.longitude, `scoutCapture.observations[${index}].coordinates.longitude`, -180, 180),
+        accuracyMeters: optionalNumber(coordinates.accuracyMeters, `scoutCapture.observations[${index}].coordinates.accuracyMeters`, 0, 100_000),
+      } : undefined,
+      mediaIds: limitedArray(item.mediaIds ?? [], `scoutCapture.observations[${index}].mediaIds`, 40)
+        .map((value, mediaIndex) => requiredString(value, `scoutCapture.observations[${index}].mediaIds[${mediaIndex}]`, 120)),
+      sceneIds: limitedArray(item.sceneIds ?? [], `scoutCapture.observations[${index}].sceneIds`, 80)
+        .map((value, sceneIndex) => requiredString(value, `scoutCapture.observations[${index}].sceneIds[${sceneIndex}]`, 120)),
+      checkId: optionalString(item.checkId, `scoutCapture.observations[${index}].checkId`, 120),
+    };
+  }), (item) => item.id, 'scoutCapture.observations');
+  const scoutPins = uniqueBy(limitedArray(scoutCapture.pins ?? [], 'scoutCapture.pins', 300).map((entry, index) => {
+    const item = asObject(entry);
+    if (!item) throw new ProductionManagementValidationError(`scoutCapture.pins[${index}] er ugyldig.`);
+    return {
+      id: requiredString(item.id, `scoutCapture.pins[${index}].id`, 120),
+      mediaId: requiredString(item.mediaId, `scoutCapture.pins[${index}].mediaId`, 120),
+      x: coordinate(item.x, `scoutCapture.pins[${index}].x`, 0, 1),
+      y: coordinate(item.y, `scoutCapture.pins[${index}].y`, 0, 1),
+      label: requiredString(item.label, `scoutCapture.pins[${index}].label`, 160),
+      note: optionalString(item.note, `scoutCapture.pins[${index}].note`, 1_000),
+      status: enumValue(item.status, LOCATION_SCOUT_PIN_STATUSES, `scoutCapture.pins[${index}].status`),
+      sceneIds: limitedArray(item.sceneIds ?? [], `scoutCapture.pins[${index}].sceneIds`, 80)
+        .map((value, sceneIndex) => requiredString(value, `scoutCapture.pins[${index}].sceneIds[${sceneIndex}]`, 120)),
+      checkId: optionalString(item.checkId, `scoutCapture.pins[${index}].checkId`, 120),
+      createdAt: isoTimestamp(item.createdAt, `scoutCapture.pins[${index}].createdAt`, true)!,
+    };
+  }), (item) => item.id, 'scoutCapture.pins');
 
   const confirmedDates = limitedArray(dateAvailability.confirmedDates, 'dateAvailability.confirmedDates', 120)
     .map((entry, index) => requiredString(entry, `dateAvailability.confirmedDates[${index}]`, 40));
@@ -617,7 +774,7 @@ function normalizeLocationManagerOperations(value: unknown) {
     },
     risks,
     scoutCapture: {
-      capturedAt: optionalString(scoutCapture.capturedAt, 'scoutCapture.capturedAt', 40),
+      capturedAt: isoTimestamp(scoutCapture.capturedAt, 'scoutCapture.capturedAt'),
       coordinates: scoutCoordinates ? {
         latitude: coordinate(scoutCoordinates.latitude, 'scoutCapture.coordinates.latitude', -90, 90),
         longitude: coordinate(scoutCoordinates.longitude, 'scoutCapture.coordinates.longitude', -180, 180),
@@ -633,6 +790,8 @@ function normalizeLocationManagerOperations(value: unknown) {
         daylight: optionalString(scoutConditions.daylight, 'scoutCapture.conditions.daylight', 1_000),
       },
       checks: scoutChecks,
+      observations: scoutObservations,
+      pins: scoutPins,
       notes: optionalString(scoutCapture.notes, 'scoutCapture.notes', 5_000),
     },
     backupLocationId: optionalString(input.backupLocationId, 'backupLocationId', 255),
@@ -792,9 +951,9 @@ export interface CreateCastingProductionRouterDeps {
   activeSessions?: Map<string, SessionData>;
   uploadContinuityMedia?: typeof uploadContinuityMediaToS3;
   getContinuityMediaDownloadUrl?: typeof getContinuityMediaS3DownloadUrl;
-  uploadLocationScoutPhoto?: typeof uploadLocationScoutPhotoToS3;
-  listLocationScoutMedia?: typeof listLocationScoutPhotos;
-  getLocationScoutMediaDownloadUrl?: typeof getLocationScoutPhotoDownloadUrl;
+  uploadLocationScoutPhoto?: typeof uploadLocationScoutMediaToS3;
+  listLocationScoutMedia?: typeof listLocationScoutMedia;
+  getLocationScoutMediaDownloadUrl?: typeof getLocationScoutMediaDownloadUrl;
 }
 
 export function createCastingProductionRouter(
@@ -805,9 +964,9 @@ export function createCastingProductionRouter(
   const auth = requireAuth(pool, deps.activeSessions);
   const uploadContinuityMedia = deps.uploadContinuityMedia ?? uploadContinuityMediaToS3;
   const getContinuityMediaDownloadUrl = deps.getContinuityMediaDownloadUrl ?? getContinuityMediaS3DownloadUrl;
-  const uploadLocationScoutPhoto = deps.uploadLocationScoutPhoto ?? uploadLocationScoutPhotoToS3;
-  const listLocationScoutMedia = deps.listLocationScoutMedia ?? listLocationScoutPhotos;
-  const getLocationScoutMediaDownloadUrl = deps.getLocationScoutMediaDownloadUrl ?? getLocationScoutPhotoDownloadUrl;
+  const uploadLocationScoutMedia = deps.uploadLocationScoutPhoto ?? uploadLocationScoutMediaToS3;
+  const listLocationScoutMediaAdapter = deps.listLocationScoutMedia ?? listLocationScoutMedia;
+  const getLocationScoutMediaDownloadUrlAdapter = deps.getLocationScoutMediaDownloadUrl ?? getLocationScoutMediaDownloadUrl;
 
   // Props remain owner-scoped. Production days also support active project
   // members, with an explicit production-write check for mutations. Auth alone
@@ -1067,15 +1226,16 @@ export function createCastingProductionRouter(
         [projectId, locationId],
       );
       if (location.rowCount === 0) { res.status(404).json({ error: 'not_found' }); return; }
-      res.json({ media: await listLocationScoutMedia(pool, { projectId, locationId }) });
+      res.json({ media: await listLocationScoutMediaAdapter(pool, { projectId, locationId }) });
     } catch {
-      res.status(500).json({ error: 'Kunne ikke hente scout-bilder', detail: 'internal_error' });
+      res.status(500).json({ error: 'Kunne ikke hente scout-filer', detail: 'internal_error' });
     }
   });
 
   router.post(
     '/projects/:projectId/locations/:locationId/media',
     auth,
+    locationScoutMediaUploadLimiter,
     async (req, res, next) => {
       try {
         await schemaReady(pool);
@@ -1091,25 +1251,25 @@ export function createCastingProductionRouter(
         res.status(500).json({ error: 'Kunne ikke kontrollere medietilgang', detail: 'internal_error' });
       }
     },
-    receiveLocationScoutPhoto,
+    receiveLocationScoutMedia,
     async (req, res) => {
       const uploadRequest = req as LocationScoutMediaRequest;
       const file = uploadRequest.file;
       if (!file?.path || file.size < 1) {
-        res.status(400).json({ error: 'missing_file', message: 'Velg et scout-bilde.' });
+        res.status(400).json({ error: 'missing_file', message: 'Velg en scout-fil.' });
         return;
       }
       try {
-        const inspected = await inspectContinuityMediaFile(file.path, file.mimetype, file.size);
-        if (inspected.kind !== 'photo') {
-          res.status(415).json({ error: 'unsupported_media', message: 'Kun bilder kan lastes opp i Scout Capture.' });
-          return;
-        }
-        const result = await uploadLocationScoutPhoto(pool, {
+        const inspected = await inspectLocationScoutMediaFile(file.path, file.mimetype, file.size);
+        const normalizedUpload = normalizeLocationScoutMediaUpload(uploadRequest.body ?? {}, inspected.kind);
+        const result = await uploadLocationScoutMedia(pool, {
           userId: uploadRequest.userId,
           projectId: String(req.params.projectId),
           locationId: String(req.params.locationId),
-          displayName: String(file.originalname || 'scout-bilde').slice(0, 255),
+          clientUploadId: normalizedUpload.clientUploadId,
+          kind: normalizedUpload.kind,
+          captureMetadata: normalizedUpload.captureMetadata,
+          displayName: String(file.originalname || 'scout-fil').slice(0, 255),
           filePath: file.path,
           sizeBytes: file.size,
           contentType: inspected.contentType,
@@ -1119,17 +1279,21 @@ export function createCastingProductionRouter(
             error: result.reason,
             message: result.reason === 'storage_not_configured'
               ? 'Role Room S3-lagring er ikke konfigurert.'
-              : 'Kunne ikke laste opp scout-bildet.',
+              : 'Kunne ikke laste opp scout-filen.',
           });
           return;
         }
-        res.status(201).json({ media: result.media });
+        res.status(result.deduplicated ? 200 : 201).json({ media: result.media, deduplicated: result.deduplicated === true });
       } catch (error) {
-        if (error instanceof ProductionContinuityMediaValidationError) {
+        if (error instanceof LocationScoutMediaValidationError) {
           res.status(415).json({ error: 'unsupported_media', message: error.message });
           return;
         }
-        res.status(500).json({ error: 'upload_failed', message: 'Kunne ikke laste opp scout-bildet.' });
+        if (error instanceof ProductionManagementValidationError) {
+          res.status(400).json({ error: 'invalid_payload', message: error.message });
+          return;
+        }
+        res.status(500).json({ error: 'upload_failed', message: 'Kunne ikke laste opp scout-filen.' });
       } finally {
         await unlink(file.path).catch(() => {});
       }
@@ -1142,7 +1306,7 @@ export function createCastingProductionRouter(
       const { projectId, locationId, fileId } = req.params;
       if (!(await ensureProductionAccess(req, res, projectId, 'read'))) return;
       if (!isUuid(fileId)) { res.status(404).json({ error: 'not_found' }); return; }
-      const result = await getLocationScoutMediaDownloadUrl(pool, {
+      const result = await getLocationScoutMediaDownloadUrlAdapter(pool, {
         projectId,
         locationId,
         fileId,
@@ -1162,7 +1326,7 @@ export function createCastingProductionRouter(
         expiresInSeconds: 300,
       });
     } catch {
-      res.status(500).json({ error: 'Kunne ikke åpne scout-bildet', detail: 'internal_error' });
+      res.status(500).json({ error: 'Kunne ikke åpne scout-filen', detail: 'internal_error' });
     }
   });
 
