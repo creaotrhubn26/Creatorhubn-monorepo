@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import type { Pool, PoolClient } from "pg";
 
@@ -466,10 +467,11 @@ function nationalDiscoveryProfilePlan(
   name: string,
   brief: DiscoveryBrief,
   isDefault = false,
+  templateVersion = 1,
 ): ProjectOnboardingProfilePlan {
   return {
     template_key: templateKey,
-    template_version: 1,
+    template_version: templateVersion,
     name,
     is_default: isDefault,
     status: "active",
@@ -480,6 +482,73 @@ function nationalDiscoveryProfilePlan(
     schedule_cron: "0 6 * * *",
     schedule_timezone: "Europe/Oslo",
   };
+}
+
+function tidumMunicipalServicesBriefV1(): DiscoveryBrief {
+  return nationalDiscoveryBrief({
+    organizationNameQueries: ["kommune"],
+    exclusions: [],
+    idealCustomer:
+      "Norsk kommune med tjenester innen barnevern, avlastning, bofellesskap, BPA eller miljøarbeid og behov for trygg arbeidstidsdokumentasjon.",
+    goal: "Finne kommuner der relevante omsorgs- og miljøtjenester kan kvalifiseres videre før kontakt.",
+    targetCount: 60,
+    minimumFitScore: 65,
+    requireBusinessRegistration: null,
+    organizationForms: ["KOMM"],
+  });
+}
+
+function tidumMunicipalServicesBriefV2(): DiscoveryBrief {
+  return nationalDiscoveryBrief({
+    organizationNameQueries: [
+      "barneverntjeneste",
+      "avlastning",
+      "bofellesskap",
+      "BPA",
+      "miljøarbeidertjeneste",
+    ],
+    exclusions: [
+      "barnehage",
+      "skole",
+      "sykehjem",
+      "natur",
+      "eiendom",
+      "husholdning",
+      "administrasjon",
+    ],
+    idealCustomer:
+      "Registrert norsk tjenesteenhet innen barnevern, avlastning, bofellesskap, BPA eller miljøarbeid. Overordnet offentlig eier og riktig tjenesteansvarlig må bekreftes før kontakt.",
+    goal: "Finne konkrete kommunale tjenestesteder i stedet for brede kommuneadministrasjoner, og kvalifisere overordnet eier og riktig kontaktpunkt før oppfølging.",
+    targetCount: 60,
+    minimumFitScore: 70,
+    requireBusinessRegistration: null,
+    organizationForms: ["BEDR"],
+  });
+}
+
+export function isUpgradeableTidumMunicipalServicesV1(profile: {
+  name: string;
+  template_key?: string | null;
+  template_version?: number | null;
+  brief: unknown;
+}): boolean {
+  if (
+    profile.template_key !== "tidum.municipal_services" ||
+    profile.template_version !== 1
+  ) {
+    return false;
+  }
+  try {
+    const brief = discoveryBriefSchema.parse(profile.brief);
+    return (
+      (profile.name === "Kommunale omsorgstjenester – Norge" &&
+        isDeepStrictEqual(brief, tidumMunicipalServicesBriefV1())) ||
+      (profile.name === "Kommunale tjenestesteder – Norge" &&
+        isDeepStrictEqual(brief, tidumMunicipalServicesBriefV2()))
+    );
+  } catch {
+    return false;
+  }
 }
 
 function buildRoleRoomOnboardingPlan(
@@ -847,31 +916,9 @@ function buildTidumOnboardingPlan(
       nationalDiscoveryProfilePlan(
         "tidum.municipal_services",
         "Kommunale tjenestesteder – Norge",
-        nationalDiscoveryBrief({
-          organizationNameQueries: [
-            "barneverntjeneste",
-            "avlastning",
-            "bofellesskap",
-            "BPA",
-            "miljøarbeidertjeneste",
-          ],
-          exclusions: [
-            "barnehage",
-            "skole",
-            "sykehjem",
-            "natur",
-            "eiendom",
-            "husholdning",
-            "administrasjon",
-          ],
-          idealCustomer:
-            "Registrert norsk tjenesteenhet innen barnevern, avlastning, bofellesskap, BPA eller miljøarbeid. Overordnet offentlig eier og riktig tjenesteansvarlig må bekreftes før kontakt.",
-          goal: "Finne konkrete kommunale tjenestesteder i stedet for brede kommuneadministrasjoner, og kvalifisere overordnet eier og riktig kontaktpunkt før oppfølging.",
-          targetCount: 60,
-          minimumFitScore: 70,
-          requireBusinessRegistration: null,
-          organizationForms: ["BEDR"],
-        }),
+        tidumMunicipalServicesBriefV2(),
+        false,
+        2,
       ),
     ],
     skills: LEADGRID_ONBOARDING_SKILLS,
@@ -1463,6 +1510,72 @@ async function ensureRecommendedProfiles(
         profile.name.trim().toLocaleLowerCase("nb-NO") === normalizedName,
     );
     if (existing) {
+      const canUpgradeTidumMunicipalTemplate =
+        plan.template_key === "tidum.municipal_services" &&
+        plan.template_version === 2 &&
+        isUpgradeableTidumMunicipalServicesV1(existing);
+      if (canUpgradeTidumMunicipalTemplate) {
+        await client.query(
+          `UPDATE leadgrid_discovery_profiles
+              SET template_version = $4,
+                  name = $5,
+                  target_customer_types = $6::text[],
+                  organization_name_queries = $7::text[],
+                  country_code = $8,
+                  subject_kind = $9,
+                  qualification_terms = $10::text[],
+                  qualification_requirement = $11,
+                  city_filters = $12::text[],
+                  geography_lat = $13::numeric,
+                  geography_lng = $14::numeric,
+                  geography_radius_km = $15,
+                  company_size_min = $16,
+                  company_size_max = $17,
+                  brief = $18::jsonb,
+                  desired_signals = $19::jsonb,
+                  exclusion_rules = $20::jsonb,
+                  max_candidates_per_run = $21,
+                  enrichment_count = $22,
+                  version = version + 1,
+                  updated_by = $23,
+                  updated_at = NOW()
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
+              AND id = $3::uuid
+              AND template_key = 'tidum.municipal_services'
+              AND template_version = 1
+              AND name = $24
+              AND brief = $25::jsonb`,
+          [
+            args.organizationId,
+            args.projectId,
+            existing.id,
+            plan.template_version,
+            plan.name,
+            values.targetCustomerTypes,
+            values.organizationNameQueries,
+            values.countryCode,
+            values.subjectKind,
+            values.qualificationTerms,
+            values.qualificationRequirement,
+            values.cityFilters,
+            values.latitude,
+            values.longitude,
+            values.radiusKm,
+            values.companySizeMin,
+            values.companySizeMax,
+            JSON.stringify(brief),
+            JSON.stringify(values.desiredSignals),
+            JSON.stringify({ terms: brief.exclusion_terms }),
+            brief.target_count,
+            brief.enrichment_count,
+            args.userId,
+            existing.name,
+            JSON.stringify(discoveryBriefSchema.parse(existing.brief)),
+          ],
+        );
+        continue;
+      }
       // Adopt a legacy name match into the stable template set and refresh only
       // queryable mirrors from its own brief. User-edited targeting remains the
       // authority and is never replaced by a newer product recommendation.
