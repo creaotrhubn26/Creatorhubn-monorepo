@@ -41,13 +41,36 @@ fn name_in_line(line: &str) -> Option<String> {
     None
 }
 
+/// Antall linjer toppfeltet legger beslag på, inkludert de to `---`-linjene.
+/// 0 når fila ikke har noe toppfelt.
+///
+/// Toppfeltet i et notat er `id:` og `type:` — maskinfelt, ikke tekst hun har
+/// skrevet. Indekseres de, returnerer «2026» hvert eneste notat fra i år og
+/// «type» samtlige. `understand::split` hopper allerede over det; her ble det
+/// stående med.
+fn toppfelt(lines: &[&str]) -> usize {
+    if lines.first().map(|l| l.trim_end()) != Some("---") {
+        return 0;
+    }
+    // Uten en avsluttende `---` er det ikke et toppfelt, bare en strek.
+    lines[1..]
+        .iter()
+        .position(|l| l.trim_end() == "---")
+        .map(|i| i + 2)
+        .unwrap_or(0)
+}
+
 /// Deler innholdet i 40-linjers vinduer med 10 linjers overlapp.
 pub fn split(path: &str, content: &str) -> Vec<Chunk> {
     if content.trim().is_empty() {
         return Vec::new();
     }
-    let lines: Vec<&str> = content.lines().collect();
-    if lines.is_empty() {
+    let alle: Vec<&str> = content.lines().collect();
+    // Linjenumrene skal fortsatt peke inn i fila slik den er på disk, så
+    // toppfeltet hoppes over med et forskyvningstall og ikke ved å klippe.
+    let hopp = toppfelt(&alle);
+    let lines: &[&str] = &alle[hopp.min(alle.len())..];
+    if lines.is_empty() || lines.iter().all(|l| l.trim().is_empty()) {
         return Vec::new();
     }
     let stride = WINDOW - OVERLAP;
@@ -65,15 +88,19 @@ pub fn split(path: &str, content: &str) -> Vec<Chunk> {
             scanned += 1;
         }
         let end = (start + WINDOW).min(lines.len());
-        let header = match &name {
-            Some(name) => format!("// {path} :: {name}"),
-            None => format!("// {path}"),
-        };
         let body = lines[start..end].join("\n");
+        // Hodefeltet bærer funksjonsnavnet biten står i, som er hele grunnen
+        // til at det finnes. Er det ikke noe navn — og det er det aldri i et
+        // notat — er det bare filstien, og da søker hun opp filnavn uten å ha
+        // bedt om det: «tittel» returnerte hvert eneste `*-uten-tittel.md`.
+        let text = match &name {
+            Some(name) => format!("// {path} :: {name}\n{body}"),
+            None => body,
+        };
         out.push(Chunk {
-            start_line: start + 1,
-            end_line: end,
-            text: format!("{header}\n{body}"),
+            start_line: start + hopp + 1,
+            end_line: end + hopp,
+            text,
         });
         if end == lines.len() {
             break;
@@ -97,7 +124,7 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].start_line, 1);
         assert_eq!(out[0].end_line, 12);
-        assert!(out[0].text.starts_with("// a/b.ts\n"));
+        assert!(out[0].text.starts_with("line1\n"));
         assert!(out[0].text.contains("line12"));
     }
 
@@ -132,9 +159,36 @@ mod tests {
         assert!(out[1].text.starts_with("// backend/server/pricing.ts :: beregnPris\n"));
     }
 
+    /// Uten et funksjonsnavn er hodefeltet bare filstien, og da er det verre
+    /// enn ingenting: filnavnet blir søkbar tekst uten at noen har skrevet det.
     #[test]
     fn header_omitted_when_no_function_found() {
-        let out = split("docs/notat.md", &lines(5));
-        assert_eq!(out[0].text.lines().next().unwrap(), "// docs/notat.md");
+        let out = split("docs/2026-09-10-uten-tittel.md", &lines(5));
+        assert_eq!(out[0].text.lines().next().unwrap(), "line1");
+        assert!(!out[0].text.contains("uten-tittel"));
+    }
+
+    /// Toppfeltet er maskinfelt. Det hoppes over, men linjenumrene skal
+    /// fortsatt peke inn i fila slik den ligger på disk.
+    #[test]
+    fn frontmatter_is_skipped_but_line_numbers_still_point_at_the_file() {
+        let ut = split(
+            "notater/2026-09-10-motet.md",
+            "---\nid: 2026-09-10-motet\ntype: \n---\n\n# Møtet\n\nVi ble enige.\n",
+        );
+        assert_eq!(ut.len(), 1);
+        assert!(!ut[0].text.contains("2026-09-10-motet"), "fikk: {}", ut[0].text);
+        assert!(ut[0].text.contains("Vi ble enige."));
+        assert_eq!(ut[0].start_line, 5, "linje 5 er den første etter toppfeltet");
+        assert_eq!(ut[0].end_line, 8);
+    }
+
+    /// En strek uten en avsluttende strek er ikke et toppfelt. Da er det en
+    /// horisontal linje i markdown, og teksten under skal indekseres.
+    #[test]
+    fn a_lone_dash_rule_is_not_frontmatter() {
+        let ut = split("notater/a.md", "---\n\nVi ble enige om depositum.\n");
+        assert_eq!(ut[0].start_line, 1);
+        assert!(ut[0].text.contains("depositum"));
     }
 }
