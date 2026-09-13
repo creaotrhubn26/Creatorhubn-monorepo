@@ -11,6 +11,7 @@ import {
   type Transaction,
   type TransactionSpec,
 } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import { cursorDocStart, selectAll, undo } from "@codemirror/commands";
 import { ensureSyntaxTree } from "@codemirror/language";
 import {
@@ -296,6 +297,23 @@ test("luften under og ved siden av teksten ligger på skriveflaten, ikke scrolle
   // ellers er sidemargene scrollerens, og et klikk i dem treffer ingenting.
   expect(skriveflateCSS[".cm-content"].maxWidth).toBeUndefined();
   expect(skriveflateCSS[".cm-content"].padding).toContain("22rem");
+});
+
+// ---- stavekontroll ---------------------------------------------------------
+
+test("skriveflaten stavekontrollerer norsk, ikke ingenting og ikke engelsk", () => {
+  // @codemirror/view setter selv spellcheck:"false" på contentDOM — det er
+  // grunnverdien i pakken, ikke noe denne appen har slått av. Og macOS/WebKit
+  // bruker `lang` til å velge ordbok: uten et norsk her stavekontrollerer det
+  // hvert norsk ord som feilstavet engelsk. En visningsløs test kan ikke se
+  // understrekene, bare lese attributtene som ville gitt dem.
+  const state = tilstand("Et notat.", { anchor: 0, head: 0 });
+  const kilder = state.facet(EditorView.contentAttributes);
+  const attrs = kilder.find(
+    (a): a is Record<string, string> => typeof a === "object" && a !== null && "aria-label" in a,
+  );
+  expect(attrs?.spellcheck).toBe("true");
+  expect(attrs?.lang).toBe("nb");
 });
 
 // ---- markdown ------------------------------------------------------------

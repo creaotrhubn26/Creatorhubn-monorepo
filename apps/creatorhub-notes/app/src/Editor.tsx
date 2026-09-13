@@ -621,9 +621,21 @@ export function tilstand(
       EditorView.lineWrapping,
       // Uten dette er skriveflaten et `role="textbox"` uten navn, og
       // VoiceOver sier «tekstområde» — om produktets midtpunkt.
+      //
+      // CodeMirror setter selv `spellcheck: "false"` på `contentDOM` — det er
+      // grunnverdien i @codemirror/view, ikke noe denne appen har slått av.
+      // Uten disse to skrev hun norsk i en flate som aldri stavekontrollerte
+      // noe i det hele tatt. `lang` er ikke pynt her heller: `<html lang="nb">`
+      // arves normalt ned til `contentDOM`, men å sette den eksplisitt her
+      // gjør det uavhengig av den arven — og av macOS/WebKit sin
+      // stavekontroll, som bruker nettopp dette attributtet til å velge
+      // ordbok. Uten et norsk `lang` her ville hvert norsk ord strekes under
+      // som om det var engelsk feilstavet.
       EditorView.contentAttributes.of({
         "aria-label": navn,
         "aria-multiline": "true",
+        spellcheck: "true",
+        lang: "nb",
       }),
       ...ekstra,
     ],
