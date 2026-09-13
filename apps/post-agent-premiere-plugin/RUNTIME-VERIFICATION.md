@@ -67,11 +67,19 @@ Packaged artifact:
   `no.creatorhubn.video-room-premiere_premierepro.ccx`.
 - The package manifest targets Premiere Pro 25.6 or newer and contains the
   expected CreatorHub, AWS S3 and optional Stream network permissions.
+- Creative Cloud Desktop accepted the `.ccx` as a non-Marketplace plugin and
+  installed version 0.3.4 under Adobe UXP's external-plugin directory.
+- The installed `index.js` and `publish-core.js` hashes exactly match the files
+  inside the packaged `.ccx`.
+- With UXP Developer Tool not running, Premiere exposed
+  `Window -> UXP Plugins -> CreatorHub Video Room`, and the installed panel
+  rendered successfully.
+- The installed package completed CreatorHub device login, loaded the dedicated
+  test project and displayed `V7 / under_review`. This package-install smoke did
+  not initiate a second export or upload.
 
 Not claimed by this targeted send-to-review run:
 
-- Installation of the generated `.ccx` through Creative Cloud Desktop. The
-  same 0.3.4 source was loaded and exercised through UXP Developer Tool.
 - A repeat of every collaboration smoke item in the broader checklist, such as
   comments, editor tasks, formal multi-approver notifications, live review,
   transcript/QC navigation and both marker-sync directions.
