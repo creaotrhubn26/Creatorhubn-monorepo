@@ -526,6 +526,28 @@ function tidumMunicipalServicesBriefV2(): DiscoveryBrief {
   });
 }
 
+function canonicalTemplateBrief(brief: DiscoveryBrief): DiscoveryBrief {
+  return {
+    ...brief,
+    country_code: brief.country_code ?? null,
+    city: brief.city ?? null,
+    geo: brief.geo ?? null,
+    territory_code: brief.territory_code ?? null,
+    ideal_customer: brief.ideal_customer ?? null,
+    goal: brief.goal ?? null,
+  };
+}
+
+function hasSameTemplateBrief(
+  candidate: DiscoveryBrief,
+  expected: DiscoveryBrief,
+): boolean {
+  return isDeepStrictEqual(
+    canonicalTemplateBrief(candidate),
+    canonicalTemplateBrief(expected),
+  );
+}
+
 export function isUpgradeableTidumMunicipalServicesV1(profile: {
   name: string;
   template_key?: string | null;
@@ -542,9 +564,9 @@ export function isUpgradeableTidumMunicipalServicesV1(profile: {
     const brief = discoveryBriefSchema.parse(profile.brief);
     return (
       (profile.name === "Kommunale omsorgstjenester – Norge" &&
-        isDeepStrictEqual(brief, tidumMunicipalServicesBriefV1())) ||
+        hasSameTemplateBrief(brief, tidumMunicipalServicesBriefV1())) ||
       (profile.name === "Kommunale tjenestesteder – Norge" &&
-        isDeepStrictEqual(brief, tidumMunicipalServicesBriefV2()))
+        hasSameTemplateBrief(brief, tidumMunicipalServicesBriefV2()))
     );
   } catch {
     return false;
@@ -1545,7 +1567,7 @@ async function ensureRecommendedProfiles(
               AND template_key = 'tidum.municipal_services'
               AND template_version = 1
               AND name = $24
-              AND brief = $25::jsonb`,
+              AND version = $25`,
           [
             args.organizationId,
             args.projectId,
@@ -1571,7 +1593,7 @@ async function ensureRecommendedProfiles(
             brief.enrichment_count,
             args.userId,
             existing.name,
-            JSON.stringify(discoveryBriefSchema.parse(existing.brief)),
+            existing.version,
           ],
         );
         continue;
