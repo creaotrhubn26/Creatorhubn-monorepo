@@ -1,10 +1,10 @@
-name: Leadgrid Tidum staging E2E
+name: Leadgrid domain staging E2E
 
 on:
   workflow_dispatch:
     inputs:
       run_simulator_e2e:
-        description: "Kjør native offline/reconnect og Tidum-flyt på iPad mini"
+        description: "Kjør native offline/reconnect og prosjektflyter på iPad mini"
         required: true
         default: true
         type: boolean
@@ -13,12 +13,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: leadgrid-tidum-staging-e2e
+  group: leadgrid-domain-staging-e2e
   cancel-in-progress: false
 
 jobs:
   verify:
-    name: Verify Tidum through staging, PostgreSQL, BRREG, and iPad mini
+    name: Verify projects through staging, PostgreSQL, BRREG, GDPR, and iPad mini
     if: github.ref == 'refs/heads/main'
     environment: Staging
     runs-on: macos-26
@@ -73,7 +73,7 @@ jobs:
         if: inputs.run_simulator_e2e
         run: brew install xcodegen
 
-      - name: Run complete Tidum staging workflow
+      - name: Run complete Leadgrid staging workflow
         working-directory: ipad/LeadMapApp
         env:
           LEADGRID_STAGING_BASE_URL: ${{ secrets.LEADGRID_STAGING_BASE_URL }}
@@ -82,6 +82,8 @@ jobs:
           LEADGRID_STAGING_ORG_ID: ${{ secrets.LEADGRID_STAGING_ORG_ID }}
           LEADGRID_RUN_TIDUM_E2E: "1"
           LEADGRID_RUN_TIDUM_CAMPAIGN_E2E: "1"
+          LEADGRID_RUN_CREATORHUB_E2E: "1"
+          LEADGRID_RUN_CREATORHUB_CAMPAIGN_E2E: "1"
           LEADGRID_RUN_SIMULATOR_E2E: ${{ inputs.run_simulator_e2e && '1' || '0' }}
           LEADGRID_STAGING_SIMULATOR_DESTINATION: "platform=iOS Simulator,name=iPad mini (A17 Pro),OS=26.5"
         run: ./scripts/staging-testflight-e2e.sh
