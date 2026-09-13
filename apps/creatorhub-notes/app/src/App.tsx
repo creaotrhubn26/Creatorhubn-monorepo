@@ -6,6 +6,7 @@ import {
   createNote,
   finnAvsnitt,
   påLesning,
+  påNotatEndret,
   listNotes,
   readNote,
   reindex,
@@ -114,6 +115,10 @@ export default function App() {
   /** Hvor langt en lang lesning er kommet. `null` når det ikke er noe på gang
    *  — da står det ingenting i panelet. */
   const [framdrift, setFramdrift] = useState<{ lest: number; totalt: number } | null>(null);
+  /** Notatet som står åpent ble endret utenfra mens hun hadde ulagrede
+   *  endringer. Skriveflaten er urørt — dette er bare et varsel, med et valg
+   *  hun tar selv. `false` når det ikke er noen konflikt å vise fram. */
+  const [endretUtenfor, setEndretUtenfor] = useState(false);
   const [peker, setPeker] = useState<{ from: number; to: number; n: number } | null>(null);
   /** Leses notatet som en samtale, og hvem er i så fall med? `null` før vi har
    *  spurt. Valget er synlig i notatlinja, ikke gjemt i en meny. */
@@ -213,6 +218,10 @@ export default function App() {
     try {
       await writeNote(p.path, p.content);
       setStatus(`Lagret ${klokke.format(new Date())}`);
+      // Det som eventuelt sto uoppgjort er avgjort nå: hennes versjon er den
+      // som ligger på disk, og det er nettopp det hun valgte ved å fortsette
+      // å skrive og la det autolagre.
+      setEndretUtenfor(false);
       void les(p.path, p.content);
       // Ble en samtale limt inn, er notatet en samtale nå. Formen leses av
       // teksten som faktisk står på disk, ikke av det appen trodde.
@@ -254,6 +263,7 @@ export default function App() {
         setForståelse(null);
         setFramdrift(null);
         setSamtale(null);
+        setEndretUtenfor(false);
         void samtaleform(tekst).then(setSamtale).catch(() => undefined);
         void les(p, tekst);
         // Kom man hit fra en linje om noe som ble skrevet før, skal avsnittet
@@ -275,6 +285,24 @@ export default function App() {
     },
     [lagre, les],
   );
+
+  /** «Last inn på nytt» — svaret på varselet om at notatet ble endret utenfra
+   *  mens hun hadde ulagrede endringer. Det hun skrev forsvinner til fordel
+   *  for det som står på disk; det var nettopp det hun ba om ved å trykke. */
+  const lastInnPåNytt = useCallback(async () => {
+    if (!path) return;
+    window.clearTimeout(timer.current);
+    uskrevet.current = null;
+    try {
+      const tekst = await readNote(path);
+      setDoc(tekst);
+      setEndretUtenfor(false);
+      setStatus(`Lastet inn på nytt ${klokke.format(new Date())}`);
+      void les(path, tekst);
+    } catch (e) {
+      setFeil(String(e));
+    }
+  }, [path, les]);
 
   /** Brukerens egen retting av én linje. Den lagres, og panelet leses opp
    *  igjen fra den samme teksten — avsnittene er uendret, så det koster
@@ -332,6 +360,39 @@ export default function App() {
       // annet fortsatt, og brukeren har ingenting å gjøre med beskjeden.
       await reindex().catch(() => undefined);
     })();
+  }, []);
+
+  /** Notatmappen endret seg mens appen kjørte — en ny fil, en slettet fil,
+   *  eller en fil skrevet i av noe annet enn appen selv. Appens egne
+   *  lagringer kommer aldri hit; det er allerede luket bort i Rust, så det
+   *  denne må ta stilling til er ekte endringer utenfra. */
+  useEffect(() => {
+    const av = påNotatEndret((stier) => {
+      // Lista kan ha fått nye eller borte notater, og modifiserte tidspunkt
+      // uansett hvilket notat som er åpent.
+      void listNotes().then(setNotes).catch(() => undefined);
+      void reindex().catch(() => undefined);
+
+      const nå = stiNå.current;
+      if (!nå || !stier.includes(nå)) return;
+      if (uskrevet.current) {
+        // Hun har ulagrede endringer. Skriveflaten røres ikke — bare si ifra.
+        setEndretUtenfor(true);
+        return;
+      }
+      // Ingen ulagrede endringer: trygt å laste inn stille, uten å spørre.
+      void readNote(nå)
+        .then((tekst) => {
+          // Notatet kan være byttet, eller hun kan ha begynt å skrive, mens
+          // lesningen var underveis.
+          if (stiNå.current !== nå || uskrevet.current) return;
+          setDoc(tekst);
+        })
+        .catch(() => undefined);
+    });
+    return () => {
+      void av.then((stopp) => stopp()).catch(() => undefined);
+    };
   }, []);
 
   useEffect(() => {
@@ -546,6 +607,12 @@ export default function App() {
                   </dl>
                 )}
               </div>
+              {endretUtenfor && (
+                <p className="feil" role="status">
+                  Notatet er endret utenfor appen.
+                  <button onClick={() => void lastInnPåNytt()}>Last inn på nytt</button>
+                </p>
+              )}
               <Editor
                 path={path}
                 doc={doc}

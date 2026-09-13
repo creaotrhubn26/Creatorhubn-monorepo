@@ -299,13 +299,25 @@ export function Editor({ path, doc, onChange, selectTitle, peker, onSamtale, onS
   }, [path]);
 
   /** Dokumentet byttet uten at notatet gjorde det — brukeren sa «dette er en
-   *  samtale», og toppfeltet er skrevet om. Det er ikke en redigering hun har
-   *  gjort i editoren, så lagringen eies av den som byttet teksten. */
+   *  samtale» og toppfeltet er skrevet om, eller notatet ble lastet inn på
+   *  nytt fordi det endret seg utenfra. Det er ikke en redigering hun har
+   *  gjort i editoren, så lagringen eies av den som byttet teksten.
+   *
+   *  Markøren tas vare på så godt den kan: samme tegnposisjon i det nye
+   *  dokumentet, klippet til lengden hvis det ble kortere. Det er ikke en
+   *  ekte diff — bare et bytte midt i en linje kan flytte den et lite hakk —
+   *  men det holder brukeren på stedet hun var, i stedet for å hoppe til
+   *  toppen hver gang noe endrer seg under henne. */
   useEffect(() => {
     const v = view.current;
     if (!v || doc === v.state.doc.toString()) return;
+    const { anchor, head } = v.state.selection.main;
+    const klipp = (n: number) => Math.min(n, doc.length);
     bytter.current = true;
-    v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: doc } });
+    v.dispatch({
+      changes: { from: 0, to: v.state.doc.length, insert: doc },
+      selection: { anchor: klipp(anchor), head: klipp(head) },
+    });
     bytter.current = false;
   }, [doc]);
 

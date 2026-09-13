@@ -93,6 +93,14 @@ export type Framdrift = {
 export const påLesning = (f: (d: Framdrift) => void) =>
   listen<Framdrift>("forstår", (e) => f(e.payload));
 
+/** Notater som er endret utenfra mens appen kjører — en ny fil, en slettet
+ *  fil, eller en fil som ble skrevet i av noe annet enn appen selv (`notat`,
+ *  en annen editor, en git-synk). Stiene er relative til notatmappen, samme
+ *  form som i [`Note`]. Appens egne lagringer er allerede luket bort her —
+ *  denne hendelsen kommer aldri fra appens eget skriv. */
+export const påNotatEndret = (f: (stier: string[]) => void) =>
+  listen<string[]>("notat-endret", (e) => f(e.payload));
+
 /** Brukeren har gått videre. Lesningen som kjører forlates ved neste
  *  pakkeslutt; det den rakk å lese står. */
 export const avbrytLesning = () => invoke<void>("avbryt_lesning");
