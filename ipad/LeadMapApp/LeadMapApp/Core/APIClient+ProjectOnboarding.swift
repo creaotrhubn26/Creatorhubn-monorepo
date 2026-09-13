@@ -1,5 +1,34 @@
 import Foundation
 
+struct LeadgridRecommendedAnbudProfile: Codable, Hashable, Sendable {
+    struct SuggestedWatch: Codable, Hashable, Sendable, Identifiable {
+        var key: String
+        var name: String
+        var query: DoffinWatchQueryDTO
+        var id: String { key }
+    }
+
+    var templateKey: String
+    var templateVersion: Int
+    var name: String
+    var description: String
+    var cpvCodes: [String]
+    var keywords: [String]
+    var exclusionTerms: [String]
+    var suggestedWatches: [SuggestedWatch]
+    var requiresAdminConfirmation: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case name, description, keywords
+        case templateKey = "template_key"
+        case templateVersion = "template_version"
+        case cpvCodes = "cpv_codes"
+        case exclusionTerms = "exclusion_terms"
+        case suggestedWatches = "suggested_watches"
+        case requiresAdminConfirmation = "requires_admin_confirmation"
+    }
+}
+
 struct LeadgridProjectOnboardingSkill: Codable, Hashable, Sendable, Identifiable {
     enum Readiness: String, Codable, Hashable, Sendable {
         case ready
@@ -40,6 +69,7 @@ struct LeadgridProjectOnboardingPreview: Codable, Hashable, Sendable {
     var expiresAt: String
     var canManageMultipleProfiles: Bool
     var brandProfile: BrandProfile? = nil
+    var recommendedAnbudProfile: LeadgridRecommendedAnbudProfile? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, category, skills
@@ -53,6 +83,7 @@ struct LeadgridProjectOnboardingPreview: Codable, Hashable, Sendable {
         case expiresAt = "expires_at"
         case canManageMultipleProfiles = "can_manage_multiple_profiles"
         case brandProfile = "brand_profile"
+        case recommendedAnbudProfile = "recommended_anbud_profile"
     }
 }
 
@@ -578,6 +609,33 @@ private var tidumOnboardingQAPreview: LeadgridProjectOnboardingPreview {
         canManageMultipleProfiles: true,
         brandProfile: .init(
             targetAudience: "Private omsorgsaktører og kommunale tjenester i Norge."
+        ),
+        recommendedAnbudProfile: .init(
+            templateKey: "tidum.procurement",
+            templateVersion: 1,
+            name: "Tidum – arbeidstid, turnus og dokumentasjon",
+            description: "Offentlige anskaffelser av arbeidstids-, HR-, turnus- og dokumentasjonsprogramvare.",
+            cpvCodes: ["48450000", "72212450", "48332000", "48311000", "48311100"],
+            keywords: ["arbeidstid", "turnus", "digital dokumentasjon"],
+            exclusionTerms: ["kjøp av omsorgsplasser", "bemanningstjenester"],
+            suggestedWatches: [
+                .init(
+                    key: "tidum.time_hr_software",
+                    name: "Tidum · Arbeidstid og HR-programvare",
+                    query: .init(q: nil, location: nil, cpv: "48450000,72212450")
+                ),
+                .init(
+                    key: "tidum.scheduling",
+                    name: "Tidum · Turnus og planlegging",
+                    query: .init(q: "turnus", location: nil, cpv: "48332000,48450000")
+                ),
+                .init(
+                    key: "tidum.documentation",
+                    name: "Tidum · Digital dokumentasjon",
+                    query: .init(q: "dokumentasjon", location: nil, cpv: "48311000,48311100")
+                ),
+            ],
+            requiresAdminConfirmation: true
         )
     )
 }

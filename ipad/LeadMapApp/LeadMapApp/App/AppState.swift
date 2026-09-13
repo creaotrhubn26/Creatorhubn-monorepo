@@ -26,9 +26,22 @@ enum WorkspacePlanLoadState: Equatable {
     case failed
 }
 
+struct LeadgridAnbudSearchIntent: Equatable, Sendable, Identifiable {
+    let id: UUID
+    let projectId: String
+    let cpvCodes: [String]
+    let query: String?
+}
+
 @MainActor
 @Observable
 final class AppState {
+    #if DEBUG
+    /// Prevents the domain-onboarding QA sheet from reopening when a
+    /// successful flow changes tabs and recreates the shared project pill.
+    var didAutoOpenProjectOnboardingQATour = false
+    #endif
+
     // Auth
     var authToken: String?
     var userEmail: String?
@@ -74,6 +87,29 @@ final class AppState {
     /// Aktivt valg i iPad-sidebar. Bevares mellom portrait/landscape så
     /// rotasjon ikke mister kontekst. Default = .oversikt (matcher mocken).
     var selectedSidebarItem: SidebarItem = .oversikt
+
+    /// One-shot bridge from Discovery to the project-scoped Anbud surface.
+    /// Anbud consumes and clears it only when the same project is active.
+    var pendingAnbudSearch: LeadgridAnbudSearchIntent?
+
+    func requestAnbudSearch(
+        projectId: String,
+        cpvCodes: [String],
+        query: String? = nil
+    ) {
+        pendingAnbudSearch = LeadgridAnbudSearchIntent(
+            id: UUID(),
+            projectId: projectId,
+            cpvCodes: Array(cpvCodes.prefix(6)),
+            query: query?.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        selectedSidebarItem = .anbud
+    }
+
+    func clearAnbudSearchIntent(id: UUID) {
+        guard pendingAnbudSearch?.id == id else { return }
+        pendingAnbudSearch = nil
+    }
 
     /// «Min bil»-profil (drivstoff/type) — skreddersyr POI-default, kjøre-
     /// godtgjørelse-sats og anbefalinger i nav. Persistert i UserDefaults.

@@ -41,10 +41,6 @@ struct ProjectContextPill: View {
 
     @State private var projectOnboardingOpen = false
     @State private var pendingOnboardingResult: LeadgridProjectOnboardingResult?
-    #if DEBUG
-    @State private var didAutoOpenProjectOnboarding = false
-    #endif
-
     var body: some View {
         // Vis også når lista er TOM: Leadgrid oppretter nå egne prosjekter
         // (før var man avhengig av Role Room for å ha noen i det hele tatt).
@@ -111,8 +107,8 @@ struct ProjectContextPill: View {
             .onAppear {
                 #if DEBUG
                 if ProcessInfo.processInfo.environment["QA_TOUR"] == "domain-onboarding",
-                   !didAutoOpenProjectOnboarding {
-                    didAutoOpenProjectOnboarding = true
+                   !appState.didAutoOpenProjectOnboardingQATour {
+                    appState.didAutoOpenProjectOnboardingQATour = true
                     projectOnboardingOpen = true
                 }
                 #endif

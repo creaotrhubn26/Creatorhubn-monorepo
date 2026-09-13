@@ -216,6 +216,31 @@ struct ProjectDomainOnboardingView: View {
                         }
                     }
 
+                    if let anbudProfile = preview.recommendedAnbudProfile {
+                        Section("Anbud fra Doffin") {
+                            Label(anbudProfile.name, systemImage: "doc.text.magnifyingglass")
+                                .font(.headline)
+                            Text(anbudProfile.description)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                            LabeledContent(
+                                "Produktkoder",
+                                value: "\(anbudProfile.cpvCodes.count) relevante CPV-koder"
+                            )
+                            ForEach(anbudProfile.suggestedWatches) { watch in
+                                Label(watch.name, systemImage: "bell")
+                                    .font(.callout)
+                            }
+                            Label(
+                                "Ingen overvåkning starter før prosjekteier eller organisasjonsadmin bekrefter den i Anbud.",
+                                systemImage: "hand.raised.fill"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        .accessibilityIdentifier("project-onboarding.anbud-profile")
+                    }
+
                     Section("Leadgrid-skills") {
                         ForEach(preview.skills) { skill in
                             HStack(spacing: 12) {

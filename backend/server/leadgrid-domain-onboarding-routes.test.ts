@@ -293,6 +293,23 @@ describe("Leadgrid domain onboarding routes", () => {
             },
           },
         ],
+        recommended_anbud_profile: {
+          template_key: "tidum.procurement",
+          template_version: 1,
+          cpv_codes: [
+            "48450000",
+            "72212450",
+            "48332000",
+            "48311000",
+            "48311100",
+          ],
+          requires_admin_confirmation: true,
+          suggested_watches: expect.arrayContaining([
+            expect.objectContaining({ key: "tidum.time_hr_software" }),
+            expect.objectContaining({ key: "tidum.scheduling" }),
+            expect.objectContaining({ key: "tidum.documentation" }),
+          ]),
+        },
         skills: expect.arrayContaining([
           expect.objectContaining({ key: "leadgrid_data_quality" }),
           expect.objectContaining({ key: "leadgrid_sync_offline_actions" }),

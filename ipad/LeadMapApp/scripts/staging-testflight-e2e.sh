@@ -243,7 +243,13 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
       .brief.organization_name_queries == ["barneverntjeneste", "avlastning", "bofellesskap", "BPA", "miljøarbeidertjeneste"] and
       .brief.organization_forms == ["BEDR"] and
       .brief.employee_count == null and
-      .brief.commercial_signals.registered_in_business_register == null)
+      .brief.commercial_signals.registered_in_business_register == null) and
+    .preview.recommended_anbud_profile.template_key == "tidum.procurement" and
+    .preview.recommended_anbud_profile.requires_admin_confirmation == true and
+    (.preview.recommended_anbud_profile.cpv_codes | sort) ==
+      (["48450000", "72212450", "48332000", "48311000", "48311100"] | sort) and
+    (.preview.recommended_anbud_profile.cpv_codes | index("85000000")) == null and
+    (.preview.recommended_anbud_profile.suggested_watches | length) == 3
   ' <<<"$tidum_preview" >/dev/null
   echo "STAGING_E2E_STAGE=tidum_preview_verified"
 
@@ -324,6 +330,74 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
     exit 9
   fi
   echo "STAGING_E2E_STAGE=tidum_profiles_verified"
+
+  tidum_anbud_profile="$(curl --fail-with-body --silent --show-error \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    "$staging_url/api/leadgrid/doffin/project-profile?projectId=$tidum_project_id")"
+  jq -e '
+    .profile.template_key == "tidum.procurement" and
+    (.profile.status == "draft" or .profile.status == "active") and
+    .profile.can_manage == true and
+    .profile.requires_admin_confirmation == true and
+    (.profile.cpv_codes | sort) ==
+      (["48450000", "72212450", "48332000", "48311000", "48311100"] | sort) and
+    (.profile.suggested_watches | length) == 3
+  ' <<<"$tidum_anbud_profile" >/dev/null
+
+  tidum_anbud_watch_keys="$(jq -c '[.profile.suggested_watches[].key]' <<<"$tidum_anbud_profile")"
+  tidum_anbud_confirm_payload="$(jq -n \
+    --argjson watch_keys "$tidum_anbud_watch_keys" \
+    '{watch_keys: $watch_keys}')"
+  tidum_anbud_confirm="$(curl --fail-with-body --silent --show-error \
+    -X POST \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    -H "Content-Type: application/json" \
+    --data-binary "$tidum_anbud_confirm_payload" \
+    "$staging_url/api/leadgrid/doffin/project-profile/confirm?projectId=$tidum_project_id")"
+  jq -e '
+    .ok == true and
+    .profile.status == "active" and
+    (.profile.selected_watch_keys | length) == 3 and
+    (.watches | length) == 3 and
+    ([.watches[].template_key] | unique | length) == 3
+  ' <<<"$tidum_anbud_confirm" >/dev/null
+
+  tidum_anbud_replay="$(curl --fail-with-body --silent --show-error \
+    -X POST \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    -H "Content-Type: application/json" \
+    --data-binary "$tidum_anbud_confirm_payload" \
+    "$staging_url/api/leadgrid/doffin/project-profile/confirm?projectId=$tidum_project_id")"
+  jq -e '.ok == true and (.watches | length) == 3' <<<"$tidum_anbud_replay" >/dev/null
+
+  tidum_anbud_watches="$(curl --fail-with-body --silent --show-error \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    "$staging_url/api/leadgrid/doffin/watches?projectId=$tidum_project_id")"
+  jq -e '
+    ([.watches[] | select((.template_key // "") | startswith("tidum."))] | length) == 3 and
+    ([.watches[] | select((.template_key // "") | startswith("tidum.")) | .template_key] | unique | length) == 3
+  ' <<<"$tidum_anbud_watches" >/dev/null
+
+  tidum_anbud_search="$(curl --fail-with-body --silent --show-error \
+    -H "Authorization: Bearer $token" \
+    -H "X-Organization-Id: $org_id" \
+    -H "X-Leadgrid-Organization-Id: $org_id" \
+    "$staging_url/api/leadgrid/doffin/search?projectId=$tidum_project_id&projectProfile=true&status=ALL&hits=5")"
+  jq -e '
+    (.kunngjoringer | type) == "array" and
+    (.total | type) == "number" and
+    .project_profile.template_key == "tidum.procurement" and
+    .project_profile.applied == true
+  ' <<<"$tidum_anbud_search" >/dev/null
+  echo "STAGING_E2E_STAGE=tidum_anbud_profile_verified"
 
   tidum_replay_preview="$(curl --fail-with-body --silent --show-error \
     -H "Authorization: Bearer $token" \
@@ -679,6 +753,7 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
   echo "TIDUM_ONBOARDING_PROFILES_NATIVE=PASS"
   echo "TIDUM_REUSE_WITHOUT_DUPLICATES=PASS"
   echo "TIDUM_PROJECT_ID=$tidum_project_id"
+  echo "TIDUM_ANBUD_PROFILE_WATCHES=PASS"
 fi
 if [[ "$run_tidum_campaign_e2e" == "1" ]]; then
   echo "TIDUM_CAMPAIGN_ALL_PROFILES_RESULTS=PASS"

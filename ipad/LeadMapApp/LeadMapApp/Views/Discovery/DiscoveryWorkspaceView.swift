@@ -128,6 +128,7 @@ struct DiscoveryWorkspaceView: View {
     @State private var selectedSection: DiscoveryWorkspaceSection = .candidates
     @State private var briefMode: DiscoveryBriefMode = .simple
     @State private var simpleStep: DiscoverySimpleStep = .customerType
+    @State private var anbudProfile: DoffinProjectProfileDTO?
 
     var body: some View {
         NavigationStack {
@@ -155,6 +156,17 @@ struct DiscoveryWorkspaceView: View {
                         .disabled(!coordinator.canNavigateToCampaignOverview)
                     }
                 }
+                if let anbudProfile {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            openAnbud(anbudProfile)
+                        } label: {
+                            Label("Anbud", systemImage: "doc.text.magnifyingglass")
+                        }
+                        .disabled(coordinator.isBusy)
+                        .accessibilityIdentifier("discovery.open-anbud")
+                    }
+                }
             }
             .safeAreaInset(edge: .bottom) {
                 if let message = coordinator.errorMessage {
@@ -168,6 +180,9 @@ struct DiscoveryWorkspaceView: View {
                     selectedSection = .candidates
                 }
             }
+        }
+        .task(id: coordinator.projectId) {
+            await loadAnbudProfile()
         }
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled(coordinator.isBusy)
@@ -202,6 +217,27 @@ struct DiscoveryWorkspaceView: View {
                 })
             .presentationDetents([.medium, .large])
         }
+    }
+
+    @MainActor
+    private func loadAnbudProfile() async {
+        guard let api = appState.api, let projectId = coordinator.projectId else {
+            anbudProfile = nil
+            return
+        }
+        let loaded = try? await api.fetchDoffinProjectProfile(projectId: projectId)
+        guard coordinator.projectId == projectId else { return }
+        anbudProfile = loaded
+    }
+
+    private func openAnbud(_ profile: DoffinProjectProfileDTO) {
+        guard let projectId = coordinator.projectId else { return }
+        appState.requestAnbudSearch(
+            projectId: projectId,
+            cpvCodes: profile.cpvCodes
+        )
+        coordinator.dismissWorkspace()
+        dismiss()
     }
 
 

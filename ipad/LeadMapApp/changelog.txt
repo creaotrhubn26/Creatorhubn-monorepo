@@ -5,6 +5,7 @@ Leadgrid 2.2 gjør Discovery og oppfølging enklere på iPhone og iPad:
 • «Hvem vil du finne?» har en enkel standardmodus med tre tydelige steg, mens alle profesjonelle filtre fortsatt finnes i avansertmodus.
 • Skriv inn et domene for å opprette eller gjenbruke kundeprosjektet og få forslag til bransje, kundetyper, geografi og eksklusjoner.
 • Tidum får fire ferdige nasjonale Discovery-profiler for barnevern og avlastning, bofellesskap og miljøarbeid, BPA og konkrete kommunale tjenestesteder.
+• Tidum får en egen Doffin-produktprofil for arbeidstid, turnus og dokumentasjon, med relevante CPV-koder og tre overvåkninger som aktiveres av prosjekteier eller admin.
 • Discovery har nå alltid synlige valg for kandidater og profiler, og Tidum får sju leadtilpassede oppfølgingsmaler.
 • Dentum har fått et komplett oppfølgingsoppsett med sju e-postmaler laget for tannklinikker.
 • Malene tilpasses automatisk valgt klinikk, kontaktperson, område og leadstatus, og kan redigeres før de åpnes i e-postappen.
