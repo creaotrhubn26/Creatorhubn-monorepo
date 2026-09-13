@@ -110,8 +110,42 @@ export interface StoryboardReviewComment {
   resolvedAt?: string | null;
   resolvedInRoundId?: string | null;
   carriedFromCommentId?: string | null;
+  changes?: StoryboardReviewCommentChange[];
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface StoryboardReviewCommentChange {
+  id: string;
+  reviewRoundId: string;
+  commentId: string;
+  sceneId: string;
+  frameId: string;
+  operation: 'apply' | 'undo';
+  field: string;
+  fieldLabel: string;
+  beforeDisplayValue: string;
+  afterDisplayValue: string;
+  beforeHash: string;
+  afterHash: string;
+  revertsChangeId?: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface StoryboardReviewChangePreview {
+  previewHash: string;
+  beforeHash: string;
+  afterHash: string;
+  commentId: string;
+  roundId: string;
+  sceneId: string;
+  frameId: string;
+  field: string;
+  fieldLabel: string;
+  beforeDisplayValue: string;
+  afterDisplayValue: string;
+  currentFrameUpdatedAt?: string | null;
 }
 
 export interface StoryboardReviewDecision {

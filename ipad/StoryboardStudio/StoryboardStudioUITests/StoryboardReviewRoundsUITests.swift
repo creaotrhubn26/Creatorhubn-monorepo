@@ -71,6 +71,77 @@ final class StoryboardReviewRoundsUITests: XCTestCase {
     }
 
     @MainActor
+    func testCommentBecomesPreviewableChangeAndCanBeUndone() throws {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["SB_REVIEW_ROUNDS_DEMO"] = "1"
+        app.launchArguments += ["-storyboard.review.presentationRole", "director"]
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Review-runder"].waitForExistence(timeout: 8))
+        let create = app.buttons["storyboard.review.comment.createChange.comment-demo"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        if !create.isHittable { app.swipeUp() }
+        create.tap()
+
+        XCTAssertTrue(app.navigationBars["Forhåndsvis endring"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["storyboard.review.change.value"].waitForExistence(timeout: 5))
+        app.buttons["storyboard.review.change.preview"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["storyboard.review.change.previewResult"]
+            .waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["2.0 sek"].exists)
+        XCTAssertTrue(app.staticTexts["3.0 sek"].exists)
+        let previewAttachment = XCTAttachment(screenshot: app.screenshot())
+        previewAttachment.name = "Kommentar til endring — før og etter"
+        previewAttachment.lifetime = .keepAlways
+        add(previewAttachment)
+        app.buttons["storyboard.review.change.apply"].tap()
+
+        XCTAssertTrue(app.staticTexts["Endringen er godkjent, anvendt og kan angres fra review-punktet."]
+            .waitForExistence(timeout: 5))
+        let undo = app.buttons["storyboard.review.comment.undoChange.comment-demo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        if !undo.isHittable { app.swipeUp() }
+        undo.tap()
+        XCTAssertTrue(app.staticTexts["Endringen er angret. Review-punktet er åpnet igjen."]
+            .waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["storyboard.review.comment.createChange.comment-demo"]
+            .waitForExistence(timeout: 5))
+
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Kommentar til endring — angret"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor
+    func testChangePreviewKeepsPrimaryActionVisibleInLandscape() throws {
+        XCUIDevice.shared.orientation = .landscapeRight
+        let app = XCUIApplication()
+        app.launchEnvironment["SB_REVIEW_ROUNDS_DEMO"] = "1"
+        app.launchEnvironment["SB_REVIEW_CHANGE_DEMO"] = "1"
+        app.launchArguments += ["-storyboard.review.presentationRole", "director"]
+        app.launch()
+
+        let previewButton = app.buttons["storyboard.review.change.preview"]
+        XCTAssertTrue(app.navigationBars["Forhåndsvis endring"].waitForExistence(timeout: 8))
+        XCTAssertTrue(previewButton.waitForExistence(timeout: 5))
+        previewButton.tap()
+
+        let apply = app.buttons["storyboard.review.change.apply"]
+        XCTAssertTrue(app.descendants(matching: .any)["storyboard.review.change.previewResult"]
+            .waitForExistence(timeout: 5))
+        XCTAssertTrue(apply.waitForExistence(timeout: 5))
+        XCTAssertTrue(apply.isHittable)
+        XCTAssertTrue(app.frame.contains(apply.frame))
+
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Kommentar til endring — landskap"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor
     private func launchReviewWorkspace() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["SB_REVIEW_WORKSPACE_DEMO"] = "1"
