@@ -607,7 +607,7 @@ struct FrameSummary: Identifiable, Sendable {
     let drawingHeight: Double
     // Review (web-paritet): planned / in_review / needs_work / done + kommentarer
     let frameStatus: String?
-    let comments: [ReviewComment]
+    var comments: [ReviewComment]
     // Konfliktdeteksjon (samme-frame-merge): serverens updatedAt ved lasting
     var updatedAt: String?
     // Referanse-underlag (kun visning i canvas — aldri i eksport)
@@ -2058,6 +2058,10 @@ actor RoleRoomAPIClient {
         apply(changes.dueAt, key: "dueAt")
         apply(changes.resolutionNote, key: "resolutionNote")
         apply(changes.resolvedInRoundId, key: "resolvedInRoundId")
+        if changes.updatesAnchor {
+            body["anchorX"] = changes.anchorX ?? NSNull()
+            body["anchorY"] = changes.anchorY ?? NSNull()
+        }
         let payload = try await sendJSONResponse(
             path: "/api/role-room/projects/\(projectId)/manuscripts/\(manuscriptId)/storyboard-review-rounds/\(roundId)/comments/\(commentId)",
             method: "PATCH", body: body)

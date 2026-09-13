@@ -36,6 +36,46 @@ final class StoryboardReviewRoundsUITests: XCTestCase {
     }
 
     @MainActor
+    func testWorkingReviewPinSupportsTouchMoveTargetAndUndo() throws {
+        XCUIDevice.shared.orientation = .portrait
+        let app = launchReviewWorkspace()
+
+        XCTAssertTrue(app.navigationBars["Review — TROLL"].waitForExistence(timeout: 8))
+        let pin = app.descendants(matching: .any)["storyboard.review.pin.comment-demo"]
+        XCTAssertTrue(pin.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(pin.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(pin.frame.height, 44)
+
+        pin.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["storyboard.review.pin.selection"]
+            .waitForExistence(timeout: 5))
+        let targetHandle = app.descendants(matching: .any)["storyboard.review.pinTarget.comment-demo"]
+        XCTAssertTrue(targetHandle.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(targetHandle.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(targetHandle.frame.height, 44)
+
+        let start = pin.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.15, thenDragTo: start.withOffset(CGVector(dx: -72, dy: 46)))
+        XCTAssertTrue(app.staticTexts["Pin flyttet ✓"].waitForExistence(timeout: 5))
+
+        let undo = app.buttons["storyboard.review.pin.undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        undo.tap()
+        XCTAssertTrue(app.staticTexts["Pinflytting angret ✓"].waitForExistence(timeout: 5))
+
+        let targetStart = targetHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        targetStart.press(
+            forDuration: 0.15,
+            thenDragTo: targetStart.withOffset(CGVector(dx: 54, dy: -30)))
+        XCTAssertTrue(app.staticTexts["Målpunkt lagret ✓"].waitForExistence(timeout: 5))
+
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Review-pin — flyttbart målpunkt"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor
     func testImmutableReviewRoundSurfaceRunsOnIPadSimulator() throws {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
@@ -68,6 +108,28 @@ final class StoryboardReviewRoundsUITests: XCTestCase {
         attachment.name = "Storyboard review-runder — iPad"
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    @MainActor
+    func testLockedReviewPinHasTouchTargetAndCanBeRepositionedByDirector() throws {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchEnvironment["SB_REVIEW_ROUNDS_DEMO"] = "1"
+        app.launchArguments += ["-storyboard.review.presentationRole", "director"]
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Review-runder"].waitForExistence(timeout: 8))
+        let pin = app.descendants(matching: .any)["storyboard.review.lockedPin.comment-demo"]
+        XCTAssertTrue(pin.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(pin.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(pin.frame.height, 44)
+        let before = pin.value as? String
+
+        let start = pin.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.15, thenDragTo: start.withOffset(CGVector(dx: -48, dy: 30)))
+
+        XCTAssertTrue(app.staticTexts["Pinplasseringen er lagret."].waitForExistence(timeout: 5))
+        XCTAssertNotEqual(pin.value as? String, before)
     }
 
     @MainActor

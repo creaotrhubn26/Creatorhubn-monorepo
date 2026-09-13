@@ -2,6 +2,29 @@ import XCTest
 @testable import StoryboardStudio
 
 final class StoryboardReviewRoundsTests: XCTestCase {
+    func testReviewPinGeometryClampsTouchCoordinatesInsideCanvas() {
+        XCTAssertEqual(ReviewPinGeometry.clamped(CGPoint(x: -0.4, y: 1.3)),
+                       CGPoint(x: 0, y: 1))
+        XCTAssertEqual(ReviewPinGeometry.clamped(CGPoint(x: 0.4, y: 0.7)),
+                       CGPoint(x: 0.4, y: 0.7))
+
+        let size = CGSize(width: 400, height: 200)
+        XCTAssertEqual(ReviewPinGeometry.normalized(CGPoint(x: 200, y: 100), in: size),
+                       CGPoint(x: 0.5, y: 0.5))
+        XCTAssertEqual(
+            ReviewPinGeometry.normalized(CGPoint(x: 0, y: 0), in: size, visualInset: 16),
+            CGPoint(x: 0.04, y: 0.08))
+        XCTAssertEqual(
+            ReviewPinGeometry.normalized(CGPoint(x: 500, y: 300), in: size, visualInset: 16),
+            CGPoint(x: 0.96, y: 0.92))
+    }
+
+    func testReviewPinGeometryUsesSafeCenterForUnavailableCanvasSize() {
+        XCTAssertEqual(
+            ReviewPinGeometry.normalized(CGPoint(x: 10, y: 10), in: .zero),
+            CGPoint(x: 0.5, y: 0.5))
+    }
+
     func testReviewWorkspaceKeepsRevisionsInsideOneDestination() {
         XCTAssertEqual(StoryboardReviewWorkspaceSection.allCases, [.shots, .revisions])
         XCTAssertEqual(StoryboardReviewWorkspaceSection.shots.title, "Arbeidskopi")
