@@ -116,12 +116,34 @@ pub fn sørg_for_tabeller(conn: &Connection) -> Result<()> {
 ///
 /// `avsendere` er parvis med `tekster` når kilden er en samtale, og tom ellers
 /// — et vanlig notat har ingen avsender, og kolonnen skal stå tom.
+///
+/// **Tom tekst synkes aldri.** Slettingen under er det som gjør at en tom
+/// lesning utsletter kildens identitet: alle id-ene forsvinner, og kalleren
+/// merker samtlige rettelser foreldet fordi ingen av dem finnes lenger.
+/// Teksten kan angres fram igjen; rettelsene er det eneste i systemet
+/// brukeren har skrevet som ikke kan gjenskapes fra markdown.
+///
+/// Vakten er tom tekst, ikke et brått fall i antall avsnitt. Grunnen er at et
+/// fall også er en helt vanlig ting å gjøre — hun stryker fire av fem avsnitt
+/// — og en vakt mot det ville nektet å synke igjen for alltid, siden neste
+/// lesning sammenligner mot det samme gamle settet. Den ene kilden til et
+/// *utilsiktet* fall, en avkortet fil, er lukket i [`crate::write_note`], som
+/// skriver til en midlertidig fil og gir den nytt navn. Et fall som ikke er
+/// tomt tar heller ikke rettelsene med seg: [`match_avsnitt`] beholder id-en
+/// til avsnittene som står igjen, og bare de som faktisk er borte foreldes.
 pub fn synk(
     conn: &mut Connection,
     kilde: &str,
     tekster: &[String],
     avsendere: &[Option<String>],
 ) -> Result<Vec<i64>> {
+    if tekster.is_empty() {
+        return Err(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_MISUSE),
+            Some(format!("tom lesning av {kilde}: avsnittene beholdes")),
+        ));
+    }
+
     let kjente: Vec<Kjent> = conn
         .prepare("select id, rekkefolge, tekst from avsnitt where kilde = ?1 order by rekkefolge")?
         .query_map([kilde], |r| {
@@ -982,6 +1004,62 @@ mod tests {
         avsnitt
     }
 
+    /// Det ene som ikke kan gjenskapes fra markdown. En avkortet fil, eller en
+    /// lesning startet på en tom buffer, slettet alle avsnittsradene for
+    /// kilden — og da fant `foreldede` ingen av id-ene igjen og merket
+    /// samtlige rettelser utdaterte.
+    #[test]
+    fn tom_lesning_sletter_ikke_avsnitt_og_foreldrer_ingen_rettelser() {
+        let mut conn = base();
+        let avsnitt = med_ider(
+            &mut conn,
+            "notat.md",
+            vec![
+                p("Vi skal ha innlogging.", "Innlogging"),
+                p("Kanskje depositum, men jeg er usikker.", "Depositum"),
+            ],
+        );
+        lagre(&conn, "Notat", &avsnitt).unwrap();
+        rettelser::lagre(
+            &conn,
+            &rettelser::Retting {
+                avsnitt_id: avsnitt[1].id,
+                sti: "notat.md".into(),
+                tekst: avsnitt[1].text.clone(),
+                lest_type: "beslutning".into(),
+                lest_handling: "bygg".into(),
+                lest_kortform: "Depositum".into(),
+                plass: Some("uavklart".into()),
+                kortform: Some("Depositum, ikke avgjort".into()),
+            },
+        )
+        .unwrap();
+
+        assert!(synk(&mut conn, "notat.md", &[], &[]).is_err(), "tom tekst skal avvises");
+
+        assert_eq!(tekster_i(&conn, "notat.md").len(), 2, "avsnittene skal stå");
+        assert_eq!(
+            rettelser::aktive(&conn, "notat.md").unwrap().len(),
+            1,
+            "og rettelsen skal fortsatt gjelde"
+        );
+        assert!(
+            rettelser::foreldede(&conn, "notat.md", &tilstede(&conn, "notat.md"))
+                .unwrap()
+                .is_empty(),
+            "ingen skal få beskjed om at rettelsen ble borte"
+        );
+    }
+
+    fn tilstede(conn: &Connection, sti: &str) -> std::collections::HashSet<i64> {
+        conn.prepare("select id from avsnitt where kilde = ?1")
+            .unwrap()
+            .query_map([sti], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_>>()
+            .unwrap()
+    }
+
     fn tekster_i(conn: &Connection, sti: &str) -> Vec<String> {
         conn.prepare("select tekst from avsnitt where kilde = ?1 order by rekkefolge")
             .unwrap()
@@ -1326,10 +1404,14 @@ mod tests {
     fn en_id_som_forsvinner_kommer_aldri_tilbake_på_noe_annet() {
         let mut conn = base();
         let første = synk(&mut conn, "a.md", &["Depositum blir for høy terskel.".into()], &[]).unwrap();
-        synk(&mut conn, "a.md", &[], &[]).unwrap();
+        // Notatet skrives om til noe helt annet, to ganger. (Å tømme det er
+        // ikke lenger en vei hit: tom tekst synkes ikke.)
+        let mellom = synk(&mut conn, "a.md", &["Kartvisning med filter på fylke.".into()], &[])
+            .unwrap();
         let senere = synk(&mut conn, "a.md", &["Alle bilder leveres i full oppløsning.".into()], &[])
             .unwrap();
         assert_ne!(senere[0], første[0]);
+        assert_ne!(senere[0], mellom[0]);
     }
 
     #[test]
