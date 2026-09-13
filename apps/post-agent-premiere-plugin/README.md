@@ -79,7 +79,7 @@ All `Action` objects are created and consumed synchronously inside nested
 state-consistency requirements.
 
 Premiere 26.5 exposes the documented descriptor methods but currently returns
-`Unimplemented method: open` in the real host. Version 0.3.3 therefore falls
+`Unimplemented method: open` in the real host. Version 0.3.4 therefore falls
 back to the picker-authorized `File.read()` API for review proxies up to 512
 MiB. Larger exports fail before being buffered and remain available locally for
 browser upload; the plugin does not risk loading a camera master into Premiere's

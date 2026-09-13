@@ -70,7 +70,11 @@ test("uploads and completes a checksum-verified single S3 object", async () => {
       versionId: "version-1",
       protocol: "s3",
       uploadUrl: "https://bucket.s3.eu-north-1.amazonaws.com/key?signature=opaque",
-      requiredHeaders: { "content-type": "video/mp4", "x-amz-checksum-sha256": "opaque" },
+      requiredHeaders: {
+        "content-type": "video/mp4",
+        "x-amz-sdk-checksum-algorithm": "SHA256",
+        "x-amz-checksum-sha256": "opaque",
+      },
       expiresAt: "2099-01-01T00:00:00.000Z",
     },
     nativePath: "/tmp/review.mp4",
@@ -84,6 +88,7 @@ test("uploads and completes a checksum-verified single S3 object", async () => {
   assert.equal(result.complete, true);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].init.method, "PUT");
+  assert.equal(calls[0].init.headers["x-amz-sdk-checksum-algorithm"], "SHA256");
   assert.equal(calls[0].init.body.byteLength, bytes.length);
   assert.deepEqual(completed, []);
 });
