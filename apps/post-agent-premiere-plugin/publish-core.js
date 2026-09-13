@@ -76,12 +76,29 @@ function isUploadTicketExpired(ticket, nowMs) {
   return Number.isFinite(expiry) && expiry <= (Number(nowMs) || Date.now()) + 30_000;
 }
 
+function maxStreamDurationSeconds(durationSeconds) {
+  const duration = Number(durationSeconds);
+  if (!Number.isFinite(duration) || duration <= 0) return undefined;
+  return Math.min(36_000, Math.max(60, Math.ceil(duration) + 30));
+}
+
+function publishErrorMessage(error) {
+  const code = String(error && error.code || "");
+  const message = String(error && error.message || error || "Sendingen feilet.");
+  if (code === "cloudflare_stream_capacity_exceeded" || /Storage capacity exceeded|allocated 0 minutes|"code"\s*:\s*10011/i.test(message)) {
+    return "Cloudflare Stream har ingen ledig videolagring. Aktiver eller øk Stream-lagring i Cloudflare; eksportfilen er beholdt lokalt og kan sendes videre uten ny eksport.";
+  }
+  return message;
+}
+
 module.exports = {
   TUS_VERSION,
   buildExportFileName,
   contentTypeForExtension,
   isUploadTicketExpired,
+  maxStreamDurationSeconds,
   normalizeExtension,
+  publishErrorMessage,
   validateSize,
   validateUploadTicket,
 };

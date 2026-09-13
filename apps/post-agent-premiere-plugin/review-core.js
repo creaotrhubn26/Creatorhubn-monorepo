@@ -79,6 +79,14 @@ function itemTimecode(item) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+function selectableId(items, preferredId) {
+  const ids = array(items)
+    .map((item) => String(item?.id || ""))
+    .filter(Boolean);
+  const preferred = String(preferredId || "");
+  return preferred && ids.includes(preferred) ? preferred : (ids[0] || "");
+}
+
 function buildVideoRoomUrl(projectId, versionId) {
   const project = encodeURIComponent(String(projectId || ""));
   if (!project) throw new Error("Velg et CreatorHub-prosjekt først.");
@@ -95,4 +103,5 @@ module.exports = {
   formatTimecode,
   itemTimecode,
   normalizeCollaboration,
+  selectableId,
 };

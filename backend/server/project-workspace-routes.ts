@@ -4206,9 +4206,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (error: any) {
       if (streamUid) await deleteStreamVideo(streamUid);
       console.error("POST video TUS provision", error);
-      const status = error?.message === "invalid_stream_upload_size" ? 413
-        : error?.message === "cloudflare_stream_not_configured" ? 503 : 502;
-      return res.status(status).json({ error: error?.message || "stream_tus_failed" });
+      const code = String(error?.code || error?.message || "stream_tus_failed");
+      const status = code === "invalid_stream_upload_size" ? 413
+        : code === "cloudflare_stream_not_configured" || code === "cloudflare_stream_capacity_exceeded" ? 503 : 502;
+      return res.status(status).json({ error: code });
     }
   });
 
@@ -4260,9 +4261,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       return res.json({ ...ticket, versionId });
     } catch (error: any) {
       if (replacementUid) await deleteStreamVideo(replacementUid).catch(() => undefined);
-      const status = error?.message === "invalid_stream_upload_size" ? 413
-        : error?.message === "cloudflare_stream_not_configured" ? 503 : 502;
-      return res.status(status).json({ error: error?.message || "stream_tus_retry_failed" });
+      const code = String(error?.code || error?.message || "stream_tus_retry_failed");
+      const status = code === "invalid_stream_upload_size" ? 413
+        : code === "cloudflare_stream_not_configured" || code === "cloudflare_stream_capacity_exceeded" ? 503 : 502;
+      return res.status(status).json({ error: code });
     }
   });
 

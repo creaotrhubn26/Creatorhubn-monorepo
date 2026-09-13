@@ -63,6 +63,35 @@ export interface StreamTusUploadTicket {
   expiresAt: string;
 }
 
+export class CloudflareStreamProviderError extends Error {
+  code: string;
+  providerStatus: number;
+
+  constructor(code: string, providerStatus: number) {
+    super(code);
+    this.name = 'CloudflareStreamProviderError';
+    this.code = code;
+    this.providerStatus = providerStatus;
+  }
+}
+
+function streamProvisionError(status: number, body: string): CloudflareStreamProviderError {
+  let providerCodes: number[] = [];
+  try {
+    const parsed = JSON.parse(body) as { errors?: Array<{ code?: number }> };
+    providerCodes = Array.isArray(parsed?.errors)
+      ? parsed.errors.map((entry) => Number(entry?.code)).filter(Number.isFinite)
+      : [];
+  } catch (_) {
+    // Cloudflare may return a non-JSON edge response. Keep the client-facing
+    // error stable and avoid forwarding provider response bodies.
+  }
+  return new CloudflareStreamProviderError(
+    providerCodes.includes(10011) ? 'cloudflare_stream_capacity_exceeded' : 'stream_tus_provision_failed',
+    status,
+  );
+}
+
 const streamUploadResult = (result: any, customerSubdomain?: string): StreamUploadResult => ({
   uid: String(result.uid),
   playbackUrl: result.playback?.hls ?? buildPlaybackUrl(String(result.uid), customerSubdomain),
@@ -117,7 +146,7 @@ export async function createDirectStreamTusUpload(input: {
   const uid = response.headers.get('stream-media-id');
   if (response.status !== 201 || !uploadUrl || !uid) {
     const body = await response.text().catch(() => '');
-    throw new Error(`stream_tus_provision_failed: ${response.status} ${body}`);
+    throw streamProvisionError(response.status, body);
   }
   return { uid, uploadUrl, protocol: 'tus', chunkSize: 50 * 1024 * 1024, expiresAt: expiry };
 }

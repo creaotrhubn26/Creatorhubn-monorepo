@@ -181,6 +181,8 @@ function createPremiereHost(ppro) {
     }
     if (!outputFolder?.isFolder || !outputFolder.nativePath) throw new Error("Velg en gyldig eksportmappe.");
     const context = await getContext();
+    const endTime = await context.sequence.getEndTime();
+    const durationSeconds = Number(endTime && endTime.seconds);
     const extension = String(await ppro.EncoderManager.getExportFileExtension(context.sequence, presetFile.nativePath) || "")
       .trim().replace(/^\.+/, "");
     const fileName = fileNameForExtension(extension, context);
@@ -210,7 +212,15 @@ function createPremiereHost(ppro) {
         else stableSamples = 0;
         previousSize = size;
         if (stableSamples >= 2) {
-          return { context, extension, fileName, outputPath, file, sizeBytes: size };
+          return {
+            context,
+            extension,
+            fileName,
+            outputPath,
+            file,
+            sizeBytes: size,
+            durationSeconds: Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : null,
+          };
         }
       } catch (_) {
         stableSamples = 0;

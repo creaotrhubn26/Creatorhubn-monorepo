@@ -8,6 +8,7 @@ const {
   formatTimecode,
   itemTimecode,
   normalizeCollaboration,
+  selectableId,
 } = require("../review-core");
 
 test("normalizes incomplete collaboration payloads and summarizes open work", () => {
@@ -44,4 +45,13 @@ test("builds an owned HTTPS Video Room link for the exact selected version", () 
     buildVideoRoomUrl("project/one", "version two"),
     "https://www.creatorhubn.com/workspace/project%2Fone/video-room?versionId=version+two",
   );
+});
+
+test("selects a preferred item or explicitly falls back to the first UXP option", () => {
+  const items = [{ id: "project-one" }, { id: "project-two" }];
+
+  assert.equal(selectableId(items, "project-two"), "project-two");
+  assert.equal(selectableId(items, "missing"), "project-one");
+  assert.equal(selectableId(items), "project-one");
+  assert.equal(selectableId([], "project-two"), "");
 });

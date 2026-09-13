@@ -5,6 +5,8 @@ const assert = require("node:assert/strict");
 const {
   buildExportFileName,
   contentTypeForExtension,
+  maxStreamDurationSeconds,
+  publishErrorMessage,
   validateUploadTicket,
 } = require("../publish-core");
 
@@ -37,4 +39,20 @@ test("accepts only exact private Cloudflare Stream TUS tickets", () => {
     assert.throws(() => validateUploadTicket({ ...validTicket, uploadUrl }), /Cloudflare Stream/);
   }
   assert.throws(() => validateUploadTicket({ ...validTicket, chunkSize: 5_000_000 }), /TUS/);
+});
+
+test("reserves a bounded Stream duration close to the actual sequence", () => {
+  assert.equal(maxStreamDurationSeconds(3), 60);
+  assert.equal(maxStreamDurationSeconds(600.2), 631);
+  assert.equal(maxStreamDurationSeconds(50_000), 36_000);
+  assert.equal(maxStreamDurationSeconds(null), undefined);
+});
+
+test("turns Cloudflare capacity failures into actionable, non-raw guidance", () => {
+  const message = publishErrorMessage(Object.assign(new Error("provider failure"), {
+    code: "cloudflare_stream_capacity_exceeded",
+  }));
+  assert.match(message, /Aktiver eller øk Stream-lagring/);
+  assert.match(message, /uten ny eksport/);
+  assert.doesNotMatch(message, /provider failure/);
 });
