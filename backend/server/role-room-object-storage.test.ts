@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import fs from "node:fs";
 import {
   getConfiguredRoleRoomStorageProvider,
   getRoleRoomObjectStorage,
@@ -13,6 +14,43 @@ afterEach(() => {
 });
 
 describe("role-room-object-storage", () => {
+  it("allows personal media prefixes and opaque UXP origins in the provisioned S3 contract", () => {
+    const policy = JSON.parse(fs.readFileSync(new URL(
+      "../../infrastructure/aws/role-room-storage/application-policy.json",
+      import.meta.url,
+    ), "utf8"));
+    const cors = JSON.parse(fs.readFileSync(new URL(
+      "../../infrastructure/aws/role-room-storage/cors.json",
+      import.meta.url,
+    ), "utf8"));
+    const provision = fs.readFileSync(new URL(
+      "../../infrastructure/aws/role-room-storage/provision.sh",
+      import.meta.url,
+    ), "utf8");
+    const metadata = policy.Statement.find((statement: any) => statement.Sid === "RoleRoomBucketMetadata");
+    const objects = policy.Statement.find((statement: any) => statement.Sid === "RoleRoomObjectAccess");
+    const productionPrefixes = [
+      "agencies/*", "education/*", "exports/*", "organizations/*", "platform/*", "projects/*",
+      "quarantine/*", "talents/*", "temporary/*", "users/*", "workspaces/*",
+    ];
+    expect(metadata.Condition.StringLike["s3:prefix"]).toEqual(expect.arrayContaining(productionPrefixes));
+    expect(objects.Resource).toEqual(expect.arrayContaining(productionPrefixes.map(
+      (prefix) => `arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/${prefix}`,
+    )));
+    expect(objects.Action).toEqual(expect.arrayContaining([
+      "s3:AbortMultipartUpload", "s3:GetObject", "s3:ListMultipartUploadParts", "s3:PutObject",
+    ]));
+    expect(cors.CORSRules[0]).toMatchObject({
+      AllowedOrigins: ["*"],
+      AllowedMethods: expect.arrayContaining(["GET", "HEAD", "PUT"]),
+      ExposeHeaders: expect.arrayContaining(["ETag", "x-amz-checksum-sha256"]),
+    });
+    expect(provision).toContain("aws iam create-policy-version");
+    expect(provision).toContain("--set-as-default");
+    expect(provision).toContain("already has five versions");
+    expect(provision).toContain("TheRoleRoomStorageRuntimeProd");
+  });
+
   it("defaults to AWS and requires an explicit opt-in for the legacy B2 rollback", () => {
     delete process.env.ROLE_ROOM_STORAGE_PROVIDER;
     expect(getConfiguredRoleRoomStorageProvider()).toBe("aws_s3");

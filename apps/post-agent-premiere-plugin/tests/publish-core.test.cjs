@@ -41,6 +41,33 @@ test("accepts only exact private Cloudflare Stream TUS tickets", () => {
   assert.throws(() => validateUploadTicket({ ...validTicket, chunkSize: 5_000_000 }), /TUS/);
 });
 
+test("accepts only trusted HTTPS object-storage upload tickets", () => {
+  const ticket = validateUploadTicket({
+    objectId: "object-1",
+    versionId: "version-1",
+    protocol: "s3",
+    uploadUrl: "https://bucket.s3.eu-north-1.amazonaws.com/key?signature=opaque",
+    requiredHeaders: {
+      "content-type": "video/mp4",
+      "x-amz-checksum-sha256": "opaque",
+    },
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  });
+  assert.equal(ticket.protocol, "s3");
+  assert.equal(ticket.objectId, "object-1");
+  for (const uploadUrl of [
+    "http://bucket.s3.eu-north-1.amazonaws.com/key",
+    "https://amazonaws.com.attacker.example/key",
+    "https://user:pass@bucket.s3.eu-north-1.amazonaws.com/key",
+  ]) {
+    assert.throws(() => validateUploadTicket({ ...ticket, uploadUrl }), /objektlagring/);
+  }
+  assert.throws(() => validateUploadTicket({
+    ...ticket,
+    requiredHeaders: { Authorization: "must-not-be-forwarded" },
+  }), /ukjent opplastingshode/);
+});
+
 test("reserves a bounded Stream duration close to the actual sequence", () => {
   assert.equal(maxStreamDurationSeconds(3), 60);
   assert.equal(maxStreamDurationSeconds(600.2), 631);

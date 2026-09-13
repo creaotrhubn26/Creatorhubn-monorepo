@@ -48,6 +48,13 @@ streaming the object to S3 and stores only S3 metadata in
 `casting_production_continuity_media`. Reads require current project access and
 return a signed URL lasting at most ten minutes.
 
+The bucket CORS rule accepts non-credentialed `GET`, `HEAD`, and `PUT` from any
+origin because Premiere UXP owns its runtime origin and it can differ between
+development and packaged panels. This does not make objects public: every
+request still needs a short-lived, operation- and object-scoped SigV4 URL from
+the authenticated backend. The rule exposes only the response headers needed
+to verify multipart uploads.
+
 ## Provisioning checklist
 
 After authenticating an AWS CLI profile for account `745600963362`, run:
@@ -59,7 +66,10 @@ After authenticating an AWS CLI profile for account `745600963362`, run:
 The idempotent script creates the exact bucket when needed and applies public
 access blocking, BucketOwnerEnforced ownership, AES256 encryption, versioning,
 TLS-only bucket policy, lifecycle, CORS and tags. It refuses to run in another
-AWS account.
+AWS account. If the policy document changed, it creates and activates a new
+version of the existing customer-managed runtime policy so the previous version
+remains available for rollback. It refuses to delete old policy versions when
+AWS's five-version limit has been reached.
 
 The production account already defines `TheRoleRoomStorageRuntimeProd`, trusted
 only by the exact Render backend service through the workspace OIDC provider.
@@ -70,3 +80,9 @@ redeploy so Render can inject its rotating token file, and run:
 ```bash
 node scripts/deploy/render-backend.mjs assert-role-room-storage-runtime
 ```
+
+The attached runtime policy preserves every production Role Room namespace and
+must include both `organizations/*` and `users/*`. The latter is the canonical
+prefix for personal Sound Room and Video Room objects. Multipart video uploads
+also require `s3:AbortMultipartUpload` and `s3:ListMultipartUploadParts` in
+addition to the existing private object operations.

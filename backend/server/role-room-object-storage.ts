@@ -1,4 +1,5 @@
-import { S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { canonicalizeRoleRoomStorageKey } from "./role-room-storage-key.js";
 
 export type RoleRoomStorageProvider = "aws_s3" | "backblaze_b2";
@@ -119,6 +120,38 @@ export function resolveRoleRoomObjectKey(key: string): string {
   return getConfiguredRoleRoomStorageProvider() === "aws_s3"
     ? canonicalizeRoleRoomStorageKey(key)
     : key;
+}
+
+function safeDownloadName(value: string): string {
+  return value
+    .replace(/[\r\n"\\]/g, "")
+    .replace(/[\x00-\x1f\x7f]/g, "")
+    .slice(0, 200) || "download";
+}
+
+/** Create a short-lived direct read URL for the selected private S3-compatible store. */
+export async function presignRoleRoomObjectDownload(
+  key: string,
+  downloadFilename?: string,
+  expiresInSeconds = 300,
+): Promise<string | null> {
+  const storage = getRoleRoomObjectStorage();
+  if (!storage) return null;
+  try {
+    return await getSignedUrl(storage.client, new GetObjectCommand({
+      Bucket: storage.bucket,
+      Key: key,
+      ...(downloadFilename
+        ? { ResponseContentDisposition: `attachment; filename="${safeDownloadName(downloadFilename)}"` }
+        : {}),
+    }), { expiresIn: Math.min(3600, Math.max(60, expiresInSeconds)) });
+  } catch (error) {
+    console.warn("[role-room-storage] presign failed", {
+      key,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 /** Only used by unit tests that mutate process.env between cases. */

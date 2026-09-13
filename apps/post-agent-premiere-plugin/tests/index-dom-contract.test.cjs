@@ -29,4 +29,6 @@ test("the manifest requests picker-scoped filesystem access", () => {
 
   assert.equal(manifest.requiredPermissions.localFileSystem, "request");
   assert.notEqual(manifest.requiredPermissions.localFileSystem, "fullAccess");
+  assert.ok(manifest.requiredPermissions.network.domains.includes("https://*.amazonaws.com"));
+  assert.ok(manifest.requiredPermissions.network.domains.includes("https://*.backblazeb2.com"));
 });
