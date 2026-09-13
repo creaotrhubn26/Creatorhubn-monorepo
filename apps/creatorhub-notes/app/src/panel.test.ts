@@ -6,7 +6,7 @@ import { _test } from "./Panel";
 import { lesTema, settTema, type Tema } from "./tema";
 import type { Paragraph, Rettelse, Tidligere } from "./api";
 
-const { lest, plassen, kortformen, linjetekst, tidligereLinjer, SETNINGER } = _test;
+const { dato, lest, plassen, kortformen, linjetekst, tidligereLinjer, SETNINGER } = _test;
 
 function avsnitt(kind: string, action: string, ekstra: Partial<Paragraph> = {}): Paragraph {
   return {
@@ -141,4 +141,21 @@ test("avsenderen står foran linja i en samtale, og bare der", () => {
   // I et vanlig notat er avsenderen brukeren selv, og navnet er støy.
   const eget = avsnitt("beslutning", "bygg", { summary: "bruke Stripe" });
   expect(linjetekst(eget.avsender, kortformen(eget))).toBe("bruke Stripe");
+});
+
+test("en dato som ikke kan fastslås vises ikke", () => {
+  // 0 er «kilden visste det ikke»: ingen toppfeltdato, ingen fil å lese
+  // endringstidspunktet av. Før sto klassifiseringsdatoen her, og en importert
+  // tråd fikk dagens dato på hver linje.
+  expect(dato(0)).toBe(null);
+  expect(dato(-1)).toBe(null);
+  expect(dato(1_757_500_000)).not.toBe(null);
+
+  expect(SETNINGER.motsier(null)).toBe("Du forkastet dette før");
+  expect(SETNINGER.bekrefter(null)).toBe("Du bestemte det samme før");
+  expect(SETNINGER.nevnt(null)).toBe("Du skrev om dette før");
+  expect(SETNINGER.besvarer(null)).toBe("Dette svarer på et spørsmål du stilte før");
+
+  // Og med en dato står den fortsatt der.
+  expect(SETNINGER.motsier("10. september")).toBe("Du forkastet dette 10. september");
 });

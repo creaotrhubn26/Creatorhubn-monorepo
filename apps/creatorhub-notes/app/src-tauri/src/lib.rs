@@ -186,6 +186,51 @@ fn derive_title(rel: &str, content: &str) -> String {
     strip_date_prefix(&stem).to_string()
 }
 
+/// Sekunder siden epoke for `YYYY-MM-DD` i starten av `s`, om det står der.
+/// Midnatt UTC — datoen er alt kilden vet, og et klokkeslett vi fant på ville
+/// bare vært presisjon uten dekning.
+fn dato_til_sekunder(s: &str) -> Option<i64> {
+    let b = s.as_bytes();
+    if b.len() < 10 || b[4] != b'-' || b[7] != b'-' {
+        return None;
+    }
+    let tall = |fra: usize, til: usize| s.get(fra..til)?.parse::<i64>().ok();
+    let (år, måned, dag) = (tall(0, 4)?, tall(5, 7)?, tall(8, 10)?);
+    if !(1..=12).contains(&måned) || !(1..=31).contains(&dag) {
+        return None;
+    }
+    // Days-from-civil: kalenderen uten en dato-crate for én funksjon.
+    let å = år - i64::from(måned <= 2);
+    let æra = if å >= 0 { å } else { å - 399 } / 400;
+    let år_i_æra = å - æra * 400;
+    let dag_i_år = (153 * (måned + if måned > 2 { -3 } else { 9 }) + 2) / 5 + dag - 1;
+    let dag_i_æra = år_i_æra * 365 + år_i_æra / 4 - år_i_æra / 100 + dag_i_år;
+    Some((æra * 146_097 + dag_i_æra - 719_468) * 86_400)
+}
+
+/// Når tanken ble skrevet, så godt kilden vet det.
+///
+/// Rekkefølgen er hvor mye kilden faktisk vet: `dato` i toppfeltet er skrevet
+/// av den som vet, `id` bærer datoen notatet ble laget, og filas
+/// endringstidspunkt er det siste vi har. Finnes ingen av dem, er svaret
+/// `None` — og da viser panelet linja uten dato, i stedet for med en gal.
+///
+/// Et importert innlegg i en samtale bærer bare klokkeslett, aldri dato, så
+/// det er kildens dato som gjelder for hele tråden.
+fn skrevet(dir: &Path, rel: &str, innhold: &str) -> Option<i64> {
+    for felt in ["dato", "id"] {
+        if let Some(t) = samtale::felt(innhold, felt).as_deref().and_then(dato_til_sekunder) {
+            return Some(t);
+        }
+    }
+    std::fs::metadata(dir.join(rel))
+        .and_then(|m| m.modified())
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs() as i64)
+}
+
 /// `2026-09-10-utstyrs-tab` → `utstyrs-tab`.
 fn strip_date_prefix(stem: &str) -> &str {
     let b = stem.as_bytes();
@@ -534,6 +579,8 @@ fn understand_note(
         understand::Cli::new(eksempler)
     };
     let tittel = derive_title(&path, &content);
+    // Dagen tanken ble skrevet, ikke dagen den ble klassifisert.
+    let skrevet = notes_dir().ok().and_then(|dir| skrevet(&dir, &path, &content));
 
     // Etter hver pakke: skriv, si ifra, og se om lesningen fortsatt gjelder.
     // Det er dette som gjør delresultatet gyldig — feiler pakke fire, står
@@ -543,13 +590,14 @@ fn understand_note(
         let biter = &biter;
         let ider = ider.as_deref().unwrap_or(&[]);
         let tittel = &tittel;
+        let skrevet = &skrevet;
         let app = &app;
         let mut etter_pakke = |ferske: &[understand::Paragraph], lest, totalt| {
             let mut ferske = ferske.to_vec();
             understand::sett_ider(&mut ferske, biter, ider);
             sett_avsendere(&mut ferske, er_samtale);
             if let Some(conn) = base {
-                let _ = minne::lagre(conn, tittel, &ferske);
+                let _ = minne::lagre(conn, tittel, &ferske, *skrevet);
             }
             let _ = app.emit(
                 "forstår",
@@ -585,7 +633,7 @@ fn understand_note(
     let mut lest_på_nytt = Vec::new();
     let mut tidligere = Vec::new();
     if let Some(conn) = &base {
-        let _ = minne::lagre(conn, &tittel, &avsnitt);
+        let _ = minne::lagre(conn, &tittel, &avsnitt, skrevet);
         // Kryssnotat-minnet koster egne modellkall. Er lesningen forlatt, er
         // det arbeid for et notat brukeren har gått bort fra.
         if gjelder_fortsatt() {
@@ -869,6 +917,94 @@ mod tests {
         assert!(bart.contains("Bare tekst."));
     }
 
+    /// Datoen i «Tidligere om dette» var klassifiseringsdatoen. En importert
+    /// tråd eller en gammel fil fikk dermed dagens dato på hver linje, og
+    /// «Du forkastet dette 10. september» kunne være usant om brukerens egen
+    /// historikk.
+    #[test]
+    fn datoen_kommer_fra_kilden_ikke_fra_klokka() {
+        assert_eq!(dato_til_sekunder("2026-09-13"), Some(1_789_257_600));
+        assert_eq!(dato_til_sekunder("2026-09-13-utstyrs-tab"), Some(1_789_257_600));
+        assert_eq!(dato_til_sekunder("1970-01-01"), Some(0));
+        assert_eq!(dato_til_sekunder("utstyrs-tab"), None);
+        assert_eq!(dato_til_sekunder("2026-13-01"), None, "måned 13 finnes ikke");
+        assert_eq!(dato_til_sekunder("2026-09-1"), None);
+
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+
+        // `dato` i toppfeltet er skrevet av den som vet, og vinner.
+        std::fs::write(dir.join("a.md"), "---\nid: 2026-09-13-a\ndato: 2024-03-02\n---\n\n# A\n")
+            .unwrap();
+        let innhold = std::fs::read_to_string(dir.join("a.md")).unwrap();
+        assert_eq!(skrevet(dir, "a.md", &innhold), dato_til_sekunder("2024-03-02"));
+
+        // Ellers datoen notatet ble laget med.
+        std::fs::write(dir.join("b.md"), "---\nid: 2026-09-13-b\n---\n\n# B\n").unwrap();
+        let innhold = std::fs::read_to_string(dir.join("b.md")).unwrap();
+        assert_eq!(skrevet(dir, "b.md", &innhold), dato_til_sekunder("2026-09-13"));
+
+        // Uten toppfelt: filas endringstidspunkt, ikke klokka nå. (De to er
+        // like her, men det er fila som er kilden.)
+        std::fs::write(dir.join("c.md"), "# C\n\nEn tanke.\n").unwrap();
+        let fra_fila = skrevet(dir, "c.md", "# C\n\nEn tanke.\n").unwrap();
+        let mtime = std::fs::metadata(dir.join("c.md"))
+            .unwrap()
+            .modified()
+            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        assert_eq!(fra_fila, mtime);
+
+        // Fins fila ikke, og toppfeltet sier ingenting, er svaret ingenting.
+        assert_eq!(skrevet(dir, "finnes-ikke.md", "# D\n"), None);
+    }
+
+    /// Raden skal bære datoen kilden ga, og en rad som allerede står med en
+    /// senere dato skal rette seg selv når en eldre kilde dukker opp.
+    #[test]
+    fn tidspunktet_i_basen_er_det_tidligste_kjente() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        rettelser::sørg_for_tabell(&conn).unwrap();
+        minne::sørg_for_tabeller(&conn).unwrap();
+
+        let tekst = "En tanke som står her.";
+        let ider = minne::synk(&mut conn, "notat.md", &[tekst.to_string()], &[]).unwrap();
+        let avsnitt = vec![understand::Paragraph {
+            id: ider[0],
+            start: 0,
+            end: 0,
+            hash: understand::nøkkel(tekst),
+            text: tekst.into(),
+            summary: "Noe".into(),
+            kind: "beslutning".into(),
+            action: "bygg".into(),
+            avsender: None,
+            dependency: None,
+            correction: None,
+        }];
+        let les = |conn: &rusqlite::Connection| -> i64 {
+            conn.query_row("select tidspunkt from forstatt", [], |r| r.get(0)).unwrap()
+        };
+
+        // Først lest uten at kilden visste noe: 0, og panelet viser ingen dato.
+        minne::lagre(&conn, "Notat", &avsnitt, None).unwrap();
+        assert_eq!(les(&conn), 0);
+
+        // Så dukker datoen opp i toppfeltet.
+        minne::lagre(&conn, "Notat", &avsnitt, dato_til_sekunder("2026-09-13")).unwrap();
+        assert_eq!(les(&conn), dato_til_sekunder("2026-09-13").unwrap());
+
+        // En senere filtid skal ikke flytte dagen tanken kom.
+        minne::lagre(&conn, "Notat", &avsnitt, dato_til_sekunder("2026-09-20")).unwrap();
+        assert_eq!(les(&conn), dato_til_sekunder("2026-09-13").unwrap());
+
+        // Men en eldre kilde retter en rad som sto galt fra før.
+        minne::lagre(&conn, "Notat", &avsnitt, dato_til_sekunder("2024-03-02")).unwrap();
+        assert_eq!(les(&conn), dato_til_sekunder("2024-03-02").unwrap());
+    }
+
     #[test]
     fn tittel_hentes_fra_forste_overskrift() {
         let md = "---\nid: 2026-09-10-utstyr\ntype: \n---\n\n# Utstyrs-tab\n\ntekst\n";
@@ -1024,7 +1160,7 @@ mod tests {
                 dependency: None,
                 correction: None,
             }];
-            minne::lagre(&conn, "Låne-app", &avsnitt).unwrap();
+            minne::lagre(&conn, "Låne-app", &avsnitt, Some(1_757_000_000)).unwrap();
         }
 
         // Ny prosess, samme fil.
@@ -1129,7 +1265,7 @@ mod tests {
             &mut |nye, _, _| {
                 let mut nye = nye.to_vec();
                 understand::sett_ider(&mut nye, &biter, &ider);
-                minne::lagre(&conn, "Samtale", &nye).unwrap();
+                minne::lagre(&conn, "Samtale", &nye, Some(1_757_000_000)).unwrap();
                 true
             },
         )

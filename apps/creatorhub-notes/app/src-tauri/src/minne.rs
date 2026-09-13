@@ -268,15 +268,29 @@ pub fn kjente(conn: &Connection, hasher: &[String]) -> Result<Memo> {
 /// står i notatet lenger er [`synk`] sin jobb — den vet hvilke id-er som ble
 /// borte, og denne vet bare hva de som står der betyr.
 ///
-/// `tidspunkt` settes bare første gang. Det er datoen linja sier: «du bestemte
-/// det samme 3. september» skal peke på dagen tanken kom, ikke på sist noen
-/// lagret notatet. Med identitet som overlever redigering peker den nå på den
-/// dagen også etter at hun har rettet en skrivefeil i avsnittet.
+/// `skrevet` er dagen tanken ble skrevet, så godt kilden vet det — datoen i
+/// toppfeltet, eller filas endringstidspunkt. `None` når ingen av dem finnes,
+/// og da lagres 0: panelet viser heller ingen dato enn en gal.
+///
+/// Dette sto tidligere som `nå()`, altså dagen klassifiseringen kjørte. En
+/// importert tråd eller en gammel fil fikk dermed dagens dato på hver linje,
+/// og «Du forkastet dette 10. september» kunne være en usann påstand om
+/// brukerens egen historikk — sagt med samme sikre stemme som en sann.
+///
+/// Ved oppdatering beholdes den *tidligste* kjente datoen. Toppfeltdatoen er
+/// stabil, så den vinner over en filtid som flytter seg hver gang notatet
+/// lagres; og en rad som allerede står med en gal dato fra før retter seg selv
+/// første gang notatet leses med en eldre kilde tilgjengelig.
 ///
 /// Avsnitt uten id hoppes over. Det betyr at basen ikke var tilgjengelig da
 /// notatet ble lest, og da er det riktigere å lagre ingenting enn å lagre alt
 /// under den samme nullen.
-pub fn lagre(conn: &Connection, tittel: &str, avsnitt: &[Paragraph]) -> Result<()> {
+pub fn lagre(
+    conn: &Connection,
+    tittel: &str,
+    avsnitt: &[Paragraph],
+    skrevet: Option<i64>,
+) -> Result<()> {
     for a in avsnitt.iter().filter(|a| a.id > 0) {
         conn.execute(
             "insert into forstatt \
@@ -285,7 +299,11 @@ pub fn lagre(conn: &Connection, tittel: &str, avsnitt: &[Paragraph]) -> Result<(
              on conflict(avsnitt_id) do update set \
                tittel = excluded.tittel, tekst = excluded.tekst, type = excluded.type, \
                handling = excluded.handling, kortform = excluded.kortform, \
-               venter = excluded.venter",
+               venter = excluded.venter, \
+               tidspunkt = case \
+                 when forstatt.tidspunkt = 0 then excluded.tidspunkt \
+                 when excluded.tidspunkt = 0 then forstatt.tidspunkt \
+                 else min(forstatt.tidspunkt, excluded.tidspunkt) end",
             rusqlite::params![
                 a.id,
                 tittel,
@@ -294,7 +312,7 @@ pub fn lagre(conn: &Connection, tittel: &str, avsnitt: &[Paragraph]) -> Result<(
                 a.action,
                 a.summary,
                 a.dependency.clone().unwrap_or_default(),
-                nå(),
+                skrevet.unwrap_or(0),
             ],
         )?;
     }
@@ -1025,7 +1043,7 @@ mod tests {
                 p("Kanskje depositum, men jeg er usikker.", "Depositum"),
             ],
         );
-        lagre(&conn, "Notat", &avsnitt).unwrap();
+        lagre(&conn, "Notat", &avsnitt, Some(1_757_000_000)).unwrap();
         rettelser::lagre(
             &conn,
             &rettelser::Retting {
@@ -1081,7 +1099,8 @@ mod tests {
         let mut tekster = tekster_i(conn, sti);
         tekster.push(tekst.to_string());
         let id = *synk(conn, sti, &tekster, &[]).unwrap().last().unwrap();
-        lagre(conn, tittel, &[Paragraph { id, ..p(tekst, kortform) }]).unwrap();
+        lagre(conn, tittel, &[Paragraph { id, ..p(tekst, kortform) }], Some(1_757_000_000))
+            .unwrap();
         id
     }
 
@@ -1097,7 +1116,7 @@ mod tests {
         let avsnitt = understand::les(doc, &fake, &mut memo).unwrap();
         assert_eq!(fake.kall.load(Ordering::Relaxed), 1);
         let avsnitt = med_ider(&mut conn, "notat.md", avsnitt);
-        lagre(&conn, "Notat", &avsnitt).unwrap();
+        lagre(&conn, "Notat", &avsnitt, Some(1_757_000_000)).unwrap();
 
         // Omstart: prosessen husker ingenting, bare basen gjør det.
         let mut etter = Memo::new();
@@ -1119,11 +1138,11 @@ mod tests {
 
         let før = understand::les("Depositum blir for dyrt.\n", &fake, &mut memo).unwrap();
         let før = med_ider(&mut conn, "notat.md", før);
-        lagre(&conn, "Notat", &før).unwrap();
+        lagre(&conn, "Notat", &før, Some(1_757_000_000)).unwrap();
         let etter =
             understand::les("Depositum tar vi likevel.\n", &fake, &mut memo).unwrap();
         let etter = med_ider(&mut conn, "notat.md", etter);
-        lagre(&conn, "Notat", &etter).unwrap();
+        lagre(&conn, "Notat", &etter, Some(1_757_000_000)).unwrap();
 
         assert_ne!(før[0].id, etter[0].id, "en helt annen tanke er et nytt avsnitt");
         let rader: i64 = conn
@@ -1295,7 +1314,7 @@ mod tests {
             p("Pipelinen skal kjøre om natta.", "Nattlig pipeline"),
         ];
         let avsnitt = med_ider(&mut conn, "notat.md", avsnitt);
-        lagre(&conn, "Notat", &avsnitt).unwrap();
+        lagre(&conn, "Notat", &avsnitt, Some(1_757_000_000)).unwrap();
 
         let uavklart = spør(&conn, "hva er uavklart").unwrap().unwrap();
         assert_eq!(uavklart.overskrift, "Uavklart");
@@ -1485,7 +1504,7 @@ mod tests {
                 ..p(tekst, kortform)
             })
             .collect();
-        lagre(&conn, "Samtale om betaling", &avsnitt).unwrap();
+        lagre(&conn, "Samtale om betaling", &avsnitt, Some(1_757_000_000)).unwrap();
 
         let bestemt = spør(&conn, "hva ble bestemt").unwrap().unwrap();
         assert_eq!(bestemt.overskrift, "Bestemt");

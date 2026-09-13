@@ -65,7 +65,12 @@ const dagMånedÅr = new Intl.DateTimeFormat("nb-NO", {
   year: "numeric",
 });
 
-function dato(sekunder: number) {
+/// Datoen tanken ble skrevet, eller `null` når kilden ikke visste den. En dato
+/// vi ikke kan fastslå skal være borte, ikke gjettet: «Du forkastet dette
+/// 10. september» er en påstand om brukerens egen historikk, og en usann
+/// påstand sagt med sikker stemme er verre enn ingen dato.
+function dato(sekunder: number): string | null {
+  if (!sekunder || sekunder <= 0) return null;
   const d = new Date(sekunder * 1000);
   return d.getFullYear() === new Date().getFullYear() ? dagMåned.format(d) : dagMånedÅr.format(d);
 }
@@ -77,11 +82,12 @@ function dato(sekunder: number) {
 /// den samme retningen. Den skal ikke antyde retning i det hele tatt: ikke
 /// gjentakelse («du har vært innom dette før»), ikke relevans uten innhold
 /// («se også»). Datoen og kortformen er alt hun trenger for å lese selv.
-const SETNINGER: Record<string, (dato: string) => string> = {
-  motsier: (d) => `Du forkastet dette ${d}`,
-  besvarer: (d) => `Dette svarer på spørsmålet du stilte ${d}`,
-  bekrefter: (d) => `Du bestemte det samme ${d}`,
-  nevnt: (d) => `Du skrev om dette ${d}`,
+const SETNINGER: Record<string, (dato: string | null) => string> = {
+  motsier: (d) => (d ? `Du forkastet dette ${d}` : "Du forkastet dette før"),
+  besvarer: (d) =>
+    d ? `Dette svarer på spørsmålet du stilte ${d}` : "Dette svarer på et spørsmål du stilte før",
+  bekrefter: (d) => (d ? `Du bestemte det samme ${d}` : "Du bestemte det samme før"),
+  nevnt: (d) => (d ? `Du skrev om dette ${d}` : "Du skrev om dette før"),
 };
 
 /// Linjene som skal vises, i den rekkefølgen de kom — motsigelsen først, fordi
@@ -425,6 +431,7 @@ export function Panel({
 
 /** Eksportert for testing: plasseringen er produktlogikk, ikke pynt. */
 export const _test = {
+  dato,
   lest,
   plassen,
   kortformen,

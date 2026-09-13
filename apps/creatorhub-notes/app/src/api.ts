@@ -58,6 +58,9 @@ export type Tidligere = {
   sti: string;
   tittel: string;
   hash: string;
+  /** Dagen tanken ble skrevet — datoen i toppfeltet, eller filas
+   *  endringstidspunkt. `0` når kilden ikke visste den; da vises linja uten
+   *  dato, i stedet for med dagens. */
   tidspunkt: number;
 };
 
