@@ -19,12 +19,48 @@ use std::collections::{HashMap, HashSet};
 /// linja hører ikke hjemme noe sted.
 pub const PLASSER: [&str; 4] = ["forstått", "uavklart", "oppgave", "idé"];
 pub const FJERNET: &str = "fjernet";
+/// Oppgaven er gjort. Ikke en lesning av avsnittet, men en beskjed om
+/// virkeligheten — derfor blir den aldri et eksempel i prompten, og «hva
+/// venter på noe» svarer ikke med den.
+pub const FERDIG: &str = "ferdig";
+
+/// Hvor lesningen selv ville plassert avsnittet.
+///
+/// Samme rekkefølge som `lest()` i `Panel.tsx`, og de to må følge hverandre:
+/// står de ulikt, tror appen at brukeren flyttet en linje hun lot stå, og et
+/// eksempel i prompten blir en rettelse hun aldri gjorde.
+///
+/// - En oppgave er en oppgave uansett hvor bestemt den er.
+/// - Et referert eller avvist standpunkt er en idé, også når modellen sa
+///   `bygg`. Kundens ønske er ikke hennes beslutning.
+/// - `marker_åpent` er uavklart. Det er både hennes åpne spørsmål og
+///   modellens egen usikkerhetsutgang, og begge hører hjemme samme sted.
+/// - Et krav er avgjort: `RESULTAT.md` avgjorde at «bestemorvennlig» og «det
+///   må støtte RAW» er beslutninger om *hvordan*, og at fasiten tok feil, ikke
+///   modellene.
+pub fn lest_plass(kind: &str, action: &str) -> Option<&'static str> {
+    Some(match (kind, action) {
+        ("oppgave", _) => "oppgave",
+        ("gjengivelse", _) | ("uenighet", _) => "idé",
+        (_, "marker_åpent") => "uavklart",
+        ("begrensning", _) => "forstått",
+        (_, "bygg") => "forstått",
+        ("tvil", _) => "idé",
+        ("spørsmål", _) => "uavklart",
+        _ => return None,
+    })
+}
 
 /// Rettelsen slik panelet får den.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Rettelse {
     pub plass: String,
     pub summary: String,
+    /// Hva oppgaven venter på, når hun skrev en pil i kortformen sin. Uten
+    /// den ga hennes egen retting en dårligere oppgave enn maskinens: linja
+    /// ble en oppgave i panelet, men kunne aldri finnes av «hva venter på
+    /// noe».
+    pub venter: String,
 }
 
 /// Én retting fra panelet. `plass: None` betyr «ta rettelsen bort igjen», som
@@ -59,13 +95,18 @@ create table if not exists rettelser (
   plass         text not null,
   kortform      text not null,
   tidspunkt     integer not null,
-  foreldet      integer not null default 0
+  foreldet      integer not null default 0,
+  venter        text not null default ''
 );
 create index if not exists rettelser_sti on rettelser(sti);
 "#;
 
 pub fn sørg_for_tabell(conn: &Connection) -> Result<()> {
     conn.execute_batch(SKJEMA)?;
+    // `create table if not exists` rører ikke en tabell som finnes. En base
+    // fra i går mangler kolonnen; «duplicate column name» betyr at den ikke
+    // gjør det.
+    let _ = conn.execute("alter table rettelser add column venter text not null default ''", []);
     // Var basen nede da notatet ble lest, fikk alle avsnittene id 0, og en
     // rettelse gjort da havnet på id 0. Den vises aldri i panelet — `aktive`
     // joiner mot `avsnitt`, og der finnes ingen id 0 — men den er ekte nok
@@ -88,14 +129,14 @@ pub(crate) fn nå() -> i64 {
 /// er det `avsnitt.kilde` som er sant om hvor det står nå.
 pub fn aktive(conn: &Connection, sti: &str) -> Result<HashMap<i64, Rettelse>> {
     let mut q = conn.prepare(
-        "select r.avsnitt_id, r.plass, r.kortform from rettelser r \
+        "select r.avsnitt_id, r.plass, r.kortform, r.venter from rettelser r \
          join avsnitt a on a.id = r.avsnitt_id \
          where a.kilde = ?1 and r.foreldet = 0",
     )?;
     let rader = q.query_map([sti], |r| {
         Ok((
             r.get::<_, i64>(0)?,
-            Rettelse { plass: r.get(1)?, summary: r.get(2)? },
+            Rettelse { plass: r.get(1)?, summary: r.get(2)?, venter: r.get(3)? },
         ))
     })?;
     rader.collect()
@@ -125,15 +166,20 @@ pub fn lagre(conn: &Connection, r: &Retting) -> Result<()> {
             Some(format!("rettelse uten gyldig avsnitt (id {})", r.avsnitt_id)),
         ));
     }
+    // «Starte produksjon ← godkjent prototype» i hennes eget felt betyr det
+    // samme som når modellen skriver det. Uten dette ble pila stående midt i
+    // kortformen, og oppgaven kunne aldri finnes av «hva venter på noe».
+    let (kortform, venter) = del_pil(r.kortform.as_deref().unwrap_or_default());
+    let venter = if plass == "oppgave" { venter } else { String::new() };
     conn.execute(
         "insert into rettelser \
-           (avsnitt_id, sti, tekst, lest_type, lest_handling, lest_kortform, plass, kortform, tidspunkt, foreldet) \
-         values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0) \
+           (avsnitt_id, sti, tekst, lest_type, lest_handling, lest_kortform, plass, kortform, tidspunkt, foreldet, venter) \
+         values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, ?10) \
          on conflict(avsnitt_id) do update set \
            sti = excluded.sti, tekst = excluded.tekst, \
            plass = excluded.plass, kortform = excluded.kortform, \
            lest_type = excluded.lest_type, lest_handling = excluded.lest_handling, \
-           lest_kortform = excluded.lest_kortform, \
+           lest_kortform = excluded.lest_kortform, venter = excluded.venter, \
            tidspunkt = excluded.tidspunkt, foreldet = 0",
         rusqlite::params![
             r.avsnitt_id,
@@ -143,10 +189,67 @@ pub fn lagre(conn: &Connection, r: &Retting) -> Result<()> {
             r.lest_handling,
             r.lest_kortform,
             plass,
-            r.kortform.clone().unwrap_or_default(),
+            kortform,
             nå(),
+            venter,
         ],
     )?;
+    Ok(())
+}
+
+/// Skiller «Starte produksjon ← godkjent prototype» i kortform og
+/// avhengighet, som `understand::del_avhengighet` gjør for modellsvaret.
+fn del_pil(s: &str) -> (String, String) {
+    for pil in ["←", "<-"] {
+        if let Some((kort, venter)) = s.split_once(pil) {
+            let (kort, venter) = (kort.trim(), venter.trim());
+            if !kort.is_empty() && !venter.is_empty() {
+                return (kort.to_string(), venter.to_string());
+            }
+        }
+    }
+    (s.to_string(), String::new())
+}
+
+/// En rettelse finner tilbake til teksten sin.
+///
+/// Blir et avsnitt borte — slettet, eller notatet døpt om — merkes rettelsen
+/// foreldet og raden blir stående. Dukker den *samme teksten* opp igjen som et
+/// nytt avsnitt, er det hennes rettelse som hører til den, og den flyttes dit.
+/// Uten dette var «Ikke relevant» på feil linje, en angret sletting eller et
+/// filnavnbytte tre måter å miste det eneste i systemet hun har skrevet som
+/// ikke kan gjenskapes fra markdown.
+///
+/// Bare rader hvis avsnitt ikke lenger finnes. En rettelse som gjelder et
+/// avsnitt som står, røres aldri.
+pub(crate) fn gjenopplivt(tx: &Connection, ider: &[i64], tekster: &[String]) -> Result<()> {
+    let hjemløse: Vec<(i64, String)> = tx
+        .prepare(
+            "select avsnitt_id, tekst from rettelser r \
+             where not exists (select 1 from avsnitt a where a.id = r.avsnitt_id)",
+        )?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_>>()?;
+    if hjemløse.is_empty() {
+        return Ok(());
+    }
+    for (gammel, tekst) in hjemløse {
+        let Some(i) = tekster.iter().position(|t| *t == tekst) else { continue };
+        let Some(ny) = ider.get(i).copied() else { continue };
+        // Har det nye avsnittet allerede en rettelse, er den ferskere. Da er
+        // den gamle raden historikk, og skal ikke skrive over noe.
+        let opptatt: i64 =
+            tx.query_row("select count(*) from rettelser where avsnitt_id = ?1", [ny], |r| {
+                r.get(0)
+            })?;
+        if opptatt > 0 {
+            continue;
+        }
+        tx.execute(
+            "update rettelser set avsnitt_id = ?2, foreldet = 0 where avsnitt_id = ?1",
+            [gammel, ny],
+        )?;
+    }
     Ok(())
 }
 
@@ -306,7 +409,11 @@ mod tests {
         merge(&mut igjen, &aktive(&conn, "notat.md").unwrap());
         assert_eq!(
             igjen[0].correction,
-            Some(Rettelse { plass: "uavklart".into(), summary: "Depositum".into() }),
+            Some(Rettelse {
+                plass: "uavklart".into(),
+                summary: "Depositum".into(),
+                venter: String::new()
+            }),
             "rettelsen skal vinne over klassifiseringen"
         );
     }
@@ -337,7 +444,8 @@ mod tests {
             rettet[0].correction,
             Some(Rettelse {
                 plass: "uavklart".into(),
-                summary: "Kartvisning, ikke avgjort".into()
+                summary: "Kartvisning, ikke avgjort".into(),
+                venter: String::new(),
             }),
             "rettelsen hennes skal fortsatt stå"
         );

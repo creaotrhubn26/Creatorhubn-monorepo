@@ -115,6 +115,13 @@ ingenting     Gjør ingenting.
 En oppgave har alltid handlingen `ingenting`. Den noteres fordi den er nevnt, \
 ikke fordi modellen skal utvides.
 
+Et krav brukeren selv stiller er avgjort, og en `begrensning` med handlingen \
+`bygg`: «det må være bestemorvennlig», «det må støtte RAW», «det må ikke synes at \
+du er i demo modus». Hun har bestemt *hvordan*, selv om hun ikke har bestemt hva, \
+og kravet skal bygges inn. Målt 10. september 2026: både den billige og den dyre \
+modellen svarte `bygg` på de tre kravavsnittene, uavhengig av hverandre, mot en \
+fasit som sa `hold` — og det var fasiten som tok feil.
+
 Å bygge på noe brukeren ikke har bestemt seg for er den dyreste feilen. Den \
 produserer arbeid ingen har bedt om, og brukeren må oppdage det selv. Motsatt \
 feil koster ingenting. Er du i tvil, velg det som gjør minst.
@@ -124,6 +131,7 @@ spør om. Naken og konkret — ikke en setning om brukeren.
 «Jeg vil lage en app der folk kan låne verktøy av hverandre» → App for å låne verktøy mellom privatpersoner
 «Først ser man et kart med tilgjengelig verktøy i nærheten» → Kartvisning
 «Kanskje vi burde ha depositum, men jeg er usikker» → Depositum
+Høyst åtte ord. Er svaret en setning, er det ikke en kortform.
 
 Venter en oppgave på at noe annet skjer først, skriv det etter en venstrepil \
 sist i kortformen — kort, som en substantivfrase, uten «venter på»:
@@ -217,6 +225,13 @@ pub struct Paragraph {
     /// Brukerens egen retting, når hun har gjort en. Den vinner over
     /// klassifiseringen i panelet.
     pub correction: Option<crate::rettelser::Rettelse>,
+    /// Da linja ble lest, i sekunder siden epoke. Panelet viser datoen når
+    /// den begynner å bli gammel: en lesning er en modells lesning, og en
+    /// gammel en er ikke like god som en fersk. `0` er ukjent.
+    pub lest: i64,
+    /// Modellen som leste linja. Ikke vist — den er der for at en linje skal
+    /// kunne spores til den utgaven som faktisk leste den.
+    pub modell: String,
 }
 
 #[derive(Serialize)]
@@ -242,6 +257,14 @@ pub struct Understanding {
     /// som hendelser, og bruker nummeret til å se hvilken lesning de hører
     /// til — en som er forlatt skal ikke skrive over den som gjelder.
     pub lesning: u64,
+    /// Avsnitt i notatet som ikke har fått en linje. Enten svarte ikke
+    /// modellen for dem, eller så feilet pakken de lå i. Uten tallet ser et
+    /// avsnitt appen ikke klarte å lese ut nøyaktig ut som et avsnitt appen
+    /// leste og fant ingenting i.
+    pub uleste: usize,
+    /// Hvor mange ganger appen har sendt tekst ut av maskinen siden den
+    /// startet. Se [`KALL`].
+    pub kall: u64,
 }
 
 /// Lesningen er slått av. Brukeren har ikke sagt ja, eller har sagt nei.
@@ -260,6 +283,8 @@ impl Understanding {
             reread: Vec::new(),
             earlier: Vec::new(),
             lesning: 0,
+            uleste: 0,
+            kall: KALL.load(std::sync::atomic::Ordering::Relaxed),
         }
     }
     pub fn on(paragraphs: Vec<Paragraph>, reread: Vec<String>) -> Self {
@@ -270,6 +295,8 @@ impl Understanding {
             reread,
             earlier: Vec::new(),
             lesning: 0,
+            uleste: 0,
+            kall: KALL.load(std::sync::atomic::Ordering::Relaxed),
         }
     }
 }
@@ -283,8 +310,36 @@ pub struct Framdrift {
     pub lesning: u64,
     pub lest: usize,
     pub totalt: usize,
+    /// Hva som pågår når det ikke lenger er avsnitt som leses. `sammenligner`
+    /// er turen til det hun har skrevet før — to modellkall som tar minutter,
+    /// og som panelet før sto ferdig-utseende og taust gjennom.
+    pub fase: Option<String>,
     pub paragraphs: Vec<Paragraph>,
 }
+
+/// Fasen etter at avsnittene er lest: appen leter etter hva hun har skrevet
+/// om det samme før.
+pub const SAMMENLIGNER: &str = "sammenligner";
+
+/// Hvor lenge en lesning står før den leses om igjen. Nitti dager, og
+/// begrunnelsen er at valget skal kunne forsvares og ikke bare virke ryddig:
+///
+/// - En lesning er ikke en måling av teksten, den er en *modells* lesning av
+///   den. Bytter modellen, eller bytter taksonomien i prompten, gjelder ikke
+///   svaret lenger. Det fanges av `modell` under, og skjer med en gang.
+/// - Tiden i seg selv er den svakere grunnen, men ikke ingen: prompten og
+///   reglene her endrer seg oftere enn notatene gjør, og en linje ingen har
+///   sett på siden i vår er en påstand ingen har etterprøvd.
+/// - Nitti dager, ikke tretti: et notat som ligger urørt i en måned er helt
+///   vanlig, og å lese det på nytt hver måned koster penger for ingenting.
+///   Ikke et år heller — da rekker taksonomien å bli en annen.
+///
+/// Det som skjer når fristen går ut er ikke at linja forsvinner. Den blir
+/// stående, med datoen synlig i panelet, og leses om igjen ved neste lesning
+/// av notatet. Feiler den lesningen, står den gamle linja med alderen sin —
+/// en gammel lesning er dårligere enn en fersk, men langt bedre enn et tomt
+/// panel.
+pub const FERSKHET: i64 = 90 * 24 * 60 * 60;
 
 /// Klassifiseringen av ett avsnitt.
 #[derive(Clone, Debug, PartialEq)]
@@ -293,6 +348,21 @@ pub struct Label {
     pub action: String,
     pub summary: String,
     pub dependency: Option<String>,
+    /// Da avsnittet ble lest, i sekunder siden epoke. `0` for rader fra før
+    /// dette ble lagret — de leses om igjen ved første anledning.
+    pub lest: i64,
+    /// Modellen som leste det. Byttes [`MODEL`], er alle gamle lesninger
+    /// gjort av noe annet enn det som gjelder nå, og de skal ikke stå som om
+    /// de var det.
+    pub modell: String,
+}
+
+impl Label {
+    /// Er lesningen fortsatt gyldig, eller skal avsnittet leses om igjen?
+    /// Se [`FERSKHET`].
+    pub fn fersk(&self) -> bool {
+        self.modell == MODEL && crate::rettelser::nå() - self.lest < FERSKHET
+    }
 }
 
 /// Ett avsnitt med posisjonen sin i dokumentet.
@@ -429,8 +499,16 @@ pub fn parse(answer: &str, count: usize) -> Vec<Option<Label>> {
         if !KINDS.contains(&kind.as_str()) || !ACTIONS.contains(&action.as_str()) {
             continue;
         }
-        let (summary, dependency) = del_avhengighet(summary);
-        out[n - 1] = Some(Label { kind, action, summary, dependency });
+        // Pilen hører bare til en oppgave. `README.md` sa det allerede;
+        // `parse` håndhevet det ikke, og en beslutning med «<-» i kortformen
+        // fikk alt etter pilen stille kuttet bort.
+        let (summary, dependency) = if kind == "oppgave" {
+            del_avhengighet(summary)
+        } else {
+            (summary.to_string(), None)
+        };
+        out[n - 1] =
+            Some(Label { kind, action, summary, dependency, lest: crate::rettelser::nå(), modell: MODEL.to_string() });
     }
     out
 }
@@ -484,6 +562,8 @@ fn avsnittet(chunk: &Chunk, label: &Label) -> Paragraph {
         dependency: label.dependency.clone(),
         text: chunk.text.clone(),
         correction: None,
+        lest: label.lest,
+        modell: label.modell.clone(),
     }
 }
 
@@ -529,7 +609,7 @@ pub fn understand(
     // to — hukommelsen slår opp på teksten, ikke på plasseringen.
     let mut seen = std::collections::HashSet::new();
     let mut ukjente: Vec<usize> = (0..chunks.len())
-        .filter(|i| !memo.contains_key(&keys[*i]) && seen.insert(keys[*i]))
+        .filter(|i| !memo.get(&keys[*i]).is_some_and(Label::fersk) && seen.insert(keys[*i]))
         .collect();
 
     // Synlig først. Sorteringen er stabil, så innenfor hver av de to gruppene
@@ -552,11 +632,14 @@ pub fn understand(
         for pakke in pakker(&tekster) {
             let svar = match classifier.ask(&tekster[pakke.clone()]) {
                 Ok(svar) => svar,
-                // Feiler den første pakken, har ingenting kommet fram, og
-                // panelet skal si «av» — som før. Feiler en senere, står det
-                // som er gjort: resten mangler bare i hukommelsen, og tas ved
-                // neste lesning.
-                Err(e) if lest == 0 => return Err(e),
+                // Panelet slås av bare når det ikke finnes noe å vise. Kjenner
+                // hukommelsen allerede avsnitt i dette notatet — 299 linjer fra
+                // i går, seedet inn fra basen — er det de linjene som skal stå,
+                // og det ene nye avsnittet som skal stå umerket. Før slo én
+                // feilet pakke av hele panelet og tok rettelsene med seg.
+                Err(e) if lest == 0 && !keys.iter().any(|k| memo.contains_key(k)) => {
+                    return Err(e)
+                }
                 Err(_) => break,
             };
             for (n, label) in parse(&svar, pakke.len()).into_iter().enumerate() {
@@ -605,15 +688,23 @@ pub struct Cli {
     /// Er kilden en samtale? Da får prompten vite det, og hvert avsnitt er
     /// ett innlegg med avsenderen først.
     pub samtale: bool,
+    /// Par brukeren selv har sagt ikke hører sammen. De legges ved
+    /// relasjonsprompten, slik rettelsene legges ved klassifiseringen: en
+    /// falsk kobling hun har tatt bort skal ikke komme igjen.
+    pub avviste: Vec<(String, String)>,
 }
 
 impl Cli {
     pub fn new(eksempler: Vec<crate::minne::Eksempel>) -> Self {
-        Cli { eksempler, samtale: false }
+        Cli { eksempler, samtale: false, avviste: Vec::new() }
     }
     /// Samme kommandolinje, men over en importert samtale.
     pub fn over_samtale(eksempler: Vec<crate::minne::Eksempel>) -> Self {
-        Cli { eksempler, samtale: true }
+        Cli { eksempler, samtale: true, avviste: Vec::new() }
+    }
+    pub fn med_avviste(mut self, avviste: Vec<(String, String)>) -> Self {
+        self.avviste = avviste;
+        self
     }
 }
 
@@ -667,6 +758,11 @@ pub fn prompt(texts: &[String], eksempler: &[crate::minne::Eksempel], samtale: b
     format!("{SYSTEM}{kilde}{lært}\n\nAvsnittene:\n\n{avsnitt}")
 }
 
+/// Hvor mange ganger appen har sendt tekst ut av maskinen siden den startet.
+/// Panelet viser tallet: en bryter som sier «avsnittene sendes til claude» er
+/// et løfte om hva som kan skje, og tallet er det som faktisk har skjedd.
+pub static KALL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Ett kall til kommandolinja. Ingen verktøy, ingen arbeidskatalog med et
 /// git-repo i: kommandoen skal lese en prompt og skrive tekst, ingenting
 /// annet.
@@ -680,6 +776,7 @@ pub fn prompt(texts: &[String], eksempler: &[crate::minne::Eksempel], samtale: b
 /// `~/.claude/projects/.../*.jsonl`, og den blir liggende. Det er derfor
 /// lesningen er noe brukeren må slå på selv.
 pub fn kjør(model: &str, prompt: &str) -> Result<String, String> {
+    KALL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut barn = std::process::Command::new(binary())
         .args(["-p", "--model", model, "--output-format", "text"])
         .current_dir(std::env::temp_dir())
@@ -786,7 +883,7 @@ impl Classifier for Cli {
 /// retning. Se [`crate::minne::slå_sammen`].
 impl crate::minne::Dommer for Cli {
     fn døm(&self, par: &[(String, String)]) -> Result<String, String> {
-        let svar = kjør(MODEL, &crate::minne::relasjonsprompt(par))?;
+        let svar = kjør(MODEL, &crate::minne::relasjonsprompt_med(par, &self.avviste))?;
         // Etiketten den første lesningen ga blir med videre: uten den kan ikke
         // enigheten avgjøres etterpå.
         let koblet: Vec<(usize, String)> = crate::minne::parse_forhold(&svar, par.len())
@@ -807,7 +904,8 @@ impl crate::minne::Dommer for Cli {
         // ingenting lagres, og parene prøves igjen senere. Å slippe gjennom
         // Haikus egne koblinger ville vært å vise brukeren nøyaktig den støyen
         // annenlesningen finnes for.
-        let stor = kjør(STOR_MODEL, &crate::minne::relasjonsprompt(&delmengde))?;
+        let stor =
+            kjør(STOR_MODEL, &crate::minne::relasjonsprompt_med(&delmengde, &self.avviste))?;
         let dom = crate::minne::parse_forhold(&stor, delmengde.len());
         Ok(crate::minne::slå_sammen(par.len(), &koblet, &dom))
     }
@@ -979,6 +1077,8 @@ mod tests {
                 action: "bygg".into(),
                 summary: "App for å låne verktøy mellom privatpersoner".into(),
                 dependency: None,
+                lest: ut[0].as_ref().unwrap().lest,
+                modell: MODEL.to_string(),
             })
         );
         assert_eq!(ut[1].as_ref().unwrap().action, "hold");
@@ -1287,13 +1387,83 @@ mod tests {
         );
     }
 
-    /// Feiler den *første* pakken, har ingenting kommet fram, og panelet skal
-    /// si «av» — som før pakkene fantes.
+    /// Feiler den *første* pakken, og hukommelsen kjenner ingenting i notatet,
+    /// har ingenting kommet fram, og panelet skal si «av» — som før pakkene
+    /// fantes.
     #[test]
     fn en_feil_i_første_pakke_er_fortsatt_av() {
         let mut memo = Memo::new();
         assert!(les(&kilde(100), &Fake::feiler_på(1), &mut memo).is_err());
         assert!(memo.is_empty());
+    }
+
+    /// Funn 11. 299 avsnitt ligger i basen og er seedet inn i hukommelsen. Hun
+    /// skriver ett nytt mens `claude` ikke svarer. Før slo den ene feilede
+    /// pakken av hele panelet, og 299 linjer pluss alle rettelsene forsvant
+    /// fra skjermen.
+    #[test]
+    fn en_feilet_pakke_lar_de_kjente_linjene_stå() {
+        let doc = format!("{}\n\nEt helt nytt avsnitt som ingen har lest.\n", kilde(299));
+        let mut memo = Memo::new();
+        // Alt utenom det nye er lest fra før, som etter en omstart.
+        les(&kilde(299), &Fake::new(), &mut memo).unwrap();
+        assert_eq!(memo.len(), 299);
+
+        let ut = les(&doc, &Fake::feiler_på(1), &mut memo)
+            .expect("det som er kjent skal stå, selv om den ene pakken feilet");
+        assert_eq!(ut.len(), 299, "de kjente linjene står");
+        assert!(
+            !ut.iter().any(|p| p.text.contains("helt nytt")),
+            "og det ene uleste avsnittet står umerket, ikke gjettet på"
+        );
+    }
+
+    /// Funn 20. En lesning gjort av en annen modell gjelder ikke lenger.
+    #[test]
+    fn en_lesning_fra_en_annen_modell_leses_om_igjen() {
+        let doc = kilde(3);
+        let fersk = Fake::new();
+        let mut memo = Memo::new();
+        les(&doc, &fersk, &mut memo).unwrap();
+        assert_eq!(fersk.antall(), 1);
+
+        // Uendret: null kall, som før.
+        let igjen = Fake::new();
+        les(&doc, &igjen, &mut memo).unwrap();
+        assert_eq!(igjen.antall(), 0, "en fersk lesning skal ikke gjøres om igjen");
+
+        // Samme rader, lest av noe annet — eller for lenge siden.
+        for l in memo.values_mut() {
+            l.modell = "claude-fra-i-fjor".into();
+        }
+        let etter = Fake::new();
+        let ut = les(&doc, &etter, &mut memo).unwrap();
+        assert_eq!(etter.antall(), 1, "en lesning fra en annen modell skal leses på nytt");
+        assert_eq!(ut.len(), 3);
+
+        for l in memo.values_mut() {
+            l.lest = crate::rettelser::nå() - FERSKHET - 1;
+        }
+        let gammel = Fake::new();
+        les(&doc, &gammel, &mut memo).unwrap();
+        assert_eq!(gammel.antall(), 1, "og en lesning som er blitt gammel også");
+    }
+
+    /// Funn 18. `README.md` sier «bare oppgaver kan ha pil», og nå håndhever
+    /// `parse` det: en beslutning med «<-» i kortformen fikk før alt etter
+    /// pilen stille kuttet bort, uten synlig grunn.
+    #[test]
+    fn pilen_deles_bare_ut_til_oppgaver() {
+        let svar = "1|oppgave|ingenting|Starte produksjon <- godkjent prototype\n\
+                    2|beslutning|bygg|Eksport til Notion <- og til PDF";
+        let ut = parse(svar, 2);
+        let oppgave = ut[0].as_ref().unwrap();
+        assert_eq!(oppgave.summary, "Starte produksjon");
+        assert_eq!(oppgave.dependency.as_deref(), Some("godkjent prototype"));
+
+        let beslutning = ut[1].as_ref().unwrap();
+        assert_eq!(beslutning.summary, "Eksport til Notion <- og til PDF");
+        assert_eq!(beslutning.dependency, None);
     }
 
     #[test]

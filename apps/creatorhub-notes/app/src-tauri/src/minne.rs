@@ -58,7 +58,9 @@ create table if not exists forstatt (
   handling   text not null,
   kortform   text not null,
   venter     text not null default '',
-  tidspunkt  integer not null
+  tidspunkt  integer not null,
+  lest       integer not null default 0,
+  modell     text not null default ''
 );
 
 create virtual table if not exists forstatt_fts using fts5(
@@ -91,12 +93,27 @@ create table if not exists relasjoner (
   annen_id   integer not null,
   forhold    text not null,
   tidspunkt  integer not null,
+  avvist     integer not null default 0,
   primary key (avsnitt_id, annen_id)
 );
 "#;
 
+/// Kolonner som kom til etter at skjemaet først ble skrevet. `create table if
+/// not exists` rører ikke en tabell som finnes, så en base fra i går har dem
+/// ikke. `alter table add column` er den lille veien: den beholder radene, og
+/// «duplicate column name» betyr bare at jobben allerede er gjort.
+const KOLONNER: [&str; 3] = [
+    "alter table forstatt add column lest integer not null default 0",
+    "alter table forstatt add column modell text not null default ''",
+    "alter table relasjoner add column avvist integer not null default 0",
+];
+
 pub fn sørg_for_tabeller(conn: &Connection) -> Result<()> {
-    conn.execute_batch(SKJEMA)
+    conn.execute_batch(SKJEMA)?;
+    for sql in KOLONNER {
+        let _ = conn.execute(sql, []);
+    }
+    Ok(())
 }
 
 // ---- avsnittsidentitet --------------------------------------------------
@@ -144,14 +161,20 @@ pub fn synk(
         ));
     }
 
-    let kjente: Vec<Kjent> = conn
-        .prepare("select id, rekkefolge, tekst from avsnitt where kilde = ?1 order by rekkefolge")?
+    let kjente: Vec<(Kjent, String)> = conn
+        .prepare(
+            "select id, rekkefolge, tekst, coalesce(avsender, '') from avsnitt \
+             where kilde = ?1 order by rekkefolge",
+        )?
         .query_map([kilde], |r| {
-            Ok(Kjent {
-                id: r.get(0)?,
-                rekkefolge: r.get::<_, i64>(1)? as usize,
-                tekst: r.get(2)?,
-            })
+            Ok((
+                Kjent {
+                    id: r.get(0)?,
+                    rekkefolge: r.get::<_, i64>(1)? as usize,
+                    tekst: r.get(2)?,
+                },
+                r.get(3)?,
+            ))
         })?
         .collect::<Result<_>>()?;
 
@@ -160,7 +183,7 @@ pub fn synk(
         .enumerate()
         .map(|(i, t)| Ny { rekkefolge: i, tekst: t.clone() })
         .collect();
-    let treff = match_avsnitt(&kjente, &nye);
+    let treff = match_per_avsender(&kjente, &nye, avsendere);
 
     let beholdt: HashSet<i64> = treff
         .iter()
@@ -184,13 +207,19 @@ pub fn synk(
                      values (?1, ?2, ?3, ?4, ?5, ?6)",
                     rusqlite::params![id, kilde, i as i64, avsender, hash, ny.tekst],
                 )?;
-                // Teksten i `forstatt` er kopien `forstatt_fts` indekserer.
-                // Uten denne ville ordsøket lett i teksten slik den var før
-                // rettelsen.
+                // Er teksten skrevet om, gjelder ikke lesningen av den
+                // gamle teksten lenger — verken kortformen, klassen eller
+                // dommene om hvordan den henger sammen med andre avsnitt.
+                // Raden ble før stående med `tekst` oppdatert og alt annet
+                // fra i går, og «Tidligere om dette» siterte da det avsnittet
+                // *pleide* å si. Å slette er den trygge retningen: mangler
+                // linja, er den bare borte til neste lesning; står den gal,
+                // er den en påstand om hva hun har tenkt.
                 if matches!(m, Match::Endret(_)) {
+                    tx.execute("delete from forstatt where avsnitt_id = ?1", [id])?;
                     tx.execute(
-                        "update forstatt set tekst = ?2 where avsnitt_id = ?1",
-                        rusqlite::params![id, ny.tekst],
+                        "delete from relasjoner where avsnitt_id = ?1 or annen_id = ?1",
+                        [id],
                     )?;
                 }
                 *id
@@ -210,7 +239,7 @@ pub fn synk(
     // Avsnitt som ikke står i kilden lenger: forståelsen og relasjonene deres
     // er utledet og ryddes bort. Rettelsen er brukerens egen og blir stående —
     // `rettelser::foreldede` merker den, og teksten hennes ligger i raden.
-    for k in &kjente {
+    for (k, _) in &kjente {
         if beholdt.contains(&k.id) {
             continue;
         }
@@ -220,8 +249,94 @@ pub fn synk(
             [k.id],
         )?;
     }
+
+    crate::rettelser::gjenopplivt(&tx, &ut, tekster)?;
     tx.commit()?;
     Ok(ut)
+}
+
+/// [`match_avsnitt`], men aldri på tvers av avsendere.
+///
+/// I en samtale er «Ja, enig» fra Marius og «Ja, enig» fra Kari to avsnitt som
+/// er tegn for tegn like. Uten avgrensningen kunne de bytte identitet ved en
+/// reimport, og rettelsen hun gjorde på Marius' linje havne på Karis.
+/// `IDENTITET.md` skrev opp nøyaktig dette som uløst da samtaleimport ennå
+/// ikke fantes; nå finnes den.
+///
+/// Et vanlig notat har ingen avsendere, og da er dette ett kall med alt i —
+/// altså nøyaktig som før.
+fn match_per_avsender(
+    kjente: &[(Kjent, String)],
+    nye: &[Ny],
+    avsendere: &[Option<String>],
+) -> Vec<Match> {
+    if avsendere.iter().all(|a| a.is_none()) && kjente.iter().all(|(_, a)| a.is_empty()) {
+        let bare: Vec<Kjent> = kjente.iter().map(|(k, _)| k.clone()).collect();
+        return match_avsnitt(&bare, nye);
+    }
+
+    let navn = |i: usize| avsendere.get(i).cloned().flatten().unwrap_or_default();
+    let mut ut = vec![Match::Nytt; nye.len()];
+    let mut sett: HashSet<String> = HashSet::new();
+    for i in 0..nye.len() {
+        let hvem = navn(i);
+        if !sett.insert(hvem.clone()) {
+            continue;
+        }
+        // Rekkefølgen er den lokale i gruppa. Nærhetsleddet i `match_avsnitt`
+        // sammenligner da innlegg fra samme person med hverandre, som er den
+        // rekkefølgen som betyr noe her.
+        let mine: Vec<Kjent> = kjente
+            .iter()
+            .filter(|(_, a)| *a == hvem)
+            .enumerate()
+            .map(|(n, (k, _))| Kjent { rekkefolge: n, ..k.clone() })
+            .collect();
+        let plasser: Vec<usize> = (0..nye.len()).filter(|j| navn(*j) == hvem).collect();
+        let deres: Vec<Ny> = plasser
+            .iter()
+            .enumerate()
+            .map(|(n, j)| Ny { rekkefolge: n, tekst: nye[*j].tekst.clone() })
+            .collect();
+        for (plass, m) in plasser.iter().zip(match_avsnitt(&mine, &deres)) {
+            ut[*plass] = m;
+        }
+    }
+    ut
+}
+
+/// Rydder bort avsnitt fra notater som ikke finnes lenger.
+///
+/// [`synk`] rydder bare innenfor den kilden den kalles med, og den kalles bare
+/// når notatet leses. Et slettet notat sto derfor igjen for alltid: «Tidligere
+/// om dette» siterte det, klikk på linja feilet, og et omdøpt notat mater
+/// begge navn inn i hver eneste prompt.
+///
+/// Bare det utledede slettes — `forstatt` og `relasjoner` følger med `avsnitt`
+/// via løkka under. Rettelsene blir liggende: de er hennes, og
+/// [`crate::rettelser::gjenopplivt`] gir dem tilbake til teksten sin om den
+/// dukker opp igjen under et nytt navn.
+///
+/// Tom liste rydder ingenting. En notatmappe som ikke lot seg lese skal ikke
+/// se ut som en tom notatmappe.
+pub fn rydd(conn: &Connection, stier: &[String]) -> Result<usize> {
+    if stier.is_empty() {
+        return Ok(0);
+    }
+    let plasser = vec!["?"; stier.len()].join(",");
+    let borte: Vec<i64> = conn
+        .prepare(&format!("select id from avsnitt where kilde not in ({plasser})"))?
+        .query_map(rusqlite::params_from_iter(stier), |r| r.get(0))?
+        .collect::<Result<_>>()?;
+    for id in &borte {
+        conn.execute("delete from forstatt where avsnitt_id = ?1", [id])?;
+        conn.execute(
+            "delete from relasjoner where avsnitt_id = ?1 or annen_id = ?1",
+            [id],
+        )?;
+        conn.execute("delete from avsnitt where id = ?1", [id])?;
+    }
+    Ok(borte.len())
 }
 
 // ---- forståelsen som overlever -----------------------------------------
@@ -236,10 +351,13 @@ pub fn kjente(conn: &Connection, hasher: &[String]) -> Result<Memo> {
     }
     let plasser = vec!["?"; hasher.len()].join(",");
     let mut q = conn.prepare(&format!(
-        "select a.innhold_hash, f.type, f.handling, f.kortform, f.venter \
+        "select a.innhold_hash, f.type, f.handling, f.kortform, f.venter, f.lest, f.modell \
          from forstatt f join avsnitt a on a.id = f.avsnitt_id \
          where a.innhold_hash in ({plasser})"
     ))?;
+    // Også gamle lesninger hentes inn. De er ikke ferske nok til å slippe en
+    // ny runde ([`Label::fersk`]), men de skal stå i panelet mens den runden
+    // pågår — og bli stående med alderen sin om den feiler.
     let rader = q.query_map(rusqlite::params_from_iter(hasher), |r| {
         let hash: String = r.get(0)?;
         let venter: String = r.get(4)?;
@@ -250,6 +368,8 @@ pub fn kjente(conn: &Connection, hasher: &[String]) -> Result<Memo> {
                 action: r.get(2)?,
                 summary: r.get(3)?,
                 dependency: if venter.is_empty() { None } else { Some(venter) },
+                lest: r.get(5)?,
+                modell: r.get(6)?,
             },
         ))
     })?;
@@ -294,12 +414,14 @@ pub fn lagre(
     for a in avsnitt.iter().filter(|a| a.id > 0) {
         conn.execute(
             "insert into forstatt \
-               (avsnitt_id, tittel, tekst, type, handling, kortform, venter, tidspunkt) \
-             values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+               (avsnitt_id, tittel, tekst, type, handling, kortform, venter, tidspunkt, \
+                lest, modell) \
+             values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) \
              on conflict(avsnitt_id) do update set \
                tittel = excluded.tittel, tekst = excluded.tekst, type = excluded.type, \
                handling = excluded.handling, kortform = excluded.kortform, \
                venter = excluded.venter, \
+               lest = excluded.lest, modell = excluded.modell, \
                tidspunkt = case \
                  when forstatt.tidspunkt = 0 then excluded.tidspunkt \
                  when excluded.tidspunkt = 0 then forstatt.tidspunkt \
@@ -313,6 +435,8 @@ pub fn lagre(
                 a.summary,
                 a.dependency.clone().unwrap_or_default(),
                 skrevet.unwrap_or(0),
+                a.lest,
+                a.modell.clone(),
             ],
         )?;
     }
@@ -347,10 +471,17 @@ pub fn søkeord(tekst: &str) -> Vec<String> {
         if sett.insert(ord.clone()) {
             ut.push(ord);
         }
-        if ut.len() == 12 {
-            break;
-        }
     }
+    // De tolv lengste, ikke de tolv første. Før brøt løkka på tolv treff i
+    // leserekkefølge, og for et langt avsnitt var det åpningssetningen alene
+    // som avgjorde hva «Tidligere om dette» kunne finne i det hele tatt.
+    //
+    // ponytail: ordlengde er et grovt mål på særegenhet. Det riktige målet er
+    // hvor sjeldent ordet er i det hun har skrevet, og det ligger allerede i
+    // `forstatt_fts` — men det koster et oppslag per ord per avsnitt ved hver
+    // lagring, og lengde tar «depositum» framfor «tror» uten å koste noe.
+    ut.sort_by_key(|o| std::cmp::Reverse(o.chars().count()));
+    ut.truncate(12);
     ut
 }
 
@@ -400,7 +531,8 @@ pub fn kandidater(
          join forstatt f on f.avsnitt_id = k.rowid \
          join avsnitt a on a.id = f.avsnitt_id \
          left join rettelser r on r.avsnitt_id = f.avsnitt_id and r.foreldet = 0 \
-         where f.avsnitt_id <> ?3 and (r.plass is null or r.plass <> 'fjernet') \
+         where f.avsnitt_id <> ?3 \
+           and (r.plass is null or r.plass not in ('fjernet', 'ferdig')) \
          order by k.rank",
     )?;
     let rader = q.query_map(
@@ -485,14 +617,31 @@ Svar med nøyaktig én linje per par, og ingenting annet:
 
 /// Bygger prompten for en bunke par. Nå-avsnittet står først i hvert par,
 /// slik nummereringen i svaret refererer til dem.
-pub fn relasjonsprompt(par: &[(String, String)]) -> String {
+///
+/// `avviste` er par brukeren selv har sagt ikke hører sammen. De står som
+/// eksempler, på samme måte som rettelsene gjør i klassifiseringsprompten:
+/// en falsk kobling hun har tatt bort skal ikke komme tilbake i en ny drakt.
+pub fn relasjonsprompt_med(par: &[(String, String)], avviste: &[(String, String)]) -> String {
     let kropp = par
         .iter()
         .enumerate()
         .map(|(i, (nytt, gammelt))| format!("{}.\nNå: {nytt}\nTidligere: {gammelt}", i + 1))
         .collect::<Vec<_>>()
         .join("\n\n");
-    format!("{RELASJON}\n\nParene:\n\n{kropp}")
+    let lært = if avviste.is_empty() {
+        String::new()
+    } else {
+        let linjer = avviste
+            .iter()
+            .map(|(a, b)| format!("«{a}»\nmot «{b}»"))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        format!(
+            "\n\nBrukeren har selv sagt at disse parene ikke hører sammen. Ligner et par \
+             under på et av dem, svar `urelatert`:\n\n{linjer}"
+        )
+    };
+    format!("{RELASJON}{lært}\n\nParene:\n\n{kropp}")
 }
 
 /// Tolker svaret. Tåler det samme ruskete som klassifiseringen gjør:
@@ -584,13 +733,81 @@ pub struct Tidligere {
     pub tidspunkt: i64,
 }
 
+/// Dommen over paret, om noen har felt den.
+///
+/// Også den motsatte veien. `A→B` og `B→A` er to rader, og var før dømt av to
+/// separate kall som kunne lande ulikt: åpnet hun det gamle notatet, kunne det
+/// si noe annet om det samme paret enn det nye gjorde. Nå gjenbrukes svaret,
+/// oversatt til denne retningen.
+///
+/// `besvarer` er den ene etiketten som ikke kan snus — «det nye avgjør et
+/// spørsmål du lot stå åpent» er ikke sant baklengs. Da faller den til
+/// [`NEVNT`], som ikke påstår noen retning.
 fn lagret_forhold(conn: &Connection, id: i64, annen: i64) -> Option<String> {
-    conn.query_row(
+    if let Ok(f) = conn.query_row(
         "select forhold from relasjoner where avsnitt_id = ?1 and annen_id = ?2",
         (id, annen),
-        |r| r.get(0),
-    )
-    .ok()
+        |r| r.get::<_, String>(0),
+    ) {
+        return Some(f);
+    }
+    let motsatt: String = conn
+        .query_row(
+            "select forhold from relasjoner where avsnitt_id = ?1 and annen_id = ?2",
+            (annen, id),
+            |r| r.get(0),
+        )
+        .ok()?;
+    Some(match motsatt.as_str() {
+        "besvarer" => NEVNT.to_string(),
+        _ => motsatt,
+    })
+}
+
+/// Brukerens egen dom: disse to hører ikke sammen.
+///
+/// Raden skrives som `urelatert`, så alt som allerede slipper `urelatert`
+/// gjennom uten å vise det gjelder også her — men `avvist` skiller hennes dom
+/// fra modellens, slik at koblingen kan bli et eksempel neste gang det dømmes,
+/// og slik at det finnes en vei tilbake.
+///
+/// Begge retninger skrives. Paret er avvist, ikke retningen.
+pub fn avvis(conn: &Connection, gjelder: i64, annen: i64, avvist: bool) -> Result<()> {
+    if !avvist {
+        // Veien tilbake: raden er borte, paret er udømt, og det dømmes på
+        // nytt ved neste lagring. Det koster et kall, og det er riktig pris
+        // for at hun ombestemte seg.
+        conn.execute(
+            "delete from relasjoner \
+             where (avsnitt_id = ?1 and annen_id = ?2) or (avsnitt_id = ?2 and annen_id = ?1)",
+            (gjelder, annen),
+        )?;
+        return Ok(());
+    }
+    for (a, b) in [(gjelder, annen), (annen, gjelder)] {
+        conn.execute(
+            "insert into relasjoner (avsnitt_id, annen_id, forhold, tidspunkt, avvist) \
+             values (?1, ?2, ?3, ?4, 1) \
+             on conflict(avsnitt_id, annen_id) do update set \
+               forhold = excluded.forhold, avvist = 1",
+            rusqlite::params![a, b, URELATERT, nå()],
+        )?;
+    }
+    Ok(())
+}
+
+/// Par brukeren har sagt ikke hører sammen, som eksempler til neste dømming.
+/// Nyeste først, og bare så mange at prompten fortsatt er kortere enn parene
+/// den skal dømme.
+pub fn avviste(conn: &Connection, antall: usize) -> Result<Vec<(String, String)>> {
+    let mut q = conn.prepare(
+        "select n.tekst, g.tekst from relasjoner r \
+         join avsnitt n on n.id = r.avsnitt_id \
+         join avsnitt g on g.id = r.annen_id \
+         where r.avvist = 1 order by r.tidspunkt desc limit ?1",
+    )?;
+    let rader = q.query_map([antall as i64], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    rader.collect()
 }
 
 /// Leter i alt som er forstått før, og svarer med det som er verdt å vite.
@@ -642,10 +859,13 @@ pub fn tidligere(
         if let Ok(svar) = dommer.døm(&par) {
             let forhold = parse_forhold(&svar, par.len());
             for ((linje, annen_id, _), f) in udømte.into_iter().zip(forhold) {
-                // Et par modellen ikke svarte på lagres som urelatert. Det er
-                // det trygge svaret, og uten det ville de samme parene bli
-                // spurt om igjen ved hver eneste lagring.
-                let f = f.unwrap_or_else(|| URELATERT.to_string());
+                // Et par modellen ikke svarte på er ikke dømt. Det ble før
+                // lagret som `urelatert` for alltid — en avkortet svarstreng
+                // eller ett hoppet linjenummer kunne gjøre en ekte kobling
+                // permanent usynlig, og ingenting prøvde igjen. Nå står paret
+                // udømt: ingen linje vises nå, og spørsmålet stilles på nytt
+                // neste gang notatet lagres.
+                let Some(f) = f else { continue };
                 conn.execute(
                     "insert into relasjoner (avsnitt_id, annen_id, forhold, tidspunkt) \
                      values (?1, ?2, ?3, ?4) \
@@ -683,7 +903,19 @@ pub struct Eksempel {
 
 /// Plassene i panelet er brukerens ord. Prompten svarer i vårt vokabular, så
 /// rettelsen må oversettes tilbake før den kan stå som et eksempel.
-fn som_svar(plass: &str, kortform: &str) -> Option<String> {
+///
+/// **Bare når hun faktisk flyttet linja.** Plassene er mange-til-én: både
+/// `gjengivelse|hold` og `uenighet|hold` står under «Idé», og både
+/// `begrensning|bygg` og `beslutning|bygg` under «Forstått». Rettet hun bare
+/// kortformen og lot linja stå der den sto, sa oversettelsen før at hun rettet
+/// `gjengivelse` til `tvil` — en rettelse hun aldri gjorde, som så sto i
+/// prompten og styrte hver framtidige klassifisering. Nå står lesningens egen
+/// type og handling, og bare kortformen er ny: eksempelet gjengir det hun
+/// faktisk gjorde.
+fn som_svar(plass: &str, kortform: &str, lest_type: &str, lest_handling: &str) -> Option<String> {
+    if crate::rettelser::lest_plass(lest_type, lest_handling) == Some(plass) {
+        return Some(format!("{lest_type}|{lest_handling}|{kortform}"));
+    }
     let (kind, action) = match plass {
         "forstått" => ("beslutning", "bygg"),
         "uavklart" => ("spørsmål", "marker_åpent"),
@@ -692,6 +924,8 @@ fn som_svar(plass: &str, kortform: &str) -> Option<String> {
         // Linja hun tok bort hører ikke hjemme i panelet i det hele tatt, og
         // det er nøyaktig det en observasjon gjør.
         "fjernet" => ("observasjon", "ingenting"),
+        // «Ferdig» er ikke en lesning av avsnittet, det er en beskjed om at
+        // oppgaven er gjort. Den lærer klassifiseringen ingenting.
         _ => return None,
     };
     Some(format!("{kind}|{action}|{kortform}"))
@@ -715,7 +949,9 @@ pub fn eksempler(conn: &Connection, antall: usize) -> Result<Vec<Eksempel>> {
          from rettelser r join avsnitt a on a.id = r.avsnitt_id \
          where r.foreldet = 0 order by r.tidspunkt desc limit ?1",
     )?;
-    let rader = q.query_map([antall as i64], |r| {
+    // Fire ganger så mange rader som plasser: rettelser som ikke rettet noe,
+    // og gjentakelser av det samme mønsteret, kastes under.
+    let rader = q.query_map([(antall * 4) as i64], |r| {
         Ok((
             r.get::<_, String>(0)?,
             r.get::<_, String>(1)?,
@@ -726,16 +962,24 @@ pub fn eksempler(conn: &Connection, antall: usize) -> Result<Vec<Eksempel>> {
         ))
     })?;
 
-    let mut ut = Vec::new();
+    let mut ut: Vec<Eksempel> = Vec::new();
+    let mut sett = HashSet::new();
     for rad in rader {
         let (tekst, lest_type, lest_handling, lest_kortform, plass, kortform) = rad?;
         let kortform = if kortform.is_empty() { lest_kortform.clone() } else { kortform };
-        if let Some(rettet) = som_svar(&plass, &kortform) {
-            ut.push(Eksempel {
-                tekst,
-                lest: format!("{lest_type}|{lest_handling}|{lest_kortform}"),
-                rettet,
-            });
+        let Some(rettet) = som_svar(&plass, &kortform, &lest_type, &lest_handling) else {
+            continue;
+        };
+        let lest = format!("{lest_type}|{lest_handling}|{lest_kortform}");
+        // En rettelse som ikke rettet noe lærer ingenting bort, og spiste før
+        // en av seks plasser. Det samme gjør den andre og tredje utgaven av
+        // det samme mønsteret: seks plasser skal romme seks mønstre.
+        if rettet == lest || !sett.insert((lest.clone(), rettet.clone())) {
+            continue;
+        }
+        ut.push(Eksempel { tekst, lest, rettet });
+        if ut.len() == antall {
+            break;
         }
     }
     Ok(ut)
@@ -878,7 +1122,8 @@ pub fn spør(conn: &Connection, q: &str) -> Result<Option<Svar>> {
             "(r.plass = 'uavklart' or (r.plass is null and f.type in ('spørsmål', 'tvil')))"
         }
         Mønster::Venter => {
-            "(r.plass = 'oppgave' or (r.plass is null and f.type = 'oppgave')) and f.venter <> ''"
+            "(r.plass = 'oppgave' or (r.plass is null and f.type = 'oppgave')) \
+             and coalesce(nullif(r.venter, ''), f.venter) <> ''"
         }
         Mønster::Bestemt => "(r.plass = 'forstått' or (r.plass is null and f.handling = 'bygg'))",
         Mønster::Forkastet => {
@@ -896,11 +1141,13 @@ pub fn spør(conn: &Connection, q: &str) -> Result<Option<Svar>> {
 
     let sql = format!(
         "select coalesce(nullif(r.kortform, ''), f.kortform), a.kilde, f.tittel, \
-                a.innhold_hash, f.tidspunkt, f.venter, a.avsender \
+                a.innhold_hash, f.tidspunkt, coalesce(nullif(r.venter, ''), f.venter), \
+                a.avsender \
          from forstatt f \
          join avsnitt a on a.id = f.avsnitt_id \
          left join rettelser r on r.avsnitt_id = f.avsnitt_id and r.foreldet = 0 \
-         where (r.plass is null or r.plass <> 'fjernet') and {vilkår}{filter} \
+         where (r.plass is null or r.plass not in ('fjernet', 'ferdig')) \
+           and {vilkår}{filter} \
          order by f.tidspunkt desc limit 40"
     );
 
@@ -1015,6 +1262,8 @@ mod tests {
             action: "bygg".into(),
             dependency: None,
             correction: None,
+            lest: crate::rettelser::nå(),
+            modell: understand::MODEL.to_string(),
         }
     }
 
@@ -1364,23 +1613,40 @@ mod tests {
         );
     }
 
+    fn retting(
+        id: i64,
+        tekst: &str,
+        lest: (&str, &str, &str),
+        plass: &str,
+        kortform: &str,
+    ) -> rettelser::Retting {
+        rettelser::Retting {
+            avsnitt_id: id,
+            sti: "notat.md".into(),
+            tekst: tekst.into(),
+            lest_type: lest.0.into(),
+            lest_handling: lest.1.into(),
+            lest_kortform: lest.2.into(),
+            plass: Some(plass.into()),
+            kortform: Some(kortform.into()),
+        }
+    }
+
+    /// Flyttet hun linja, er det flyttingen som er eksempelet.
     #[test]
     fn en_rettelse_blir_et_eksempel() {
         let mut conn = base();
-        let tekst = "ux og ui må være profesjonell men bestemorvennlig";
-        let id = legg_inn(&mut conn, "notat.md", "Notat", tekst, "Bestemorvennlig grensesnitt");
+        let tekst = "Kunden ønsker innlogging på forsiden.";
+        let id = legg_inn(&mut conn, "notat.md", "Notat", tekst, "Innlogging på forsiden");
         rettelser::lagre(
             &conn,
-            &rettelser::Retting {
-                avsnitt_id: id,
-                sti: "notat.md".into(),
-                tekst: tekst.into(),
-                lest_type: "begrensning".into(),
-                lest_handling: "hold".into(),
-                lest_kortform: "Bestemorvennlig grensesnitt".into(),
-                plass: Some("forstått".into()),
-                kortform: Some("Bestemorvennlig grensesnitt".into()),
-            },
+            &retting(
+                id,
+                tekst,
+                ("beslutning", "bygg", "Innlogging på forsiden"),
+                "idé",
+                "Innlogging på forsiden",
+            ),
         )
         .unwrap();
 
@@ -1389,10 +1655,341 @@ mod tests {
             ut,
             vec![Eksempel {
                 tekst: tekst.into(),
-                lest: "begrensning|hold|Bestemorvennlig grensesnitt".into(),
-                rettet: "beslutning|bygg|Bestemorvennlig grensesnitt".into(),
+                lest: "beslutning|bygg|Innlogging på forsiden".into(),
+                rettet: "tvil|hold|Innlogging på forsiden".into(),
             }]
         );
+    }
+
+    /// Funn 7. Plassene i panelet er mange-til-én: `gjengivelse|hold` og
+    /// `uenighet|hold` står begge under «Idé». Retter hun bare kortformen og
+    /// lar linja stå der den sto, sa oversettelsen før at hun rettet
+    /// `gjengivelse` til `tvil` — en rettelse hun aldri gjorde, som deretter
+    /// styrte hver framtidige klassifisering.
+    #[test]
+    fn et_eksempel_gjengir_det_hun_faktisk_gjorde() {
+        let mut conn = base();
+        let tekst = "Kunden mener kartet må være startsiden.";
+        let id = legg_inn(&mut conn, "notat.md", "Notat", tekst, "Kart som startside");
+        rettelser::lagre(
+            &conn,
+            &retting(
+                id,
+                tekst,
+                ("gjengivelse", "hold", "Kart som startside"),
+                // Samme plass som lesningen selv ga linja: hun flyttet den ikke.
+                "idé",
+                "Kundens ønske om kart først",
+            ),
+        )
+        .unwrap();
+
+        let ut = eksempler(&conn, ANTALL_EKSEMPLER).unwrap();
+        assert_eq!(ut.len(), 1);
+        assert_eq!(
+            ut[0].rettet, "gjengivelse|hold|Kundens ønske om kart først",
+            "bare kortformen er rettet, og typen skal stå som lesningen leste den"
+        );
+        assert!(
+            !ut[0].rettet.starts_with("tvil"),
+            "prompten skal ikke lære at hun rettet gjengivelse til tvil"
+        );
+    }
+
+    /// Funn 46. En rettelse som ikke rettet noe lærer ingenting bort, og
+    /// spiste før en av seks plasser i prompten.
+    #[test]
+    fn en_rettelse_uten_endring_er_ikke_et_eksempel() {
+        let mut conn = base();
+        let tekst = "ux og ui må være profesjonell men bestemorvennlig";
+        let id = legg_inn(&mut conn, "notat.md", "Notat", tekst, "Bestemorvennlig grensesnitt");
+        // Et krav står allerede under «Forstått». Flytter hun det dit det er,
+        // er det ikke en rettelse.
+        rettelser::lagre(
+            &conn,
+            &retting(
+                id,
+                tekst,
+                ("begrensning", "hold", "Bestemorvennlig grensesnitt"),
+                "forstått",
+                "Bestemorvennlig grensesnitt",
+            ),
+        )
+        .unwrap();
+        assert!(eksempler(&conn, ANTALL_EKSEMPLER).unwrap().is_empty());
+    }
+
+    /// Funn 19. Hennes egen retting ga en dårligere oppgave enn maskinens:
+    /// linja ble en oppgave i panelet, men kunne aldri finnes av «hva venter
+    /// på noe», fordi avhengigheten ikke ble lagret.
+    #[test]
+    fn hennes_egen_oppgave_finnes_av_hva_venter_på_noe() {
+        let mut conn = base();
+        let tekst = "Fargekorrigeringen kan ikke starte før klippet er låst.";
+        let id = legg_inn(&mut conn, "notat.md", "Notat", tekst, "Fargekorrigering");
+        rettelser::lagre(
+            &conn,
+            &retting(
+                id,
+                tekst,
+                ("observasjon", "ingenting", "Fargekorrigering"),
+                "oppgave",
+                "Starte fargekorrigering ← låst klipp",
+            ),
+        )
+        .unwrap();
+
+        let venter = spør(&conn, "hva venter på noe").unwrap().unwrap();
+        assert_eq!(venter.treff.len(), 1);
+        assert_eq!(venter.treff[0].kortform, "Starte fargekorrigering", "pila hører ikke til i linja");
+        assert_eq!(venter.treff[0].venter.as_deref(), Some("låst klipp"));
+    }
+
+    /// Funn 41. En oppgave hun har krysset av er gjort, og skal verken stå på
+    /// lista over hva som venter eller dukke opp som noe hun har tenkt før.
+    #[test]
+    fn en_ferdig_oppgave_venter_ikke_lenger_på_noe() {
+        let mut conn = base();
+        let tekst = "Vi må få prototypen godkjent før produksjonen kan begynne.";
+        let id = legg_inn(&mut conn, "notat.md", "Notat", tekst, "Starte produksjon");
+        conn.execute("update forstatt set type = 'oppgave', handling = 'ingenting', venter = 'godkjent prototype' where avsnitt_id = ?1", [id]).unwrap();
+        assert_eq!(spør(&conn, "hva venter på noe").unwrap().unwrap().treff.len(), 1);
+
+        rettelser::lagre(
+            &conn,
+            &retting(
+                id,
+                tekst,
+                ("oppgave", "ingenting", "Starte produksjon"),
+                rettelser::FERDIG,
+                "Starte produksjon",
+            ),
+        )
+        .unwrap();
+        assert!(spør(&conn, "hva venter på noe").unwrap().unwrap().treff.is_empty());
+        assert!(
+            eksempler(&conn, ANTALL_EKSEMPLER).unwrap().is_empty(),
+            "«ferdig» er ikke en lesning av avsnittet, og lærer klassifiseringen ingenting"
+        );
+    }
+
+    /// Funn 3 og 4. Skriver hun om avsnittet, gjelder ikke lesningen av den
+    /// gamle teksten lenger. Før sto kortformen, klassen og alle dommene om
+    /// hvordan avsnittet hang sammen med andre igjen — og «Tidligere om dette»
+    /// siterte det avsnittet *pleide* å si, med teksten det sier nå ved siden
+    /// av.
+    #[test]
+    fn et_omskrevet_avsnitt_bærer_ikke_gammel_forståelse() {
+        let mut conn = base();
+        let før = "Depositum blir for høy terskel for de fleste som skal låne noe.";
+        let etter = "Depositum blir for høy terskel for de fleste som skal låne verktøy.";
+        let annen = legg_inn(&mut conn, "annet.md", "Låne-app", "Depositum tar vi likevel.", "Depositum");
+        let id = legg_inn(&mut conn, "notat.md", "Notat", før, "For høy terskel");
+        conn.execute(
+            "insert into relasjoner (avsnitt_id, annen_id, forhold, tidspunkt) values (?1, ?2, 'motsier', 1)",
+            (id, annen),
+        )
+        .unwrap();
+
+        let ider = synk(&mut conn, "notat.md", &[etter.to_string()], &[]).unwrap();
+        assert_eq!(ider[0], id, "en omskriving beholder identiteten");
+
+        let rader: i64 = conn
+            .query_row("select count(*) from forstatt where avsnitt_id = ?1", [id], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rader, 0, "den gamle kortformen skal ikke bli stående");
+        let dommer: i64 = conn
+            .query_row(
+                "select count(*) from relasjoner where avsnitt_id = ?1 or annen_id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(dommer, 0, "og heller ikke dommen over et avsnitt som er skrevet om");
+    }
+
+    /// Funn 6. `IDENTITET.md` skrev opp dette som uløst da samtaleimport ennå
+    /// ikke fantes: «samme setning fra to personer» er to avsnitt, og
+    /// matchingen må avgrenses per avsender.
+    #[test]
+    fn samme_setning_fra_to_personer_bytter_ikke_identitet() {
+        let mut conn = base();
+        let tekster: Vec<String> = ["Marius: Ja, enig.", "Kari: Ja, enig."]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let avsendere = vec![Some("Marius".to_string()), Some("Kari".to_string())];
+        let først = synk(&mut conn, "samtale.md", &tekster, &avsendere).unwrap();
+
+        // Reimport: Marius har rettet en skrivefeil i sitt eget innlegg.
+        let igjen: Vec<String> = ["Marius: Ja, helt enig.", "Kari: Ja, enig."]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let etter = synk(&mut conn, "samtale.md", &igjen, &avsendere).unwrap();
+
+        assert_eq!(etter[1], først[1], "Karis innlegg er uendret og beholder sin id");
+        assert_ne!(
+            etter[0], først[1],
+            "Marius' innlegg skal aldri arve Karis id, uansett hvor likt det er"
+        );
+    }
+
+    /// Funn 12 og 13. Rettelsen er det eneste i systemet brukeren har skrevet
+    /// som ikke kan gjenskapes fra markdown. Kommer teksten tilbake — angret
+    /// sletting, omdøpt notat — skal rettelsen tilbake med den.
+    #[test]
+    fn en_rettelse_finner_tilbake_til_teksten_sin() {
+        let mut conn = base();
+        let tekst = "Kartvisningen skal vise alle prosjekter på et norgeskart.";
+        let id = legg_inn(&mut conn, "notat.md", "Notat", tekst, "Kartvisning");
+        rettelser::lagre(
+            &conn,
+            &retting(id, tekst, ("beslutning", "bygg", "Kartvisning"), "uavklart", "Kartvisning?"),
+        )
+        .unwrap();
+
+        // Hun sletter avsnittet.
+        synk(&mut conn, "notat.md", &["Noe helt annet står her nå.".to_string()], &[]).unwrap();
+        assert!(
+            !rettelser::foreldede(&conn, "notat.md", &tilstede(&conn, "notat.md")).unwrap().is_empty(),
+            "hun skal få beskjed én gang om at rettelsen ikke gjelder lenger"
+        );
+        assert!(rettelser::aktive(&conn, "notat.md").unwrap().is_empty());
+
+        // Og skriver den inn igjen — her under et annet filnavn, som etter en
+        // omdøping.
+        let nye = synk(&mut conn, "notat-2.md", &[tekst.to_string()], &[]).unwrap();
+        let aktive = rettelser::aktive(&conn, "notat-2.md").unwrap();
+        assert_eq!(
+            aktive.get(&nye[0]).map(|r| r.summary.as_str()),
+            Some("Kartvisning?"),
+            "rettelsen hennes skal følge teksten"
+        );
+    }
+
+    /// Funn 13. Et slettet notat sto igjen for alltid, og panelet siterte det.
+    #[test]
+    fn et_slettet_notat_etterlater_ingen_spøkelser() {
+        let mut conn = base();
+        legg_inn(&mut conn, "borte.md", "Borte", "Depositum blir for høy terskel.", "Depositum");
+        legg_inn(&mut conn, "her.md", "Her", "Depositum tar vi likevel, det skremmer ingen.", "Depositum");
+
+        assert_eq!(rydd(&conn, &[]).unwrap(), 0, "en tom liste skal ikke rydde noe");
+        assert_eq!(rydd(&conn, &["her.md".to_string()]).unwrap(), 1);
+
+        let igjen: i64 = conn.query_row("select count(*) from avsnitt", [], |r| r.get(0)).unwrap();
+        assert_eq!(igjen, 1);
+        let forstått: i64 =
+            conn.query_row("select count(*) from forstatt", [], |r| r.get(0)).unwrap();
+        assert_eq!(forstått, 1, "forståelsen om et notat som ikke finnes skal være borte");
+    }
+
+    /// Funn 38. Det eneste hun kunne gjøre med en falsk kobling var å se på
+    /// den.
+    #[test]
+    fn en_avvist_kobling_kommer_ikke_tilbake_for_det_samme_paret() {
+        let mut conn = base();
+        let gammel = legg_inn(
+            &mut conn,
+            "gammelt.md",
+            "Låne-app",
+            "Depositum blir for høy terskel.",
+            "Depositum",
+        );
+        let nytt = med_ider(
+            &mut conn,
+            "nytt.md",
+            vec![p("Depositum på leiebilen ble trukket i går.", "Depositum på leiebil")],
+        );
+        lagre(&conn, "Nytt", &nytt, Some(1_757_000_000)).unwrap();
+
+        let dommer = FakeDommer::new("1|motsier");
+        assert_eq!(tidligere(&conn, &nytt, &dommer).unwrap().len(), 1);
+
+        avvis(&conn, nytt[0].id, gammel, true).unwrap();
+        assert!(
+            tidligere(&conn, &nytt, &dommer).unwrap().is_empty(),
+            "koblingen hun avviste skal være borte"
+        );
+
+        // Også fra det andre notatet. Paret er avvist, ikke retningen.
+        let andre_vei = med_ider(
+            &mut conn,
+            "gammelt.md",
+            vec![Paragraph { id: gammel, ..p("Depositum blir for høy terskel.", "Depositum") }],
+        );
+        assert!(tidligere(&conn, &andre_vei, &dommer).unwrap().is_empty());
+
+        // Og hun har en vei tilbake.
+        avvis(&conn, nytt[0].id, gammel, false).unwrap();
+        assert_eq!(tidligere(&conn, &nytt, &dommer).unwrap().len(), 1);
+
+        // Avviste par legges ved neste dømming som eksempler.
+        avvis(&conn, nytt[0].id, gammel, true).unwrap();
+        let eksempler = avviste(&conn, 3).unwrap();
+        assert_eq!(eksempler.len(), 2, "begge retninger står som avvist");
+        let prompt = relasjonsprompt_med(&[("a".into(), "b".into())], &eksempler);
+        assert!(prompt.contains("ikke hører sammen"));
+        assert!(prompt.contains("Depositum på leiebilen"));
+    }
+
+    /// Funn 17. En avkortet svarstreng eller ett hoppet linjenummer skrev før
+    /// en permanent `urelatert`-rad, og ingenting prøvde igjen.
+    #[test]
+    fn et_par_uten_svar_spørres_om_igjen() {
+        let mut conn = base();
+        legg_inn(&mut conn, "a.md", "Låne-app", "Depositum blir for høy terskel.", "Depositum");
+        let nytt = med_ider(&mut conn, "nytt.md", vec![p("Depositum tar vi likevel.", "Depositum")]);
+
+        // Svaret er avkortet: ingen linje for paret.
+        let tomt = FakeDommer::new("her kommer vurderingen:");
+        assert!(tidligere(&conn, &nytt, &tomt).unwrap().is_empty(), "ingen kobling vises nå");
+        let rader: i64 =
+            conn.query_row("select count(*) from relasjoner", [], |r| r.get(0)).unwrap();
+        assert_eq!(rader, 0, "og ingen dom er felt");
+
+        let igjen = FakeDommer::new("1|motsier");
+        assert_eq!(tidligere(&conn, &nytt, &igjen).unwrap().len(), 1, "paret spørres på nytt");
+    }
+
+    /// Funn 48. A→B og B→A var to rader, dømt av to separate kall som kunne
+    /// lande ulikt: åpnet hun det gamle notatet, kunne det si noe annet om det
+    /// samme paret enn det nye gjorde.
+    #[test]
+    fn det_samme_paret_dømmes_bare_en_gang() {
+        let mut conn = base();
+        let gammel =
+            legg_inn(&mut conn, "a.md", "Låne-app", "Depositum blir for høy terskel.", "Depositum");
+        let nytt = med_ider(&mut conn, "nytt.md", vec![p("Depositum tar vi likevel.", "Depositum")]);
+        lagre(&conn, "Nytt", &nytt, Some(1_757_000_000)).unwrap();
+
+        let dommer = FakeDommer::new("1|motsier");
+        assert_eq!(tidligere(&conn, &nytt, &dommer).unwrap()[0].forhold, "motsier");
+        assert_eq!(dommer.kall.load(Ordering::Relaxed), 1);
+
+        // Det gamle notatet åpnes. Samme par, motsatt vei.
+        let andre_vei = med_ider(
+            &mut conn,
+            "a.md",
+            vec![Paragraph { id: gammel, ..p("Depositum blir for høy terskel.", "Depositum") }],
+        );
+        let ut = tidligere(&conn, &andre_vei, &dommer).unwrap();
+        assert_eq!(ut[0].forhold, "motsier", "det samme paret skal si det samme");
+        assert_eq!(dommer.kall.load(Ordering::Relaxed), 1, "og det skal ikke koste et kall til");
+    }
+
+    /// Funn 47. For et langt avsnitt var det åpningssetningen alene som avgjorde
+    /// hva «Tidligere om dette» kunne finne i det hele tatt.
+    #[test]
+    fn søkeordene_er_de_særegne_ordene_ikke_de_første() {
+        let tekst = "Dette blir kanskje mest sånn tanker rundt hvordan alle sammen \
+                     stiller seg til dette akkurat nå, men uansett: depositumsordningen \
+                     og kartverksintegrasjonen må vurderes.";
+        let ord = søkeord(tekst);
+        assert!(ord.len() <= 12);
+        assert!(ord.contains(&"depositumsordningen".to_string()), "{ord:?}");
+        assert!(ord.contains(&"kartverksintegrasjonen".to_string()), "{ord:?}");
     }
 
     /// Identiteten skal tåle at teksten flytter på seg. Et avsnitt satt inn

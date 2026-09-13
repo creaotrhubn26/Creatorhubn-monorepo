@@ -396,6 +396,15 @@ fn reindex_in(notes: &Path, db_file: &Path) -> Result<String, String> {
     let report =
         index::run_no_embed(&conn, notes)
         .map_err(|e| format!("klarte ikke å gjøre notatene søkbare: {e}"))?;
+
+    // Notater som ikke finnes lenger. `minne::synk` rydder bare i den kilden
+    // den kalles med, og den kalles bare når notatet leses — så et slettet
+    // eller omdøpt notat ble stående, og «Tidligere om dette» siterte det.
+    // Rettelsene hennes blir liggende og finner tilbake om teksten kommer
+    // igjen; det er bare det utledede som ryddes.
+    let mut stier = Vec::new();
+    collect_notes(notes, notes, &mut stier);
+    let _ = minne::rydd(&conn, &stier.iter().map(|n| n.path.clone()).collect::<Vec<_>>());
     Ok(format!(
         "{} filer, {} biter",
         report.files, report.chunks
@@ -576,20 +585,36 @@ fn understand_note(
         }
     }
 
+    let avviste = base
+        .as_ref()
+        .and_then(|c| minne::avviste(c, 3).ok())
+        .unwrap_or_default();
     let cli = if er_samtale {
         understand::Cli::over_samtale(eksempler)
     } else {
         understand::Cli::new(eksempler)
-    };
+    }
+    .med_avviste(avviste);
     let tittel = derive_title(&path, &content);
     // Dagen tanken ble skrevet, ikke dagen den ble klassifisert.
     let skrevet = notes_dir().ok().and_then(|dir| skrevet(&dir, &path, &content));
+
+    // Rettelsene hentes før pakkene, ikke etter. Delresultatene gikk før rett
+    // inn i panelet med `correction: null`, og i de minuttene en lang lesning
+    // står på lå modellens lesning oppå linjene hun allerede hadde rettet.
+    // Rettelsen reverterte synlig, og den naturlige reaksjonen er å rette den
+    // igjen.
+    let mine = base
+        .as_ref()
+        .and_then(|conn| rettelser::aktive(conn, &path).ok())
+        .unwrap_or_default();
 
     // Etter hver pakke: skriv, si ifra, og se om lesningen fortsatt gjelder.
     // Det er dette som gjør delresultatet gyldig — feiler pakke fire, står
     // pakke én til tre allerede i basen.
     let lest = {
         let base = &base;
+        let mine = &mine;
         let biter = &biter;
         let ider = ider.as_deref().unwrap_or(&[]);
         let tittel = &tittel;
@@ -602,9 +627,16 @@ fn understand_note(
             if let Some(conn) = base {
                 let _ = minne::lagre(conn, tittel, &ferske, *skrevet);
             }
+            rettelser::merge(&mut ferske, mine);
             let _ = app.emit(
                 "forstår",
-                understand::Framdrift { lesning: min, lest, totalt, paragraphs: ferske },
+                understand::Framdrift {
+                    lesning: min,
+                    lest,
+                    totalt,
+                    fase: None,
+                    paragraphs: ferske,
+                },
             );
             gjelder_fortsatt()
         };
@@ -630,9 +662,14 @@ fn understand_note(
     };
     understand::sett_ider(&mut avsnitt, &biter, ider.as_deref().unwrap_or(&[]));
     sett_avsendere(&mut avsnitt, er_samtale);
-    // Hukommelsen holdes låst hele veien. Det serialiserer to lagringer som
-    // kommer tett — som er det man vil: den andre finner arbeidet den første
-    // gjorde, i stedet for å betale for det på nytt.
+
+    // Låsen slippes her. Den finnes for å serialisere klassifiseringen — to
+    // lagringer som kommer tett skal dele arbeidet, ikke betale for det to
+    // ganger — og klassifiseringen er ferdig nå. Sammenligningen under bruker
+    // ikke hukommelsen, men tar opptil to modellkall à fem minutter, og holdt
+    // før hele appen i kø bak et notat brukeren for lengst hadde gått bort
+    // fra: hun byttet notat, og panelet sto stille uten forklaring.
+    drop(memo);
 
     // Rettelsene er det beste vi har, men de er ikke verdt å felle panelet
     // for: klarer vi ikke å åpne basen, står linjene der som systemet leste
@@ -644,6 +681,18 @@ fn understand_note(
         // Kryssnotat-minnet koster egne modellkall. Er lesningen forlatt, er
         // det arbeid for et notat brukeren har gått bort fra.
         if gjelder_fortsatt() {
+            // Panelet så ferdig ut her, og var det ikke: to modellkall står
+            // igjen, og «Tidligere om dette» er tom til de svarer.
+            let _ = app.emit(
+                "forstår",
+                understand::Framdrift {
+                    lesning: min,
+                    lest: 0,
+                    totalt: 0,
+                    fase: Some(understand::SAMMENLIGNER.to_string()),
+                    paragraphs: Vec::new(),
+                },
+            );
             tidligere = minne::tidligere(conn, &avsnitt, &cli).unwrap_or_default();
         }
 
@@ -663,10 +712,38 @@ fn understand_note(
         }
     }
 
+    // Avsnitt uten linje. Et avsnitt modellen ikke svarte for, og et avsnitt
+    // som lå i en pakke som feilet, ser begge ut som et avsnitt uten innhold.
+    // Tallet er det eneste som skiller «vi leste dette og fant ingenting» fra
+    // «vi klarte ikke å lese det».
+    let uleste = biter.len().saturating_sub(avsnitt.len());
+
     let mut ut = understand::Understanding::on(avsnitt, lest_på_nytt);
     ut.earlier = tidligere;
     ut.lesning = min;
+    ut.uleste = uleste;
     Ok(ut)
+}
+
+/// Brukerens egen dom over en kobling: disse to hører ikke sammen.
+///
+/// Det eneste hun kunne gjøre med en falsk kobling før var å se på den.
+/// `RELASJONER.md` sier rett ut at ti falske koblinger etter hverandre gjør at
+/// hun slutter å lese seksjonen, og at funksjonen da er verre enn ingenting.
+///
+/// `avvist: false` tar dommen tilbake, og paret dømmes på nytt.
+#[tauri::command]
+fn avvis_kobling(gjelder: i64, annen_hash: String, sti: String, avvist: bool) -> Result<(), String> {
+    let conn = base()?;
+    let annen: i64 = conn
+        .query_row(
+            "select id from avsnitt where kilde = ?1 and innhold_hash = ?2",
+            (&sti, &annen_hash),
+            |r| r.get(0),
+        )
+        .map_err(|_| "fant ikke avsnittet koblingen peker på".to_string())?;
+    minne::avvis(&conn, gjelder, annen, avvist)
+        .map_err(|e| format!("kunne ikke lagre valget: {e}"))
 }
 
 /// Hvem som sa hva, satt på linjene panelet får. Avsenderen leses ut av
@@ -755,7 +832,10 @@ fn base() -> Result<rusqlite::Connection, String> {
 #[tauri::command]
 fn rett_avsnitt(retting: rettelser::Retting) -> Result<(), String> {
     if let Some(plass) = retting.plass.as_deref() {
-        if !rettelser::PLASSER.contains(&plass) && plass != rettelser::FJERNET {
+        if !rettelser::PLASSER.contains(&plass)
+            && plass != rettelser::FJERNET
+            && plass != rettelser::FERDIG
+        {
             return Err(format!("ukjent plass: {plass}"));
         }
     }
@@ -814,6 +894,7 @@ pub fn run() {
             rett_avsnitt,
             spor_notater,
             finn_avsnitt,
+            avvis_kobling,
             importer_samtale,
             samtaleform,
             sett_samtale,
@@ -989,6 +1070,8 @@ mod tests {
             action: "bygg".into(),
             avsender: None,
             dependency: None,
+            lest: 0,
+            modell: understand::MODEL.to_string(),
             correction: None,
         }];
         let les = |conn: &rusqlite::Connection| -> i64 {
@@ -1166,6 +1249,8 @@ mod tests {
                 action: "marker_åpent".into(),
                 dependency: None,
                 correction: None,
+                lest: 0,
+                modell: understand::MODEL.to_string(),
             }];
             minne::lagre(&conn, "Låne-app", &avsnitt, Some(1_757_000_000)).unwrap();
         }
