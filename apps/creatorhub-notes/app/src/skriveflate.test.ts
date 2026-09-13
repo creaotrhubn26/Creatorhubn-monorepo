@@ -267,6 +267,21 @@ test("appen får bytte hele teksten, toppfeltet med", () => {
   expect(f.tekst).toBe("---\nid: annet\n---\n\nAnnet notat.\n");
 });
 
+test("et notat som begynner med en vannrett strek kollapser ikke", () => {
+  // Før holdt det at linje 1 var `---` og at det sto en `---` lenger nede.
+  // Alt imellom ble skjult som en atomisk blokk: innholdet lå på disk, men
+  // kunne verken ses, redigeres eller markeres.
+  const doc = "---\n\nEn tanke jeg begynte notatet med.\n\n---\n\nOg en til.\n";
+  const f = åpnet(doc);
+
+  f.kjør(selectAll);
+  expect(f.valg.from, "ingenting skal være vernet her").toBe(0);
+  expect(f.valg.to).toBe(doc.length);
+  // Og teksten skal være til å redigere som all annen tekst.
+  f.endre({ changes: { from: 0, to: 3, insert: "***" } });
+  expect(f.tekst.startsWith("***")).toBe(true);
+});
+
 // ---- klikk under siste linje ---------------------------------------------
 
 test("luften under og ved siden av teksten ligger på skriveflaten, ikke scrolleren", () => {

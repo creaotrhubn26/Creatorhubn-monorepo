@@ -226,12 +226,34 @@ const skjultBlokk = Decoration.replace({ block: true });
 /// ingenting fjernes fra dokumentet, det er bare visningen som hopper over
 /// den, så markør, angre og lagring peker fortsatt på riktig sted.
 function toppfeltSlutt(doc: EditorState["doc"]): number | null {
+  const n = toppfeltEnde(doc);
+  if (n === null) return null;
+  let m = n;
+  while (m < doc.lines && doc.line(m + 1).text.trim() === "") m++;
+  return doc.line(m).to;
+}
+
+/// Ser linja ut som et toppfelt — `navn: verdi`?
+///
+/// Uten dette holdt det at linje 1 var `---` og at det sto en `---` lenger
+/// nede. Et notat som *begynner* med en vannrett strek, eller som har to av
+/// dem i teksten, fikk alt imellom skjult som en atomisk blokk: innholdet var
+/// på disk, men kunne verken ses, redigeres eller markeres i appen.
+const toppfeltlinje = /^[A-Za-zÆØÅæøå_][\w æøåÆØÅ-]*:/;
+
+/// Linjenummeret til den avsluttende `---`, eller `null` når notatet ikke har
+/// en toppfeltblokk. Den ene stedet i skriveflaten som avgjør hva en
+/// toppfeltblokk *er*; alt annet her spør denne.
+function toppfeltEnde(doc: EditorState["doc"]): number | null {
   if (doc.lines < 2 || doc.line(1).text.trim() !== "---") return null;
-  let n = 2;
-  while (n <= doc.lines && doc.line(n).text.trim() !== "---") n++;
-  if (n > doc.lines) return null; // uavsluttet blokk: skjul heller ingenting
-  while (n < doc.lines && doc.line(n + 1).text.trim() === "") n++;
-  return doc.line(n).to;
+  for (let n = 2; n <= doc.lines; n++) {
+    const tekst = doc.line(n).text.trim();
+    if (tekst === "---") return n;
+    // Én linje som ikke er et felt, og dette er ikke bokføring — det er
+    // teksten hennes mellom to streker.
+    if (tekst !== "" && !toppfeltlinje.test(tekst)) return null;
+  }
+  return null; // uavsluttet blokk: skjul heller ingenting
 }
 
 /// Merkene som bare er instruks til markdown, ikke tekst: `#`, `**`, `_`, `~~`.
@@ -405,13 +427,12 @@ const skjulMerker = ViewPlugin.fromClass(
 /// notatet ikke har en toppfeltblokk eller allerede sier hva kilden er.
 /// Posisjonen er starten på den avsluttende `---`-linja.
 function kildeplass(doc: EditorState["doc"]): number | null {
-  if (doc.lines < 2 || doc.line(1).text.trim() !== "---") return null;
-  for (let n = 2; n <= doc.lines; n++) {
-    const linje = doc.line(n);
-    if (linje.text.trim() === "---") return linje.from;
-    if (linje.text.split(":")[0]?.trim() === "kilde") return null;
+  const ende = toppfeltEnde(doc);
+  if (ende === null) return null;
+  for (let n = 2; n < ende; n++) {
+    if (doc.line(n).text.split(":")[0]?.trim() === "kilde") return null;
   }
-  return null; // uavsluttet blokk: rør den ikke
+  return doc.line(ende).from;
 }
 
 /// Har notatet noe i seg fra før, utenom toppfeltet og overskriften?
@@ -423,12 +444,8 @@ function kildeplass(doc: EditorState["doc"]): number | null {
 /// som de skal, men notatet er fortsatt et notat. Vil hun ha hele fila lest
 /// som en samtale, sier hun det selv med bryteren over skriveflaten.
 export function harInnhold(doc: EditorState["doc"], fra: number, til: number): boolean {
-  let n = 1;
-  if (doc.lines >= 2 && doc.line(1).text.trim() === "---") {
-    for (n = 2; n <= doc.lines && doc.line(n).text.trim() !== "---"; n++);
-    n += 1;
-  }
-  for (; n <= doc.lines; n++) {
+  const ende = toppfeltEnde(doc);
+  for (let n = ende === null ? 1 : ende + 1; n <= doc.lines; n++) {
     const linje = doc.line(n);
     // Det markøren står i skal erstattes, og teller ikke som innhold.
     if (linje.from >= fra && linje.to <= til) continue;

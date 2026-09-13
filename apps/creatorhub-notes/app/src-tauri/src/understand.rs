@@ -427,11 +427,34 @@ pub(crate) fn frontmatter_lines(doc: &str) -> usize {
         return 0;
     }
     for (i, line) in lines.enumerate() {
-        if line.trim() == "---" {
+        let linje = line.trim();
+        if linje == "---" {
             return i + 2;
+        }
+        // Én linje som ikke er `navn: verdi`, og dette er ikke bokføring — det
+        // er teksten hennes mellom to vannrette streker. Uten denne ble
+        // begynnelsen av et notat som *starter* med en strek hoppet over i
+        // lesningen, og skjult i skriveflaten. Samme regel begge steder, se
+        // `toppfeltEnde` i `Editor.tsx`.
+        if !linje.is_empty() && !er_felt(linje) {
+            return 0;
         }
     }
     0 // uavsluttet blokk: heller lese for mye enn å stryke hele notatet
+}
+
+/// `navn: verdi`. Navnet er bokstaver, tall, understrek og bindestrek — det
+/// er alt toppfeltene i denne appen noen gang bruker.
+fn er_felt(linje: &str) -> bool {
+    let Some((navn, _)) = linje.split_once(':') else {
+        return false;
+    };
+    let navn = navn.trim_end();
+    !navn.is_empty()
+        && navn.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_')
+        && navn
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == ' ')
 }
 
 /// Overskrifter er struktur, ikke påstander, og et helt ferskt notat har bare
@@ -1366,6 +1389,24 @@ mod tests {
         let biter = split(doc);
         assert_eq!(biter.len(), 1);
         assert_eq!(biter[0].text, "En ekte tanke.");
+    }
+
+    /// Et notat som *begynner* med en vannrett strek er ikke bokføring. Før
+    /// holdt det at linje 1 var `---` og at det sto en `---` lenger nede: alt
+    /// imellom ble hoppet over i lesningen, og skjult i skriveflaten.
+    #[test]
+    fn en_vannrett_strek_er_ikke_et_toppfelt() {
+        let doc = "---\n\nEn tanke jeg begynte notatet med.\n\n---\n\nOg en til.\n";
+        assert_eq!(frontmatter_lines(doc), 0);
+        let tekster: Vec<String> = split(doc).into_iter().map(|c| c.text).collect();
+        assert!(
+            tekster.contains(&"En tanke jeg begynte notatet med.".to_string()),
+            "begge tankene skal leses, fikk: {tekster:?}"
+        );
+        assert!(tekster.contains(&"Og en til.".to_string()));
+
+        // Og en ekte blokk skal fortsatt hoppes over.
+        assert_eq!(frontmatter_lines("---\nid: x\nprivat: ja\n---\n\nTekst.\n"), 4);
     }
 
     // ---- pakkevis klassifisering ---------------------------------------
