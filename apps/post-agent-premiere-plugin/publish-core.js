@@ -150,6 +150,9 @@ function publishErrorMessage(error) {
   if (code === "storage_not_configured") {
     return "Privat objektlagring er ikke tilgjengelig akkurat nå. Eksportfilen er beholdt lokalt og kan sendes videre uten ny eksport.";
   }
+  if (code === "uxp_chunk_read_unavailable") {
+    return "Denne Premiere-versjonen kan ikke lese store eksportfiler i biter. Bruk et H.264-reviewpreset på høyst 512 MiB, eller last opp den ferdige filen fra Video Room; eksportfilen er beholdt lokalt.";
+  }
   return message;
 }
 

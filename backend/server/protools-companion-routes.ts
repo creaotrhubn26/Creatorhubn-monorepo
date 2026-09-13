@@ -1351,6 +1351,8 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
       }
       ticket ||= await initiateSoundRoomUpload(pool, {
         userId: d.userId,
+        organizationId: sess.organization_id || null,
+        workspaceProjectId: sess.workspace_project_id || null,
         projectId: reviewId,
         fileName,
         sizeBytes,

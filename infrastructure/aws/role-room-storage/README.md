@@ -48,12 +48,9 @@ streaming the object to S3 and stores only S3 metadata in
 `casting_production_continuity_media`. Reads require current project access and
 return a signed URL lasting at most ten minutes.
 
-The bucket CORS rule accepts non-credentialed `GET`, `HEAD`, and `PUT` from any
-origin because Premiere UXP owns its runtime origin and it can differ between
-development and packaged panels. This does not make objects public: every
-request still needs a short-lived, operation- and object-scoped SigV4 URL from
-the authenticated backend. The rule exposes only the response headers needed
-to verify multipart uploads.
+The bucket CORS rule is restricted to The Role Room's own web origins. Sound
+Room, Video Room and Adobe integrations use the separate CreatorHub storage
+boundary documented under `infrastructure/aws/creatorhubn-storage`.
 
 ## Provisioning checklist
 
@@ -81,8 +78,6 @@ redeploy so Render can inject its rotating token file, and run:
 node scripts/deploy/render-backend.mjs assert-role-room-storage-runtime
 ```
 
-The attached runtime policy preserves every production Role Room namespace and
-must include both `organizations/*` and `users/*`. The latter is the canonical
-prefix for personal Sound Room and Video Room objects. Multipart video uploads
-also require `s3:AbortMultipartUpload` and `s3:ListMultipartUploadParts` in
-addition to the existing private object operations.
+The attached runtime policy preserves every existing production Role Room
+namespace, including legacy `users/*` objects. CreatorHub media must never be
+written here.

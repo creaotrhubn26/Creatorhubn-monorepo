@@ -1,20 +1,37 @@
-import crypto from "node:crypto";
+import { storageSegment } from "./creatorhub-storage-key.js";
 
 function safeExtension(fileName: string): string {
   return fileName.toLowerCase().match(/\.([a-z0-9]{1,8})$/)?.[1] || "bin";
 }
 
-function userKeySegment(userId: string): string {
-  return crypto.createHash("sha256").update(userId).digest("hex").slice(0, 32);
-}
-
 export function buildSoundRoomObjectKey(
-  userId: string,
-  projectId: string,
-  objectId: string,
-  fileName: string,
+  input: {
+    organizationId?: string | null;
+    userId: string;
+    workspaceProjectId?: string | null;
+    projectId: string;
+    sessionId?: string | null;
+    channel: "browser" | "protools" | "migration";
+    objectId: string;
+    fileName: string;
+  },
 ): string {
-  return `users/${userKeySegment(userId)}/sound-room/${projectId}/${objectId}/original.${safeExtension(fileName)}`;
+  const user = storageSegment(input.userId, "unknown-user");
+  const organization = storageSegment(input.organizationId, `personal-${user}`);
+  const common = [
+    "organizations",
+    organization,
+    "users",
+    user,
+    "projects",
+    storageSegment(input.workspaceProjectId, "unassigned"),
+    "sound-room",
+    storageSegment(input.projectId, "unlinked"),
+  ];
+  const source = input.channel === "protools"
+    ? ["protools", "sessions", storageSegment(input.sessionId, "unknown-session"), "bounces"]
+    : [input.channel, "uploads"];
+  return [...common, ...source, storageSegment(input.objectId, "object"), `original.${safeExtension(input.fileName)}`].join("/");
 }
 
 export function validatedSoundRoomRange(value: unknown): string | null | false {

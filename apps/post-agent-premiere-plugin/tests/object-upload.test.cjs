@@ -47,6 +47,18 @@ test("hashes a native export incrementally without loading it through File.read"
   assert.ok(progress.length >= 2);
 });
 
+test("hashes through UXP File.read when Premiere exposes but does not implement fs.open", async () => {
+  const bytes = new Uint8Array([3, 1, 4, 1, 5, 9]);
+  const checksum = await hashFileSha256({
+    nativePath: "/tmp/review.mp4",
+    sizeBytes: bytes.length,
+    fsApi: { open: async () => { throw new Error("Unimplemented method: open"); }, read: async () => null },
+    file: { isFile: true, read: async () => bytes.buffer.slice(0) },
+    binaryFormat: Symbol("binary"),
+  });
+  assert.equal(checksum, sha256Hex(bytes));
+});
+
 test("uploads and completes a checksum-verified single S3 object", async () => {
   const bytes = new Uint8Array([1, 2, 3, 4]);
   const checksumSha256 = sha256Hex(bytes);
@@ -74,6 +86,46 @@ test("uploads and completes a checksum-verified single S3 object", async () => {
   assert.equal(calls[0].init.method, "PUT");
   assert.equal(calls[0].init.body.byteLength, bytes.length);
   assert.deepEqual(completed, []);
+});
+
+test("uploads S3 multipart through the real Premiere 26.5 File.read compatibility path", async () => {
+  const partSize = 5 * 1024 * 1024;
+  const bytes = new Uint8Array(partSize + 2).fill(8);
+  bytes[partSize] = 0;
+  bytes[partSize + 1] = 9;
+  let completed = null;
+  const uploads = [];
+  await uploadFileObjectStorage({
+    ticket: {
+      objectId: "object-uxp",
+      versionId: "version-uxp",
+      protocol: "s3-multipart",
+      partSize,
+      partCount: 2,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    },
+    nativePath: "/tmp/review.mp4",
+    sizeBytes: bytes.length,
+    checksumSha256: sha256Hex(bytes),
+    fsApi: { open: async () => { throw new Error("Unimplemented method: open"); }, read: async () => null },
+    file: { isFile: true, read: async () => bytes.buffer.slice(0) },
+    binaryFormat: Symbol("binary"),
+    status: async () => ({ uploadedParts: [] }),
+    signParts: async ([part]) => ({ parts: [{
+      partNumber: part.partNumber,
+      uploadUrl: `https://bucket.s3.eu-north-1.amazonaws.com/key?partNumber=${part.partNumber}`,
+      requiredHeaders: { "x-amz-checksum-sha256": "opaque" },
+    }] }),
+    fetchImpl: async (_url, init) => {
+      uploads.push(new Uint8Array(init.body));
+      return putResponse(`"etag-${uploads.length}"`);
+    },
+    complete: async (parts) => { completed = parts; },
+  });
+
+  assert.equal(uploads[0].byteLength, partSize);
+  assert.deepEqual(uploads[1], new Uint8Array([0, 9]));
+  assert.equal(completed.length, 2);
 });
 
 test("resumes multipart from verified remote parts and uploads only missing data", async () => {

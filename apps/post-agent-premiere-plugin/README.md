@@ -43,7 +43,8 @@ as the browser Video Room. The panel supports:
   drawing, sharing, version upload and destructive administration.
 - native sequence export with an editor-selected `.epr` preset and automatic
   selection between resumable Cloudflare Stream and checksum-verified private
-  S3 multipart upload, plus permanent sequence/version binding;
+  multipart upload in the CreatorHub S3 bucket, plus permanent
+  sequence/version binding;
 - optional review-round creation and multi-approver setup as part of the same
   “send to review” operation;
 - crash/restart recovery using UXP persistent file tokens and the storage
@@ -69,11 +70,20 @@ The production calls are limited to Adobe's documented Premiere 25.6 surface:
   `getExportFileExtension()`](https://developer.adobe.com/premiere-pro/uxp/ppro-reference/classes/encodermanager/)
 - [UXP persistent file tokens and local file/folder
   pickers](https://developer.adobe.com/premiere-pro/uxp/uxp-api/reference-js/modules/uxp/persistent-file-storage/file-system-provider/)
-- [UXP chunked `fs.read()`](https://developer.adobe.com/premiere-pro/uxp/uxp-api/reference-js/modules/fs/fs/)
+- [UXP `File.read()` on picker-authorized entries](https://developer.adobe.com/premiere-pro/uxp/uxp-api/reference-js/modules/uxp/persistent-file-storage/file/)
+- [UXP descriptor-based `fs.open()` / `fs.read()`](https://developer.adobe.com/premiere-pro/uxp/uxp-api/reference-js/modules/fs/fs/),
+  retained as the preferred large-file path when the host implements it
 
 All `Action` objects are created and consumed synchronously inside nested
 `lockedAccess()` / `executeTransaction()` callbacks, matching Adobe's undo and
 state-consistency requirements.
+
+Premiere 26.5 exposes the documented descriptor methods but currently returns
+`Unimplemented method: open` in the real host. Version 0.3.3 therefore falls
+back to the picker-authorized `File.read()` API for review proxies up to 512
+MiB. Larger exports fail before being buffered and remain available locally for
+browser upload; the plugin does not risk loading a camera master into Premiere's
+UXP heap.
 
 ## Marker sync behavior
 

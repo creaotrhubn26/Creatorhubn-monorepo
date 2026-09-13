@@ -3,11 +3,17 @@ import { buildSoundRoomObjectKey, extractLegacyB2Key, validatedSoundRoomRange } 
 
 describe("Sound Room storage identity and legacy B2 migration", () => {
   it("maps browser and Pro Tools files into the same private object hierarchy", () => {
-    const first = buildSoundRoomObjectKey("user@example.test", "project-1", "object-1", "Mix.WAV");
-    const second = buildSoundRoomObjectKey("user@example.test", "project-1", "object-2", "Bounce.wav");
-    expect(first).toMatch(/^users\/[a-f0-9]{32}\/sound-room\/project-1\/object-1\/original\.wav$/);
-    expect(second.replace("object-2", "object-1")).toBe(first);
-    expect(first).not.toContain("user@example.test");
+    const first = buildSoundRoomObjectKey({
+      organizationId: "org-1", userId: "user-1", workspaceProjectId: "workspace-1",
+      projectId: "audio-room-1", sessionId: "session-1", channel: "protools",
+      objectId: "object-1", fileName: "Mix.WAV",
+    });
+    const second = buildSoundRoomObjectKey({
+      organizationId: "org-1", userId: "user-1", workspaceProjectId: "workspace-1",
+      projectId: "audio-room-1", channel: "browser", objectId: "object-2", fileName: "Bounce.wav",
+    });
+    expect(first).toBe("organizations/org-1/users/user-1/projects/workspace-1/sound-room/audio-room-1/protools/sessions/session-1/bounces/object-1/original.wav");
+    expect(second).toBe("organizations/org-1/users/user-1/projects/workspace-1/sound-room/audio-room-1/browser/uploads/object-2/original.wav");
   });
 
   it("accepts supported B2 object URLs and rejects arbitrary import URLs", () => {

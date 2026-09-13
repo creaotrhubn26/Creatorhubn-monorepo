@@ -1047,6 +1047,8 @@ async function uploadCheckpointFile(checkpoint, file) {
       nativePath: file.nativePath,
       sizeBytes: checkpoint.sizeBytes,
       fsApi: fs,
+      file,
+      binaryFormat: storage.formats.binary,
       fetchImpl: fetch,
       onProgress: progress,
     })
@@ -1056,6 +1058,8 @@ async function uploadCheckpointFile(checkpoint, file) {
       sizeBytes: checkpoint.sizeBytes,
       checksumSha256: checkpoint.checksumSha256,
       fsApi: fs,
+      file,
+      binaryFormat: storage.formats.binary,
       fetchImpl: fetch,
       onProgress: progress,
       status: () => api.fetchVideoVersionObjectStatus(token, checkpoint.projectId, checkpoint.ticket.versionId),
@@ -1187,6 +1191,8 @@ async function continuePublishCheckpoint() {
       nativePath: file.nativePath,
       sizeBytes: checkpoint.sizeBytes,
       fsApi: fs,
+      file,
+      binaryFormat: storage.formats.binary,
       onProgress: ({ percent }) => setPublishProgress(percent, `Kontrollerer eksportfil · ${percent}%`),
     });
     checkpoint.stage = "provisioning";

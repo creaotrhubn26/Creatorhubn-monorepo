@@ -32,10 +32,10 @@ import { signAssetReadUrl, deleteCaptureObjects } from "./capture-upload-service
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { deleteFromRoleRoomB2 } from "./b2-archive-helper";
 import { createDirectStreamTusUpload, deleteStreamVideo, getStreamVideoStatus, importStreamFromUrl, isStreamEnabled, signStreamPlaybackUrl, signStreamThumbnailUrl, uploadToStream } from "./cloudflare-stream-service";
-import { presignRoleRoomObjectDownload } from "./role-room-object-storage";
+import { presignCreatorHubObjectDownload } from "./creatorhub-object-storage";
 import {
   completeVideoRoomUpload,
-  deleteRoleRoomMediaObject,
+  deleteCreatorHubMediaObject,
   getVideoRoomUploadStatus,
   initiateVideoRoomUpload,
   resumeVideoRoomUpload,
@@ -4048,7 +4048,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const mediaReady = cloudflareReady || objectReady;
     const streamUrl = v.stream_uid && cloudflareReady ? await signStreamPlaybackUrl(v.stream_uid, ttl).catch(() => null) : null;
     const objectUrl = objectReady
-      ? await presignRoleRoomObjectDownload(storageReference.objectKey, undefined, ttl).catch(() => null)
+      ? await presignCreatorHubObjectDownload(storageReference.objectKey, undefined, ttl).catch(() => null)
       : null;
     const signedThumb = v.stream_uid && cloudflareReady ? await signStreamThumbnailUrl(v.stream_uid, ttl).catch(() => null) : null;
     return {
@@ -4215,7 +4215,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         LEFT JOIN role_room_storage_objects stored ON stored.id=version.storage_object_id
         LEFT JOIN role_room_storage_accounts storage_account ON storage_account.id=stored.storage_account_id
             WHERE project.id=$1 LIMIT 1`
-        : `SELECT project.user_id AS storage_owner_user_id
+        : `SELECT project.user_id AS storage_owner_user_id,
+                  NULL::text AS storage_organization_id
              FROM projects project WHERE project.id=$1 LIMIT 1`,
       versionId ? [projectId, versionId] : [projectId],
     ).catch(() => ({ rows: [] }));
@@ -4266,6 +4267,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     if (!storageOwnerUserId) throw new Error("storage_owner_not_found");
     const ticket = await initiateVideoRoomUpload(pool, {
       userId: storageOwnerUserId,
+      organizationId: context?.storage_organization_id || null,
       createdByUserId: input.actorUserId,
       projectId: input.projectId,
       fileName: input.fileName,
@@ -4302,7 +4304,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         expiresAt: new Date(Date.now() + ticket.expiresInSeconds * 1000).toISOString(),
       };
     } catch (error) {
-      await deleteRoleRoomMediaObject(pool, ticket.objectId, storageOwnerUserId).catch(() => undefined);
+      await deleteCreatorHubMediaObject(pool, ticket.objectId, storageOwnerUserId).catch(() => undefined);
       throw error;
     }
   };
@@ -4744,7 +4746,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (found.rows[0].b2_key) await deleteFromRoleRoomB2(found.rows[0].b2_key);
       if (found.rows[0].stream_uid) await deleteStreamVideo(found.rows[0].stream_uid);
       if (found.rows[0].storage_object_id && found.rows[0].storage_owner_user_id) {
-        await deleteRoleRoomMediaObject(
+        await deleteCreatorHubMediaObject(
           pool,
           String(found.rows[0].storage_object_id),
           String(found.rows[0].storage_owner_user_id),
@@ -4768,7 +4770,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const v = row.rows[0];
     const downloadName = `${slugifyForKey(v.version_label || "video")}.mp4`;
     const url = v.storage_object_key
-      ? await presignRoleRoomObjectDownload(v.storage_object_key, downloadName, 300)
+      ? await presignCreatorHubObjectDownload(v.storage_object_key, downloadName, 300)
       : v.b2_key ? await presignRoleRoomB2Download(v.b2_key, downloadName, 300) : v.file_url;
     if (!url) return res.status(503).json({ error: "download_unavailable" });
     if (req.query.format === "json") return res.json({ url });
@@ -4917,7 +4919,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     if (!row.rows.length) return res.status(404).json({ error: "not_found" });
     const v = row.rows[0]; const downloadName = `${slugifyForKey(v.version_label || "video")}.mp4`;
     const url = v.storage_object_key
-      ? await presignRoleRoomObjectDownload(v.storage_object_key, downloadName, 300)
+      ? await presignCreatorHubObjectDownload(v.storage_object_key, downloadName, 300)
       : v.b2_key ? await presignRoleRoomB2Download(v.b2_key, downloadName, 300) : v.file_url;
     if (!url) return res.status(503).json({ error: "download_unavailable" });
     if (req.query.format === "json") return res.json({ url });
