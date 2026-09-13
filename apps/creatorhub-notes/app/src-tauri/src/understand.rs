@@ -22,8 +22,16 @@
 //! basen, av som standard), og et notat med `privat: ja` i toppfeltet sendes
 //! aldri, uansett hva den globale bryteren står på.
 //!
-//! Ett kall tar rundt tretten sekunder, det meste oppstart, og det er grunnen
-//! til at hukommelsen og bunkingen ikke er valgfrie.
+//! **Hva et kall koster.** Målt 13. september 2026, se [`AVSNITT_PER_PAKKE`]:
+//! 13 til 78 sekunder for ett kall, og spredningen er større enn forskjellen
+//! mellom pakkestørrelsene — nesten alt er oppstart. Her sto det før «rundt
+//! tretten sekunder», altså den beste av de målingene, tre linjer over en
+//! [`TIMEOUT`] satt for de 78. To runders tall side om side i samme fil er
+//! ikke kosmetikk: 13 er tallet man planlegger grensesnittet etter, og 78 er
+//! det brukeren venter. Det er 78 som gjelder, og det er derfor panelet sier
+//! ifra når det første svaret drøyer.
+//!
+//! Det er også grunnen til at hukommelsen og bunkingen ikke er valgfrie.
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -621,10 +629,23 @@ pub fn understand(
 
     let totalt = ukjente.len();
     if totalt > 0 {
-        // ponytail: tømmes helt når den blir stor. En LRU er riktig svar først
-        // om noen faktisk har titusenvis av avsnitt åpne i én økt.
+        // Hukommelsen trimmes til dette dokumentet når den blir stor.
+        //
+        // Den tømte seg helt før, og det var feil sted å gjøre det:
+        // `understand_note` fyller memoen fra `minne::kjente` rett før dette
+        // kallet, og `ukjente` er alt regnet ut. Ett nytt avsnitt i en økt der
+        // 4000+ er lest tømte dermed kartet umiddelbart etter at det ble
+        // fylt — ingenting ble reklassifisert, men sluttfiltreringen under og
+        // `nye()` slo opp i et tomt kart, og panelet falt fra tusenvis av
+        // linjer til én. Neste lagring hentet dem tilbake. Panelet blinket
+        // fram og tilbake mens hun skrev.
+        //
+        // ponytail: taket er «ett dokument», ikke en LRU. En LRU er riktig
+        // svar først om to notater i samme økt deler nok avsnitt til at det
+        // koster kall å ha glemt dem — og da er de i basen uansett.
         if memo.len() > 4000 {
-            memo.clear();
+            let brukes: std::collections::HashSet<u64> = keys.iter().copied().collect();
+            memo.retain(|k, _| brukes.contains(k));
         }
         let tekster: Vec<String> = ukjente.iter().map(|i| chunks[*i].text.clone()).collect();
         let mut sendt = vec![false; chunks.len()];
@@ -1123,6 +1144,33 @@ mod tests {
         let igjen = les(doc, &fake, &mut memo).unwrap();
         assert_eq!(fake.calls.load(Ordering::Relaxed), 1, "ingenting er endret");
         assert_eq!(igjen.len(), 2);
+    }
+
+    /// Hukommelsen tømte seg helt når den ble stor — rett etter at
+    /// `understand_note` hadde fylt den fra basen. Ett nytt avsnitt i en økt
+    /// der 4000+ var lest, og panelet falt fra tusenvis av linjer til én.
+    /// Neste lagring hentet dem tilbake, så det blinket fram og tilbake mens
+    /// hun skrev.
+    #[test]
+    fn en_ny_setning_tar_ikke_resten_av_panelet_med_seg() {
+        let avsnitt: Vec<String> = (0..4100).map(|i| format!("Tanke nummer {i}.")).collect();
+        let doc = avsnitt.join("\n\n");
+        let fake = Fake::new();
+        let mut memo = Memo::new();
+        let alle = les(&doc, &fake, &mut memo).unwrap();
+        assert_eq!(alle.len(), 4100);
+        assert!(memo.len() > 4000, "forutsetningen for feilen");
+
+        // Hun skriver én setning til.
+        let mer = format!("{doc}\n\nOg en helt ny setning.");
+        let etter = les(&mer, &fake, &mut memo).unwrap();
+
+        assert_eq!(etter.len(), 4101, "de gamle linjene skal fortsatt stå i panelet");
+        assert_eq!(
+            fake.last(),
+            vec!["Og en helt ny setning.".to_string()],
+            "og bare den nye setningen skal ha kostet et kall"
+        );
     }
 
     #[test]

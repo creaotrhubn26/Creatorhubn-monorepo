@@ -779,7 +779,9 @@ fn understand_note(
                     paragraphs: Vec::new(),
                 },
             );
-            tidligere = minne::tidligere(conn, &avsnitt, &cli).unwrap_or_default();
+            tidligere =
+                minne::tidligere(conn, &avsnitt, synlig.map(|s| (s[0], s[1])), &cli)
+                    .unwrap_or_default();
         }
 
         // Avsnittene i teksten, ikke linjene i panelet: en linje kan mangle

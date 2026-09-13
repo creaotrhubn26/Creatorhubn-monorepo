@@ -96,6 +96,11 @@ create table if not exists relasjoner (
   avvist     integer not null default 0,
   primary key (avsnitt_id, annen_id)
 );
+-- Opprydding og omskriving spør alltid begge veier:
+-- `where avsnitt_id = ? or annen_id = ?`. Primærnøkkelen dekker den første
+-- kolonnen; uten denne var hver sletting en full tabellskanning, og å skrive
+-- om en stor samtale ble O(fjernede × relasjoner).
+create index if not exists relasjoner_annen on relasjoner(annen_id);
 "#;
 
 /// Kolonner som kom til etter at skjemaet først ble skrevet. `create table if
@@ -323,19 +328,39 @@ pub fn rydd(conn: &Connection, stier: &[String]) -> Result<usize> {
     if stier.is_empty() {
         return Ok(0);
     }
-    let plasser = vec!["?"; stier.len()].join(",");
+    // Én skanning, ingen plassholdere. Spørringen var en `not in (…)` med én
+    // parameter per notat: over SQLITE_MAX_VARIABLE_NUMBER (32 766) hadde den
+    // feilet, og under den ble en prepared statement på tusen plassholdere
+    // kompilert på nytt ved hver eneste indeksering. `kilde` er én kolonne, og
+    // å sammenligne mot et sett i Rust er billigere enn å be SQLite om det.
+    let kjente: HashSet<&str> = stier.iter().map(String::as_str).collect();
     let borte: Vec<i64> = conn
-        .prepare(&format!("select id from avsnitt where kilde not in ({plasser})"))?
-        .query_map(rusqlite::params_from_iter(stier), |r| r.get(0))?
-        .collect::<Result<_>>()?;
-    for id in &borte {
-        conn.execute("delete from forstatt where avsnitt_id = ?1", [id])?;
-        conn.execute(
-            "delete from relasjoner where avsnitt_id = ?1 or annen_id = ?1",
-            [id],
-        )?;
-        conn.execute("delete from avsnitt where id = ?1", [id])?;
+        .prepare_cached("select id, kilde from avsnitt")?
+        .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .filter(|(_, kilde)| !kjente.contains(kilde.as_str()))
+        .map(|(id, _)| id)
+        .collect();
+    if borte.is_empty() {
+        return Ok(0);
     }
+    // Én transaksjon, ikke tre autocommit-skriv per rad. Målt: 200 fjernede
+    // notater (4000 avsnitt) tok 4,0 sekunder i autocommit — ved hver
+    // indeksering, altså ved hver lagring.
+    let tx = conn.unchecked_transaction()?;
+    {
+        let mut f = tx.prepare_cached("delete from forstatt where avsnitt_id = ?1")?;
+        let mut r =
+            tx.prepare_cached("delete from relasjoner where avsnitt_id = ?1 or annen_id = ?1")?;
+        let mut a = tx.prepare_cached("delete from avsnitt where id = ?1")?;
+        for id in &borte {
+            f.execute([id])?;
+            r.execute([id])?;
+            a.execute([id])?;
+        }
+    }
+    tx.commit()?;
     Ok(borte.len())
 }
 
@@ -523,7 +548,9 @@ pub fn kandidater(
     if ord.is_empty() {
         return Ok(Vec::new());
     }
-    let mut q = conn.prepare(
+    // `prepare_cached`, ikke `prepare`: denne kjøres én gang per avsnitt i
+    // notatet ved hver lagring, og kompilerte SQL-en sin på nytt hver gang.
+    let mut q = conn.prepare_cached(
         "select f.avsnitt_id, a.innhold_hash, a.kilde, f.tittel, f.tekst, \
                 coalesce(nullif(r.kortform, ''), f.kortform), f.tidspunkt \
          from (select rowid, bm25(forstatt_fts) as rank from forstatt_fts \
@@ -744,19 +771,21 @@ pub struct Tidligere {
 /// spørsmål du lot stå åpent» er ikke sant baklengs. Da faller den til
 /// [`NEVNT`], som ikke påstår noen retning.
 fn lagret_forhold(conn: &Connection, id: i64, annen: i64) -> Option<String> {
-    if let Ok(f) = conn.query_row(
-        "select forhold from relasjoner where avsnitt_id = ?1 and annen_id = ?2",
-        (id, annen),
-        |r| r.get::<_, String>(0),
-    ) {
+    // Inntil tre oppslag per avsnitt i notatet, to ganger her: `prepare_cached`
+    // så SQL-en kompileres én gang og ikke femten tusen.
+    const SPØRRING: &str =
+        "select forhold from relasjoner where avsnitt_id = ?1 and annen_id = ?2";
+    if let Ok(f) = conn
+        .prepare_cached(SPØRRING)
+        .ok()?
+        .query_row((id, annen), |r| r.get::<_, String>(0))
+    {
         return Some(f);
     }
     let motsatt: String = conn
-        .query_row(
-            "select forhold from relasjoner where avsnitt_id = ?1 and annen_id = ?2",
-            (annen, id),
-            |r| r.get(0),
-        )
+        .prepare_cached(SPØRRING)
+        .ok()?
+        .query_row((annen, id), |r| r.get(0))
         .ok()?;
     Some(match motsatt.as_str() {
         "besvarer" => NEVNT.to_string(),
@@ -810,14 +839,36 @@ pub fn avviste(conn: &Connection, antall: usize) -> Result<Vec<(String, String)>
     rader.collect()
 }
 
+/// Høyst så mange avsnitt får slått opp kandidater i én lagring.
+///
+/// Grensen er ny, og den er ikke kosmetikk. Uten den slo `tidligere` opp for
+/// **hvert** avsnitt i notatet, ved hver 900 ms-pause i skrivingen. Målt mot
+/// ekte skjema (`ytelse_tidligere`, tallene i
+/// `klassifiseringstest/YTELSE.md`): 1000 avsnitt tok 1,8 sekunder, 5000
+/// avsnitt — en importert samtale — tok 32,7 sekunder ren SQL. Per lagring.
+///
+/// To hundre, fordi det er nok til at et vanlig notat er dekket helt (et
+/// langt notat er femti–hundre avsnitt) og fordi kostnaden da holder seg
+/// under et par hundre millisekunder også i verste fall.
+///
+/// ponytail: hvilke to hundre avgjøres av hva som er på skjermen, ikke av hva
+/// som er endret. Vil man ha det siste, må [`synk`] sende med hvilke avsnitt
+/// som faktisk fikk ny tekst — det vet den, og ingen spør den om det i dag.
+pub const MAKS_OPPSLAG: usize = 200;
+
 /// Leter i alt som er forstått før, og svarer med det som er verdt å vite.
 ///
 /// Billigst først: ordsøket finner kandidatene uten å koste noe, og modellen
 /// spørres bare om par ingen har dømt før. Et notat som står åpent uten at noe
 /// endres koster derfor null kall, både første og tiende gang.
+///
+/// `synlig` er området brukeren ser, i UTF-16-enheter som [`Paragraph::start`]
+/// — samme telling og samme rolle som i [`crate::understand::understand`]. Er
+/// notatet større enn [`MAKS_OPPSLAG`], er det der hun ser som får oppslag.
 pub fn tidligere(
     conn: &Connection,
     avsnitt: &[Paragraph],
+    synlig: Option<(usize, usize)>,
     dommer: &dyn Dommer,
 ) -> Result<Vec<Tidligere>> {
     let tekster: HashMap<i64, &str> =
@@ -825,7 +876,17 @@ pub fn tidligere(
     let mut dømt: Vec<Tidligere> = Vec::new();
     let mut udømte: Vec<(Tidligere, i64, String)> = Vec::new();
 
-    for a in avsnitt.iter().filter(|a| a.id > 0) {
+    let mut mine: Vec<&Paragraph> = avsnitt.iter().filter(|a| a.id > 0).collect();
+    if mine.len() > MAKS_OPPSLAG {
+        // Stabil sortering: innenfor «synlig» og «ikke synlig» står avsnittene
+        // i den rekkefølgen de har i notatet.
+        if let Some((fra, til)) = synlig {
+            mine.sort_by_key(|a| !(a.start < til && a.end > fra));
+        }
+        mine.truncate(MAKS_OPPSLAG);
+    }
+
+    for a in mine {
         for k in kandidater(conn, &a.text, a.id, PER_AVSNITT)? {
             let linje = Tidligere {
                 forhold: String::new(),
@@ -1580,7 +1641,7 @@ mod tests {
         );
 
         let dommer = FakeDommer::new(&format!("1|{NEVNT}\n2|besvarer"));
-        let ut = tidligere(&conn, &nytt, &dommer).unwrap();
+        let ut = tidligere(&conn, &nytt, None, &dommer).unwrap();
         assert_eq!(ut.len(), 2);
         assert_eq!(ut[0].forhold, "besvarer", "en retning står over en linje uten");
         assert_eq!(ut[1].forhold, NEVNT);
@@ -1601,7 +1662,7 @@ mod tests {
 
         // To kandidater: den første motsies, den andre besvares.
         let dommer = FakeDommer::new("1|motsier\n2|besvarer");
-        let ut = tidligere(&conn, &nytt, &dommer).unwrap();
+        let ut = tidligere(&conn, &nytt, None, &dommer).unwrap();
         assert_eq!(ut.len(), 2, "kartnotatet deler ingen ord og skal ikke være med");
         assert_eq!(ut[0].forhold, "motsier", "motsigelsen er den som er verdt å avbryte for");
         assert_eq!(ut[1].forhold, "besvarer");
@@ -1609,11 +1670,11 @@ mod tests {
         // Alt som er dømt urelatert er borte fra svaret, men husket i basen.
         let urelaterte = FakeDommer::new("1|urelatert\n2|urelatert");
         conn.execute("delete from relasjoner", []).unwrap();
-        let ut = tidligere(&conn, &nytt, &urelaterte).unwrap();
+        let ut = tidligere(&conn, &nytt, None, &urelaterte).unwrap();
         assert!(ut.is_empty(), "urelatert skal aldri vises");
 
         // Og andre gang koster det ingenting: forholdene er allerede dømt.
-        let ut = tidligere(&conn, &nytt, &urelaterte).unwrap();
+        let ut = tidligere(&conn, &nytt, None, &urelaterte).unwrap();
         assert!(ut.is_empty());
         assert_eq!(urelaterte.kall.load(Ordering::Relaxed), 1, "et dømt par spørres ikke igjen");
     }
@@ -1981,11 +2042,11 @@ mod tests {
         lagre(&conn, "Nytt", &nytt, Some(1_757_000_000)).unwrap();
 
         let dommer = FakeDommer::new("1|motsier");
-        assert_eq!(tidligere(&conn, &nytt, &dommer).unwrap().len(), 1);
+        assert_eq!(tidligere(&conn, &nytt, None, &dommer).unwrap().len(), 1);
 
         avvis(&conn, nytt[0].id, gammel, true).unwrap();
         assert!(
-            tidligere(&conn, &nytt, &dommer).unwrap().is_empty(),
+            tidligere(&conn, &nytt, None, &dommer).unwrap().is_empty(),
             "koblingen hun avviste skal være borte"
         );
 
@@ -1995,11 +2056,11 @@ mod tests {
             "gammelt.md",
             vec![Paragraph { id: gammel, ..p("Depositum blir for høy terskel.", "Depositum") }],
         );
-        assert!(tidligere(&conn, &andre_vei, &dommer).unwrap().is_empty());
+        assert!(tidligere(&conn, &andre_vei, None, &dommer).unwrap().is_empty());
 
         // Og hun har en vei tilbake.
         avvis(&conn, nytt[0].id, gammel, false).unwrap();
-        assert_eq!(tidligere(&conn, &nytt, &dommer).unwrap().len(), 1);
+        assert_eq!(tidligere(&conn, &nytt, None, &dommer).unwrap().len(), 1);
 
         // Avviste par legges ved neste dømming som eksempler.
         avvis(&conn, nytt[0].id, gammel, true).unwrap();
@@ -2020,13 +2081,13 @@ mod tests {
 
         // Svaret er avkortet: ingen linje for paret.
         let tomt = FakeDommer::new("her kommer vurderingen:");
-        assert!(tidligere(&conn, &nytt, &tomt).unwrap().is_empty(), "ingen kobling vises nå");
+        assert!(tidligere(&conn, &nytt, None, &tomt).unwrap().is_empty(), "ingen kobling vises nå");
         let rader: i64 =
             conn.query_row("select count(*) from relasjoner", [], |r| r.get(0)).unwrap();
         assert_eq!(rader, 0, "og ingen dom er felt");
 
         let igjen = FakeDommer::new("1|motsier");
-        assert_eq!(tidligere(&conn, &nytt, &igjen).unwrap().len(), 1, "paret spørres på nytt");
+        assert_eq!(tidligere(&conn, &nytt, None, &igjen).unwrap().len(), 1, "paret spørres på nytt");
     }
 
     /// Funn 48. A→B og B→A var to rader, dømt av to separate kall som kunne
@@ -2041,7 +2102,7 @@ mod tests {
         lagre(&conn, "Nytt", &nytt, Some(1_757_000_000)).unwrap();
 
         let dommer = FakeDommer::new("1|motsier");
-        assert_eq!(tidligere(&conn, &nytt, &dommer).unwrap()[0].forhold, "motsier");
+        assert_eq!(tidligere(&conn, &nytt, None, &dommer).unwrap()[0].forhold, "motsier");
         assert_eq!(dommer.kall.load(Ordering::Relaxed), 1);
 
         // Det gamle notatet åpnes. Samme par, motsatt vei.
@@ -2050,7 +2111,7 @@ mod tests {
             "a.md",
             vec![Paragraph { id: gammel, ..p("Depositum blir for høy terskel.", "Depositum") }],
         );
-        let ut = tidligere(&conn, &andre_vei, &dommer).unwrap();
+        let ut = tidligere(&conn, &andre_vei, None, &dommer).unwrap();
         assert_eq!(ut[0].forhold, "motsier", "det samme paret skal si det samme");
         assert_eq!(dommer.kall.load(Ordering::Relaxed), 1, "og det skal ikke koste et kall til");
     }
@@ -2256,5 +2317,173 @@ mod tests {
         assert!(svar.treff.is_empty(), "ingenting passer på «leveringen»");
         assert_eq!(svar.lest, 1, "men noe er lest");
         assert_eq!(svar.filter, vec!["leveringen".to_string()]);
+    }
+
+    /// `tidligere` slo opp kandidater for **hvert** avsnitt i notatet, uten
+    /// grense, ved hver 900 ms-pause i skrivingen. Målt: 5000 avsnitt = 32,7
+    /// sekunder ren SQL per lagring (`ytelse_tidligere`).
+    ///
+    /// Grensen er ikke en tilfeldig innstramming: det som får oppslag er det
+    /// hun ser på, som er det panelet står ved siden av.
+    #[test]
+    fn tidligere_har_en_øvre_grense_og_ser_der_hun_ser() {
+        let mut conn = base();
+        // Ett gammelt avsnitt i et annet notat. Det er det eneste som ligger i
+        // `forstatt`, så det er den eneste kandidaten ordsøket kan finne.
+        let gammelt = med_ider(
+            &mut conn,
+            "gammelt.md",
+            vec![p("Vi bestemte at depositum blir for høy terskel.", "Depositum")],
+        );
+        lagre(&conn, "Gammelt", &gammelt, Some(1_757_000_000)).unwrap();
+
+        // Notatet hun skriver i: fem hundre avsnitt, som en importert tråd.
+        let antall = 500usize;
+        let mine: Vec<Paragraph> = (0..antall)
+            .map(|i| Paragraph {
+                start: i * 100,
+                end: i * 100 + 90,
+                ..p(&format!("Avsnitt {i} om depositum og terskel."), "Terskel")
+            })
+            .collect();
+        let mut mine = med_ider(&mut conn, "nytt.md", mine);
+        for (i, a) in mine.iter_mut().enumerate() {
+            a.start = i * 100;
+            a.end = i * 100 + 90;
+            // Paret er alt dømt, så en linje ut betyr nøyaktig ett oppslag.
+            conn.execute(
+                "insert into relasjoner (avsnitt_id, annen_id, forhold, tidspunkt) \
+                 values (?1, ?2, 'motsier', 1757000000)",
+                rusqlite::params![a.id, gammelt[0].id],
+            )
+            .unwrap();
+        }
+
+        let dommer = FakeDommer::new("");
+        let ut = tidligere(&conn, &mine, None, &dommer).unwrap();
+        assert_eq!(ut.len(), MAKS_OPPSLAG, "uten grense var dette {antall} oppslag");
+
+        // Og med et synlig område er det avsnittene der som får oppslaget.
+        let synlig = (400 * 100, 410 * 100);
+        let ut = tidligere(&conn, &mine, Some(synlig), &dommer).unwrap();
+        let sett: HashSet<i64> = ut.iter().map(|l| l.gjelder).collect();
+        assert_eq!(ut.len(), MAKS_OPPSLAG);
+        for i in 400..410 {
+            assert!(sett.contains(&mine[i].id), "avsnitt {i} er på skjermen og skal med");
+        }
+    }
+
+    // ---- ytelse ---------------------------------------------------------
+
+    /// En base med `antall` leste avsnitt fordelt på `notater` filer, slik en
+    /// importert samtale eller en notatmappe som har stått en stund ser ut.
+    /// Filbasert, ikke i minnet: det er disken kostnaden ligger på.
+    fn stor_base(fil: &std::path::Path, antall: usize, notater: usize) -> Connection {
+        let conn = Connection::open(fil).unwrap();
+        rettelser::sørg_for_tabell(&conn).unwrap();
+        sørg_for_tabeller(&conn).unwrap();
+        // Et lite ordforråd der ordene gjentar seg er verste fall for
+        // ordsøket: hvert avsnitt har kandidater, og bm25 må score dem.
+        let ord = [
+            "utstyret", "leverandøren", "beslutningen", "møtet", "kunden", "fakturaen",
+            "depositum", "kartet", "prototypen", "leveransen", "betalingen", "referatet",
+        ];
+        let tx = conn.unchecked_transaction().unwrap();
+        for i in 0..antall {
+            let tekst = (0..14)
+                .map(|k| ord[(i * 5 + k * 7) % ord.len()])
+                .collect::<Vec<_>>()
+                .join(" ");
+            let sti = format!("notater/2026-09-01-notat-{}.md", i % notater);
+            tx.execute(
+                "insert into avsnitt (kilde, rekkefolge, avsender, innhold_hash, tekst) \
+                 values (?1, ?2, null, ?3, ?4)",
+                rusqlite::params![sti, i as i64, crate::understand::nøkkel(&tekst), tekst],
+            )
+            .unwrap();
+            let id = tx.last_insert_rowid();
+            tx.execute(
+                "insert into forstatt \
+                   (avsnitt_id, tittel, tekst, type, handling, kortform, venter, tidspunkt, \
+                    lest, modell) \
+                 values (?1, 'Notat', ?2, 'beslutning', 'bygg', ?3, '', 1757000000, \
+                         1757000000, 'test')",
+                rusqlite::params![id, tekst, format!("Kortform {i}")],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+        conn
+    }
+
+    /// Hva en lagring koster i ren SQL, uten et eneste modellkall.
+    ///
+    /// ```text
+    ///   cargo test --release -- --ignored --nocapture ytelse_
+    /// ```
+    ///
+    /// `tidligere` slo før opp kandidater for **hvert** avsnitt i notatet, ved
+    /// hver 900 ms-pause i skrivingen, med den globale hukommelseslåsen holdt.
+    /// Bare modellkallene var begrenset ([`MAKS_PAR`]); oppslagene var det
+    /// ikke. Tallene som står i `klassifiseringstest/YTELSE.md` kommer herfra.
+    #[test]
+    #[ignore = "måling, ikke en påstand om oppførsel"]
+    fn ytelse_tidligere() {
+        use std::time::Instant;
+        let dir = tempfile::tempdir().unwrap();
+        let dommer = FakeDommer::new("");
+
+        for antall in [1000usize, 5000] {
+            let mut conn = stor_base(&dir.path().join(format!("t{antall}.db")), antall, 50);
+            let tekster = tekster_i(&conn, "notater/2026-09-01-notat-0.md");
+            // Notatet som lagres: alle avsnittene i basen, slik en importert
+            // samtale ser ut når hele tråden ligger i én fil.
+            let alle: Vec<String> = conn
+                .prepare("select tekst from avsnitt order by id")
+                .unwrap()
+                .query_map([], |r| r.get::<_, String>(0))
+                .unwrap()
+                .collect::<Result<_>>()
+                .unwrap();
+            let _ = tekster;
+            let avsnitt = med_ider(
+                &mut conn,
+                "notater/samtale.md",
+                alle.iter().map(|t| p(t, "Kortform")).collect(),
+            );
+            lagre(&conn, "Samtale", &avsnitt, Some(1_757_000_000)).unwrap();
+
+            let t = Instant::now();
+            let ut = tidligere(&conn, &avsnitt, None, &dommer).unwrap();
+            let brukt = t.elapsed().as_secs_f64() * 1000.0;
+            println!(
+                "tidligere: {antall} avsnitt  {brukt:>9.1} ms  ({:.2} ms/avsnitt, {} linjer ut)",
+                brukt / antall as f64,
+                ut.len()
+            );
+        }
+    }
+
+    /// `rydd` kjøres ved hver indeksering — altså ved hver lagring og ved hver
+    /// endringsklase utenfra. Den bygde en `not in (…)` med én plassholder per
+    /// notat og slettet så tre ganger per fjernet avsnitt, i autocommit.
+    #[test]
+    #[ignore = "måling, ikke en påstand om oppførsel"]
+    fn ytelse_rydd() {
+        use std::time::Instant;
+        let dir = tempfile::tempdir().unwrap();
+        for (notater, fjernet) in [(1000usize, 0usize), (1000, 200)] {
+            let conn = stor_base(&dir.path().join(format!("r{notater}-{fjernet}.db")), 20_000, notater);
+            let stier: Vec<String> = (fjernet..notater)
+                .map(|i| format!("notater/2026-09-01-notat-{i}.md"))
+                .collect();
+            let t = Instant::now();
+            let borte = rydd(&conn, &stier).unwrap();
+            let brukt = t.elapsed().as_secs_f64() * 1000.0;
+            println!(
+                "rydd: {notater} notater, {} igjen, {borte} avsnitt fjernet  {brukt:>9.1} ms",
+                stier.len()
+            );
+        }
     }
 }

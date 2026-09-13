@@ -53,6 +53,14 @@ const klokke = new Intl.DateTimeFormat("nb-NO", { hour: "2-digit", minute: "2-di
 const dagIAr = new Intl.DateTimeFormat("nb-NO", { weekday: "short", day: "numeric", month: "short" });
 const dagFor = new Intl.DateTimeFormat("nb-NO", { day: "numeric", month: "short", year: "numeric" });
 
+/** Når panelet skal si at det første svaret drøyer. Under den målte
+ *  spredningen på ett kall (13–78 s, `understand.rs`), så den treffer bare
+ *  når det faktisk tar tid. */
+const VENTER_MS = 25_000;
+/** Og når lesningen skal stanses. Over Rusts egen grense på 300 s per kall,
+ *  så den fanger en lesning som har stoppet opp — ikke en som bare er lang. */
+const GRENSE_MS = 360_000;
+
 function midnatt(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
@@ -326,8 +334,9 @@ export default function App() {
   // dem slik de var da notatet ble åpnet.
   const topp = toppfelt(buffer.nå());
   /** Ord og tegn, av den samme ene kilden. Regnes ved hvert tastetrykk, som
-   *  App uansett tegner om: 0,3 ms på et notat på 83 KB (målt, se
-   *  `klassifiseringstest/YTELSE.md`). */
+   *  App uansett tegner om for å sette lagringsmerket. Målt: 0,21 ms på et
+   *  notat på 1000 linjer / 114 KB, 1,97 ms på ti tusen linjer. Se
+   *  `klassifiseringstest/YTELSE.md`. */
   const tall = ordtelling(buffer.nå());
   /** Notatet er merket `privat: ja` og sendes aldri noe sted. */
   const privat = topp?.felt.some(([k, v]) => k === "privat" && v === "ja") ?? false;
@@ -362,6 +371,26 @@ export default function App() {
         return;
       }
       leser.current = true;
+      // Frontend hadde ingen tidsgrense i det hele tatt, og ingen «dette tar
+      // tid»-tilstand, enda 13–78 sekunder for *ett* kall er målt og
+      // dokumentert i `understand.rs`. Første pakke i et langt notat kunne
+      // stå på «Leser notatet.» i over et minutt uten et tegn til liv.
+      const treg = window.setTimeout(
+        () => setFramdrift((f) => f ?? { lest: 0, totalt: 0, fase: "venter" }),
+        VENTER_MS,
+      );
+      // Og en øvre grense med tenner: `avbrytLesning` er den ene bryteren som
+      // faktisk stopper arbeidet, mellom to pakker. Rust har 300 s per kall,
+      // så grensa her ligger over den — den skal fange en lesning som har
+      // stoppet opp, ikke en som bare er lang.
+      const grense = window.setTimeout(() => {
+        void avbrytLesning().catch(() => undefined);
+        setFramdrift(null);
+        setMerknad(
+          "Lesningen av notatet tok for lang tid, og ble stanset. Det den rakk å lese står " +
+            "i panelet, og notatet er lagret som vanlig.",
+        );
+      }, GRENSE_MS);
       try {
         const svar = await understandNote(sti, tekst, synlig.current);
         // Delresultater kan ha kommet fra en nyere lesning mens denne holdt
@@ -374,6 +403,8 @@ export default function App() {
       } catch {
         // Panelet blir stående som det var. Notatet er lagret uansett.
       } finally {
+        window.clearTimeout(treg);
+        window.clearTimeout(grense);
         leser.current = false;
         const neste = køet.current;
         køet.current = null;

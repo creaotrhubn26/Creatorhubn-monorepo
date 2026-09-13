@@ -14,6 +14,13 @@ const PLASSER: { verdi: Plass; navn: string; tegn: string }[] = [
   { verdi: "idé", navn: "Idé", tegn: "◇" },
 ];
 
+/** Første svar drøyer. Målt mot den ekte kommandolinja: 13 til 78 sekunder
+ *  for ett kall, og nesten alt er oppstart. Panelet sto tomt og taust gjennom
+ *  hele det — og et vindu som ikke sier noe på et minutt ser ødelagt ut. */
+const VENTETEKST =
+  "Leser notatet. Det første svaret tar vanligvis et halvt til ett minutt, " +
+  "og linjene kommer etter hvert.";
+
 const FJERNET = "fjernet";
 /// Oppgaven er gjort. Ikke en lesning av avsnittet, men en beskjed om
 /// virkeligheten — derfor er den ikke en av plassene hun kan velge i skjemaet.
@@ -633,7 +640,9 @@ export function Panel({
         <p className="framdrift">
           {framdrift.fase === "sammenligner"
             ? "Ser etter hva du har skrevet om dette før. Det tar litt."
-            : `Leser avsnitt ${framdrift.lest} av ${framdrift.totalt}.`}
+            : framdrift.fase === "venter"
+              ? VENTETEKST
+              : `Leser avsnitt ${framdrift.lest} av ${framdrift.totalt}.`}
         </p>
       )}
 
@@ -713,9 +722,9 @@ export function panelmelding(
   lesning: boolean,
 ): string {
   if (framdrift) {
-    return framdrift.fase === "sammenligner"
-      ? "Ser etter hva du har skrevet om dette før."
-      : `Leser avsnitt ${framdrift.lest} av ${framdrift.totalt}.`;
+    if (framdrift.fase === "sammenligner") return "Ser etter hva du har skrevet om dette før.";
+    if (framdrift.fase === "venter") return VENTETEKST;
+    return `Leser avsnitt ${framdrift.lest} av ${framdrift.totalt}.`;
   }
   if (!lesning) return "";
   const deler: string[] = [];
