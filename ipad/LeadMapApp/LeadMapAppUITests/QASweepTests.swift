@@ -1384,6 +1384,79 @@ final class QASweepTests: XCTestCase {
         app.terminate()
     }
 
+    func testSuperAdminCreatorHubOnboardingCreatesFourNationalProfilesAndOpensDiscovery() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_TOUR"] = "domain-onboarding"
+        app.launchEnvironment["QA_TAB"] = "0"
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Nytt kundeprosjekt"].waitForExistence(timeout: 12))
+        let domain = app.textFields["project-onboarding.domain"]
+        XCTAssertTrue(domain.waitForExistence(timeout: 3))
+        domain.tap()
+        domain.typeText("creatorhubn.com")
+        dismissKeyboard(in: app)
+        app.buttons["project-onboarding.analyze"].tap()
+
+        let category = app.descendants(matching: .any)["project-onboarding.category"]
+        XCTAssertTrue(category.waitForExistence(timeout: 5))
+        XCTAssertTrue(displayedText(of: category).contains("Plattform for kreativt arbeid"))
+        let projectName = app.descendants(matching: .any)["project-onboarding.project-name"]
+        XCTAssertTrue(projectName.waitForExistence(timeout: 3))
+        XCTAssertTrue(displayedText(of: projectName).contains("Creatorhub"))
+
+        let expectedProfiles = [
+            "Profesjonelle fotografer – Norge",
+            "Video- og innholdsprodusenter – Norge",
+            "Musikk- og lydprodusenter – Norge",
+            "Kreative byråer og designstudioer – Norge",
+        ]
+        for (profileIndex, profileName) in expectedProfiles.enumerated() {
+            let profileTitle = app.staticTexts[
+                "project-onboarding.profile.\(profileIndex).title"
+            ]
+            for _ in 0..<12 where !profileTitle.exists {
+                app.swipeUp()
+            }
+            XCTAssertTrue(profileTitle.exists, "Mangler Discovery-profilen \(profileName)")
+            XCTAssertEqual(profileTitle.label, profileName)
+        }
+
+        let commit = app.buttons["project-onboarding.commit"]
+        for _ in 0..<12 where !commit.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(commit.isHittable)
+        commit.tap()
+
+        XCTAssertTrue(
+            app.buttons["discovery.close"].waitForExistence(timeout: 8),
+            "Et bekreftet Creatorhub-prosjekt skal åpnes direkte i Discovery"
+        )
+        let profilesWorkspace = app.buttons["discovery.workspace.profiles"]
+        XCTAssertTrue(profilesWorkspace.waitForExistence(timeout: 5))
+        profilesWorkspace.tap()
+        XCTAssertTrue(app.scrollViews["discovery.profiles.workspace"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["discovery.profile.count"].waitForExistence(timeout: 5))
+        let candidatesWorkspace = app.buttons["discovery.workspace.candidates"]
+        XCTAssertTrue(candidatesWorkspace.waitForExistence(timeout: 3))
+        candidatesWorkspace.tap()
+        let customerType = app.textFields["discovery.simple.customer-type"]
+        XCTAssertTrue(customerType.waitForExistence(timeout: 5))
+        XCTAssertTrue((customerType.value as? String)?.contains("74.200") == true)
+        let nationwide = app.buttons["discovery.simple.area.nationwide"]
+        let customerNext = app.buttons["discovery.simple.next.customer-type"]
+        for _ in 0..<4 where !customerNext.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(customerNext.isHittable)
+        customerNext.tap()
+        XCTAssertTrue(nationwide.waitForExistence(timeout: 5))
+        XCTAssertTrue(nationwide.isSelected)
+        snap(app, "creatorhub-discovery-profiler-ipad-mini")
+        app.terminate()
+    }
+
     func testSuperAdminTidumOnboardingCreatesFourNationalProfilesAndOpensDiscovery() throws {
         let app = XCUIApplication()
         app.launchEnvironment["QA_TOUR"] = "domain-onboarding"
