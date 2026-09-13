@@ -182,7 +182,9 @@ export default function AudioReviewSharedPage() {
           </Stack>
           {currentVersion ? (
             <AudioReviewPlayer
-              src={currentVersion.file_url}
+              src={(currentVersion.preview_url && currentVersion.storage_state === 'ready') ? currentVersion.preview_url : currentVersion.file_url}
+              peaks={Array.isArray(currentVersion.waveform_peaks) ? currentVersion.waveform_peaks : undefined}
+              mediaDuration={Number(currentVersion.duration) || undefined}
               comments={detail.comments.map((c) => ({ id: c.id, timecode: Number(c.timecode_seconds), comment: c.body, author: c.author, category: c.category }))}
               onAddComment={addComment}
               onListenProgress={reportListen}

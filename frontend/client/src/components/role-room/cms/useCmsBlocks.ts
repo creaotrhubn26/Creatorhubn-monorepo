@@ -14,10 +14,11 @@
 import { useEffect, useState } from 'react';
 import { isBlockArray, type Block } from './blockSchema';
 
-export function useCmsBlocks(slug: string): Block[] | null {
+export function useCmsBlocks(slug: string, enabled: boolean = true): Block[] | null {
   const [blocks, setBlocks] = useState<Block[] | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     fetch(`/api/cms/pages/${slug}`, { credentials: 'same-origin' })
       .then((res) => {
@@ -44,7 +45,7 @@ export function useCmsBlocks(slug: string): Block[] | null {
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+  }, [enabled, slug]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

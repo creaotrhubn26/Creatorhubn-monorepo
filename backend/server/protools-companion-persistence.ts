@@ -93,9 +93,25 @@ export async function ensureProToolsCompanionSchema(pool: PoolLike): Promise<voi
     ALTER TABLE protools_companion_sessions ADD COLUMN IF NOT EXISTS last_easeverse_sync_error TEXT;
     ALTER TABLE protools_companion_bounces ADD COLUMN IF NOT EXISTS client_event_id VARCHAR(240);
     ALTER TABLE protools_companion_bounces ADD COLUMN IF NOT EXISTS content_fingerprint VARCHAR(400);
+    ALTER TABLE protools_companion_bounces ADD COLUMN IF NOT EXISTS storage_object_id UUID;
+    ALTER TABLE protools_companion_bounces ADD COLUMN IF NOT EXISTS checksum_sha256 CHAR(64);
+    DO $$ BEGIN
+      IF to_regclass('public.role_room_storage_objects') IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM pg_constraint
+            WHERE conname='protools_companion_bounces_storage_object_fk'
+              AND conrelid='protools_companion_bounces'::regclass
+         ) THEN
+        ALTER TABLE protools_companion_bounces
+          ADD CONSTRAINT protools_companion_bounces_storage_object_fk
+          FOREIGN KEY (storage_object_id) REFERENCES role_room_storage_objects(id) ON DELETE SET NULL;
+      END IF;
+    END $$;
     ALTER TABLE protools_companion_bounces ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     CREATE UNIQUE INDEX IF NOT EXISTS uq_ptc_bounces_session_event
       ON protools_companion_bounces(session_id,client_event_id) WHERE client_event_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_ptc_bounces_storage_object
+      ON protools_companion_bounces(storage_object_id) WHERE storage_object_id IS NOT NULL;
     CREATE TABLE IF NOT EXISTS protools_easeverse_sync_outbox (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(), session_id UUID NOT NULL, user_id VARCHAR(64) NOT NULL,
       event_id VARCHAR(240) NOT NULL UNIQUE, event_type VARCHAR(40) NOT NULL, revision BIGINT NOT NULL,

@@ -51,6 +51,7 @@ describe('storyboard review snapshots', () => {
   it('ships tenant-scoped immutable SQL with hashed tokens and append-only decisions', () => {
     const sql = readFileSync(new URL('../migrations/0592_storyboard_review_rounds.sql', import.meta.url), 'utf8');
     const queueSql = readFileSync(new URL('../migrations/0595_storyboard_review_resolution_queue.sql', import.meta.url), 'utf8');
+    const annotationSql = readFileSync(new URL('../migrations/0596_storyboard_review_annotations.sql', import.meta.url), 'utf8');
     expect(sql).toContain('FOREIGN KEY (manuscript_id, project_id)');
     expect(sql).toContain('token_hash CHAR(64) NOT NULL UNIQUE');
     expect(sql).toContain('storyboard review snapshots are immutable');
@@ -64,6 +65,9 @@ describe('storyboard review snapshots', () => {
     expect(queueSql).toContain('resolved_in_round_id');
     expect(queueSql).toContain('carried_from_comment_id');
     expect(queueSql).toContain("WHERE status = 'open'");
+    expect(annotationSql).toContain("ADD COLUMN IF NOT EXISTS annotations JSONB NOT NULL DEFAULT '[]'::jsonb");
+    expect(annotationSql).toContain('jsonb_array_length(annotations) <= 12');
+    expect(annotationSql).toContain('pg_column_size(annotations) <= 65536');
   });
 
   it('is canonical and detached from mutable manuscript state', () => {
@@ -156,6 +160,7 @@ describe('storyboard review share security', () => {
         }] };
         if (sql.includes('INSERT INTO storyboard_review_comments')) {
           expect(sql).toContain("WHERE review_round_id = $2 AND status = 'open'");
+          expect(sql).toContain('anchor_x, anchor_y, annotations');
           return { rows: [{ id: 'carried-1' }, { id: 'carried-2' }], rowCount: 2 };
         }
         throw new Error(`unexpected client query: ${sql}`);
@@ -379,7 +384,9 @@ describe('storyboard review share security', () => {
         if (sql.includes('INSERT INTO storyboard_review_comments')) return { rows: [{
           id: 'comment-1', review_round_id: 'round-1', frame_id: 'frame-a', parent_id: null,
           author_display_name: 'Kari Klient', body: values?.[5], visibility: 'client',
-          anchor_x: null, anchor_y: null, status: 'open', created_at: new Date('2026-09-12T12:01:00Z'),
+          anchor_x: values?.[6], anchor_y: values?.[7],
+          annotations: JSON.parse(String(values?.[8] ?? '[]')),
+          status: 'open', created_at: new Date('2026-09-12T12:01:00Z'),
         }] };
         throw new Error(`unexpected client query: ${sql}`);
       }),
@@ -392,17 +399,59 @@ describe('storyboard review share security', () => {
     });
     const handler = routeHandler(router, 'post', '/storyboard-review/:token/comments');
     const res = response();
+    const annotations = [{
+      id: 'mark-1', tool: 'arrow', color: '#fbbf24', strokeWidth: 3,
+      points: [{ x: 0.2, y: 0.3 }, { x: 0.7, y: 0.6 }],
+    }];
     await handler({
-      params: { token: 'raw-share-token' }, body: { frameId: 'frame-a', body: 'Hold bildet lenger.' },
+      params: { token: 'raw-share-token' }, body: {
+        frameId: 'frame-a', body: 'Hold bildet lenger.',
+        anchorX: 0.7, anchorY: 0.6, annotations,
+      },
       header: () => 'raw-reviewer-token',
     }, res, (error: any) => { res.status(error.status || 500).json({ error: error.message }); });
 
     expect(res.statusCode).toBe(201);
+    expect(res.body.data).toMatchObject({ anchorX: 0.7, anchorY: 0.6, annotations });
+    const insert = client.query.mock.calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO storyboard_review_comments'));
+    expect(insert?.[1]?.slice(6, 8)).toEqual([0.7, 0.6]);
+    expect(JSON.parse(String(insert?.[1]?.[8]))).toEqual(annotations);
     expect(upsertNotification).toHaveBeenCalledWith(expect.objectContaining({
       projectId: 'project-1', eventType: 'storyboard_review_comment_added',
       message: 'Hold bildet lenger.', linkedEntityId: 'comment-1',
       metadata: expect.objectContaining({ manuscriptId: 'manuscript-1', frameId: 'frame-a' }),
     }));
+  });
+
+  it('rejects malformed or unscoped visual markup before database access', async () => {
+    const query = vi.fn();
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { query } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: unusedManuscripts,
+    });
+    const handler = routeHandler(router, 'post', '/storyboard-review/:token/comments');
+    const incompleteAnchor = response();
+    await handler({
+      params: { token: 'raw-share-token' },
+      body: { frameId: 'frame-a', body: 'Pek her.', anchorX: 0.5 },
+      header: () => 'raw-reviewer-token',
+    }, incompleteAnchor, (error: unknown) => { throw error; });
+    expect(incompleteAnchor.statusCode).toBe(400);
+
+    const missingFrame = response();
+    await handler({
+      params: { token: 'raw-share-token' },
+      body: {
+        body: 'Pek her.', annotations: [{
+          id: 'mark-1', tool: 'rectangle', color: '#f87171', strokeWidth: 3,
+          points: [{ x: 0.2, y: 0.2 }, { x: 0.5, y: 0.5 }],
+        }],
+      },
+      header: () => 'raw-reviewer-token',
+    }, missingFrame, (error: unknown) => { throw error; });
+    expect(missingFrame.statusCode).toBe(400);
+    expect(query).not.toHaveBeenCalled();
   });
 
   it('binds sign-off to the exact hash and locks all later decisions', async () => {

@@ -156,6 +156,7 @@ test.describe('Autentisert Troll-flyt · script supervisor', () => {
     await expect(page.getByRole('heading', { name: 'Scene og take-logg' })).toBeVisible();
     await expect(page.getByText('Lykten', { exact: true })).toBeVisible();
     await expect(page.getByTestId('continuity-take-log').getByText('Nora holder lykten i venstre hånd.')).toBeVisible();
+    await expect.poll(() => new URL(page.url()).searchParams.get('lens')).toBe('continuity');
 
     await page.getByRole('textbox', { name: 'Kontinuitetsnotat' }).fill('Skjerfet ligger over høyre skulder.');
     await page.getByRole('button', { name: 'Registrer take 2' }).click();
@@ -171,6 +172,8 @@ test.describe('Autentisert Troll-flyt · script supervisor', () => {
     await expect(page.getByTestId('continuity-save-status')).toContainText(/utkast/i);
     await page.getByTestId('save-continuity').click();
     await expect(page.getByText('Kontinuitetsloggen er lagret som versjon 1.')).toBeVisible();
+    await page.waitForTimeout(250);
+    await expect(page.getByText('Kontinuitetsloggen er lagret som versjon 1.')).toBeVisible();
 
     const downloadPromise = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Dagsrapport' }).click();
@@ -178,6 +181,7 @@ test.describe('Autentisert Troll-flyt · script supervisor', () => {
 
     await page.reload();
     await expect(page.getByTestId('continuity-workspace')).toBeVisible({ timeout: 20_000 });
+    await expect.poll(() => new URL(page.url()).searchParams.get('lens')).toBe('continuity');
     await expect(page.getByText('Skjerfet over høyre skulder før Nora snur seg.')).toBeVisible();
     await expect(page.getByText('Oppdaterte takes og kontinuitet.')).toBeVisible();
 

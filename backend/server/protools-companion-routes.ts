@@ -36,8 +36,7 @@
 
 import type express from "express";
 import crypto from "crypto";
-import { GetObjectCommand, S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import {
   type EaseVerseProToolsMarker,
   type EaseVerseProToolsSyncResult,
@@ -51,8 +50,16 @@ import {
   retryEaseVerseSync,
 } from "./protools-companion-persistence.js";
 import { broadcastSoundRoomUpdated } from "./sound-room-events.js";
+import { processSoundRoomAudioVersion } from "./sound-room-audio-processing.js";
+import {
+  completeSoundRoomUpload,
+  getSoundRoomUploadStatus,
+  initiateSoundRoomUpload,
+  readOwnedSoundRoomObject,
+  resumeSoundRoomUpload,
+  signSoundRoomUploadParts,
+} from "./sound-room-storage-service.js";
 import { canAccessProject, getProjectAccess } from "./project-team-routes.js";
-import { creatorHubSessionPrefix, creatorHubSoundRoomBounceKey } from "./creatorhub-storage-key.js";
 import {
   claimCompanionCommands,
   latestParentArtifactId,
@@ -84,7 +91,6 @@ interface ObjectStorageConfig {
   credentials: { accessKeyId: string; secretAccessKey: string } | null;
   publicBaseUrl: string | null;
 }
-const UPLOAD_URL_TTL_SEC = 3600;
 function getObjectStorageConfig(): ObjectStorageConfig | null {
   const awsBucket = process.env.CREATORHUB_S3_BUCKET?.trim();
   if (awsBucket) {
@@ -1254,7 +1260,7 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
       if (shareToken) {
         if (!shareToken.startsWith("inv_")) return res.status(400).json({ error: "invalid_token" });
         const shared = await pool.query(
-          `SELECT b.storage_key,b.file_name
+          `SELECT b.storage_key,b.file_name,b.review_version_id
              FROM protools_companion_bounces b
              JOIN audio_review_versions v ON v.id=b.review_version_id
              JOIN audio_review_members m ON m.project_id=v.project_id
@@ -1267,7 +1273,7 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
       } else {
         const session = requireUserSession(req, res); if (!session) return;
         const owned = await pool.query(
-          `SELECT b.storage_key,b.file_name,s.user_id,par.project_id AS workspace_project_id
+          `SELECT b.storage_key,b.file_name,b.review_version_id,s.user_id,par.project_id AS workspace_project_id
              FROM protools_companion_bounces b
              JOIN protools_companion_sessions s ON s.id=b.session_id
              LEFT JOIN audio_review_versions v ON v.id=b.review_version_id
@@ -1285,6 +1291,12 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
         }
       }
       if (!row?.storage_key) return res.status(404).json({ error: "not_found" });
+      if (String(row.storage_key).startsWith("users/") && row.review_version_id) {
+        const target = shareToken
+          ? `/api/audio-review-shared/${encodeURIComponent(shareToken)}/versions/${row.review_version_id}/media`
+          : `/api/audio-versions/${row.review_version_id}/media`;
+        return res.redirect(307, target);
+      }
       await streamBounceObject(req, res, String(row.storage_key), row.file_name ? String(row.file_name) : null);
     } catch (error) {
       console.error("[protools-companion] bounce playback:", error);
@@ -1293,57 +1305,128 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     }
   });
 
-  // POST /api/protools/sessions/:id/bounce/presign — { fileName, sizeBytes?, mimeType? } → presignert PUT
+  // Browser and companion share the same private object, checksum and
+  // multipart/resume contract. A clientEventId makes initiation restart-safe.
   app.post("/api/protools/sessions/:id/bounce/presign", async (req, res) => {
     const d = await deviceAuth(req, res); if (!d) return;
     const sess = await ownedSession(d.userId, req.params.id); if (!sess) return res.status(404).json({ error: "session_not_found" });
     const fileName = sanitizeName(String(req.body?.fileName || "bounce.wav"));
-    const objectId = `${Date.now()}-${crypto.randomUUID()}`;
-    const key = creatorHubSoundRoomBounceKey({
-      organizationId: sess.organization_id,
-      userId: d.userId,
-      workspaceProjectId: sess.workspace_project_id,
-      audioRoomId: sess.audio_review_project_id,
-      sessionId: sess.id,
-      objectId,
-      fileName,
-    });
-    const r2 = getR2();
-    if (!r2) return res.status(503).json({ error: "storage_not_configured" });
-    const { client, cfg } = r2;
-    const finalUrl = cfg.publicBaseUrl
-      ? `${cfg.publicBaseUrl.replace(/\/+$/, "")}/${key}`
-      : cfg.endpoint
-        ? `${cfg.endpoint.replace(/\/+$/, "")}/${cfg.bucket}/${key}`
-        : `https://${cfg.bucket}.s3.${cfg.region}.amazonaws.com/${key}`;
-    const cmd = new PutObjectCommand({ Bucket: cfg.bucket, Key: key, ContentType: String(req.body?.mimeType || "audio/wav"), ContentLength: intOrNull(req.body?.sizeBytes) || undefined });
-    const uploadUrl = await getSignedUrl(client, cmd, { expiresIn: UPLOAD_URL_TTL_SEC }).catch(() => null);
-    if (!uploadUrl) return res.status(500).json({ error: "presign_failed" });
-    res.json({ uploadUrl, fileUrl: finalUrl, storageKey: key, expiresInSeconds: UPLOAD_URL_TTL_SEC });
+    const sizeBytes = intOrNull(req.body?.sizeBytes);
+    const checksumSha256 = strOrNull(req.body?.checksumSha256, 64)?.toLowerCase() || "";
+    const clientEventId = strOrNull(req.body?.clientEventId, 240);
+    if (!sizeBytes || sizeBytes <= 0) return res.status(400).json({ error: "sizeBytes_required" });
+    if (!/^[a-f0-9]{64}$/.test(checksumSha256)) return res.status(400).json({ error: "checksumSha256_required" });
+
+    let reviewId: string | null = sess.audio_review_project_id || null;
+    if (!reviewId && sess.easeverse_track_id) {
+      reviewId = await resolveReviewForTrack(d.userId, String(sess.easeverse_track_id));
+    }
+    if (!reviewId) return res.status(409).json({ error: "sound_room_not_linked" });
+    try {
+      let ticket: any = null;
+      if (clientEventId) {
+        const previous = await pool.query(
+          `SELECT object_row.id, object_row.status
+             FROM role_room_storage_objects object_row
+             JOIN role_room_storage_accounts account ON account.id = object_row.storage_account_id
+            WHERE account.user_id = $1
+              AND object_row.source_module = 'sound-room'
+              AND object_row.source_channel = 'protools'
+              AND object_row.metadata->>'sessionId' = $2
+              AND object_row.metadata->>'clientEventId' = $3
+              AND object_row.deleted_at IS NULL
+            ORDER BY object_row.created_at DESC LIMIT 1`,
+          [d.userId, String(sess.id), clientEventId],
+        ).catch(() => ({ rows: [] }));
+        if (previous.rows[0]?.status === "pending") {
+          ticket = await resumeSoundRoomUpload(pool, previous.rows[0].id, d.userId);
+        } else if (previous.rows[0]?.status === "active") {
+          return res.json({
+            objectId: previous.rows[0].id,
+            alreadyUploaded: true,
+            strategy: "complete",
+            audioReviewProjectId: reviewId,
+          });
+        }
+      }
+      ticket ||= await initiateSoundRoomUpload(pool, {
+        userId: d.userId,
+        projectId: reviewId,
+        fileName,
+        sizeBytes,
+        contentType: String(req.body?.mimeType || "audio/wav"),
+        checksumSha256,
+        channel: "protools",
+        sessionId: String(sess.id),
+        clientEventId,
+      });
+      await pool.query(
+        `UPDATE protools_companion_sessions
+            SET audio_review_project_id = $2::uuid, last_activity = NOW(), updated_at = NOW()
+          WHERE id = $1::uuid`,
+        [sess.id, reviewId],
+      );
+      return res.json({ ...ticket, fileUrl: null, storageKey: null, audioReviewProjectId: reviewId });
+    } catch (error: any) {
+      console.error("[protools-companion] bounce initiate:", error);
+      const status = error?.message === "storage_quota_exceeded" ? 507
+        : error?.message === "file_too_large" ? 413 : 503;
+      return res.status(status).json({ error: error?.message || "presign_failed" });
+    }
   });
 
-  // POST /api/protools/sessions/:id/bounce/complete — { fileUrl, storageKey?, fileName?, versionLabel?, sizeBytes?, durationSeconds?, sampleRate?, bitDepth? }
+  app.get("/api/protools/sessions/:id/bounce/:objectId/status", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id); if (!sess) return res.status(404).json({ error: "session_not_found" });
+    try {
+      const objectRow = await readOwnedSoundRoomObject(pool, req.params.objectId, d.userId);
+      if (!objectRow || String(objectRow.metadata?.sessionId || "") !== String(sess.id)) {
+        return res.status(404).json({ error: "upload_not_found" });
+      }
+      return res.json(await getSoundRoomUploadStatus(pool, objectRow.id, d.userId));
+    } catch (error: any) {
+      return res.status(503).json({ error: error?.message || "upload_status_failed" });
+    }
+  });
+
+  app.post("/api/protools/sessions/:id/bounce/:objectId/parts", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id); if (!sess) return res.status(404).json({ error: "session_not_found" });
+    try {
+      const objectRow = await readOwnedSoundRoomObject(pool, req.params.objectId, d.userId);
+      if (!objectRow || String(objectRow.metadata?.sessionId || "") !== String(sess.id)) {
+        return res.status(404).json({ error: "upload_not_found" });
+      }
+      const parts = await signSoundRoomUploadParts(pool, {
+        objectId: objectRow.id,
+        userId: d.userId,
+        parts: Array.isArray(req.body?.parts) ? req.body.parts.map((part: any) => ({
+          partNumber: Number(part.partNumber),
+          checksumSha256: String(part.checksumSha256 || "").toLowerCase().slice(0, 64),
+        })) : [],
+      });
+      return res.json({ parts });
+    } catch (error: any) {
+      return res.status(503).json({ error: error?.message || "part_presign_failed" });
+    }
+  });
+
+  // POST /api/protools/sessions/:id/bounce/complete — verify the private object,
+  // then register the bounce, artifact lineage and review version atomically.
   // Oppretter en ny audio_review_versjon på koblet review + speiler markører som seksjoner.
   app.post("/api/protools/sessions/:id/bounce/complete", async (req, res) => {
     const d = await deviceAuth(req, res); if (!d) return;
     const sess = await ownedSession(d.userId, req.params.id); if (!sess) return res.status(404).json({ error: "session_not_found" });
-    const fileUrl = String(req.body?.fileUrl || "").trim();
-    if (!fileUrl) return res.status(400).json({ error: "fileUrl_required" });
+    const objectId = strOrNull(req.body?.objectId, 64);
+    if (!objectId || !isUuid(objectId)) return res.status(400).json({ error: "objectId_required" });
     const fileName = req.body?.fileName ? String(req.body.fileName).slice(0, 300) : null;
     const clientEventId = strOrNull(req.body?.clientEventId, 240);
     const contentFingerprint = strOrNull(req.body?.contentFingerprint, 400);
-    const storageKey = strOrNull(req.body?.storageKey, 500);
-    const newPrefix = creatorHubSessionPrefix({
-      organizationId: sess.organization_id,
-      userId: d.userId,
-      workspaceProjectId: sess.workspace_project_id,
-      audioRoomId: sess.audio_review_project_id,
-      sessionId: sess.id,
-    });
-    const legacyPrefix = `protools-bounces/${d.userId}/${sess.id}/`;
-    if (storageKey && !storageKey.startsWith(newPrefix) && !storageKey.startsWith(legacyPrefix)) {
-      return res.status(403).json({ error: "invalid_storage_key" });
-    }
+    const completedParts = Array.isArray(req.body?.parts) ? req.body.parts.map((part: any) => ({
+      partNumber: Number(part.partNumber),
+      etag: String(part.etag || "").slice(0, 512),
+      checksumSha256: String(part.checksumSha256 || "").toLowerCase().slice(0, 64),
+    })) : undefined;
     if (clientEventId) {
       const existing = await pool.query(
         `SELECT b.id,b.artifact_id,b.review_version_id,v.version_number,s.audio_review_project_id
@@ -1368,26 +1451,71 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     if (!reviewId && sess.easeverse_track_id) {
       reviewId = await resolveReviewForTrack(d.userId, String(sess.easeverse_track_id));
     }
+    if (!reviewId) return res.status(409).json({ error: "sound_room_not_linked" });
+    let storageObject: any;
+    try {
+      storageObject = await completeSoundRoomUpload(pool, {
+        objectId,
+        userId: d.userId,
+        parts: completedParts,
+      });
+      const objectSessionId = String(storageObject.metadata?.sessionId || "");
+      const objectProjectId = String(storageObject.metadata?.entityId || "");
+      if (objectSessionId !== String(sess.id) || objectProjectId !== String(reviewId)) {
+        return res.status(403).json({ error: "storage_object_scope_mismatch" });
+      }
+    } catch (error: any) {
+      console.error("[protools-companion] bounce verification:", error);
+      const status = /verification|mismatch|incomplete/.test(String(error?.message || "")) ? 422 : 503;
+      return res.status(status).json({ error: error?.message || "bounce_verification_failed" });
+    }
+    const storageKey = String(storageObject.object_key);
+    const persistedFileName = fileName || String(storageObject.display_name || "bounce.wav");
+    const existingObject = await pool.query(
+      `SELECT b.id,b.artifact_id,b.review_version_id,v.version_number
+         FROM protools_companion_bounces b
+         LEFT JOIN audio_review_versions v ON v.id=b.review_version_id
+        WHERE b.session_id=$1::uuid AND b.storage_object_id=$2::uuid LIMIT 1`,
+      [sess.id, storageObject.id],
+    );
+    if (existingObject.rows[0]) {
+      return res.json({
+        bounceId: existingObject.rows[0].id,
+        artifactId: existingObject.rows[0].artifact_id,
+        reviewVersionId: existingObject.rows[0].review_version_id,
+        versionNumber: existingObject.rows[0].version_number,
+        sectionsSynced: 0,
+        linkedReview: reviewId,
+        idempotent: true,
+      });
+    }
     let versionId: string | null = null;
     let versionNumber: number | null = null;
+    let fileUrl: string | null = null;
     let sectionsSynced = 0;
     const client = typeof pool.connect === "function" ? await pool.connect() : pool;
     try {
       await client.query("BEGIN");
-      const registerAsReview = req.body?.registerAsReview !== false;
-      if (reviewId && registerAsReview) {
-        const locked = await client.query(`SELECT id FROM audio_review_projects WHERE id=$1::uuid FOR UPDATE`, [reviewId]);
+      {
+        const locked = await client.query(
+          `SELECT id FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 FOR UPDATE`,
+          [reviewId, d.userId],
+        );
         if (!locked.rows.length) throw new Error("audio_room_not_found");
         await client.query(`UPDATE audio_review_versions SET status='superseded' WHERE project_id=$1::uuid AND status='under_review'`, [reviewId]);
         const next = await client.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM audio_review_versions WHERE project_id=$1::uuid`, [reviewId]);
         versionNumber = Number(next.rows[0]?.n || 1);
+        versionId = crypto.randomUUID();
+        fileUrl = `/api/audio-versions/${versionId}/media`;
         const version = await client.query(
           `INSERT INTO audio_review_versions
-             (project_id,version_label,version_number,file_name,file_url,duration,sample_rate,bit_depth,file_size,uploaded_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-          [reviewId, strOrNull(req.body?.versionLabel, 80) || `Mix V${versionNumber}`, versionNumber, fileName, fileUrl,
+             (id,project_id,version_label,version_number,file_name,file_url,duration,sample_rate,bit_depth,file_size,uploaded_by,
+              storage_object_id,storage_state,checksum_sha256,content_type)
+           VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::uuid,'processing',$13,$14) RETURNING id`,
+          [versionId, reviewId, strOrNull(req.body?.versionLabel, 80) || `Mix V${versionNumber}`, versionNumber, persistedFileName, fileUrl,
            numOrNull(req.body?.durationSeconds), intOrNull(req.body?.sampleRate) || sess.sample_rate,
-           intOrNull(req.body?.bitDepth) || sess.bit_depth, intOrNull(req.body?.sizeBytes), d.userId],
+           intOrNull(req.body?.bitDepth) || sess.bit_depth, Number(storageObject.size_bytes), d.userId,
+           storageObject.id, storageObject.checksum_sha256, storageObject.content_type],
         );
         versionId = String(version.rows[0].id);
         await client.query(`UPDATE audio_review_projects SET status='under_review',updated_at=NOW() WHERE id=$1::uuid`, [reviewId]);
@@ -1418,11 +1546,11 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
       const bounce = await client.query(
         `INSERT INTO protools_companion_bounces
            (session_id,file_name,file_url,storage_key,size_bytes,duration_seconds,review_version_id,client_event_id,content_fingerprint,
-            snapshot_id,delivery_job_id,delivery_kind,qc_report)
-         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10::uuid,$11::uuid,$12,$13::jsonb) RETURNING id`,
-        [sess.id, fileName, fileUrl, storageKey, intOrNull(req.body?.sizeBytes),
+            snapshot_id,delivery_job_id,delivery_kind,qc_report,storage_object_id,checksum_sha256)
+         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10::uuid,$11::uuid,$12,$13::jsonb,$14::uuid,$15) RETURNING id`,
+        [sess.id, persistedFileName, fileUrl, storageKey, Number(storageObject.size_bytes),
          numOrNull(req.body?.durationSeconds), versionId, clientEventId, contentFingerprint,
-         snapshotId, deliveryJobId, deliveryKind, JSON.stringify(qcReport)],
+         snapshotId, deliveryJobId, deliveryKind, JSON.stringify(qcReport), storageObject.id, storageObject.checksum_sha256],
       );
       const parentArtifactId = await latestParentArtifactId(client, {
         ownerUserId: d.userId,
@@ -1442,7 +1570,7 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
         kind: deliveryKind === "master" ? "master" : deliveryKind === "stem" ? "stem" : sess.session_type === "mastering" ? "master" : "mix",
         sourceSystem: "protools",
         sourceArtifactId: `bounce:${String(bounce.rows[0].id)}`,
-        fileName,
+        fileName: persistedFileName,
         fileUrl,
         storageKey,
         contentFingerprint,
@@ -1471,6 +1599,7 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
         [sess.id, reviewId],
       );
       await client.query("COMMIT");
+      if (versionId) void processSoundRoomAudioVersion(pool, versionId, d.userId);
       if (reviewId) void broadcastSoundRoomUpdated(pool, reviewId, "version");
       res.status(201).json({ bounceId: bounce.rows[0].id, artifactId: artifact.id, reviewVersionId: versionId, versionNumber, sectionsSynced, linkedReview: reviewId });
     } catch (error: any) {

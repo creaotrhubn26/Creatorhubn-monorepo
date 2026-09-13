@@ -99,7 +99,7 @@ export interface OrganizationAccess {
 
 export interface StorageAccountRow {
   id: string;
-  organization_id: string;
+  organization_id: string | null;
   plan_key: string | null;
   base_quota_bytes: string;
   used_bytes: string;
@@ -111,6 +111,55 @@ export interface StorageAccountRow {
   stripe_cancel_at_period_end: boolean;
   billing_grace_until: Date | null;
   status: string;
+}
+
+/**
+ * Personal storage account for user-owned workspace modules such as Sound
+ * Room and its desktop companion. Browser and native uploads therefore share
+ * the same quota, object and usage-ledger model as organization storage.
+ */
+export async function ensureRoleRoomUserStorageAccount(
+  pool: Pool,
+  userId: string,
+): Promise<StorageAccountRow> {
+  const result = await pool.query<StorageAccountRow>(
+    `WITH selected_plan AS (
+       SELECT plan_key, included_storage_bytes
+         FROM plan_limits
+        WHERE plan_key = 'solo_free'
+        LIMIT 1
+     )
+     INSERT INTO role_room_storage_accounts (
+       user_id, plan_key, base_quota_bytes
+     )
+     SELECT $1, selected_plan.plan_key, selected_plan.included_storage_bytes
+       FROM selected_plan
+     ON CONFLICT (user_id) WHERE user_id IS NOT NULL
+     DO UPDATE SET plan_key = COALESCE(role_room_storage_accounts.plan_key, EXCLUDED.plan_key),
+                   base_quota_bytes = GREATEST(
+                     role_room_storage_accounts.base_quota_bytes,
+                     EXCLUDED.base_quota_bytes
+                   ),
+                   status = CASE
+                     WHEN role_room_storage_accounts.status = 'read_only'
+                      AND role_room_storage_accounts.used_bytes
+                          + role_room_storage_accounts.reserved_bytes
+                          <= GREATEST(
+                            role_room_storage_accounts.base_quota_bytes,
+                            EXCLUDED.base_quota_bytes
+                          )
+                     THEN 'active'
+                     ELSE role_room_storage_accounts.status
+                   END,
+                   updated_at = NOW()
+     RETURNING id, organization_id, plan_key, base_quota_bytes,
+               used_bytes, reserved_bytes, file_count, stripe_subscription_id,
+               stripe_subscription_status, stripe_current_period_end,
+               stripe_cancel_at_period_end, billing_grace_until, status`,
+    [userId],
+  );
+  if (!result.rows[0]) throw new Error("storage_plan_missing");
+  return result.rows[0];
 }
 
 export async function syncRoleRoomCommercialStorageEntitlement(

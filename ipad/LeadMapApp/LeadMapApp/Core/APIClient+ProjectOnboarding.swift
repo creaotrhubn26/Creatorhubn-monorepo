@@ -456,18 +456,18 @@ private var roleRoomOnboardingQAPreview: LeadgridProjectOnboardingPreview {
 private func tidumOnboardingQABrief(
     industryQueries: [String] = [],
     organizationNameQueries: [String] = [],
+    exclusionTerms: [String]? = nil,
     targetCount: Int = 60,
     minimumFitScore: Int = 70,
     organizationForms: [String] = ["AS", "IKS", "STI"],
     employeeCount: DiscoveryV2EmployeeCountFilter? = .init(minimum: 5, maximum: nil),
+    qualificationTerms: [String]? = nil,
     requireBusinessRegistration: Bool? = true
 ) -> DiscoveryV2Brief {
     DiscoveryV2Brief(
         industryQueries: industryQueries,
         organizationNameQueries: organizationNameQueries,
-        exclusionTerms: organizationForms == ["KOMM"]
-            ? []
-            : ["holding", "eiendom", "renhold", "bemanning"],
+        exclusionTerms: exclusionTerms ?? ["holding", "eiendom", "renhold", "bemanning"],
         countryCode: "NO",
         city: nil,
         geo: nil,
@@ -478,9 +478,7 @@ private func tidumOnboardingQABrief(
         goal: "Finne presise kandidater for Tidum.",
         organizationForms: organizationForms,
         employeeCount: employeeCount,
-        qualificationTerms: organizationForms == ["KOMM"]
-            ? []
-            : ["omsorg", "miljøarbeid", "avlastning", "BPA"],
+        qualificationTerms: qualificationTerms ?? ["omsorg", "miljøarbeid", "avlastning", "BPA"],
         commercialSignals: .init(
             registeredInVatRegister: nil,
             registeredInBusinessRegister: requireBusinessRegistration
@@ -528,14 +526,29 @@ private var tidumOnboardingQAWriteProfiles: [DiscoveryV2ProfileWrite] {
             templateVersion: 1
         ),
         .init(
-            name: "Kommunale omsorgstjenester – Norge",
+            name: "Kommunale tjenestesteder – Norge",
             isDefault: false,
             expectedVersion: nil,
             brief: tidumOnboardingQABrief(
-                organizationNameQueries: ["kommune"],
-                minimumFitScore: 65,
-                organizationForms: ["KOMM"],
+                organizationNameQueries: [
+                    "barneverntjeneste",
+                    "avlastning",
+                    "bofellesskap",
+                    "BPA",
+                    "miljøarbeidertjeneste",
+                ],
+                exclusionTerms: [
+                    "barnehage",
+                    "skole",
+                    "sykehjem",
+                    "natur",
+                    "eiendom",
+                    "husholdning",
+                    "administrasjon",
+                ],
+                organizationForms: ["BEDR"],
                 employeeCount: nil,
+                qualificationTerms: [],
                 requireBusinessRegistration: nil
             ),
             placesDetailsEnabled: false,

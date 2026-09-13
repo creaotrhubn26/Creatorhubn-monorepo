@@ -71,6 +71,13 @@ const shouldUseRoleRoomDedicatedHostBootstrap = (
 ): boolean => {
   const hostname = locationLike.hostname?.trim().toLowerCase() || '';
   const pathname = locationLike.pathname || '';
+  // Leadgrid owns every route on its dedicated host, including the shared
+  // legal URLs. Sending /terms-and-conditions and /privacy-policy through
+  // CreatorHub's full App shell mounted private widgets, admin queries and an
+  // unsupported notification WebSocket for anonymous visitors.
+  if (isLeadgridDedicatedHost(hostname)) {
+    return true;
+  }
   if (ROLE_ROOM_SHARED_APP_ROUTE_PATTERN.test(pathname.trim().toLowerCase())) {
     return false;
   }
@@ -92,7 +99,7 @@ const shouldUseRoleRoomDedicatedHostBootstrap = (
   }
   // Leadgrid-dedikerte hoster (leadgrid.no) bruker samme bootstrap —
   // casting-main eier Leadgrid-sidene og aliaser rene stier per host.
-  return isRoleRoomDedicatedHost(hostname) || isLeadgridDedicatedHost(hostname);
+  return isRoleRoomDedicatedHost(hostname);
 };
 
 const resolveRootComponent = async (): Promise<React.ComponentType> => {

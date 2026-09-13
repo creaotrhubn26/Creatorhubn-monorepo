@@ -37,13 +37,52 @@ const sessionBody = z.object({
   displayName: z.string().trim().min(1).max(180),
   email: z.string().trim().email().max(320).optional(),
 }).strict();
+const annotationPoint = z.object({
+  x: z.number().finite().min(0).max(1),
+  y: z.number().finite().min(0).max(1),
+}).strict();
+const annotationBase = {
+  id: z.string().trim().regex(/^[A-Za-z0-9_-]{1,80}$/),
+  color: z.enum(['#fbbf24', '#f87171', '#60a5fa', '#34d399']),
+  strokeWidth: z.number().finite().min(1).max(8),
+};
+const annotation = z.discriminatedUnion('tool', [
+  z.object({
+    ...annotationBase,
+    tool: z.literal('freehand'),
+    points: z.array(annotationPoint).min(2).max(160),
+  }).strict(),
+  z.object({
+    ...annotationBase,
+    tool: z.literal('arrow'),
+    points: z.array(annotationPoint).length(2),
+  }).strict(),
+  z.object({
+    ...annotationBase,
+    tool: z.literal('rectangle'),
+    points: z.array(annotationPoint).length(2),
+  }).strict(),
+]);
 const commentBody = z.object({
   frameId: z.string().trim().min(1).max(255).nullable().optional(),
   parentId: z.string().uuid().nullable().optional(),
   body: z.string().trim().min(1).max(5_000),
   anchorX: z.number().min(0).max(1).nullable().optional(),
   anchorY: z.number().min(0).max(1).nullable().optional(),
-}).strict();
+  annotations: z.array(annotation).max(12).optional(),
+}).strict().superRefine((value, context) => {
+  const hasAnchorX = value.anchorX != null;
+  const hasAnchorY = value.anchorY != null;
+  if (hasAnchorX !== hasAnchorY) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'anchor_coordinates_must_be_paired' });
+  }
+  if ((hasAnchorX || (value.annotations?.length ?? 0) > 0) && !value.frameId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'visual_markup_requires_frame' });
+  }
+  if (Buffer.byteLength(JSON.stringify(value.annotations ?? []), 'utf8') > 65_536) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'annotations_too_large' });
+  }
+});
 const decisionBody = z.object({
   decision: z.enum(['approved', 'changes_requested']),
   expectedSnapshotHash: z.string().regex(HASH_PATTERN),
@@ -256,12 +295,19 @@ function mapRound(row: JsonRecord, includeSnapshot = false): StoryboardReviewRou
   };
 }
 
+function mapAnnotations(value: unknown) {
+  const parsed = z.array(annotation).safeParse(value ?? []);
+  return parsed.success ? parsed.data : [];
+}
+
 function mapComment(row: JsonRecord) {
   return {
     id: String(row.id), reviewRoundId: String(row.review_round_id), frameId: row.frame_id ?? null,
     parentId: row.parent_id ?? null, authorDisplayName: String(row.author_display_name),
     body: String(row.body), visibility: row.visibility, anchorX: row.anchor_x ?? null,
-    anchorY: row.anchor_y ?? null, status: row.status,
+    anchorY: row.anchor_y ?? null,
+    annotations: mapAnnotations(row.annotations),
+    status: row.status,
     assignedTo: row.assigned_to ?? null,
     dueAt: row.due_at ? new Date(row.due_at).toISOString() : null,
     resolutionNote: row.resolution_note ?? null,
@@ -571,10 +617,10 @@ export function registerStoryboardReviewRoutes(
           const carried = await client.query(
             `INSERT INTO storyboard_review_comments
                (review_round_id, frame_id, author_kind, author_user_id, reviewer_session_id,
-                author_display_name, body, visibility, anchor_x, anchor_y, status,
+                author_display_name, body, visibility, anchor_x, anchor_y, annotations, status,
                 assigned_to, due_at, carried_from_comment_id)
              SELECT $1, frame_id, author_kind, author_user_id, reviewer_session_id,
-                    author_display_name, body, visibility, anchor_x, anchor_y, 'open',
+                    author_display_name, body, visibility, anchor_x, anchor_y, annotations, 'open',
                     assigned_to, due_at, id
                FROM storyboard_review_comments
               WHERE review_round_id = $2 AND status = 'open'
@@ -898,10 +944,11 @@ export function registerStoryboardReviewRoutes(
         const result = await client.query(
           `INSERT INTO storyboard_review_comments
              (review_round_id, frame_id, parent_id, author_kind, reviewer_session_id,
-              author_display_name, body, visibility, anchor_x, anchor_y)
-           VALUES ($1,$2,$3,'reviewer',$4,$5,$6,'client',$7,$8) RETURNING *`,
+              author_display_name, body, visibility, anchor_x, anchor_y, annotations)
+           VALUES ($1,$2,$3,'reviewer',$4,$5,$6,'client',$7,$8,$9::jsonb) RETURNING *`,
           [share.id, parsed.data.frameId ?? null, parsed.data.parentId ?? null, reviewer.id,
-            reviewer.display_name, parsed.data.body, parsed.data.anchorX ?? null, parsed.data.anchorY ?? null],
+            reviewer.display_name, parsed.data.body, parsed.data.anchorX ?? null, parsed.data.anchorY ?? null,
+            JSON.stringify(parsed.data.annotations ?? [])],
         );
         await client.query('COMMIT');
         return result.rows[0];

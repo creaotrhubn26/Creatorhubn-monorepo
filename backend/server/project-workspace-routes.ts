@@ -19,7 +19,6 @@
  
 
 import type express from "express";
-import { broadcastUserEvent } from "./realtime-user-events";
 import crypto from "crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -31,6 +30,23 @@ import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession,
 import { idempotencyMiddleware } from "./_shared-idempotency";
 import { signAssetReadUrl, deleteCaptureObjects } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
+import { deleteFromRoleRoomB2 } from "./b2-archive-helper";
+import { createDirectStreamTusUpload, deleteStreamVideo, getStreamVideoStatus, importStreamFromUrl, isStreamEnabled, signStreamPlaybackUrl, signStreamThumbnailUrl, uploadToStream } from "./cloudflare-stream-service";
+import {
+  VIDEO_COMMENT_CATEGORIES,
+  VIDEO_COMMENT_PRIORITIES,
+  VIDEO_COMMENT_STATUSES,
+  VIDEO_SHARE_ACCESS,
+  hashVideoSharePassword,
+  hashVideoShareToken,
+  newVideoShareToken,
+  normalizeVideoCommentInput,
+  safeVideoReturnPath,
+  selectActiveVideoVersion,
+  sanitizeVideoAnnotation,
+  sanitizeVideoChapters,
+} from "./project-video-room-model";
+import { broadcastUserEvent } from "./realtime-user-events";
 import { Vibrant } from "node-vibrant/node";
 import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, aiAllowed, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, higgsfieldConfigured, higgsfieldSubmit, higgsfieldPoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
 import Stripe from "stripe";
@@ -583,6 +599,26 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       return null;
     }
     return session.userId;
+  };
+
+  // Workspace-visere kan lese og kommentere. Kostnads-, lagrings- og
+  // godkjenningshandlinger krever prosjekt-eier eller eksplisitt canEdit.
+  const getVideoPermissions = async (projectId: string, userId: string) => {
+    const owner = await pool.query(`SELECT 1 FROM projects WHERE id=$1 AND user_id=$2 LIMIT 1`, [projectId, userId]).catch(() => ({ rows: [] }));
+    if (owner.rows.length) return { canRead: true, canComment: true, canEdit: true, canApprove: true, isOwner: true };
+    const member = await pool.query(
+      `SELECT permissions, role FROM project_team_members WHERE project_id=$1 AND user_id=$2 AND status='active' AND deactivated_at IS NULL LIMIT 1`,
+      [projectId, userId],
+    ).catch(() => ({ rows: [] }));
+    const row = member.rows[0];
+    const canEdit = Boolean(row?.permissions?.canEdit || row?.role === "editor");
+    return { canRead: Boolean(row), canComment: Boolean(row), canEdit, canApprove: canEdit, isOwner: false };
+  };
+  const requireVideoEditor = async (req: any, res: any): Promise<string | null> => {
+    const uid = await guard(req, res); if (!uid) return null;
+    const permissions = await getVideoPermissions(req.params.projectId, uid);
+    if (!permissions.canEdit) { res.status(403).json({ error: "video_room_edit_required" }); return null; }
+    return uid;
   };
 
   // Middleware-variant som MÅ kjøre FØR multer på opplastings-ruter. Ellers
@@ -3200,8 +3236,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       consented_by varchar, consented_at timestamptz)`).catch(() => {});
   };
   const userIdentity = async (uid: string) => {
-    const r = await pool.query(`SELECT email, role FROM users WHERE id = $1 LIMIT 1`, [uid]).catch(() => ({ rows: [] }));
-    return { email: r.rows[0]?.email || null, role: r.rows[0]?.role || null };
+    const r = await pool.query(`SELECT email, role, first_name, last_name FROM users WHERE id = $1 LIMIT 1`, [uid]).catch(() => ({ rows: [] }));
+    const row = r.rows[0] || {};
+    return { email: row.email || null, role: row.role || null, name: [row.first_name, row.last_name].filter(Boolean).join(" ") || row.email || null };
   };
   const spentTodayUsd = async (): Promise<number> => {
     const r = await pool.query(`SELECT COALESCE(SUM(est_cost_usd),0)::float s FROM generative_ai_jobs WHERE created_at::date = NOW()::date`).catch(() => ({ rows: [{ s: 0 }] }));
@@ -3235,6 +3272,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const myCost = Number(mine.rows[0]?.cost || 0);
       res.json({
         enabled: settings.enabled && falConfigured(),
+        settingsEnabled: settings.enabled,
         whitelisted: aiAllowed(settings, me.email, me.role),
         beebleConfigured: beebleConfigured(),
         higgsfieldConfigured: higgsfieldConfigured(),
@@ -3446,7 +3484,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // Video Room: Restyle / Relight en videoversjon (SwitchX/Beeble). Bevarer
   // bevegelse, endrer lys/atmosfære/stil. Kilde = versjonens B2-video (presignet).
   app.post("/api/projects/:projectId/ai/video-restyle", async (req, res) => {
-    const uid = await guard(req, res); if (!uid) return;
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
     try {
       await ensureGenSchema();
       const pid = req.params.projectId;
@@ -3503,7 +3541,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         const a = await pool.query(`SELECT preview_key, full_key FROM capture_assets WHERE id = $1`, [job.source_asset_id]).catch(() => ({ rows: [] }));
         const k = a.rows[0]?.preview_key || a.rows[0]?.full_key; return k ? signAssetReadUrl(k) : null;
       })() : null;
-      const isVideoKind = job.kind === "image-to-video";
+      const isVideoKind = job.kind === "image-to-video" || job.kind === "video-to-video";
       // Allerede ferdig?
       if (job.status === "completed" && job.output_b2_key) {
         return res.json({ status: "completed", kind: job.kind, isVideo: isVideoKind, beforeUrl, afterUrl: await presignRoleRoomB2Download(job.output_b2_key, undefined, 3600), prompt: job.input?.prompt });
@@ -3586,6 +3624,20 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET ai/jobs", e); res.json({ jobs: [] }); }
   });
 
+  // Ekte filnedlasting av et ferdig AI-resultat. Dette setter Content-Disposition
+  // i den signerte B2-URL-en, i stedet for å åpne preview-URL i en ny fane.
+  app.get("/api/projects/:projectId/ai/jobs/:jobId/download", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    const row = await pool.query(`SELECT output_b2_key,output_url_temp,kind FROM generative_ai_jobs WHERE id=$1 AND project_id=$2 AND status='completed'`, [req.params.jobId, req.params.projectId]).catch(() => ({ rows: [] }));
+    if (!row.rows.length) return res.status(404).json({ error: "not_found" });
+    const job = row.rows[0];
+    const ext = (job.kind === "image-to-video" || job.kind === "video-to-video") ? "mp4" : "png";
+    const url = job.output_b2_key ? await presignRoleRoomB2Download(job.output_b2_key, `creatorhub-ai-${req.params.jobId}.${ext}`, 300) : job.output_url_temp;
+    if (!url) return res.status(503).json({ error: "download_unavailable" });
+    if (req.query.format === "json") return res.json({ url });
+    res.redirect(url);
+  });
+
   // Pre-sjekk: i credits-modus må saldo dekke retail-pris (kost×påslag).
   const creditPreflight = async (settings: any, uid: string, estCost: number): Promise<{ ok: boolean; retail: number; balance: number }> => {
     const retail = estCost * (settings.markupMultiplier || 1);
@@ -3616,7 +3668,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (!secret) return res.status(503).json({ error: "stripe_not_configured" });
       const stripe = new Stripe(secret.trim());
       const base = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/$/, "");
-      const ret = `${base}/workspace/${req.params.projectId}/photo-room`;
+      const ret = `${base}${safeVideoReturnPath(req.params.projectId, req.body?.returnPath)}`;
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
         success_url: `${ret}?ai_credits=ok&cs={CHECKOUT_SESSION_ID}`,
@@ -3806,11 +3858,11 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("PUT admin genai-settings", e); res.status(500).json({ error: "failed" }); }
   });
 
-  // ─────────── Video Room — produsent-side frame.io-review (versjoner + ───────
-  // tidsstemplede kommentarer + chapters + godkjenning). Prosjekt-scopet i VÅRE
-  // tabeller; gjenbruker CinematicVideoPlayer-formen på frontend. Cloudflare
-  // Stream / B2 host video; vi lagrer file_url/stream_uid + chapters (jsonb).
+  // ─────────── Video Room — samme review-datasett for team og klient ─────────
+  let videoSchemaReady: Promise<void> | null = null;
   const ensureVideoSchema = async () => {
+    if (videoSchemaReady) return videoSchemaReady;
+    videoSchemaReady = (async () => {
     await pool.query(`CREATE TABLE IF NOT EXISTS project_video_versions (
       id uuid PRIMARY KEY,
       project_id uuid NOT NULL,
@@ -3825,9 +3877,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       uploaded_by varchar,
       created_at timestamptz DEFAULT now()
     )`).catch(() => {});
-    // Videofilene ligger på B2 (Cloudflare Stream = kun streaming-lag). b2_key
-    // presignes til en avspillings-URL ved lesing.
     await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS b2_key text`).catch(() => {});
+    await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS content_type text`).catch(() => {});
+    await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS size_bytes bigint`).catch(() => {});
+    await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS stream_ready boolean NOT NULL DEFAULT false`).catch(() => {});
+    await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS stream_state varchar(24) NOT NULL DEFAULT 'pending'`).catch(() => {});
+    await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS stream_error text`).catch(() => {});
+    await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS stream_checked_at timestamptz`).catch(() => {});
     await pool.query(`CREATE TABLE IF NOT EXISTS project_video_comments (
       id uuid PRIMARY KEY,
       version_id uuid NOT NULL,
@@ -3844,13 +3900,109 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       like_count int DEFAULT 0,
       created_at timestamptz DEFAULT now()
     )`).catch(() => {});
+    const commentColumns = [
+      `ALTER TABLE project_video_comments ADD COLUMN IF NOT EXISTS author_email text`,
+      `ALTER TABLE project_video_comments ADD COLUMN IF NOT EXISTS author_user_id varchar`,
+      `ALTER TABLE project_video_comments ADD COLUMN IF NOT EXISTS priority text`,
+      `ALTER TABLE project_video_comments ADD COLUMN IF NOT EXISTS annotation jsonb`,
+      `ALTER TABLE project_video_comments ADD COLUMN IF NOT EXISTS suggested_media_url text`,
+      `ALTER TABLE project_video_comments ADD COLUMN IF NOT EXISTS suggested_media_label text`,
+      `ALTER TABLE project_video_comments ADD COLUMN IF NOT EXISTS suggested_media_from_sec numeric`,
+      `ALTER TABLE project_video_comments ADD COLUMN IF NOT EXISTS suggested_media_to_sec numeric`,
+      `ALTER TABLE project_video_comments ADD COLUMN IF NOT EXISTS edited_at timestamptz`,
+    ];
+    for (const statement of commentColumns) await pool.query(statement).catch(() => {});
+    await pool.query(`CREATE TABLE IF NOT EXISTS project_video_decisions (
+      id uuid PRIMARY KEY, project_id uuid NOT NULL, version_id uuid NOT NULL,
+      decision text NOT NULL, note text, actor_user_id varchar, reviewer_name text,
+      reviewer_email text, source text DEFAULT 'team', created_at timestamptz DEFAULT now()
+    )`).catch(() => {});
+    await pool.query(`CREATE TABLE IF NOT EXISTS project_video_share_links (
+      id uuid PRIMARY KEY, project_id uuid NOT NULL, token_hash text NOT NULL UNIQUE,
+      created_by varchar, access_mode text DEFAULT 'comment', allow_version_history boolean DEFAULT true,
+      require_identity boolean DEFAULT true, allow_download boolean DEFAULT false,
+      password_salt text, password_hash text, expires_at timestamptz, revoked_at timestamptz,
+      created_at timestamptz DEFAULT now()
+    )`).catch(() => {});
+    })();
+    return videoSchemaReady;
   };
   const mapVideoComment = (r: any) => ({
     id: r.id, timecodeSec: Number(r.timecode_sec), endTimecodeSec: r.end_timecode_sec != null ? Number(r.end_timecode_sec) : null,
     comment: r.comment, clientName: r.author_name || null, authorKind: r.author_kind || "creator",
-    status: r.status || "open", isDecision: !!r.is_decision, category: r.category || null,
-    parentId: r.parent_id || null, likeCount: r.like_count || 0, createdAt: r.created_at,
+    status: r.status || "open", isDecision: !!r.is_decision, category: r.category || null, priority: r.priority || null,
+    parentId: r.parent_id || null, likeCount: r.like_count || 0, createdAt: r.created_at, editedAt: r.edited_at || null,
+    clientEmail: r.author_email || null, annotation: r.annotation || null,
+    suggestedMediaUrl: r.suggested_media_url || null, suggestedMediaLabel: r.suggested_media_label || null,
+    suggestedMediaFromSec: r.suggested_media_from_sec != null ? Number(r.suggested_media_from_sec) : null,
+    suggestedMediaToSec: r.suggested_media_to_sec != null ? Number(r.suggested_media_to_sec) : null,
   });
+
+  const videoEditorMw = async (req: any, res: any, next: any) => {
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
+    req._guardUid = uid; next();
+  };
+  const publicVideoWriteWindows = new Map<string, { count: number; resetAt: number }>();
+  const allowPublicVideoWrite = (req: any, res: any): boolean => {
+    const key = `${req.ip || req.socket?.remoteAddress || "unknown"}:${hashVideoShareToken(String(req.params.token || ""))}`;
+    const now = Date.now(); const existing = publicVideoWriteWindows.get(key);
+    const windowState = !existing || existing.resetAt <= now ? { count: 0, resetAt: now + 60_000 } : existing;
+    windowState.count += 1; publicVideoWriteWindows.set(key, windowState);
+    if (windowState.count > 30) { res.status(429).json({ error: "too_many_review_updates" }); return false; }
+    return true;
+  };
+  const mapVideoVersion = async (v: any, ttl = 3600) => {
+    const status = v.stream_uid ? await getStreamVideoStatus(v.stream_uid).catch(() => null) : null;
+    if (status && (status.ready !== v.stream_ready || status.state !== v.stream_state || status.error !== v.stream_error)) {
+      await pool.query(
+        `UPDATE project_video_versions
+            SET stream_ready=$2, stream_state=$3, stream_error=$4,
+                stream_checked_at=NOW(), duration=COALESCE($5,duration),
+                thumbnail_url=COALESCE($6,thumbnail_url)
+          WHERE id=$1`,
+        [v.id, status.ready, status.state || (status.ready ? "ready" : "processing"), status.error || null,
+         status.duration || null, status.thumbnailUrl || null],
+      ).catch(() => undefined);
+    }
+    const streamReady = status?.ready ?? !!v.stream_ready;
+    const streamUrl = v.stream_uid && streamReady ? await signStreamPlaybackUrl(v.stream_uid, ttl).catch(() => null) : null;
+    const signedThumb = v.stream_uid && streamReady ? await signStreamThumbnailUrl(v.stream_uid, ttl).catch(() => null) : null;
+    return {
+      id: v.id, versionLabel: v.version_label || `V${v.version_number}`, versionNumber: v.version_number,
+      fileUrl: streamUrl || (v.b2_key ? await presignRoleRoomB2Download(v.b2_key, undefined, ttl) : (v.file_url || null)),
+      streamUid: v.stream_uid || null, thumbnailUrl: signedThumb || status?.thumbnailUrl || v.thumbnail_url || null,
+      streamReady, streamState: status?.state || v.stream_state || (streamReady ? "ready" : "pending"),
+      streamProgress: status?.progressPercent ?? null, streamError: status?.error || v.stream_error || null,
+      duration: v.duration != null ? Number(v.duration) : null, status: v.status, createdAt: v.created_at,
+      commentCount: v.comment_count || 0, openCount: v.open_count || 0,
+    };
+  };
+  const videoRoomState = async (pid: string, requestedVersionId?: string | null, allowHistory = true, ttl = 3600) => {
+    const vs = await pool.query(
+      `SELECT id, version_label, version_number, file_url, b2_key, stream_uid, thumbnail_url, duration, chapters, status, created_at,
+              stream_ready, stream_state, stream_error,
+              (SELECT count(*) FROM project_video_comments c WHERE c.version_id=v.id)::int comment_count,
+              (SELECT count(*) FROM project_video_comments c WHERE c.version_id=v.id AND c.status NOT IN ('resolved','done'))::int open_count
+         FROM project_video_versions v WHERE project_id=$1 ORDER BY version_number ASC`, [pid],
+    ).catch(() => ({ rows: [] }));
+    const active: any = selectActiveVideoVersion(vs.rows);
+    const selected = (allowHistory && requestedVersionId && vs.rows.find((v: any) => String(v.id) === requestedVersionId)) || active;
+    const visibleRows = allowHistory ? vs.rows : (selected ? [selected] : []);
+    const versions = await Promise.all(visibleRows.map((v: any) => mapVideoVersion(v, ttl)));
+    const cm = selected
+      ? await pool.query(`SELECT * FROM project_video_comments WHERE version_id=$1 ORDER BY timecode_sec ASC, created_at ASC`, [selected.id]).catch(() => ({ rows: [] }))
+      : { rows: [] };
+    const decisions = selected
+      ? await pool.query(`SELECT id, decision, note, reviewer_name, reviewer_email, source, created_at FROM project_video_decisions WHERE version_id=$1 ORDER BY created_at DESC`, [selected.id]).catch(() => ({ rows: [] }))
+      : { rows: [] };
+    return {
+      hasVersions: versions.length > 0, versions, currentVersionId: selected?.id || null,
+      activeVersionId: active?.id || null,
+      chapters: selected ? sanitizeVideoChapters(selected.chapters) : [],
+      comments: cm.rows.map(mapVideoComment),
+      decisions: decisions.rows.map((d: any) => ({ id: d.id, decision: d.decision, note: d.note || null, reviewerName: d.reviewer_name || null, reviewerEmail: d.reviewer_email || null, source: d.source, createdAt: d.created_at })),
+    };
+  };
 
   // Hele cockpit-staten: versjoner + nåværende + kommentarer + chapters + fase.
   app.get("/api/projects/:projectId/video-room", async (req, res) => {
@@ -3858,36 +4010,15 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     try {
       await ensureVideoSchema();
       const pid = req.params.projectId;
-      const vs = await pool.query(
-        `SELECT id, version_label, version_number, file_url, b2_key, stream_uid, thumbnail_url, duration, chapters, status, created_at,
-                (SELECT count(*) FROM project_video_comments c WHERE c.version_id = v.id)::int comment_count,
-                (SELECT count(*) FROM project_video_comments c WHERE c.version_id = v.id AND c.status NOT IN ('resolved','done'))::int open_count
-           FROM project_video_versions v WHERE project_id = $1 ORDER BY version_number ASC`,
-        [pid],
-      ).catch(() => ({ rows: [] }));
-      // B2-nøkkel → presignet avspillings-URL (1t). file_url (ekstern) brukes som fallback.
-      const versions = await Promise.all(vs.rows.map(async (v: any) => ({
-        id: v.id, versionLabel: v.version_label || `V${v.version_number}`, versionNumber: v.version_number,
-        fileUrl: v.b2_key ? await presignRoleRoomB2Download(v.b2_key, undefined, 3600) : (v.file_url || null),
-        streamUid: v.stream_uid || null, thumbnailUrl: v.thumbnail_url || null,
-        duration: v.duration != null ? Number(v.duration) : null, status: v.status, createdAt: v.created_at,
-        commentCount: v.comment_count || 0, openCount: v.open_count || 0,
-      })));
-      const cur = vs.rows.find((v: any) => v.status === "under_review") || vs.rows[vs.rows.length - 1] || null;
-      let comments: any[] = []; let chapters: any[] = [];
-      if (cur) {
-        chapters = Array.isArray(cur.chapters) ? cur.chapters : (cur.chapters ? cur.chapters : []);
-        const cm = await pool.query(`SELECT * FROM project_video_comments WHERE version_id = $1 ORDER BY timecode_sec ASC, created_at ASC`, [cur.id]).catch(() => ({ rows: [] }));
-        comments = cm.rows.map(mapVideoComment);
-      }
-      res.json({ hasVersions: versions.length > 0, versions, currentVersionId: cur?.id || null, chapters, comments });
+      const state = await videoRoomState(pid, typeof req.query.versionId === "string" ? req.query.versionId : null);
+      res.json({ ...state, permissions: await getVideoPermissions(pid, uid) });
     } catch (e) { console.error("GET video-room", e); res.json({ hasVersions: false, versions: [], comments: [], chapters: [] }); }
   });
 
   // Video Room: varsle prosjektets ANDRE team-medlemmer (eier + aktive
   // project_team_members, minus aktøren) om at noe endret seg, slik at åpne
   // VideoRoomTab-faner refetcher instant fremfor å vente på neste last.
-  async function notifyVideoRoomUpdated(projectId: string, actorUserId: string, reason: "version" | "comment" | "approval" | "chapters"): Promise<void> {
+  async function notifyVideoRoomUpdated(projectId: string, actorUserId: string, reason: "version" | "comment" | "approval" | "chapters" | "share"): Promise<void> {
     try {
       const owner = await pool.query(`SELECT user_id FROM projects WHERE id = $1`, [projectId]).catch(() => ({ rows: [] }));
       const members = await pool.query(
@@ -3906,7 +4037,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
 
   // Ny versjon (V1/V2/…) — file_url eller stream_uid + valgfrie chapters.
   app.post("/api/projects/:projectId/video-versions", async (req, res) => {
-    const uid = await guard(req, res); if (!uid) return;
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
     try {
       await ensureVideoSchema();
       const pid = req.params.projectId;
@@ -3914,44 +4045,158 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (!b.b2Key && !b.fileUrl && !b.streamUid) return res.status(400).json({ error: "b2Key_or_fileUrl_or_streamUid_required" });
       const n = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`, [pid]);
       const vn = n.rows[0].n;
-      // Eldre versjoner går fra under_review → superseded.
-      await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status='under_review'`, [pid]).catch(() => {});
+      // A replacement version also supersedes the revision that triggered it.
+      // Otherwise an older changes_requested row wins the active-version lookup.
+      await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status IN ('under_review','changes_requested')`, [pid]).catch(() => {});
       const id = crypto.randomUUID();
       await pool.query(
         `INSERT INTO project_video_versions (id, project_id, version_label, version_number, file_url, b2_key, stream_uid, thumbnail_url, duration, chapters, status, uploaded_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'under_review',$11)`,
         [id, pid, String(b.versionLabel || `V${vn}`).slice(0, 80), vn, b.fileUrl || null, b.b2Key || null, b.streamUid || null,
          b.thumbnailUrl || null, b.duration != null ? Number(b.duration) : null,
-         b.chapters ? JSON.stringify(b.chapters) : null, uid],
+         b.chapters ? JSON.stringify(sanitizeVideoChapters(b.chapters)) : null, uid],
       );
       notifyVideoRoomUpdated(pid, uid, "version");
       res.status(201).json({ id, versionNumber: vn });
     } catch (e) { console.error("POST video-versions", e); res.status(500).json({ error: "failed" }); }
   });
 
+  app.post("/api/projects/:projectId/video-versions/import", async (req, res) => {
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
+    await ensureVideoSchema();
+    const pid = req.params.projectId;
+    let source: URL;
+    try { source = new URL(String(req.body?.sourceUrl || "")); }
+    catch { return res.status(400).json({ error: "valid_source_url_required" }); }
+    const host = source.hostname.toLowerCase();
+    if (source.protocol !== "https:" || host === "localhost" || host.endsWith(".local") ||
+        /^(?:127\.|10\.|192\.168\.|169\.254\.|0\.|\[?::1\]?$)/.test(host) ||
+        /^172\.(?:1[6-9]|2\d|3[01])\./.test(host)) {
+      return res.status(400).json({ error: "public_https_source_required" });
+    }
+    const id = crypto.randomUUID(); let streamUid: string | null = null;
+    try {
+      const fileName = String(req.body?.fileName || source.pathname.split("/").pop() || "imported-video.mp4").slice(0, 200);
+      const imported = await importStreamFromUrl({
+        sourceUrl: source.toString(), filename: fileName,
+        creatorId: crypto.createHash("sha256").update(uid).digest("hex").slice(0, 32),
+        projectId: pid, versionId: id,
+      });
+      streamUid = imported.uid;
+      const n = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id=$1`, [pid]);
+      const versionNumber = Number(n.rows[0]?.n || 1);
+      await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status IN ('under_review','changes_requested')`, [pid]);
+      await pool.query(
+        `INSERT INTO project_video_versions
+           (id,project_id,version_label,version_number,stream_uid,thumbnail_url,duration,status,uploaded_by,
+            stream_ready,stream_state,stream_checked_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'under_review',$8,$9,$10,NOW())`,
+        [id, pid, String(req.body?.versionLabel || `V${versionNumber}`).slice(0, 80), versionNumber,
+         imported.uid, imported.thumbnailUrl, imported.duration || null, uid,
+         imported.ready, imported.ready ? "ready" : "downloading"],
+      );
+      notifyVideoRoomUpdated(pid, uid, "version");
+      return res.status(201).json({ id, versionNumber, streamUid: imported.uid, ready: imported.ready });
+    } catch (error: any) {
+      if (streamUid) await deleteStreamVideo(streamUid);
+      console.error("POST video import", error);
+      return res.status(502).json({ error: error?.message || "stream_import_failed" });
+    }
+  });
+
+  // Direct browser → Cloudflare Stream TUS. Handles large files and restart
+  // without buffering video bytes in Node or exposing the Stream API token.
+  app.post("/api/projects/:projectId/video-versions/tus", async (req, res) => {
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
+    await ensureVideoSchema();
+    const pid = req.params.projectId;
+    const fileName = String(req.body?.fileName || "video.mp4").trim().slice(0, 200);
+    const sizeBytes = Number(req.body?.sizeBytes);
+    if (!fileName || !Number.isSafeInteger(sizeBytes) || sizeBytes <= 0) {
+      return res.status(400).json({ error: "fileName_and_sizeBytes_required" });
+    }
+    const id = crypto.randomUUID();
+    let streamUid: string | null = null;
+    try {
+      const ticket = await createDirectStreamTusUpload({
+        sizeBytes,
+        filename: fileName,
+        creatorId: crypto.createHash("sha256").update(uid).digest("hex").slice(0, 32),
+        projectId: pid,
+        versionId: id,
+        maxDurationSeconds: Number(req.body?.maxDurationSeconds) || undefined,
+      });
+      streamUid = ticket.uid;
+      const n = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id=$1`, [pid]);
+      const versionNumber = Number(n.rows[0]?.n || 1);
+      await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status IN ('under_review','changes_requested')`, [pid]);
+      await pool.query(
+        `INSERT INTO project_video_versions
+           (id,project_id,version_label,version_number,stream_uid,content_type,size_bytes,status,uploaded_by,
+            stream_ready,stream_state,stream_checked_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'under_review',$8,false,'pendingupload',NOW())`,
+        [id, pid, String(req.body?.versionLabel || `V${versionNumber}`).slice(0, 80), versionNumber,
+         ticket.uid, String(req.body?.contentType || "video/mp4").slice(0, 200), sizeBytes, uid],
+      );
+      notifyVideoRoomUpdated(pid, uid, "version");
+      return res.status(201).json({ ...ticket, versionId: id, versionNumber });
+    } catch (error: any) {
+      if (streamUid) await deleteStreamVideo(streamUid);
+      console.error("POST video TUS provision", error);
+      const status = error?.message === "invalid_stream_upload_size" ? 413
+        : error?.message === "cloudflare_stream_not_configured" ? 503 : 502;
+      return res.status(status).json({ error: error?.message || "stream_tus_failed" });
+    }
+  });
+
+  app.get("/api/projects/:projectId/video-versions/:vid/stream-status", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    await ensureVideoSchema();
+    const row = await pool.query(
+      `SELECT * FROM project_video_versions WHERE id=$1 AND project_id=$2 LIMIT 1`,
+      [req.params.vid, req.params.projectId],
+    ).catch(() => ({ rows: [] }));
+    if (!row.rows[0]) return res.status(404).json({ error: "not_found" });
+    const mapped = await mapVideoVersion(row.rows[0]);
+    return res.json({
+      versionId: mapped.id,
+      ready: mapped.streamReady,
+      state: mapped.streamState,
+      progressPercent: mapped.streamProgress,
+      error: mapped.streamError,
+      fileUrl: mapped.fileUrl,
+      thumbnailUrl: mapped.thumbnailUrl,
+    });
+  });
+
   // Last opp videofil → B2 → opprett versjon. Server-side (samme beviste mønster
   // som /images): multer → archiveToRoleRoomB2. Cloudflare Stream = kun streaming,
   // kilden bor på B2. b2_key presignes til avspilling i GET /video-room.
-  app.post("/api/projects/:projectId/video-versions/upload", guardMw, videoUpload.single("file"), async (req, res) => {
+  app.post("/api/projects/:projectId/video-versions/upload", videoEditorMw, videoUpload.single("file"), async (req, res) => {
     const uid = (req as any)._guardUid; if (!uid) return;
     try {
       await ensureVideoSchema();
-      const pid = req.params.projectId;
+      const pid = String(req.params.projectId || "").trim();
       const file = (req as any).file;
       if (!file) return res.status(400).json({ error: "file_required" });
       if (!String(file.mimetype || "").startsWith("video/")) return res.status(415).json({ error: "video_only" });
-      const key = `workspace/${pid}/video-versions/${crypto.randomUUID()}-${slugifyForKey(file.originalname || "video.mp4")}`;
+      const id = crypto.randomUUID();
+      const key = `workspace/${pid}/video-versions/${id}-${slugifyForKey(file.originalname || "video.mp4")}`;
       const stored = await archiveToRoleRoomB2(key, file.buffer, file.mimetype);
       if (!stored) return res.status(503).json({ error: "b2_not_configured" });
+      let stream: any = null;
+      if (isStreamEnabled()) {
+        try { stream = await uploadToStream(file.buffer, file.mimetype, { projectId: pid, postId: id, filename: file.originalname || "video.mp4" }); }
+        catch (streamError) { console.warn("Video Room Stream upload failed; using B2 playback", streamError); }
+      }
       const n = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`, [pid]);
       const vn = n.rows[0].n;
-      await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status='under_review'`, [pid]).catch(() => {});
-      const id = crypto.randomUUID();
+      await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status IN ('under_review','changes_requested')`, [pid]).catch(() => {});
       const label = String(req.body?.versionLabel || `V${vn}`).slice(0, 80);
       await pool.query(
-        `INSERT INTO project_video_versions (id, project_id, version_label, version_number, b2_key, status, uploaded_by)
-         VALUES ($1,$2,$3,$4,$5,'under_review',$6)`,
-        [id, pid, label, vn, key, uid],
+        `INSERT INTO project_video_versions (id, project_id, version_label, version_number, b2_key, stream_uid, thumbnail_url, duration, content_type, size_bytes, status, uploaded_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'under_review',$11)`,
+        [id, pid, label, vn, key, stream?.uid || null, stream?.thumbnailUrl || null, stream?.duration || null, file.mimetype, file.size, uid],
       );
       notifyVideoRoomUpdated(pid, uid, "version");
       res.status(201).json({ id, versionNumber: vn });
@@ -3963,16 +4208,23 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try {
       await ensureVideoSchema();
-      const pid = req.params.projectId; const b = req.body || {};
-      if (!b.versionId || !b.comment) return res.status(400).json({ error: "versionId_and_comment_required" });
+      const pid = req.params.projectId; const b = req.body || {}; const input = normalizeVideoCommentInput(b);
+      if (!b.versionId || !input.comment) return res.status(400).json({ error: "versionId_and_comment_required" });
+      const version = await pool.query(`SELECT 1 FROM project_video_versions WHERE id=$1 AND project_id=$2`, [b.versionId, pid]).catch(() => ({ rows: [] }));
+      if (!version.rows.length) return res.status(404).json({ error: "version_not_found" });
+      if (input.parentId) {
+        const parent = await pool.query(`SELECT 1 FROM project_video_comments WHERE id=$1 AND version_id=$2 AND project_id=$3`, [input.parentId, b.versionId, pid]).catch(() => ({ rows: [] }));
+        if (!parent.rows.length) return res.status(400).json({ error: "invalid_parent" });
+      }
+      const author = await userIdentity(uid);
       const id = crypto.randomUUID();
       await pool.query(
-        `INSERT INTO project_video_comments (id, version_id, project_id, timecode_sec, end_timecode_sec, comment, author_name, author_kind, category, is_decision, parent_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        [id, b.versionId, pid, Number(b.timecodeSec || 0), b.endTimecodeSec != null ? Number(b.endTimecodeSec) : null,
-         String(b.comment).slice(0, 4000), String(b.authorName || "").slice(0, 200) || null,
-         String(b.authorKind || "creator").slice(0, 20), b.category ? String(b.category).slice(0, 40) : null,
-         !!b.isDecision, b.parentId || null],
+        `INSERT INTO project_video_comments
+          (id, version_id, project_id, timecode_sec, end_timecode_sec, comment, author_name, author_email, author_user_id, author_kind, category, priority, is_decision, parent_id, annotation, suggested_media_url, suggested_media_label, suggested_media_from_sec, suggested_media_to_sec)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'creator',$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18)`,
+        [id, b.versionId, pid, input.timecodeSec, input.endTimecodeSec, input.comment, input.authorName || author.name, input.authorEmail || author.email, uid,
+         input.category, input.priority, input.isDecision, input.parentId, input.annotation ? JSON.stringify(input.annotation) : null,
+         input.suggestedMediaUrl, input.suggestedMediaLabel, input.suggestedMediaFromSec, input.suggestedMediaToSec],
       );
       const row = await pool.query(`SELECT * FROM project_video_comments WHERE id = $1`, [id]);
       notifyVideoRoomUpdated(pid, uid, "comment");
@@ -3980,45 +4232,264 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("POST video-comments", e); res.status(500).json({ error: "failed" }); }
   });
 
-  // Resolve/endre status på kommentar.
+  // Rediger, klassifiser eller løs en kommentar. Egen kommentar kan redigeres;
+  // prosjekt-editor kan også rydde og løse på vegne av teamet.
   app.patch("/api/projects/:projectId/video-comments/:commentId", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
-      const status = String(req.body?.status || "").slice(0, 20);
-      if (!status) return res.status(400).json({ error: "status_required" });
+      await ensureVideoSchema();
+      const existing = await pool.query(`SELECT * FROM project_video_comments WHERE id=$1 AND project_id=$2`, [req.params.commentId, req.params.projectId]).catch(() => ({ rows: [] }));
+      if (!existing.rows.length) return res.status(404).json({ error: "not_found" });
+      const permissions = await getVideoPermissions(req.params.projectId, uid);
+      if (!permissions.canEdit && existing.rows[0].author_user_id !== uid) return res.status(403).json({ error: "not_allowed" });
+      const b = req.body || {};
+      const status = VIDEO_COMMENT_STATUSES.has(String(b.status)) ? String(b.status) : existing.rows[0].status;
+      const category = VIDEO_COMMENT_CATEGORIES.has(String(b.category)) ? String(b.category) : existing.rows[0].category;
+      const priority = VIDEO_COMMENT_PRIORITIES.has(String(b.priority)) ? String(b.priority) : existing.rows[0].priority;
+      const comment = b.comment == null ? existing.rows[0].comment : String(b.comment).trim().slice(0, 4000);
+      if (!comment) return res.status(400).json({ error: "comment_required" });
+      const annotation = b.annotation === undefined ? existing.rows[0].annotation : sanitizeVideoAnnotation(b.annotation);
       const upd = await pool.query(
-        `UPDATE project_video_comments SET status=$1 WHERE id=$2 AND project_id=$3 RETURNING id`,
-        [status, req.params.commentId, req.params.projectId],
+        `UPDATE project_video_comments SET status=$1, comment=$2, category=$3, priority=$4,
+           is_decision=COALESCE($5,is_decision), annotation=$6::jsonb, edited_at=NOW()
+         WHERE id=$7 AND project_id=$8 RETURNING *`,
+        [status, comment, category, priority, typeof b.isDecision === "boolean" ? b.isDecision : null,
+         annotation ? JSON.stringify(annotation) : null, req.params.commentId, req.params.projectId],
       ).catch(() => ({ rows: [] }));
-      if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      notifyVideoRoomUpdated(req.params.projectId, uid, "comment");
+      res.json(mapVideoComment(upd.rows[0]));
+    } catch (e) { console.error("PATCH video-comments", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  app.delete("/api/projects/:projectId/video-comments/:commentId", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureVideoSchema();
+      const existing = await pool.query(`SELECT author_user_id FROM project_video_comments WHERE id=$1 AND project_id=$2`, [req.params.commentId, req.params.projectId]).catch(() => ({ rows: [] }));
+      if (!existing.rows.length) return res.status(404).json({ error: "not_found" });
+      const permissions = await getVideoPermissions(req.params.projectId, uid);
+      if (!permissions.canEdit && existing.rows[0].author_user_id !== uid) return res.status(403).json({ error: "not_allowed" });
+      await pool.query(`DELETE FROM project_video_comments WHERE project_id=$1 AND (id=$2 OR parent_id=$2)`, [req.params.projectId, req.params.commentId]);
       notifyVideoRoomUpdated(req.params.projectId, uid, "comment");
       res.json({ ok: true });
-    } catch (e) { console.error("PATCH video-comments", e); res.status(500).json({ error: "failed" }); }
+    } catch (e) { console.error("DELETE video-comments", e); res.status(500).json({ error: "failed" }); }
   });
 
   // Godkjenn versjon → approved (+ resten superseded).
   app.post("/api/projects/:projectId/video-versions/:vid/approve", async (req, res) => {
-    const uid = await guard(req, res); if (!uid) return;
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
     try {
       const pid = req.params.projectId;
+      await ensureVideoSchema();
       const upd = await pool.query(`UPDATE project_video_versions SET status='approved' WHERE id=$1 AND project_id=$2 RETURNING id`, [req.params.vid, pid]).catch(() => ({ rows: [] }));
       if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND id<>$2 AND status IN ('under_review','changes_requested','approved')`, [pid, req.params.vid]);
+      await pool.query(`INSERT INTO project_video_decisions (id,project_id,version_id,decision,note,actor_user_id,source) VALUES ($1,$2,$3,'approved',$4,$5,'team')`, [crypto.randomUUID(), pid, req.params.vid, String(req.body?.note || "").slice(0, 2000) || null, uid]);
       notifyVideoRoomUpdated(pid, uid, "approval");
       res.json({ ok: true });
     } catch (e) { console.error("POST video approve", e); res.status(500).json({ error: "failed" }); }
   });
 
+  app.post("/api/projects/:projectId/video-versions/:vid/request-changes", async (req, res) => {
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
+    try {
+      await ensureVideoSchema();
+      const pid = req.params.projectId;
+      const upd = await pool.query(`UPDATE project_video_versions SET status='changes_requested' WHERE id=$1 AND project_id=$2 RETURNING id`, [req.params.vid, pid]).catch(() => ({ rows: [] }));
+      if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      await pool.query(`INSERT INTO project_video_decisions (id,project_id,version_id,decision,note,actor_user_id,source) VALUES ($1,$2,$3,'changes_requested',$4,$5,'team')`, [crypto.randomUUID(), pid, req.params.vid, String(req.body?.note || "").slice(0, 2000) || null, uid]);
+      notifyVideoRoomUpdated(pid, uid, "approval"); res.json({ ok: true });
+    } catch (e) { console.error("POST video request changes", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // Sett chapters (segment-bar) på en versjon.
   app.patch("/api/projects/:projectId/video-versions/:vid/chapters", async (req, res) => {
-    const uid = await guard(req, res); if (!uid) return;
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
     try {
-      const chapters = Array.isArray(req.body?.chapters) ? req.body.chapters : [];
+      const chapters = sanitizeVideoChapters(req.body?.chapters);
       const upd = await pool.query(`UPDATE project_video_versions SET chapters=$1 WHERE id=$2 AND project_id=$3 RETURNING id`,
         [JSON.stringify(chapters), req.params.vid, req.params.projectId]).catch(() => ({ rows: [] }));
       if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
       notifyVideoRoomUpdated(req.params.projectId, uid, "chapters");
       res.json({ ok: true });
     } catch (e) { console.error("PATCH video chapters", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  app.patch("/api/projects/:projectId/video-versions/:vid", async (req, res) => {
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
+    try {
+      const label = String(req.body?.versionLabel || "").trim().slice(0, 80);
+      if (!label) return res.status(400).json({ error: "versionLabel_required" });
+      const upd = await pool.query(`UPDATE project_video_versions SET version_label=$1 WHERE id=$2 AND project_id=$3 RETURNING id`, [label, req.params.vid, req.params.projectId]).catch(() => ({ rows: [] }));
+      if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      notifyVideoRoomUpdated(req.params.projectId, uid, "version"); res.json({ ok: true });
+    } catch (e) { console.error("PATCH video version", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  app.delete("/api/projects/:projectId/video-versions/:vid", async (req, res) => {
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
+    try {
+      await ensureVideoSchema();
+      const found = await pool.query(`SELECT b2_key,stream_uid FROM project_video_versions WHERE id=$1 AND project_id=$2`, [req.params.vid, req.params.projectId]).catch(() => ({ rows: [] }));
+      if (!found.rows.length) return res.status(404).json({ error: "not_found" });
+      await pool.query(`DELETE FROM project_video_comments WHERE version_id=$1 AND project_id=$2`, [req.params.vid, req.params.projectId]);
+      await pool.query(`DELETE FROM project_video_decisions WHERE version_id=$1 AND project_id=$2`, [req.params.vid, req.params.projectId]).catch(() => {});
+      await pool.query(`DELETE FROM project_video_versions WHERE id=$1 AND project_id=$2`, [req.params.vid, req.params.projectId]);
+      await pool.query(`UPDATE project_video_versions SET status='under_review' WHERE id=(SELECT id FROM project_video_versions WHERE project_id=$1 ORDER BY version_number DESC LIMIT 1) AND NOT EXISTS (SELECT 1 FROM project_video_versions WHERE project_id=$1 AND status IN ('under_review','changes_requested','approved'))`, [req.params.projectId]).catch(() => {});
+      if (found.rows[0].b2_key) await deleteFromRoleRoomB2(found.rows[0].b2_key);
+      if (found.rows[0].stream_uid) await deleteStreamVideo(found.rows[0].stream_uid);
+      notifyVideoRoomUpdated(req.params.projectId, uid, "version"); res.json({ ok: true });
+    } catch (e) { console.error("DELETE video version", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  app.get("/api/projects/:projectId/video-versions/:vid/download", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    const row = await pool.query(`SELECT b2_key,file_url,version_label FROM project_video_versions WHERE id=$1 AND project_id=$2`, [req.params.vid, req.params.projectId]).catch(() => ({ rows: [] }));
+    if (!row.rows.length) return res.status(404).json({ error: "not_found" });
+    const v = row.rows[0];
+    const url = v.b2_key ? await presignRoleRoomB2Download(v.b2_key, `${slugifyForKey(v.version_label || "video")}.mp4`, 300) : v.file_url;
+    if (!url) return res.status(503).json({ error: "download_unavailable" });
+    if (req.query.format === "json") return res.json({ url });
+    res.redirect(url);
+  });
+
+  // Revocable client link over the exact same versions/comments as Video Room.
+  app.get("/api/projects/:projectId/video-review-links", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    await ensureVideoSchema();
+    const rows = await pool.query(`SELECT id,access_mode,allow_version_history,require_identity,allow_download,recipient_name,recipient_email,watermark_enabled,watermark_text,review_round_id,expires_at,revoked_at,created_at FROM project_video_share_links WHERE project_id=$1 ORDER BY created_at DESC`, [req.params.projectId]).catch(() => ({ rows: [] }));
+    res.json({ links: rows.rows.map((r: any) => ({ id: r.id, accessMode: r.access_mode, allowVersionHistory: r.allow_version_history, requireIdentity: r.require_identity, allowDownload: r.allow_download, recipientName: r.recipient_name, recipientEmail: r.recipient_email, watermarkEnabled: r.watermark_enabled, watermarkText: r.watermark_text, reviewRoundId: r.review_round_id, expiresAt: r.expires_at, revokedAt: r.revoked_at, createdAt: r.created_at })) });
+  });
+  app.post("/api/projects/:projectId/video-review-links", async (req, res) => {
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
+    await ensureVideoSchema();
+    const b = req.body || {}; const accessMode = VIDEO_SHARE_ACCESS.has(String(b.accessMode)) ? String(b.accessMode) : "comment";
+    const { token, tokenHash } = newVideoShareToken(); const id = crypto.randomUUID();
+    const password = String(b.password || ""); const salt = password ? crypto.randomBytes(16).toString("hex") : null;
+    const expiresAt = b.expiresAt && Number.isFinite(Date.parse(String(b.expiresAt))) ? new Date(String(b.expiresAt)) : null;
+    const requestedVersionId = String(b.versionId || "").trim().slice(0, 64);
+    const targetVersion = await pool.query(
+      requestedVersionId
+        ? `SELECT id FROM project_video_versions WHERE id=$2 AND project_id=$1 LIMIT 1`
+        : `SELECT id FROM project_video_versions WHERE project_id=$1 ORDER BY (status IN ('under_review','changes_requested')) DESC,version_number DESC LIMIT 1`,
+      requestedVersionId ? [req.params.projectId, requestedVersionId] : [req.params.projectId],
+    ).catch(() => ({ rows: [] }));
+    if (requestedVersionId && !targetVersion.rows[0]) return res.status(404).json({ error: "version_not_found" });
+    let activeRound = targetVersion.rows[0]
+      ? await pool.query(
+        `SELECT id,round_number,max_rounds FROM project_video_review_rounds WHERE project_id=$1 AND version_id=$2 AND status='open' ORDER BY round_number DESC LIMIT 1`,
+        [req.params.projectId, targetVersion.rows[0].id],
+      ).catch(() => ({ rows: [] }))
+      : { rows: [] };
+    if (!activeRound.rows[0] && accessMode !== "view") {
+      const latestRound = await pool.query(`SELECT round_number,max_rounds FROM project_video_review_rounds WHERE project_id=$1 ORDER BY round_number DESC LIMIT 1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      const nextRound = Number(latestRound.rows[0]?.round_number || 0) + 1;
+      const maxRounds = Math.max(1, Math.min(99, Number(latestRound.rows[0]?.max_rounds || b.maxRounds || 3)));
+      if (nextRound > maxRounds) return res.status(409).json({ error: "revision_round_limit_reached", maxRounds });
+      if (!targetVersion.rows[0]) return res.status(409).json({ error: "video_version_required" });
+      activeRound = await pool.query(
+        `INSERT INTO project_video_review_rounds (id,project_id,version_id,round_number,name,max_rounds,opened_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,round_number,max_rounds`,
+        [crypto.randomUUID(), req.params.projectId, targetVersion.rows[0].id, nextRound, `Revisjonsrunde ${nextRound}`, maxRounds, uid],
+      );
+    }
+    const recipientEmail = String(b.recipientEmail || "").trim().toLowerCase().slice(0, 320) || null;
+    const recipientName = String(b.recipientName || "").trim().slice(0, 200) || null;
+    const watermarkText = String(b.watermarkText || recipientEmail || recipientName || "Fortrolig review").trim().slice(0, 300);
+    await pool.query(`INSERT INTO project_video_share_links (id,project_id,token_hash,created_by,access_mode,allow_version_history,require_identity,allow_download,password_salt,password_hash,expires_at,recipient_name,recipient_email,watermark_enabled,watermark_text,review_round_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+      [id, req.params.projectId, tokenHash, uid, accessMode, b.allowVersionHistory !== false, b.requireIdentity !== false, !!b.allowDownload && b.watermarkEnabled === false, salt, salt ? hashVideoSharePassword(password, salt) : null, expiresAt,
+       recipientName, recipientEmail, b.watermarkEnabled !== false, watermarkText, activeRound.rows[0]?.id || null]);
+    notifyVideoRoomUpdated(req.params.projectId, uid, "share");
+    res.status(201).json({ id, token, path: `/video-review/${token}` });
+  });
+  app.delete("/api/projects/:projectId/video-review-links/:linkId", async (req, res) => {
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
+    const upd = await pool.query(`UPDATE project_video_share_links SET revoked_at=NOW() WHERE id=$1 AND project_id=$2 AND revoked_at IS NULL RETURNING id`, [req.params.linkId, req.params.projectId]).catch(() => ({ rows: [] }));
+    if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+    notifyVideoRoomUpdated(req.params.projectId, uid, "share"); res.json({ ok: true });
+  });
+
+  const loadPublicVideoShare = async (req: any, res: any) => {
+    await ensureVideoSchema();
+    const result = await pool.query(`SELECT * FROM project_video_share_links WHERE token_hash=$1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>NOW()) LIMIT 1`, [hashVideoShareToken(String(req.params.token || ""))]).catch(() => ({ rows: [] }));
+    const share = result.rows[0];
+    if (!share) { res.status(404).json({ error: "link_invalid_or_expired" }); return null; }
+    if (share.password_hash && share.password_salt) {
+      const supplied = String(req.headers["x-video-review-password"] || "");
+      const actual = Buffer.from(hashVideoSharePassword(supplied, share.password_salt), "hex");
+      const expected = Buffer.from(share.password_hash, "hex");
+      if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) { res.status(401).json({ error: "password_required" }); return null; }
+    }
+    return share;
+  };
+  const publicShareRoundIsOpen = async (share: any): Promise<boolean> => {
+    if (!share.review_round_id) return true;
+    const round = await pool.query(
+      `SELECT 1 FROM project_video_review_rounds WHERE id=$1 AND project_id=$2 AND status='open' LIMIT 1`,
+      [share.review_round_id, share.project_id],
+    ).catch(() => ({ rows: [] }));
+    return round.rows.length > 0;
+  };
+  app.get("/api/video-review/:token", async (req, res) => {
+    try {
+      const share = await loadPublicVideoShare(req, res); if (!share) return;
+      const state = await videoRoomState(String(share.project_id), typeof req.query.versionId === "string" ? req.query.versionId : null, !!share.allow_version_history, 1800);
+      const publicComments = state.comments.map(({ clientEmail: _privateEmail, ...comment }: any) => comment);
+      const publicDecisions = state.decisions.map(({ reviewerEmail: _privateEmail, ...decision }: any) => decision);
+      res.json({ ...state, comments: publicComments, decisions: publicDecisions, access: { mode: share.access_mode, requireIdentity: !!share.require_identity, allowVersionHistory: !!share.allow_version_history, allowDownload: !!share.allow_download, reviewRoundId: share.review_round_id || null, recipientName: share.recipient_name || null, recipientEmail: share.recipient_email || null, watermark: share.watermark_enabled ? { text: share.watermark_text || share.recipient_email || share.recipient_name || "Fortrolig review" } : null } });
+    } catch (e) { console.error("GET public video review", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.post("/api/video-review/:token/comments", async (req, res) => {
+    try {
+      if (!allowPublicVideoWrite(req, res)) return;
+      const share = await loadPublicVideoShare(req, res); if (!share) return;
+      if (share.access_mode === "view") return res.status(403).json({ error: "comment_access_required" });
+      if (!await publicShareRoundIsOpen(share)) return res.status(409).json({ error: "review_round_closed" });
+      const input = normalizeVideoCommentInput(req.body || {}); const versionId = req.body?.versionId;
+      if (!versionId || !input.comment) return res.status(400).json({ error: "versionId_and_comment_required" });
+      if (share.require_identity && (!input.authorName || !input.authorEmail)) return res.status(400).json({ error: "identity_required" });
+      if (input.authorEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.authorEmail)) return res.status(400).json({ error: "valid_email_required" });
+      const version = await pool.query(`SELECT 1 FROM project_video_versions WHERE id=$1 AND project_id=$2`, [versionId, share.project_id]).catch(() => ({ rows: [] }));
+      if (!version.rows.length) return res.status(404).json({ error: "version_not_found" });
+      if (input.parentId) {
+        const parent = await pool.query(`SELECT 1 FROM project_video_comments WHERE id=$1 AND version_id=$2`, [input.parentId, versionId]).catch(() => ({ rows: [] }));
+        if (!parent.rows.length) return res.status(400).json({ error: "invalid_parent" });
+      }
+      const id = crypto.randomUUID();
+      await pool.query(`INSERT INTO project_video_comments (id,version_id,project_id,timecode_sec,end_timecode_sec,comment,author_name,author_email,author_kind,category,priority,is_decision,parent_id,annotation,suggested_media_url,suggested_media_label,suggested_media_from_sec,suggested_media_to_sec,review_round_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'client',$9,$10,$11,$12,$13::jsonb,$14,$15,$16,$17,$18)`,
+        [id, versionId, share.project_id, input.timecodeSec, input.endTimecodeSec, input.comment, input.authorName, input.authorEmail, input.category, input.priority, input.isDecision, input.parentId, input.annotation ? JSON.stringify(input.annotation) : null, input.suggestedMediaUrl, input.suggestedMediaLabel, input.suggestedMediaFromSec, input.suggestedMediaToSec, share.review_round_id || null]);
+      const row = await pool.query(`SELECT * FROM project_video_comments WHERE id=$1`, [id]);
+      notifyVideoRoomUpdated(String(share.project_id), "public", "comment"); res.status(201).json(mapVideoComment(row.rows[0]));
+    } catch (e) { console.error("POST public video comment", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.post("/api/video-review/:token/decisions", async (req, res) => {
+    try {
+      if (!allowPublicVideoWrite(req, res)) return;
+      const share = await loadPublicVideoShare(req, res); if (!share) return;
+      if (share.access_mode !== "approve") return res.status(403).json({ error: "approve_access_required" });
+      if (!await publicShareRoundIsOpen(share)) return res.status(409).json({ error: "review_round_closed" });
+      const decision = req.body?.decision === "approved" ? "approved" : req.body?.decision === "changes_requested" ? "changes_requested" : null;
+      const name = String(req.body?.reviewerName || "").trim().slice(0, 200); const email = String(req.body?.reviewerEmail || "").trim().slice(0, 320);
+      if (!decision || !req.body?.versionId) return res.status(400).json({ error: "decision_and_version_required" });
+      if (share.require_identity && (!name || !email)) return res.status(400).json({ error: "identity_required" });
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: "valid_email_required" });
+      const upd = await pool.query(`UPDATE project_video_versions SET status=$1 WHERE id=$2 AND project_id=$3 RETURNING id`, [decision, req.body.versionId, share.project_id]).catch(() => ({ rows: [] }));
+      if (!upd.rows.length) return res.status(404).json({ error: "version_not_found" });
+      if (decision === "approved") await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND id<>$2 AND status IN ('under_review','changes_requested','approved')`, [share.project_id, req.body.versionId]);
+      await pool.query(`INSERT INTO project_video_decisions (id,project_id,version_id,decision,note,reviewer_name,reviewer_email,source) VALUES ($1,$2,$3,$4,$5,$6,$7,'client')`, [crypto.randomUUID(), share.project_id, req.body.versionId, decision, String(req.body?.note || "").slice(0, 2000) || null, name || null, email || null]);
+      if (share.review_round_id) await pool.query(`UPDATE project_video_review_rounds SET status='closed',closed_at=NOW() WHERE id=$1 AND project_id=$2 AND status='open'`, [share.review_round_id, share.project_id]);
+      notifyVideoRoomUpdated(String(share.project_id), "public", "approval"); res.json({ ok: true });
+    } catch (e) { console.error("POST public video decision", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.get("/api/video-review/:token/versions/:vid/download", async (req, res) => {
+    const share = await loadPublicVideoShare(req, res); if (!share) return;
+    if (!share.allow_download) return res.status(403).json({ error: "download_not_allowed" });
+    const row = await pool.query(`SELECT b2_key,file_url,version_label FROM project_video_versions WHERE id=$1 AND project_id=$2`, [req.params.vid, share.project_id]).catch(() => ({ rows: [] }));
+    if (!row.rows.length) return res.status(404).json({ error: "not_found" });
+    const v = row.rows[0]; const url = v.b2_key ? await presignRoleRoomB2Download(v.b2_key, `${slugifyForKey(v.version_label || "video")}.mp4`, 300) : v.file_url;
+    if (!url) return res.status(503).json({ error: "download_unavailable" });
+    if (req.query.format === "json") return res.json({ url });
+    res.redirect(url);
   });
 
   // ─────────── Team Sync % (ekte readiness fra board + sjekkliste + presence) ───

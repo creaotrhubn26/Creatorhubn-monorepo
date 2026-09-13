@@ -34,6 +34,11 @@ async function managerApi(page: Page) {
     id: 'comment-e2e', reviewRoundId: 'round-e2e', frameId: 'frame-e2e',
     authorDisplayName: 'Kari Klient', body: 'Hold to bilder lenger.',
     visibility: 'client', status: 'open', assignedTo: null, dueAt: null,
+    anchorX: 0.68, anchorY: 0.32,
+    annotations: [{
+      id: 'manager-markup-e2e', tool: 'rectangle', color: '#f87171', strokeWidth: 3,
+      points: [{ x: 0.52, y: 0.18 }, { x: 0.82, y: 0.48 }],
+    }],
     resolutionNote: null, resolvedInRoundId: null, carriedFromCommentId: 'comment-v0',
     createdAt: '2026-09-12T12:02:00Z', updatedAt: '2026-09-12T12:02:00Z',
   };
@@ -121,6 +126,9 @@ test('manager locks a revision, receives a one-time guest URL and sees stale res
   await expect(page.getByTestId('storyboard-review-created-url').locator('input')).toHaveValue(/\/storyboard-review\/review-token-e2e$/);
 
   await expect(page.getByTestId('storyboard-review-resolution-queue')).toContainText('1 åpne av 1 punkt');
+  await expect(page.getByTestId('storyboard-review-manager-markup-comment-e2e')).toBeVisible();
+  await expect(page.getByTestId('storyboard-review-persisted-markup-comment-e2e')).toBeVisible();
+  await expect(page.getByTestId('storyboard-review-persisted-markup-comment-e2e').locator('rect')).toHaveCount(1);
   await page.getByTestId('storyboard-review-assignee-comment-e2e').fill('Mina');
   await page.getByTestId('storyboard-review-resolution-note-comment-e2e').fill('Forlenget til fire sekunder.');
   await page.getByTestId('storyboard-review-resolve-comment-e2e').click();
@@ -139,11 +147,23 @@ test('manager locks a revision, receives a one-time guest URL and sees stale res
 test('guest identity, frame comment and exact-revision sign-off work end to end', async ({ page }) => {
   let identified = false;
   let approved = false;
+  let submittedCommentBody: Record<string, any> | null = null;
   const comments: any[] = [{
     id: 'comment-resolved-e2e', reviewRoundId: 'round-e2e', frameId: 'frame-e2e',
     authorDisplayName: 'Ola Kunde', body: 'Gjør utsnittet tettere.', visibility: 'client',
     status: 'resolved', assignedTo: 'Mina', resolutionNote: 'Byttet til nærbilde.',
+    anchorX: 0.28, anchorY: 0.42,
+    annotations: [{
+      id: 'resolved-markup-e2e', tool: 'arrow', color: '#60a5fa', strokeWidth: 3,
+      points: [{ x: 0.12, y: 0.22 }, { x: 0.28, y: 0.42 }],
+    }],
     resolvedInRoundId: 'round-e2e', createdAt: '2026-09-12T12:01:00Z',
+  }, {
+    id: 'comment-legacy-e2e', reviewRoundId: 'round-e2e', frameId: 'frame-e2e',
+    authorDisplayName: 'Tidligere kunde', body: 'Eksisterende kommentar uten markering.',
+    visibility: 'client', status: 'resolved', assignedTo: null,
+    resolutionNote: 'Beholdt som før.', resolvedInRoundId: 'round-e2e',
+    createdAt: '2026-09-12T11:55:00Z',
   }];
   await page.route('**/api/role-room/storyboard-review/review-token-e2e**', async (route) => {
     const url = route.request().url();
@@ -156,8 +176,10 @@ test('guest identity, frame comment and exact-revision sign-off work end to end'
     }
     if (url.endsWith('/comments') && method === 'POST') {
       const body = route.request().postDataJSON();
+      submittedCommentBody = body;
       comments.push({ id: 'comment-e2e', reviewRoundId: 'round-e2e', frameId: body.frameId,
         authorDisplayName: 'Kari Klient', body: body.body, visibility: 'client', status: 'open',
+        anchorX: body.anchorX, anchorY: body.anchorY, annotations: body.annotations,
         createdAt: '2026-09-12T12:02:00Z' });
       await route.fulfill({ status: 201, json: { success: true, data: comments.at(-1) } }); return;
     }
@@ -197,11 +219,46 @@ test('guest identity, frame comment and exact-revision sign-off work end to end'
   await page.getByTestId('start-storyboard-review').click();
   await expect(page.getByTestId('storyboard-review-frame-0')).toBeVisible();
   await page.getByTestId('storyboard-review-frame-0').click();
+  await expect(page.getByTestId('storyboard-review-visual-feedback')).toBeVisible();
+  await expect(page.getByTestId('storyboard-review-persisted-markup-comment-resolved-e2e')).toBeVisible();
+  await expect(page.getByText('Eksisterende kommentar uten markering.')).toBeVisible();
+  await page.getByTestId('storyboard-review-tool-arrow').click();
+  const canvas = page.getByTestId('storyboard-review-markup-canvas-frame-e2e').locator('svg');
+  const bounds = await canvas.boundingBox();
+  expect(bounds).not.toBeNull();
+  if (!bounds) throw new Error('Missing storyboard review markup canvas bounds');
+  await page.getByTestId('storyboard-review-tool-freehand').click();
+  await page.mouse.move(bounds.x + bounds.width * 0.12, bounds.y + bounds.height * 0.72);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width * 0.38, bounds.y + bounds.height * 0.58, { steps: 5 });
+  await page.mouse.up();
+  await expect(page.getByTestId('storyboard-review-draft-markup').locator('polyline')).toHaveCount(1);
+  await page.getByTestId('storyboard-review-markup-undo').click();
+  await expect(page.getByTestId('storyboard-review-draft-markup').locator('polyline')).toHaveCount(0);
+  await page.getByTestId('storyboard-review-tool-arrow').click();
+  await page.mouse.move(bounds.x + bounds.width * 0.18, bounds.y + bounds.height * 0.24);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.61, { steps: 5 });
+  await page.mouse.up();
+  await page.getByTestId('storyboard-review-tool-pin').click();
+  await page.mouse.click(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.61);
   await expect(page.getByTestId('storyboard-review-comment-status-comment-resolved-e2e')).toContainText('Løst');
   await expect(page.getByText('Løsning: Byttet til nærbilde.')).toBeVisible();
   await page.getByTestId('storyboard-review-comment').fill('Hold to bilder lenger.');
   await page.getByTestId('submit-storyboard-review-comment').click();
   await expect(page.getByText('Hold to bilder lenger.')).toBeVisible();
+  expect(submittedCommentBody).toMatchObject({
+    frameId: 'frame-e2e', body: 'Hold to bilder lenger.',
+  });
+  expect(submittedCommentBody?.anchorX).toBeCloseTo(0.72, 1);
+  expect(submittedCommentBody?.anchorY).toBeCloseTo(0.61, 1);
+  expect(submittedCommentBody?.annotations).toEqual([
+    expect.objectContaining({ tool: 'arrow', color: '#fbbf24', strokeWidth: 3 }),
+  ]);
+  await expect(page.getByTestId('storyboard-review-persisted-markup-comment-e2e')).toBeVisible();
+  await page.getByTestId('storyboard-review-toggle-markup').click();
+  await expect(page.getByTestId('storyboard-review-persisted-markup-comment-e2e')).toHaveCount(0);
+  await page.getByTestId('storyboard-review-toggle-markup').click();
   await expect(page.getByTestId('storyboard-review-open-comments-warning')).toContainText('1 review-punkt');
   await expect(page.getByTestId('approve-storyboard-review')).toBeDisabled();
   await page.getByLabel('Jeg godkjenner med 1 åpne punkt').check();

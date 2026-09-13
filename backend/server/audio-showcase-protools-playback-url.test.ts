@@ -16,13 +16,14 @@ describe("Audio Showcase Pro Tools playback URL", () => {
     );
     expect(source).toContain("backend: 'WebAudio'");
     expect(source).toContain("fetchParams: companionAudioFetchParams(effectiveSrc)");
-    expect(source).toContain("[effectiveSrc, loading]");
+    expect(source).toContain("[effectiveSrc, loading, effectiveVersion?.waveform_peaks, effectiveVersion?.duration]");
     expect(source).toContain("decodeAudioData(sourceBytes.slice(0))");
     expect(source).toContain("instance.load('', peaks, decoded.duration)");
     expect(source).toContain("media.buffer = decoded");
     expect(source).toContain("media.audioContext.resume()");
     expect(source).toContain("fetch(url, companionAudioFetchParams(url))");
-    expect(source).toContain("/^\\/api\\/protools\\/bounces\\/");
+    expect(source).toContain("/^\\/api\\/(?:protools\\/bounces\\/");
+    expect(source).toContain("audio-versions\\/[0-9a-f-]+\\/media");
     expect(source).toContain("headers: { Authorization: `Bearer ${token}` }");
     expect(source).toContain("if (!isProtectedCompanionAudio(url)) return { credentials: 'omit' }");
   });

@@ -25,6 +25,7 @@ on:
       - "backend/server/database-owner-role.ts"
       - "backend/server/database-owner-role.test.ts"
       - "backend/server/index.ts"
+      - "backend/server/postgres-connection-url.*"
       - "backend/tsconfig.json"
       - "docs/ARKITEKTUR-OVERSIKT.md"
       - "frontend/README.md"

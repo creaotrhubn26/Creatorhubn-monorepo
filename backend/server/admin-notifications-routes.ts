@@ -282,10 +282,10 @@ export function setupAdminNotificationsRoutes(deps: AdminNotificationsDeps): voi
         `SELECT n.*
            FROM admin_notifications n
            LEFT JOIN user_notification_acks a
-             -- admin_notifications.id er varchar i (eldre) prod-DB men acks.notification_id
-             -- er uuid → «operator does not exist: uuid = character varying». Cast uuid→text
-             -- (alltid trygt) så joinen virker uansett skjemadrift.
-             ON a.notification_id::text = n.id AND a.user_id = $1
+             -- Installasjoner finnes med både uuid- og varchar-id etter eldre
+             -- skjemadrift. Cast begge id-er til text slik at joinen er gyldig
+             -- uavhengig av hvilken variant databasen har.
+             ON a.notification_id::text = n.id::text AND a.user_id = $1
           WHERE a.user_id IS NULL
             AND (n.scheduled_for IS NULL OR n.scheduled_for <= NOW())
             AND (n.expires_at IS NULL OR n.expires_at > NOW())

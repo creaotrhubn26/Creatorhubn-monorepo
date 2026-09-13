@@ -19,6 +19,10 @@ struct DiscoveryProfileManagerView: View {
     @State private var showingCampaignStartConfirmation = false
     @State private var pendingCampaignCancellation: DiscoveryV2CampaignRun?
 
+    private var isLockedByOpenRun: Bool {
+        coordinator.run != nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
@@ -48,6 +52,7 @@ struct DiscoveryProfileManagerView: View {
                     Label("Ny profil", systemImage: "plus")
                 }
                 .buttonStyle(.bordered)
+                .disabled(coordinator.isBusy || isLockedByOpenRun)
                 .accessibilityIdentifier("discovery.profile.new")
 
                 if coordinator.selectedProfile != nil {
@@ -60,7 +65,7 @@ struct DiscoveryProfileManagerView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(LeadgridDiscoveryTheme.accent)
-                    .disabled(!coordinator.hasUnsavedProfileChanges || coordinator.isBusy)
+                    .disabled(!coordinator.hasUnsavedProfileChanges || coordinator.isBusy || isLockedByOpenRun)
                     .accessibilityIdentifier("discovery.profile.update")
                 } else {
                     Button {
@@ -70,7 +75,7 @@ struct DiscoveryProfileManagerView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(LeadgridDiscoveryTheme.accent)
-                    .disabled(coordinator.brief.validationMessage != nil || coordinator.isBusy)
+                    .disabled(coordinator.brief.validationMessage != nil || coordinator.isBusy || isLockedByOpenRun)
                     .accessibilityIdentifier("discovery.profile.save-draft")
                 }
             }
@@ -82,7 +87,7 @@ struct DiscoveryProfileManagerView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.bordered)
-            .disabled(coordinator.isBusy)
+            .disabled(coordinator.isBusy || isLockedByOpenRun)
             .accessibilityIdentifier("discovery.profile.preset.oslo-region")
 
             Divider()
@@ -274,7 +279,8 @@ struct DiscoveryProfileManagerView: View {
             .disabled(
                 campaignProfiles.isEmpty
                     || coordinator.activeCampaign != nil
-                    || coordinator.isCampaignBusy)
+                    || coordinator.isCampaignBusy
+                    || isLockedByOpenRun)
             .accessibilityIdentifier("discovery.campaign.start")
 
             Text("Kundetype, næringskode/søk, ICP, kommuner og filtre fryses i hver profils kampanjesnapshot. Profilendringer gjelder neste kampanje.")
@@ -530,6 +536,7 @@ struct DiscoveryProfileManagerView: View {
                     .stroke(selected ? LeadgridDiscoveryTheme.accentSoft.opacity(0.7) : LeadgridDiscoveryTheme.stroke))
         }
         .buttonStyle(.plain)
+        .disabled(isLockedByOpenRun)
         .contextMenu {
             if !profile.isActive {
                 Button {

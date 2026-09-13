@@ -238,8 +238,11 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
       .brief.organization_forms == ["AS", "IKS", "STI"] and
       .brief.employee_count.minimum == 5) and
     (.preview.recommended_profiles[] | select(.template_key == "tidum.municipal_services") |
-      .brief.organization_name_queries == ["kommune"] and
-      .brief.organization_forms == ["KOMM"])
+      .name == "Kommunale tjenestesteder – Norge" and
+      .brief.organization_name_queries == ["barneverntjeneste", "avlastning", "bofellesskap", "BPA", "miljøarbeidertjeneste"] and
+      .brief.organization_forms == ["BEDR"] and
+      .brief.employee_count == null and
+      .brief.commercial_signals.registered_in_business_register == null)
   ' <<<"$tidum_preview" >/dev/null
   echo "STAGING_E2E_STAGE=tidum_preview_verified"
 
@@ -299,7 +302,9 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
     (.profiles[] | select(.template_key == "tidum.child_welfare") |
       .brief.country_code == "NO" and .brief.employee_count.minimum == 5) and
     (.profiles[] | select(.template_key == "tidum.municipal_services") |
-      .brief.organization_forms == ["KOMM"])
+      .name == "Kommunale tjenestesteder – Norge" and
+      .brief.organization_name_queries == ["barneverntjeneste", "avlastning", "bofellesskap", "BPA", "miljøarbeidertjeneste"] and
+      .brief.organization_forms == ["BEDR"])
   ' <<<"$tidum_profiles" >/dev/null
   echo "STAGING_E2E_STAGE=tidum_profiles_verified"
 
@@ -372,8 +377,39 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
       (.items | length) == 4 and
       ([.items[].status] | all(. == "completed" or . == "partial")) and
       ([.items[].profile_id] | unique | length) == 4 and
-      ([.items[].candidate_count] | add) > 0
+      ([.items[].candidate_count] | all(. > 0))
     ' <<<"$tidum_campaign" >/dev/null
+
+    while IFS=$'\t' read -r tidum_item_name tidum_item_run_id tidum_item_forms; do
+      [[ -n "$tidum_item_run_id" ]] || {
+        echo "Tidum-profilen $tidum_item_name mangler Discovery-run." >&2
+        exit 10
+      }
+      tidum_candidates="$(curl --fail-with-body --silent --show-error \
+        -H "Authorization: Bearer $token" \
+        -H "X-Organization-Id: $org_id" \
+        -H "X-Leadgrid-Organization-Id: $org_id" \
+        "$staging_url/api/leadgrid/projects/$tidum_project_id/discovery/runs/$tidum_item_run_id/candidates?disposition=all&limit=100")"
+      jq -e '
+        (.items | length) > 0 and
+        ([.items[].source] | all(. == "brreg_open_data")) and
+        ([.items[].organization_number] | all(type == "string" and test("^[0-9]{9}$")))
+      ' <<<"$tidum_candidates" >/dev/null
+      if [[ "$tidum_item_forms" == "BEDR" ]]; then
+        jq -e '
+          ([.items[].organization_form_code] | all(. == "BEDR")) and
+          ([.items[].name | ascii_downcase] | all(
+            contains("barneverntjeneste") or
+            contains("avlastning") or
+            contains("bofellesskap") or
+            contains("bpa") or
+            contains("miljøtjeneste") or
+            contains("miljøarbeid")
+          )) and
+          ([.items[] | has("clinic_group")] | all(. == false))
+        ' <<<"$tidum_candidates" >/dev/null
+      fi
+    done < <(jq -r '.items[] | [.profile_name, .current_run_id, (.brief_snapshot.organization_forms | join(","))] | @tsv' <<<"$tidum_campaign")
     echo "STAGING_E2E_STAGE=tidum_campaign_verified"
   fi
 fi

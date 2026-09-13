@@ -1,0 +1,72 @@
+# Sound Room — privat lagring og medieflyt
+
+Oppdatert 12. september 2026. Dokumentet beskriver den implementerte
+objektmodellen for nettleser, Pro Tools, eldre Backblaze B2-filer og forholdet
+til Cloudflare Stream.
+
+## Én objektmodell
+
+Nettleseropplastinger og Pro Tools-bounces går gjennom samme tjeneste og samme
+PostgreSQL-ledger i `role_room_storage_objects`. Kanalen lagres som metadata,
+men påvirker ikke eierskap, kvote, verifisering eller nøkkelstruktur:
+
+```text
+users/{userHash}/sound-room/{audioReviewProjectId}/{objectId}/original.{ext}
+users/{userHash}/sound-room/{audioReviewProjectId}/{objectId}/preview.m4a
+users/{userHash}/sound-room/{audioReviewProjectId}/{objectId}/waveform.json
+```
+
+Filnavn og e-post finnes ikke i S3-nøkkelen. Originalen er privat, kryptert av
+bucketens SSE-S3-policy og kan ikke leses via en offentlig S3-URL.
+
+## Opplasting og restart
+
+1. Klienten beregner SHA-256 og ber CreatorHub om en opplastingsbillett.
+2. Små filer bruker checksum-bundet presigned PUT. Store filer bruker S3
+   multipart med checksum per del.
+3. Multipart-status leses fra både PostgreSQL og S3. Etter restart får klienten
+   nye kortlivede del-URL-er og hopper over bekreftede deler.
+4. `complete` sammenligner størrelse og SHA-256 fra S3 før objektet blir
+   `active` og lydversjonen opprettes.
+5. Backend lager AAC-preview og waveform-peaks med ffmpeg/ffprobe. Feil i
+   derivater sletter eller skjuler aldri en verifisert original.
+
+Dette følger AWS' anbefalte multipartmodell: deler kan lastes opp uavhengig,
+men en uferdig opplasting må eksplisitt fullføres eller avbrytes. Se
+[AWS multipart upload](https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpuoverview.html)
+og [presigned URL-er](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html).
+
+## Privat avspilling og deling
+
+Avspilling går gjennom CreatorHub-endepunkter som kontrollerer innlogget
+prosjekttilgang eller en aktiv, versjonsspesifikk Sound Room-invitasjon. Kun én
+gyldig HTTP `Range` videresendes til S3; flerdelte eller ugyldige ranges avvises
+med `416`. Svaret er `private, no-store`, støtter seek med `206` og eksponerer
+ikke AWS-legitimasjon eller en permanent bucket-URL.
+
+## B2-migrering
+
+`storage:migrate-sound-room-to-s3` er dry-run som standard. Ved `--execute`
+strømmes B2-objektet til AWS, begge sider leses på nytt, og størrelse og SHA-256
+må være identiske før databasen peker lydversjonen til det nye objektet.
+Kilden beholdes. `--delete-source-after-verify` er en separat, eksplisitt port
+som gjentar full tosidig verifisering før B2-objektet slettes.
+
+## Cloudflare Stream
+
+Cloudflare Stream brukes for Video Room, ikke som permanent Sound Room-lager.
+Videoopplasting støtter direkte TUS og import-by-link. Alle nye Stream-objekter
+krever signerte avspillings-URL-er, og Video Room viser `pending`, progresjon,
+`ready` eller terminal feil før spilleren får en kilde. Se
+[Cloudflare direkte creator uploads](https://developers.cloudflare.com/stream/uploading-videos/direct-creator-uploads/),
+[TUS-opplastinger](https://developers.cloudflare.com/stream/uploading-videos/resumable-uploads/)
+og [signerte Stream-URL-er](https://developers.cloudflare.com/stream/viewing-videos/securing-your-stream/).
+
+## Videre produksjonshardening
+
+- Kjør HTTP-integrasjonssuitene i full CI-installasjon med Express, Supertest og
+  jsdom tilgjengelig.
+- Legg på kø/worker med retry og observability for preview/waveform-jobber.
+- Gjennomfør migreringsinventar og restore-prøve før B2-sletting aktiveres i
+  produksjon.
+- Overvåk uferdige multipart-opplastinger og bucketens lifecycle-opprydding.

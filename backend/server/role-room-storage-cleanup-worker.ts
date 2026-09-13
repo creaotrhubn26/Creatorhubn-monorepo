@@ -23,24 +23,16 @@
 
 import type { Pool } from "pg";
 import { DeleteObjectCommand, HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  getRoleRoomObjectStorage,
+  resolveRoleRoomObjectKey,
+} from "./role-room-object-storage.js";
 
 const BATCH_SIZE = 100;
-const B2_REGION = process.env.B2_REGION || "eu-central-003";
 
 function getAdminB2Client(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-  return {
-    client: new S3Client({
-      region: B2_REGION,
-      endpoint: `https://s3.${B2_REGION}.backblazeb2.com`,
-      credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-      forcePathStyle: true,
-    }),
-    bucket,
-  };
+  const storage = getRoleRoomObjectStorage();
+  return storage ? { client: storage.client, bucket: storage.bucket } : null;
 }
 
 export interface CleanupResult {
@@ -102,7 +94,7 @@ export async function cleanupSoftDeletedFiles(
       let exists = true;
       try {
         await config.client.send(
-          new HeadObjectCommand({ Bucket: config.bucket, Key: row.b2_key }),
+          new HeadObjectCommand({ Bucket: config.bucket, Key: resolveRoleRoomObjectKey(row.b2_key) }),
         );
       } catch (err) {
         // S3-HEAD med 404 = filen er allerede borte
@@ -119,7 +111,7 @@ export async function cleanupSoftDeletedFiles(
 
       if (exists) {
         await config.client.send(
-          new DeleteObjectCommand({ Bucket: config.bucket, Key: row.b2_key }),
+          new DeleteObjectCommand({ Bucket: config.bucket, Key: resolveRoleRoomObjectKey(row.b2_key) }),
         );
         result.deletedFromB2 += 1;
       } else {

@@ -72,17 +72,61 @@ test('anonymous import is gated before protected project requests', async ({ pag
   expect(projectRequests).toBe(0);
 });
 
-test('public legal page does not hydrate private AI settings', async ({ page }) => {
+test('Leadgrid legal page uses the public shell without private runtime calls', async ({ page }) => {
   let privateKvRequests = 0;
-  await page.route('**/api/user/kv/ai_api_key', async (route) => {
-    privateKvRequests += 1;
-    await route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"unauthorized"}' });
+  let professionRequests = 0;
+  let cmsRequests = 0;
+  let applicationWebSockets = 0;
+  page.on('websocket', (socket) => {
+    // Vite's local HMR socket is expected. The production regression was the
+    // app notification socket at /ws, which leadgrid.no does not expose.
+    if (new URL(socket.url()).pathname === '/ws') applicationWebSockets += 1;
+  });
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/user/kv/ai_api_key') privateKvRequests += 1;
+    if (path === '/api/admin/profession-types') professionRequests += 1;
+    if (path === '/api/cms/pages/terms-and-conditions') cmsRequests += 1;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
 
-  await page.goto('/terms-and-conditions');
+  await page.goto('/leadgrid/terms-and-conditions');
 
   await expect(page.getByText(/Vilkår og betingelser/).first()).toBeVisible();
+  await page.waitForTimeout(250);
   expect(privateKvRequests).toBe(0);
+  expect(professionRequests).toBe(0);
+  expect(cmsRequests).toBe(0);
+  expect(applicationWebSockets).toBe(0);
+});
+
+test('Leadgrid login route opens the real login UI', async ({ page }) => {
+  await mockPublicApis(page);
+
+  await page.goto('/leadgrid/login');
+
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByText(/Logg inn/).first()).toBeVisible();
+});
+
+test('Leadgrid password link keeps the reset token', async ({ page }) => {
+  let resetTokenRequests = 0;
+  await page.route('**/api/auth/reset-password/test-token', async (route) => {
+    resetTokenRequests += 1;
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: '{"error":"invalid"}',
+    });
+  });
+
+  await page.goto('/leadgrid/reset-passord/test-token');
+
+  await expect(page.getByText(/Lenken er ikke gyldig/)).toBeVisible();
+  // React StrictMode replays mount effects in development, so the request can
+  // occur twice locally. The route matcher guarantees every call preserved
+  // the exact token; production performs one mount.
+  expect(resetTokenRequests).toBeGreaterThanOrEqual(1);
 });
 
 test('public landing exposes real login and card-free Solo Free copy', async ({ page }) => {

@@ -15,6 +15,8 @@ import {
 
 const BRREG_UNITS_ENDPOINT =
   "https://data.brreg.no/enhetsregisteret/api/enheter";
+const BRREG_SUBUNITS_ENDPOINT =
+  "https://data.brreg.no/enhetsregisteret/api/underenheter";
 const BRREG_MUNICIPALITIES_ENDPOINT =
   "https://data.brreg.no/enhetsregisteret/api/kommuner";
 const BRREG_GROUP_STRUCTURE_ENDPOINT =
@@ -170,6 +172,7 @@ export interface DiscoveryRegistryCandidate {
   source?: "brreg_open_data" | "nhn_flr_public";
   sourceLicense?: string;
   phone?: string | null;
+  email?: string | null;
   providerContacts?: Array<{
     name: string;
     role: "Fastlege";
@@ -182,6 +185,7 @@ export interface DiscoveryRegistryCandidate {
     normalizedLocationKey: string | null;
   };
   organizationNumber: string;
+  parentOrganizationNumber?: string | null;
   name: string;
   organizationForm: string | null;
   organizationFormCode?: string | null;
@@ -872,8 +876,9 @@ export function distanceBetweenRegistryPoints(
 function normalizeSourceUri(
   value: unknown,
   organizationNumber: string,
+  fallbackEndpoint = BRREG_UNITS_ENDPOINT,
 ): string {
-  const fallback = `${BRREG_UNITS_ENDPOINT}/${organizationNumber}`;
+  const fallback = `${fallbackEndpoint}/${organizationNumber}`;
   const uri = text(value);
   if (!uri) return fallback;
   try {
@@ -951,18 +956,24 @@ function validGeonorgePoint(
     : validatePoint({ latitude, longitude });
 }
 
-function normalizeCandidate(value: unknown): DiscoveryRegistryCandidate | null {
+function normalizeCandidate(
+  value: unknown,
+  fallbackEndpoint = BRREG_UNITS_ENDPOINT,
+): DiscoveryRegistryCandidate | null {
   if (!isRecord(value)) return null;
   const organizationNumber = text(value.organisasjonsnummer);
   const name = text(value.navn);
   if (!organizationNumber || !/^\d{9}$/.test(organizationNumber) || !name) {
     return null;
   }
+  if (text(value.slettedato) || text(value.nedleggelsesdato)) return null;
   const addressRecord = isRecord(value.forretningsadresse)
     ? value.forretningsadresse
-    : isRecord(value.postadresse)
-      ? value.postadresse
-      : {};
+    : isRecord(value.beliggenhetsadresse)
+      ? value.beliggenhetsadresse
+      : isRecord(value.postadresse)
+        ? value.postadresse
+        : {};
   const addressLines = Array.isArray(addressRecord.adresse)
     ? addressRecord.adresse.flatMap((line) => {
         const normalized = text(line);
@@ -988,7 +999,10 @@ function normalizeCandidate(value: unknown): DiscoveryRegistryCandidate | null {
       : null;
   return {
     organizationNumber,
+    parentOrganizationNumber: text(value.overordnetEnhet),
     name,
+    phone: text(value.telefon) ?? text(value.mobil),
+    email: text(value.epostadresse)?.toLocaleLowerCase("nb-NO") ?? null,
     organizationForm,
     organizationFormCode,
     organizationFormDescription,
@@ -1016,7 +1030,11 @@ function normalizeCandidate(value: unknown): DiscoveryRegistryCandidate | null {
       : isLiquidating
         ? "in_liquidation"
         : "active",
-    sourceUri: normalizeSourceUri(self.href, organizationNumber),
+    sourceUri: normalizeSourceUri(
+      self.href,
+      organizationNumber,
+      fallbackEndpoint,
+    ),
   };
 }
 
@@ -1115,7 +1133,7 @@ function responseUnits(payload: unknown): {
 } {
   if (!isRecord(payload)) throw new DiscoveryRegistryError("invalid_response");
   const embedded = isRecord(payload._embedded) ? payload._embedded : {};
-  const units = embedded.enheter;
+  const units = embedded.enheter ?? embedded.underenheter;
   if (units !== undefined && !Array.isArray(units)) {
     throw new DiscoveryRegistryError("invalid_response");
   }
@@ -2063,6 +2081,14 @@ export function createDiscoveryRegistryProvider(
       }
       const resolution =
         input.queryMode === "industry" ? "nace" : "organization_name";
+      const searchesSubunits =
+        input.organizationForms.length > 0 &&
+        input.organizationForms.every(
+          (form) => form === "BEDR" || form === "AAFY",
+        );
+      const registryEndpoint = searchesSubunits
+        ? BRREG_SUBUNITS_ENDPOINT
+        : BRREG_UNITS_ENDPOINT;
       const candidates: DiscoveryRegistryCandidate[] = [];
       const seen = new Set<string>();
       let pagesFetched = 0;
@@ -2093,21 +2119,26 @@ export function createDiscoveryRegistryProvider(
           currentSourceOffset / DISCOVERY_BRREG_PAGE_SIZE,
         );
         const sourceRowOffset = currentSourceOffset % DISCOVERY_BRREG_PAGE_SIZE;
-        const url = new URL(BRREG_UNITS_ENDPOINT);
+        const url = new URL(registryEndpoint);
         url.searchParams.set("size", String(DISCOVERY_BRREG_PAGE_SIZE));
         url.searchParams.set("page", String(sourcePage));
         url.searchParams.set("sort", "organisasjonsnummer,ASC");
-        url.searchParams.set("konkurs", "false");
+        if (!searchesSubunits) url.searchParams.set("konkurs", "false");
         if (resolvedNaceCodes.length) {
           url.searchParams.set("naeringskode", resolvedNaceCodes.join(","));
         } else {
           url.searchParams.set("navn", input.query);
+          if (searchesSubunits) {
+            url.searchParams.set("navnMetodeForSoek", "FORTLOEPENDE");
+          }
         }
         if (municipalityNumbers.length) {
           url.searchParams.set("kommunenummer", municipalityNumbers.join(","));
         } else if (input.city) {
           url.searchParams.set(
-            "forretningsadresse.poststed",
+            searchesSubunits
+              ? "beliggenhetsadresse.poststed"
+              : "forretningsadresse.poststed",
             input.city.toLocaleUpperCase("nb-NO"),
           );
         }
@@ -2135,7 +2166,7 @@ export function createDiscoveryRegistryProvider(
             String(input.registeredInVatRegister),
           );
         }
-        if (input.registeredInBusinessRegister !== null) {
+        if (!searchesSubunits && input.registeredInBusinessRegister !== null) {
           url.searchParams.set(
             "registrertIForetaksregisteret",
             String(input.registeredInBusinessRegister),
@@ -2221,7 +2252,10 @@ export function createDiscoveryRegistryProvider(
           rawIndex < response.units.length;
           rawIndex += 1
         ) {
-          const candidate = normalizeCandidate(response.units[rawIndex]);
+          const candidate = normalizeCandidate(
+            response.units[rawIndex],
+            registryEndpoint,
+          );
           if (!candidate) {
             invalidResultsSkipped += 1;
             advancePastSourceRow(rawIndex);

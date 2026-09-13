@@ -15,6 +15,9 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import {
+  withExplicitPostgresVerifyFull,
+} from "../server/postgres-connection-url.mjs";
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const SCRIPT_DIR = path.dirname(SCRIPT_PATH);
@@ -447,7 +450,7 @@ export function requireDatabaseUrl(value = process.env.DATABASE_URL) {
       "DATABASE_URL must set exactly one channel_binding=require",
     );
   }
-  return candidate;
+  return withExplicitPostgresVerifyFull(candidate);
 }
 
 export function parseCliOptions(argv = process.argv.slice(2)) {
@@ -2861,6 +2864,12 @@ async function runSelfTest() {
       "postgresql://user:password@db.example.test/app?sslmode=verify-full&channel_binding=require",
     ),
     "postgresql://user:password@db.example.test/app?sslmode=verify-full&channel_binding=require",
+  );
+  assert.equal(
+    requireDatabaseUrl(
+      "postgresql://user:password@db.example.test/app?sslmode=require&channel_binding=require",
+    ),
+    "postgresql://user:password@db.example.test/app?channel_binding=require&sslmode=verify-full",
   );
   assert.deepEqual(parseCliOptions(["--expect-zero"]), {
     selfTest: false,

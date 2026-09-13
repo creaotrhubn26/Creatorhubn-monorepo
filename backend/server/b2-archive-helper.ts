@@ -22,7 +22,7 @@
  *   ad-hoc/{filename}   (manuelle uploads fra B2-arkiv-fanen)
  */
 
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // NB: the-role-room-prod-bøtta ligger i eu-central-003 (verifisert via B2
@@ -180,6 +180,19 @@ export async function presignRoleRoomB2Upload(
   } catch (err) {
     console.warn("[b2-archive] presign upload failed", { key, err: (err as Error).message });
     return null;
+  }
+}
+
+/** Remove a legacy Video Room object after the owning database row is gone. */
+export async function deleteFromRoleRoomB2(key: string): Promise<boolean> {
+  const config = getRoleRoomB2Client();
+  if (!config) return false;
+  try {
+    await config.client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }));
+    return true;
+  } catch (err) {
+    console.warn("[b2-archive] delete failed", { key, err: (err as Error).message });
+    return false;
   }
 }
 

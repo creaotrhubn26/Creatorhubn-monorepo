@@ -50,12 +50,15 @@ describe("Leadgrid domain onboarding classification", () => {
       websiteUrl: "https://www.dentum.no",
       websiteDomain: "dentum.no",
     });
-    expect(() => normalizeProjectOnboardingWebsite("http://localhost:3000"))
-      .toThrow();
-    expect(() => normalizeProjectOnboardingWebsite("http://127.0.0.1"))
-      .toThrow();
-    expect(() => normalizeProjectOnboardingWebsite("file:///etc/passwd"))
-      .toThrow();
+    expect(() =>
+      normalizeProjectOnboardingWebsite("http://localhost:3000"),
+    ).toThrow();
+    expect(() =>
+      normalizeProjectOnboardingWebsite("http://127.0.0.1"),
+    ).toThrow();
+    expect(() =>
+      normalizeProjectOnboardingWebsite("file:///etc/passwd"),
+    ).toThrow();
   });
 
   it("turns Dentum into a complete manual Tannhelse Discovery profile", () => {
@@ -118,7 +121,8 @@ describe("Leadgrid domain onboarding classification", () => {
       "tidum.no",
       profile({
         url: "https://tidum.no",
-        businessName: "Tidum – arbeidstidssystem for barn, omsorg og miljøarbeid",
+        businessName:
+          "Tidum – arbeidstidssystem for barn, omsorg og miljøarbeid",
         description:
           "Tidum er et arbeidstidssystem for virksomheter innen barn, omsorg og miljøarbeid.",
         industry: "other",
@@ -151,9 +155,11 @@ describe("Leadgrid domain onboarding classification", () => {
       "Barnevern og avlastning – Norge",
       "Bofellesskap og miljøarbeid – Norge",
       "BPA og feltbasert omsorg – Norge",
-      "Kommunale omsorgstjenester – Norge",
+      "Kommunale tjenestesteder – Norge",
     ]);
-    expect(plan.recommended_profiles.filter((item) => item.is_default)).toHaveLength(1);
+    expect(
+      plan.recommended_profiles.filter((item) => item.is_default),
+    ).toHaveLength(1);
     expect(
       plan.recommended_profiles.every(
         (item) =>
@@ -188,9 +194,25 @@ describe("Leadgrid domain onboarding classification", () => {
     });
     expect(plan.recommended_profiles[3].brief).toMatchObject({
       industry_queries: [],
-      organization_name_queries: ["kommune"],
-      organization_forms: ["KOMM"],
+      organization_name_queries: [
+        "barneverntjeneste",
+        "avlastning",
+        "bofellesskap",
+        "BPA",
+        "miljøarbeidertjeneste",
+      ],
+      exclusion_terms: [
+        "barnehage",
+        "skole",
+        "sykehjem",
+        "natur",
+        "eiendom",
+        "husholdning",
+        "administrasjon",
+      ],
+      organization_forms: ["BEDR"],
       employee_count: null,
+      minimum_fit_score: 70,
       commercial_signals: {
         registered_in_business_register: null,
       },
@@ -305,7 +327,9 @@ describe("Leadgrid domain onboarding classification", () => {
         industry: "film_tv_and_content_production",
       },
     });
-    expect(plan.project_description).toContain("film, TV og innholdsproduksjon");
+    expect(plan.project_description).toContain(
+      "film, TV og innholdsproduksjon",
+    );
     expect(plan.recommended_profiles).toHaveLength(6);
     expect(plan.recommended_profiles.map((item) => item.template_key)).toEqual([
       "role_room.production",
@@ -326,7 +350,9 @@ describe("Leadgrid domain onboarding classification", () => {
       "Dansestudioer og danseskoler – Norge",
       "Skuespillere og talenter – Norge",
     ]);
-    expect(plan.recommended_profiles.filter((item) => item.is_default)).toHaveLength(1);
+    expect(
+      plan.recommended_profiles.filter((item) => item.is_default),
+    ).toHaveLength(1);
     expect(
       plan.recommended_profiles.every(
         (item) =>
@@ -350,7 +376,9 @@ describe("Leadgrid domain onboarding classification", () => {
     expect(plan.recommended_profiles[2].brief.industry_queries).not.toContain(
       "78.100",
     );
-    expect(plan.recommended_profiles[2].brief.exclusion_terms).toContain("støping");
+    expect(plan.recommended_profiles[2].brief.exclusion_terms).toContain(
+      "støping",
+    );
     expect(plan.recommended_profiles[3].brief).toMatchObject({
       industry_queries: [],
       organization_name_queries: [
@@ -408,20 +436,30 @@ describe("Leadgrid domain onboarding transaction", () => {
     const query = vi.fn(async (sqlValue: string, params: unknown[] = []) => {
       const sql = String(sqlValue);
       if (sql.includes("FROM leadgrid_project_onboarding_previews")) {
-        return { rows: [{
-          id: previewId,
-          plan,
-          expires_at: "2099-01-01T00:00:00.000Z",
-          committed_at: null,
-          committed_organization_id: null,
-          committed_project_id: null,
-        }] };
+        return {
+          rows: [
+            {
+              id: previewId,
+              plan,
+              expires_at: "2099-01-01T00:00:00.000Z",
+              committed_at: null,
+              committed_organization_id: null,
+              committed_project_id: null,
+            },
+          ],
+        };
       }
-      if (sql.includes("FROM organizations") && sql.includes("customer_domain")) {
+      if (
+        sql.includes("FROM organizations") &&
+        sql.includes("customer_domain")
+      ) {
         return { rows: [] };
       }
       if (sql.includes("INSERT INTO organizations")) {
-        return { rows: [{ id: customerOrganizationId, name: "Dentum" }], rowCount: 1 };
+        return {
+          rows: [{ id: customerOrganizationId, name: "Dentum" }],
+          rowCount: 1,
+        };
       }
       if (sql.includes("LEFT JOIN brand_kits bk")) return { rows: [] };
       if (sql.includes("INSERT INTO leadgrid_projects")) {
@@ -430,50 +468,75 @@ describe("Leadgrid domain onboarding transaction", () => {
       }
       if (sql.includes("SELECT overrides FROM brand_kits")) return { rows: [] };
       if (sql.includes("FROM leadgrid_discovery_profiles")) {
-        return insertedProfile ? { rows: [{
-          id: "33333333-3333-4333-8333-333333333333",
-          name: "Tannhelse – Oslo",
-          is_default: true,
-          version: 1,
-          brief: plan.recommended_profiles[0].brief,
-          status: "active",
-          source_config: { google_places: { enabled: false } },
-        }] } : { rows: [] };
+        return insertedProfile
+          ? {
+              rows: [
+                {
+                  id: "33333333-3333-4333-8333-333333333333",
+                  name: "Tannhelse – Oslo",
+                  is_default: true,
+                  version: 1,
+                  brief: plan.recommended_profiles[0].brief,
+                  status: "active",
+                  source_config: { google_places: { enabled: false } },
+                },
+              ],
+            }
+          : { rows: [] };
       }
       if (sql.includes("INSERT INTO leadgrid_discovery_profiles")) {
         insertedProfile = true;
         return { rows: [], rowCount: 1 };
       }
-      if (sql.includes("FROM leadgrid_sales_teams") && sql.includes("LOWER(name)")) {
+      if (
+        sql.includes("FROM leadgrid_sales_teams") &&
+        sql.includes("LOWER(name)")
+      ) {
         return { rows: [] };
       }
       if (sql.includes("INSERT INTO leadgrid_sales_teams")) {
-        return { rows: [{ id: "dentum-team", name: "Dentum salg" }], rowCount: 1 };
+        return {
+          rows: [{ id: "dentum-team", name: "Dentum salg" }],
+          rowCount: 1,
+        };
       }
       if (sql.includes("SELECT id FROM users")) {
         return String(params[0]) === "daniel@creatorhubn.com"
           ? { rows: [{ id: "daniel-user" }] }
           : { rows: [] };
       }
-      if (sql.includes("FROM leadgrid_project_invitations") && sql.includes("LOWER(email)")) {
+      if (
+        sql.includes("FROM leadgrid_project_invitations") &&
+        sql.includes("LOWER(email)")
+      ) {
         return { rows: [] };
       }
       if (sql.includes("INSERT INTO leadgrid_project_invitations")) {
-        return { rows: [{ id: "55555555-5555-4555-8555-555555555555" }], rowCount: 1 };
+        return {
+          rows: [{ id: "55555555-5555-4555-8555-555555555555" }],
+          rowCount: 1,
+        };
       }
-      if (sql.includes("SELECT EXISTS") && sql.includes("leadgrid_project_members")) {
+      if (
+        sql.includes("SELECT EXISTS") &&
+        sql.includes("leadgrid_project_members")
+      ) {
         return { rows: [{ allowed: true }] };
       }
       if (sql.includes("SELECT p.id::text") && sql.includes("crm_customers")) {
-        return { rows: [{
-          id: generatedProjectId,
-          organization_id: customerOrganizationId,
-          name: "Dentum",
-          description: plan.project_description,
-          status: "active",
-          lead_count: 0,
-          competitor_count: 0,
-        }] };
+        return {
+          rows: [
+            {
+              id: generatedProjectId,
+              organization_id: customerOrganizationId,
+              name: "Dentum",
+              description: plan.project_description,
+              status: "active",
+              lead_count: 0,
+              competitor_count: 0,
+            },
+          ],
+        };
       }
       return { rows: [], rowCount: 1 };
     });
@@ -490,17 +553,23 @@ describe("Leadgrid domain onboarding transaction", () => {
         organization: { mode: "create", name: "Dentum" },
         administrator_email: "daniel@creatorhubn.com",
         team: { mode: "create", name: "Dentum salg", color_hex: "#A852FC" },
-        invitations: [{
-          email: "selger@dentum.no",
-          project_role: "member",
-          team_role: "member",
-        }],
+        invitations: [
+          {
+            email: "selger@dentum.no",
+            project_role: "member",
+            team_role: "member",
+          },
+        ],
       },
     });
 
     expect(result.project.organizationId).toBe(customerOrganizationId);
     expect(result.access).toMatchObject({
-      organization: { id: customerOrganizationId, name: "Dentum", reused: false },
+      organization: {
+        id: customerOrganizationId,
+        name: "Dentum",
+        reused: false,
+      },
       team: { id: "dentum-team", name: "Dentum salg", reused: false },
       administrator: {
         email: "daniel@creatorhubn.com",
@@ -508,13 +577,15 @@ describe("Leadgrid domain onboarding transaction", () => {
         organization_role: "admin",
         project_role: "owner",
       },
-      invitations: [{
-        email: "selger@dentum.no",
-        status: "invited",
-        project_role: "member",
-        team_role: "member",
-        email_status: "pending",
-      }],
+      invitations: [
+        {
+          email: "selger@dentum.no",
+          status: "invited",
+          project_role: "member",
+          team_role: "member",
+          email_status: "pending",
+        },
+      ],
       discovery_access_verified: true,
     });
     expect(result.invitation_dispatches).toHaveLength(1);
@@ -524,10 +595,24 @@ describe("Leadgrid domain onboarding transaction", () => {
       projectId: generatedProjectId,
     });
     const statements = query.mock.calls.map(([sql]) => String(sql));
-    expect(statements.some((sql) => sql.includes("INSERT INTO leadgrid_project_sales_teams"))).toBe(true);
-    expect(statements.some((sql) => sql.includes("INSERT INTO organization_members"))).toBe(true);
-    expect(statements.some((sql) => sql.includes("INSERT INTO leadgrid_project_members"))).toBe(true);
-    expect(statements.some((sql) => sql.includes("INSERT INTO crm_customers"))).toBe(false);
+    expect(
+      statements.some((sql) =>
+        sql.includes("INSERT INTO leadgrid_project_sales_teams"),
+      ),
+    ).toBe(true);
+    expect(
+      statements.some((sql) =>
+        sql.includes("INSERT INTO organization_members"),
+      ),
+    ).toBe(true);
+    expect(
+      statements.some((sql) =>
+        sql.includes("INSERT INTO leadgrid_project_members"),
+      ),
+    ).toBe(true);
+    expect(
+      statements.some((sql) => sql.includes("INSERT INTO crm_customers")),
+    ).toBe(false);
     expect(release).toHaveBeenCalledOnce();
   });
 
@@ -549,13 +634,15 @@ describe("Leadgrid domain onboarding transaction", () => {
       const sql = String(sqlValue);
       if (sql.includes("FROM leadgrid_project_onboarding_previews")) {
         return {
-          rows: [{
-            id: previewId,
-            plan,
-            expires_at: "2099-01-01T00:00:00.000Z",
-            committed_at: null,
-            committed_project_id: null,
-          }],
+          rows: [
+            {
+              id: previewId,
+              plan,
+              expires_at: "2099-01-01T00:00:00.000Z",
+              committed_at: null,
+              committed_project_id: null,
+            },
+          ],
         };
       }
       if (sql.includes("LEFT JOIN brand_kits bk")) return { rows: [] };
@@ -575,34 +662,38 @@ describe("Leadgrid domain onboarding transaction", () => {
       if (sql.includes("FROM leadgrid_discovery_profiles")) {
         return insertedProfile
           ? {
-              rows: [{
-                id: "33333333-3333-4333-8333-333333333333",
-                name: "Tannhelse – Oslo",
-                is_default: true,
-                version: 1,
-                brief: plan.recommended_profiles[0].brief,
-                status: "active",
-                source_config: {
-                  google_places: {
-                    enabled: true,
-                    mode: "transient_details_only",
+              rows: [
+                {
+                  id: "33333333-3333-4333-8333-333333333333",
+                  name: "Tannhelse – Oslo",
+                  is_default: true,
+                  version: 1,
+                  brief: plan.recommended_profiles[0].brief,
+                  status: "active",
+                  source_config: {
+                    google_places: {
+                      enabled: true,
+                      mode: "transient_details_only",
+                    },
                   },
                 },
-              }],
+              ],
             }
           : { rows: [] };
       }
       if (sql.includes("SELECT p.id::text") && sql.includes("crm_customers")) {
         return {
-          rows: [{
-            id: generatedProjectId,
-            organization_id: organizationId,
-            name: "Dentum",
-            description: plan.project_description,
-            status: "active",
-            lead_count: 0,
-            competitor_count: 0,
-          }],
+          rows: [
+            {
+              id: generatedProjectId,
+              organization_id: organizationId,
+              name: "Dentum",
+              description: plan.project_description,
+              status: "active",
+              lead_count: 0,
+              competitor_count: 0,
+            },
+          ],
         };
       }
       return { rows: [], rowCount: 1 };
@@ -624,10 +715,20 @@ describe("Leadgrid domain onboarding transaction", () => {
     expect(result.reused_project).toBe(false);
     const statements = query.mock.calls.map(([sql]) => String(sql));
     expect(statements).toEqual(expect.arrayContaining(["BEGIN", "COMMIT"]));
-    expect(statements.some((sql) => sql.includes("INSERT INTO leadgrid_projects"))).toBe(true);
-    expect(statements.some((sql) => sql.includes("INSERT INTO brand_kits"))).toBe(true);
-    expect(statements.some((sql) => sql.includes("INSERT INTO leadgrid_discovery_profiles"))).toBe(true);
-    expect(statements.some((sql) => sql.includes("INSERT INTO crm_customers"))).toBe(false);
+    expect(
+      statements.some((sql) => sql.includes("INSERT INTO leadgrid_projects")),
+    ).toBe(true);
+    expect(
+      statements.some((sql) => sql.includes("INSERT INTO brand_kits")),
+    ).toBe(true);
+    expect(
+      statements.some((sql) =>
+        sql.includes("INSERT INTO leadgrid_discovery_profiles"),
+      ),
+    ).toBe(true);
+    expect(
+      statements.some((sql) => sql.includes("INSERT INTO crm_customers")),
+    ).toBe(false);
     expect(statements.some((sql) => sql.includes("approval_mode"))).toBe(true);
     expect(insertedSourceConfig).toMatchObject({
       brreg_open_data: { enabled: true },
@@ -650,28 +751,34 @@ describe("Leadgrid domain onboarding transaction", () => {
       enrichment_count: 17,
       ideal_customer: "Brukerens egen avgrensning skal bestå.",
     };
-    const profiles: Array<Record<string, unknown>> = [{
-      id: "33333333-3333-4333-8333-333333333333",
-      name: plan.recommended_profiles[0].name,
-      is_default: true,
-      version: 7,
-      brief: editedLegacyBrief,
-      status: "active",
-      source_config: { google_places: { enabled: false } },
-      template_key: null,
-      template_version: null,
-    }];
+    const profiles: Array<Record<string, unknown>> = [
+      {
+        id: "33333333-3333-4333-8333-333333333333",
+        name: plan.recommended_profiles[0].name,
+        is_default: true,
+        version: 7,
+        brief: editedLegacyBrief,
+        status: "active",
+        source_config: { google_places: { enabled: false } },
+        template_key: null,
+        template_version: null,
+      },
+    ];
     const query = vi.fn(async (sqlValue: string, params: unknown[] = []) => {
       const sql = String(sqlValue);
       if (sql.includes("FROM leadgrid_project_onboarding_previews")) {
-        return { rows: [{
-          id: previewId,
-          plan,
-          expires_at: "2099-01-01T00:00:00.000Z",
-          committed_at: null,
-          committed_organization_id: null,
-          committed_project_id: null,
-        }] };
+        return {
+          rows: [
+            {
+              id: previewId,
+              plan,
+              expires_at: "2099-01-01T00:00:00.000Z",
+              committed_at: null,
+              committed_organization_id: null,
+              committed_project_id: null,
+            },
+          ],
+        };
       }
       if (sql.includes("FROM organizations WHERE id")) {
         return { rows: [{ id: organizationId, name: "Creatorhub AS" }] };
@@ -706,15 +813,19 @@ describe("Leadgrid domain onboarding transaction", () => {
         return { rows: profiles };
       }
       if (sql.includes("SELECT p.id::text") && sql.includes("crm_customers")) {
-        return { rows: [{
-          id: projectId,
-          organization_id: organizationId,
-          name: "The Role Room",
-          description: plan.project_description,
-          status: "active",
-          lead_count: 0,
-          competitor_count: 0,
-        }] };
+        return {
+          rows: [
+            {
+              id: projectId,
+              organization_id: organizationId,
+              name: "The Role Room",
+              description: plan.project_description,
+              status: "active",
+              lead_count: 0,
+              competitor_count: 0,
+            },
+          ],
+        };
       }
       return { rows: [], rowCount: 1 };
     });
@@ -732,7 +843,9 @@ describe("Leadgrid domain onboarding transaction", () => {
     expect(result.reused_project).toBe(true);
     expect(result.profiles).toHaveLength(6);
     expect(result.profiles.map((item) => item.template_key)).toEqual(
-      expect.arrayContaining(plan.recommended_profiles.map((item) => item.template_key)),
+      expect.arrayContaining(
+        plan.recommended_profiles.map((item) => item.template_key),
+      ),
     );
     expect(result.profiles[0].brief).toMatchObject({
       target_count: 17,
@@ -760,41 +873,47 @@ describe("Leadgrid domain onboarding transaction", () => {
       const sql = String(sqlValue);
       if (sql.includes("FROM leadgrid_project_onboarding_previews")) {
         return {
-          rows: [{
-            id: previewId,
-            plan,
-            expires_at: "2026-01-01T00:00:00.000Z",
-            committed_at: "2026-09-08T10:00:00.000Z",
-            committed_project_id: "dentum-existing",
-          }],
+          rows: [
+            {
+              id: previewId,
+              plan,
+              expires_at: "2026-01-01T00:00:00.000Z",
+              committed_at: "2026-09-08T10:00:00.000Z",
+              committed_project_id: "dentum-existing",
+            },
+          ],
         };
       }
       if (sql.includes("SELECT p.id::text") && sql.includes("crm_customers")) {
         return {
-          rows: [{
-            id: "dentum-existing",
-            organization_id: organizationId,
-            name: "Dentum",
-            description: plan.project_description,
-            status: "active",
-            lead_count: 0,
-            competitor_count: 0,
-          }],
+          rows: [
+            {
+              id: "dentum-existing",
+              organization_id: organizationId,
+              name: "Dentum",
+              description: plan.project_description,
+              status: "active",
+              lead_count: 0,
+              competitor_count: 0,
+            },
+          ],
         };
       }
       if (sql.includes("FROM leadgrid_discovery_profiles")) {
         return {
-          rows: [{
-            id: "33333333-3333-4333-8333-333333333333",
-            name: "Tannhelse – Oslo",
-            is_default: true,
-            version: 1,
-            brief: plan.recommended_profiles[0].brief,
-            status: "active",
-            source_config: {
-              google_places: { enabled: false },
+          rows: [
+            {
+              id: "33333333-3333-4333-8333-333333333333",
+              name: "Tannhelse – Oslo",
+              is_default: true,
+              version: 1,
+              brief: plan.recommended_profiles[0].brief,
+              status: "active",
+              source_config: {
+                google_places: { enabled: false },
+              },
             },
-          }],
+          ],
         };
       }
       return { rows: [], rowCount: 1 };
@@ -817,8 +936,9 @@ describe("Leadgrid domain onboarding transaction", () => {
     const statements = query.mock.calls.map(([sql]) => String(sql));
     expect(statements).toContain("COMMIT");
     expect(
-      statements.some((sql) =>
-        /^\s*(INSERT|UPDATE)\b/.test(sql) || sql.includes("pg_advisory"),
+      statements.some(
+        (sql) =>
+          /^\s*(INSERT|UPDATE)\b/.test(sql) || sql.includes("pg_advisory"),
       ),
     ).toBe(false);
     expect(release).toHaveBeenCalledOnce();
@@ -833,70 +953,99 @@ describe("Leadgrid domain onboarding transaction", () => {
     const query = vi.fn(async (sqlValue: string, params: unknown[] = []) => {
       const sql = String(sqlValue);
       if (sql.includes("FROM leadgrid_project_onboarding_previews")) {
-        return { rows: [{
-          id: previewId,
-          plan,
-          expires_at: "2026-01-01T00:00:00.000Z",
-          committed_at: "2026-09-08T10:00:00.000Z",
-          committed_organization_id: customerOrganizationId,
-          committed_project_id: "dentum-existing",
-        }] };
+        return {
+          rows: [
+            {
+              id: previewId,
+              plan,
+              expires_at: "2026-01-01T00:00:00.000Z",
+              committed_at: "2026-09-08T10:00:00.000Z",
+              committed_organization_id: customerOrganizationId,
+              committed_project_id: "dentum-existing",
+            },
+          ],
+        };
       }
       if (sql.includes("SELECT p.id::text") && sql.includes("crm_customers")) {
-        return { rows: [{
-          id: "dentum-existing",
-          organization_id: customerOrganizationId,
-          name: "Dentum",
-          description: plan.project_description,
-          status: "active",
-          lead_count: 0,
-          competitor_count: 0,
-        }] };
+        return {
+          rows: [
+            {
+              id: "dentum-existing",
+              organization_id: customerOrganizationId,
+              name: "Dentum",
+              description: plan.project_description,
+              status: "active",
+              lead_count: 0,
+              competitor_count: 0,
+            },
+          ],
+        };
       }
       if (sql.includes("FROM leadgrid_discovery_profiles")) {
-        return { rows: [{
-          id: "33333333-3333-4333-8333-333333333333",
-          name: "Tannhelse – Oslo",
-          is_default: true,
-          version: 1,
-          brief: plan.recommended_profiles[0].brief,
-          status: "active",
-          source_config: { google_places: { enabled: false } },
-        }] };
+        return {
+          rows: [
+            {
+              id: "33333333-3333-4333-8333-333333333333",
+              name: "Tannhelse – Oslo",
+              is_default: true,
+              version: 1,
+              brief: plan.recommended_profiles[0].brief,
+              status: "active",
+              source_config: { google_places: { enabled: false } },
+            },
+          ],
+        };
       }
       if (sql.includes("AS organization_name")) {
-        return { rows: [{
-          organization_name: "Dentum",
-          metadata: {
-            customer_admin_email: "daniel@creatorhubn.com",
-            sales_team_id: "dentum-salg",
-            onboarding_access_entries: [{
-              email: "selger@dentum.no",
-              project_role: "member",
-              team_role: "member",
-            }],
-          },
-        }] };
+        return {
+          rows: [
+            {
+              organization_name: "Dentum",
+              metadata: {
+                customer_admin_email: "daniel@creatorhubn.com",
+                sales_team_id: "dentum-salg",
+                onboarding_access_entries: [
+                  {
+                    email: "selger@dentum.no",
+                    project_role: "member",
+                    team_role: "member",
+                  },
+                ],
+              },
+            },
+          ],
+        };
       }
       if (sql.includes("FROM leadgrid_project_sales_teams project_team")) {
         return { rows: [{ id: "dentum-salg", name: "Dentum salg" }] };
       }
       if (sql.includes("FROM (SELECT $3::text AS email)")) {
         return params[2] === "daniel@creatorhubn.com"
-          ? { rows: [{
-              invitation_id: null,
-              email_status: null,
-              accepted_at: null,
-              member_user_id: "daniel-user",
-            }] }
-          : { rows: [{
-              invitation_id: "55555555-5555-4555-8555-555555555555",
-              email_status: "sent",
-              accepted_at: null,
-              member_user_id: null,
-            }] };
+          ? {
+              rows: [
+                {
+                  invitation_id: null,
+                  email_status: null,
+                  accepted_at: null,
+                  member_user_id: "daniel-user",
+                },
+              ],
+            }
+          : {
+              rows: [
+                {
+                  invitation_id: "55555555-5555-4555-8555-555555555555",
+                  email_status: "sent",
+                  accepted_at: null,
+                  member_user_id: null,
+                },
+              ],
+            };
       }
-      if (sql.includes("SELECT EXISTS") && sql.includes("leadgrid_project_members")) {
+      if (
+        sql.includes("SELECT EXISTS") &&
+        sql.includes("leadgrid_project_members")
+      ) {
         return { rows: [{ allowed: true }] };
       }
       return { rows: [], rowCount: 1 };
@@ -918,12 +1067,16 @@ describe("Leadgrid domain onboarding transaction", () => {
       organization: { id: customerOrganizationId, name: "Dentum" },
       team: { id: "dentum-salg", name: "Dentum salg" },
       administrator: { email: "daniel@creatorhubn.com", status: "active" },
-      invitations: [{ email: "selger@dentum.no", status: "invited", email_status: "sent" }],
+      invitations: [
+        { email: "selger@dentum.no", status: "invited", email_status: "sent" },
+      ],
       discovery_access_verified: true,
     });
-    expect(query.mock.calls.map(([sql]) => String(sql)).some((sql) =>
-      /^\s*(INSERT|UPDATE)\b/.test(sql),
-    )).toBe(false);
+    expect(
+      query.mock.calls
+        .map(([sql]) => String(sql))
+        .some((sql) => /^\s*(INSERT|UPDATE)\b/.test(sql)),
+    ).toBe(false);
     expect(release).toHaveBeenCalledOnce();
   });
 
@@ -937,13 +1090,15 @@ describe("Leadgrid domain onboarding transaction", () => {
       const sql = String(sqlValue);
       if (sql.includes("FROM leadgrid_project_onboarding_previews")) {
         return {
-          rows: [{
-            id: previewId,
-            plan,
-            expires_at: "2099-01-01T00:00:00.000Z",
-            committed_at: null,
-            committed_project_id: null,
-          }],
+          rows: [
+            {
+              id: previewId,
+              plan,
+              expires_at: "2099-01-01T00:00:00.000Z",
+              committed_at: null,
+              committed_project_id: null,
+            },
+          ],
         };
       }
       if (sql.includes("LEFT JOIN brand_kits bk")) return { rows: [] };
@@ -962,13 +1117,17 @@ describe("Leadgrid domain onboarding transaction", () => {
       connect: vi.fn(async () => ({ query, release })),
     } as unknown as Pool;
 
-    await expect(commitProjectOnboarding(pool, {
-      previewId,
-      organizationId,
-      userId,
-    })).rejects.toThrow("profile insert failed");
+    await expect(
+      commitProjectOnboarding(pool, {
+        previewId,
+        organizationId,
+        userId,
+      }),
+    ).rejects.toThrow("profile insert failed");
     expect(query.mock.calls.map(([sql]) => String(sql))).toContain("ROLLBACK");
-    expect(query.mock.calls.map(([sql]) => String(sql))).not.toContain("COMMIT");
+    expect(query.mock.calls.map(([sql]) => String(sql))).not.toContain(
+      "COMMIT",
+    );
     expect(release).toHaveBeenCalledOnce();
   });
 });

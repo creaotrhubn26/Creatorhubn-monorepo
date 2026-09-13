@@ -167,7 +167,7 @@ final class ProjectDomainOnboardingTests: XCTestCase {
             "Barnevern og avlastning – Norge",
             "Bofellesskap og miljøarbeid – Norge",
             "BPA og feltbasert omsorg – Norge",
-            "Kommunale omsorgstjenester – Norge",
+            "Kommunale tjenestesteder – Norge",
         ]
         let templateKeys = [
             "tidum.child_welfare",
@@ -200,9 +200,11 @@ final class ProjectDomainOnboardingTests: XCTestCase {
                 "template_version": 1,
                 "brief": [
                     "industry_queries": industryQueries[index],
-                    "organization_name_queries": municipalityProfile ? ["kommune"] : [],
+                    "organization_name_queries": municipalityProfile
+                        ? ["barneverntjeneste", "avlastning", "bofellesskap", "BPA", "miljøarbeidertjeneste"]
+                        : [],
                     "exclusion_terms": municipalityProfile
-                        ? []
+                        ? ["barnehage", "skole", "sykehjem", "natur", "eiendom", "husholdning", "administrasjon"]
                         : ["holding", "eiendom", "renhold", "bemanning"],
                     "country_code": "NO",
                     "city": NSNull(),
@@ -212,10 +214,10 @@ final class ProjectDomainOnboardingTests: XCTestCase {
                     "municipality_names": [],
                     "target_count": index == 2 ? 40 : 60,
                     "enrichment_count": 30,
-                    "minimum_fit_score": municipalityProfile ? 65 : 70,
+                    "minimum_fit_score": 70,
                     "ideal_customer": "Norsk omsorgsaktør med felt- eller turnusarbeid.",
                     "goal": "Finne presise kandidater for Tidum.",
-                    "organization_forms": municipalityProfile ? ["KOMM"] : ["AS", "IKS", "STI"],
+                    "organization_forms": municipalityProfile ? ["BEDR"] : ["AS", "IKS", "STI"],
                     "employee_count": employeeCount,
                     "organization_structure": "any",
                     "website_requirement": "any",
@@ -276,8 +278,11 @@ final class ProjectDomainOnboardingTests: XCTestCase {
         )
         XCTAssertEqual(preview.recommendedProfiles[0].brief.organizationForms, ["AS", "IKS", "STI"])
         XCTAssertEqual(preview.recommendedProfiles[0].brief.employeeCount?.minimum, 5)
-        XCTAssertEqual(preview.recommendedProfiles[3].brief.organizationNameQueries, ["kommune"])
-        XCTAssertEqual(preview.recommendedProfiles[3].brief.organizationForms, ["KOMM"])
+        XCTAssertEqual(
+            preview.recommendedProfiles[3].brief.organizationNameQueries,
+            ["barneverntjeneste", "avlastning", "bofellesskap", "BPA", "miljøarbeidertjeneste"]
+        )
+        XCTAssertEqual(preview.recommendedProfiles[3].brief.organizationForms, ["BEDR"])
         XCTAssertNil(preview.recommendedProfiles[3].brief.employeeCount)
         XCTAssertNil(
             preview.recommendedProfiles[3].brief.commercialSignals.registeredInBusinessRegister
@@ -488,11 +493,13 @@ final class DentumLeadOutreachTests: XCTestCase {
         company: String = "Majorstuen Tannlegesenter AS",
         contactName: String = "Anne Lunde",
         status: LeadRow.LeadStatus = .notContacted,
-        city: String? = "Oslo"
+        city: String? = "Oslo",
+        category: String = "Tannhelse",
+        projectId: String = "dentum-oslo"
     ) -> LeadRow {
         LeadRow(
             company: company,
-            category: "Tannhelse",
+            category: category,
             contactName: contactName,
             contactRole: "Daglig leder",
             leadScore: 86,
@@ -504,7 +511,7 @@ final class DentumLeadOutreachTests: XCTestCase {
             nextFollowUpOverdue: false,
             valueNok: 0,
             companyColor: .blue,
-            projectId: "dentum-oslo",
+            projectId: projectId,
             email: "post@klinikk.example",
             city: city,
             websiteURL: "https://klinikk.example",
@@ -590,5 +597,59 @@ final class DentumLeadOutreachTests: XCTestCase {
         XCTAssertFalse(generic.isDentum)
         XCTAssertEqual(generic.templates.count, 6)
         XCTAssertFalse(generic.templates.contains { $0.body.contains("Dentum") })
+    }
+
+    func testTidumProjectProvidesLeadAdaptedCareOutreachKit() throws {
+        let context = LeadOutreachContext(
+            lead: lead(
+                company: "Trygg Omsorg AS",
+                contactName: "Kari Nordmann",
+                category: "Barnevern og avlastning",
+                projectId: "tidum"
+            ),
+            projectName: "Tidum",
+            senderName: "Daniel Qazi"
+        )
+        let kit = LeadOutreachTemplateEngine.makeKit(context: context)
+
+        XCTAssertTrue(kit.isTidum)
+        XCTAssertFalse(kit.isDentum)
+        XCTAssertEqual(kit.title, "Tidum-oppsett")
+        XCTAssertEqual(kit.templates.count, 7)
+        XCTAssertEqual(kit.recommendedTemplateID, "tidum-child-welfare")
+        XCTAssertEqual(Set(kit.templates.map(\.id)).count, kit.templates.count)
+
+        for template in kit.templates {
+            XCTAssertTrue(template.subject.contains("Trygg Omsorg AS"))
+            XCTAssertTrue(template.body.contains("Hei Kari,"))
+            XCTAssertTrue(template.body.contains("Trygg Omsorg AS"))
+            XCTAssertTrue(template.body.contains("Oslo"))
+            XCTAssertTrue(template.body.contains("Daniel Qazi\nTidum"))
+            XCTAssertFalse(template.body.contains("Dentum"))
+            XCTAssertFalse(template.body.contains("{{"))
+        }
+    }
+
+    func testTidumRecommendationFollowsSegmentAndLeadStatus() {
+        func kit(category: String, status: LeadRow.LeadStatus = .notContacted) -> LeadOutreachKit {
+            LeadOutreachTemplateEngine.makeKit(context: .init(
+                lead: lead(
+                    company: "Eksempel AS",
+                    status: status,
+                    category: category,
+                    projectId: "tidum"
+                ),
+                projectName: "Tidum",
+                senderName: "Daniel"
+            ))
+        }
+
+        XCTAssertEqual(kit(category: "BPA").recommendedTemplateID, "tidum-bpa")
+        XCTAssertEqual(kit(category: "Kommunale tjenester").recommendedTemplateID, "tidum-municipality")
+        XCTAssertEqual(kit(category: "Bofellesskap og miljøarbeid").recommendedTemplateID, "tidum-residential-care")
+        XCTAssertEqual(kit(category: "Omsorg").recommendedTemplateID, "tidum-introduction")
+        XCTAssertEqual(kit(category: "Omsorg", status: .contacted).recommendedTemplateID, "tidum-follow-up")
+        XCTAssertEqual(kit(category: "Omsorg", status: .interested).recommendedTemplateID, "tidum-next-step")
+        XCTAssertEqual(kit(category: "Omsorg", status: .warm).recommendedTemplateID, "tidum-next-step")
     }
 }

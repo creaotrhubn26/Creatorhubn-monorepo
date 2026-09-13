@@ -1289,7 +1289,7 @@ final class QASweepTests: XCTestCase {
             "Barnevern og avlastning – Norge",
             "Bofellesskap og miljøarbeid – Norge",
             "BPA og feltbasert omsorg – Norge",
-            "Kommunale omsorgstjenester – Norge",
+            "Kommunale tjenestesteder – Norge",
         ]
         for (profileIndex, profileName) in expectedProfiles.enumerated() {
             let profileTitle = app.staticTexts[
@@ -1315,6 +1315,17 @@ final class QASweepTests: XCTestCase {
             app.buttons["discovery.close"].waitForExistence(timeout: 8),
             "Et bekreftet Tidum-prosjekt skal åpnes direkte i Discovery"
         )
+        let profilesWorkspace = app.buttons["discovery.workspace.profiles"]
+        XCTAssertTrue(
+            profilesWorkspace.waitForExistence(timeout: 5),
+            "Tidum-profiler skal være permanent tilgjengelige fra Discovery"
+        )
+        profilesWorkspace.tap()
+        XCTAssertTrue(app.scrollViews["discovery.profiles.workspace"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["discovery.profile.count"].waitForExistence(timeout: 5))
+        let candidatesWorkspace = app.buttons["discovery.workspace.candidates"]
+        XCTAssertTrue(candidatesWorkspace.waitForExistence(timeout: 3))
+        candidatesWorkspace.tap()
         let customerType = app.textFields["discovery.simple.customer-type"]
         XCTAssertTrue(customerType.waitForExistence(timeout: 5))
         XCTAssertTrue((customerType.value as? String)?.contains("87.104") == true)
@@ -1639,6 +1650,13 @@ final class QASweepTests: XCTestCase {
             app.staticTexts["Tidum"].waitForExistence(timeout: 12),
             "Det autoritative Tidum-prosjektet skal være aktivt i Discovery"
         )
+        let profilesSection = app.buttons["discovery.workspace.profiles"]
+        XCTAssertTrue(
+            profilesSection.waitForExistence(timeout: 12),
+            "Profiler skal alltid være tilgjengelig, også når prosjektet åpner i kandidatvurdering"
+        )
+        profilesSection.tap()
+        XCTAssertTrue(app.scrollViews["discovery.profiles.workspace"].waitForExistence(timeout: 12))
         let profileCount = app.staticTexts["discovery.profile.count"]
         XCTAssertTrue(profileCount.waitForExistence(timeout: 12))
         let visibleProfileCount = Int(profileCount.label.split(separator: " ").first ?? "0") ?? 0

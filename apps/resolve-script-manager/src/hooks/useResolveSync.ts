@@ -23,6 +23,7 @@ export interface ResolveMarker {
   name: string;
   color: string;
   note: string;
+  customData?: string;
 }
 
 export interface ResolveState {

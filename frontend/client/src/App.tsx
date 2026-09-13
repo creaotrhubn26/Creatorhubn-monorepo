@@ -256,6 +256,8 @@ const EditingVendorWorkspaceShell = React.lazy(() => import('@/components/univer
 import ImpersonationBanner from '@/components/admin/ImpersonationBanner';
 const AudioReviewInvitePage = React.lazy(() => import('@/pages/audio-review-invite'));
 const AudioReviewSharedPage = React.lazy(() => import('@/pages/audio-review-shared'));
+const VideoReviewPage = React.lazy(() => import('@/pages/video-review'));
+const VideoApprovalPage = React.lazy(() => import('@/pages/video-approval'));
 const MockupReviewPage = React.lazy(() => import('@/pages/mockup-review'));
 const StoryboardReviewPage = React.lazy(() => import('@/pages/storyboard-review'));
 const WarmupGuidePage = React.lazy(() => import('@/pages/warmup-guide'));
@@ -1021,6 +1023,8 @@ function App() {
                   <Route path="/showcase/music_producer" component={MusicShowcaseRouteWrapper as React.ComponentType<any>} />
                   <Route path="/audio-review/invite/:token" component={AudioReviewInvitePage as React.ComponentType<any>} />
                   <Route path="/audio-review/shared/:token" component={AudioReviewSharedPage as React.ComponentType<any>} />
+                  <Route path="/video-review/:token" component={VideoReviewPage as React.ComponentType<any>} />
+                  <Route path="/video-approval/:token" component={VideoApprovalPage as React.ComponentType<any>} />
                   <Route path="/sound-room" component={SoundRoomCommandCenterRouteWrapper} />
                   <Route path="/mockup-review/:token" component={MockupReviewPage as React.ComponentType<any>} />
                   <Route path="/storyboard-review/:token" component={StoryboardReviewPage as React.ComponentType<any>} />

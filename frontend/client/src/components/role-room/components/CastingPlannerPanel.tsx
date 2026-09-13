@@ -5349,6 +5349,8 @@ type RoleRoomProjectWorkspaceState = {
             ? 'production-management'
           : effectiveWorkspaceLens === 'production-coordination'
             ? 'production-coordination'
+          : effectiveWorkspaceLens === 'continuity'
+            ? 'continuity'
           : workspaceLensPreference === 'full'
             && (
               isAssignedDirectorProjectRole
@@ -5357,6 +5359,7 @@ type RoleRoomProjectWorkspaceState = {
               || isAssignedSecondAssistantDirectorProjectRole
               || isAssignedProductionManagerProjectRole
               || isAssignedProductionCoordinatorProjectRole
+              || isAssignedScriptSupervisorProjectRole
             )
             ? 'full'
             : '';
@@ -5422,6 +5425,7 @@ type RoleRoomProjectWorkspaceState = {
     isAssignedFirstAssistantDirectorProjectRole,
     isAssignedProductionManagerProjectRole,
     isAssignedProductionCoordinatorProjectRole,
+    isAssignedScriptSupervisorProjectRole,
     isAssignedSecondAssistantDirectorProjectRole,
     isExternalClientPortalMode,
     workspaceLensPreference,

@@ -3,11 +3,6 @@ name: Leadgrid Tidum staging E2E
 on:
   workflow_dispatch:
     inputs:
-      run_discovery_campaign:
-        description: "Kjør alle fire Tidum-profiler mot ekte BRREG"
-        required: true
-        default: true
-        type: boolean
       run_simulator_e2e:
         description: "Kjør native offline/reconnect og Tidum-flyt på iPad mini"
         required: true
@@ -79,7 +74,7 @@ jobs:
           LEADGRID_STAGING_PASSWORD: ${{ secrets.LEADGRID_STAGING_PASSWORD }}
           LEADGRID_STAGING_ORG_ID: ${{ secrets.LEADGRID_STAGING_ORG_ID }}
           LEADGRID_RUN_TIDUM_E2E: "1"
-          LEADGRID_RUN_TIDUM_CAMPAIGN_E2E: ${{ inputs.run_discovery_campaign && '1' || '0' }}
+          LEADGRID_RUN_TIDUM_CAMPAIGN_E2E: "1"
           LEADGRID_RUN_SIMULATOR_E2E: ${{ inputs.run_simulator_e2e && '1' || '0' }}
           LEADGRID_STAGING_SIMULATOR_DESTINATION: "platform=iOS Simulator,name=iPad mini (A17 Pro),OS=26.5"
         run: ./scripts/staging-testflight-e2e.sh
