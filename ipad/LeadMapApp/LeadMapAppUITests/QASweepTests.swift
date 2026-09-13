@@ -1545,13 +1545,14 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = "2"
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["staging-session-ready"].waitForExistence(timeout: 45))
+        let newLead = app.buttons["lead-new"]
+        XCTAssertTrue(newLead.waitForExistence(timeout: 45))
+        let projectPill = app.buttons["header-project-pill"]
+        XCTAssertTrue(projectPill.waitForExistence(timeout: 10))
         let offline = app.buttons["qa-network-offline"]
-        XCTAssertTrue(offline.waitForExistence(timeout: 3))
+        XCTAssertTrue(offline.waitForExistence(timeout: 10))
         offline.tap()
 
-        let newLead = app.buttons["lead-new"]
-        XCTAssertTrue(newLead.waitForExistence(timeout: 10))
         newLead.tap()
 
         let name = app.textFields["add-lead.field.bedriftsnavn"]
@@ -1625,8 +1626,7 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "12" : "11"
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["staging-session-ready"].waitForExistence(timeout: 45))
-        XCTAssertTrue(app.navigationBars["Verktøy"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.navigationBars["Verktøy"].waitForExistence(timeout: 45))
         let discovery = app.buttons["Profiler, kandidater og markedsinnsikt"]
         XCTAssertTrue(discovery.waitForExistence(timeout: 10))
         discovery.tap()
@@ -1674,8 +1674,7 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "12" : "11"
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["staging-session-ready"].waitForExistence(timeout: 45))
-        XCTAssertTrue(app.navigationBars["Verktøy"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.navigationBars["Verktøy"].waitForExistence(timeout: 45))
         let discovery = app.buttons["Profiler, kandidater og markedsinnsikt"]
         XCTAssertTrue(discovery.waitForExistence(timeout: 10))
         discovery.tap()
@@ -1742,11 +1741,10 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["staging-session-ready"].waitForExistence(timeout: 45))
         let useTemplate = app.buttons.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "pondus-use-")
         ).firstMatch
-        XCTAssertTrue(useTemplate.waitForExistence(timeout: 15), "Staging må ha minst én publisert Pondus-mal")
+        XCTAssertTrue(useTemplate.waitForExistence(timeout: 45), "Staging må ha minst én publisert Pondus-mal")
         let templateID = String(useTemplate.identifier.dropFirst("pondus-use-".count))
         XCTAssertFalse(templateID.isEmpty)
         let usageBefore = try await pondusUsageCount(
@@ -1756,7 +1754,9 @@ final class QASweepTests: XCTestCase {
             projectID: projectID,
             templateID: templateID
         )
-        app.buttons["qa-network-offline"].tap()
+        let offline = app.buttons["qa-network-offline"]
+        XCTAssertTrue(offline.waitForExistence(timeout: 10))
+        offline.tap()
         useTemplate.tap()
         XCTAssertTrue(app.buttons["pondus-start-session"].waitForExistence(timeout: 5))
 
@@ -1804,12 +1804,15 @@ final class QASweepTests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["QA_TOUR"] = "pondus-coach"
         app.launchEnvironment["QA_NETWORK_CONTROLS"] = "1"
+        app.launchEnvironment["QA_RESET_OFFLINE_QUEUE"] = "1"
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
         app.launch()
 
         let useTemplate = app.buttons["pondus-use-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]
         XCTAssertTrue(useTemplate.waitForExistence(timeout: 12))
-        app.buttons["qa-network-offline"].tap()
+        let offline = app.buttons["qa-network-offline"]
+        XCTAssertTrue(offline.waitForExistence(timeout: 5))
+        offline.tap()
         useTemplate.tap()
         let start = app.buttons["pondus-start-session"]
         XCTAssertTrue(start.waitForExistence(timeout: 5))
