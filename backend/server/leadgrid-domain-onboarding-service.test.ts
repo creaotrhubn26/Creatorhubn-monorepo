@@ -933,6 +933,18 @@ describe("Leadgrid domain onboarding transaction", () => {
         brief: plan.recommended_profiles[3].brief,
       }),
     ).toBe(true);
+    const legacyBriefWithoutNullableFields = { ...legacyMunicipalBrief };
+    delete legacyBriefWithoutNullableFields.city;
+    delete legacyBriefWithoutNullableFields.geo;
+    delete legacyBriefWithoutNullableFields.territory_code;
+    expect(
+      isUpgradeableTidumMunicipalServicesV1({
+        name: "Kommunale omsorgstjenester – Norge",
+        template_key: "tidum.municipal_services",
+        template_version: 1,
+        brief: legacyBriefWithoutNullableFields,
+      }),
+    ).toBe(true);
 
     const query = vi.fn(async (sqlValue: string, params: unknown[] = []) => {
       const sql = String(sqlValue);
@@ -1033,10 +1045,8 @@ describe("Leadgrid domain onboarding transaction", () => {
         String(sql).includes("brief = $18::jsonb"),
     );
     expect(upgrade?.[1]?.[3]).toBe(2);
-    expect(String(upgrade?.[0])).toContain("AND brief = $25::jsonb");
-    expect(JSON.parse(String(upgrade?.[1]?.[24]))).toEqual(
-      legacyMunicipalBrief,
-    );
+    expect(String(upgrade?.[0])).toContain("AND version = $25");
+    expect(upgrade?.[1]?.[24]).toBe(1);
     expect(release).toHaveBeenCalledOnce();
   });
 
