@@ -909,6 +909,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
   const [permitAnalysisLoading, setPermitAnalysisLoading] = useState(false);
   const [permitAnalysisError, setPermitAnalysisError] = useState<string | null>(null);
   const [permitAnalysisRefreshKey, setPermitAnalysisRefreshKey] = useState(0);
+  const addressNeedsPrecision = permitAnalysis?.confidence === 'unverified';
 
   useEffect(() => {
     if (!location?.address) {
@@ -1478,7 +1479,9 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                 />
               </Stack>
               <Typography sx={{ color: 'rgba(226,232,240,.72)', fontSize: '.78rem' }}>
-                Kartverket bekrefter adressetreffet. Feltforhold, tillatelser, drone, vær og tilgang er ikke bekreftet før en kilde eller scout har dokumentert dem.
+                {permitAnalysis.geocoded
+                  ? 'Kartverket bekrefter adressetreffet. Feltforhold, tillatelser, drone, vær og tilgang er ikke bekreftet før en kilde eller scout har dokumentert dem.'
+                  : 'Kartverket fant ikke et presist adressetreff. Ingen eiendoms-, tillatelses-, drone-, vær- eller tilgangsdata er antatt.'}
               </Typography>
               {permitAnalysis.warnings.map((warning) => (
                 <Typography key={warning} sx={{ color: '#fde68a', fontSize: '.76rem' }}>• {warning}</Typography>
@@ -1486,7 +1489,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
             </Stack>
           </Alert>
         )}
-        {loading ? (
+        {loading || (error && permitAnalysisLoading) ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: { xs: 6, sm: 8, md: 7, lg: 9, xl: 12 } }}>
             <CircularProgress sx={{ color: ROLE_ROOM_DIALOG_COLORS.secondary, mb: { xs: 3, sm: 3.5, md: 3.25, lg: 4, xl: 5 }, fontSize: { xs: 48, sm: 56, md: 52, lg: 64, xl: 80 } }} size={56} />
             <Typography variant="body1" sx={{ color: '#fff', fontWeight: 600, mb: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, fontSize: { xs: '1rem', sm: '1.125rem', md: '1.0625rem', lg: '1.1875rem', xl: '1.25rem' } }}>
@@ -1496,7 +1499,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
               Henter informasjon om fotografispotter, drone-restriksjoner, værforhold og tilgang
             </Typography>
           </Box>
-        ) : error ? (
+        ) : error && !addressNeedsPrecision ? (
           <Alert 
             severity="error" 
             icon={<CancelIcon />}
@@ -3264,28 +3267,32 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
               <LocationIcon sx={{ color: 'var(--role-cyan, #00d4ff)', fontSize: { xs: '2.5rem', sm: '3rem', md: '2.75rem', lg: '3.5rem', xl: '4rem' } }} />
             </Box>
             <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 }, fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.375rem', lg: '1.625rem', xl: '2rem' } }}>
-              Ingen analyse tilgjengelig
+              {addressNeedsPrecision ? 'Adressen må presiseres' : 'Ingen analyse tilgjengelig'}
             </Typography>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: { xs: 3, sm: 3.5, md: 3.25, lg: 4, xl: 5 }, maxWidth: { xs: '100%', sm: 400, md: 450, lg: 500, xl: 600 }, mx: 'auto', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' } }}>
-              Start en analyse for å få informasjon om fotografispotter, drone-restriksjoner, værforhold og tilgang for denne lokasjonen.
+              {addressNeedsPrecision
+                ? 'Legg inn gateadresse, nummer, postnummer og sted på lokasjonen før du kjører detaljert analyse. Scout-funn kan dokumenteres manuelt uten å vente på et adressetreff.'
+                : 'Start en analyse for å hente kildebelagt lokasjonsinformasjon. Operative forhold må fortsatt bekreftes av scout eller dokumentert kilde.'}
             </Typography>
-            <Button
-              variant="contained"
-              onClick={handleRefresh}
-              sx={{
-                bgcolor: 'var(--role-cyan, #00d4ff)',
-                color: '#000',
-                fontWeight: 600,
-                fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
-                px: { xs: 4, sm: 4.5, md: 4.25, lg: 5, xl: 6 },
-                py: { xs: 1.5, sm: 1.75, md: 1.625, lg: 2, xl: 2.5 },
-                borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-                minHeight: 44,
-                '&:hover': { bgcolor: '#00b8e6' },
-              }}
-            >
-              Start analyse
-            </Button>
+            {!addressNeedsPrecision && (
+              <Button
+                variant="contained"
+                onClick={handleRefresh}
+                sx={{
+                  bgcolor: 'var(--role-cyan, #00d4ff)',
+                  color: '#000',
+                  fontWeight: 600,
+                  fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                  px: { xs: 4, sm: 4.5, md: 4.25, lg: 5, xl: 6 },
+                  py: { xs: 1.5, sm: 1.75, md: 1.625, lg: 2, xl: 2.5 },
+                  borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
+                  minHeight: 44,
+                  '&:hover': { bgcolor: '#00b8e6' },
+                }}
+              >
+                Start analyse
+              </Button>
+            )}
           </Box>
         )}
       </DialogContent>

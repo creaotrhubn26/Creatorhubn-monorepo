@@ -295,4 +295,55 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
     expect(runtimeErrors).toEqual([]);
     expect(targetedApiFailures).toEqual([]);
   });
+
+  test('viser en tydelig, ikke-antatt tilstand når adressen er for upresis', async ({ page }) => {
+    const runtimeErrors: string[] = [];
+    page.on('pageerror', (error) => runtimeErrors.push(error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error' && /TypeError|ReferenceError|Rendered fewer hooks|Minified React error/i.test(message.text())) {
+        runtimeErrors.push(message.text());
+      }
+    });
+    await installAuthenticatedLocationManagerApi(page);
+
+    await page.route('**/api/role-room/locations/analysis/analyze', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        success: true,
+        data: {
+          query: 'Dovre, Innlandet',
+          geocoded: null,
+          permitInfo: null,
+          recommendations: [],
+          source: 'fallback',
+          confidence: 'unverified',
+          permitDataSource: 'none',
+          analyzedAt: '2026-09-13T12:00:00.000Z',
+          warnings: ['Kunne ikke geocode adressen via Kartverket. Sjekk at adressen er fullstendig (gateadresse + nummer + postnummer + sted).'],
+        },
+      }) });
+    });
+    await page.route('**/api/external-data/kartverket/address/**', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        success: false,
+        error: 'Adressen kunne ikke verifiseres',
+      }) });
+    });
+
+    await openCastingPlanner(page, {
+      urlFlags: { seed: 'production-manager-troll', session: 'location-manager', lens: 'location-management' },
+    });
+    await selectFirstProject(page);
+    await page.getByRole('button', { name: 'Kart og lokasjonsbase' }).click();
+    await page.getByRole('button', { name: 'Analyser Trollskogen' }).first().click();
+
+    const evidence = page.getByTestId('location-analysis-evidence');
+    await expect(evidence).toContainText('Adressen er ikke verifisert');
+    await expect(evidence).toContainText('Kartverket fant ikke et presist adressetreff');
+    await expect(evidence).not.toContainText('Kartverket bekrefter adressetreffet');
+    await expect(page.getByRole('heading', { name: 'Adressen må presiseres' })).toBeVisible();
+    await expect(page.getByText('Legg inn gateadresse, nummer, postnummer og sted')).toBeVisible();
+    await expect(page.getByText('Kunne ikke laste analyse', { exact: true })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Start analyse' })).toBeHidden();
+    expect(runtimeErrors).toEqual([]);
+  });
 });
