@@ -685,9 +685,15 @@ pub fn kjør(model: &str, prompt: &str) -> Result<String, String> {
         .current_dir(std::env::temp_dir())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| format!("startet ikke: {e}"))?;
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "fant ikke «claude» på maskinen".to_string()
+            } else {
+                format!("«claude» startet ikke: {e}")
+            }
+        })?;
 
     // Egen tråd: en stor prompt fyller rørbufferet, og skriver vi den i denne
     // tråden mens barnet venter på at vi skal lese svaret, står begge i stå.
@@ -708,17 +714,56 @@ pub fn kjør(model: &str, prompt: &str) -> Result<String, String> {
         let _ = tx.send(s);
     });
 
-    match rx.recv_timeout(TIMEOUT) {
-        Ok(svar) => {
-            let _ = barn.wait();
-            Ok(svar)
-        }
-        Err(_) => {
-            let _ = barn.kill();
-            let _ = barn.wait();
-            Err("tok for lang tid".into())
-        }
+    // Stderr leses i sin egen tråd, av samme grunn som stdin skrives i sin:
+    // en full rørbuffer på den ene siden stanser den andre. Den ble tidligere
+    // kastet, og var derfor det eneste stedet som visste hvorfor kallet ikke
+    // ga noe.
+    let mut feilstrøm = barn.stderr.take().ok_or("ingen feilstrøm")?;
+    let (ftx, frx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = feilstrøm.read_to_string(&mut s);
+        let _ = ftx.send(s);
+    });
+
+    let Ok(svar) = rx.recv_timeout(TIMEOUT) else {
+        let _ = barn.kill();
+        let _ = barn.wait();
+        return Err("«claude» brukte for lang tid".into());
+    };
+
+    // Exitkoden ble aldri sjekket. Uten innlogging skriver `claude` til
+    // stderr, avslutter med en kode ulik null, og gir tom stdout — og panelet
+    // skrev «Ingenting er bestemt ennå» om et notat fullt av beslutninger.
+    let status = barn.wait().map_err(|e| format!("«claude» svarte ikke: {e}"))?;
+    let stderr = frx.recv_timeout(std::time::Duration::from_secs(5)).unwrap_or_default();
+    if !status.success() {
+        return Err(match kort(&stderr) {
+            Some(linje) => format!("«claude» svarte med feil: {linje}"),
+            None => format!("«claude» avsluttet med {status}"),
+        });
     }
+    if svar.trim().is_empty() {
+        // Kode null og ingenting å vise er ikke «ingenting å finne»: svaret
+        // skal ha én linje per avsnitt.
+        return Err(match kort(&stderr) {
+            Some(linje) => format!("«claude» svarte ingenting: {linje}"),
+            None => "«claude» svarte ingenting".to_string(),
+        });
+    }
+    Ok(svar)
+}
+
+/// Siste linje med innhold i stderr, kortet ned til noe som får plass på en
+/// linje i panelet. Feilteksten fra `claude` kan være mange linjer, og den
+/// siste er den som sier hva som gikk galt.
+fn kort(stderr: &str) -> Option<String> {
+    let linje = stderr.lines().map(str::trim).filter(|l| !l.is_empty()).next_back()?;
+    Some(if linje.chars().count() > 160 {
+        format!("{} …", linje.chars().take(160).collect::<String>().trim_end())
+    } else {
+        linje.to_string()
+    })
 }
 
 impl Classifier for Cli {
@@ -814,6 +859,57 @@ mod prosesskall {
         assert!(inn.contains(hemmelig), "prompten skal ha gått på stdin");
 
         std::env::remove_var("CREATORHUB_CLAUDE_BIN");
+    }
+
+    /// Lager en stubb som skriver `ut` til stdout, `feil` til stderr, og
+    /// avslutter med `kode`.
+    fn stubb_med(mappe: &std::path::Path, ut: &str, feil: &str, kode: i32) -> std::path::PathBuf {
+        let sti = mappe.join("claude");
+        let skript = format!(
+            "#!/bin/sh\ncat > /dev/null\nprintf '%s' '{ut}'\nprintf '%s\\n' '{feil}' >&2\nexit {kode}\n"
+        );
+        std::fs::write(&sti, skript).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&sti, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        sti
+    }
+
+    /// «Ingenting ble funnet» og «lesningen feilet» så like ut: exitkoden ble
+    /// aldri sjekket, og stderr ble kastet.
+    #[test]
+    fn en_claude_som_feiler_gir_en_annen_tilstand_enn_ingenting_funnet() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Uten innlogging: kode ulik null, tom stdout, grunnen i stderr.
+        let sti = stubb_med(tmp.path(), "", "Invalid API key - please run /login", 1);
+        std::env::set_var("CREATORHUB_CLAUDE_BIN", &sti);
+        let feil = kjør(MODEL, "les dette").unwrap_err();
+        assert!(feil.contains("/login"), "grunnen skal bæres videre: {feil}");
+
+        // Kode null, men ingenting å vise, er heller ikke et svar.
+        let sti = stubb_med(tmp.path(), "", "", 0);
+        std::env::set_var("CREATORHUB_CLAUDE_BIN", &sti);
+        assert!(kjør(MODEL, "les dette").is_err(), "tomt svar er ikke «ingenting funnet»");
+
+        // Og et ekte svar går fortsatt gjennom, selv med støy på stderr.
+        let sti = stubb_med(tmp.path(), "1|beslutning|bygg|Noe", "advarsel: noe", 0);
+        std::env::set_var("CREATORHUB_CLAUDE_BIN", &sti);
+        assert_eq!(kjør(MODEL, "les dette").unwrap(), "1|beslutning|bygg|Noe");
+
+        std::env::remove_var("CREATORHUB_CLAUDE_BIN");
+    }
+
+    /// Feilteksten skal få plass på en linje i panelet.
+    #[test]
+    fn feilteksten_kortes_til_siste_linje_med_innhold() {
+        assert_eq!(kort(""), None);
+        assert_eq!(kort("\n  \n"), None);
+        assert_eq!(kort("noe\nsiste linje\n\n").as_deref(), Some("siste linje"));
+        let lang = "x".repeat(400);
+        assert!(kort(&lang).unwrap().chars().count() <= 162);
     }
 }
 
