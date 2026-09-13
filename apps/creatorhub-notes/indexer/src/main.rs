@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use creatorhub_notes_indexer::{db, embed::VoyageEmbedder, index, search, sti};
+use creatorhub_notes_indexer::{db, embed::VoyageEmbedder, index, ordbank, search, sti};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -39,6 +39,16 @@ enum Command {
         #[arg(long)]
         text: bool,
     },
+    /// Last inn Norsk Ordbank, eller si hva som er lastet inn.
+    ///
+    /// Ordlista er det som gjør at «utstyret» finner «utstyr». Den ligger
+    /// ikke i repoet — den lastes ned fra Språkbanken (CC-BY) og pekes på her:
+    /// `fullformsliste.txt` fra `norsk_ordbank_nob_2005`. Uten argument
+    /// skrives status.
+    Ordbank {
+        /// Sti til `fullformsliste.txt`. Utelates for å se status.
+        fil: Option<PathBuf>,
+    },
     /// Kjør gullsettet og rapporter recall
     Eval {
         #[arg(long, default_value = "gullsett.toml")]
@@ -58,6 +68,29 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
+    // Ordlista får si egen fil ved siden av basen den skal tjene: den er
+    // hundre megabyte nedlastet ordliste, og notatbasen er den ene fila som
+    // ikke kan bygges opp igjen. `db::open` kobler den på når den ligger der.
+    //
+    // Standardbasen her er notatbasen og ikke kodeindeksen som ellers — det
+    // er notatsøket ordlista finnes for. Stien skrives ut, så det aldri er
+    // tvil om hvor lista havnet.
+    if let Command::Ordbank { fil } = &args.command {
+        let base = args.db.clone().unwrap_or_else(|| sti::standard_db(sti::Lager::Notater));
+        let sti = base.with_file_name(sti::Lager::Ordbank.filnavn());
+        if let Some(fil) = fil {
+            if let Some(mappe) = sti.parent() {
+                std::fs::create_dir_all(mappe)?;
+            }
+            let conn = rusqlite::Connection::open(&sti)?;
+            let n = ordbank::load(&conn, fil)?;
+            println!("{n} ordformer lest fra {}", fil.display());
+        }
+        // Åpnes gjennom basen ordlista skal tjene, ikke direkte: da er det
+        // det appen kommer til å se som blir rapportert, ikke fila i seg selv.
+        println!("{}\n{}", sti.display(), ordbank::status(&db::open(&base)?));
+        return Ok(());
+    }
     let db_path = args
         .db
         .unwrap_or_else(|| sti::standard_db(sti::Lager::Kodeindeks));
@@ -115,6 +148,7 @@ fn main() -> Result<()> {
                 );
             }
         }
+        Command::Ordbank { .. } => unreachable!("håndtert over"),
         Command::Eval { file, k } => {
             let report = creatorhub_notes_indexer::eval::run(&conn, &embedder, &file, k)?;
             println!("{}", report.render());

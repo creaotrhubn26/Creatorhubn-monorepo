@@ -19,19 +19,25 @@ pub enum Lager {
     /// Appens eget lager: avsnitt, forståelse, rettelser, relasjoner.
     /// `CREATORHUB_NOTAT_DB` overstyrer, som i `notat`-skriptet.
     Notater,
+    /// Norsk Ordbank: rundt hundre megabyte nedlastet ordliste. Egen fil
+    /// fordi den hverken er notatlager eller kodeindeks — den er lastet ned,
+    /// kan slettes, og kan hentes igjen. Lå den i notatbasen, ville den ene
+    /// fila som ikke kan bygges opp igjen vokst med hundre megabyte som kan.
+    Ordbank,
 }
 
 impl Lager {
-    fn filnavn(self) -> &'static str {
+    pub fn filnavn(self) -> &'static str {
         match self {
             Lager::Kodeindeks => "index.db",
             Lager::Notater => "notater.db",
+            Lager::Ordbank => "ordbank.db",
         }
     }
 
     fn miljøvariabel(self) -> Option<&'static str> {
         match self {
-            Lager::Kodeindeks => None,
+            Lager::Kodeindeks | Lager::Ordbank => None,
             Lager::Notater => Some("CREATORHUB_NOTAT_DB"),
         }
     }

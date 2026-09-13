@@ -45,9 +45,22 @@ drop table if exists notes;
 /// betyr at tabellen IKKE holder seg synkronisert av seg selv — triggerne
 /// under er det som gjør det, ikke FTS5 selv.
 ///
-/// `remove_diacritics 0` er bevisst: notatene er norske, og standardverdien
-/// (1) folder æøå bort slik at «søk» og «sok» blir samme token. Med 0 forblir
-/// de distinkte.
+/// `remove_diacritics 0` er bevisst, men gevinsten er mindre enn den pleide å
+/// stå her. Målt mot sqlite3 med nøyaktig denne tokenizeren:
+///
+/// | innstilling | «Søknaden til leverandøren om måling» blir |
+/// |---|---|
+/// | `0` | søknaden, leverandøren, måling |
+/// | `1` og `2` | søknaden, leverandøren, **maling** |
+///
+/// Æ og ø foldes **aldri**, uansett innstilling: de er egne bokstaver i
+/// Unicode, ikke en bokstav med et tegn over. Bare å foldes, til a. Store
+/// bokstaver håndteres i alle tre, så `SØKNADEN` finner `søknaden` uansett.
+///
+/// Den eneste faktiske forskjellen `0` kjøper er altså at «måling» og
+/// «maling» holdes fra hverandre. Det er verdt det — de betyr ikke det samme
+/// — men det er hele forskjellen, og ingenting av dette har med bøyning å
+/// gjøre. Bøyningen ligger i `search::text` og `ordbank::former`.
 const FTS_SCHEMA: &str = r#"
 create virtual table if not exists chunk_fts using fts5(
   text,
@@ -80,7 +93,27 @@ pub fn open(path: &Path) -> Result<Connection> {
         EMBEDDING_DIM
     ))?;
     conn.execute_batch(FTS_SCHEMA)?;
+    koble_til_ordbank(&conn, path);
     Ok(conn)
+}
+
+/// Kobler på ordlista om den ligger ved siden av basen.
+///
+/// Norsk Ordbank er rundt hundre megabyte, og den er nedlastet — den kan
+/// slettes og hentes igjen. Notatbasen kan ikke det. Derfor ligger ordlista i
+/// si egen fil, og `ordbank_fullform` finnes gjennom den påkoblede basen i
+/// stedet for i denne. Oppslag skrives likt uansett: SQLite leter i `main`
+/// først og deretter i det som er koblet på.
+///
+/// Feiler koblingen — fila er ødelagt, eller den er ikke der — skal søket
+/// fortsatt virke, bare uten bøyning. Derfor svelges feilen her, og
+/// `ordbank::status` er den som sier fra.
+fn koble_til_ordbank(conn: &Connection, path: &Path) {
+    let fil = path.with_file_name(crate::sti::Lager::Ordbank.filnavn());
+    if fil == path || !fil.exists() {
+        return;
+    }
+    let _ = conn.execute("attach database ?1 as ordbank", [fil.to_string_lossy()]);
 }
 
 pub fn get_meta(conn: &Connection, key: &str) -> Result<Option<String>> {
