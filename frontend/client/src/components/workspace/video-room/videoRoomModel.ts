@@ -8,6 +8,15 @@ export function buildVideoRoomStateUrl(
     : base;
 }
 
+export function readVideoRoomVersionId(search: string): string | null {
+  try {
+    const versionId = new URLSearchParams(search).get("versionId")?.trim();
+    return versionId ? versionId.slice(0, 64) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function groupVideoCommentReplies<
   T extends { parentId?: string | null },
 >(comments: T[]): Record<string, T[]> {

@@ -46,6 +46,7 @@ import {
   buildVideoRoomStateUrl,
   filterVideoComments,
   groupVideoCommentReplies,
+  readVideoRoomVersionId,
 } from "../video-room/videoRoomModel";
 
 const PHASES = ["Brief", "V1", "Klient-review", "Revisjoner", "Levert"];
@@ -73,10 +74,13 @@ const downloadPath = async (path: string) => {
 
 const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const isReal = Boolean(projectId && projectId !== "sample");
+  const initialVersionId = useRef<string | null>(
+    typeof window === "undefined" ? null : readVideoRoomVersionId(window.location.search),
+  );
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(
-    null,
+    initialVersionId.current,
   );
   const [filter, setFilter] = useState("alle");
   const [seekToSec, setSeekToSec] = useState<number | null>(null);
@@ -171,7 +175,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   );
 
   useEffect(() => {
-    load();
+    load(initialVersionId.current);
     loadAi();
   }, [load, loadAi]);
 
