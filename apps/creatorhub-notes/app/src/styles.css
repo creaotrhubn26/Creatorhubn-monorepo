@@ -886,3 +886,26 @@ kbd {
     transition: background-color 120ms ease, border-color 120ms ease;
   }
 }
+
+/* Søkesyntaksen står der hun leter når hun ikke fant det hun så etter. To
+   spalter, ingen overskrift: den skal kunne leses på et blikk og ellers
+   ignoreres. */
+.søkesyntaks {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 14px 0 0;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.søkesyntaks dt {
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+.søkesyntaks dd {
+  margin: 0;
+}

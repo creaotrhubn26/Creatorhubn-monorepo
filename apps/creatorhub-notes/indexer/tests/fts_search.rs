@@ -261,3 +261,61 @@ fn adding_an_embedder_later_backfills_vectors_without_touching_the_text() {
     let semantic = search::query(&conn, &fake, "togbillett Bergen", 5).unwrap();
     assert!(semantic.iter().any(|h| h.path == "notes/b.md"));
 }
+
+/// Operatorene, mot ekte SQLite. Siteringen fra forrige runde spiste dem:
+/// `-kø` ble `OR "kø"`, som ga *flere* treff i stedet for færre, sitater var
+/// bare tegn i et ord, og AND fantes ikke.
+#[test]
+fn negasjon_frase_og_and_gjoer_det_de_skal() {
+    let dir = tempdir().unwrap();
+    let repo = init_repo(dir.path());
+    write(
+        &repo,
+        "notes/kart.md",
+        "Kartvisningen skal vise prosjekter, og den skal vaere bestemorvennlig.\n",
+    );
+    write(
+        &repo,
+        "notes/kart_med_ko.md",
+        "Kartvisningen har en ko av oppgaver som venter paa avklaring.\n",
+    );
+    write(&repo, "notes/ko.md", "Det staar en ko av henvendelser i innboksen.\n");
+    write(&repo, "notes/frase.md", "Vi vil ha et bestemorvennlig kart, ikke en tabell.\n");
+    write(&repo, "notes/omvendt.md", "Kartet er bestemorvennlig nok, mener jeg.\n");
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-qm", "first"]);
+
+    let conn = db::open(&dir.path().join("index.db")).unwrap();
+    index::run_no_embed(&conn, &repo).unwrap();
+
+    let stier = |q: &str| -> Vec<String> {
+        let mut p: Vec<String> =
+            search::text(&conn, q, 20).unwrap().into_iter().map(|h| h.path).collect();
+        p.sort();
+        p
+    };
+
+    // Uten operatorer: alt som nevner ett av ordene.
+    assert_eq!(
+        stier("kartvisningen ko"),
+        vec!["notes/kart.md", "notes/kart_med_ko.md", "notes/ko.md"]
+    );
+
+    // `-ord` betyr uten. Notatet som har begge faller bort, og notatet som
+    // bare har `ko` skal aldri ha vaert med.
+    assert_eq!(stier("kartvisningen -ko"), vec!["notes/kart.md"]);
+
+    // `"frase"` betyr frase: ordene ved siden av hverandre, i rekkefolge.
+    assert_eq!(stier("\"bestemorvennlig kart\""), vec!["notes/frase.md"]);
+    assert!(
+        stier("bestemorvennlig kart").len() > 1,
+        "uten sitater er det fortsatt to losrevne ord"
+    );
+
+    // AND: begge maa staa i notatet.
+    assert_eq!(stier("kartvisningen AND ko"), vec!["notes/kart_med_ko.md"]);
+    assert_eq!(stier("kartvisningen AND bestemorvennlig"), vec!["notes/kart.md"]);
+
+    // Bare negasjon kan ikke besvares, og skal ikke gi hele arkivet.
+    assert!(stier("-ko").is_empty());
+}

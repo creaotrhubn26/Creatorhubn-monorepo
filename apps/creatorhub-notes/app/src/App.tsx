@@ -94,6 +94,24 @@ function toppfelt(doc: string): { felt: [string, string][]; etikett: string } | 
   return { felt, etikett: deler.join(" · ") };
 }
 
+/** Hvordan søket leses. Står der hun leter når hun ikke fant det hun så
+ *  etter, og i tittelteksten på søkefeltet — ikke i en README hun aldri
+ *  åpner. */
+function SøkeSyntaks() {
+  return (
+    <dl className="søkesyntaks">
+      <dt>to ord</dt>
+      <dd>ett av dem; notater med begge kommer først</dd>
+      <dt>ord AND ord</dt>
+      <dd>begge må stå i notatet</dd>
+      <dt>«"flere ord"»</dt>
+      <dd>ordene ved siden av hverandre, i den rekkefølgen</dd>
+      <dt>-ord</dt>
+      <dd>uten det ordet</dd>
+    </dl>
+  );
+}
+
 /** FTS5 markerer treffordene med `**…**`. */
 function Utdrag({ tekst }: { tekst: string }) {
   return (
@@ -530,6 +548,7 @@ export default function App() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Søk i notatene"
               aria-label="Søk i notatene"
+              title={'To ord: ett av dem. "flere ord": frase. -ord: uten. AND: begge.'}
               spellCheck={false}
             />
             {!query && <kbd>⌘F</kbd>}
@@ -604,6 +623,7 @@ export default function App() {
               <p className="tomt">
                 Fant ingen notater med «{query.trim()}».
                 <span>Søket leter etter hele ord. Prøv ett ord færre, eller et annet ord.</span>
+                <SøkeSyntaks />
               </p>
             ) : (
               <section>

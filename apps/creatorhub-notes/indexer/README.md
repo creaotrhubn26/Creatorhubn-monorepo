@@ -41,6 +41,20 @@ automatisk av triggere på `chunks` — den koster ingen ekstra avhengighet,
 FTS5 er allerede kompilert inn i den bundlede SQLite-en. `search --text`
 rangerer med FTS5s `bm25()`.
 
+Spørringen leses slik:
+
+| Skrevet | Betyr |
+|---|---|
+| `forhandler firmware` | ett av ordene; notater med begge rangeres først |
+| `forhandler AND firmware` | begge ordene må stå i notatet |
+| `"bestemorvennlig kart"` | ordene ved siden av hverandre, i den rekkefølgen |
+| `kart -kø` | med `kart`, uten `kø` |
+
+`AND` og `OR` må skrives med store bokstaver for å telle som operatorer; alt
+annet er ord. Hvert ledd siteres før det sendes til FTS5, så `(v2)` og
+`"async"?` kan aldri kaste en syntaksfeil. En spørring som bare er negasjoner
+gir ingen treff: FTS5 kan ikke svare på «alt unntatt».
+
 Når Voyage er tilgjengelig igjen, kjør vanlig `index` (uten `--no-embed`) på
 det samme repoet: kjøringen finner biter som allerede har tekst men mangler
 vektor, og embedder dem der de står — ingen migrering, ingen ny database, og
