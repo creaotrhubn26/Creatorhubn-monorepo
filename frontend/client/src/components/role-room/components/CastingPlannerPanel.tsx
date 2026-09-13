@@ -263,6 +263,7 @@ const FirstAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-
 const SecondAssistantDirectorWorkspace = lazyWithRetry(() => import('./assistant-director/SecondAssistantDirectorWorkspace').then(m => ({ default: m.SecondAssistantDirectorWorkspace })));
 const ProductionManagementWorkspace = lazyWithRetry(() => import('./production-management/ProductionManagementWorkspace').then(m => ({ default: m.ProductionManagementWorkspace })));
 const ProductionCoordinationWorkspace = lazyWithRetry(() => import('./production-coordination/ProductionCoordinationWorkspace').then(m => ({ default: m.ProductionCoordinationWorkspace })));
+const LocationManagerWorkspace = lazyWithRetry(() => import('./locations/LocationManagerWorkspace').then(m => ({ default: m.LocationManagerWorkspace })));
 const ContinuityWorkspace = lazyWithRetry(() => import('./continuity/ContinuityWorkspace').then(m => ({ default: m.ContinuityWorkspace })));
 const CallSheetGenerator = lazyWithRetry(() => import('./CallSheetGenerator').then(m => ({ default: m.CallSheetGenerator })));
 const SharingPanel = lazyWithRetry(() => import('./SharingPanel').then(m => ({ default: m.SharingPanel })));
@@ -2245,6 +2246,11 @@ type RoleRoomProjectWorkspaceState = {
     navigateToTab(0);
   }, [navigateToTab]);
 
+  const handleOpenLocationManagerWorkspace = useCallback(() => {
+    setWorkspaceLensPreference('location-management');
+    navigateToTab(0);
+  }, [navigateToTab]);
+
   const handleOpenContinuityWorkspace = useCallback(() => {
     setWorkspaceLensPreference('continuity');
     navigateToTab(0);
@@ -3021,6 +3027,9 @@ type RoleRoomProjectWorkspaceState = {
       casting_director: branding.tokens.labels.roleCastingDirectorLabel,
       production_manager: branding.tokens.labels.roleProductionManagerLabel,
       production_coordinator: 'Produksjonskoordinator',
+      location_manager: 'Location manager',
+      location_scout: 'Location scout',
+      location_security: 'Location security',
       script_supervisor: 'Script supervisor / kontinuitet',
       first_ad: 'Innspillingsleder / 1st AD',
       first_assistant_director: 'Innspillingsleder / 1st AD',
@@ -3068,6 +3077,9 @@ type RoleRoomProjectWorkspaceState = {
         'casting_director',
         'production_manager',
         'production_coordinator',
+        'location_manager',
+        'location_scout',
+        'location_security',
         'script_supervisor',
         'first_ad',
         'second_ad',
@@ -3095,6 +3107,9 @@ type RoleRoomProjectWorkspaceState = {
     if (normalized === 'casting_director') return 'casting_director';
     if (normalized === 'production_manager') return 'production_manager';
     if (normalized === 'production_coordinator') return 'production_coordinator';
+    if (normalized === 'location_manager') return 'location_manager';
+    if (normalized === 'location_scout') return 'location_scout';
+    if (normalized === 'location_security') return 'location_security';
     if (normalized === 'script_supervisor') return 'script_supervisor';
     if (['first_ad', 'first_assistant_director', '1st_ad'].includes(normalized)) return 'first_ad';
     if (['second_ad', 'second_assistant_director', '2nd_ad'].includes(normalized)) return 'second_ad';
@@ -3226,6 +3241,14 @@ type RoleRoomProjectWorkspaceState = {
     'production_coordinator',
     'production coordinator',
   ].includes(normalizedRequestedProjectRole);
+  const hasLocationDepartmentPersona = [
+    'location_manager',
+    'location manager',
+    'location_scout',
+    'location scout',
+    'location_security',
+    'location security',
+  ].includes(normalizedRequestedProjectRole);
   const hasScriptSupervisorPersona = [
     'script_supervisor',
     'continuity',
@@ -3275,6 +3298,12 @@ type RoleRoomProjectWorkspaceState = {
     && (!isRoleRoomAdminSession || hasProductionManagerPersona || mappedSessionProjectRole === 'production_manager');
   const isAssignedProductionCoordinatorProjectRole = normalizedCurrentProjectRole === 'production_coordinator'
     && (!isRoleRoomAdminSession || hasProductionCoordinatorPersona || mappedSessionProjectRole === 'production_coordinator');
+  const isAssignedLocationDepartmentProjectRole = [
+    'location_manager',
+    'location_scout',
+    'location_security',
+  ].includes(normalizedCurrentProjectRole)
+    && (!isRoleRoomAdminSession || hasLocationDepartmentPersona);
   const isAssignedScriptSupervisorProjectRole = normalizedCurrentProjectRole === 'script_supervisor'
     && (!isRoleRoomAdminSession || hasScriptSupervisorPersona || mappedSessionProjectRole === 'script_supervisor');
   const canUseDirectorWorkspace = isAssignedDirectorProjectRole || isRoleRoomAdminSession;
@@ -3282,6 +3311,7 @@ type RoleRoomProjectWorkspaceState = {
   const canUseFirstAssistantDirectorWorkspace = isAssignedFirstAssistantDirectorProjectRole || isRoleRoomAdminSession;
   const canUseAssistantDirectorWorkspace = canUseFirstAssistantDirectorWorkspace || isAssignedSecondAssistantDirectorProjectRole;
   const canUseProductionManagementWorkspace = isAssignedProductionManagerProjectRole || isRoleRoomAdminSession;
+  const canUseLocationManagerWorkspace = isAssignedLocationDepartmentProjectRole || isRoleRoomAdminSession;
   const hasProductionCoordinationGrant = currentUserRole
     ? Boolean({
         ...castingAuthService.getDefaultPermissions(currentUserRole.role),
@@ -3335,13 +3365,19 @@ type RoleRoomProjectWorkspaceState = {
               || (workspaceLensPreference === null && isAssignedProductionCoordinatorProjectRole)
             )
             ? 'production-coordination'
-            : canUseContinuityWorkspace
+            : canUseLocationManagerWorkspace
               && (
-                workspaceLensPreference === 'continuity'
-                || (workspaceLensPreference === null && isAssignedScriptSupervisorProjectRole)
+                workspaceLensPreference === 'location-management'
+                || (workspaceLensPreference === null && isAssignedLocationDepartmentProjectRole)
               )
-              ? 'continuity'
-              : 'full';
+              ? 'location-management'
+              : canUseContinuityWorkspace
+                && (
+                  workspaceLensPreference === 'continuity'
+                  || (workspaceLensPreference === null && isAssignedScriptSupervisorProjectRole)
+                )
+                ? 'continuity'
+                : 'full';
   const getProjectRoleDetails = useCallback((project: CastingProject): {
     roleLabel: string;
     accessLabel: string;
@@ -5349,6 +5385,8 @@ type RoleRoomProjectWorkspaceState = {
             ? 'production-management'
           : effectiveWorkspaceLens === 'production-coordination'
             ? 'production-coordination'
+          : effectiveWorkspaceLens === 'location-management'
+            ? 'location-management'
           : effectiveWorkspaceLens === 'continuity'
             ? 'continuity'
           : workspaceLensPreference === 'full'
@@ -5359,6 +5397,7 @@ type RoleRoomProjectWorkspaceState = {
               || isAssignedSecondAssistantDirectorProjectRole
               || isAssignedProductionManagerProjectRole
               || isAssignedProductionCoordinatorProjectRole
+              || isAssignedLocationDepartmentProjectRole
               || isAssignedScriptSupervisorProjectRole
             )
             ? 'full'
@@ -5372,6 +5411,8 @@ type RoleRoomProjectWorkspaceState = {
           : effectiveWorkspaceLens === 'production-management'
             ? ''
           : effectiveWorkspaceLens === 'production-coordination'
+            ? ''
+          : effectiveWorkspaceLens === 'location-management'
             ? ''
           : contentProducerPlannerSurface !== 'overview'
             ? contentProducerPlannerSurface
@@ -11137,6 +11178,16 @@ type RoleRoomProjectWorkspaceState = {
                 setProjects((items) => items.map((project) => project.id === currentProject.id ? apply(project) : project));
               }}
             />
+          ) : currentProject && effectiveWorkspaceLens === 'location-management' ? (
+            <LocationManagerWorkspace
+              key={`location-management-${currentProject.id}`}
+              project={currentProject}
+              readOnly={!permissions.canManageLocations}
+              onOpenLocations={() => navigateToTab(LOCATIONS_TAB_INDEX)}
+              onOpenSchedule={() => navigateToTab(CALENDAR_TAB_INDEX)}
+              onOpenCrew={() => navigateToTab(TEAM_TAB_INDEX)}
+              onOpenFullWorkspace={handleOpenFullWorkspace}
+            />
           ) : currentProject && effectiveWorkspaceLens === 'continuity' ? (
             <ContinuityWorkspace
               key={`continuity-${currentProject.id}`}
@@ -11156,6 +11207,25 @@ type RoleRoomProjectWorkspaceState = {
             />
           ) : (
             <>
+              {currentProject && canUseLocationManagerWorkspace ? (
+                <Box
+                  data-testid="location-manager-workspace-launcher"
+                  sx={{
+                    mx: { xs: 1.5, sm: 2, lg: 3 }, mt: { xs: 1.5, sm: 2 }, px: { xs: 1.5, sm: 2 }, py: 1.25,
+                    display: 'flex', alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between',
+                    flexDirection: { xs: 'column', sm: 'row' }, gap: 1, borderRadius: 2,
+                    bgcolor: 'rgba(20,184,166,0.07)', border: '1px solid rgba(45,212,191,0.22)',
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ color: '#ccfbf1', fontWeight: 750, fontSize: '0.9rem' }}>Location readiness</Typography>
+                    <Typography sx={{ color: 'rgba(204,251,241,0.7)', fontSize: '0.76rem' }}>Scout, eierdialog, tillatelser, recce, backup og shoot-day-logistikk i én arbeidsflate.</Typography>
+                  </Box>
+                  <Button variant="outlined" startIcon={<LocationIcon />} onClick={handleOpenLocationManagerWorkspace} sx={{ minHeight: isMobile ? MOBILE_TOUCH_TARGET_SIZE : TOUCH_TARGET_SIZE, color: '#99f6e4', borderColor: 'rgba(45,212,191,0.42)', flexShrink: 0 }}>
+                    Åpne location readiness
+                  </Button>
+                </Box>
+              ) : null}
               {currentProject && canUseContinuityWorkspace ? (
                 <Box
                   data-testid="continuity-workspace-launcher"

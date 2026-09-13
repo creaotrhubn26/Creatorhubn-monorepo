@@ -387,6 +387,11 @@ export interface PropertyAnalysis {
     walkingDistance: number;
     accessibility: 'wheelchair-accessible' | 'limited' | 'not-accessible';
 };
+  analysisMeta: {
+    operationalStatus: 'unverified' | 'user_confirmed';
+    propertySource: 'kartverket' | 'fallback';
+    warnings: string[];
+  };
 }
 
 class ExternalDataService {
@@ -1996,7 +2001,12 @@ class ExternalDataService {
         photographySpots: this.calculatePhotographySpots(property, elevation),
         droneRestrictions: this.calculateDroneRestrictions(property),
         weatherExposure: this.analyzeWeatherExposure(property, elevation),
-        accessAnalysis: this.analyzeAccess(property)
+        accessAnalysis: this.analyzeAccess(property),
+        analysisMeta: {
+          operationalStatus: 'unverified',
+          propertySource: property.source,
+          warnings: ['Kartdata bekrefter ikke droneforhold, lys, vær, parkering eller tilgjengelighet. Bekreft disse under scout.'],
+        },
     };
       
       this.setCachedData(cacheKey, analysis);
@@ -2010,110 +2020,43 @@ class ExternalDataService {
   // ==================== KARTVERKET HELPER METHODS ====================
 
   private calculatePhotographySpots(property: KartverketProperty, elevation: KartverketElevation) {
-    const spots = [];
-    
-    // Main entrance
-    spots.push({
-      coordinates: property.coordinates,
-      description: 'Hovedinngang - godt lys og tilgjengelighet',
-      accessibility: 'easy' as const,
-      restrictions: []
-  });
-    
-    // High elevation points for aerial shots
-    if (elevation.elevation > 100) {
-      spots.push({
-        coordinates: {
-          lat: property.coordinates.lat + 0.001,
-          lng: property.coordinates.lng + 0.001
-      },
-        description: 'Høydeplassering for luftfoto',
-        accessibility: 'moderate' as const,
-        restrictions: ['Krever tillatelse for drone']
-    });
-  }
-    
-    return spots;
+    void property;
+    void elevation;
+    return [];
 }
 
   private calculateDroneRestrictions(property: KartverketProperty) {
-    const restrictions = [];
-    let allowed = true;
-    let maxAltitude = 120; // Default max altitude in meters
-    
-    // Check for protected areas
-    if (property.restrictions.includes('naturvernområde')) {
-      allowed = false;
-      restrictions.push('Naturvernområde - drone forbudt');
-  }
-    
-    // Check for airport proximity
-    if (property.restrictions.includes('flyplass-nærhet')) {
-      maxAltitude = 30;
-      restrictions.push('Nær flyplass - begrenset høyde');
-  }
-    
-    // Check for urban areas
-    if (property.landUse === 'bebygd') {
-      restrictions.push('Bebygd område - særskilt tillatelse påkrevd');
-  }
-    
+    void property;
     return {
-      allowed,
-      restrictions,
-      maxAltitude: allowed ? maxAltitude : undefined,
-      noFlyZones: property.restrictions.includes('flyforbud') ? [property.coordinates] : []
+      // The boolean is deliberately conservative while the accompanying
+      // analysisMeta marks all operational fields as unverified. Kartverket
+      // property data is not an aviation clearance source.
+      allowed: false,
+      restrictions: ['Ikke verifisert. Kontroller gjeldende luftromskart, operasjonskategori og lokale tillatelser.'],
+      maxAltitude: undefined,
+      noFlyZones: []
   };
 }
 
   private analyzeWeatherExposure(property: KartverketProperty, elevation: KartverketElevation) {
-    let windExposure: 'low' | 'moderate' | 'high' = 'moderate';
-    let sunExposure: 'morning' | 'afternoon' | 'all-day' = 'all-day';
-    const shelterOptions = [];
-    
-    // Analyze wind exposure based on elevation and surroundings
-    if (elevation.elevation > 200) {
-      windExposure = 'high';
-  } else if (elevation.elevation < 50) {
-      windExposure = 'low';
-  }
-    
-    // Analyze sun exposure based on property orientation
-    if (property.landUse === 'skog') {
-      sunExposure = 'morning';
-      shelterOptions.push('Naturlig skygge fra trær');
-  }
-    
-    if (property.buildingInfo) {
-      shelterOptions.push('Bygning som vindskjerm');
-  }
-    
+    void property;
+    void elevation;
     return {
-      windExposure,
-      sunExposure,
-      shelterOptions
+      // Required legacy placeholders. They are never shown as conclusions
+      // until the user explicitly confirms the operational analysis.
+      windExposure: 'moderate' as const,
+      sunExposure: 'all-day' as const,
+      shelterOptions: []
   };
 }
 
   private analyzeAccess(property: KartverketProperty) {
-    const publicTransport = [];
-    let parkingAvailable = false;
-    let accessibility: 'wheelchair-accessible' | 'limited' | 'not-accessible' = 'limited';
-    
-    // Analyze based on property type and location
-    if (property.landUse === 'bebygd') {
-      parkingAvailable = true;
-      publicTransport.push('Buss','Trikk');
-      accessibility = 'wheelchair-accessible';
-  } else if (property.landUse === 'jordbruk') {
-      accessibility = 'not-accessible';
-  }
-    
+    void property;
     return {
-      parkingAvailable,
-      publicTransport,
-      walkingDistance: property.landUse === 'bebygd' ? 100 : 500,
-      accessibility
+      parkingAvailable: false,
+      publicTransport: [],
+      walkingDistance: 0,
+      accessibility: 'limited' as const
   };
 }
 
@@ -2187,7 +2130,12 @@ class ExternalDataService {
       photographySpots: this.calculatePhotographySpots(property, elevation),
       droneRestrictions: this.calculateDroneRestrictions(property),
       weatherExposure: this.analyzeWeatherExposure(property, elevation),
-      accessAnalysis: this.analyzeAccess(property)
+      accessAnalysis: this.analyzeAccess(property),
+      analysisMeta: {
+        operationalStatus: 'unverified',
+        propertySource: 'fallback',
+        warnings: ['Reserveverdier er ikke produksjonsdata og må aldri behandles som bekreftede forhold.'],
+      },
     };
   }
 

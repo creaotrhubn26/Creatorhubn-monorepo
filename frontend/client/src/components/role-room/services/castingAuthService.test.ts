@@ -62,3 +62,26 @@ describe('production coordinator role contract', () => {
     expect(USER_ROLE_LABELS.production_coordinator).toBe('Produksjonskoordinator');
   });
 });
+
+describe('location department role contract', () => {
+  it('lets managers and scouts maintain readiness while security remains read-only', () => {
+    expect(castingAuthService.getDefaultPermissions('location_manager')).toMatchObject({
+      canViewAll: true,
+      canManageLocations: true,
+      canEditProduction: false,
+      canManageCrew: false,
+    });
+    expect(castingAuthService.getDefaultPermissions('location_scout')).toMatchObject({
+      canViewAll: true,
+      canManageLocations: true,
+      canEditProduction: false,
+    });
+    expect(castingAuthService.getDefaultPermissions('location_security')).toMatchObject({
+      canViewAll: true,
+      canManageLocations: false,
+      canComment: true,
+    });
+    expect(USER_ROLE_LABELS.location_manager).toBe('Location manager');
+    expect(DEFAULT_TABS_BY_ROLE.location_manager).toEqual(expect.arrayContaining(['schedule', 'crew', 'shooting']));
+  });
+});

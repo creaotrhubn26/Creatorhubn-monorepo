@@ -240,6 +240,55 @@ export async function userCanCoordinateCastingProduction(
 }
 
 /**
+ * True when the user owns the operational location lane. Location scouts may
+ * prepare and update candidates, while location security remains read-only
+ * unless it receives an explicit canManageLocations grant.
+ */
+export async function userCanManageCastingLocations(
+  pool: QueryablePool,
+  projectId: string,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  if (!projectId || !userId) return false;
+  try {
+    const result = await pool.query(
+      `SELECT
+         EXISTS (
+           SELECT 1 FROM casting_projects cp WHERE cp.id = $1
+         ) AS project_exists,
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+             LEFT JOIN casting_user_roles cur
+               ON cur.project_id = cp.id
+              AND cur.user_id = $2
+              AND cur.deactivated_at IS NULL
+              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
+            WHERE cp.id = $1
+              AND (
+                cp.created_by = $2
+                OR (
+                  cur.user_id IS NOT NULL
+                  AND (
+                    cur.role IN ('producer', 'production_manager', 'location_manager', 'location_scout')
+                    OR cur.permissions -> 'canManageLocations' = 'true'::jsonb
+                  )
+                )
+              )
+         ) AS can_manage_locations`,
+      [projectId, userId],
+    );
+    const status = result.rows[0];
+    if (status?.project_exists === true) {
+      return status.can_manage_locations === true;
+    }
+  } catch {
+    // Legacy-only installs remain owner-only.
+  }
+  return userOwnsCastingProject(pool, projectId, userId);
+}
+
+/**
  * True when the user owns the script-supervisor continuity lane. General
  * production edit access is intentionally insufficient because take logs,
  * lined-script deviations and continuity history must have one clear owner.

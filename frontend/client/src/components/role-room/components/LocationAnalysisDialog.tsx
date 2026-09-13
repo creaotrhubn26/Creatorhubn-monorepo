@@ -72,7 +72,7 @@ interface LocationAnalysisDialogProps {
   open: boolean;
   location: Location | null;
   onClose: () => void;
-  onAnalysisComplete?: (analysis: Location['propertyAnalysis']) => void;
+  onAnalysisComplete?: (analysis: Location['propertyAnalysis']) => void | Promise<void>;
 }
 
 type AnalysisPreset = 'all' | 'tech_scout' | 'permits' | 'weather' | 'access';
@@ -274,33 +274,15 @@ const extractMunicipalityName = (address?: string): string | null => {
 };
 
 const inferPermitOperations = (location: Location, analysis: Location['propertyAnalysis'] | null): PermitOperationFlags => {
-  const analysisRestrictions = ((analysis as any)?.droneRestrictions?.restrictions ?? []) as string[];
-  const text = [
-    location.name,
-    location.address,
-    String(location.accessNotes ?? ''),
-    analysisRestrictions.join(' '),
-  ]
-    .join(' ')
-    .toLowerCase();
-
-  const hasDroneContext =
-    /drone|uav|luftrom|no-fly|flyforbud/.test(text) ||
-    Boolean((analysis as any)?.droneRestrictions?.noFlyZones?.length) ||
-    location.type === 'outdoor';
-  const hasTrafficContext = /trafikk|vei|gate|motorvei|road|steng|avsperr|parkering/.test(text);
-  const hasNightContext = /natt|night|kveld|mørk|mork|after dark/.test(text);
-  const hasPyroContext = /pyro|fyrverkeri|eksplos|flamme|røyk|smoke/.test(text);
-  const hasPublicAreaContext = location.type === 'outdoor' || /torg|park|offentlig|street|plaza/.test(text);
-  const hasRailContext = /jernbane|rail|tog|stasjon|bane nor/.test(text);
-
+  void location;
+  void analysis;
   return {
-    drone: hasDroneContext,
-    trafficControl: hasTrafficContext,
-    nightShoot: hasNightContext,
-    pyrotechnics: hasPyroContext,
-    publicArea: hasPublicAreaContext,
-    nearRail: hasRailContext,
+    drone: false,
+    trafficControl: false,
+    nightShoot: false,
+    pyrotechnics: false,
+    publicArea: false,
+    nearRail: false,
   };
 };
 
@@ -694,12 +676,16 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
     
     try {
       const propertyAnalysis = await externalDataService.analyzeProperty(propertyId);
+      if (propertyAnalysis.property.source !== 'kartverket') {
+        throw new Error('Detaljert eiendomsdata kunne ikke verifiseres. Ingen reserveverdier brukes i analysen.');
+      }
       
       const analysisData: Location['propertyAnalysis'] = {
         photographySpots: propertyAnalysis.photographySpots,
         droneRestrictions: propertyAnalysis.droneRestrictions,
         weatherExposure: propertyAnalysis.weatherExposure,
         accessAnalysis: propertyAnalysis.accessAnalysis,
+        analysisMeta: propertyAnalysis.analysisMeta,
         permitWorkflow: ((location as any)?.propertyAnalysis?.permitWorkflow as PermitWorkflowMeta | undefined) ?? undefined,
       };
       
@@ -710,7 +696,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
         analysis_type: 'property',
       });
       if (onAnalysisComplete) {
-        onAnalysisComplete(analysisData);
+        await Promise.resolve(onAnalysisComplete(analysisData));
       }
     } catch (err) {
       console.error('Error loading property analysis:', err);
@@ -726,7 +712,10 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
     
     try {
       const addressData = await externalDataService.getKartverketAddress(address);
-      if (addressData.propertyId) {
+      if (addressData.source !== 'kartverket') {
+        setError('Adressen kunne ikke verifiseres. Ingen standardkoordinater eller antatte eiendomsdata vises.');
+        setLoading(false);
+      } else if (addressData.propertyId) {
         await loadAnalysisForProperty(addressData.propertyId);
       } else {
         setError('Kunne ikke finne lokasjons-ID for denne adressen');
@@ -763,13 +752,22 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
     
     // Mark as loading for this location
     setHasLoadedForLocation(locationKey);
+
+    // A stored analysis is the project's versioned source of truth. Reopening
+    // the dialog must show that exact result instead of silently recalculating
+    // and overwriting it with a new external response.
+    if (location?.propertyAnalysis) {
+      setAnalysis(location.propertyAnalysis);
+      setError(null);
+      return;
+    }
     
     if (location?.propertyId) {
       loadAnalysisForProperty(location.propertyId);
     } else if (location?.address) {
       loadPropertyFromAddress(location.address);
     }
-  }, [open, location?.propertyId, location?.address, hasLoadedForLocation, loadAnalysisForProperty, loadPropertyFromAddress]);
+  }, [open, location?.propertyId, location?.address, location?.propertyAnalysis, hasLoadedForLocation, loadAnalysisForProperty, loadPropertyFromAddress]);
 
   // Manual refresh function
   const handleRefresh = useCallback(() => {
@@ -821,6 +819,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
 
   // Memoize computed values
   const hasAnalysisData = useMemo(() => analysis !== null, [analysis]);
+  const operationalDataVerified = analysis?.analysisMeta?.operationalStatus === 'user_confirmed';
   const photographySpotsCount = useMemo(() => analysis?.photographySpots.length || 0, [analysis?.photographySpots.length]);
   const analysisMetrics = useMemo(() => {
     if (!analysis) {
@@ -1256,6 +1255,11 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
       },
       manualNotes: manualDraft.manualNotes.trim(),
       lastManualEditAt: new Date().toISOString(),
+      analysisMeta: {
+        ...((analysis as any)?.analysisMeta || {}),
+        operationalStatus: 'user_confirmed',
+        verifiedAt: new Date().toISOString(),
+      },
     } as Location['propertyAnalysis'];
 
     setAnalysis(mergedAnalysis);
@@ -1297,6 +1301,15 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
   }, [open, location, analysis, workflowSeedKey, permitWorkflowFromAnalysis, inferredOperations]);
 
   const sectionVisibility = useMemo(() => {
+    if (!operationalDataVerified) {
+      return {
+        photography: false,
+        drone: false,
+        weather: false,
+        access: false,
+      };
+    }
+
     const byPreset = {
       photography: analysisPreset === 'all' || analysisPreset === 'tech_scout',
       drone: analysisPreset === 'all' || analysisPreset === 'tech_scout' || analysisPreset === 'permits',
@@ -1357,7 +1370,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
     }
 
     return visibility;
-  }, [analysisPreset, analysisOperationalFilter, analysisMetrics]);
+  }, [analysisPreset, analysisOperationalFilter, analysisMetrics, operationalDataVerified]);
 
   if (!location) return null;
 
@@ -1441,6 +1454,38 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
         bgcolor: ROLE_ROOM_DIALOG_COLORS.panel,
         color: '#fff',
       }}>
+        {permitAnalysis && (
+          <Alert
+            data-testid="location-analysis-evidence"
+            severity={permitAnalysis.confidence === 'verified_address' ? 'success' : 'warning'}
+            sx={{ mb: 2, bgcolor: permitAnalysis.confidence === 'verified_address' ? 'rgba(52,211,153,.1)' : 'rgba(251,191,36,.1)', color: '#f8fafc', border: '1px solid rgba(148,163,184,.25)' }}
+          >
+            <Stack spacing={.65}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={.75} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                <Typography sx={{ fontWeight: 800 }}>
+                  {permitAnalysis.geocoded
+                    ? `Adressetreff bekreftet: ${permitAnalysis.geocoded.adressetekst}, ${permitAnalysis.geocoded.kommunenavn}`
+                    : 'Adressen er ikke verifisert'}
+                </Typography>
+                <Chip
+                  size="small"
+                  label={permitAnalysis.permitDataSource === 'curated_directory'
+                    ? 'Kommunekilde: katalog'
+                    : permitAnalysis.permitDataSource === 'generic_guidance'
+                      ? 'Kommunekilde mangler'
+                      : 'Ingen kommunekilde'}
+                  sx={{ bgcolor: 'rgba(255,255,255,.08)', color: '#e2e8f0' }}
+                />
+              </Stack>
+              <Typography sx={{ color: 'rgba(226,232,240,.72)', fontSize: '.78rem' }}>
+                Kartverket bekrefter adressetreffet. Feltforhold, tillatelser, drone, vær og tilgang er ikke bekreftet før en kilde eller scout har dokumentert dem.
+              </Typography>
+              {permitAnalysis.warnings.map((warning) => (
+                <Typography key={warning} sx={{ color: '#fde68a', fontSize: '.76rem' }}>• {warning}</Typography>
+              ))}
+            </Stack>
+          </Alert>
+        )}
         {loading ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: { xs: 6, sm: 8, md: 7, lg: 9, xl: 12 } }}>
             <CircularProgress sx={{ color: ROLE_ROOM_DIALOG_COLORS.secondary, mb: { xs: 3, sm: 3.5, md: 3.25, lg: 4, xl: 5 }, fontSize: { xs: 48, sm: 56, md: 52, lg: 64, xl: 80 } }} size={56} />
@@ -1494,6 +1539,11 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
           </Alert>
         ) : hasAnalysisData ? (
           <Stack spacing={{ xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 }}>
+            {!operationalDataVerified && (
+              <Alert severity="info" sx={{ bgcolor: 'rgba(96,165,250,.1)', color: '#dbeafe', border: '1px solid rgba(96,165,250,.28)' }}>
+                Operative scorer og tekniske konklusjoner holdes tilbake. Kart- og eiendomsdata bekrefter ikke drone, vær, lys, parkering eller tilgjengelighet; bruk «Rediger analyse» etter scout for å bekrefte disse feltene.
+              </Alert>
+            )}
             <Card
               sx={{
                 borderRadius: { xs: 2, sm: 3, md: 2.5, lg: 3, xl: 4 },
@@ -1512,24 +1562,24 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                   }}
                 >
                   {([
-                    { key: 'ready', label: 'Klarhets-score', value: `${analysisMetrics.readinessScore}%`, color: '#34d399' },
-                    { key: 'risk', label: 'Risiko-score', value: `${analysisMetrics.riskScore}`, color: '#f87171' },
+                    { key: 'ready', label: 'Klarhets-score', value: operationalDataVerified ? `${analysisMetrics.readinessScore}%` : '—', color: '#34d399' },
+                    { key: 'risk', label: 'Risiko-score', value: operationalDataVerified ? `${analysisMetrics.riskScore}` : '—', color: '#f87171' },
                     {
                       key: 'permit',
                       label: 'Tillatelse',
-                      value: analysisMetrics.permitMissing ? 'Mangler' : 'Dokumentert',
+                      value: operationalDataVerified ? (analysisMetrics.permitMissing ? 'Mangler' : 'Dokumentert') : 'Ikke vurdert',
                       color: analysisMetrics.permitMissing ? '#fbbf24' : '#34d399',
                     },
                     {
                       key: 'cost',
                       label: 'Estimert kost',
-                      value: `${new Intl.NumberFormat('nb-NO').format(analysisMetrics.estimatedCost)} kr`,
+                      value: operationalDataVerified ? `${new Intl.NumberFormat('nb-NO').format(analysisMetrics.estimatedCost)} kr` : '—',
                       color: analysisMetrics.overBudget ? '#f87171' : 'var(--role-cyan, #22d3ee)',
                     },
                     {
                       key: 'action',
                       label: 'Tiltakspunkter',
-                      value: `${analysisMetrics.actionRequiredCount}`,
+                      value: operationalDataVerified ? `${analysisMetrics.actionRequiredCount}` : '—',
                       color: analysisMetrics.actionRequiredCount > 0 ? '#f87171' : '#34d399',
                     },
                   ]).map((item) => (
@@ -2232,7 +2282,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
                                 <Chip
                                   size="small"
                                   icon={<AccessTimeIcon />}
-                                  label={`${contact.processingDays} d behandling`}
+                                  label={`Intern buffer: ${contact.leadDays} d`}
                                   sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#fff' }}
                                 />
                                 <Chip

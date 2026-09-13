@@ -2625,18 +2625,18 @@ export const castingService = {
       throw new Error(`Project ${projectId} not found`);
     }
     
-    if (!project.locations) {
-      project.locations = [];
-    }
-    
-    const index = project.locations.findIndex(l => l.id === location.id);
+    const nextLocations = [...(project.locations || [])];
+    const index = nextLocations.findIndex(l => l.id === location.id);
     if (index >= 0) {
-      project.locations[index] = { ...location, updatedAt: new Date().toISOString() };
+      nextLocations[index] = { ...location, updatedAt: new Date().toISOString() };
     } else {
-      project.locations.push(location);
+      nextLocations.push(location);
     }
-    
-    await this.saveProject(project);
+
+    // getProject may return the same object held by the local cache. Mutating
+    // that object before saveProject runs makes its no-op detector compare the
+    // new value with itself and silently skip the remote write.
+    await this.saveProject({ ...project, locations: nextLocations });
   },
 
   /**
@@ -2650,8 +2650,8 @@ export const castingService = {
       throw new Error(`Project ${projectId} not found`);
     }
     
-    project.locations = (project.locations || []).filter(l => l.id !== locationId);
-    await this.saveProject(project);
+    const nextLocations = (project.locations || []).filter(l => l.id !== locationId);
+    await this.saveProject({ ...project, locations: nextLocations });
   },
 
   // ============================================================================

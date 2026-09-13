@@ -12,7 +12,7 @@ import type { Pool } from 'pg';
 
 import { roleRoomContinuityMediaKey } from './role-room-storage-key.js';
 
-const ROLE_ROOM_AWS_ACCOUNT_ID = '745600963362';
+export const ROLE_ROOM_AWS_ACCOUNT_ID = '745600963362';
 const ROLE_ROOM_AWS_REGION = 'eu-north-1';
 const ROLE_ROOM_BUCKET = `the-role-room-prod-${ROLE_ROOM_AWS_ACCOUNT_ID}-${ROLE_ROOM_AWS_REGION}`;
 const ROLE_ROOM_RUNTIME_ROLE_ARN =
@@ -114,7 +114,7 @@ export function readRoleRoomContinuityS3Config(
 
 let cachedClient: { signature: string; client: S3Client } | null = null;
 
-function roleRoomS3Client(config: RoleRoomContinuityS3Config): S3Client {
+export function roleRoomS3Client(config: RoleRoomContinuityS3Config): S3Client {
   const signature = crypto.createHash('sha256').update([
     config.authentication,
     config.roleArn ?? '',
@@ -149,14 +149,14 @@ export function resetRoleRoomContinuityS3ClientForTests(): void {
   cachedClient = null;
 }
 
-async function checksumFile(filePath: string): Promise<{ hex: string; base64: string }> {
+export async function checksumFile(filePath: string): Promise<{ hex: string; base64: string }> {
   const checksum = crypto.createHash('sha256');
   for await (const chunk of createReadStream(filePath)) checksum.update(chunk);
   const digest = checksum.digest();
   return { hex: digest.toString('hex'), base64: digest.toString('base64') };
 }
 
-async function organizationForUser(pool: Pool, userId: string): Promise<string | null> {
+export async function organizationForUser(pool: Pool, userId: string): Promise<string | null> {
   const result = await pool.query<{ organization_id: string }>(
     `SELECT om.organization_id::text AS organization_id
        FROM organization_members om

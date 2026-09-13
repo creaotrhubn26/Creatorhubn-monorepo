@@ -52,6 +52,7 @@ export type ProductionWorkspaceKind =
   | 'cinematography'
   | 'production_management'
   | 'production_coordination'
+  | 'location_management'
   | 'assistant_direction'
   | 'casting'
   | 'continuity'
@@ -84,9 +85,9 @@ export const PRODUCTION_ROLES = [
     workspace: 'cinematography',
   },
   { id: 'writer', label: 'Manusforfatter', departmentId: 'writing', reportsTo: 'director', aliases: ['screenwriter'], workspace: 'department' },
-  { id: 'location_manager', label: 'Location manager', departmentId: 'locations', reportsTo: 'line_producer', workspace: 'department' },
-  { id: 'location_scout', label: 'Location scout', departmentId: 'locations', reportsTo: 'location_manager', workspace: 'department' },
-  { id: 'location_security', label: 'Location security', departmentId: 'locations', reportsTo: 'location_manager', workspace: 'department' },
+  { id: 'location_manager', label: 'Location manager', departmentId: 'locations', reportsTo: 'line_producer', workspace: 'location_management' },
+  { id: 'location_scout', label: 'Location scout', departmentId: 'locations', reportsTo: 'location_manager', workspace: 'location_management' },
+  { id: 'location_security', label: 'Location security', departmentId: 'locations', reportsTo: 'location_manager', workspace: 'location_management' },
   { id: 'production_manager', label: 'Produksjonsleder', departmentId: 'production_management', reportsTo: 'line_producer', aliases: ['unit_production_manager', 'upm'], workspace: 'production_management' },
   { id: 'production_coordinator', label: 'Produksjonskoordinator', departmentId: 'production_management', reportsTo: 'production_manager', workspace: 'production_coordination' },
   { id: 'production_secretary', label: 'Produksjonssekretær', departmentId: 'production_management', reportsTo: 'production_coordinator', workspace: 'production_coordination' },
@@ -289,6 +290,7 @@ export const PRODUCTION_WORKSPACE_DELIVERY_ORDER = [
   'producer',
   'production_management',
   'production_coordination',
+  'location_management',
   'assistant_direction',
   'continuity',
   'casting',

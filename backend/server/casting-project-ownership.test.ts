@@ -5,6 +5,7 @@ import {
   userCanCommentCastingContinuity,
   userCanCoordinateCastingProduction,
   userCanEditCastingProduction,
+  userCanManageCastingLocations,
   userCanManageCastingContinuity,
   userCanManageCastingProduction,
 } from "./casting-project-ownership.js";
@@ -167,6 +168,23 @@ describe("userCanManageCastingProduction", () => {
       "first-ad-1",
     )).resolves.toBe(false);
     expect(query).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("userCanManageCastingLocations", () => {
+  it("allows location managers, scouts and explicit grants without granting location security writes", async () => {
+    const query = vi.fn(async (text: string, params?: unknown[]) => {
+      expect(text).toContain("'location_manager'");
+      expect(text).toContain("'location_scout'");
+      expect(text).not.toContain("'location_security'");
+      expect(text).toContain("canManageLocations");
+      expect(params).toEqual(["project-1", "location-manager-1"]);
+      return { rows: [{ project_exists: true, can_manage_locations: true }] };
+    });
+
+    await expect(userCanManageCastingLocations(
+      { query }, "project-1", "location-manager-1",
+    )).resolves.toBe(true);
   });
 });
 

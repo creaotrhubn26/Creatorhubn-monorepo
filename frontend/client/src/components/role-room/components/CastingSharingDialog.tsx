@@ -41,6 +41,7 @@ import {
   FactCheck as FactCheckIcon,
   Cancel as CancelIcon,
   FileDownload as FileDownloadIcon,
+  LocationOn as LocationOnIcon,
 } from '@mui/icons-material';
 import type { UserRole, UserRoleType, CastingProject } from '../models/casting';
 import { sharingService } from '../services/sharingService';
@@ -1198,6 +1199,9 @@ export function CastingSharingDialog({ open, projectId, onClose, onUpdate }: Cas
                             casting_director: <PeopleIcon sx={{ fontSize: '1rem' }} />,
                             production_manager: <SupervisorAccountIcon sx={{ fontSize: '1rem' }} />,
                             production_coordinator: <SupervisorAccountIcon sx={{ fontSize: '1rem' }} />,
+                            location_manager: <LocationOnIcon sx={{ fontSize: '1rem' }} />,
+                            location_scout: <LocationOnIcon sx={{ fontSize: '1rem' }} />,
+                            location_security: <LocationOnIcon sx={{ fontSize: '1rem' }} />,
                             script_supervisor: <FactCheckIcon sx={{ fontSize: '1rem' }} />,
                             first_ad: <SupervisorAccountIcon sx={{ fontSize: '1rem' }} />,
                             second_ad: <SupervisorAccountIcon sx={{ fontSize: '1rem' }} />,
