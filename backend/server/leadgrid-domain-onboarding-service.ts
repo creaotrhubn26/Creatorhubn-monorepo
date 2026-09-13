@@ -7,6 +7,10 @@ import {
   discoveryBriefSchema,
   type DiscoveryBrief,
 } from "./leadgrid-discovery-contract.js";
+import {
+  TIDUM_ANBUD_PROFILE,
+  type LeadgridAnbudProfileTemplate,
+} from "./leadgrid-anbud-profile.js";
 import type { BrandProfile } from "./role-room-website-analyzer.js";
 import { assertPublicUrl } from "./ssrf-guard.js";
 
@@ -76,6 +80,7 @@ export interface ProjectOnboardingPlan {
   classification_reasons: string[];
   brand_profile: BrandProfile;
   recommended_profiles: ProjectOnboardingProfilePlan[];
+  recommended_anbud_profile?: LeadgridAnbudProfileTemplate;
   skills: typeof LEADGRID_ONBOARDING_SKILLS;
 }
 
@@ -943,6 +948,7 @@ function buildTidumOnboardingPlan(
         2,
       ),
     ],
+    recommended_anbud_profile: TIDUM_ANBUD_PROFILE,
     skills: LEADGRID_ONBOARDING_SKILLS,
   };
 }

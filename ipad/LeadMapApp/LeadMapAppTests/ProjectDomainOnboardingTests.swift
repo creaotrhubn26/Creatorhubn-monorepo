@@ -249,6 +249,25 @@ final class ProjectDomainOnboardingTests: XCTestCase {
             "brand_profile": [
                 "targetAudience": "Private omsorgsaktører og kommunale tjenester i Norge.",
             ],
+            "recommended_anbud_profile": [
+                "template_key": "tidum.procurement",
+                "template_version": 1,
+                "name": "Tidum – arbeidstid, turnus og dokumentasjon",
+                "description": "Offentlige anskaffelser av programvare.",
+                "cpv_codes": ["48450000", "72212450", "48332000", "48311000", "48311100"],
+                "keywords": ["arbeidstid", "turnus"],
+                "exclusion_terms": ["kjøp av omsorgsplasser"],
+                "suggested_watches": [[
+                    "key": "tidum.time_hr_software",
+                    "name": "Tidum · Arbeidstid og HR-programvare",
+                    "query": [
+                        "q": NSNull(),
+                        "location": NSNull(),
+                        "cpv": "48450000,72212450",
+                    ],
+                ]],
+                "requires_admin_confirmation": true,
+            ],
             "recommended_profiles": profilePayloads,
             "skills": [],
             "expires_at": "2026-09-12T12:00:00.000Z",
@@ -265,6 +284,13 @@ final class ProjectDomainOnboardingTests: XCTestCase {
         XCTAssertEqual(preview.projectName, "Tidum")
         XCTAssertEqual(preview.category, "Arbeidstid, omsorg og miljøarbeid")
         XCTAssertEqual(preview.brandProfile?.targetAudience, "Private omsorgsaktører og kommunale tjenester i Norge.")
+        XCTAssertEqual(preview.recommendedAnbudProfile?.templateKey, "tidum.procurement")
+        XCTAssertEqual(
+            preview.recommendedAnbudProfile?.cpvCodes,
+            ["48450000", "72212450", "48332000", "48311000", "48311100"]
+        )
+        XCTAssertTrue(preview.recommendedAnbudProfile?.requiresAdminConfirmation == true)
+        XCTAssertEqual(preview.recommendedAnbudProfile?.suggestedWatches.count, 1)
         XCTAssertEqual(preview.recommendedProfiles.map(\.name), names)
         XCTAssertEqual(preview.recommendedProfiles.compactMap(\.templateKey), templateKeys)
         XCTAssertTrue(preview.recommendedProfiles.allSatisfy {

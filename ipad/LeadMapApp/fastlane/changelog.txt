@@ -5,6 +5,7 @@ Leadgrid 2.2
 • Ny enkel Discovery-flyt med tre tydelige steg, og avansertmodus for alle detaljer.
 • Opprett eller gjenbruk et kundeprosjekt ved å skrive inn domenet, med forslag til komplett Discovery-profil.
 • Tidum får fire ferdige nasjonale Discovery-profiler for private omsorgsaktører og kommunale tjenester.
+• Tidum får en egen Doffin-produktprofil for arbeidstid, turnus og dokumentasjon, med relevante CPV-koder og adminstyrte overvåkninger.
 • Dentum har fått sju e-postmaler for tannklinikker, automatisk tilpasset valgt lead, kontaktperson, område og status.
 • E-post kan finjusteres i Leadgrid før den åpnes i brukerens valgte e-postapp.
 • Ny personvernkontroll for e-post: verifiserte fellesadresser, dokumentert samtykke/kundeforhold og en organisasjonsomfattende «nei takk»-sperre.

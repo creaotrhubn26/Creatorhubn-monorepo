@@ -1302,8 +1302,24 @@ final class QASweepTests: XCTestCase {
             XCTAssertEqual(profileTitle.label, profileName)
         }
 
-        XCTAssertTrue(app.staticTexts["Finn duplikater"].exists)
-        XCTAssertTrue(app.staticTexts["Sjekk datakvalitet"].exists)
+        let anbudProfile = app.descendants(matching: .any)[
+            "project-onboarding.anbud-profile"
+        ]
+        for _ in 0..<8 where !anbudProfile.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(
+            anbudProfile.exists,
+            "Tidum-onboarding skal forklare den separate Doffin-produktprofilen"
+        )
+
+        for skillTitle in ["Finn duplikater", "Sjekk datakvalitet"] {
+            let skill = app.staticTexts[skillTitle]
+            for _ in 0..<8 where !skill.exists {
+                app.swipeUp()
+            }
+            XCTAssertTrue(skill.exists, "Mangler skillen \(skillTitle)")
+        }
         let commit = app.buttons["project-onboarding.commit"]
         for _ in 0..<12 where !commit.isHittable {
             app.swipeUp()
@@ -1338,6 +1354,27 @@ final class QASweepTests: XCTestCase {
         let nationwide = app.buttons["discovery.simple.area.nationwide"]
         XCTAssertTrue(nationwide.waitForExistence(timeout: 5))
         XCTAssertTrue(nationwide.isSelected)
+        let openAnbud = app.buttons["discovery.open-anbud"]
+        XCTAssertTrue(openAnbud.waitForExistence(timeout: 5))
+        openAnbud.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["anbud.project-profile"]
+                .waitForExistence(timeout: 8)
+        )
+        XCTAssertTrue(app.staticTexts["CPV 48450000"].exists)
+        let confirmAnbud = app.buttons["anbud.project-profile.confirm"]
+        XCTAssertTrue(confirmAnbud.waitForExistence(timeout: 5))
+        for _ in 0..<6 where !confirmAnbud.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(confirmAnbud.isHittable)
+        confirmAnbud.tap()
+        XCTAssertTrue(app.staticTexts["Aktiv"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.staticTexts["[Demo] Anskaffelse av turnus- og arbeidstidssystem"]
+                .waitForExistence(timeout: 5)
+        )
+        snap(app, "tidum-anbud-profil-aktiv-ipad-mini")
         app.terminate()
     }
 
@@ -1662,6 +1699,17 @@ final class QASweepTests: XCTestCase {
         let visibleProfileCount = Int(profileCount.label.split(separator: " ").first ?? "0") ?? 0
         XCTAssertGreaterThanOrEqual(visibleProfileCount, 4)
         XCTAssertTrue(app.buttons["discovery.campaign.start"].exists)
+        let openAnbud = app.buttons["discovery.open-anbud"]
+        XCTAssertTrue(
+            openAnbud.waitForExistence(timeout: 12),
+            "Tidum Discovery skal ha en direkte, prosjektbundet vei til Anbud"
+        )
+        openAnbud.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["anbud.project-profile"]
+                .waitForExistence(timeout: 15),
+            "Anbud skal åpne med Tidums autoritative produktprofil"
+        )
         app.terminate()
     }
 

@@ -1100,6 +1100,7 @@ struct MainTabView: View {
                 case .kart: selection = 1
                 case .leads where EntitlementStore.shared.canUse(.leads): selection = 2
                 case .moter: selection = 3
+                case .anbud: selection = 4
                 default: break
                 }
             }
@@ -1209,6 +1210,15 @@ struct PhoneMerTab: View {
                 }
             }
         }
+        .onAppear { routeGlobalSelection(state.selectedSidebarItem) }
+        .onChange(of: state.selectedSidebarItem) { _, item in
+            routeGlobalSelection(item)
+        }
+    }
+
+    private func routeGlobalSelection(_ item: SidebarItem) {
+        guard item == .anbud, path.last != .anbud else { return }
+        path = [.anbud]
     }
 
     private func merRow(_ dest: Destination, icon: String, color: Color,

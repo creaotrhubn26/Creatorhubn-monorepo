@@ -26,6 +26,11 @@ import { assertAnyEntitled, LEADGRID_ANBUD_FEATURE_KEYS } from "./leadgrid-entit
 import { sendAPNs } from "./lead-map-apns-client.js";
 import { withAIQuota } from "./leadgrid-ai-queue.js";
 import { sendEmail, isEmailConfigured } from "./casting-reminder-sender.js";
+import {
+  recommendedAnbudProfileForDomain,
+  type LeadgridAnbudProfileTemplate,
+  type LeadgridAnbudWatchTemplate,
+} from "./leadgrid-anbud-profile.js";
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
@@ -124,6 +129,8 @@ async function ensureSchema(pool: Pool): Promise<void> {
       name TEXT NOT NULL,
       query JSONB NOT NULL DEFAULT '{}',
       created_by TEXT NOT NULL DEFAULT '',
+      template_key TEXT,
+      template_version INTEGER,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )`);
@@ -134,7 +141,9 @@ async function ensureSchema(pool: Pool): Promise<void> {
       ADD COLUMN IF NOT EXISTS project_id TEXT,
       ADD COLUMN IF NOT EXISTS seen_ids JSONB NOT NULL DEFAULT '[]',
       ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS new_hits_count INT NOT NULL DEFAULT 0`);
+      ADD COLUMN IF NOT EXISTS new_hits_count INT NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS template_key TEXT,
+      ADD COLUMN IF NOT EXISTS template_version INTEGER`);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_doffin_watches_org
       ON leadgrid_doffin_watches (organization_id, project_id)`);
@@ -179,10 +188,49 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS uq_anbud_pipeline_project_doffin
       ON leadgrid_anbud_pipeline (organization_id, project_id, doffin_id)`);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_doffin_watches_project_template
+      ON leadgrid_doffin_watches (organization_id, project_id, template_key)
+      WHERE template_key IS NOT NULL`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_anbud_project_profiles (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      project_id TEXT NOT NULL,
+      template_key TEXT NOT NULL,
+      template_version INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'active', 'paused')),
+      cpv_codes JSONB NOT NULL DEFAULT '[]'::jsonb,
+      keywords JSONB NOT NULL DEFAULT '[]'::jsonb,
+      exclusion_terms JSONB NOT NULL DEFAULT '[]'::jsonb,
+      suggested_watches JSONB NOT NULL DEFAULT '[]'::jsonb,
+      selected_watch_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
+      requires_admin_confirmation BOOLEAN NOT NULL DEFAULT TRUE,
+      created_by TEXT,
+      confirmed_by TEXT,
+      confirmed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (organization_id, project_id),
+      FOREIGN KEY (organization_id, project_id)
+        REFERENCES leadgrid_projects(organization_id, id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+    )`);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_anbud_project_profiles_status
+      ON leadgrid_anbud_project_profiles
+        (organization_id, project_id, status, updated_at DESC)`);
   schemaReady = true;
 }
 
-type DoffinProjectScope = { organizationId: string; projectId: string };
+type DoffinProjectScope = {
+  organizationId: string;
+  projectId: string;
+  memberRole: string;
+};
 
 async function resolveDoffinProjectScope(
   pool: Pool,
@@ -203,7 +251,182 @@ async function resolveDoffinProjectScope(
     res.status(404).json({ error: "project_not_found" });
     return null;
   }
-  return { organizationId: project.organizationId, projectId: project.id };
+  return {
+    organizationId: project.organizationId,
+    projectId: project.id,
+    memberRole: project.memberRole,
+  };
+}
+
+type StoredAnbudProfile = {
+  id: string;
+  template_key: string;
+  template_version: number;
+  name: string;
+  description: string;
+  status: "draft" | "active" | "paused";
+  cpv_codes: unknown;
+  keywords: unknown;
+  exclusion_terms: unknown;
+  suggested_watches: unknown;
+  selected_watch_keys: unknown;
+  requires_admin_confirmation: boolean;
+  confirmed_at: Date | string | null;
+};
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function watchTemplates(value: unknown): LeadgridAnbudWatchTemplate[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const raw = item as Record<string, unknown>;
+    const query = raw.query && typeof raw.query === "object"
+      ? raw.query as Record<string, unknown>
+      : {};
+    const key = typeof raw.key === "string" ? raw.key : "";
+    const name = typeof raw.name === "string" ? raw.name : "";
+    const cpv = typeof query.cpv === "string" ? query.cpv : "";
+    if (!key || !name || !/^[0-9,]{8,120}$/.test(cpv)) return [];
+    return [{
+      key,
+      name,
+      query: {
+        q: typeof query.q === "string" ? query.q : null,
+        location: typeof query.location === "string" ? query.location : null,
+        cpv,
+      },
+    }];
+  });
+}
+
+const ANBUD_MANAGER_ROLES = new Set([
+  "owner", "admin", "super_admin", "superadmin",
+]);
+
+async function canManageAnbudProfile(
+  pool: Pool,
+  scope: DoffinProjectScope,
+  userId: string,
+  platformRole?: string,
+): Promise<boolean> {
+  const knownRoles = [scope.memberRole, platformRole]
+    .map((role) => String(role ?? "").toLocaleLowerCase("nb-NO"));
+  if (knownRoles.some((role) => ANBUD_MANAGER_ROLES.has(role))) return true;
+  const result = await pool.query<{ can_manage: boolean }>(
+    `SELECT (
+       EXISTS (
+         SELECT 1 FROM organization_members
+          WHERE organization_id = $1::uuid AND user_id = $2
+            AND LOWER(COALESCE(role, '')) IN ('owner', 'admin', 'super_admin')
+       ) OR EXISTS (
+         SELECT 1 FROM users
+          WHERE id = $2
+            AND LOWER(COALESCE(role, '')) IN ('admin', 'super_admin')
+       )
+     ) AS can_manage`,
+    [scope.organizationId, userId],
+  );
+  return result.rows[0]?.can_manage === true;
+}
+
+function profileResponse(
+  row: StoredAnbudProfile,
+  canManage: boolean,
+) {
+  return {
+    id: row.id,
+    template_key: row.template_key,
+    template_version: row.template_version,
+    name: row.name,
+    description: row.description,
+    status: row.status,
+    cpv_codes: stringArray(row.cpv_codes),
+    keywords: stringArray(row.keywords),
+    exclusion_terms: stringArray(row.exclusion_terms),
+    suggested_watches: watchTemplates(row.suggested_watches),
+    selected_watch_keys: stringArray(row.selected_watch_keys),
+    requires_admin_confirmation: row.requires_admin_confirmation,
+    confirmed_at: row.confirmed_at
+      ? new Date(row.confirmed_at).toISOString()
+      : null,
+    can_manage: canManage,
+  };
+}
+
+async function loadStoredAnbudProfile(
+  pool: Pool,
+  scope: DoffinProjectScope,
+): Promise<StoredAnbudProfile | null> {
+  const result = await pool.query<StoredAnbudProfile>(
+    `SELECT id::text, template_key, template_version, name, description,
+            status, cpv_codes, keywords, exclusion_terms, suggested_watches,
+            selected_watch_keys, requires_admin_confirmation, confirmed_at
+       FROM leadgrid_anbud_project_profiles
+      WHERE organization_id = $1::uuid AND project_id = $2
+      LIMIT 1`,
+    [scope.organizationId, scope.projectId],
+  );
+  return result.rows[0] ?? null;
+}
+
+async function projectRecommendedAnbudTemplate(
+  pool: Pool,
+  scope: DoffinProjectScope,
+): Promise<LeadgridAnbudProfileTemplate | null> {
+  const result = await pool.query<{ website_domain: string | null }>(
+    `SELECT LOWER(COALESCE(
+              metadata->>'website_domain',
+              metadata->>'customer_domain',
+              metadata->>'domain',
+              ''
+            )) AS website_domain
+       FROM leadgrid_projects
+      WHERE organization_id = $1::uuid AND id = $2
+      LIMIT 1`,
+    [scope.organizationId, scope.projectId],
+  );
+  return recommendedAnbudProfileForDomain(result.rows[0]?.website_domain);
+}
+
+async function ensureRecommendedAnbudProfile(
+  pool: Pool,
+  scope: DoffinProjectScope,
+  userId: string,
+): Promise<StoredAnbudProfile | null> {
+  const existing = await loadStoredAnbudProfile(pool, scope);
+  if (existing) return existing;
+  const template = await projectRecommendedAnbudTemplate(pool, scope);
+  if (!template) return null;
+  await pool.query(
+    `INSERT INTO leadgrid_anbud_project_profiles (
+       organization_id, project_id, template_key, template_version, name,
+       description, status, cpv_codes, keywords, exclusion_terms,
+       suggested_watches, requires_admin_confirmation, created_by
+     ) VALUES (
+       $1::uuid, $2, $3, $4, $5, $6, 'draft', $7::jsonb, $8::jsonb,
+       $9::jsonb, $10::jsonb, $11, $12
+     ) ON CONFLICT (organization_id, project_id) DO NOTHING`,
+    [
+      scope.organizationId,
+      scope.projectId,
+      template.template_key,
+      template.template_version,
+      template.name,
+      template.description,
+      JSON.stringify(template.cpv_codes),
+      JSON.stringify(template.keywords),
+      JSON.stringify(template.exclusion_terms),
+      JSON.stringify(template.suggested_watches),
+      template.requires_admin_confirmation,
+      userId,
+    ],
+  );
+  return loadStoredAnbudProfile(pool, scope);
 }
 
 const TAPT_AARSAKER = new Set(["pris", "kapasitet", "krav", "referanser", "annet"]);
@@ -290,7 +513,10 @@ function extractWinners(hit: Record<string, unknown>): { navn: string; orgnr: st
 }
 
 /** Hvitlistet param-bygging mot upstream. */
-function buildUpstreamQuery(req: Request): URLSearchParams | { error: string } {
+function buildUpstreamQuery(
+  req: Request,
+  profileCpvCodes: string[] = [],
+): URLSearchParams | { error: string } {
   const q = new URLSearchParams();
   const hits = Math.min(MAX_HITS, Math.max(1, Number(req.query.hits) || 20));
   q.set("numHitsPerPage", String(hits));
@@ -304,7 +530,8 @@ function buildUpstreamQuery(req: Request): URLSearchParams | { error: string } {
     if (!/^[A-Z0-9,]{2,60}$/i.test(location)) return { error: "Ugyldig location (NUTS-koder, kommaseparert)." };
     for (const l of location.split(",")) q.append("location", l.trim());
   }
-  const cpv = String(req.query.cpv ?? "").trim();
+  const requestedCpv = String(req.query.cpv ?? "").trim();
+  const cpv = requestedCpv || profileCpvCodes.join(",");
   if (cpv) {
     if (!/^[0-9,]{2,120}$/.test(cpv)) return { error: "Ugyldig cpv (sifre, kommaseparert)." };
     for (const c of cpv.split(",")) q.append("cpvCode", c.trim());
@@ -315,6 +542,42 @@ function buildUpstreamQuery(req: Request): URLSearchParams | { error: string } {
   }
   if (status !== "ALL") q.set("status", status);
   return q;
+}
+
+/** Apply product-side exclusions after normalization. Doffin search has no
+ * negative-keyword parameter, so this is deliberately performed outside the
+ * shared upstream cache. The returned count describes the relevant page the
+ * user can act on, rather than advertising hidden broad hits. */
+function withProjectProfileFiltering(
+  body: unknown,
+  profile: StoredAnbudProfile,
+): unknown {
+  if (!body || typeof body !== "object") return body;
+  const source = body as {
+    total?: number;
+    kunngjoringer?: Record<string, unknown>[];
+  };
+  const exclusions = stringArray(profile.exclusion_terms)
+    .map((term) => term.trim().toLocaleLowerCase("nb-NO"))
+    .filter(Boolean);
+  const hits = source.kunngjoringer ?? [];
+  const relevant = exclusions.length === 0
+    ? hits
+    : hits.filter((hit) => {
+      const searchable = `${String(hit.tittel ?? "")} ${String(hit.beskrivelse ?? "")}`
+        .toLocaleLowerCase("nb-NO");
+      return !exclusions.some((term) => searchable.includes(term));
+    });
+  return {
+    ...source,
+    total: relevant.length === hits.length ? source.total ?? relevant.length : relevant.length,
+    kunngjoringer: relevant,
+    project_profile: {
+      template_key: profile.template_key,
+      template_version: profile.template_version,
+      applied: true,
+    },
+  };
 }
 
 async function doffinSearch(params: URLSearchParams): Promise<{ ok: boolean; status: number; body: unknown }> {
@@ -351,7 +614,9 @@ async function doffinSearch(params: URLSearchParams): Promise<{ ok: boolean; sta
 export function registerLeadgridDoffinRoutes(deps: {
   app: Express;
   pool: Pool;
-  requireUserSession: (req: Request, res: Response) => { userId: string } | null | Promise<{ userId: string } | null>;
+  requireUserSession: (req: Request, res: Response) =>
+    { userId: string; role?: string } | null |
+    Promise<{ userId: string; role?: string } | null>;
 }): void {
   const { app, pool, requireUserSession } = deps;
 
@@ -364,7 +629,21 @@ export function registerLeadgridDoffinRoutes(deps: {
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
       const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
       if (!scope) return;
-      const params = buildUpstreamQuery(req);
+      const useProjectProfile = ["1", "true"].includes(
+        String(req.query.projectProfile ?? req.query.project_profile ?? "")
+          .toLocaleLowerCase("nb-NO"),
+      );
+      let projectProfile: StoredAnbudProfile | null = null;
+      if (useProjectProfile) {
+        await ensureSchema(pool);
+        projectProfile = await ensureRecommendedAnbudProfile(
+          pool, scope, session.userId,
+        );
+      }
+      const params = buildUpstreamQuery(
+        req,
+        projectProfile ? stringArray(projectProfile.cpv_codes) : [],
+      );
       if (params instanceof URLSearchParams === false) {
         res.status(400).json({ error: "bad_request", message: (params as { error: string }).error });
         return;
@@ -372,18 +651,168 @@ export function registerLeadgridDoffinRoutes(deps: {
       const r = await doffinSearch(params);
       // Kunde-match (nivå 1): flagg treff der oppdragsgiveren allerede er
       // i org-ens CRM. Per-request-berikelse — cachen forblir generisk.
-      let body = r.body;
+      let body = projectProfile && r.ok
+        ? withProjectProfileFiltering(r.body, projectProfile)
+        : r.body;
       if (r.ok) {
-        const hits = (r.body as { kunngjoringer?: { oppdragsgivere?: { orgnr?: string }[] }[] })
+        const hits = (body as { kunngjoringer?: { oppdragsgivere?: { orgnr?: string }[] }[] })
           .kunngjoringer ?? [];
         const orgnrs = hits.flatMap((k) => (k.oppdragsgivere ?? []).map((o) => String(o.orgnr ?? "")));
         const matches = await matchKunder(
           pool, scope.organizationId, scope.projectId, orgnrs);
-        body = withKundeMatch(r.body, matches);
+        body = withKundeMatch(body, matches);
       }
       res.status(r.status).json(body);
     } catch (e) {
       console.error("[doffin] search failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Product-side procurement profile for the active customer project.
+   * Existing Tidum projects are provisioned lazily as a draft so opening
+   * Anbud never activates background monitoring without an admin decision. */
+  app.get("/api/leadgrid/doffin/project-profile", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
+      await ensureSchema(pool);
+      const profile = await ensureRecommendedAnbudProfile(
+        pool, scope, session.userId,
+      );
+      const canManage = profile
+        ? await canManageAnbudProfile(
+          pool, scope, session.userId, session.role,
+        )
+        : false;
+      res.json({ profile: profile ? profileResponse(profile, canManage) : null });
+    } catch (e) {
+      console.error("[doffin] project profile failed:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Confirm selected managed watches. Only the project owner or an
+   * organization admin can activate them; retries are idempotent through the
+   * project/template unique index. */
+  app.post("/api/leadgrid/doffin/project-profile/confirm", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_ANBUD_FEATURE_KEYS, res))) return;
+      const scope = await resolveDoffinProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
+      if (!(await canManageAnbudProfile(
+        pool, scope, session.userId, session.role,
+      ))) {
+        res.status(403).json({ error: "anbud_profile_admin_required" });
+        return;
+      }
+      await ensureSchema(pool);
+      const stored = await ensureRecommendedAnbudProfile(
+        pool, scope, session.userId,
+      );
+      if (!stored) {
+        res.status(404).json({ error: "anbud_profile_not_available" });
+        return;
+      }
+      const suggestions = watchTemplates(stored.suggested_watches);
+      const byKey = new Map(suggestions.map((watch) => [watch.key, watch]));
+      const rawKeys: unknown[] = Array.isArray(req.body?.watch_keys)
+        ? req.body.watch_keys
+        : suggestions.map((watch) => watch.key);
+      const selectedKeys: string[] = [...new Set(
+        rawKeys.filter((key: unknown): key is string => typeof key === "string"),
+      )];
+      const suggestionKeys = suggestions.map((watch) => watch.key);
+      if (
+        selectedKeys.length === 0 ||
+        selectedKeys.length > suggestions.length ||
+        selectedKeys.some((key) => !byKey.has(key))
+      ) {
+        res.status(400).json({ error: "invalid_anbud_watch_selection" });
+        return;
+      }
+      const selected = selectedKeys.map((key) => byKey.get(key)!);
+      const existingCount = await pool.query<{ n: number }>(
+        `SELECT COUNT(*)::int AS n
+           FROM leadgrid_doffin_watches
+          WHERE organization_id = $1 AND project_id = $2
+            AND (template_key IS NULL OR NOT (template_key = ANY($3::text[])))`,
+        [scope.organizationId, scope.projectId, suggestionKeys],
+      );
+      if ((existingCount.rows[0]?.n ?? 0) + selected.length > 25) {
+        res.status(400).json({
+          error: "too_many_watches",
+          message: "Prosjektet kan ha maksimalt 25 overvåkninger.",
+        });
+        return;
+      }
+      await pool.query(
+        `WITH selected AS (
+           SELECT item.key, item.name, item.query
+             FROM jsonb_to_recordset($4::jsonb)
+               AS item(key text, name text, query jsonb)
+         ), upserted AS (
+           INSERT INTO leadgrid_doffin_watches (
+             id, organization_id, project_id, name, query, created_by,
+             template_key, template_version
+           )
+           SELECT gen_random_uuid(), $1, $2, selected.name, selected.query,
+                  $3, selected.key, $5
+             FROM selected
+           ON CONFLICT (organization_id, project_id, template_key)
+             WHERE template_key IS NOT NULL
+           DO UPDATE SET
+             name = EXCLUDED.name,
+             query = EXCLUDED.query,
+             template_version = EXCLUDED.template_version,
+             updated_at = NOW()
+           RETURNING template_key
+         ), removed AS (
+           DELETE FROM leadgrid_doffin_watches
+            WHERE organization_id = $1 AND project_id = $2
+              AND template_key = ANY($7::text[])
+              AND NOT (template_key = ANY($6::text[]))
+           RETURNING template_key
+         )
+         UPDATE leadgrid_anbud_project_profiles
+            SET status = 'active',
+                selected_watch_keys = $6::jsonb,
+                confirmed_by = $3,
+                confirmed_at = COALESCE(confirmed_at, NOW()),
+                updated_at = NOW()
+          WHERE organization_id = $1::uuid AND project_id = $2`,
+        [
+          scope.organizationId,
+          scope.projectId,
+          session.userId,
+          JSON.stringify(selected),
+          stored.template_version,
+          JSON.stringify(selectedKeys),
+          suggestionKeys,
+        ],
+      );
+      const profile = await loadStoredAnbudProfile(pool, scope);
+      const watches = await pool.query(
+        `SELECT id, name, query, template_key, template_version, created_at,
+                new_hits_count
+           FROM leadgrid_doffin_watches
+          WHERE organization_id = $1 AND project_id = $2
+            AND template_key = ANY($3::text[])
+          ORDER BY created_at DESC`,
+        [scope.organizationId, scope.projectId, selectedKeys],
+      );
+      res.json({
+        ok: true,
+        profile: profile ? profileResponse(profile, true) : null,
+        watches: watches.rows,
+      });
+    } catch (e) {
+      console.error("[doffin] confirm project profile failed:", e);
       res.status(500).json({ error: "internal_error" });
     }
   });
@@ -398,7 +827,8 @@ export function registerLeadgridDoffinRoutes(deps: {
       if (!scope) return;
       await ensureSchema(pool);
       const r = await pool.query(
-        `SELECT id, name, query, created_at, new_hits_count FROM leadgrid_doffin_watches
+        `SELECT id, name, query, template_key, template_version,
+                created_at, new_hits_count FROM leadgrid_doffin_watches
           WHERE organization_id = $1 AND project_id = $2
           ORDER BY created_at DESC`, [scope.organizationId, scope.projectId]);
       res.json({ watches: r.rows });
