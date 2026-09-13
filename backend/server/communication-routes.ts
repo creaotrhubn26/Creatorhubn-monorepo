@@ -16,6 +16,8 @@ import type { Request, Response } from 'express';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { eq, desc, and, sql, isNull, lt } from 'drizzle-orm';
 import { broadcastUserEvent } from './realtime-user-events.js';
+import { projectTeamRecipients as sharedProjectTeamRecipients } from './project-recipients.js';
+import { notify } from './project-notifications.js';
 import type { Pool } from 'pg';
 import { google } from 'googleapis';
 import * as schema from '../migrations/schema.js';
@@ -263,21 +265,10 @@ export function createCommunicationRouter(
     } catch { return null; }
   };
   // Prosjektets team (eier i public/legacy + aktive medlemmer) med navn —
-  // brukes til chat-live-events og @-mention-varsling.
-  const projectTeamRecipients = async (projectId: string): Promise<{ userId: string; name: string }[]> => {
-    try {
-      const [pubOwner, legOwner, members] = await Promise.all([
-        pool.query(`SELECT u.id::text AS uid, COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email) AS n FROM projects p JOIN users u ON u.id = p.user_id WHERE p.id::text = $1`, [projectId]).catch(() => ({ rows: [] as any[] })),
-        pool.query(`SELECT u.id::text AS uid, COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email) AS n FROM legacy.projects p JOIN users u ON u.id::text = p.user_id WHERE p.id = $1`, [projectId]).catch(() => ({ rows: [] as any[] })),
-        pool.query(`SELECT m.user_id::text AS uid, COALESCE(NULLIF(TRIM(m.name), ''), m.email) AS n FROM project_team_members m WHERE m.project_id = $1 AND m.status = 'active' AND m.deactivated_at IS NULL AND m.user_id IS NOT NULL`, [projectId]).catch(() => ({ rows: [] as any[] })),
-      ]);
-      const seen = new Map<string, string>();
-      for (const r of [...pubOwner.rows, ...legOwner.rows, ...members.rows]) {
-        if (r.uid && !seen.has(r.uid)) seen.set(r.uid, String(r.n || ''));
-      }
-      return [...seen.entries()].map(([userId, name]) => ({ userId, name }));
-    } catch { return []; }
-  };
+  // brukes til chat-live-events og @-mention-varsling. Delt med varsellaget,
+  // så «hvem er teamet» ikke har to svar.
+  const projectTeamRecipients = (projectId: string) =>
+    sharedProjectTeamRecipients(pool, projectId);
 
   // Live-varsel til teamet om chat-endring (ny/endret/slettet melding,
   // reaksjon) + @-mention-events. Best-effort — velter aldri skrivet.
@@ -294,6 +285,18 @@ export function createCommunicationRouter(
         broadcastUserEvent(r.userId, { kind: 'chat.message', channelId, projectId, timestamp });
         if (content && r.name && content.toLowerCase().includes(('@' + r.name).toLowerCase())) {
           broadcastUserEvent(r.userId, { kind: 'chat.mention', channelId, projectId, fromName: actorName || 'Et teammedlem', timestamp });
+          // …og en varig rad, så en @-nevning overlever at fanen var lukket.
+          void notify(pool, {
+            projectId,
+            eventType: 'chat.mention',
+            title: `${actorName || 'Et teammedlem'} nevnte deg`,
+            message: content.slice(0, 280),
+            actorUserId,
+            actorLabel: actorName ?? null,
+            recipientUserIds: [r.userId],
+            linkedEntityType: 'chat_channel',
+            linkedEntityId: channelId,
+          }).catch(() => undefined);
         }
       }
     } catch { /* best-effort */ }

@@ -1008,6 +1008,7 @@ import { setupPhotographerMiscRoutes } from "./photographer-misc-routes";
 import { setupProjectTeamRoutes, canAccessProject } from "./project-team-routes";
 import { requireProjectAccess } from "./project-access";
 import { setupProjectWorkspaceRoutes } from "./project-workspace-routes";
+import { setupProjectNotificationRoutes } from "./project-notifications-routes";
 import { setupProjectVideoCollaborationRoutes } from "./project-video-collaboration-routes";
 import { setupProToolsCompanionRoutes } from "./protools-companion-routes";
 import { startProToolsSyncWorker } from "./protools-companion-sync-worker";
@@ -68534,6 +68535,9 @@ setupProjectVideoCollaborationRoutes({
   requireUserSession,
   resolveUserSession: resolveActiveSessionFromRequest,
 });
+// Hendelsesinnboks + prosjektaktivitet (project_notifications). Egen
+// sti-familie: /api/notifications/* eies av admin-kringkastingsinnboksen.
+setupProjectNotificationRoutes({ app, pool, requireUserSession });
 // Webklienter veksler vanlig Authorization-header mot en 30 sekunders,
 // engangs WebSocket-billett. Session-tokenet skal aldri inn i WS-URL-en.
 setupUserEventsTicketRoute({

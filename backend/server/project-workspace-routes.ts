@@ -57,6 +57,7 @@ import {
   sanitizeVideoChapters,
 } from "./project-video-room-model";
 import { broadcastUserEvent } from "./realtime-user-events";
+import { notify } from "./project-notifications";
 import { Vibrant } from "node-vibrant/node";
 import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, aiAllowed, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, higgsfieldConfigured, higgsfieldSubmit, higgsfieldPoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
 import Stripe from "stripe";
@@ -767,6 +768,34 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch { return "Et teammedlem"; }
   }
 
+  // Ett av de fire varslene som faktisk gir bjelle-utslag: du fikk en oppgave.
+  // Går kun til den nye ansvarlige, og aldri når du tildeler deg selv.
+  const notifyTaskAssigned = async (
+    projectId: string, actorUserId: string, task: any, priorAssignee: string | null,
+  ): Promise<void> => {
+    try {
+      const assignee = task?.assigned_to ? String(task.assigned_to) : null;
+      if (!assignee || assignee === priorAssignee || assignee === actorUserId) return;
+      await notify(pool, {
+        projectId,
+        eventType: "task.assigned",
+        title: `Ny oppgave: ${task.title}`,
+        message: `${await boardActorName(actorUserId)} tildelte deg «${task.title}».`,
+        actorUserId,
+        actorLabel: await boardActorName(actorUserId),
+        recipientUserIds: [assignee],
+        assignedToUserId: assignee,
+        assignedToLabel: task.assigned_name ?? null,
+        linkedEntityType: "board_task",
+        linkedEntityId: String(task.id),
+        metadata: { title: task.title, assigneeName: task.assigned_name ?? null },
+      });
+    } catch (error) {
+      // Best-effort: en oppgave skal kunne tildeles selv om varselet svikter.
+      console.error("notifyTaskAssigned", error);
+    }
+  };
+
   app.post("/api/projects/:projectId/board-tasks", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
@@ -782,6 +811,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       );
       const t = r.rows[0];
       void notifyBoardUpdated(req.params.projectId, uid);
+      void notifyTaskAssigned(req.params.projectId, uid, t, null);
       void boardActorName(uid).then((actor) =>
         postBoardChatNote(req.params.projectId, `➕ ${actor} la til «${t.title}»${t.assigned_name ? ` → ${t.assigned_name}` : ""}`));
       res.status(201).json({ id: t.id, crewRole: t.crew_role, title: t.title, timeLabel: t.time_label, status: t.status, orderIndex: t.order_index, assignedTo: t.assigned_to || null, assignedName: t.assigned_name || null });
@@ -792,6 +822,12 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     try {
       await ensureSchema(pool);
       const b = req.body ?? {};
+      // Forrige ansvarlig leses først: et varsel skal bare gå ut når
+      // tildelingen faktisk ENDRER seg, ikke hver gang kortet flyttes.
+      const priorAssignee = await pool.query(
+        `SELECT assigned_to FROM project_board_tasks WHERE id = $1 AND project_id = $2`,
+        [req.params.id, req.params.projectId],
+      ).then((q: any) => q.rows[0]?.assigned_to ?? null).catch(() => null);
       const r = await pool.query(
         `UPDATE project_board_tasks SET
             title = COALESCE($1, title), status = COALESCE($2, status),
@@ -807,6 +843,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const t = r.rows[0];
       void notifyBoardUpdated(req.params.projectId, uid);
+      void notifyTaskAssigned(req.params.projectId, uid, t, priorAssignee);
       if (b.status === "done") {
         void boardActorName(uid).then((actor) =>
           postBoardChatNote(req.params.projectId, `✓ ${actor} fullførte «${t.title}»`));
@@ -5336,6 +5373,33 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // frontend (WsImageGrid) hadde ingen onUpload i det hele tatt: filen forsvant
   // som en lokal blob-URL ved refresh, og accept="image/*" (default) blokkerte
   // valg av video-/lydfiler — nettopp det en leveranse oftest ER.
+  // «Et dokument delt med deg»: en fil lagt på en leveranse går til resten av
+  // teamet. Filnavnet er nok — innholdet ligger bak den vanlige tilgangen.
+  const notifyDeliverableFileAdded = async (
+    projectId: string, actorUserId: string, deliverableId: string, fileName: string,
+  ): Promise<void> => {
+    try {
+      const title = await pool.query(
+        `SELECT title FROM project_workspace_deliverables WHERE id = $1 AND project_id = $2`,
+        [deliverableId, projectId],
+      ).then((q: any) => q.rows[0]?.title ?? "leveransen").catch(() => "leveransen");
+      const actor = await boardActorName(actorUserId);
+      await notify(pool, {
+        projectId,
+        eventType: "deliverable.file-added",
+        title: `Ny fil på ${title}`,
+        message: `${actor} la «${fileName}» på leveransen «${title}».`,
+        actorUserId,
+        actorLabel: actor,
+        linkedEntityType: "deliverable",
+        linkedEntityId: deliverableId,
+        metadata: { title, fileName },
+      });
+    } catch (error) {
+      console.error("notifyDeliverableFileAdded", error);
+    }
+  };
+
   app.post("/api/projects/:projectId/deliverables/:id/upload", guardMw, mediaUpload.single("file"), async (req, res) => {
     const uid = (req as any)._guardUid; if (!uid) return;
     try {
@@ -5351,6 +5415,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const entry = { kind: "upload", refId: crypto.randomUUID(), name: file.originalname || "Fil", url, at: new Date().toISOString() };
       const nextFiles = sanitizeDeliverableFiles([...(Array.isArray(existing.rows[0].files) ? existing.rows[0].files : []), entry]);
       await pool.query(`UPDATE project_workspace_deliverables SET files = $1::jsonb, updated_at = NOW() WHERE id = $2 AND project_id = $3`, [JSON.stringify(nextFiles), req.params.id, req.params.projectId]);
+      void notifyDeliverableFileAdded(req.params.projectId, uid, req.params.id, entry.name);
       res.status(201).json({ file: entry, files: nextFiles });
     } catch (e) { console.error("POST deliverables upload", e); res.status(500).json({ error: "failed" }); }
   });
