@@ -93,6 +93,13 @@ button.danger { color: var(--red); }
 .badge.approved, .badge.done, .badge.passed, .badge.ready { color: var(--green); }
 .badge.in_progress, .badge.in_review, .badge.running, .badge.inprogress, .badge.open { color: var(--amber); }
 .subsection + .subsection { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.publish-section { margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--border); }
+.picker-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; }
+.picker-line div { min-width: 0; }
+.picker-line span, .picker-line strong { display: block; }
+.picker-line span { color: var(--muted); font-size: 10px; }
+.picker-line strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+progress { width: 100%; height: 8px; margin-top: 10px; accent-color: var(--accent); }
 .compact-list { max-height: 220px; }
 .transcript-list { max-height: 280px; }
 .transcript-item { display: grid; grid-template-columns: 60px 1fr; gap: 8px; cursor: pointer; }

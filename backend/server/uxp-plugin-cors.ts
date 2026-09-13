@@ -27,6 +27,9 @@ export const UXP_PLUGIN_API_PATHS = [
   "/api/projects/:projectId/video-qc",
   "/api/projects/:projectId/video-live",
   "/api/projects/:projectId/video-live/:sessionId",
+  "/api/projects/:projectId/video-versions/tus",
+  "/api/projects/:projectId/video-versions/:vid/tus-retry",
+  "/api/projects/:projectId/video-versions/:vid/stream-status",
 ] as const;
 
 export const UXP_PLUGIN_CORS_OPTIONS: CorsOptions = {

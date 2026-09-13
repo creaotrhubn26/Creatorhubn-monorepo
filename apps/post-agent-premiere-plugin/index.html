@@ -196,6 +196,33 @@
           <button id="sync-now-button">Synk nå</button>
           <button id="stop-sync-button" class="danger hidden">Stopp</button>
         </div>
+        <div class="subsection publish-section">
+          <h3>Send sekvens til review</h3>
+          <p class="hint">Eksporterer aktiv sekvens, laster resumérbart til privat Stream og binder den nye versjonen til samme sekvens.</p>
+          <div class="picker-line">
+            <div><span>Eksportpreset</span><strong id="publish-preset-name">Ikke valgt</strong></div>
+            <button id="choose-preset-button" class="quiet">Velg .epr</button>
+          </div>
+          <div class="picker-line">
+            <div><span>Eksportmappe</span><strong id="publish-folder-name">Ikke valgt</strong></div>
+            <button id="choose-folder-button" class="quiet">Velg mappe</button>
+          </div>
+          <label for="publish-version-label">Versjonsnavn</label>
+          <input id="publish-version-label" maxlength="80" placeholder="V1" />
+          <label class="check-row"><input id="publish-create-round" type="checkbox" checked /> Start en revisjonsrunde</label>
+          <label for="publish-approver-emails">Varsle godkjennere (valgfritt)</label>
+          <textarea id="publish-approver-emails" rows="2" placeholder="kunde@firma.no, produsent@firma.no"></textarea>
+          <div class="row between">
+            <label for="publish-required-approvals">Påkrevde godkjenninger</label>
+            <input id="publish-required-approvals" type="number" min="1" max="30" value="1" />
+          </div>
+          <progress id="publish-progress" class="hidden" max="100" value="0"></progress>
+          <p id="publish-progress-label" class="hint compact hidden"></p>
+          <div class="actions">
+            <button id="send-review-button" class="primary">Eksporter og send</button>
+            <button id="resume-upload-button" class="hidden">Fortsett avbrutt sending</button>
+          </div>
+        </div>
       </section>
 
       <section id="status-card" class="status-card hidden">

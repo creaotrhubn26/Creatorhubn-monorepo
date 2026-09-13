@@ -10,6 +10,11 @@ function guidString(value) {
   return typeof value.toString === "function" ? value.toString() : String(value);
 }
 
+function nativeJoin(folder, fileName) {
+  const separator = String(folder).includes("\\") ? "\\" : "/";
+  return `${String(folder).replace(/[\\/]$/, "")}${separator}${fileName}`;
+}
+
 function createPremiereHost(ppro) {
   const colors = ppro.Constants.MarkerColor;
   const colorEntries = [
@@ -165,7 +170,56 @@ function createPremiereHost(ppro) {
     return safeSeconds;
   }
 
-  return { applyCloudMarkers, getContext, getPlayheadSeconds, setPlayheadSeconds };
+  async function exportActiveSequence(options) {
+    const presetFile = options && options.presetFile;
+    const outputFolder = options && options.outputFolder;
+    const fileNameForExtension = options && options.fileNameForExtension;
+    const sleep = options && options.sleep ? options.sleep : (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const timeoutMs = Number(options && options.timeoutMs) || 6 * 60 * 60 * 1000;
+    if (!presetFile?.isFile || !presetFile.nativePath || !String(presetFile.name || "").toLowerCase().endsWith(".epr")) {
+      throw new Error("Velg et gyldig Adobe Media Encoder-preset (.epr).");
+    }
+    if (!outputFolder?.isFolder || !outputFolder.nativePath) throw new Error("Velg en gyldig eksportmappe.");
+    const context = await getContext();
+    const extension = String(await ppro.EncoderManager.getExportFileExtension(context.sequence, presetFile.nativePath) || "")
+      .trim().replace(/^\.+/, "");
+    const fileName = fileNameForExtension(extension, context);
+    const outputPath = nativeJoin(outputFolder.nativePath, fileName);
+    const manager = ppro.EncoderManager.getManager();
+    if (!manager || typeof manager.exportSequence !== "function") throw new Error("Premiere EncoderManager er ikke tilgjengelig.");
+    const accepted = await manager.exportSequence(
+      context.sequence,
+      ppro.Constants.ExportType.IMMEDIATELY,
+      outputPath,
+      presetFile.nativePath,
+      true,
+    );
+    if (!accepted) throw new Error("Premiere avviste eksportjobben.");
+
+    const startedAt = Date.now();
+    let stableSamples = 0;
+    let previousSize = -1;
+    let file = null;
+    while (Date.now() - startedAt < timeoutMs) {
+      await sleep(1000);
+      try {
+        file = await outputFolder.getEntry(fileName);
+        const metadata = await file.getMetadata();
+        const size = Number(metadata && metadata.size);
+        if (Number.isSafeInteger(size) && size > 0 && size === previousSize) stableSamples += 1;
+        else stableSamples = 0;
+        previousSize = size;
+        if (stableSamples >= 2) {
+          return { context, extension, fileName, outputPath, file, sizeBytes: size };
+        }
+      } catch (_) {
+        stableSamples = 0;
+      }
+    }
+    throw new Error("Eksporten brukte for lang tid. Filen er ikke lastet opp.");
+  }
+
+  return { applyCloudMarkers, exportActiveSequence, getContext, getPlayheadSeconds, setPlayheadSeconds };
 }
 
-module.exports = { createPremiereHost, guidString };
+module.exports = { createPremiereHost, guidString, nativeJoin };
