@@ -622,6 +622,13 @@ export function Panel({
         </p>
       )}
 
+      {/* Uten denne var avkortingen i `minne::tidligere` stum: et notat på
+          fem tusen avsnitt fikk koblinger for to hundre av dem, og ingenting
+          sa at resten aldri ble spurt om. */}
+      {forståelse?.avkortet && (
+        <p className="framdrift">Bare de 200 første avsnittene er sjekket mot tidligere notater.</p>
+      )}
+
       {tidligere.length > 0 && (
         <Tidligere_
           linjer={tidligere}

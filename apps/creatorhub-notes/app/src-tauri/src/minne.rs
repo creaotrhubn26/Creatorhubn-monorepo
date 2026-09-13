@@ -856,6 +856,16 @@ pub fn avviste(conn: &Connection, antall: usize) -> Result<Vec<(String, String)>
 /// som faktisk fikk ny tekst — det vet den, og ingen spør den om det i dag.
 pub const MAKS_OPPSLAG: usize = 200;
 
+/// Sant når [`tidligere`] ikke rakk å sjekke hele notatet mot det som er
+/// skrevet før — det var flere avsnitt enn [`MAKS_OPPSLAG`].
+///
+/// Uten denne var avkortingen stum: et notat på fem tusen avsnitt fikk
+/// koblinger for to hundre av dem, og ingenting sa at de andre aldri ble
+/// spurt om. Samme filter som `tidligere` bruker for å telle avsnitt.
+pub fn avkortet(avsnitt: &[Paragraph]) -> bool {
+    avsnitt.iter().filter(|a| a.id > 0).count() > MAKS_OPPSLAG
+}
+
 /// Leter i alt som er forstått før, og svarer med det som er verdt å vite.
 ///
 /// Billigst først: ordsøket finner kandidatene uten å koste noe, og modellen
@@ -2371,6 +2381,25 @@ mod tests {
         for i in 400..410 {
             assert!(sett.contains(&mine[i].id), "avsnitt {i} er på skjermen og skal med");
         }
+    }
+
+    /// Det panelet trenger for å si ifra: sant bare når avkortingen faktisk
+    /// rammer noe, og bare avsnitt som har en id telles — samme som
+    /// `tidligere` selv teller.
+    #[test]
+    fn avkortet_sier_ifra_bare_når_grensen_faktisk_slår_inn() {
+        let med_id: Vec<Paragraph> = (0..(MAKS_OPPSLAG + 1))
+            .map(|i| Paragraph { id: i as i64 + 1, ..p(&format!("Avsnitt {i}."), "X") })
+            .collect();
+        assert!(avkortet(&med_id), "{} avsnitt er flere enn grensen", med_id.len());
+        assert!(!avkortet(&med_id[..MAKS_OPPSLAG]), "nøyaktig grensen er ikke over den");
+
+        // Avsnitt uten id er ikke lest ennå, og telles ikke med — samme
+        // filter som `tidligere` bruker før den slår opp noe som helst.
+        let uten_id: Vec<Paragraph> = (0..(MAKS_OPPSLAG + 1))
+            .map(|i| p(&format!("Avsnitt {i}."), "X"))
+            .collect();
+        assert!(!avkortet(&uten_id));
     }
 
     // ---- ytelse ---------------------------------------------------------

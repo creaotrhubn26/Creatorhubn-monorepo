@@ -431,6 +431,7 @@ export default function App() {
           reread: fersk || !f ? [] : f.reread,
           earlier: fersk || !f ? [] : f.earlier,
           uleste: f?.uleste ?? 0,
+          avkortet: fersk || !f ? false : f.avkortet,
           kall: f?.kall ?? 0,
         };
       });

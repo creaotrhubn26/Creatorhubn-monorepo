@@ -270,6 +270,11 @@ pub struct Understanding {
     /// avsnitt appen ikke klarte å lese ut nøyaktig ut som et avsnitt appen
     /// leste og fant ingenting i.
     pub uleste: usize,
+    /// Sant når notatet har flere avsnitt enn [`crate::minne::MAKS_OPPSLAG`],
+    /// slik at «Tidligere om dette» bare er sjekket for noen av dem. Uten
+    /// denne var avkortingen stum: brukeren fikk aldri vite at resten av et
+    /// langt notat ikke ble sjekket mot det hun har skrevet før.
+    pub avkortet: bool,
     /// Hvor mange ganger appen har sendt tekst ut av maskinen siden den
     /// startet. Se [`KALL`].
     pub kall: u64,
@@ -292,6 +297,7 @@ impl Understanding {
             earlier: Vec::new(),
             lesning: 0,
             uleste: 0,
+            avkortet: false,
             kall: KALL.load(std::sync::atomic::Ordering::Relaxed),
         }
     }
@@ -304,6 +310,7 @@ impl Understanding {
             earlier: Vec::new(),
             lesning: 0,
             uleste: 0,
+            avkortet: false,
             kall: KALL.load(std::sync::atomic::Ordering::Relaxed),
         }
     }

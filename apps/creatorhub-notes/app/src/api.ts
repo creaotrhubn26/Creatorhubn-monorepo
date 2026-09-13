@@ -139,6 +139,9 @@ export type Understanding = {
    *  dem, eller pakken de lå i feilet. Uten tallet ser et avsnitt appen ikke
    *  klarte å lese ut nøyaktig ut som et avsnitt uten innhold. */
   uleste: number;
+  /** Sant når notatet har flere avsnitt enn det «Tidligere om dette» rekker å
+   *  sjekke i én lagring — resten er ikke sjekket denne gangen. */
+  avkortet: boolean;
   /** Hvor mange ganger appen har sendt tekst ut av maskinen siden den startet. */
   kall: number;
 };

@@ -776,6 +776,7 @@ fn understand_note(
     // dem, og brukeren merker ingenting annet.
     let mut lest_på_nytt = Vec::new();
     let mut tidligere = Vec::new();
+    let mut avkortet = false;
     if let Some(conn) = &base {
         let _ = minne::lagre(conn, &tittel, &avsnitt, skrevet);
         // Kryssnotat-minnet koster egne modellkall. Er lesningen forlatt, er
@@ -793,6 +794,7 @@ fn understand_note(
                     paragraphs: Vec::new(),
                 },
             );
+            avkortet = minne::avkortet(&avsnitt);
             tidligere =
                 minne::tidligere(conn, &avsnitt, synlig.map(|s| (s[0], s[1])), &cli)
                     .unwrap_or_default();
@@ -822,6 +824,7 @@ fn understand_note(
 
     let mut ut = understand::Understanding::on(avsnitt, lest_på_nytt);
     ut.earlier = tidligere;
+    ut.avkortet = avkortet;
     ut.lesning = min;
     ut.uleste = uleste;
     Ok(ut)
