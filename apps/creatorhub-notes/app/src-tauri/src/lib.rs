@@ -320,9 +320,10 @@ fn strip_date_prefix(stem: &str) -> &str {
 /// Gjør en sti fra frontend om til en absolutt sti *inne i* notatmappen, eller
 /// avviser den. Tillitsgrensen: alt annet her stoler på at stien er trygg.
 ///
-/// Kanonisering skjer på mappen, ikke på fila, fordi fila kan være i ferd med
-/// å bli opprettet. Symlenker ut av mappen fanges likevel, siden en symlenket
-/// undermappe kanoniseres til målet sitt.
+/// Kanoniseringen skjer i to trinn. Mappen først, fordi fila kan være i ferd
+/// med å bli opprettet og da ikke kan kanoniseres — det fanger en symlenket
+/// undermappe. Så fila selv, når den finnes: en symlenket `.md`-fil ble
+/// tidligere lest, indeksert, og trunkert av [`write_note`].
 fn resolve_in(dir: &Path, rel: &str) -> Result<PathBuf, String> {
     if rel.is_empty() {
         return Err("Notatet har ingen sti.".into());
@@ -343,6 +344,19 @@ fn resolve_in(dir: &Path, rel: &str) -> Result<PathBuf, String> {
     let full = parent.join(name);
     if !full.starts_with(&base) {
         return Err(format!("«{rel}» ligger utenfor notatmappen."));
+    }
+    // Fila si egen symlenke. Kanoniseringen over tar bare *forelderen*, og
+    // fanget derfor bare en symlenket mappe. En `.md`-fil som peker ut av
+    // notatmappen — `notater/x.md -> ~/.ssh/config` — ble lest av
+    // `read_note`, indeksert inn i søkebasen, og verst av alt: trunkert av
+    // `write_note` neste gang autolagringen gikk.
+    //
+    // `canonicalize` feiler på en fil som ikke finnes ennå; det er
+    // `create_note` sitt tilfelle, og da er det ingen lenke å følge.
+    if let Ok(ekte) = full.canonicalize() {
+        if !ekte.starts_with(&base) {
+            return Err(format!("«{rel}» peker ut av notatmappen."));
+        }
     }
     if full.extension().and_then(|e| e.to_str()) != Some("md") {
         return Err(format!("«{rel}» er ikke et notat. Appen åpner bare .md-filer."));
@@ -1364,6 +1378,19 @@ mod tests {
         let utenfor = tempfile::tempdir().unwrap();
         std::os::unix::fs::symlink(utenfor.path(), tmp.path().join("lenke")).unwrap();
         assert!(resolve_in(tmp.path(), "lenke/ond.md").is_err());
+
+        // Og fila si egen symlenke. Den ble ikke fanget: kanoniseringen tok
+        // bare forelderen. `read_note` leste målet, indekseringen tok det inn
+        // i søkebasen, og `write_note` trunkerte det.
+        let hemmelig = utenfor.path().join("config");
+        std::fs::write(&hemmelig, "en fil som ikke er et notat").unwrap();
+        std::os::unix::fs::symlink(&hemmelig, tmp.path().join("x.md")).unwrap();
+        assert!(resolve_in(tmp.path(), "x.md").is_err(), "en symlenket .md rømmer mappen");
+
+        // Et helt vanlig notat, og et som ennå ikke finnes, skal fortsatt gå.
+        std::fs::write(tmp.path().join("ekte.md"), "# Notat\n").unwrap();
+        assert!(resolve_in(tmp.path(), "ekte.md").is_ok());
+        assert!(resolve_in(tmp.path(), "finnes-ikke-ennå.md").is_ok());
     }
 
     #[test]
