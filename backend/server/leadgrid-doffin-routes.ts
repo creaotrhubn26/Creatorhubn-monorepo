@@ -781,7 +781,7 @@ export function registerLeadgridDoffinRoutes(deps: {
          )
          UPDATE leadgrid_anbud_project_profiles
             SET status = 'active',
-                selected_watch_keys = $6::jsonb,
+                selected_watch_keys = $8::jsonb,
                 confirmed_by = $3,
                 confirmed_at = COALESCE(confirmed_at, NOW()),
                 updated_at = NOW()
@@ -792,8 +792,9 @@ export function registerLeadgridDoffinRoutes(deps: {
           session.userId,
           JSON.stringify(selected),
           stored.template_version,
-          JSON.stringify(selectedKeys),
+          selectedKeys,
           suggestionKeys,
+          JSON.stringify(selectedKeys),
         ],
       );
       const profile = await loadStoredAnbudProfile(pool, scope);

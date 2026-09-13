@@ -148,6 +148,11 @@ describe("Leadgrid Anbud project scope", () => {
       if (sql.includes("WITH selected AS")) {
         expect(sql).toContain("ON CONFLICT (organization_id, project_id, template_key)");
         expect(sql).toContain("DELETE FROM leadgrid_doffin_watches");
+        expect(sql).toContain("template_key = ANY($6::text[])");
+        expect(sql).toContain("selected_watch_keys = $8::jsonb");
+        expect(values?.[5]).toEqual(["tidum.time_hr_software"]);
+        expect(values?.[6]).toEqual(["tidum.time_hr_software"]);
+        expect(values?.[7]).toBe('["tidum.time_hr_software"]');
         profileStatus = "active";
         return { rows: [], rowCount: 1 };
       }
