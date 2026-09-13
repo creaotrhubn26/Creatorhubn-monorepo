@@ -65,7 +65,14 @@ create index if not exists rettelser_sti on rettelser(sti);
 "#;
 
 pub fn sørg_for_tabell(conn: &Connection) -> Result<()> {
-    conn.execute_batch(SKJEMA)
+    conn.execute_batch(SKJEMA)?;
+    // Var basen nede da notatet ble lest, fikk alle avsnittene id 0, og en
+    // rettelse gjort da havnet på id 0. Den vises aldri i panelet — `aktive`
+    // joiner mot `avsnitt`, og der finnes ingen id 0 — men den er ekte nok
+    // til å styre hver framtidige prompt. Rader som ikke kan tilhøre et
+    // avsnitt ryddes bort hver gang basen åpnes.
+    conn.execute("delete from rettelser where avsnitt_id <= 0", [])?;
+    Ok(())
 }
 
 pub(crate) fn nå() -> i64 {
@@ -95,11 +102,29 @@ pub fn aktive(conn: &Connection, sti: &str) -> Result<HashMap<i64, Rettelse>> {
 }
 
 /// Lagrer rettelsen, eller fjerner den om `plass` er `None`.
+///
+/// En rettelse uten et gyldig avsnitt avvises. Var basen nede da notatet ble
+/// lest, er alle id-er 0, og en rad på id 0 er usynlig i panelet, men styrer
+/// likevel hver framtidige prompt. Bedre å si ifra med en gang enn å lagre
+/// noe brukeren aldri får se og aldri får slettet.
 pub fn lagre(conn: &Connection, r: &Retting) -> Result<()> {
     let Some(plass) = r.plass.as_deref() else {
+        // Å fjerne noe krever ingen kontroll: det er nettopp radene som ikke
+        // burde vært der man vil kunne bli kvitt.
         conn.execute("delete from rettelser where avsnitt_id = ?1", [r.avsnitt_id])?;
         return Ok(());
     };
+    let kjent: i64 = conn.query_row(
+        "select count(*) from avsnitt where id = ?1",
+        [r.avsnitt_id],
+        |rad| rad.get(0),
+    )?;
+    if kjent == 0 {
+        return Err(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_MISUSE),
+            Some(format!("rettelse uten gyldig avsnitt (id {})", r.avsnitt_id)),
+        ));
+    }
     conn.execute(
         "insert into rettelser \
            (avsnitt_id, sti, tekst, lest_type, lest_handling, lest_kortform, plass, kortform, tidspunkt, foreldet) \
@@ -220,6 +245,49 @@ mod tests {
             plass: plass.map(str::to_string),
             kortform: Some(kortform.into()),
         }
+    }
+
+    /// Var basen nede ved lesning, er alle id-er 0. Raden ville stått usynlig
+    /// i basen for alltid og styrt hver framtidige prompt.
+    #[test]
+    fn rettelse_uten_gyldig_avsnitt_avvises() {
+        let mut conn = base();
+        assert!(
+            lagre(&conn, &retting(0, "En tanke.", Some("uavklart"), "Noe")).is_err(),
+            "id 0 er ikke et avsnitt"
+        );
+        assert!(
+            lagre(&conn, &retting(9999, "En tanke.", Some("uavklart"), "Noe")).is_err(),
+            "og en id som ikke finnes er det heller ikke"
+        );
+        assert_eq!(minne::eksempler(&conn, 6).unwrap(), Vec::new(), "og ingenting lærer av dem");
+
+        // Et ekte avsnitt går fortsatt gjennom.
+        let ut = les(&mut conn, "notat.md", "En tanke som står her.\n");
+        lagre(&conn, &retting(ut[0].id, &ut[0].text, Some("uavklart"), "Noe")).unwrap();
+        assert_eq!(minne::eksempler(&conn, 6).unwrap().len(), 1);
+    }
+
+    /// Rader fra før vakten fantes skal ikke bli liggende. `aktive` skjulte
+    /// dem, `eksempler` gjorde det ikke.
+    #[test]
+    fn gamle_nullrader_ryddes_bort_naar_basen_aapnes() {
+        let conn = base();
+        conn.execute(
+            "insert into rettelser (avsnitt_id, sti, tekst, lest_type, lest_handling, \
+               lest_kortform, plass, kortform, tidspunkt, foreldet) \
+             values (0, 'notat.md', 'En tanke.', 'beslutning', 'bygg', 'Systemets', \
+               'uavklart', 'Hennes', 1757000000, 0)",
+            [],
+        )
+        .unwrap();
+        let antall = |conn: &Connection| -> i64 {
+            conn.query_row("select count(*) from rettelser", [], |r| r.get(0)).unwrap()
+        };
+        assert_eq!(antall(&conn), 1, "raden ligger der");
+
+        sørg_for_tabell(&conn).unwrap();
+        assert_eq!(antall(&conn), 0, "og skal være borte etter en åpning");
     }
 
     /// Det som gjør rettelsen verdt å lagre: den skal fortsatt gjelde etter at

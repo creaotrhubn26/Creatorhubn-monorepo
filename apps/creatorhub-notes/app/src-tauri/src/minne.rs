@@ -686,10 +686,16 @@ fn som_svar(plass: &str, kortform: &str) -> Option<String> {
 pub const ANTALL_EKSEMPLER: usize = 6;
 
 /// De siste rettelsene, nyeste først.
+///
+/// Joiner mot `avsnitt`, slik [`crate::rettelser::aktive`] gjør. Uten joinen
+/// kunne en rad panelet aldri viste — en rettelse lagret på `avsnitt_id = 0`
+/// mens basen var nede — styre hver framtidige prompt, uten at brukeren hadde
+/// noe sted å se den eller ta den bort.
 pub fn eksempler(conn: &Connection, antall: usize) -> Result<Vec<Eksempel>> {
     let mut q = conn.prepare(
-        "select tekst, lest_type, lest_handling, lest_kortform, plass, kortform \
-         from rettelser where foreldet = 0 order by tidspunkt desc limit ?1",
+        "select r.tekst, r.lest_type, r.lest_handling, r.lest_kortform, r.plass, r.kortform \
+         from rettelser r join avsnitt a on a.id = r.avsnitt_id \
+         where r.foreldet = 0 order by r.tidspunkt desc limit ?1",
     )?;
     let rader = q.query_map([antall as i64], |r| {
         Ok((
