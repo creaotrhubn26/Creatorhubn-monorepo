@@ -337,8 +337,9 @@ pub fn skriv(innlegg: &[Innlegg]) -> String {
 
 // ---- toppfeltet: brukerens overstyring ---------------------------------
 
-/// `kilde`-feltet i toppfeltblokka, om det står der.
-pub fn kilde(doc: &str) -> Option<String> {
+/// Ett felt fra toppfeltblokka, om det står der. Tom verdi teller som at det
+/// ikke står der.
+pub fn felt(doc: &str, navn: &str) -> Option<String> {
     let slutt = crate::understand::frontmatter_lines(doc);
     if slutt == 0 {
         return None;
@@ -346,9 +347,14 @@ pub fn kilde(doc: &str) -> Option<String> {
     doc.split('\n')
         .take(slutt)
         .filter_map(|l| l.split_once(':'))
-        .find(|(navn, _)| navn.trim() == "kilde")
+        .find(|(k, _)| k.trim() == navn)
         .map(|(_, verdi)| verdi.trim().to_string())
         .filter(|v| !v.is_empty())
+}
+
+/// `kilde`-feltet i toppfeltblokka, om det står der.
+pub fn kilde(doc: &str) -> Option<String> {
+    felt(doc, "kilde")
 }
 
 /// Skal denne teksten leses som en samtale? Brukerens valg vinner over
@@ -361,19 +367,19 @@ pub fn er_samtale(doc: &str) -> bool {
     }
 }
 
-/// Setter `kilde` i toppfeltet, og lager blokka om notatet ikke har en.
+/// Setter ett felt i toppfeltet, og lager blokka om notatet ikke har en.
 /// Returnerer hele notatet slik det skal stå på disk.
-pub fn sett_kilde(doc: &str, verdi: &str) -> String {
+pub fn sett_felt(doc: &str, navn: &str, verdi: &str) -> String {
     let slutt = crate::understand::frontmatter_lines(doc);
     let mut linjer: Vec<String> = doc.split('\n').map(str::to_string).collect();
     if slutt == 0 {
-        return format!("---\nkilde: {verdi}\n---\n\n{doc}");
+        return format!("---\n{navn}: {verdi}\n---\n\n{doc}");
     }
-    let ny = format!("kilde: {verdi}");
+    let ny = format!("{navn}: {verdi}");
     match (0..slutt).find(|i| {
         linjer[*i]
             .split_once(':')
-            .map(|(navn, _)| navn.trim() == "kilde")
+            .map(|(k, _)| k.trim() == navn)
             .unwrap_or(false)
     }) {
         Some(i) => linjer[i] = ny,
@@ -381,6 +387,11 @@ pub fn sett_kilde(doc: &str, verdi: &str) -> String {
         None => linjer.insert(slutt - 1, ny),
     }
     linjer.join("\n")
+}
+
+/// Setter `kilde` i toppfeltet. Se [`sett_felt`].
+pub fn sett_kilde(doc: &str, verdi: &str) -> String {
+    sett_felt(doc, "kilde", verdi)
 }
 
 /// Hvordan appen leser notatet nå, slik grensesnittet kan vise valget i

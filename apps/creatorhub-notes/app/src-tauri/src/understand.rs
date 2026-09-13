@@ -10,9 +10,18 @@
 //! Alt som forlater prosessen ligger i [`Cli`]. Resten — oppdeling i avsnitt,
 //! tolkning av svaret, hukommelsen — er ren logikk og testes uten å kalle noe.
 //!
-//! **Testbackend.** Klassifiseringen kjøres gjennom `claude`-kommandolinja,
-//! som forutsetter at Claude Code er installert og innlogget på maskinen.
-//! Ingen API-nøkkel, men heller ingenting som kan sendes videre til andre.
+//! **Hvor teksten går.** Klassifiseringen kjøres gjennom
+//! `claude`-kommandolinja, som forutsetter at Claude Code er installert og
+//! innlogget på maskinen. Ingen API-nøkkel — men avsnittene fra notatet er
+//! innholdet i prompten, og `claude` er ikke et lokalt program: det sender
+//! prompten til Anthropic, og skriver samtalen til
+//! `~/.claude/projects/<mappe>/*.jsonl` på maskinen. Filene blir liggende til
+//! noen sletter dem, og appen sletter dem ikke.
+//!
+//! Derfor er lesningen noe brukeren slår på selv (`lesning.txt` ved siden av
+//! basen, av som standard), og et notat med `privat: ja` i toppfeltet sendes
+//! aldri, uansett hva den globale bryteren står på.
+//!
 //! Ett kall tar rundt tretten sekunder, det meste oppstart, og det er grunnen
 //! til at hukommelsen og bunkingen ikke er valgfrie.
 
@@ -213,9 +222,16 @@ pub struct Paragraph {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Understanding {
-    /// Falsk når det ikke finnes noen nøkkel i miljøet. Da viser panelet én
-    /// rolig linje, og resten av appen merker ingenting.
+    /// Falsk når lesningen ikke ga noe: den er slått av, notatet er privat,
+    /// eller kallet feilet. [`Understanding::grunn`] sier hvilken av delene.
     pub on: bool,
+    /// Hvorfor det ikke er noe å vise. [`AVSLÅTT`], [`PRIVAT`], eller
+    /// feilteksten fra kallet. `None` når `on` er sann.
+    ///
+    /// Uten denne så «ingenting er lest ennå», «ingenting ble funnet» og
+    /// «lesningen feilet» like ut i panelet, og et notat fullt av beslutninger
+    /// fikk «Ingenting er bestemt ennå» fordi `claude` ikke var innlogget.
+    pub grunn: Option<String>,
     pub paragraphs: Vec<Paragraph>,
     /// Rettelser som gjaldt avsnitt som siden er skrevet om. Panelet sier
     /// ifra én gang, med brukerens egne ord, at linja er lest på nytt.
@@ -228,10 +244,18 @@ pub struct Understanding {
     pub lesning: u64,
 }
 
+/// Lesningen er slått av. Brukeren har ikke sagt ja, eller har sagt nei.
+pub const AVSLÅTT: &str = "avslått";
+/// Notatet har `privat: ja` i toppfeltet og sendes aldri noe sted.
+pub const PRIVAT: &str = "privat";
+
 impl Understanding {
-    pub fn off() -> Self {
+    /// Ingen lesning, og grunnen sies. `grunn` er [`AVSLÅTT`], [`PRIVAT`],
+    /// eller feilteksten fra kallet.
+    pub fn av(grunn: &str) -> Self {
         Understanding {
             on: false,
+            grunn: Some(grunn.to_string()),
             paragraphs: Vec::new(),
             reread: Vec::new(),
             earlier: Vec::new(),
@@ -239,7 +263,14 @@ impl Understanding {
         }
     }
     pub fn on(paragraphs: Vec<Paragraph>, reread: Vec<String>) -> Self {
-        Understanding { on: true, paragraphs, reread, earlier: Vec::new(), lesning: 0 }
+        Understanding {
+            on: true,
+            grunn: None,
+            paragraphs,
+            reread,
+            earlier: Vec::new(),
+            lesning: 0,
+        }
     }
 }
 
@@ -639,16 +670,35 @@ pub fn prompt(texts: &[String], eksempler: &[crate::minne::Eksempel], samtale: b
 /// Ett kall til kommandolinja. Ingen verktøy, ingen arbeidskatalog med et
 /// git-repo i: kommandoen skal lese en prompt og skrive tekst, ingenting
 /// annet.
+///
+/// **Prompten går på stdin, ikke som argument.** Et argument står i `argv`,
+/// og `argv` er lesbart for enhver prosess på maskinen via `ps` så lenge
+/// kallet varer. Prompten inneholder avsnittene fra notatet ordrett. Stdin er
+/// ikke synlig i prosesslista.
+///
+/// Det gjør ikke kallet privat — se modulhodet: `claude` skriver samtalen til
+/// `~/.claude/projects/.../*.jsonl`, og den blir liggende. Det er derfor
+/// lesningen er noe brukeren må slå på selv.
 pub fn kjør(model: &str, prompt: &str) -> Result<String, String> {
     let mut barn = std::process::Command::new(binary())
         .args(["-p", "--model", model, "--output-format", "text"])
-        .arg(prompt)
         .current_dir(std::env::temp_dir())
-        .stdin(std::process::Stdio::null())
+        .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|e| format!("startet ikke: {e}"))?;
+
+    // Egen tråd: en stor prompt fyller rørbufferet, og skriver vi den i denne
+    // tråden mens barnet venter på at vi skal lese svaret, står begge i stå.
+    let mut inn = barn.stdin.take().ok_or("ingen inndata")?;
+    let tekst = prompt.to_string();
+    std::thread::spawn(move || {
+        use std::io::Write;
+        let _ = inn.write_all(tekst.as_bytes());
+        // `inn` faller her, og det er lukkingen som forteller `claude` at
+        // prompten er hel.
+    });
 
     let mut ut = barn.stdout.take().ok_or("ingen utdata")?;
     let (tx, rx) = std::sync::mpsc::channel();
@@ -715,6 +765,55 @@ impl crate::minne::Dommer for Cli {
         let stor = kjør(STOR_MODEL, &crate::minne::relasjonsprompt(&delmengde))?;
         let dom = crate::minne::parse_forhold(&stor, delmengde.len());
         Ok(crate::minne::slå_sammen(par.len(), &koblet, &dom))
+    }
+}
+
+/// Ett kall gjennom en ekte prosess, med `claude` byttet ut med et lite skript
+/// som skriver ned sin egen `argv` og sitt eget stdin. Det er den eneste måten
+/// å vise at prompten ikke lenger står i prosesslista.
+#[cfg(test)]
+mod prosesskall {
+    use super::*;
+
+    /// Lager en kjørbar stubb som skriver `argv` til `argv.txt`, stdin til
+    /// `stdin.txt`, og svarer med `svar`.
+    fn stubb(mappe: &std::path::Path, svar: &str) -> std::path::PathBuf {
+        let sti = mappe.join("claude");
+        let skript = format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > {m}/argv.txt\ncat > {m}/stdin.txt\nprintf '%s' '{svar}'\n",
+            m = mappe.display(),
+            svar = svar,
+        );
+        std::fs::write(&sti, skript).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&sti, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        sti
+    }
+
+    /// Prompten inneholder notatteksten ordrett. Sto den i `argv`, kunne
+    /// enhver prosess på maskinen lese den med `ps` mens kallet varte.
+    #[test]
+    fn prompten_staar_ikke_i_prosesslista() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sti = stubb(tmp.path(), "1|beslutning|bygg|Noe");
+        std::env::set_var("CREATORHUB_CLAUDE_BIN", &sti);
+
+        let hemmelig = "Vi sier opp Marius i november, men han vet det ikke ennå.";
+        let svar = kjør(MODEL, &format!("Les dette:\n\n{hemmelig}")).unwrap();
+        assert_eq!(svar, "1|beslutning|bygg|Noe");
+
+        let argv = std::fs::read_to_string(tmp.path().join("argv.txt")).unwrap();
+        assert!(
+            !argv.contains(hemmelig),
+            "notatteksten sto i argv, og dermed i `ps`:\n{argv}"
+        );
+        let inn = std::fs::read_to_string(tmp.path().join("stdin.txt")).unwrap();
+        assert!(inn.contains(hemmelig), "prompten skal ha gått på stdin");
+
+        std::env::remove_var("CREATORHUB_CLAUDE_BIN");
     }
 }
 
@@ -863,8 +962,11 @@ mod tests {
         assert!(les("En tanke her.", &Nekter, &mut memo).is_err());
         assert!(memo.is_empty(), "et mislykket kall skal ikke etterlate seg noe");
 
-        let av = Understanding::off();
+        // Grunnen bæres videre: panelet skal kunne si «lesningen feilet» i
+        // stedet for «ingenting er bestemt ennå».
+        let av = Understanding::av("startet ikke");
         assert!(!av.on);
+        assert_eq!(av.grunn.as_deref(), Some("startet ikke"));
         assert!(av.paragraphs.is_empty());
     }
 

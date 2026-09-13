@@ -61,16 +61,34 @@ export type Tidligere = {
   tidspunkt: number;
 };
 
-/** `on: false` betyr at lesningen ikke er tilgjengelig nå. `reread` er
+/** Lesningen er slått av. Standardverdien: teksten forlater maskinen, og det
+ *  er ikke noe å anta samtykke til. */
+export const AVSLATT = "avslått";
+/** Notatet har `privat: ja` i toppfeltet og sendes aldri noe sted. */
+export const PRIVAT = "privat";
+
+/** `on: false` betyr at lesningen ikke ga noe, og `grunn` sier hvorfor:
+ *  [`AVSLATT`], [`PRIVAT`], eller feilteksten fra kallet. `reread` er
  *  rettelser som gjaldt avsnitt brukeren siden har skrevet om. `lesning` er
  *  løpenummeret for lesningen, som skiller delresultater fra hverandre. */
 export type Understanding = {
   on: boolean;
+  grunn: string | null;
   paragraphs: Paragraph[];
   reread: string[];
   earlier: Tidligere[];
   lesning: number;
 };
+
+/** Brukerens svar på om «Hva vi har forstått» får lese notatene. Av som
+ *  standard: lesningen sender avsnittene ut av maskinen og legger igjen en
+ *  kopi på disk. Svaret leses av panelet gjennom `Understanding.grunn`. */
+export const settLesning = (på: boolean) => invoke<void>("sett_lesning", { på });
+
+/** Merker notatet som noe som aldri sendes noe sted. Svaret er hele notatet
+ *  med `privat` satt i toppfeltet, så valget står i fila. */
+export const settPrivat = (innhold: string, privat: boolean) =>
+  invoke<string>("sett_privat", { innhold, privat });
 
 /** `synlig` er `[fra, til]` i teksten — området editoren viser. Det som står
  *  der leses først, slik at en lang kilde fyller panelet ovenfra og nedover i

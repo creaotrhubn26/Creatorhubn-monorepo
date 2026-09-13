@@ -14,6 +14,8 @@ import {
   rettAvsnitt,
   samtaleform,
   searchNotes,
+  settLesning,
+  settPrivat,
   settSamtale,
   sporNotater,
   understandNote,
@@ -136,6 +138,11 @@ export default function App() {
    *  disken, og alt som leser den som «teksten nå» tar feil. */
   const buffer = useRef(lagBuffer(writeNote)).current;
   const timer = useRef<number | undefined>(undefined);
+  // Toppfeltene, lest av den ene kilden til gjeldende tekst. `doc` ville vist
+  // dem slik de var da notatet ble åpnet.
+  const topp = toppfelt(buffer.nå());
+  /** Notatet er merket `privat: ja` og sendes aldri noe sted. */
+  const privat = topp?.felt.some(([k, v]) => k === "privat" && v === "ja") ?? false;
   /** Panelet slik det er nå, uten å binde lagringen til det. */
   const panelPå = useRef(panel);
   panelPå.current = panel;
@@ -199,6 +206,7 @@ export default function App() {
         const før = fersk || !f ? [] : f.paragraphs;
         return {
           on: true,
+          grunn: null,
           lesning: d.lesning,
           paragraphs: [...før, ...d.paragraphs].sort((a, b) => a.start - b.start),
           reread: fersk || !f ? [] : f.reread,
@@ -352,6 +360,35 @@ export default function App() {
     }
   }, [buffer, path, samtale, lagre]);
 
+  /** «Aldri les dette notatet» / «Les dette notatet». Som samtalevalget:
+   *  valget skrives i toppfeltet, så det står i fila og gjelder neste gang. */
+  const byttPrivat = useCallback(async () => {
+    if (!path) return;
+    try {
+      const ny = await settPrivat(buffer.nå(), !privat);
+      buffer.endret(ny);
+      setDoc(ny);
+      await lagre();
+    } catch (e) {
+      setFeil(String(e));
+    }
+  }, [buffer, path, privat, lagre]);
+
+  /** Brukerens svar på om notatene får leses, begge veier. Panelet svarer med
+   *  en gang: på gir lesningen, av gir spørsmålet tilbake. */
+  const settLesningPå = useCallback(
+    async (på: boolean) => {
+      try {
+        await settLesning(på);
+        setForståelse(null);
+        if (path) void les(path, buffer.nå());
+      } catch (e) {
+        setFeil(String(e));
+      }
+    },
+    [buffer, path, les],
+  );
+
   const nyttNotat = useCallback(async () => {
     await lagre();
     try {
@@ -480,9 +517,6 @@ export default function App() {
   }, [nyttNotat]);
 
   const tomtArkiv = notes.length === 0;
-  // Samme kilde som alt annet. `doc` ville vist toppfeltene slik de var da
-  // notatet ble åpnet.
-  const topp = path ? toppfelt(buffer.nå()) : null;
 
   return (
     <div className="skall">
@@ -634,6 +668,9 @@ export default function App() {
                   <button onClick={() => void byttSamtale()}>
                     {samtale?.er ? "Ikke en samtale" : "Dette er en samtale"}
                   </button>
+                  <button onClick={() => void byttPrivat()} aria-pressed={privat}>
+                    {privat ? "Kan leses" : "Aldri les dette notatet"}
+                  </button>
                   {topp && (
                     <button onClick={() => setDetaljer(!detaljer)}>
                       {detaljer ? "Skjul detaljer" : "Vis detaljer"}
@@ -699,6 +736,8 @@ export default function App() {
                 setForståelse((f) => (f ? { ...f, reread: [] } : f))
               }
               onÅpne={(annen, avsnitt) => void åpne(annen, false, avsnitt)}
+              onSlåPå={() => void settLesningPå(true)}
+              onSlåAv={() => void settLesningPå(false)}
             />
           ) : (
             // Ingen notat åpent: spalten holder plassen sin, og sier ingenting.

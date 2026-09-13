@@ -1,8 +1,15 @@
 //! Notater — skriveflate over `creatorhub_notes_indexer`.
 //!
 //! Appen deler notatmappe og database med kommandolinjeverktøyet `notat`, og
-//! kaller indekseren som bibliotek. Ingen binær startes, ingen nettverkskall
-//! gjøres: alt her er disk, git og SQLite.
+//! kaller indekseren som bibliotek. Skriving, lesing, søk og indeksering er
+//! disk, git og SQLite, og forlater aldri maskinen.
+//!
+//! **Ett unntak: «Hva vi har forstått».** Slår brukeren den på, sendes
+//! avsnittene i notatet ordrett til `claude`-kommandolinja, som sender dem
+//! videre til Anthropic og skriver samtalen til
+//! `~/.claude/projects/<mappe>/*.jsonl`. Filene blir liggende. Derfor er
+//! lesningen av som standard, og et notat med `privat: ja` i toppfeltet sendes
+//! aldri — se [`understand`] og [`lesning_på`].
 
 mod migrering;
 mod minne;
@@ -81,6 +88,67 @@ fn home() -> Result<PathBuf, String> {
 /// Stien utledes ett sted, i indekserens `sti`-modul.
 fn db_path() -> PathBuf {
     sti::standard_db(sti::Lager::Notater)
+}
+
+/// Brukerens svar på om notatene får leses. Ligger ved siden av basen, ikke i
+/// notatmappen: det er en innstilling for maskinen, og har ingenting i
+/// notatene å gjøre.
+fn samtykkefil() -> PathBuf {
+    db_path().with_file_name("lesning.txt")
+}
+
+/// Får appen sende notatteksten til `claude`?
+///
+/// **Av som standard.** Lesningen sender avsnittene ordrett ut av maskinen og
+/// legger igjen en kopi i `~/.claude/projects`. Det er ikke noe å anta
+/// samtykke til, og «Skjul forståelse» er en visningsbryter — den sier
+/// ingenting om hva som sendes. Brukeren blir spurt i panelet, med hva som
+/// skjer, og svarer selv.
+fn lesning_på() -> bool {
+    std::fs::read_to_string(samtykkefil()).map(|s| s.trim() == "på").unwrap_or(false)
+}
+
+#[tauri::command]
+fn sett_lesning(på: bool) -> Result<(), String> {
+    let fil = samtykkefil();
+    if let Some(mappe) = fil.parent() {
+        std::fs::create_dir_all(mappe).map_err(|e| format!("kunne ikke lagre valget: {e}"))?;
+    }
+    std::fs::write(&fil, if på { "på" } else { "av" })
+        .map_err(|e| format!("kunne ikke lagre valget: {e}"))
+}
+
+/// Skal dette ene notatet aldri sendes noe sted? `privat: ja` i toppfeltet.
+/// Notatets eget svar vinner over den globale bryteren, aldri motsatt.
+fn er_privat(innhold: &str) -> bool {
+    matches!(samtale::felt(innhold, "privat").as_deref(), Some("ja"))
+}
+
+/// Får dette notatet leses? `Some(...)` er svaret panelet skal få i stedet for
+/// en lesning, og betyr at ingenting sendes noe sted.
+///
+/// Notatets eget svar først: et notat merket privat sendes aldri, uansett hva
+/// den globale bryteren står på. `lesning` er skilt ut fra [`lesning_på`] så
+/// porten kan testes uten å røre filsystemet.
+fn samtykke_med(innhold: &str, lesning: bool) -> Option<understand::Understanding> {
+    if er_privat(innhold) {
+        return Some(understand::Understanding::av(understand::PRIVAT));
+    }
+    if !lesning {
+        return Some(understand::Understanding::av(understand::AVSLÅTT));
+    }
+    None
+}
+
+fn samtykke(innhold: &str) -> Option<understand::Understanding> {
+    samtykke_med(innhold, lesning_på())
+}
+
+/// Setter `privat` i toppfeltet, og svarer med hele notatet slik det skal stå
+/// på disk — samme form som [`sett_samtale`], så valget står i fila.
+#[tauri::command]
+fn sett_privat(innhold: String, privat: bool) -> String {
+    samtale::sett_felt(&innhold, "privat", if privat { "ja" } else { "nei" })
 }
 
 fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
@@ -413,6 +481,11 @@ fn understand_note(
     let min = LESNING.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
     let gjelder_fortsatt = || LESNING.load(std::sync::atomic::Ordering::SeqCst) == min;
 
+    // Før noe leses, deles eller skrives: får vi lov?
+    if let Some(svar) = samtykke(&content) {
+        return Ok(svar);
+    }
+
     let mut base = base().ok();
     let biter = understand::split(&content);
 
@@ -493,8 +566,12 @@ fn understand_note(
         )
     };
 
-    let Ok(mut avsnitt) = lest else {
-        return Ok(understand::Understanding::off());
+    let mut avsnitt = match lest {
+        Ok(a) => a,
+        // Kallet feilet — `claude` mangler, er ikke innlogget, eller svarte
+        // ikke i tide. Feilteksten bæres til panelet, slik at «lesningen
+        // feilet» ikke ser ut som «ingenting ble funnet».
+        Err(e) => return Ok(understand::Understanding::av(&e)),
     };
     understand::sett_ider(&mut avsnitt, &biter, ider.as_deref().unwrap_or(&[]));
     sett_avsendere(&mut avsnitt, er_samtale);
@@ -684,7 +761,9 @@ pub fn run() {
             finn_avsnitt,
             importer_samtale,
             samtaleform,
-            sett_samtale
+            sett_samtale,
+            sett_lesning,
+            sett_privat
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -744,6 +823,50 @@ mod tests {
             .filter(|n| n.ends_with(".tmp"))
             .collect();
         assert!(rester.is_empty(), "temp-filer ble liggende: {rester:?}");
+    }
+
+    /// Porten alt går gjennom. Et notat merket privat sendes aldri, og uten
+    /// et ja fra brukeren sendes ingenting i det hele tatt.
+    #[test]
+    fn et_notat_merket_privat_sendes_aldri() {
+        let vanlig = "---\nid: 2026-09-13-notat\n---\n\n# Notat\n\nEn tanke.\n";
+        let hemmelig = "---\nid: 2026-09-13-notat\nprivat: ja\n---\n\n# Notat\n\nEn tanke.\n";
+
+        // Lesningen er på, og brukeren har sagt ja.
+        assert!(samtykke_med(vanlig, true).is_none(), "et vanlig notat skal leses");
+        assert_eq!(
+            samtykke_med(hemmelig, true).unwrap().grunn.as_deref(),
+            Some(understand::PRIVAT),
+            "notatets eget svar vinner over den globale bryteren"
+        );
+
+        // Lesningen er av — som den er til brukeren sier noe annet.
+        assert_eq!(
+            samtykke_med(vanlig, false).unwrap().grunn.as_deref(),
+            Some(understand::AVSLÅTT)
+        );
+        assert_eq!(
+            samtykke_med(hemmelig, false).unwrap().grunn.as_deref(),
+            Some(understand::PRIVAT)
+        );
+    }
+
+    /// Valget skal stå i fila, og kunne tas tilbake.
+    #[test]
+    fn privatvalget_skrives_i_toppfeltet_og_kan_angres() {
+        let doc = "---\nid: 2026-09-13-notat\n---\n\n# Notat\n\nEn tanke.\n";
+        let merket = sett_privat(doc.to_string(), true);
+        assert!(merket.contains("privat: ja"));
+        assert!(er_privat(&merket));
+
+        let angret = sett_privat(merket, false);
+        assert!(angret.contains("privat: nei"));
+        assert!(!er_privat(&angret));
+
+        // Uten toppfeltblokk lages den, som for `kilde`.
+        let bart = sett_privat("Bare tekst.\n".to_string(), true);
+        assert!(er_privat(&bart));
+        assert!(bart.contains("Bare tekst."));
     }
 
     #[test]

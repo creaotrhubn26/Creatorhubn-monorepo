@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AVSLATT, PRIVAT } from "./api";
 import type { Paragraph, Retting, Tidligere, Understanding } from "./api";
 
 /// Plassene i panelet, med brukerens ord. De rå typene og handlingene —
@@ -232,6 +233,8 @@ export function Panel({
   onRett,
   onLukkMerknad,
   onÅpne,
+  onSlåPå,
+  onSlåAv,
 }: {
   forståelse: Understanding | null;
   /** Hvor langt en lang lesning er kommet, eller `null` når det ikke er noe
@@ -243,6 +246,10 @@ export function Panel({
   onRett: Rett;
   onLukkMerknad: () => void;
   onÅpne: Åpne;
+  /** Brukeren sier ja til lesningen, etter å ha lest hva den gjør. */
+  onSlåPå: () => void;
+  /** Og trekker det tilbake. En ekte av-bryter, ikke en visningsbryter. */
+  onSlåAv: () => void;
 }) {
   /// Hvilken linje som rettes, og veien tilbake fra hver retting. Stabelen er
   /// hele angrehistorikken for økta: en feilklikket sletting skal ikke være
@@ -284,7 +291,34 @@ export function Panel({
   if (forståelse && !forståelse.on) {
     return (
       <aside className="panel" aria-label="Hva vi har forstått">
-        <p className="av">Forståelsen er ikke tilgjengelig nå. Notatet lagres og søkes som før.</p>
+        {forståelse.grunn === AVSLATT ? (
+          // Ikke en visningsbryter. Dette er spørsmålet hun aldri ble stilt.
+          <div className="av">
+            <h2>Skal notatene leses?</h2>
+            <p>
+              «Hva vi har forstått» leser notatet ved å sende avsnittene ordrett til{" "}
+              <code>claude</code> på maskinen din. Programmet sender dem videre til Anthropic, og
+              legger igjen en kopi av samtalen i <code>~/.claude/projects</code>. Kopien blir
+              liggende til du sletter den.
+            </p>
+            <p>
+              Alt annet i appen — skriving, lagring, søk — forlater aldri maskinen. Du kan slå
+              lesningen av igjen når som helst, og et notat med <code>privat: ja</code> i
+              toppfeltet sendes aldri, uansett hva denne står på.
+            </p>
+            <button onClick={onSlåPå}>Slå på lesning</button>
+          </div>
+        ) : forståelse.grunn === PRIVAT ? (
+          <p className="av">
+            Dette notatet er merket privat. Det sendes ingen steder, og leses derfor ikke.
+          </p>
+        ) : forståelse.grunn ? (
+          <p className="av">
+            Lesningen feilet: {forståelse.grunn}. Notatet lagres og søkes som før.
+          </p>
+        ) : (
+          <p className="av">Forståelsen er ikke tilgjengelig nå. Notatet lagres og søkes som før.</p>
+        )}
       </aside>
     );
   }
@@ -378,6 +412,13 @@ export function Panel({
           <ul>{idéer.map((p) => rad(p, "idé"))}</ul>
         </>
       )}
+
+      {/* Den ekte av-bryteren. «Skjul forståelse» i toppen skjuler bare
+          spalten; denne stanser at notatteksten sendes noe sted. */}
+      <p className="lesningsvalg">
+        Avsnittene sendes til <code>claude</code> for å leses.
+        <button onClick={onSlåAv}>Slå av lesning</button>
+      </p>
     </aside>
   );
 }

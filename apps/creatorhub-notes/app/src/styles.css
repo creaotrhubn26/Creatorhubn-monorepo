@@ -638,6 +638,40 @@ kbd {
   color: var(--ink-soft);
 }
 
+/* Spørsmålet hun aldri ble stilt: hva som sendes, hvor det havner, og at det
+   blir liggende. Den står der panellinjene ellers ville stått, fordi det er
+   det den erstatter. */
+.panel .av h2 {
+  margin: 4px 20px 8px;
+}
+
+.panel .av p {
+  margin: 0 20px 10px;
+}
+
+.panel .av button,
+.panel .lesningsvalg button {
+  margin: 2px 20px 0;
+  font-family: var(--sans);
+  font-size: 15px;
+}
+
+.panel .lesningsvalg {
+  margin: 28px 20px 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-faint);
+}
+
+.panel .lesningsvalg button {
+  display: block;
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+
 /* En lang kilde tar minutter. Linja sier hvor langt det er kommet, og
    forsvinner når den er ferdig. Ingenting som krever oppmerksomhet. */
 .panel .framdrift {
