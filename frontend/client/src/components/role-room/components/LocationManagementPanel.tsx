@@ -2440,9 +2440,15 @@ export function LocationManagementPanel({
           propertyAnalysis: analysis,
           updatedAt: new Date().toISOString(),
         };
+        setLocations((current) => current.map((item) => item.id === updatedLocation.id ? updatedLocation : item));
+        setSelectedLocationForAnalysis(updatedLocation);
         await castingService.saveLocation(projectId, updatedLocation);
         const locs = await castingService.getLocations(projectId);
         setLocations(Array.isArray(locs) ? locs : []);
+        const persistedLocation = Array.isArray(locs)
+          ? locs.find((item) => item.id === updatedLocation.id)
+          : undefined;
+        setSelectedLocationForAnalysis(persistedLocation ?? updatedLocation);
         if (onUpdate) onUpdate();
       } catch (error) {
         console.error('Error saving location analysis:', error);

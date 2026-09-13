@@ -462,6 +462,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       const isSecondAssistantDirectorSession = sessionMode === 'second-ad';
       const isProductionManagerSession = sessionMode === 'production-manager';
       const isProductionCoordinatorSession = sessionMode === 'production-coordinator';
+      const isLocationManagerSession = sessionMode === 'location-manager';
       const isScriptSupervisorSession = sessionMode === 'script-supervisor';
 
       // Pre-seed admin user so CastingPlannerPanel won't redirect when isStandalone=true
@@ -476,6 +477,8 @@ function SessionSeeder({ children }: { children: ReactNode }) {
             ? 'production_manager'
           : isProductionCoordinatorSession
             ? 'production_coordinator'
+          : isLocationManagerSession
+            ? 'location_manager'
           : isScriptSupervisorSession
             ? 'script_supervisor'
           : isCinematographerSession
@@ -484,7 +487,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
         display_name: 'E2E Tester',
         loginAs: isContentProducerSession
           ? 'content_producer'
-          : isCinematographerSession || isFirstAssistantDirectorSession || isSecondAssistantDirectorSession || isProductionManagerSession || isProductionCoordinatorSession || isScriptSupervisorSession
+          : isCinematographerSession || isFirstAssistantDirectorSession || isSecondAssistantDirectorSession || isProductionManagerSession || isProductionCoordinatorSession || isLocationManagerSession || isScriptSupervisorSession
             ? 'production_team'
             : undefined,
         requestedRole: isContentProducerSession
@@ -499,6 +502,8 @@ function SessionSeeder({ children }: { children: ReactNode }) {
                   ? 'production_manager'
                 : isProductionCoordinatorSession
                   ? 'production_coordinator'
+                : isLocationManagerSession
+                  ? 'location_manager'
                 : isScriptSupervisorSession
                   ? 'script_supervisor'
               : null,
@@ -521,7 +526,7 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       // 'photographer' ellers — vi setter begge for å være trygge.
       await settingsService.setSetting(
         'roleRoom_onboardingCompleted',
-        { photographer: true, producer: true, director: true, cinematographer: true, first_ad: true, second_ad: true, production_manager: true, production_coordinator: true, script_supervisor: true, general: true },
+        { photographer: true, producer: true, director: true, cinematographer: true, first_ad: true, second_ad: true, production_manager: true, production_coordinator: true, location_manager: true, script_supervisor: true, general: true },
         { userId: 'e2e-test-user' },
       );
 

@@ -123,3 +123,29 @@ export function roleRoomContinuityMediaKey(input: {
     `${storageSegment(input.objectId, 'object')}-${storageSegment(input.fileName, 'reference')}`,
   ].join('/');
 }
+
+/** Canonical private key for location-scout photos in The Role Room's S3 bucket. */
+export function roleRoomLocationScoutMediaKey(input: {
+  organizationId?: string | null;
+  userId: string;
+  projectId: string;
+  locationId: string;
+  objectId: string;
+  fileName: string;
+}): string {
+  const user = storageSegment(input.userId, 'unknown-user');
+  const organization = storageSegment(input.organizationId, `personal-${user}`);
+  return [
+    'organizations',
+    organization,
+    'projects',
+    storageSegment(input.projectId, 'unassigned'),
+    'production',
+    'locations',
+    storageSegment(input.locationId, 'unknown-location'),
+    'scout',
+    'uploads',
+    user,
+    `${storageSegment(input.objectId, 'object')}-${storageSegment(input.fileName, 'scout-photo')}`,
+  ].join('/');
+}
