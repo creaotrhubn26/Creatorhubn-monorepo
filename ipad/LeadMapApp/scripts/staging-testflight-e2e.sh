@@ -239,6 +239,7 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
       .brief.employee_count.minimum == 5) and
     (.preview.recommended_profiles[] | select(.template_key == "tidum.municipal_services") |
       .name == "Kommunale tjenestesteder – Norge" and
+      .template_version == 2 and
       .brief.organization_name_queries == ["barneverntjeneste", "avlastning", "bofellesskap", "BPA", "miljøarbeidertjeneste"] and
       .brief.organization_forms == ["BEDR"] and
       .brief.employee_count == null and
@@ -295,7 +296,7 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
     -H "X-Organization-Id: $org_id" \
     -H "X-Leadgrid-Organization-Id: $org_id" \
     "$staging_url/api/leadgrid/projects/$tidum_project_id/discovery/profiles")"
-  jq -e '
+  if ! jq -e '
     (.profiles | length) >= 4 and
     ([.profiles[] | select((.template_key // "") | startswith("tidum.")) | .template_key] | length) == 4 and
     ([.profiles[] | select((.template_key // "") | startswith("tidum.")) | .template_key] | unique | length) == 4 and
@@ -303,9 +304,25 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
       .brief.country_code == "NO" and .brief.employee_count.minimum == 5) and
     (.profiles[] | select(.template_key == "tidum.municipal_services") |
       .name == "Kommunale tjenestesteder – Norge" and
+      .template_version == 2 and
       .brief.organization_name_queries == ["barneverntjeneste", "avlastning", "bofellesskap", "BPA", "miljøarbeidertjeneste"] and
       .brief.organization_forms == ["BEDR"])
-  ' <<<"$tidum_profiles" >/dev/null
+  ' <<<"$tidum_profiles" >/dev/null; then
+    echo "Tidum-profilene brøt staging-kontrakten. Sikker profildiagnose:" >&2
+    jq -c '
+      [.profiles[] | {
+        name,
+        template_key,
+        template_version,
+        version,
+        status,
+        organization_name_queries: .brief.organization_name_queries,
+        organization_forms: .brief.organization_forms,
+        minimum_fit_score: .brief.minimum_fit_score
+      }]
+    ' <<<"$tidum_profiles" >&2
+    exit 9
+  fi
   echo "STAGING_E2E_STAGE=tidum_profiles_verified"
 
   tidum_replay_preview="$(curl --fail-with-body --silent --show-error \
@@ -369,7 +386,7 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
       echo "Tidum-kampanjen fullførte ikke innen 10 minutter." >&2
       exit 10
     fi
-    jq -e '
+    if ! jq -e '
       (.status == "completed" or .status == "partial") and
       .total_profiles == 4 and
       (.completed_profiles + .partial_profiles) == 4 and
@@ -378,7 +395,25 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
       ([.items[].status] | all(. == "completed" or . == "partial")) and
       ([.items[].profile_id] | unique | length) == 4 and
       ([.items[].candidate_count] | all(. > 0))
-    ' <<<"$tidum_campaign" >/dev/null
+    ' <<<"$tidum_campaign" >/dev/null; then
+      echo "Tidum-kampanjen brøt staging-kontrakten. Sikker kampanjediagnose:" >&2
+      jq -c '{
+        status,
+        total_profiles,
+        completed_profiles,
+        partial_profiles,
+        failed_profiles,
+        error_code,
+        items: [.items[] | {
+          profile_name,
+          status,
+          candidate_count,
+          error_code,
+          current_run_id
+        }]
+      }' <<<"$tidum_campaign" >&2
+      exit 10
+    fi
 
     while IFS=$'\t' read -r tidum_item_name tidum_item_run_id tidum_item_forms; do
       [[ -n "$tidum_item_run_id" ]] || {
@@ -390,24 +425,40 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
         -H "X-Organization-Id: $org_id" \
         -H "X-Leadgrid-Organization-Id: $org_id" \
         "$staging_url/api/leadgrid/projects/$tidum_project_id/discovery/runs/$tidum_item_run_id/candidates?disposition=all&limit=100")"
-      jq -e '
+      if ! jq -e '
         (.items | length) > 0 and
         ([.items[].source] | all(. == "brreg_open_data")) and
         ([.items[].organization_number] | all(type == "string" and test("^[0-9]{9}$")))
-      ' <<<"$tidum_candidates" >/dev/null
+      ' <<<"$tidum_candidates" >/dev/null; then
+        echo "Tidum-profilen $tidum_item_name brøt kildekontrakten. Sikker kandidatdiagnose:" >&2
+        jq -c '{
+          count: (.items | length),
+          sources: ([.items[].source] | unique),
+          invalid_organization_number_count: ([.items[].organization_number | select(
+            (type == "string" and test("^[0-9]{9}$")) | not
+          )] | length)
+        }' <<<"$tidum_candidates" >&2
+        exit 10
+      fi
       if [[ "$tidum_item_forms" == "BEDR" ]]; then
-        jq -e '
+        if ! jq -e '
           ([.items[].organization_form_code] | all(. == "BEDR")) and
-          ([.items[].name | ascii_downcase] | all(
-            contains("barneverntjeneste") or
-            contains("avlastning") or
-            contains("bofellesskap") or
-            contains("bpa") or
-            contains("miljøtjeneste") or
-            contains("miljøarbeid")
+          ([.items[].name] | all(
+            test("barneverntjeneste|avlastning|bofellesskap|bpa|miljøtjeneste|miljøarbeid"; "i")
           )) and
           ([.items[] | has("clinic_group")] | all(. == false))
-        ' <<<"$tidum_candidates" >/dev/null
+        ' <<<"$tidum_candidates" >/dev/null; then
+          echo "Tidum-tjenestestedene brøt kandidatkontrakten. Sikker kandidatdiagnose:" >&2
+          jq -c '{
+            count: (.items | length),
+            organization_forms: ([.items[].organization_form_code] | unique),
+            invalid_name_count: ([.items[].name | select(
+              test("barneverntjeneste|avlastning|bofellesskap|bpa|miljøtjeneste|miljøarbeid"; "i") | not
+            )] | length),
+            clinic_group_count: ([.items[] | select(has("clinic_group"))] | length)
+          }' <<<"$tidum_candidates" >&2
+          exit 10
+        fi
       fi
     done < <(jq -r '.items[] | [.profile_name, .current_run_id, (.brief_snapshot.organization_forms | join(","))] | @tsv' <<<"$tidum_campaign")
     echo "STAGING_E2E_STAGE=tidum_campaign_verified"

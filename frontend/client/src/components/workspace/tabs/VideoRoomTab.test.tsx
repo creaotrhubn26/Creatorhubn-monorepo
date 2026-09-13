@@ -60,6 +60,7 @@ const room = (selected: "v1" | "v2") => ({
 describe("VideoRoomTab version scoping", () => {
   beforeEach(() => {
     localStorage.clear();
+    window.history.replaceState({}, "", "/workspace/project-1/video-room");
     apiRequest.mockReset();
     apiRequest.mockImplementation((url: string) => {
       if (url.includes("/ai/config")) return Promise.resolve({});
@@ -68,6 +69,20 @@ describe("VideoRoomTab version scoping", () => {
       if (url.includes("versionId=v1")) return Promise.resolve(room("v1"));
       return Promise.resolve(room("v2"));
     });
+  });
+
+  it("opens the exact version requested by a Premiere deep link", async () => {
+    window.history.replaceState({}, "", "/workspace/project-1/video-room?versionId=v1");
+    render(<VideoRoomTab projectId="project-1" />);
+
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith(
+        "/api/projects/project-1/video-room?versionId=v1",
+      ),
+    );
+    expect((await screen.findByTestId("player")).textContent).toContain(
+      "/v1.mp4|v1 comment",
+    );
   });
 
   it("reloads video, chapters and comments when an older version is selected", async () => {

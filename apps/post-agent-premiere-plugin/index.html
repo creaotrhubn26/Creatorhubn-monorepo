@@ -1,0 +1,252 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>CreatorHub Video Room</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <header class="brand">
+        <div class="brand-mark">CH</div>
+        <div>
+          <h1>Video Room</h1>
+          <p>Review, oppgaver og NLE-synk</p>
+        </div>
+        <span id="connection-pill" class="pill muted">Frakoblet</span>
+      </header>
+
+      <section id="auth-card" class="card">
+        <h2>Koble til CreatorHub</h2>
+        <p class="hint">Logg inn i nettleseren. Tokenet lagres kryptert av Adobe UXP.</p>
+        <button id="pair-button" class="primary">Start sikker innlogging</button>
+        <div id="pairing-box" class="pairing hidden">
+          <span>Engangskode</span>
+          <strong id="pairing-code">------</strong>
+          <button id="open-verification-button">Åpne innloggingssiden</button>
+          <small id="pairing-expiry">Venter på godkjenning…</small>
+        </div>
+      </section>
+
+      <section id="workspace-card" class="card hidden">
+        <div class="row between">
+          <h2>Video Room-versjon</h2>
+          <button id="refresh-projects-button" class="quiet">Oppdater</button>
+        </div>
+        <label for="project-select">Prosjekt</label>
+        <select id="project-select"></select>
+        <label for="version-select">Versjon</label>
+        <select id="version-select"></select>
+        <p id="access-note" class="hint"></p>
+      </section>
+
+      <section id="review-card" class="card hidden">
+        <div class="row between">
+          <div>
+            <h2>Review-arbeidsflate</h2>
+            <p class="hint compact">All tilbakemelding gjelder versjonen som er valgt over.</p>
+          </div>
+          <div class="row">
+            <button id="open-video-room-button" class="quiet">Åpne web</button>
+            <button id="refresh-review-button" class="quiet">Oppdater</button>
+          </div>
+        </div>
+
+        <div class="metrics">
+          <div><strong id="metric-comments">0</strong><span>åpne kommentarer</span></div>
+          <div><strong id="metric-tasks">0</strong><span>åpne oppgaver</span></div>
+          <div><strong id="metric-round">–</strong><span>revisjonsrunde</span></div>
+          <div><strong id="metric-approvals">0/0</strong><span>approval-steg</span></div>
+        </div>
+
+        <nav class="tabs" aria-label="Video Room-verktøy">
+          <button class="tab active" data-review-tab="feedback">Feedback</button>
+          <button class="tab" data-review-tab="tasks">Oppgaver</button>
+          <button class="tab" data-review-tab="workflow">Godkjenning</button>
+          <button class="tab" data-review-tab="media">Tekst &amp; QC</button>
+          <button class="tab" data-review-tab="live">Live</button>
+        </nav>
+
+        <section class="review-pane" data-review-pane="feedback">
+          <div id="reply-banner" class="inline-notice hidden">
+            <span id="reply-label">Svarer på kommentar</span>
+            <button id="cancel-reply-button" class="quiet">Avbryt</button>
+          </div>
+          <label for="comment-text">Kommentar ved Premiere-playhead</label>
+          <textarea id="comment-text" rows="3" maxlength="4000" placeholder="Hva må vurderes eller endres?"></textarea>
+          <div class="form-grid">
+            <div>
+              <label for="comment-category">Fagområde</label>
+              <select id="comment-category">
+                <option value="edit">Klipp</option>
+                <option value="audio">Lyd</option>
+                <option value="color">Farge</option>
+                <option value="vfx">VFX</option>
+                <option value="structure">Struktur</option>
+                <option value="text">Tekst</option>
+                <option value="other">Annet</option>
+              </select>
+            </div>
+            <div>
+              <label for="comment-priority">Prioritet</label>
+              <select id="comment-priority">
+                <option value="must-fix">Må fikses</option>
+                <option value="nice-to-have">Bør fikses</option>
+                <option value="suggestion">Forslag</option>
+              </select>
+            </div>
+          </div>
+          <label class="check-row"><input id="comment-decision" type="checkbox" /> Registrer som beslutning</label>
+          <div class="row between composer-actions">
+            <span id="comment-playhead" class="timecode">Playhead leses ved lagring</span>
+            <button id="create-comment-button" class="primary">Legg til ved playhead</button>
+          </div>
+          <div class="row assignment-row">
+            <label for="assignee-select">Standard editor</label>
+            <select id="assignee-select"><option value="">Ikke tildelt</option></select>
+          </div>
+          <div id="comments-list" class="item-list"></div>
+        </section>
+
+        <section class="review-pane hidden" data-review-pane="tasks">
+          <p class="hint">Oppgaver er koblet til «må fikses»-kommentarer og samme native markør.</p>
+          <div id="tasks-list" class="item-list"></div>
+        </section>
+
+        <section class="review-pane hidden" data-review-pane="workflow">
+          <div class="subsection">
+            <div class="row between"><h3>Revisjonsrunder</h3><button id="create-round-button">Start runde</button></div>
+            <div class="form-grid">
+              <input id="round-name" maxlength="300" placeholder="Navn på runden" />
+              <input id="round-max" type="number" min="1" max="99" value="3" aria-label="Maks revisjonsrunder" />
+            </div>
+            <div id="rounds-list" class="item-list compact-list"></div>
+          </div>
+          <div class="subsection">
+            <h3>Formell approval</h3>
+            <input id="approval-name" maxlength="300" value="Kundegodkjenning" aria-label="Navn på approval-steget" />
+            <textarea id="approval-emails" rows="2" placeholder="godkjenner1@firma.no, godkjenner2@firma.no"></textarea>
+            <div class="row between">
+              <label for="approval-required">Krav</label>
+              <input id="approval-required" type="number" min="1" max="30" value="1" />
+              <button id="create-approval-button">Opprett approval-steg</button>
+            </div>
+            <div id="approval-invitations" class="inline-notice hidden"></div>
+            <div id="approvals-list" class="item-list compact-list"></div>
+          </div>
+        </section>
+
+        <section class="review-pane hidden" data-review-pane="media">
+          <div class="subsection">
+            <div class="row between"><h3>Transkripsjon og captions</h3><button id="generate-transcript-button">Generer</button></div>
+            <div class="row">
+              <input id="transcript-language" value="no" maxlength="20" aria-label="Språk" />
+              <input id="transcript-search" placeholder="Søk i dialog…" aria-label="Søk i transkripsjon" />
+              <button id="search-transcript-button" class="quiet">Søk</button>
+            </div>
+            <div id="captions-list" class="tag-list"></div>
+            <div id="transcript-list" class="item-list transcript-list"></div>
+          </div>
+          <div class="subsection">
+            <div class="row between">
+              <h3>Teknisk QC</h3>
+              <div class="row">
+                <select id="qc-profile" aria-label="QC-profil">
+                  <option value="client_delivery">Klientleveranse</option>
+                  <option value="broadcast">Broadcast</option>
+                  <option value="web_delivery">Web</option>
+                  <option value="social">Sosiale medier</option>
+                </select>
+                <button id="run-qc-button">Kjør QC</button>
+              </div>
+            </div>
+            <div id="qc-list" class="item-list compact-list"></div>
+          </div>
+        </section>
+
+        <section class="review-pane hidden" data-review-pane="live">
+          <p class="hint">Del Premiere-playhead med review-deltakere. Tegninger fra web beholdes i live-økten.</p>
+          <div id="live-empty" class="empty-state">
+            <button id="start-live-button" class="primary">Start live review ved playhead</button>
+          </div>
+          <div id="live-session" class="hidden">
+            <div class="live-line"><span class="live-dot"></span><strong>Live review aktiv</strong><span id="live-revision"></span></div>
+            <p id="live-position" class="timecode"></p>
+            <div class="actions">
+              <button id="push-live-button">Send Premiere-playhead</button>
+              <button id="follow-live-button">Gå til delt playhead</button>
+              <button id="end-live-button" class="danger">Avslutt</button>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section id="premiere-card" class="card hidden">
+        <div class="row between">
+          <h2>Aktiv Premiere-sekvens</h2>
+          <button id="refresh-context-button" class="quiet">Les på nytt</button>
+        </div>
+        <dl>
+          <div><dt>Prosjekt</dt><dd id="premiere-project">Ikke lest</dd></div>
+          <div><dt>Sekvens</dt><dd id="premiere-sequence">Ikke lest</dd></div>
+          <div><dt>Markører</dt><dd id="premiere-marker-count">–</dd></div>
+        </dl>
+        <div class="actions">
+          <button id="start-sync-button" class="primary">Start toveis synk</button>
+          <button id="sync-now-button">Synk nå</button>
+          <button id="stop-sync-button" class="danger hidden">Stopp</button>
+        </div>
+        <div class="subsection publish-section">
+          <h3>Send sekvens til review</h3>
+          <p class="hint">Eksporterer aktiv sekvens, laster resumérbart til privat Stream og binder den nye versjonen til samme sekvens.</p>
+          <div class="picker-line">
+            <div><span>Eksportpreset</span><strong id="publish-preset-name">Ikke valgt</strong></div>
+            <button id="choose-preset-button" class="quiet">Velg .epr</button>
+          </div>
+          <div class="picker-line">
+            <div><span>Eksportmappe</span><strong id="publish-folder-name">Ikke valgt</strong></div>
+            <button id="choose-folder-button" class="quiet">Velg mappe</button>
+          </div>
+          <label for="publish-version-label">Versjonsnavn</label>
+          <input id="publish-version-label" maxlength="80" placeholder="V1" />
+          <label class="check-row"><input id="publish-create-round" type="checkbox" checked /> Start en revisjonsrunde</label>
+          <label for="publish-approver-emails">Varsle godkjennere (valgfritt)</label>
+          <textarea id="publish-approver-emails" rows="2" placeholder="kunde@firma.no, produsent@firma.no"></textarea>
+          <div class="row between">
+            <label for="publish-required-approvals">Påkrevde godkjenninger</label>
+            <input id="publish-required-approvals" type="number" min="1" max="30" value="1" />
+          </div>
+          <progress id="publish-progress" class="hidden" max="100" value="0"></progress>
+          <p id="publish-progress-label" class="hint compact hidden"></p>
+          <div class="actions">
+            <button id="send-review-button" class="primary">Eksporter og send</button>
+            <button id="resume-upload-button" class="hidden">Fortsett avbrutt sending</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="status-card" class="status-card hidden">
+        <div id="status-dot" class="status-dot"></div>
+        <div>
+          <strong id="status-title">Klar</strong>
+          <p id="status-message">Ingen synk er startet.</p>
+          <small id="status-meta"></small>
+        </div>
+      </section>
+
+      <section id="log-card" class="card hidden">
+        <div class="row between">
+          <h2>Aktivitet</h2>
+          <button id="clear-log-button" class="quiet">Tøm</button>
+        </div>
+        <div id="log" class="log"></div>
+      </section>
+
+      <footer>
+        <button id="disconnect-button" class="quiet hidden">Logg ut av pluginen</button>
+        <span>CreatorHub · Premiere 25.6+</span>
+      </footer>
+    </main>
+    <script src="index.js"></script>
+  </body>
+</html>

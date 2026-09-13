@@ -68522,7 +68522,12 @@ setupWorkspaceParticipantClearanceRoutes({
 });
 // Team Workspace egne panel-data (board-tasks/checklist/deliverables/shot-list GET)
 // — project_id-scopet, UAVHENGIG av Role Room.
-setupProjectWorkspaceRoutes({ app, pool, requireUserSession });
+setupProjectWorkspaceRoutes({
+  app,
+  pool,
+  requireUserSession,
+  resolveUserSession: resolveActiveSessionFromRequest,
+});
 setupProjectVideoCollaborationRoutes({
   app,
   pool,

@@ -14,8 +14,8 @@ enum BoardBrand {
     static let chrome = Color(red: 0.043, green: 0.043, blue: 0.055)      // #0b0b0e
     static let panel = Color(red: 0.078, green: 0.082, blue: 0.098)
     static let border = Color.white.opacity(0.07)
-    static let dim = Color.white.opacity(0.55)
-    static let label = Color.white.opacity(0.42)
+    static let dim = Color.white.opacity(0.72)
+    static let label = Color.white.opacity(0.60)
     static let workspace = Color(red: 0.235, green: 0.243, blue: 0.267)
     static let sheet = Color(red: 0.969, green: 0.965, blue: 0.949)
     static let inkOnSheet = Color(red: 0.2, green: 0.204, blue: 0.227)
@@ -333,7 +333,6 @@ struct NativeBoardView: View {
     @State private var showShotList = false
     @State private var showScript = false
     @State private var showReview = false
-    @State private var showReviewRounds = false
     @State private var showSkills = false
     @State private var showAIStudio = false
     @State private var exportPDFURL: URL?
@@ -353,7 +352,14 @@ struct NativeBoardView: View {
     @State private var sceneThumbnailImages: [String: UIImage] = [:]
     @State private var shotPreviewImages: [String: UIImage] = [:]
     @State private var retainedEditableBaseImages: [String: UIImage] = [:]
+    @AppStorage("storyboard.review.presentationRole")
+    private var presentationRoleRaw = StoryboardProductionRole.storyboardArtist.rawValue
     @Environment(\.dismiss) private var dismiss
+
+    private var presentationRole: StoryboardProductionRole {
+        get { StoryboardProductionRole(rawValue: presentationRoleRaw) ?? .storyboardArtist }
+        nonmutating set { presentationRoleRaw = newValue.rawValue }
+    }
 
     enum InitialSheet { case script, shotList, animatic, review }
 
@@ -383,11 +389,15 @@ struct NativeBoardView: View {
                 scenesColumn
                 Divider().overlay(BoardBrand.border)
                 sheetArea
-                Divider().overlay(BoardBrand.border)
-                inspector
+                if presentationRole != .client {
+                    Divider().overlay(BoardBrand.border)
+                    inspector
+                }
             }
-            Divider().overlay(BoardBrand.border)
-            brushBar
+            if presentationRole == .storyboardArtist {
+                Divider().overlay(BoardBrand.border)
+                brushBar
+            }
         }
         .background(BoardBrand.chrome)
         .navigationBarHidden(true)
@@ -882,6 +892,27 @@ struct NativeBoardView: View {
             }
             Spacer()
             workspaceTabs
+            Menu {
+                ForEach(StoryboardProductionRole.allCases) { role in
+                    Button {
+                        presentationRole = role
+                    } label: {
+                        if presentationRole == role {
+                            Label(role.title, systemImage: "checkmark")
+                        } else {
+                            Label(role.title, systemImage: role.icon)
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: presentationRole.icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(BoardBrand.dim)
+                    .frame(width: StoryboardExperienceMetrics.minimumTouchTarget,
+                           height: StoryboardExperienceMetrics.minimumTouchTarget)
+            }
+            .accessibilityLabel("Visning for \(presentationRole.title)")
+            .accessibilityIdentifier("storyboard.rolePicker")
             Spacer()
             if !pendingFrameIds.isEmpty {
                 Button { flushAllPending() } label: {
@@ -1000,49 +1031,76 @@ struct NativeBoardView: View {
     private func topTab(_ title: String, icon: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: icon)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(active ? .white : BoardBrand.dim)
-                .padding(.horizontal, 12).padding(.vertical, 7)
+                .padding(.horizontal, 12)
+                .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
                 .background(active ? Color.white.opacity(0.1) : .clear,
                             in: RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
     }
 
-    /// Full fanerad når plassen tillater det; én tilgjengelig meny i Split
-    /// View og smale Stage Manager-vinduer. Alle eksisterende flater beholdes.
+    /// Three stable modes replace the old row of equally weighted tools.
+    /// Secondary destinations stay contextual inside Lag and Produser.
     private var workspaceTabs: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 4) {
-                topTab("Board", icon: "rectangle.grid.2x2", active: true) {}
-                topTab("Script", icon: "doc.text", active: false) { showScript = true }
-                topTab("Shot List", icon: "list.bullet", active: false) { showShotList = true }
-                topTab("Review", icon: "checkmark.bubble", active: false) { showReview = true }
-                topTab("Rounds", icon: "clock.arrow.circlepath", active: false) { showReviewRounds = true }
-                topTab("Skills", icon: "sparkles", active: false) { showSkills = true }
-                topTab("AI Studio", icon: "wand.and.stars", active: false) { showAIStudio = true }
-                    .accessibilityLabel("Åpne AI Studio for aktivt shot")
-                topTab("Animatic", icon: "play.rectangle", active: false) { showAnimatic = true }
+                Menu {
+                    Button("Board", systemImage: "rectangle.grid.2x2") {}
+                    Button("Manus", systemImage: "doc.text") { showScript = true }
+                    Divider()
+                    Button("Scenehjelpere", systemImage: "sparkles") { showSkills = true }
+                    Button("Bildeverktøy", systemImage: "wand.and.stars") { showAIStudio = true }
+                        .accessibilityLabel("Åpne bildeverktøy for aktivt shot")
+                } label: {
+                    modeLabel(.create, active: true)
+                }
+                .accessibilityIdentifier("storyboard.mode.create")
+                topTab("Avgjør", icon: StoryboardWorkspaceMode.decide.icon, active: false) {
+                    showReview = true
+                }
+                .accessibilityIdentifier("storyboard.mode.decide")
+                Menu {
+                    Button("Animatic", systemImage: "play.rectangle") { showAnimatic = true }
+                    Button("Shot-liste", systemImage: "list.bullet") { showShotList = true }
+                } label: {
+                    modeLabel(.produce, active: false)
+                }
+                .accessibilityIdentifier("storyboard.mode.produce")
             }
             Menu {
-                Button("Board", systemImage: "rectangle.grid.2x2") {}
-                Button("Script", systemImage: "doc.text") { showScript = true }
-                Button("Shot List", systemImage: "list.bullet") { showShotList = true }
-                Button("Review", systemImage: "checkmark.bubble") { showReview = true }
-                Button("Review-runder", systemImage: "clock.arrow.circlepath") { showReviewRounds = true }
-                Button("Skills", systemImage: "sparkles") { showSkills = true }
-                Button("AI Studio", systemImage: "wand.and.stars") { showAIStudio = true }
-                    .accessibilityLabel("Åpne AI Studio for aktivt shot")
-                Button("Animatic", systemImage: "play.rectangle") { showAnimatic = true }
+                Section("Lag") {
+                    Button("Board", systemImage: "rectangle.grid.2x2") {}
+                    Button("Manus", systemImage: "doc.text") { showScript = true }
+                    Button("Scenehjelpere", systemImage: "sparkles") { showSkills = true }
+                    Button("Bildeverktøy", systemImage: "wand.and.stars") { showAIStudio = true }
+                }
+                Button("Avgjør", systemImage: "checkmark.bubble") { showReview = true }
+                Section("Produser") {
+                    Button("Animatic", systemImage: "play.rectangle") { showAnimatic = true }
+                    Button("Shot-liste", systemImage: "list.bullet") { showShotList = true }
+                }
             } label: {
-                Label("Arbeidsflater", systemImage: "square.grid.2x2")
-                    .font(.system(size: 12, weight: .semibold))
+                Label("Lag · Avgjør · Produser", systemImage: "square.grid.2x2")
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
                     .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
             }
-            .accessibilityLabel("Velg storyboard-arbeidsflate")
+            .accessibilityLabel("Velg modus: Lag, Avgjør eller Produser")
         }
+    }
+
+    private func modeLabel(_ mode: StoryboardWorkspaceMode, active: Bool) -> some View {
+        Label(mode.title, systemImage: mode.icon)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(active ? .white : BoardBrand.dim)
+            .padding(.horizontal, 12)
+            .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+            .background(active ? Color.white.opacity(0.1) : .clear,
+                        in: RoundedRectangle(cornerRadius: 8))
     }
 
     /// Fingerprinten gjør at SwiftUI avbryter gammel preview-lasting når
@@ -1357,7 +1415,7 @@ struct NativeBoardView: View {
                 ContentUnavailableView(
                     "Prosjekt mangler",
                     systemImage: "rectangle.badge.xmark",
-                    description: Text("Koble storyboardet til et Role Room-prosjekt før du kjører skills."))
+                    description: Text("Koble storyboardet til et Role Room-prosjekt før du starter sceneanalysen."))
             }
         }
         .sheet(isPresented: $showAIStudio) {
@@ -1377,35 +1435,14 @@ struct NativeBoardView: View {
                     description: Text("Velg et prosjekt, en scene og et shot før AI Studio åpnes."))
             }
         }
-        .fullScreenCover(isPresented: $showReview) {
+        .fullScreenCover(isPresented: $showReview, onDismiss: {
+            Task { await board.reload() }
+        }) {
             // Den ekte Review-flaten (samme som hubben) — den gamle enkle
             // ReviewSheet er pensjonert.
-            NavigationStack {
-                ReviewView(project: ProjectSummary(id: board.projectId ?? "",
-                                                   name: board.manuscript.title),
-                           manuscript: board.manuscript)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Board") {
-                                showReview = false
-                                Task { await board.reload() }
-                            }
-                        }
-                    }
-            }
-        }
-        .sheet(isPresented: $showReviewRounds) {
-            if let projectId = board.projectId {
-                StoryboardReviewRoundsView(
-                    projectId: projectId,
-                    manuscriptId: board.manuscript.id,
-                    onRestored: { await board.reload() })
-            } else {
-                ContentUnavailableView(
-                    "Prosjekt mangler",
-                    systemImage: "rectangle.badge.xmark",
-                    description: Text("Koble storyboardet til et Role Room-prosjekt før du oppretter en review-runde."))
-            }
+            ReviewView(project: ProjectSummary(id: board.projectId ?? "",
+                                               name: board.manuscript.title),
+                       manuscript: board.manuscript)
         }
         .sheet(isPresented: $showBrushEditor) {
             BrushEditorSheet(canvasState: canvasState)

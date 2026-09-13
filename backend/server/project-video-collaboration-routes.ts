@@ -3,6 +3,12 @@ import type express from "express";
 import type { Pool, PoolClient } from "pg";
 
 import { canAccessProject } from "./project-team-routes.js";
+import {
+  parseAvidFrameRate,
+  parseAvidMarkerText,
+  serializeAvidMarkerText,
+  validateAvidTrack,
+} from "./avid-marker-interchange.js";
 import { generateStreamCaptions, getStreamCaption, getStreamVideoStatus } from "./cloudflare-stream-service.js";
 import { enqueueJob } from "./job-queue.js";
 import { isDeviceRevoked } from "./post-agent-storage.js";
@@ -17,6 +23,28 @@ const validEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test
 const sha256 = (value: string): string => crypto.createHash("sha256").update(value).digest("hex");
 const xml = (value: unknown): string => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const publicLiveWriteWindows = new Map<string, { count: number; resetAt: number }>();
+const VIDEO_MARKER_EDITORS = new Set(["resolve", "premiere", "final_cut", "avid", "generic"]);
+const CANONICAL_VIDEO_MARKER_ID = /^creatorhub:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function mapVideoCollaborationComment(row: any): Record<string, unknown> {
+  return {
+    id: row.id,
+    versionId: row.version_id,
+    timecodeSec: number(row.timecode_sec),
+    endTimecodeSec: row.end_timecode_sec == null ? null : number(row.end_timecode_sec),
+    comment: row.comment,
+    authorName: row.author_name || null,
+    authorKind: row.author_kind || "creator",
+    category: row.category || null,
+    priority: row.priority || "suggestion",
+    status: row.status || "open",
+    isDecision: !!row.is_decision,
+    parentId: row.parent_id || null,
+    taskId: row.task_id || null,
+    createdAt: row.created_at,
+    editedAt: row.edited_at || null,
+  };
+}
 
 function allowPublicLiveWrite(token: string): boolean {
   const now = Date.now();
@@ -176,8 +204,8 @@ export function setupProjectVideoCollaborationRoutes(input: {
                      AND editable.status='active' AND editable.deactivated_at IS NULL
                      AND (editable.role='editor' OR editable.permissions @> '{"canEdit":true}'::jsonb)
                 )) can_edit
-           FROM project_video_versions version
-           JOIN projects project ON project.id=version.project_id::text
+           FROM projects project
+           LEFT JOIN project_video_versions version ON project.id=version.project_id::text
           WHERE project.user_id=$1 OR EXISTS (
             SELECT 1 FROM project_team_members member
              WHERE member.project_id=project.id::text AND member.user_id=$1
@@ -194,13 +222,15 @@ export function setupProjectVideoCollaborationRoutes(input: {
           project = { id: row.project_id, name: row.project_name, projectType: row.project_type || null, canEdit: !!row.can_edit, versions: [] };
           projects.set(row.project_id, project);
         }
-        project.versions.push({
-          id: row.version_id,
-          label: row.version_label || `V${row.version_number}`,
-          number: Number(row.version_number || 0),
-          status: row.version_status,
-          createdAt: row.created_at,
-        });
+        if (row.version_id) {
+          project.versions.push({
+            id: row.version_id,
+            label: row.version_label || `V${row.version_number}`,
+            number: Number(row.version_number || 0),
+            status: row.version_status,
+            createdAt: row.created_at,
+          });
+        }
       }
       res.json({ projects: Array.from(projects.values()).slice(0, 100) });
     } catch (error) {
@@ -219,8 +249,23 @@ export function setupProjectVideoCollaborationRoutes(input: {
     ).catch(() => ({ rows: [] }));
     await Promise.all(pendingCaptions.rows.map((row: any) => refreshGeneratedCaption(version, row.language, session.userId)));
     const search = text(req.query.q, 200);
-    const [tasks, rounds, approvalRows, transcript, captions, qc, live, members] = await Promise.all([
-      pool.query(`SELECT * FROM project_video_tasks WHERE project_id=$1 AND version_id=$2 ORDER BY created_at DESC`, [req.params.projectId, versionId]),
+    const [comments, tasks, rounds, approvalRows, transcript, captions, qc, live, members] = await Promise.all([
+      pool.query(
+        `SELECT comment.*,task.id task_id
+           FROM project_video_comments comment
+           LEFT JOIN project_video_tasks task ON task.comment_id=comment.id
+          WHERE comment.project_id=$1 AND comment.version_id=$2
+          ORDER BY comment.timecode_sec,comment.created_at`,
+        [req.params.projectId, versionId],
+      ),
+      pool.query(
+        `SELECT task.*,comment.timecode_sec,comment.end_timecode_sec,comment.comment comment_text
+           FROM project_video_tasks task
+           LEFT JOIN project_video_comments comment ON comment.id=task.comment_id
+          WHERE task.project_id=$1 AND task.version_id=$2
+          ORDER BY task.created_at DESC`,
+        [req.params.projectId, versionId],
+      ),
       pool.query(`SELECT * FROM project_video_review_rounds WHERE project_id=$1 AND version_id=$2 ORDER BY round_number DESC`, [req.params.projectId, versionId]),
       pool.query(`SELECT step.*,approver.id approver_id,approver.name approver_name,approver.email approver_email,approver.role approver_role,approver.status approver_status,approver.note approver_note,approver.acted_at
                     FROM project_video_approval_steps step LEFT JOIN project_video_approvers approver ON approver.step_id=step.id
@@ -237,7 +282,18 @@ export function setupProjectVideoCollaborationRoutes(input: {
       if (!step) { step = { id: row.id, name: row.name, order: row.step_order, requiredApprovals: row.required_approvals, status: row.status, dueAt: row.due_at, approvers: [] }; steps.push(step); }
       if (row.approver_id) step.approvers.push({ id: row.approver_id, name: row.approver_name, email: row.approver_email, role: row.approver_role, status: row.approver_status, note: row.approver_note, actedAt: row.acted_at });
     }
-    res.json({ viewerUserId: session.userId, tasks: tasks.rows, rounds: rounds.rows, approvalSteps: steps, transcript: transcript.rows, captions: captions.rows, qc: qc.rows, liveSession: live.rows[0] || null, members: members.rows });
+    res.json({
+      viewerUserId: session.userId,
+      comments: comments.rows.map(mapVideoCollaborationComment),
+      tasks: tasks.rows,
+      rounds: rounds.rows,
+      approvalSteps: steps,
+      transcript: transcript.rows,
+      captions: captions.rows,
+      qc: qc.rows,
+      liveSession: live.rows[0] || null,
+      members: members.rows,
+    });
   });
 
   app.post("/api/projects/:projectId/video-comments/:commentId/task", async (req, res) => {
@@ -379,7 +435,7 @@ export function setupProjectVideoCollaborationRoutes(input: {
 
   app.get("/api/projects/:projectId/video-marker-sync/:editor", async (req, res) => {
     const session = await guard(req, res); if (!session) return;
-    const editor = ["resolve","premiere","final_cut","generic"].includes(req.params.editor) ? req.params.editor : "generic";
+    const editor = VIDEO_MARKER_EDITORS.has(req.params.editor) ? req.params.editor : "generic";
     const version = await ownedVersion(req.params.projectId, text(req.query.versionId, 64));
     if (!version) return res.status(404).json({ error: "version_not_found" });
     const rows = await pool.query(
@@ -394,15 +450,44 @@ export function setupProjectVideoCollaborationRoutes(input: {
     );
     const markers = rows.rows.map((row: any) => ({ id: row.external_marker_id, timecodeSec: number(row.timecode_sec), title: row.title, note: row.note, color: row.color, completed: !!row.completed, mustFix: row.priority === "must-fix", revision: Number(row.sync_revision || 0) }));
     if (req.query.format === "fcpxml") { res.type("application/xml"); res.setHeader("Content-Disposition", `attachment; filename="creatorhub-${version.id}.fcpxml"`); return res.send(fcpxml(markers)); }
+    if (editor === "avid" && req.query.format === "avid") {
+      try {
+        const frameRate = parseAvidFrameRate(req.query.frameRate);
+        const track = validateAvidTrack(req.query.track);
+        const content = serializeAvidMarkerText(markers, { frameRate: frameRate.label, track });
+        res.type("text/plain; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="creatorhub-${version.id}-avid-markers.txt"`);
+        res.setHeader("X-CreatorHub-Avid-Frame-Rate", frameRate.label);
+        res.setHeader("X-CreatorHub-Avid-Track", track);
+        return res.send(content);
+      } catch (error: any) {
+        return res.status(400).json({ error: error?.message || "invalid_avid_marker_options" });
+      }
+    }
     res.json({ editor, versionId: version.id, revision: Math.max(0, ...markers.map((marker) => marker.revision)), markers });
   });
 
   app.post("/api/projects/:projectId/video-marker-sync/:editor", async (req, res) => {
     const session = await guard(req, res, true); if (!session) return;
-    const editor = ["resolve","premiere","final_cut","generic"].includes(req.params.editor) ? req.params.editor : null;
+    const editor = VIDEO_MARKER_EDITORS.has(req.params.editor) ? req.params.editor : null;
     const version = await ownedVersion(req.params.projectId, text(req.body?.versionId, 64));
-    const markers = Array.isArray(req.body?.markers) ? req.body.markers.slice(0, 5000) : [];
-    if (!editor || !version || !markers.length) return res.status(400).json({ error: "editor_version_and_markers_required" });
+    let markers = Array.isArray(req.body?.markers) ? req.body.markers.slice(0, 5000) : [];
+    let rejected: Array<{ line: number; reason: string }> = [];
+    if (editor === "avid" && typeof req.body?.avidText === "string") {
+      try {
+        const parsed = parseAvidMarkerText(req.body.avidText, { frameRate: req.body?.frameRate });
+        markers = parsed.markers;
+        rejected = parsed.rejected;
+      } catch (error: any) {
+        return res.status(400).json({ error: error?.message || "invalid_avid_marker_file" });
+      }
+    }
+    if (!editor || !version || !markers.length) {
+      return res.status(400).json({
+        error: "editor_version_and_markers_required",
+        ...(rejected.length ? { rejected } : {}),
+      });
+    }
     const revisionResult = await pool.query(`SELECT COALESCE(MAX(sync_revision),0)+1 revision FROM project_video_marker_sync WHERE version_id=$1 AND editor=$2`, [version.id, editor]);
     const revision = Number(revisionResult.rows[0].revision); const client = await pool.connect(); let imported = 0;
     try {
@@ -411,7 +496,7 @@ export function setupProjectVideoCollaborationRoutes(input: {
         const externalId = text(raw?.id || raw?.externalMarkerId, 500); const title = text(raw?.title, 500); if (!externalId || !title) continue;
         const existing = await client.query(`SELECT comment_id,task_id FROM project_video_marker_sync WHERE version_id=$1 AND editor=$2 AND external_marker_id=$3`, [version.id, editor, externalId]);
         let commentId = existing.rows[0]?.comment_id || null;
-        if (!commentId && /^creatorhub:[0-9a-f-]{36}$/i.test(externalId)) {
+        if (!commentId && CANONICAL_VIDEO_MARKER_ID.test(externalId)) {
           const canonicalComment = await client.query(
             `SELECT id FROM project_video_comments WHERE id=$1::uuid AND version_id=$2 AND project_id=$3 LIMIT 1`,
             [externalId.slice("creatorhub:".length), version.id, req.params.projectId],
@@ -454,7 +539,7 @@ export function setupProjectVideoCollaborationRoutes(input: {
         );
         imported += 1;
       }
-      await client.query("COMMIT"); res.json({ imported, revision });
+      await client.query("COMMIT"); res.json({ imported, revision, rejected });
     } catch (error) { await client.query("ROLLBACK").catch(() => undefined); throw error; }
     finally { client.release(); }
   });

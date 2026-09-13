@@ -175,11 +175,25 @@ extension StoryboardSkillFramePatchDTO {
     }
 }
 
+private struct StoryboardAssistantUndoPatch {
+    let sceneId: String
+    let frameId: String
+    let fields: [String: any Sendable]
+}
+
+private struct StoryboardAssistantUndoBatch {
+    let patches: [StoryboardAssistantUndoPatch]
+    let createdFrameIds: [(sceneId: String, frameId: String)]
+
+    var isEmpty: Bool { patches.isEmpty && createdFrameIds.isEmpty }
+}
+
 struct StoryboardSkillsView: View {
     @ObservedObject var board: BoardState
     let projectId: String
 
     @State private var selectedSkill: StoryboardSkillID = .planSceneCoverage
+    @State private var selectedAssistant: StoryboardAssistant? = .sceneDirector
     @State private var definitions: [StoryboardSkillDefinitionDTO] = []
     @State private var suggestion: StoryboardSkillSuggestionDTO?
     @State private var isRunning = false
@@ -187,6 +201,7 @@ struct StoryboardSkillsView: View {
     @State private var retryChanges: [StoryboardSkillChangeDTO] = []
     @State private var errorMessage: String?
     @State private var successMessage: String?
+    @State private var lastUndo: StoryboardAssistantUndoBatch?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -195,13 +210,13 @@ struct StoryboardSkillsView: View {
                 Group {
                     if proxy.size.width >= 800 {
                         HStack(spacing: 0) {
-                            skillList.frame(width: 300)
+                            assistantList.frame(width: 310)
                             Divider()
                             resultPane
                         }
                     } else {
                         VStack(spacing: 0) {
-                            skillPicker
+                            assistantPicker
                             Divider()
                             resultPane
                         }
@@ -209,13 +224,13 @@ struct StoryboardSkillsView: View {
                 }
                 .background(BoardBrand.chrome)
             }
-            .navigationTitle("Storyboard Skills")
+            .navigationTitle("Scenehjelpere")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(BoardBrand.panel, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Label("Forslag — aldri autoendring", systemImage: "hand.raised")
+                    Label("Du godkjenner alltid før noe endres", systemImage: "hand.raised")
                         .font(.caption).foregroundStyle(BoardBrand.dim)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -230,78 +245,109 @@ struct StoryboardSkillsView: View {
         }
     }
 
-    private var skillList: some View {
+    private var assistantList: some View {
         List {
-            ForEach(StoryboardSkillID.allCases) { skill in
-                Button {
-                    selectedSkill = skill
-                    suggestion = nil
-                    errorMessage = nil
-                    successMessage = nil
-                } label: {
+            Section("HJELPERE") {
+                ForEach(StoryboardAssistant.allCases) { assistant in
+                    assistantButton(assistant)
+                }
+            }
+            Section("INNDATA") {
+                Button { selectArtistMarks() } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: skill.icon)
-                            .frame(width: 28).foregroundStyle(BoardBrand.accent)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(remoteDefinition(for: skill)?.shortTitle ?? skill.title)
-                                .font(.subheadline.weight(.semibold))
-                            Text(remoteDefinition(for: skill)?.description ?? skill.detail)
-                                .font(.caption).foregroundStyle(.secondary)
-                                .lineLimit(2)
+                        Image(systemName: StoryboardSkillID.translateArtistMarks.icon)
+                            .font(.system(size: 18))
+                            .frame(width: 32, height: StoryboardExperienceMetrics.minimumTouchTarget)
+                            .foregroundStyle(BoardBrand.accent)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Tolk artistmerker").font(.subheadline.weight(.semibold))
+                            Text("Bruk Pencil-merker som kontekst for en konkret produksjonsnote.")
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(3)
                         }
                     }
                 }
                 .buttonStyle(.plain)
-                .listRowBackground(selectedSkill == skill
+                .listRowBackground(selectedAssistant == nil
                     ? BoardBrand.accent.opacity(0.16) : BoardBrand.panel)
-                .accessibilityIdentifier("storyboard.skills.select.\(skill.rawValue)")
+                .accessibilityIdentifier("storyboard.assistants.artistMarks")
             }
         }
         .scrollContentBackground(.hidden)
         .background(BoardBrand.panel)
     }
 
-    private var skillPicker: some View {
-        Picker("Skill", selection: $selectedSkill) {
-            ForEach(StoryboardSkillID.allCases) { skill in
-                Text(skill.title).tag(skill)
+    private func assistantButton(_ assistant: StoryboardAssistant) -> some View {
+        Button { select(assistant) } label: {
+            HStack(spacing: 12) {
+                Image(systemName: assistant.icon)
+                    .font(.system(size: 18))
+                    .frame(width: 32, height: StoryboardExperienceMetrics.minimumTouchTarget)
+                    .foregroundStyle(BoardBrand.accent)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(assistant.title).font(.subheadline.weight(.semibold))
+                    Text(assistant.detail).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                }
             }
         }
-        .pickerStyle(.menu)
-        .padding()
-        .onChange(of: selectedSkill) {
-            suggestion = nil; errorMessage = nil; successMessage = nil
+        .buttonStyle(.plain)
+        .listRowBackground(selectedAssistant == assistant
+            ? BoardBrand.accent.opacity(0.16) : BoardBrand.panel)
+        .accessibilityIdentifier("storyboard.assistants.select.\(assistant.rawValue)")
+    }
+
+    private var assistantPicker: some View {
+        Menu {
+            ForEach(StoryboardAssistant.allCases) { assistant in
+                Button(assistant.title) { select(assistant) }
+            }
+            Divider()
+            Button("Tolk artistmerker") { selectArtistMarks() }
+        } label: {
+            Label(selectedAssistant?.title ?? "Tolk artistmerker",
+                  systemImage: selectedAssistant?.icon ?? StoryboardSkillID.translateArtistMarks.icon)
+                .font(.headline)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity,
+                       minHeight: StoryboardExperienceMetrics.minimumTouchTarget,
+                       alignment: .leading)
         }
+        .padding()
     }
 
     private var resultPane: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .top, spacing: 14) {
-                    Image(systemName: selectedSkill.icon)
+                    Image(systemName: selectedAssistant?.icon ?? selectedSkill.icon)
                         .font(.title2).foregroundStyle(BoardBrand.accent)
                         .frame(width: 44, height: 44)
                         .background(BoardBrand.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(remoteDefinition(for: selectedSkill)?.title ?? selectedSkill.title)
+                        Text(selectedAssistant?.title ?? "Tolk artistmerker")
                             .font(.title3.bold()).foregroundStyle(.white)
-                        Text(remoteDefinition(for: selectedSkill)?.description ?? selectedSkill.detail)
+                        Text(selectedAssistant?.detail ?? selectedSkill.detail)
                             .font(.subheadline).foregroundStyle(BoardBrand.dim)
                     }
                     Spacer()
                     Text("0 USD").font(.caption.bold()).foregroundStyle(.green)
                 }
 
+                if let assistant = selectedAssistant {
+                    capabilityPicker(assistant)
+                }
+
                 Button { runSelectedSkill() } label: {
                     if isRunning {
                         ProgressView().tint(.white)
                     } else {
-                        Label("Kjør skill", systemImage: "play.fill")
+                        Label(selectedAssistant == nil ? "Tolk markeringene" : "Analyser scenen",
+                              systemImage: "sparkles")
                     }
                 }
                 .buttonStyle(.borderedProminent).tint(BoardBrand.accent)
+                .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
                 .disabled(isRunning || isReviewing || (selectedSkill.requiresFrame && board.frame == nil))
-                .accessibilityIdentifier("storyboard.skills.run")
+                .accessibilityIdentifier("storyboard.assistants.run")
 
                 if let errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle")
@@ -315,6 +361,55 @@ struct StoryboardSkillsView: View {
             }
             .padding(24)
         }
+    }
+
+    private func capabilityPicker(_ assistant: StoryboardAssistant) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("HVA SKAL UNDERSØKES?")
+                .font(.caption.weight(.bold)).tracking(0.8)
+                .foregroundStyle(BoardBrand.label)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(assistant.capabilities) { capability in
+                        Button {
+                            selectedSkill = capability
+                            clearResult()
+                        } label: {
+                            Label(remoteDefinition(for: capability)?.shortTitle ?? capability.title,
+                                  systemImage: capability.icon)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(selectedSkill == capability ? .white : BoardBrand.dim)
+                                .padding(.horizontal, 12)
+                                .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+                                .background(selectedSkill == capability
+                                            ? BoardBrand.accent.opacity(0.55)
+                                            : Color.white.opacity(0.05), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("storyboard.assistants.capability.\(capability.rawValue)")
+                    }
+                }
+            }
+        }
+    }
+
+    private func select(_ assistant: StoryboardAssistant) {
+        selectedAssistant = assistant
+        selectedSkill = assistant.defaultCapability
+        clearResult()
+    }
+
+    private func selectArtistMarks() {
+        selectedAssistant = nil
+        selectedSkill = .translateArtistMarks
+        clearResult()
+    }
+
+    private func clearResult() {
+        suggestion = nil
+        errorMessage = nil
+        successMessage = nil
+        retryChanges = []
     }
 
     private func suggestionCard(_ suggestion: StoryboardSkillSuggestionDTO) -> some View {
@@ -331,46 +426,80 @@ struct StoryboardSkillsView: View {
                     .background(result.severity == "blocking" ? Color.red : Color.orange,
                                 in: Capsule())
             }
-            Text(result.summary).foregroundStyle(.white)
-            Text(result.rationale).font(.caption).foregroundStyle(BoardBrand.dim)
 
-            ForEach(result.evidence) { item in
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item.label).font(.caption.bold()).foregroundStyle(.white)
-                    Text(item.detail).font(.caption).foregroundStyle(BoardBrand.dim)
-                }
-                .padding(.leading, 10)
-                .overlay(alignment: .leading) {
-                    Rectangle().fill(BoardBrand.accent).frame(width: 2)
-                }
+            suggestionSection("Hvorfor", icon: "questionmark.circle") {
+                Text(result.rationale).font(.subheadline).foregroundStyle(BoardBrand.dim)
             }
 
-            ForEach(result.alternatives) { alternative in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(alternative.title).font(.subheadline.bold()).foregroundStyle(.white)
-                    Text(alternative.tradeoff).font(.caption).foregroundStyle(BoardBrand.dim)
-                    if suggestion.status == "pending" {
-                        Button("Velg og bruk") { accept(changes: alternative.changes) }
-                            .buttonStyle(.bordered).tint(BoardBrand.accent)
-                            .disabled(isReviewing)
-                            .accessibilityIdentifier("storyboard.skills.alternative.\(alternative.id)")
+            suggestionSection("Evidens", icon: "scope") {
+                if result.evidence.isEmpty {
+                    Text("Ingen direkte evidens funnet i valgt scene.")
+                        .font(.subheadline).foregroundStyle(BoardBrand.dim)
+                }
+                ForEach(result.evidence) { item in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(item.label).font(.subheadline.bold()).foregroundStyle(.white)
+                        Text(item.detail).font(.subheadline).foregroundStyle(BoardBrand.dim)
+                    }
+                    .padding(.leading, 10)
+                    .overlay(alignment: .leading) {
+                        Rectangle().fill(BoardBrand.accent).frame(width: 2)
                     }
                 }
-                .padding(12).background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
             }
 
-            if suggestion.status == "pending" && !result.alternatives.isEmpty {
-                Button("Avvis alle alternativer", role: .destructive) { reject() }
-                    .disabled(isReviewing)
-                    .accessibilityIdentifier("storyboard.skills.reject")
+            suggestionSection("Før / etter", icon: "rectangle.2.swap") {
+                Text(result.summary).font(.body.weight(.semibold)).foregroundStyle(.white)
+                ForEach(result.recommendedChanges) { change in
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .foregroundStyle(BoardBrand.accent)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(change.label).font(.subheadline.bold()).foregroundStyle(.white)
+                            Text(change.reason).font(.subheadline).foregroundStyle(BoardBrand.dim)
+                        }
+                    }
+                }
+                if result.recommendedChanges.isEmpty && result.alternatives.isEmpty {
+                    Text("Analysen foreslår ingen dataendring.")
+                        .font(.subheadline).foregroundStyle(BoardBrand.dim)
+                }
             }
 
-            ForEach(result.warnings, id: \.self) { warning in
-                Label(warning, systemImage: "exclamationmark.triangle")
-                    .font(.caption).foregroundStyle(.orange)
+            suggestionSection("Konsekvens", icon: "point.3.connected.trianglepath.dotted") {
+                ForEach(result.alternatives) { alternative in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(alternative.title).font(.subheadline.bold()).foregroundStyle(.white)
+                        Text(alternative.tradeoff).font(.subheadline).foregroundStyle(BoardBrand.dim)
+                        if suggestion.status == "pending" {
+                            Button("Godkjenn dette alternativet") {
+                                accept(changes: alternative.changes)
+                            }
+                            .buttonStyle(.bordered).tint(BoardBrand.accent)
+                            .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+                            .disabled(isReviewing)
+                            .accessibilityIdentifier("storyboard.skills.alternative.\(alternative.id)")
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.white.opacity(0.04),
+                                in: RoundedRectangle(cornerRadius: 10))
+                }
+                ForEach(result.warnings, id: \.self) { warning in
+                    Label(warning, systemImage: "exclamationmark.triangle")
+                        .font(.subheadline).foregroundStyle(.orange)
+                }
             }
 
-            if suggestion.status == "pending" && result.alternatives.isEmpty {
+            suggestionSection("Kostnad", icon: "creditcard") {
+                Text(result.cost.estimatedUsd == 0
+                     ? "Ingen beregnet leverandørkostnad"
+                     : String(format: "Estimert %.3f USD via %@",
+                              result.cost.estimatedUsd, result.cost.provider))
+                    .font(.subheadline).foregroundStyle(.green)
+            }
+
+            if suggestion.status == "pending" {
                 HStack {
                     Button(result.recommendedChanges.isEmpty ? "Godkjenn analyse" : "Godkjenn og bruk") {
                         accept(changes: result.recommendedChanges)
@@ -382,6 +511,8 @@ struct StoryboardSkillsView: View {
                         .disabled(isReviewing)
                         .accessibilityIdentifier("storyboard.skills.reject")
                 }
+                Text("Endringer utføres først etter godkjenning og kan spores i historikken.")
+                    .font(.caption).foregroundStyle(BoardBrand.label)
             }
 
             if suggestion.status == "accepted" && !retryChanges.isEmpty {
@@ -391,6 +522,18 @@ struct StoryboardSkillsView: View {
                     .accessibilityIdentifier("storyboard.skills.retryApply")
             }
 
+            if suggestion.status == "accepted", lastUndo != nil {
+                Button {
+                    undoLastAcceptedChange()
+                } label: {
+                    Label("Angre godkjent endring", systemImage: "arrow.uturn.backward.circle")
+                        .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+                }
+                .buttonStyle(.bordered).tint(.orange)
+                .disabled(isReviewing)
+                .accessibilityIdentifier("storyboard.assistants.undo")
+            }
+
             Text("Fingerprint \(String(result.contextFingerprint.prefix(12))) · \(result.skillVersion)")
                 .font(.caption2.monospaced()).foregroundStyle(BoardBrand.label)
         }
@@ -398,6 +541,22 @@ struct StoryboardSkillsView: View {
         .background(BoardBrand.panel, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(BoardBrand.border))
         .accessibilityIdentifier("storyboard.skills.result")
+    }
+
+    private func suggestionSection<Content: View>(
+        _ title: String,
+        icon: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(.bold)).textCase(.uppercase)
+                .foregroundStyle(BoardBrand.label)
+            content()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func remoteDefinition(for skill: StoryboardSkillID) -> StoryboardSkillDefinitionDTO? {
@@ -421,6 +580,7 @@ struct StoryboardSkillsView: View {
         errorMessage = nil
         successMessage = nil
         retryChanges = []
+        lastUndo = nil
         Task {
             do {
                 suggestion = try await RoleRoomAPIClient.shared.runStoryboardSkill(
@@ -447,8 +607,9 @@ struct StoryboardSkillsView: View {
                     action: "accept")
                 reviewPersisted = true
                 retryChanges = changes
-                try await apply(changes: changes)
+                let undo = try await apply(changes: changes)
                 await board.reload()
+                lastUndo = undo.isEmpty ? nil : undo
                 retryChanges = []
                 successMessage = changes.isEmpty
                     ? "Analysen er godkjent. Ingen storyboarddata ble endret."
@@ -469,8 +630,9 @@ struct StoryboardSkillsView: View {
         errorMessage = nil
         Task {
             do {
-                try await apply(changes: changes)
+                let undo = try await apply(changes: changes)
                 await board.reload()
+                lastUndo = undo.isEmpty ? nil : undo
                 retryChanges = []
                 successMessage = "Det godkjente forslaget er nå brukt og synket."
             } catch {
@@ -498,10 +660,21 @@ struct StoryboardSkillsView: View {
         }
     }
 
-    private func apply(changes: [StoryboardSkillChangeDTO]) async throws {
-        guard let scene = board.scene else { return }
+    private func apply(changes: [StoryboardSkillChangeDTO]) async throws -> StoryboardAssistantUndoBatch {
+        guard let scene = board.scene else {
+            return StoryboardAssistantUndoBatch(patches: [], createdFrameIds: [])
+        }
+        var inversePatches: [StoryboardAssistantUndoPatch] = []
+        var createdFrameIds: [(sceneId: String, frameId: String)] = []
         for change in changes {
             if change.operation == "update-frame", let frameId = change.frameId {
+                if let frame = scene.frames.first(where: { $0.id == frameId }) {
+                    let inverse = inverseFields(for: frame, changedKeys: Set(change.patch.fields.keys))
+                    if !inverse.isEmpty {
+                        inversePatches.append(StoryboardAssistantUndoPatch(
+                            sceneId: scene.id, frameId: frameId, fields: inverse))
+                    }
+                }
                 try await RoleRoomAPIClient.shared.saveFramePatch(
                     manuscriptId: board.manuscript.id,
                     sceneId: scene.id,
@@ -511,6 +684,7 @@ struct StoryboardSkillsView: View {
                 let frameId = try await RoleRoomAPIClient.shared.addFrame(
                     manuscriptId: board.manuscript.id,
                     sceneId: scene.id)
+                createdFrameIds.append((scene.id, frameId))
                 try await RoleRoomAPIClient.shared.saveFramePatch(
                     manuscriptId: board.manuscript.id,
                     sceneId: scene.id,
@@ -518,6 +692,72 @@ struct StoryboardSkillsView: View {
                     fields: change.patch.fields)
             }
         }
+        return StoryboardAssistantUndoBatch(
+            patches: inversePatches, createdFrameIds: createdFrameIds)
+    }
+
+    private func undoLastAcceptedChange() {
+        guard let undo = lastUndo else { return }
+        isReviewing = true
+        errorMessage = nil
+        Task {
+            do {
+                for patch in undo.patches.reversed() {
+                    try await RoleRoomAPIClient.shared.saveFramePatch(
+                        manuscriptId: board.manuscript.id,
+                        sceneId: patch.sceneId,
+                        frameId: patch.frameId,
+                        fields: patch.fields)
+                }
+                for created in undo.createdFrameIds.reversed() {
+                    try await RoleRoomAPIClient.shared.deleteFrame(
+                        manuscriptId: board.manuscript.id,
+                        sceneId: created.sceneId,
+                        frameId: created.frameId)
+                }
+                await board.reload()
+                lastUndo = nil
+                successMessage = "Den godkjente endringen er angret og synket."
+            } catch {
+                errorMessage = "Kunne ikke angre hele endringen: \(error.localizedDescription)"
+            }
+            isReviewing = false
+        }
+    }
+
+    private func inverseFields(
+        for frame: FrameSummary,
+        changedKeys: Set<String>
+    ) -> [String: any Sendable] {
+        var values: [String: any Sendable] = [:]
+        func nullable(_ value: String?) -> any Sendable { value ?? NSNull() }
+        func nullableInt(_ value: Int?) -> any Sendable { value ?? NSNull() }
+        for key in changedKeys {
+            switch key {
+            case "description": values[key] = frame.description
+            case "notes": values[key] = nullable(frame.notes)
+            case "shotType": values[key] = nullable(frame.shotType)
+            case "cameraAngle": values[key] = nullable(frame.cameraAngle)
+            case "cameraMovement": values[key] = nullable(frame.movement)
+            case "lensMm": values[key] = nullableInt(frame.lensMm)
+            case "duration": values[key] = frame.durationSec
+            case "transition": values[key] = nullable(frame.transition)
+            case "focusDepth": values[key] = nullable(frame.focusDepth)
+            case "location": values[key] = nullable(frame.productionLocation)
+            case "timeOfDay": values[key] = nullable(frame.timeOfDay)
+            case "weather": values[key] = nullable(frame.weather)
+            case "screenDirection": values[key] = nullable(frame.screenDirection)
+            case "beatTag": values[key] = nullable(frame.beatTag)
+            case "continuityNotes": values[key] = nullable(frame.continuityNotes)
+            case "productionNotes": values[key] = nullable(frame.productionNotes)
+            case "vfxNotes": values[key] = nullable(frame.vfxNotes)
+            case "tags": values[key] = frame.tags
+            case "revisionStatus": values[key] = nullable(frame.revisionStatus)
+            case "revisionReason": values[key] = nullable(frame.revisionReason)
+            default: break
+            }
+        }
+        return values
     }
 
     static func contextDictionary(

@@ -97,6 +97,67 @@ const commentResolutionBody = z.object({
   resolvedInRoundId: z.string().uuid().nullable().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0);
 
+const reviewChangeFields = [
+  'description', 'notes', 'shotType', 'cameraAngle', 'movement', 'lensMm',
+  'duration', 'transition', 'focusDepth', 'location', 'timeOfDay', 'weather',
+  'screenDirection', 'beatTag', 'continuityNotes', 'productionNotes',
+  'vfxNotes', 'tags', 'revisionStatus', 'revisionReason',
+] as const;
+type ReviewChangeField = typeof reviewChangeFields[number];
+
+const nullableText = (max: number) => z.string().trim().max(max).nullable();
+const reviewChangeValueSchemas: Record<ReviewChangeField, z.ZodTypeAny> = {
+  description: z.string().trim().min(1).max(2_000),
+  notes: nullableText(2_000),
+  shotType: nullableText(120),
+  cameraAngle: nullableText(120),
+  movement: nullableText(160),
+  lensMm: z.number().int().min(1).max(2_000).nullable(),
+  duration: z.number().min(0.25).max(600),
+  transition: nullableText(160),
+  focusDepth: nullableText(160),
+  location: nullableText(500),
+  timeOfDay: nullableText(100),
+  weather: nullableText(160),
+  screenDirection: z.enum(['left-to-right', 'right-to-left', 'static']).nullable(),
+  beatTag: nullableText(120),
+  continuityNotes: nullableText(2_000),
+  productionNotes: nullableText(2_000),
+  vfxNotes: nullableText(2_000),
+  tags: z.array(z.string().trim().min(1).max(100)).max(30).nullable(),
+  revisionStatus: z.enum(['current', 'stale', 'unmapped']).nullable(),
+  revisionReason: nullableText(2_000),
+};
+
+function validateReviewChange(
+  value: { field: ReviewChangeField; value?: unknown },
+  context: z.RefinementCtx,
+) {
+  if (!Object.prototype.hasOwnProperty.call(value, 'value')) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'review_change_value_required' });
+    return;
+  }
+  const parsed = reviewChangeValueSchemas[value.field].safeParse(value.value);
+  if (!parsed.success) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'invalid_review_change_value' });
+  }
+}
+
+const reviewChangeBody = z.object({
+  field: z.enum(reviewChangeFields),
+  value: z.unknown(),
+}).strict().superRefine(validateReviewChange);
+
+const applyReviewChangeBody = z.object({
+  field: z.enum(reviewChangeFields),
+  value: z.unknown(),
+  expectedPreviewHash: z.string().regex(HASH_PATTERN),
+}).strict().superRefine(validateReviewChange);
+
+const undoReviewChangeBody = z.object({
+  expectedAfterHash: z.string().regex(HASH_PATTERN),
+}).strict();
+
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (value && typeof value === 'object') {
@@ -112,6 +173,70 @@ function canonicalize(value: unknown): unknown {
 
 export function storyboardReviewHash(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(canonicalize(value))).digest('hex');
+}
+
+const reviewChangeFieldLabels: Record<ReviewChangeField, string> = {
+  description: 'Shotbeskrivelse', notes: 'Shotnotat', shotType: 'Bildestørrelse',
+  cameraAngle: 'Kameravinkel', movement: 'Kamerabevegelse', lensMm: 'Brennvidde',
+  duration: 'Varighet', transition: 'Overgang', focusDepth: 'Fokusdybde',
+  location: 'Produksjonslokasjon', timeOfDay: 'Tid på døgnet', weather: 'Vær',
+  screenDirection: 'Skjermretning', beatTag: 'Dramatisk beat',
+  continuityNotes: 'Kontinuitetsnotat', productionNotes: 'Produksjonsnotat',
+  vfxNotes: 'VFX-notat', tags: 'Tagger', revisionStatus: 'Revisjonsstatus',
+  revisionReason: 'Revisjonsårsak',
+};
+
+function reviewChangeDisplayValue(field: ReviewChangeField, value: unknown): string {
+  if (value == null || value === '') return 'Ikke angitt';
+  if (field === 'duration' && typeof value === 'number') return `${value.toFixed(1)} sek`;
+  if (field === 'lensMm' && typeof value === 'number') return `${value} mm`;
+  if (Array.isArray(value)) return value.map(String).join(', ');
+  return String(value);
+}
+
+function findStoryboardFrame(
+  scenes: JsonRecord[], frameId: string,
+): { sceneId: string; frame: JsonRecord } | null {
+  for (const scene of scenes) {
+    const frames = Array.isArray(scene.storyboardFrames) ? scene.storyboardFrames : [];
+    const frame = frames.find((candidate: JsonRecord) => String(candidate?.id ?? '') === frameId);
+    if (frame) return { sceneId: String(scene.id), frame };
+  }
+  return null;
+}
+
+export function buildStoryboardReviewChangePreview(input: {
+  projectId: string;
+  manuscriptId: string;
+  roundId: string;
+  commentId: string;
+  frameId: string;
+  sceneId: string;
+  frame: JsonRecord;
+  field: ReviewChangeField;
+  value: unknown;
+}) {
+  const beforeValue = input.frame[input.field] ?? null;
+  const afterValue = input.value;
+  const beforeHash = storyboardReviewHash({ [input.field]: beforeValue });
+  const afterHash = storyboardReviewHash({ [input.field]: afterValue });
+  const previewHash = storyboardReviewHash({
+    projectId: input.projectId, manuscriptId: input.manuscriptId,
+    roundId: input.roundId, commentId: input.commentId,
+    frameId: input.frameId, sceneId: input.sceneId,
+    field: input.field, beforeValue, afterValue,
+  });
+  return {
+    previewHash, beforeHash, afterHash,
+    commentId: input.commentId, roundId: input.roundId,
+    sceneId: input.sceneId, frameId: input.frameId,
+    field: input.field, fieldLabel: reviewChangeFieldLabels[input.field],
+    beforeDisplayValue: reviewChangeDisplayValue(input.field, beforeValue),
+    afterDisplayValue: reviewChangeDisplayValue(input.field, afterValue),
+    currentFrameUpdatedAt: typeof input.frame.updatedAt === 'string' ? input.frame.updatedAt : null,
+    forwardPatch: { [input.field]: afterValue },
+    inversePatch: { [input.field]: beforeValue },
+  };
 }
 
 function projectIdOf(source: JsonRecord | null): string {
@@ -320,6 +445,42 @@ function mapComment(row: JsonRecord) {
   };
 }
 
+function mapCommentChange(row: JsonRecord) {
+  const patch = row.forward_patch && typeof row.forward_patch === 'object'
+    ? row.forward_patch as JsonRecord
+    : {};
+  const field = String(Object.keys(patch)[0] ?? row.field ?? '');
+  const beforePatch = row.inverse_patch && typeof row.inverse_patch === 'object'
+    ? row.inverse_patch as JsonRecord
+    : {};
+  return {
+    id: String(row.id), reviewRoundId: String(row.review_round_id),
+    commentId: String(row.comment_id), sceneId: String(row.scene_id),
+    frameId: String(row.frame_id), operation: String(row.operation),
+    field,
+    fieldLabel: reviewChangeFieldLabels[field as ReviewChangeField] ?? field,
+    beforeDisplayValue: reviewChangeDisplayValue(
+      field as ReviewChangeField, beforePatch[field] ?? null),
+    afterDisplayValue: reviewChangeDisplayValue(
+      field as ReviewChangeField, patch[field] ?? null),
+    beforeHash: String(row.before_hash), afterHash: String(row.after_hash),
+    revertsChangeId: row.reverts_change_id ?? null,
+    createdBy: String(row.created_by),
+    createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
+function commentChangesByComment(rows: JsonRecord[]) {
+  const grouped = new Map<string, ReturnType<typeof mapCommentChange>[]>();
+  for (const row of rows) {
+    const commentId = String(row.comment_id);
+    const current = grouped.get(commentId) ?? [];
+    current.push(mapCommentChange(row));
+    grouped.set(commentId, current);
+  }
+  return grouped;
+}
+
 function mapDecision(row: JsonRecord) {
   return {
     id: String(row.id), reviewRoundId: String(row.review_round_id), decision: row.decision,
@@ -426,6 +587,45 @@ async function loadCurrentSnapshot(
 async function withClient<T>(pool: Pool, work: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try { return await work(client); } finally { client.release(); }
+}
+
+async function loadScopedReviewComment(
+  queryable: Pick<Pool, 'query'>,
+  input: { projectId: string; manuscriptId: string; roundId: string; commentId: string },
+  lock = false,
+) {
+  const result = await queryable.query(
+    `SELECT comment.*, review_round.status AS review_round_status,
+            review_round.version AS review_round_version
+       FROM storyboard_review_comments AS comment
+       JOIN storyboard_review_rounds AS review_round
+         ON review_round.id = comment.review_round_id
+      WHERE comment.id = $1 AND comment.review_round_id = $2
+        AND review_round.project_id = $3 AND review_round.manuscript_id = $4
+      ${lock ? 'FOR UPDATE OF comment' : ''}`,
+    [input.commentId, input.roundId, input.projectId, input.manuscriptId],
+  );
+  return result.rows[0] ?? null;
+}
+
+async function prepareReviewCommentChange(
+  manuscriptsService: CastingManuscriptsService,
+  scope: {
+    projectId: string; manuscriptId: string; roundId: string; commentId: string;
+    frameId: string; field: ReviewChangeField; value: unknown;
+  },
+) {
+  const bundle = await loadCurrentBundle(
+    manuscriptsService, scope.projectId, scope.manuscriptId,
+  );
+  if (!bundle) return { error: 'manuscript_not_found' as const };
+  const located = findStoryboardFrame(bundle.scenes, scope.frameId);
+  if (!located) return { error: 'review_frame_not_found' as const };
+  return {
+    preview: buildStoryboardReviewChangePreview({
+      ...scope, sceneId: located.sceneId, frame: located.frame,
+    }),
+  };
 }
 
 async function resolveShare(pool: Pool, token: string) {
@@ -667,14 +867,21 @@ export function registerStoryboardReviewRoutes(
     );
     const row = result.rows[0];
     if (!row) { res.status(404).json({ error: 'review_round_not_found' }); return; }
-    const [comments, decisions, links] = await Promise.all([
+    const [comments, decisions, links, changes] = await Promise.all([
       pool.query('SELECT * FROM storyboard_review_comments WHERE review_round_id = $1 ORDER BY created_at', [row.id]),
       pool.query('SELECT * FROM storyboard_review_decisions WHERE review_round_id = $1 ORDER BY created_at DESC', [row.id]),
       pool.query(`SELECT id, review_round_id, access_mode, require_identity, expires_at, revoked_at, created_at
                     FROM storyboard_review_share_links WHERE review_round_id = $1 ORDER BY created_at DESC`, [row.id]),
+      pool.query(`SELECT * FROM storyboard_review_comment_changes
+                   WHERE review_round_id = $1 ORDER BY created_at`, [row.id]),
     ]);
+    const changesByComment = commentChangesByComment(changes.rows);
     res.json({ success: true, data: {
-      ...mapRound(row, true), comments: comments.rows.map(mapComment), decisions: decisions.rows.map(mapDecision),
+      ...mapRound(row, true),
+      comments: comments.rows.map((comment) => ({
+        ...mapComment(comment), changes: changesByComment.get(String(comment.id)) ?? [],
+      })),
+      decisions: decisions.rows.map(mapDecision),
       shareLinks: links.rows.map((link) => ({
         id: String(link.id), reviewRoundId: String(link.review_round_id), accessMode: link.access_mode,
         requireIdentity: link.require_identity, expiresAt: link.expires_at?.toISOString?.() ?? link.expires_at ?? null,
@@ -702,6 +909,23 @@ export function registerStoryboardReviewRoutes(
       );
       if (!targetRound.rows[0]) {
         res.status(400).json({ error: 'resolved_revision_not_in_manuscript' }); return;
+      }
+    }
+    if (parsed.data.status === 'open') {
+      const activeChange = await pool.query(
+        `SELECT applied.id
+           FROM storyboard_review_comment_changes AS applied
+          WHERE applied.comment_id = $1 AND applied.review_round_id = $2
+            AND applied.operation = 'apply'
+            AND NOT EXISTS (
+              SELECT 1 FROM storyboard_review_comment_changes AS undone
+               WHERE undone.reverts_change_id = applied.id AND undone.operation = 'undo'
+            )
+          LIMIT 1`,
+        [commentId, roundId],
+      );
+      if (activeChange.rows[0]) {
+        res.status(409).json({ error: 'review_change_must_be_undone' }); return;
       }
     }
     const hasAssignedTo = Object.prototype.hasOwnProperty.call(parsed.data, 'assignedTo');
@@ -765,6 +989,267 @@ export function registerStoryboardReviewRoutes(
     }
     res.json({ success: true, data: mapComment(comment) });
   }));
+
+  router.post(`${base}/:roundId/comments/:commentId/change-preview`, deps.auth, deps.canManage,
+    asyncHandler(async (req, res) => {
+      const parsed = reviewChangeBody.safeParse(req.body);
+      if (!parsed.success) { res.status(400).json({ error: 'invalid_review_change' }); return; }
+      const scope = {
+        projectId: String(req.params.projectId), manuscriptId: String(req.params.manuscriptId),
+        roundId: String(req.params.roundId), commentId: String(req.params.commentId),
+      };
+      const comment = await loadScopedReviewComment(pool, scope);
+      if (!comment) { res.status(404).json({ error: 'review_comment_not_found' }); return; }
+      if (!comment.frame_id) {
+        res.status(409).json({ error: 'review_comment_has_no_frame' }); return;
+      }
+      if (['approved', 'superseded'].includes(String(comment.review_round_status))) {
+        res.status(409).json({ error: 'review_round_locked' }); return;
+      }
+      const prepared = await prepareReviewCommentChange(deps.manuscriptsService, {
+        ...scope, frameId: String(comment.frame_id),
+        field: parsed.data.field, value: parsed.data.value,
+      });
+      if ('error' in prepared) { res.status(404).json({ error: prepared.error }); return; }
+      res.json({ success: true, data: prepared.preview });
+    }));
+
+  router.post(`${base}/:roundId/comments/:commentId/change-applications`, deps.auth, deps.canManage,
+    asyncHandler(async (req, res) => {
+      const parsed = applyReviewChangeBody.safeParse(req.body);
+      if (!parsed.success) { res.status(400).json({ error: 'invalid_review_change' }); return; }
+      const scope = {
+        projectId: String(req.params.projectId), manuscriptId: String(req.params.manuscriptId),
+        roundId: String(req.params.roundId), commentId: String(req.params.commentId),
+      };
+      const actorUserId = String((req as AuthedRequest).userId ?? '');
+      const actorDisplayName = String((req as AuthedRequest).userEmail ?? actorUserId);
+      const applied = await withClient(pool, async (client) => {
+        await client.query('BEGIN');
+        try {
+          const comment = await loadScopedReviewComment(client, scope, true);
+          if (!comment) {
+            const error = new Error('review_comment_not_found') as Error & { status?: number };
+            error.status = 404; throw error;
+          }
+          if (!comment.frame_id) {
+            const error = new Error('review_comment_has_no_frame') as Error & { status?: number };
+            error.status = 409; throw error;
+          }
+          if (comment.status !== 'open') {
+            const error = new Error('review_comment_not_open') as Error & { status?: number };
+            error.status = 409; throw error;
+          }
+          if (['approved', 'superseded'].includes(String(comment.review_round_status))) {
+            const error = new Error('review_round_locked') as Error & { status?: number };
+            error.status = 409; throw error;
+          }
+          await client.query(
+            'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+            [scope.manuscriptId, `${String(comment.frame_id)}:${parsed.data.field}`],
+          );
+          const prepared = await prepareReviewCommentChange(deps.manuscriptsService, {
+            ...scope, frameId: String(comment.frame_id),
+            field: parsed.data.field, value: parsed.data.value,
+          });
+          if ('error' in prepared) {
+            const error = new Error(prepared.error) as Error & { status?: number };
+            error.status = 404; throw error;
+          }
+          if (prepared.preview.previewHash !== parsed.data.expectedPreviewHash) {
+            const error = new Error('review_change_preview_stale') as Error & { status?: number };
+            error.status = 409; throw error;
+          }
+          if (prepared.preview.beforeHash === prepared.preview.afterHash) {
+            const error = new Error('review_change_has_no_effect') as Error & { status?: number };
+            error.status = 409; throw error;
+          }
+          const patched = await deps.manuscriptsService.patchFrame(
+            scope.manuscriptId, prepared.preview.sceneId, prepared.preview.frameId,
+            prepared.preview.forwardPatch,
+          );
+          if (!patched) {
+            const error = new Error('review_frame_not_found') as Error & { status?: number };
+            error.status = 404; throw error;
+          }
+          const changeResult = await client.query(
+            `INSERT INTO storyboard_review_comment_changes
+               (review_round_id, comment_id, project_id, manuscript_id, scene_id, frame_id,
+                operation, forward_patch, inverse_patch, before_hash, after_hash, created_by)
+             VALUES ($1,$2,$3,$4,$5,$6,'apply',$7::jsonb,$8::jsonb,$9,$10,$11)
+             RETURNING *`,
+            [scope.roundId, scope.commentId, scope.projectId, scope.manuscriptId,
+              prepared.preview.sceneId, prepared.preview.frameId,
+              JSON.stringify(prepared.preview.forwardPatch), JSON.stringify(prepared.preview.inversePatch),
+              prepared.preview.beforeHash, prepared.preview.afterHash, actorUserId],
+          );
+          const resolution = `Godkjent endring: ${prepared.preview.fieldLabel} – ${prepared.preview.beforeDisplayValue} → ${prepared.preview.afterDisplayValue}`;
+          const commentResult = await client.query(
+            `UPDATE storyboard_review_comments
+                SET status = 'resolved', resolution_note = $3, resolved_by = $4,
+                    resolved_at = now(), updated_at = now()
+              WHERE id = $1 AND review_round_id = $2
+              RETURNING *`,
+            [scope.commentId, scope.roundId, resolution, actorUserId],
+          );
+          await client.query('COMMIT');
+          return {
+            comment: commentResult.rows[0], change: changeResult.rows[0],
+            frameUpdatedAt: patched.updatedAt,
+            roundVersion: Number(comment.review_round_version),
+          };
+        } catch (error) {
+          await client.query('ROLLBACK'); throw error;
+        }
+      });
+      await upsertNotification({
+        projectId: scope.projectId, audience: 'producer_team',
+        eventType: 'storyboard_review_comment_resolved',
+        title: `Review-endring godkjent i storyboard v${applied.roundVersion}`,
+        message: String(applied.comment.resolution_note ?? '').slice(0, 500),
+        linkedEntityType: 'storyboard_review_comment_change',
+        linkedEntityId: String(applied.change.id), createdByUserId: actorUserId,
+        createdByRole: 'storyboard_manager', initiallyReadByUserId: actorUserId,
+        metadata: {
+          inboxType: 'storyboard_review', manuscriptId: scope.manuscriptId,
+          reviewRoundId: scope.roundId, frameId: applied.change.frame_id,
+          actorDisplayName,
+        },
+      });
+      res.status(201).json({ success: true, data: {
+        comment: mapComment(applied.comment), change: mapCommentChange(applied.change),
+        frameUpdatedAt: applied.frameUpdatedAt,
+      } });
+    }));
+
+  router.post(`${base}/:roundId/comments/:commentId/change-applications/:changeId/undo`,
+    deps.auth, deps.canManage, asyncHandler(async (req, res) => {
+      const parsed = undoReviewChangeBody.safeParse(req.body);
+      if (!parsed.success) { res.status(400).json({ error: 'invalid_review_change_undo' }); return; }
+      const scope = {
+        projectId: String(req.params.projectId), manuscriptId: String(req.params.manuscriptId),
+        roundId: String(req.params.roundId), commentId: String(req.params.commentId),
+      };
+      const changeId = String(req.params.changeId);
+      const actorUserId = String((req as AuthedRequest).userId ?? '');
+      const actorDisplayName = String((req as AuthedRequest).userEmail ?? actorUserId);
+      const undone = await withClient(pool, async (client) => {
+        await client.query('BEGIN');
+        try {
+          const comment = await loadScopedReviewComment(client, scope, true);
+          if (!comment) {
+            const error = new Error('review_comment_not_found') as Error & { status?: number };
+            error.status = 404; throw error;
+          }
+          if (['approved', 'superseded'].includes(String(comment.review_round_status))) {
+            const error = new Error('review_round_locked') as Error & { status?: number };
+            error.status = 409; throw error;
+          }
+          const changeResult = await client.query(
+            `SELECT change.*
+               FROM storyboard_review_comment_changes AS change
+              WHERE change.id = $1 AND change.comment_id = $2 AND change.review_round_id = $3
+                AND change.project_id = $4 AND change.manuscript_id = $5
+                AND change.operation = 'apply'
+              FOR UPDATE`,
+            [changeId, scope.commentId, scope.roundId, scope.projectId, scope.manuscriptId],
+          );
+          const change = changeResult.rows[0];
+          if (!change) {
+            const error = new Error('review_change_not_found') as Error & { status?: number };
+            error.status = 404; throw error;
+          }
+          const forwardPatch = change.forward_patch as JsonRecord;
+          const inversePatch = change.inverse_patch as JsonRecord;
+          const field = String(Object.keys(forwardPatch)[0] ?? '') as ReviewChangeField;
+          if (!reviewChangeFields.includes(field)) {
+            const error = new Error('review_change_field_invalid') as Error & { status?: number };
+            error.status = 409; throw error;
+          }
+          await client.query(
+            'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+            [scope.manuscriptId, `${String(change.frame_id)}:${field}`],
+          );
+          if (String(change.after_hash) !== parsed.data.expectedAfterHash) {
+            const error = new Error('review_change_confirmation_mismatch') as Error & { status?: number };
+            error.status = 409; throw error;
+          }
+          const priorUndo = await client.query(
+            `SELECT id FROM storyboard_review_comment_changes
+              WHERE reverts_change_id = $1 AND operation = 'undo' LIMIT 1`, [changeId],
+          );
+          if (priorUndo.rows[0]) {
+            const error = new Error('review_change_already_undone') as Error & { status?: number };
+            error.status = 409; throw error;
+          }
+          const bundle = await loadCurrentBundle(
+            deps.manuscriptsService, scope.projectId, scope.manuscriptId,
+          );
+          const located = bundle ? findStoryboardFrame(bundle.scenes, String(change.frame_id)) : null;
+          if (!located || located.sceneId !== String(change.scene_id)) {
+            const error = new Error('review_frame_not_found') as Error & { status?: number };
+            error.status = 404; throw error;
+          }
+          const currentHash = storyboardReviewHash({ [field]: located.frame[field] ?? null });
+          if (currentHash !== String(change.after_hash)) {
+            const error = new Error('review_change_cannot_undo_after_new_edit') as Error & { status?: number };
+            error.status = 409; throw error;
+          }
+          const patched = await deps.manuscriptsService.patchFrame(
+            scope.manuscriptId, located.sceneId, String(change.frame_id), inversePatch,
+          );
+          if (!patched) {
+            const error = new Error('review_frame_not_found') as Error & { status?: number };
+            error.status = 404; throw error;
+          }
+          const undoResult = await client.query(
+            `INSERT INTO storyboard_review_comment_changes
+               (review_round_id, comment_id, project_id, manuscript_id, scene_id, frame_id,
+                operation, forward_patch, inverse_patch, before_hash, after_hash,
+                reverts_change_id, created_by)
+             VALUES ($1,$2,$3,$4,$5,$6,'undo',$7::jsonb,$8::jsonb,$9,$10,$11,$12)
+             RETURNING *`,
+            [scope.roundId, scope.commentId, scope.projectId, scope.manuscriptId,
+              located.sceneId, String(change.frame_id), JSON.stringify(inversePatch),
+              JSON.stringify(forwardPatch), String(change.after_hash), String(change.before_hash),
+              changeId, actorUserId],
+          );
+          const reopened = await client.query(
+            `UPDATE storyboard_review_comments
+                SET status = 'open', resolution_note = NULL, resolved_by = NULL,
+                    resolved_at = NULL, updated_at = now()
+              WHERE id = $1 AND review_round_id = $2 RETURNING *`,
+            [scope.commentId, scope.roundId],
+          );
+          await client.query('COMMIT');
+          return {
+            comment: reopened.rows[0], change: undoResult.rows[0],
+            frameUpdatedAt: patched.updatedAt,
+            roundVersion: Number(comment.review_round_version),
+          };
+        } catch (error) {
+          await client.query('ROLLBACK'); throw error;
+        }
+      });
+      await upsertNotification({
+        projectId: scope.projectId, audience: 'producer_team',
+        eventType: 'storyboard_review_comment_reopened',
+        title: `Review-endring angret i storyboard v${undone.roundVersion}`,
+        message: String(undone.comment.body ?? '').slice(0, 500),
+        linkedEntityType: 'storyboard_review_comment_change',
+        linkedEntityId: String(undone.change.id), createdByUserId: actorUserId,
+        createdByRole: 'storyboard_manager', initiallyReadByUserId: actorUserId,
+        metadata: {
+          inboxType: 'storyboard_review', manuscriptId: scope.manuscriptId,
+          reviewRoundId: scope.roundId, frameId: undone.change.frame_id,
+          actorDisplayName,
+        },
+      });
+      res.status(201).json({ success: true, data: {
+        comment: mapComment(undone.comment), change: mapCommentChange(undone.change),
+        frameUpdatedAt: undone.frameUpdatedAt,
+      } });
+    }));
 
   router.get(`${base}/:roundId/diff`, deps.auth, deps.canView, asyncHandler(async (req, res) => {
     const result = await pool.query(
