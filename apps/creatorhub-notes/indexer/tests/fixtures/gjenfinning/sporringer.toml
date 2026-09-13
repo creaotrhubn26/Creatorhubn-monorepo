@@ -1,0 +1,127 @@
+# Gjenfinningsdatasettet: norske søk og hva de skal finne.
+#
+# `treff` er de ekte treffene — notatet handler om det hun spurte om.
+# `sammensetning` er et annet ord som begynner likt («utstyr» →
+# «utstyrsregister»): akseptabelt, men svakere, og telles for seg.
+# Alt annet notatet som kommer tilbake er et falskt treff. Korpuset er
+# hele verden her, så «falskt» er målbart og ikke en vurdering.
+
+[[sporring]]
+# bestemt form skal finne grunnform
+q = "utstyret"
+treff = ["2026-03-04-nytt-utstyr.md", "2026-03-11-lageret-i-lillestrom.md"]
+sammensetning = ["2026-04-02-utstyrsregisteret.md"]
+
+[[sporring]]
+# grunnform skal finne bestemt form
+q = "utstyr"
+treff = ["2026-03-04-nytt-utstyr.md", "2026-03-11-lageret-i-lillestrom.md"]
+sammensetning = ["2026-04-02-utstyrsregisteret.md"]
+
+[[sporring]]
+# entall skal finne bestemt flertall
+q = "beslutning"
+treff = ["2026-04-15-depositum.md", "2026-05-06-i-fjor.md"]
+sammensetning = []
+
+[[sporring]]
+# bestemt flertall skal finne entall
+q = "beslutningene"
+treff = ["2026-04-15-depositum.md", "2026-05-06-i-fjor.md"]
+sammensetning = []
+
+[[sporring]]
+# genitiv skal finne bestemt form og flertall
+q = "leverandørens"
+treff = ["2026-05-20-tilbudet.md", "2026-05-27-tre-a-velge-mellom.md"]
+sammensetning = []
+
+[[sporring]]
+# flertall skal finne bestemt entall
+q = "møter"
+treff = ["2026-06-03-tirsdagsmotet.md", "2026-06-10-for-mange.md"]
+sammensetning = []
+
+[[sporring]]
+# bestemt flertall skal finne bestemt entall
+q = "kundene"
+treff = ["2026-06-24-innlogging.md", "2026-07-01-hvem-vi-jobber-for.md"]
+sammensetning = []
+
+[[sporring]]
+# flertall skal finne bestemt entall
+q = "fakturaer"
+treff = ["2026-07-08-ubetalt.md"]
+sammensetning = []
+
+[[sporring]]
+# verb i infinitiv skal finne presens og preteritum
+q = "skrive"
+treff = ["2026-08-05-referatet.md", "2026-08-12-lang-epost.md"]
+sammensetning = []
+
+[[sporring]]
+# verb i preteritum skal finne presens
+q = "skrev"
+treff = ["2026-08-05-referatet.md", "2026-08-12-lang-epost.md"]
+sammensetning = []
+
+[[sporring]]
+# grunnform skal finne bestemt form
+q = "kart"
+treff = ["2026-07-15-visningen.md", "2026-09-02-innboksen.md", "2026-09-10-bestemorvennlig-kart.md"]
+sammensetning = ["2026-07-29-adresseoppslag.md"]
+
+[[sporring]]
+# sammensetning som selv er et oppslagsord — grunnform finner bestemt form
+q = "kartverk"
+treff = ["2026-07-29-adresseoppslag.md"]
+sammensetning = []
+
+[[sporring]]
+# delvis ord — står ikke i ordbanken, må tas av prefikset
+q = "leverand"
+treff = ["2026-05-20-tilbudet.md", "2026-05-27-tre-a-velge-mellom.md"]
+sammensetning = []
+
+[[sporring]]
+# å skal ikke folde til a
+q = "måling"
+treff = ["2026-08-26-lastetid.md"]
+sammensetning = []
+
+[[sporring]]
+# a skal ikke folde til å
+q = "maling"
+treff = ["2026-08-19-kontoret-trenger-farge.md"]
+sammensetning = []
+
+[[sporring]]
+# negasjon fra bølge 1 skal fortsatt virke
+q = "kartet -kø"
+treff = ["2026-07-15-visningen.md", "2026-09-10-bestemorvennlig-kart.md"]
+sammensetning = ["2026-07-29-adresseoppslag.md"]
+
+[[sporring]]
+# frase fra bølge 1 skal fortsatt virke
+q = '"bestemorvennlig kart"'
+treff = ["2026-09-10-bestemorvennlig-kart.md"]
+sammensetning = []
+
+[[sporring]]
+# AND fra bølge 1 skal fortsatt virke
+q = "kartet AND kø"
+treff = ["2026-09-02-innboksen.md"]
+sammensetning = []
+
+[[sporring]]
+# årstallet står i filnavnet til hvert eneste notat
+q = "2026"
+treff = []
+sammensetning = []
+
+[[sporring]]
+# «type» står i toppfeltet til hvert eneste notat
+q = "type"
+treff = []
+sammensetning = []
