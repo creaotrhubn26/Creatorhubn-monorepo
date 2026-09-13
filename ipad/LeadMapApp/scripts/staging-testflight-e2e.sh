@@ -239,6 +239,7 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
       .brief.employee_count.minimum == 5) and
     (.preview.recommended_profiles[] | select(.template_key == "tidum.municipal_services") |
       .name == "Kommunale tjenestesteder – Norge" and
+      .template_version == 2 and
       .brief.organization_name_queries == ["barneverntjeneste", "avlastning", "bofellesskap", "BPA", "miljøarbeidertjeneste"] and
       .brief.organization_forms == ["BEDR"] and
       .brief.employee_count == null and
@@ -295,7 +296,7 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
     -H "X-Organization-Id: $org_id" \
     -H "X-Leadgrid-Organization-Id: $org_id" \
     "$staging_url/api/leadgrid/projects/$tidum_project_id/discovery/profiles")"
-  jq -e '
+  if ! jq -e '
     (.profiles | length) >= 4 and
     ([.profiles[] | select((.template_key // "") | startswith("tidum.")) | .template_key] | length) == 4 and
     ([.profiles[] | select((.template_key // "") | startswith("tidum.")) | .template_key] | unique | length) == 4 and
@@ -303,9 +304,25 @@ if [[ "$run_tidum_e2e" == "1" ]]; then
       .brief.country_code == "NO" and .brief.employee_count.minimum == 5) and
     (.profiles[] | select(.template_key == "tidum.municipal_services") |
       .name == "Kommunale tjenestesteder – Norge" and
+      .template_version == 2 and
       .brief.organization_name_queries == ["barneverntjeneste", "avlastning", "bofellesskap", "BPA", "miljøarbeidertjeneste"] and
       .brief.organization_forms == ["BEDR"])
-  ' <<<"$tidum_profiles" >/dev/null
+  ' <<<"$tidum_profiles" >/dev/null; then
+    echo "Tidum-profilene brøt staging-kontrakten. Sikker profildiagnose:" >&2
+    jq -c '
+      [.profiles[] | {
+        name,
+        template_key,
+        template_version,
+        version,
+        status,
+        organization_name_queries: .brief.organization_name_queries,
+        organization_forms: .brief.organization_forms,
+        minimum_fit_score: .brief.minimum_fit_score
+      }]
+    ' <<<"$tidum_profiles" >&2
+    exit 9
+  fi
   echo "STAGING_E2E_STAGE=tidum_profiles_verified"
 
   tidum_replay_preview="$(curl --fail-with-body --silent --show-error \

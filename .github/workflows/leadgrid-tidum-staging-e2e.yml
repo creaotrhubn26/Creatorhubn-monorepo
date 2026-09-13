@@ -29,6 +29,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Deploy the exact selected commit to Leadgrid staging
+        env:
+          BACKEND_URL: ${{ secrets.LEADGRID_STAGING_BASE_URL }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-dagv08ijnfac73fhpvr0
+        run: node scripts/deploy/render-backend.mjs deploy-and-verify "${{ github.sha }}"
+
       - name: Wait for staging to run the selected commit
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
