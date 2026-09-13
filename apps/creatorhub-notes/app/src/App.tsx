@@ -409,6 +409,9 @@ export default function App() {
 
   const nyttNotat = useCallback(async () => {
     await lagre();
+    // Som i `åpne`: står det uskrevet igjen, har lagringen feilet, og et nytt
+    // notat vi ikke får åpnet er bare en tom fil på disk.
+    if (buffer.venter()) return;
     try {
       const p = await createNote("");
       setQuery("");
@@ -420,7 +423,7 @@ export default function App() {
     } catch (e) {
       setFeil(String(e));
     }
-  }, [lagre, åpne]);
+  }, [buffer, lagre, åpne]);
 
   useEffect(() => {
     void (async () => {

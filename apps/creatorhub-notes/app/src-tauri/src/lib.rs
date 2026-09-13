@@ -527,7 +527,10 @@ fn understand_note(
     let gjelder_fortsatt = || LESNING.load(std::sync::atomic::Ordering::SeqCst) == min;
 
     // Før noe leses, deles eller skrives: får vi lov?
-    if let Some(svar) = samtykke(&content) {
+    if let Some(mut svar) = samtykke(&content) {
+        // Løpenummeret må med, ellers ser panelet svaret som en forlatt
+        // lesning og blir stående med det forrige notatets forståelse.
+        svar.lesning = min;
         return Ok(svar);
     }
 
@@ -619,7 +622,11 @@ fn understand_note(
         // Kallet feilet — `claude` mangler, er ikke innlogget, eller svarte
         // ikke i tide. Feilteksten bæres til panelet, slik at «lesningen
         // feilet» ikke ser ut som «ingenting ble funnet».
-        Err(e) => return Ok(understand::Understanding::av(&e)),
+        Err(e) => {
+            let mut svar = understand::Understanding::av(&e);
+            svar.lesning = min;
+            return Ok(svar);
+        }
     };
     understand::sett_ider(&mut avsnitt, &biter, ider.as_deref().unwrap_or(&[]));
     sett_avsendere(&mut avsnitt, er_samtale);
