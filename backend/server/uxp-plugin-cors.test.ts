@@ -22,6 +22,9 @@ function createApp() {
   app.get("/api/projects/:projectId/video-marker-sync/:editor", (_req, res) => res.json({ markers: [] }));
   app.get("/api/projects/:projectId/video-collaboration", (_req, res) => res.json({ comments: [], tasks: [] }));
   app.patch("/api/projects/:projectId/video-tasks/:taskId", (_req, res) => res.json({ status: "done" }));
+  app.post("/api/projects/:projectId/video-versions/tus", (_req, res) => res.status(201).json({ versionId: "version-1" }));
+  app.post("/api/projects/:projectId/video-versions/:vid/tus-retry", (_req, res) => res.json({ versionId: "version-1" }));
+  app.get("/api/projects/:projectId/video-versions/:vid/stream-status", (_req, res) => res.json({ ready: false }));
   app.get("/api/admin/private", (_req, res) => res.json({ ok: true }));
   return app;
 }
@@ -79,6 +82,24 @@ describe("UXP plugin CORS boundary", () => {
     expect(updatePreflight.status).toBe(204);
     expect(updatePreflight.headers["access-control-allow-methods"]).toContain("PATCH");
     expect(updatePreflight.headers["access-control-allow-credentials"]).toBeUndefined();
+  });
+
+  it("allows the exact direct-upload provisioning, retry and processing routes", async () => {
+    const app = createApp();
+    for (const [path, method] of [
+      ["/api/projects/project-1/video-versions/tus", "POST"],
+      ["/api/projects/project-1/video-versions/version-1/tus-retry", "POST"],
+      ["/api/projects/project-1/video-versions/version-1/stream-status", "GET"],
+    ] as const) {
+      const response = await request(app)
+        .options(path)
+        .set("Origin", "uxp://no.creatorhubn.video-room-premiere")
+        .set("Access-Control-Request-Method", method)
+        .set("Access-Control-Request-Headers", "authorization,content-type");
+      expect(response.status).toBe(204);
+      expect(response.headers["access-control-allow-origin"]).toBe("*");
+      expect(response.headers["access-control-allow-credentials"]).toBeUndefined();
+    }
   });
 
   it("does not widen CORS for unrelated API routes", async () => {

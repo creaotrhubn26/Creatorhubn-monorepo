@@ -41,6 +41,14 @@ as the browser Video Room. The panel supports:
 - live review creation, shared-playhead push/follow and session close;
 - direct opening of the exact selected version in the browser for playback,
   drawing, sharing, version upload and destructive administration.
+- native sequence export with an editor-selected `.epr` preset, resumable
+  direct upload to private Cloudflare Stream, processing status and permanent
+  sequence/version binding;
+- optional review-round creation and multi-approver setup as part of the same
+  “send to review” operation;
+- crash/restart recovery using UXP persistent file tokens and Cloudflare's
+  authoritative TUS offset. The old active cut stays active until the new cut
+  is fully uploaded and ready to stream.
 
 The collaboration API deliberately omits media URLs and share credentials. UXP
 uses a bearer token from SecureStorage; cookie credentials are disabled.
@@ -57,6 +65,11 @@ The production calls are limited to Adobe's documented Premiere 25.6 surface:
 - [`TickTime.createWithSeconds()`](https://developer.adobe.com/premiere-pro/uxp/ppro-reference/classes/ticktime/)
 - [`Sequence.getPlayerPosition()` and `setPlayerPosition()`](https://developer.adobe.com/premiere-pro/uxp/ppro-reference/classes/sequence/)
 - [UXP SecureStorage](https://developer.adobe.com/premiere-pro/uxp/uxp-api/reference-js/modules/uxp/key-value-storage/)
+- [`EncoderManager.exportSequence()` and
+  `getExportFileExtension()`](https://developer.adobe.com/premiere-pro/uxp/ppro-reference/classes/encodermanager/)
+- [UXP persistent file tokens and local file/folder
+  pickers](https://developer.adobe.com/premiere-pro/uxp/uxp-api/reference-js/modules/uxp/persistent-file-storage/file-system-provider/)
+- [UXP chunked `fs.read()`](https://developer.adobe.com/premiere-pro/uxp/uxp-api/reference-js/modules/fs/fs/)
 
 All `Action` objects are created and consumed synchronously inside nested
 `lockedAccess()` / `executeTransaction()` callbacks, matching Adobe's undo and
@@ -97,6 +110,12 @@ The latest machine-specific result and remaining blockers are recorded in
 8. Bind one version and complete both native marker directions.
 9. Switch sequence and verify the plugin refuses marker writes to the wrong timeline.
 10. Switch Video Room version and verify comments/tasks/transcript all change together.
+11. Select a `.epr` preset and output folder, send the active sequence, and
+    verify the previous cut remains active during export/upload/processing.
+12. Close and reopen the panel during an upload, choose **Fortsett avbrutt
+    sending**, and verify the same version resumes without duplicated bytes.
+13. Verify the ready version becomes active, the exact exported sequence is
+    bound, and the requested review round/approval step exists.
 
 ## Distribution
 

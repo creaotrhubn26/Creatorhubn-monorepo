@@ -2,8 +2,15 @@
 
 const ppro = require("premierepro");
 const { entrypoints, shell, storage } = require("uxp");
+const fs = require("fs");
 const { API_ORIGIN, ApiError, createApiClient } = require("./api-client");
 const { createPremiereHost } = require("./premiere-host");
+const {
+  buildExportFileName,
+  contentTypeForExtension,
+  validateUploadTicket,
+} = require("./publish-core");
+const { TusUploadError, uploadFileTus } = require("./tus-upload");
 const {
   buildVerificationUrl,
   markerSnapshotSignature,
@@ -20,6 +27,8 @@ const {
 
 const TOKEN_KEY = "creatorhub.video-room.bearer";
 const CONFIG_KEY = "creatorhub.video-room.premiere-sync";
+const PUBLISH_PREFS_KEY = "creatorhub.video-room.premiere-publish-prefs";
+const PUBLISH_CHECKPOINT_KEY = "creatorhub.video-room.premiere-publish-checkpoint";
 const SYNC_INTERVAL_MS = 8000;
 const MAX_PAIRING_MS = 10 * 60 * 1000;
 const REVIEW_INTERVAL_MS = 10000;
@@ -47,6 +56,11 @@ let replyingToId = "";
 let editingCommentId = "";
 let transcriptQuery = "";
 let approvalInvitations = [];
+let publishPrefs = {};
+let publishCheckpoint = null;
+let publishPresetFile = null;
+let publishOutputFolder = null;
+let publishRunning = false;
 
 const el = (id) => document.getElementById(id);
 
@@ -101,6 +115,46 @@ async function clearToken() {
   token = "";
 }
 
+async function loadSecureJson(key) {
+  try {
+    const raw = decodeSecureValue(await storage.secureStorage.getItem(key));
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function storeSecureJson(key, value) {
+  if (value == null) {
+    await storage.secureStorage.removeItem(key).catch(() => undefined);
+    return;
+  }
+  await storage.secureStorage.setItem(key, JSON.stringify(value));
+}
+
+async function loadPublishState() {
+  publishPrefs = await loadSecureJson(PUBLISH_PREFS_KEY) || {};
+  publishCheckpoint = await loadSecureJson(PUBLISH_CHECKPOINT_KEY);
+  publishPresetFile = publishPrefs.presetToken
+    ? await storage.localFileSystem.getEntryForPersistentToken(publishPrefs.presetToken).catch(() => null)
+    : null;
+  publishOutputFolder = publishPrefs.folderToken
+    ? await storage.localFileSystem.getEntryForPersistentToken(publishPrefs.folderToken).catch(() => null)
+    : null;
+  if (!publishPresetFile) delete publishPrefs.presetToken;
+  if (!publishOutputFolder) delete publishPrefs.folderToken;
+}
+
+async function savePublishPrefs() {
+  await storeSecureJson(PUBLISH_PREFS_KEY, publishPrefs);
+}
+
+async function savePublishCheckpoint(value) {
+  publishCheckpoint = value;
+  await storeSecureJson(PUBLISH_CHECKPOINT_KEY, value);
+  renderPublishControls();
+}
+
 function setVisible(id, visible) {
   el(id).classList.toggle("hidden", !visible);
 }
@@ -128,6 +182,27 @@ function setStatus(title, message, tone, meta) {
   el("status-message").textContent = message;
   el("status-meta").textContent = meta || "";
   setVisible("status-card", true);
+}
+
+function setPublishProgress(percent, label) {
+  const progress = el("publish-progress");
+  const text = el("publish-progress-label");
+  progress.value = Math.max(0, Math.min(100, Number(percent) || 0));
+  text.textContent = label || "";
+  setVisible("publish-progress", Boolean(label));
+  setVisible("publish-progress-label", Boolean(label));
+}
+
+function renderPublishControls() {
+  if (!el("publish-preset-name")) return;
+  el("publish-preset-name").textContent = publishPresetFile?.name || publishPrefs.presetName || "Ikke valgt";
+  el("publish-folder-name").textContent = publishOutputFolder?.name || publishPrefs.folderName || "Ikke valgt";
+  const project = selectedProject();
+  el("send-review-button").disabled = publishRunning || !token || !project || !project.canEdit;
+  el("choose-preset-button").disabled = publishRunning;
+  el("choose-folder-button").disabled = publishRunning;
+  el("resume-upload-button").disabled = publishRunning;
+  setVisible("resume-upload-button", Boolean(publishCheckpoint));
 }
 
 function createNode(tag, className, text) {
@@ -203,7 +278,13 @@ function renderVersions(preferredVersionId) {
   }
   el("access-note").textContent = project && !project.canEdit
     ? "Du har lesetilgang. Kommentarer er tilgjengelige, mens oppgaver og workflow krever editor-tilgang."
-    : "Review-data, oppgaver og native markører er bundet til denne eksakte versjonen.";
+    : project && !project.versions.length
+      ? "Prosjektet er klart for V1 direkte fra en aktiv Premiere-sekvens."
+      : "Review-data, oppgaver og native markører er bundet til denne eksakte versjonen.";
+  const defaultLabel = `V${Math.max(0, ...(project ? project.versions.map((version) => Number(version.number) || 0) : [])) + 1}`;
+  if (!el("publish-version-label").value || /^V\d+$/i.test(el("publish-version-label").value.trim())) {
+    el("publish-version-label").value = defaultLabel;
+  }
   setVisible("review-card", Boolean(token && selectedVersion()));
   renderButtons();
   renderReview();
@@ -238,6 +319,7 @@ function renderButtons() {
   setVisible("start-sync-button", !active);
   setVisible("stop-sync-button", active);
   setConnection(token ? (active ? "Synk aktiv" : "Tilkoblet") : "Frakoblet", token ? "ok" : "muted");
+  renderPublishControls();
 }
 
 function selectedMember() {
@@ -879,6 +961,284 @@ async function openVideoRoom() {
   }
 }
 
+async function choosePublishPreset() {
+  const file = await storage.localFileSystem.getFileForOpening({ types: ["epr"] });
+  if (!file) return null;
+  if (!file.isFile || !String(file.name || "").toLowerCase().endsWith(".epr")) {
+    throw new Error("Velg et gyldig Premiere/Media Encoder-preset med .epr-filtype.");
+  }
+  publishPresetFile = file;
+  publishPrefs.presetToken = await storage.localFileSystem.createPersistentToken(file);
+  publishPrefs.presetName = file.name;
+  await savePublishPrefs();
+  renderPublishControls();
+  return file;
+}
+
+async function choosePublishFolder() {
+  const folder = await storage.localFileSystem.getFolder();
+  if (!folder) return null;
+  if (!folder.isFolder) throw new Error("Velg en gyldig eksportmappe.");
+  publishOutputFolder = folder;
+  publishPrefs.folderToken = await storage.localFileSystem.createPersistentToken(folder);
+  publishPrefs.folderName = folder.name;
+  await savePublishPrefs();
+  renderPublishControls();
+  return folder;
+}
+
+function publishApprovers() {
+  return el("publish-approver-emails").value
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter((email, index, all) => email && all.indexOf(email) === index);
+}
+
+function selectPublishedVersion(projectId, versionId) {
+  const project = projects.find((candidate) => candidate.id === projectId);
+  if (!project || !project.versions.some((version) => version.id === versionId)) return null;
+  el("project-select").value = projectId;
+  renderVersions(versionId);
+  el("version-select").value = versionId;
+  renderButtons();
+  return project.versions.find((version) => version.id === versionId) || null;
+}
+
+function bindPublishedVersion(checkpoint, version) {
+  const binding = checkpoint.premiereBinding;
+  stopSyncTimer();
+  config = {
+    enabled: false,
+    projectId: checkpoint.projectId,
+    projectName: checkpoint.projectName,
+    versionId: checkpoint.ticket.versionId,
+    versionLabel: version?.label || checkpoint.versionLabel,
+    premiereProjectGuid: binding.projectGuid,
+    premiereProjectName: binding.projectName,
+    premiereSequenceGuid: binding.sequenceGuid,
+    premiereSequenceName: binding.sequenceName,
+  };
+  saveConfig();
+}
+
+async function retryExpiredUpload(checkpoint) {
+  const replacement = await api.retryVideoVersionTus(token, checkpoint.projectId, checkpoint.ticket.versionId, {
+    expectedStreamUid: checkpoint.ticket.uid,
+    fileName: checkpoint.fileName,
+  });
+  checkpoint.ticket = validateUploadTicket(replacement);
+  checkpoint.stage = "uploading";
+  await savePublishCheckpoint(checkpoint);
+}
+
+async function uploadCheckpointFile(checkpoint, file) {
+  const metadata = await file.getMetadata();
+  if (Number(metadata && metadata.size) !== Number(checkpoint.sizeBytes)) {
+    throw new Error("Eksportfilen er endret siden sendingen startet. Start en ny eksport.");
+  }
+  const runUpload = () => uploadFileTus({
+    ticket: checkpoint.ticket,
+    nativePath: file.nativePath,
+    sizeBytes: checkpoint.sizeBytes,
+    fsApi: fs,
+    fetchImpl: fetch,
+    onProgress: ({ percent, offset, sizeBytes }) => {
+      setPublishProgress(percent, `Laster opp ${percent}% · ${Math.round(offset / 1024 / 1024)} av ${Math.round(sizeBytes / 1024 / 1024)} MiB`);
+    },
+  });
+  try {
+    await runUpload();
+  } catch (error) {
+    if (!(error instanceof TusUploadError) || error.code !== "ticket_expired") throw error;
+    setPublishProgress(0, "Fornyer utløpt opplastingsbillett…");
+    await retryExpiredUpload(checkpoint);
+    await runUpload();
+  }
+  checkpoint.stage = "processing";
+  checkpoint.uploadComplete = true;
+  await savePublishCheckpoint(checkpoint);
+}
+
+async function waitForPublishedVersion(checkpoint) {
+  for (let attempt = 0; attempt < 7200; attempt += 1) {
+    const status = await api.fetchVideoVersionStreamStatus(token, checkpoint.projectId, checkpoint.ticket.versionId);
+    const progress = Number.isFinite(Number(status.progressPercent)) ? Math.round(Number(status.progressPercent)) : null;
+    setPublishProgress(
+      progress == null ? 100 : progress,
+      status.ready ? "Videoen er klar." : `Cloudflare behandler videoen${progress == null ? "…" : ` · ${progress}%`}`,
+    );
+    if (status.ready && status.status === "under_review") return status;
+    if (status.ready) {
+      setPublishProgress(100, "Videoen er ferdig behandlet. Aktiverer review-versjonen…");
+    }
+    if (status.error || ["error", "failed"].includes(String(status.state || "").toLowerCase())) {
+      throw new Error(status.error || "Cloudflare kunne ikke behandle videoen.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  throw new Error("Videoen er lastet opp, men behandlingen tok for lang tid. Du kan fortsette sendingen senere.");
+}
+
+async function finishPublishWorkflow(checkpoint) {
+  await refreshProjects();
+  const version = selectPublishedVersion(checkpoint.projectId, checkpoint.ticket.versionId);
+  if (!version) throw new Error("Den ferdige versjonen finnes ikke i prosjektvelgeren ennå. Prøv «Fortsett avbrutt sending».");
+  bindPublishedVersion(checkpoint, version);
+
+  const currentContext = await premiere.getContext().catch(() => null);
+  const sameSequence = currentContext &&
+    currentContext.projectGuid === checkpoint.premiereBinding.projectGuid &&
+    currentContext.sequenceGuid === checkpoint.premiereBinding.sequenceGuid;
+  if (sameSequence) {
+    config.enabled = true;
+    saveConfig();
+    startSyncTimer();
+  }
+
+  const warnings = [];
+  if (checkpoint.createRound && !checkpoint.roundCreated) {
+    try {
+      await api.createRound(token, checkpoint.projectId, checkpoint.ticket.versionId, {
+        name: `${checkpoint.versionLabel} review`,
+        maxRounds: 3,
+      });
+      checkpoint.roundCreated = true;
+      await savePublishCheckpoint(checkpoint);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) checkpoint.roundCreated = true;
+      else warnings.push(`revisjonsrunde: ${error.message || String(error)}`);
+    }
+  }
+  if (checkpoint.approvers.length && !checkpoint.approvalCreated) {
+    try {
+      const result = await api.createApprovalStep(token, checkpoint.projectId, checkpoint.ticket.versionId, {
+        name: `${checkpoint.versionLabel} godkjenning`,
+        approvers: checkpoint.approvers.map((email) => ({ email })),
+        requiredApprovals: checkpoint.requiredApprovals,
+      });
+      checkpoint.approvalCreated = true;
+      approvalInvitations = Array.isArray(result.invitations) ? result.invitations : [];
+      await savePublishCheckpoint(checkpoint);
+    } catch (error) {
+      warnings.push(`approval: ${error.message || String(error)}`);
+    }
+  }
+
+  await savePublishCheckpoint(null);
+  await refreshCollaboration(true);
+  renderReview();
+  if (warnings.length) {
+    setStatus("Versjonen er sendt", `Videoen er klar, men workflow trenger oppfølging: ${warnings.join(" · ")}`, "warn");
+  } else if (!sameSequence) {
+    setStatus("Versjonen er sendt", "Bindingen er lagret. Bytt tilbake til den eksporterte sekvensen og start synk når du vil hente review-markører.", "warn");
+  } else {
+    setStatus("Sendt til review", `${checkpoint.projectName} · ${version.label} er klar og bundet til aktiv sekvens.`, "ok");
+  }
+  log(`Sendt ${checkpoint.fileName} til ${checkpoint.projectName} · ${version.label}.`, "ok");
+}
+
+async function continuePublishCheckpoint() {
+  if (!publishCheckpoint) throw new Error("Ingen avbrutt sending ble funnet.");
+  const checkpoint = publishCheckpoint;
+  checkpoint.ticket = validateUploadTicket(checkpoint.ticket);
+  if (checkpoint.stage === "uploading") {
+    const file = await storage.localFileSystem.getEntryForPersistentToken(checkpoint.fileToken).catch(() => null);
+    if (!file?.isFile || !file.nativePath) throw new Error("Eksportfilen finnes ikke lenger. Start en ny eksport.");
+    await uploadCheckpointFile(checkpoint, file);
+  }
+  if (checkpoint.stage === "processing") {
+    await waitForPublishedVersion(checkpoint);
+    checkpoint.stage = "workflow";
+    await savePublishCheckpoint(checkpoint);
+  }
+  await finishPublishWorkflow(checkpoint);
+}
+
+async function sendSequenceToReview() {
+  if (publishRunning) return;
+  const project = selectedProject();
+  if (!token || !project?.canEdit) {
+    setStatus("Kan ikke sende", "Velg et prosjekt der du har editor-tilgang.", "warn");
+    return;
+  }
+  publishRunning = true;
+  renderButtons();
+  try {
+    if (!publishPresetFile && !await choosePublishPreset()) throw new Error("Eksportpreset ble ikke valgt.");
+    if (!publishOutputFolder && !await choosePublishFolder()) throw new Error("Eksportmappe ble ikke valgt.");
+    const versionLabel = el("publish-version-label").value.trim().slice(0, 80) || "Review";
+    const approvers = publishApprovers();
+    const requiredApprovals = approvers.length
+      ? Math.min(approvers.length, Math.max(1, Number(el("publish-required-approvals").value) || 1))
+      : 0;
+    setStatus("Eksporterer sekvens", "Premiere lager review-filen med valgt .epr-preset.", "warn");
+    setPublishProgress(0, "Eksporterer i Premiere…");
+    const exported = await premiere.exportActiveSequence({
+      presetFile: publishPresetFile,
+      outputFolder: publishOutputFolder,
+      fileNameForExtension: (extension, context) => buildExportFileName(context.sequenceName, versionLabel, extension),
+    });
+    const fileName = exported.fileName;
+    const fileToken = await storage.localFileSystem.createPersistentToken(exported.file);
+    setStatus("Klargjør opplasting", "CreatorHub oppretter en privat, resumérbar Stream-versjon.", "warn");
+    const rawTicket = await api.provisionVideoVersionTus(token, project.id, {
+      fileName,
+      sizeBytes: exported.sizeBytes,
+      contentType: contentTypeForExtension(exported.extension),
+      versionLabel,
+    });
+    const ticket = validateUploadTicket(rawTicket);
+    await savePublishCheckpoint({
+      stage: "uploading",
+      projectId: project.id,
+      projectName: project.name,
+      versionLabel,
+      fileName,
+      fileToken,
+      sizeBytes: exported.sizeBytes,
+      contentType: contentTypeForExtension(exported.extension),
+      ticket,
+      premiereBinding: {
+        projectGuid: exported.context.projectGuid,
+        projectName: exported.context.projectName,
+        sequenceGuid: exported.context.sequenceGuid,
+        sequenceName: exported.context.sequenceName,
+      },
+      createRound: el("publish-create-round").checked,
+      approvers,
+      requiredApprovals,
+      roundCreated: false,
+      approvalCreated: false,
+    });
+    await continuePublishCheckpoint();
+  } catch (error) {
+    if (!await handleAuthError(error, token)) {
+      setStatus("Sendingen stoppet", error.message || String(error), "bad", publishCheckpoint ? "Du kan fortsette uten ny eksport." : "Ingen aktiv review-versjon ble erstattet.");
+      log(error.message || String(error), "bad");
+    }
+  } finally {
+    publishRunning = false;
+    renderButtons();
+  }
+}
+
+async function resumeSequencePublish() {
+  if (publishRunning || !publishCheckpoint) return;
+  publishRunning = true;
+  renderButtons();
+  try {
+    await continuePublishCheckpoint();
+  } catch (error) {
+    if (!await handleAuthError(error, token)) {
+      setStatus("Kunne ikke fortsette sendingen", error.message || String(error), "bad");
+      log(error.message || String(error), "bad");
+    }
+  } finally {
+    publishRunning = false;
+    renderButtons();
+  }
+}
+
 async function handleAuthError(error, attemptedToken) {
   if (error instanceof ApiError && error.status === 401) {
     if (attemptedToken && token !== attemptedToken) return true;
@@ -1198,6 +1558,14 @@ function bindUi() {
   el("start-sync-button").addEventListener("click", () => void startSync());
   el("sync-now-button").addEventListener("click", () => void syncOnce());
   el("stop-sync-button").addEventListener("click", stopSync);
+  el("choose-preset-button").addEventListener("click", () => void choosePublishPreset().catch((error) => {
+    setStatus("Kunne ikke velge preset", error.message || String(error), "bad");
+  }));
+  el("choose-folder-button").addEventListener("click", () => void choosePublishFolder().catch((error) => {
+    setStatus("Kunne ikke velge mappe", error.message || String(error), "bad");
+  }));
+  el("send-review-button").addEventListener("click", () => void sendSequenceToReview());
+  el("resume-upload-button").addEventListener("click", () => void resumeSequencePublish());
   el("disconnect-button").addEventListener("click", () => void disconnect());
   el("refresh-review-button").addEventListener("click", () => void refreshCollaboration());
   el("open-video-room-button").addEventListener("click", () => void openVideoRoom());
@@ -1229,9 +1597,13 @@ function bindUi() {
 
 async function initialize() {
   bindUi();
-  await loadToken();
+  await Promise.all([loadToken(), loadPublishState()]);
   renderAuthState();
   renderButtons();
+  if (publishCheckpoint) {
+    const stage = publishCheckpoint.stage === "processing" ? "Cloudflare-behandling" : publishCheckpoint.stage === "workflow" ? "review-workflow" : "opplasting";
+    setPublishProgress(0, `Avbrutt ${stage} kan fortsettes.`);
+  }
   if (!token) return;
   await refreshProjects();
   await refreshPremiereContext();

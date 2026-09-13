@@ -39,6 +39,7 @@ function fakePremiere(initialMarkers) {
       callback({ addAction: (action) => action() });
       return true;
     },
+    exportCalls: [],
   };
   const sequence = {
     guid: { toString: () => "sequence-guid" },
@@ -61,10 +62,21 @@ function fakePremiere(initialMarkers) {
       },
       Constants: {
         MarkerColor: { GREEN: 0, RED: 1, MAGNETA: 2, ORANGE: 3, YELLOW: 4, BLUE: 5, CYAN: 6 },
+        ExportType: { IMMEDIATELY: "immediately" },
+      },
+      EncoderManager: {
+        getExportFileExtension: async () => "mp4",
+        getManager: () => ({
+          exportSequence: async (...args) => {
+            project.exportCalls.push(args);
+            return true;
+          },
+        }),
       },
     },
     markers,
     transactionCount: () => transactionCount,
+    exportCalls: project.exportCalls,
   };
 }
 
@@ -122,4 +134,38 @@ test("host adapter reads and moves the native Premiere playhead", async () => {
   assert.equal(await host.getPlayheadSeconds(), 3.5);
   assert.equal(await host.setPlayheadSeconds(12.25), 12.25);
   assert.equal(await host.getPlayheadSeconds(), 12.25);
+});
+
+test("exports the exact active sequence through EncoderManager and waits for a stable file", async () => {
+  const fake = fakePremiere([]);
+  const host = createPremiereHost(fake.module);
+  const outputFile = {
+    isFile: true,
+    nativePath: "/exports/Sekvens - V2.mp4",
+    getMetadata: async () => ({ size: 2048 }),
+  };
+  const outputFolder = {
+    isFolder: true,
+    nativePath: "/exports",
+    getEntry: async (name) => {
+      assert.equal(name, "Sekvens - V2.mp4");
+      return outputFile;
+    },
+  };
+
+  const result = await host.exportActiveSequence({
+    presetFile: { isFile: true, name: "Review.epr", nativePath: "/presets/Review.epr" },
+    outputFolder,
+    fileNameForExtension: (extension, context) => `${context.sequenceName} - V2.${extension}`,
+    sleep: async () => undefined,
+  });
+
+  assert.equal(result.file, outputFile);
+  assert.equal(result.sizeBytes, 2048);
+  assert.deepEqual(fake.exportCalls[0].slice(1), [
+    "immediately",
+    "/exports/Sekvens - V2.mp4",
+    "/presets/Review.epr",
+    true,
+  ]);
 });

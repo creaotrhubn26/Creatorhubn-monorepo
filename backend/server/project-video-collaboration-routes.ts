@@ -204,8 +204,8 @@ export function setupProjectVideoCollaborationRoutes(input: {
                      AND editable.status='active' AND editable.deactivated_at IS NULL
                      AND (editable.role='editor' OR editable.permissions @> '{"canEdit":true}'::jsonb)
                 )) can_edit
-           FROM project_video_versions version
-           JOIN projects project ON project.id=version.project_id::text
+           FROM projects project
+           LEFT JOIN project_video_versions version ON project.id=version.project_id::text
           WHERE project.user_id=$1 OR EXISTS (
             SELECT 1 FROM project_team_members member
              WHERE member.project_id=project.id::text AND member.user_id=$1
@@ -222,13 +222,15 @@ export function setupProjectVideoCollaborationRoutes(input: {
           project = { id: row.project_id, name: row.project_name, projectType: row.project_type || null, canEdit: !!row.can_edit, versions: [] };
           projects.set(row.project_id, project);
         }
-        project.versions.push({
-          id: row.version_id,
-          label: row.version_label || `V${row.version_number}`,
-          number: Number(row.version_number || 0),
-          status: row.version_status,
-          createdAt: row.created_at,
-        });
+        if (row.version_id) {
+          project.versions.push({
+            id: row.version_id,
+            label: row.version_label || `V${row.version_number}`,
+            number: Number(row.version_number || 0),
+            status: row.version_status,
+            createdAt: row.created_at,
+          });
+        }
       }
       res.json({ projects: Array.from(projects.values()).slice(0, 100) });
     } catch (error) {

@@ -54,6 +54,7 @@ import { ensureCreditSchema as ensureCreditSchemaShared, getUserCredits as getUs
 import { createGoogleMeetLink } from "./google-meet";
 import { classifySession } from "./capture-culling-service";
 import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } from "./photo-enhancer-routes";
+import { isDeviceRevoked } from "./post-agent-storage";
 
 // Web-opplasting holdes i minne og skyves server-side til B2 (Role Room-bøtta).
 // 60 MB tak — store RAW/originaler skal uansett gjennom capture multipart-flyten.
@@ -206,9 +207,13 @@ export interface ProjectWorkspaceRoutesDeps {
     req: any,
     res: any,
   ) =>
-    | { userId: string; email: string; name: string; role: string }
+    | { userId: string; email: string; name: string; role: string; device?: string }
     | null
-    | Promise<{ userId: string; email: string; name: string; role: string } | null>;
+    | Promise<{ userId: string; email: string; name: string; role: string; device?: string } | null>;
+  /** Resolves persisted bearer sessions used by desktop/NLE clients after a server restart. */
+  resolveUserSession?: (
+    req: any,
+  ) => Promise<{ userId: string; email: string; name: string; role: string; device?: string } | null>;
 }
 
 let schemaReady: Promise<void> | null = null;
@@ -558,6 +563,23 @@ async function guessNoteCategoryBE(pool: any, projectId: string, label: string):
 export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): void {
   const { app, pool, requireUserSession } = deps;
 
+  const sessionFor = async (req: any, res: any) => {
+    const authorization = typeof req.headers?.authorization === "string" ? req.headers.authorization : "";
+    const bearer = authorization.replace(/^Bearer\s+/i, "").trim();
+    // The persisted resolver exists only for paired desktop clients. Standard
+    // x-session-token/x-auth-token requests must retain the established guard.
+    if (!deps.resolveUserSession || !/^Bearer\s+/i.test(authorization) || !bearer) {
+      return requireUserSession(req, res);
+    }
+    const session = await deps.resolveUserSession(req);
+    if (session?.device !== "post-agent") return requireUserSession(req, res);
+    if (await isDeviceRevoked(pool, bearer)) {
+      res.status(401).json({ error: "post_agent_token_revoked" });
+      return null;
+    }
+    return session;
+  };
+
   // Lokal lagrings-fallback (for dev / testing uten B2-credentials)
   app.get("/api/local-storage/*key", (req, res) => {
     try {
@@ -586,7 +608,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // permissions.canEdit. Dermed kan en viewer bruke hele workspacet uten at
   // hver nye POST/PATCH/DELETE-rute må huske sin egen rettighetssjekk.
   const guard = async (req: any, res: any): Promise<string | null> => {
-    const session = await requireUserSession(req, res);
+    const session = await sessionFor(req, res);
     if (!session) return null;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) { res.status(400).json({ error: "missing_project_id" }); return null; }
@@ -3951,7 +3973,26 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     if (windowState.count > 30) { res.status(429).json({ error: "too_many_review_updates" }); return false; }
     return true;
   };
-  const mapVideoVersion = async (v: any, ttl = 3600) => {
+  const activateReadyStreamVersion = async (v: any): Promise<void> => {
+    if (v.status !== "uploading") return;
+    const activated = await pool.query(
+      `UPDATE project_video_versions
+          SET status=CASE WHEN id=$1 THEN 'under_review' ELSE 'superseded' END
+        WHERE project_id=$2
+          AND ((id=$1 AND status='uploading')
+            OR (id<>$1 AND status IN ('under_review','changes_requested')))
+        RETURNING id,status`,
+      [v.id, v.project_id],
+    ).catch(() => ({ rows: [] }));
+    for (const changed of activated.rows) {
+      if (String(changed.id) === String(v.id)) v.status = changed.status;
+    }
+    if (activated.rows.some((changed: any) => String(changed.id) === String(v.id)) && v.uploaded_by) {
+      void notifyVideoRoomUpdated(String(v.project_id), String(v.uploaded_by), "version");
+    }
+  };
+
+  const refreshVideoVersionStream = async (v: any) => {
     const status = v.stream_uid ? await getStreamVideoStatus(v.stream_uid).catch(() => null) : null;
     if (status && (status.ready !== v.stream_ready || status.state !== v.stream_state || status.error !== v.stream_error)) {
       await pool.query(
@@ -3963,7 +4004,18 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         [v.id, status.ready, status.state || (status.ready ? "ready" : "processing"), status.error || null,
          status.duration || null, status.thumbnailUrl || null],
       ).catch(() => undefined);
+      v.stream_ready = status.ready;
+      v.stream_state = status.state || (status.ready ? "ready" : "processing");
+      v.stream_error = status.error || null;
+      if (status.duration) v.duration = status.duration;
+      if (status.thumbnailUrl) v.thumbnail_url = status.thumbnailUrl;
     }
+    if (status?.ready) await activateReadyStreamVersion(v);
+    return status;
+  };
+
+  const mapVideoVersion = async (v: any, ttl = 3600, knownStatus?: any) => {
+    const status = knownStatus === undefined ? await refreshVideoVersionStream(v) : knownStatus;
     const streamReady = status?.ready ?? !!v.stream_ready;
     const streamUrl = v.stream_uid && streamReady ? await signStreamPlaybackUrl(v.stream_uid, ttl).catch(() => null) : null;
     const signedThumb = v.stream_uid && streamReady ? await signStreamThumbnailUrl(v.stream_uid, ttl).catch(() => null) : null;
@@ -3979,16 +4031,28 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   };
   const videoRoomState = async (pid: string, requestedVersionId?: string | null, allowHistory = true, ttl = 3600) => {
     const vs = await pool.query(
-      `SELECT id, version_label, version_number, file_url, b2_key, stream_uid, thumbnail_url, duration, chapters, status, created_at,
+      `SELECT id, project_id, version_label, version_number, file_url, b2_key, stream_uid, thumbnail_url, duration, chapters, status, created_at, uploaded_by,
               stream_ready, stream_state, stream_error,
               (SELECT count(*) FROM project_video_comments c WHERE c.version_id=v.id)::int comment_count,
               (SELECT count(*) FROM project_video_comments c WHERE c.version_id=v.id AND c.status NOT IN ('resolved','done'))::int open_count
          FROM project_video_versions v WHERE project_id=$1 ORDER BY version_number ASC`, [pid],
     ).catch(() => ({ rows: [] }));
+    const streamStatuses = new Map<string, any>();
+    for (const version of vs.rows) {
+      streamStatuses.set(String(version.id), await refreshVideoVersionStream(version));
+    }
+    // A newly-ready upload may have superseded another row in the database.
+    // Mirror that transition in this response before choosing the active version.
+    const latestReadyUpload = [...vs.rows].reverse().find((version: any) => version.status === "under_review" && streamStatuses.get(String(version.id))?.ready);
+    if (latestReadyUpload) {
+      for (const version of vs.rows) {
+        if (version.id !== latestReadyUpload.id && ["under_review", "changes_requested"].includes(version.status)) version.status = "superseded";
+      }
+    }
     const active: any = selectActiveVideoVersion(vs.rows);
     const selected = (allowHistory && requestedVersionId && vs.rows.find((v: any) => String(v.id) === requestedVersionId)) || active;
     const visibleRows = allowHistory ? vs.rows : (selected ? [selected] : []);
-    const versions = await Promise.all(visibleRows.map((v: any) => mapVideoVersion(v, ttl)));
+    const versions = await Promise.all(visibleRows.map((v: any) => mapVideoVersion(v, ttl, streamStatuses.get(String(v.id)))));
     const cm = selected
       ? await pool.query(`SELECT * FROM project_video_comments WHERE version_id=$1 ORDER BY timecode_sec ASC, created_at ASC`, [selected.id]).catch(() => ({ rows: [] }))
       : { rows: [] };
@@ -4129,12 +4193,11 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       streamUid = ticket.uid;
       const n = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id=$1`, [pid]);
       const versionNumber = Number(n.rows[0]?.n || 1);
-      await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status IN ('under_review','changes_requested')`, [pid]);
       await pool.query(
         `INSERT INTO project_video_versions
            (id,project_id,version_label,version_number,stream_uid,content_type,size_bytes,status,uploaded_by,
             stream_ready,stream_state,stream_checked_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'under_review',$8,false,'pendingupload',NOW())`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'uploading',$8,false,'pendingupload',NOW())`,
         [id, pid, String(req.body?.versionLabel || `V${versionNumber}`).slice(0, 80), versionNumber,
          ticket.uid, String(req.body?.contentType || "video/mp4").slice(0, 200), sizeBytes, uid],
       );
@@ -4146,6 +4209,60 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const status = error?.message === "invalid_stream_upload_size" ? 413
         : error?.message === "cloudflare_stream_not_configured" ? 503 : 502;
       return res.status(status).json({ error: error?.message || "stream_tus_failed" });
+    }
+  });
+
+  // A TUS URL is intentionally short-lived. Re-provision the one-time URL for
+  // the same pending version so a Premiere restart can resume without creating
+  // duplicate version numbers or touching the currently reviewed cut.
+  app.post("/api/projects/:projectId/video-versions/:vid/tus-retry", async (req, res) => {
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
+    await ensureVideoSchema();
+    const pid = req.params.projectId;
+    const versionId = req.params.vid;
+    const expectedStreamUid = String(req.body?.expectedStreamUid || "").trim();
+    const fileName = String(req.body?.fileName || "video.mp4").trim().slice(0, 200);
+    const row = await pool.query(
+      `SELECT id,stream_uid,size_bytes,content_type,status,stream_ready
+         FROM project_video_versions WHERE id=$1 AND project_id=$2 LIMIT 1`,
+      [versionId, pid],
+    ).catch(() => ({ rows: [] }));
+    const pending = row.rows[0];
+    if (!pending) return res.status(404).json({ error: "not_found" });
+    if (!expectedStreamUid || expectedStreamUid !== pending.stream_uid) {
+      return res.status(409).json({ error: "stream_upload_changed" });
+    }
+    if (pending.status !== "uploading" || pending.stream_ready) {
+      return res.status(409).json({ error: "stream_upload_not_retryable" });
+    }
+    let replacementUid: string | null = null;
+    try {
+      const ticket = await createDirectStreamTusUpload({
+        sizeBytes: Number(pending.size_bytes),
+        filename: fileName,
+        creatorId: crypto.createHash("sha256").update(uid).digest("hex").slice(0, 32),
+        projectId: pid,
+        versionId,
+      });
+      replacementUid = ticket.uid;
+      const updated = await pool.query(
+        `UPDATE project_video_versions
+            SET stream_uid=$4,stream_ready=false,stream_state='pendingupload',stream_error=NULL,stream_checked_at=NOW()
+          WHERE id=$1 AND project_id=$2 AND stream_uid=$3 AND status='uploading' AND stream_ready=false
+          RETURNING id`,
+        [versionId, pid, expectedStreamUid, ticket.uid],
+      );
+      if (!updated.rows[0]) {
+        await deleteStreamVideo(ticket.uid).catch(() => undefined);
+        return res.status(409).json({ error: "stream_upload_changed" });
+      }
+      await deleteStreamVideo(expectedStreamUid).catch(() => undefined);
+      return res.json({ ...ticket, versionId });
+    } catch (error: any) {
+      if (replacementUid) await deleteStreamVideo(replacementUid).catch(() => undefined);
+      const status = error?.message === "invalid_stream_upload_size" ? 413
+        : error?.message === "cloudflare_stream_not_configured" ? 503 : 502;
+      return res.status(status).json({ error: error?.message || "stream_tus_retry_failed" });
     }
   });
 
@@ -4166,6 +4283,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       error: mapped.streamError,
       fileUrl: mapped.fileUrl,
       thumbnailUrl: mapped.thumbnailUrl,
+      status: mapped.status,
     });
   });
 

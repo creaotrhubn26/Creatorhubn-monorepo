@@ -31,7 +31,7 @@ function createApp(query: ReturnType<typeof vi.fn>) {
 }
 
 describe("Video NLE project picker", () => {
-  it("joins varchar project IDs to UUID video-version IDs explicitly", async () => {
+  it("left-joins varchar project IDs so an empty project can receive V1", async () => {
     const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 0 });
     const response = await request(createApp(query)).get("/api/video-nle/projects");
 
@@ -39,8 +39,38 @@ describe("Video NLE project picker", () => {
     expect(response.body).toEqual({ projects: [] });
     expect(query).toHaveBeenCalledTimes(1);
     expect(String(query.mock.calls[0][0])).toContain(
-      "project.id=version.project_id::text",
+      "LEFT JOIN project_video_versions version ON project.id=version.project_id::text",
     );
+  });
+
+  it("returns editable projects even before their first video version exists", async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{
+        project_id: "project-empty",
+        project_name: "Premiere E2E",
+        project_type: "video",
+        can_edit: true,
+        version_id: null,
+        version_label: null,
+        version_number: null,
+        version_status: null,
+        created_at: null,
+      }],
+      rowCount: 1,
+    });
+
+    const response = await request(createApp(query)).get("/api/video-nle/projects");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      projects: [{
+        id: "project-empty",
+        name: "Premiere E2E",
+        projectType: "video",
+        canEdit: true,
+        versions: [],
+      }],
+    });
   });
 
   it("returns a bounded error instead of leaving the desktop request open", async () => {

@@ -110,3 +110,23 @@ test("live review uses optimistic revision updates and an explicit DELETE to end
   assert.equal(calls[1].init.method, "DELETE");
   assert.equal(calls[1].init.body, undefined);
 });
+
+test("publishing provisions, retries and polls one project-scoped Stream version", async () => {
+  const calls = [];
+  const client = createApiClient({
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return response(200, { ready: false });
+    },
+  });
+
+  await client.provisionVideoVersionTus("token", "project/one", { fileName: "cut.mp4", sizeBytes: 42 });
+  await client.retryVideoVersionTus("token", "project/one", "version/two", { expectedStreamUid: "stream-1" });
+  await client.fetchVideoVersionStreamStatus("token", "project/one", "version/two");
+
+  assert.match(calls[0].url, /project%2Fone\/video-versions\/tus$/);
+  assert.match(calls[1].url, /project%2Fone\/video-versions\/version%2Ftwo\/tus-retry$/);
+  assert.match(calls[2].url, /project%2Fone\/video-versions\/version%2Ftwo\/stream-status$/);
+  assert.deepEqual(calls.map(({ init }) => init.method), ["POST", "POST", "GET"]);
+  assert.equal(calls[2].init.headers.Authorization, "Bearer token");
+});

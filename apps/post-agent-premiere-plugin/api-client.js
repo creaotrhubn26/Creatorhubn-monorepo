@@ -81,6 +81,21 @@ function createApiClient(options) {
         headers: authHeaders(token, false),
       });
     },
+    provisionVideoVersionTus(token, projectId, input) {
+      return authenticatedJson(token, "POST", projectUrl(projectId, "video-versions/tus"), input);
+    },
+    retryVideoVersionTus(token, projectId, versionId, input) {
+      return authenticatedJson(token, "POST", projectUrl(
+        projectId,
+        `video-versions/${encodeURIComponent(versionId)}/tus-retry`,
+      ), input);
+    },
+    fetchVideoVersionStreamStatus(token, projectId, versionId) {
+      return authenticatedJson(token, "GET", projectUrl(
+        projectId,
+        `video-versions/${encodeURIComponent(versionId)}/stream-status`,
+      ));
+    },
     fetchMarkers(token, projectId, versionId) {
       const project = encodeURIComponent(projectId);
       const version = encodeURIComponent(versionId);
