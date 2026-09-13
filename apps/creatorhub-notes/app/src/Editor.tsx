@@ -452,8 +452,14 @@ function innliming(påSamtale: () => void) {
       // Én linje er aldri en samtale, og det vanligste limet er én linje.
       if (!tekst || !tekst.includes("\n")) return false;
       hendelse.preventDefault();
-      const { from, to } = view.state.selection.main;
       const sett = (inn: string, samtale: boolean) => {
+        // Posisjonen leses her, ikke i ⌘V-øyeblikket. Gjenkjenningen er
+        // regelbasert og tar under et millisekund, men den går over IPC, og
+        // markøren ble fanget *før* den runden: skrev hun videre, limte igjen,
+        // eller klikket et annet sted mens kallet var underveis, ble teksten
+        // satt inn der markøren *var*. Nå går den dit markøren faktisk står,
+        // som er der hun ser at hun limer.
+        const { from, to } = view.state.selection.main;
         const merk = samtale && !harInnhold(view.state.doc, from, to);
         const plass = merk ? kildeplass(view.state.doc) : null;
         const felt = "kilde: samtale\n";
