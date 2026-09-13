@@ -26,6 +26,7 @@ import {
   type Sporsmal,
   type Understanding,
 } from "./api";
+import { lagBuffer } from "./buffer";
 import { lesTema, settTema, TEMAER, type Tema } from "./tema";
 
 const klokke = new Intl.DateTimeFormat("nb-NO", { hour: "2-digit", minute: "2-digit" });
@@ -129,7 +130,10 @@ export default function App() {
   /** Lista slik den er nå, uten å binde tilbakekallene til den. */
   const notater = useRef(notes);
   notater.current = notes;
-  const uskrevet = useRef<{ path: string; content: string } | null>(null);
+  /** Gjeldende tekst og det uskrevne, ett sted. `doc` er bare det
+   *  skriveflaten ble matet med sist — den følger verken tastingen eller
+   *  disken, og alt som leser den som «teksten nå» tar feil. */
+  const buffer = useRef(lagBuffer(writeNote)).current;
   const timer = useRef<number | undefined>(undefined);
   /** Panelet slik det er nå, uten å binde lagringen til det. */
   const panelPå = useRef(panel);
@@ -212,24 +216,27 @@ export default function App() {
    *  siden faktisk er søkbart. */
   const lagre = useCallback(async () => {
     window.clearTimeout(timer.current);
-    const p = uskrevet.current;
-    if (!p) return;
-    uskrevet.current = null;
-    try {
-      await writeNote(p.path, p.content);
-      setStatus(`Lagret ${klokke.format(new Date())}`);
-      // Det som eventuelt sto uoppgjort er avgjort nå: hennes versjon er den
-      // som ligger på disk, og det er nettopp det hun valgte ved å fortsette
-      // å skrive og la det autolagre.
-      setEndretUtenfor(false);
-      void les(p.path, p.content);
-      // Ble en samtale limt inn, er notatet en samtale nå. Formen leses av
-      // teksten som faktisk står på disk, ikke av det appen trodde.
-      void samtaleform(p.content).then(setSamtale).catch(() => undefined);
-    } catch (e) {
-      setFeil(String(e));
+    const utfall = await buffer.lagre();
+    if (!utfall) return;
+    if ("feil" in utfall) {
+      // Teksten står fortsatt i bufferet — det er det eneste stedet den
+      // finnes. Vi prøver igjen av oss selv, og hun kan skrive videre imens.
+      setFeil(`Kunne ikke lagre: ${utfall.feil}. Teksten står, og vi prøver igjen.`);
+      setStatus("Ikke lagret");
+      window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => void lagreIgjen.current(), 4000);
       return;
     }
+    const p = utfall.skrevet;
+    setStatus(`Lagret ${klokke.format(new Date())}`);
+    // Det som eventuelt sto uoppgjort er avgjort nå: hennes versjon er den
+    // som ligger på disk, og det er nettopp det hun valgte ved å fortsette
+    // å skrive og la det autolagre.
+    setEndretUtenfor(false);
+    void les(p.sti, p.tekst);
+    // Ble en samtale limt inn, er notatet en samtale nå. Formen leses av
+    // teksten som faktisk står på disk, ikke av det appen trodde.
+    void samtaleform(p.tekst).then(setSamtale).catch(() => undefined);
     try {
       await reindex();
       setNotes(await listNotes());
@@ -237,25 +244,34 @@ export default function App() {
       // Teksten ligger trygt på disk; det er bare søket som henger etter.
       setFeil("Notatet er lagret, men søket er ikke oppdatert ennå.");
     }
-  }, [les]);
+  }, [buffer, les]);
+  /** Så den utsatte omkampen kan kalle den nyeste `lagre` uten å binde den
+   *  til seg selv. */
+  const lagreIgjen = useRef(lagre);
+  lagreIgjen.current = lagre;
 
   const skriv = useCallback(
     (tekst: string) => {
       if (!path) return;
-      uskrevet.current = { path, content: tekst };
+      buffer.endret(tekst);
       setStatus("Lagrer …");
       window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => void lagre(), 900);
     },
-    [path, lagre],
+    [buffer, path, lagre],
   );
 
   const åpne = useCallback(
     async (p: string, ferskt = false, avsnitt?: string) => {
       await lagre();
+      // Gikk ikke lagringen gjennom, står teksten fra det forrige notatet
+      // fortsatt i bufferet. Å bytte notat nå ville skrevet den til feil fil
+      // eller kastet den; feilmeldingen står, og omkampen kommer.
+      if (buffer.venter()) return;
       try {
         const tekst = await readNote(p);
         setNytt(ferskt);
+        buffer.sett(p, tekst);
         setDoc(tekst);
         setPath(p);
         setDetaljer(false);
@@ -283,7 +299,7 @@ export default function App() {
         setFeil(String(e));
       }
     },
-    [lagre, les],
+    [buffer, lagre, les],
   );
 
   /** «Last inn på nytt» — svaret på varselet om at notatet ble endret utenfra
@@ -292,9 +308,10 @@ export default function App() {
   const lastInnPåNytt = useCallback(async () => {
     if (!path) return;
     window.clearTimeout(timer.current);
-    uskrevet.current = null;
+    buffer.forkast();
     try {
       const tekst = await readNote(path);
+      buffer.sett(path, tekst);
       setDoc(tekst);
       setEndretUtenfor(false);
       setStatus(`Lastet inn på nytt ${klokke.format(new Date())}`);
@@ -302,7 +319,7 @@ export default function App() {
     } catch (e) {
       setFeil(String(e));
     }
-  }, [path, les]);
+  }, [buffer, path, les]);
 
   /** Brukerens egen retting av én linje. Den lagres, og panelet leses opp
    *  igjen fra den samme teksten — avsnittene er uendret, så det koster
@@ -315,9 +332,9 @@ export default function App() {
         setFeil(String(e));
         return;
       }
-      if (path) void les(path, uskrevet.current?.content ?? doc);
+      if (path) void les(path, buffer.nå());
     },
-    [path, doc, les],
+    [buffer, path, les],
   );
 
   /** «Dette er en samtale» / «dette er det ikke». Valget skrives i toppfeltet,
@@ -325,14 +342,14 @@ export default function App() {
   const byttSamtale = useCallback(async () => {
     if (!path) return;
     try {
-      const ny = await settSamtale(uskrevet.current?.content ?? doc, !samtale?.er);
+      const ny = await settSamtale(buffer.nå(), !samtale?.er);
+      buffer.endret(ny);
       setDoc(ny);
-      uskrevet.current = { path, content: ny };
       await lagre();
     } catch (e) {
       setFeil(String(e));
     }
-  }, [path, doc, samtale, lagre]);
+  }, [buffer, path, samtale, lagre]);
 
   const nyttNotat = useCallback(async () => {
     await lagre();
@@ -375,7 +392,7 @@ export default function App() {
 
       const nå = stiNå.current;
       if (!nå || !stier.includes(nå)) return;
-      if (uskrevet.current) {
+      if (buffer.venter()) {
         // Hun har ulagrede endringer. Skriveflaten røres ikke — bare si ifra.
         setEndretUtenfor(true);
         return;
@@ -385,7 +402,8 @@ export default function App() {
         .then((tekst) => {
           // Notatet kan være byttet, eller hun kan ha begynt å skrive, mens
           // lesningen var underveis.
-          if (stiNå.current !== nå || uskrevet.current) return;
+          if (stiNå.current !== nå || buffer.venter()) return;
+          buffer.sett(nå, tekst);
           setDoc(tekst);
         })
         .catch(() => undefined);
@@ -393,7 +411,7 @@ export default function App() {
     return () => {
       void av.then((stopp) => stopp()).catch(() => undefined);
     };
-  }, []);
+  }, [buffer]);
 
   useEffect(() => {
     const q = query.trim();
@@ -438,7 +456,9 @@ export default function App() {
   }, [nyttNotat]);
 
   const tomtArkiv = notes.length === 0;
-  const topp = path ? toppfelt(doc) : null;
+  // Samme kilde som alt annet. `doc` ville vist toppfeltene slik de var da
+  // notatet ble åpnet.
+  const topp = path ? toppfelt(buffer.nå()) : null;
 
   return (
     <div className="skall">
@@ -490,7 +510,7 @@ export default function App() {
             const på = !panel;
             setPanel(på);
             localStorage.setItem("forstaelse", på ? "vist" : "skjult");
-            if (på && path) void les(path, uskrevet.current?.content ?? doc);
+            if (på && path) void les(path, buffer.nå());
           }}
         >
           {panel ? "Skjul forståelse" : "Vis forståelse"}

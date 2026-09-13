@@ -1,7 +1,14 @@
 import { useEffect, useRef } from "react";
 import { EditorView, minimalSetup } from "codemirror";
 import { Decoration, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
-import { EditorState, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
+import {
+  EditorState,
+  RangeSetBuilder,
+  StateEffect,
+  StateField,
+  Transaction,
+  type Extension,
+} from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
@@ -231,6 +238,43 @@ type Props = {
   onSynlig?: (fra: number, til: number) => void;
 };
 
+/// Markøren når et notat åpnes: hele overskriften markert for et ferskt
+/// notat, ellers slutten av teksten.
+export function markør(doc: string, selectTitle: boolean): { anchor: number; head: number } {
+  const title = /^#+\s+(.*)$/m.exec(doc);
+  if (!(selectTitle && title)) return { anchor: doc.length, head: doc.length };
+  return {
+    anchor: title.index + title[0].length - title[1].length,
+    head: title.index + title[0].length,
+  };
+}
+
+/// Tilstanden ett notat åpnes i. Et notatbytte lager en *ny* tilstand, ikke en
+/// transaksjon i den gamle: angrehistorikken bor i tilstanden, så det er dette
+/// som gjør at ⌘Z i notat B aldri kan nå innholdet i notat A — og at den
+/// første ⌘Z etter oppstart ikke kan angre bytten fra det tomme dokumentet
+/// appen startet med.
+///
+/// Eksportert for testing: at et bytte ikke er angrbart er produktlogikk, ikke
+/// oppsett.
+export function tilstand(doc: string, valg: { anchor: number; head: number }, ekstra: Extension[] = []) {
+  return EditorState.create({
+    doc,
+    selection: valg,
+    extensions: [
+      minimalSetup,
+      markdown(),
+      syntaxHighlighting(markdownFarger),
+      skjulToppfelt,
+      skjulMerker,
+      vistAvsnitt,
+      skriveflate,
+      EditorView.lineWrapping,
+      ...ekstra,
+    ],
+  });
+}
+
 export function Editor({ path, doc, onChange, selectTitle, peker, onSamtale, onSynlig }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -244,33 +288,35 @@ export function Editor({ path, doc, onChange, selectTitle, peker, onSamtale, onS
   // i StrictMode monterer effekter to ganger), ellers står editoren tom.
   const tekst = useRef(doc);
   tekst.current = doc;
+  const valgt = useRef({ selectTitle });
+  valgt.current = { selectTitle };
   /** Å laste inn et notat er ikke en redigering, og skal ikke utløse lagring. */
   const bytter = useRef(false);
+
+  /** Det som bare finnes i den levende visningen: innliming og hva som er på
+   *  skjermen. Holdt utenfor [`tilstand`] så den kan testes uten en DOM. */
+  const kroker = useRef<Extension[]>([]);
+  if (kroker.current.length === 0) {
+    kroker.current = [
+      innliming(() => samtale.current?.()),
+      EditorView.updateListener.of((u) => {
+        if (u.docChanged && !bytter.current) change.current(u.state.doc.toString());
+        if (u.viewportChanged || u.docChanged) {
+          synlig.current?.(u.view.viewport.from, u.view.viewport.to);
+        }
+      }),
+    ];
+  }
 
   useEffect(() => {
     if (!host.current) return;
     const v = new EditorView({
       parent: host.current,
-      state: EditorState.create({
-        doc: tekst.current,
-        extensions: [
-          minimalSetup,
-          markdown(),
-          syntaxHighlighting(markdownFarger),
-          skjulToppfelt,
-          skjulMerker,
-          vistAvsnitt,
-          innliming(() => samtale.current?.()),
-          skriveflate,
-          EditorView.lineWrapping,
-          EditorView.updateListener.of((u) => {
-            if (u.docChanged && !bytter.current) change.current(u.state.doc.toString());
-            if (u.viewportChanged || u.docChanged) {
-              synlig.current?.(u.view.viewport.from, u.view.viewport.to);
-            }
-          }),
-        ],
-      }),
+      state: tilstand(
+        tekst.current,
+        markør(tekst.current, valgt.current.selectTitle),
+        kroker.current,
+      ),
     });
     view.current = v;
     return () => {
@@ -282,18 +328,13 @@ export function Editor({ path, doc, onChange, selectTitle, peker, onSamtale, onS
   useEffect(() => {
     const v = view.current;
     if (!v) return;
-    const title = /^#+\s+(.*)$/m.exec(doc);
-    const anchor =
-      selectTitle && title ? title.index + title[0].length - title[1].length : doc.length;
-    const head = selectTitle && title ? title.index + title[0].length : anchor;
-    bytter.current = true;
-    v.dispatch({
-      changes: { from: 0, to: v.state.doc.length, insert: doc },
-      selection: { anchor, head },
-      scrollIntoView: true,
-    });
-    bytter.current = false;
+    const valg = markør(doc, selectTitle);
+    // Hele tilstanden byttes. `setState` går utenom transaksjonene, så det
+    // fyrer verken `onChange` eller en angrbar endring — historikken til
+    // notatet man kom fra følger ikke med hit.
+    v.setState(tilstand(doc, valg, kroker.current));
     v.focus();
+    v.dispatch({ effects: EditorView.scrollIntoView(valg.head) });
     synlig.current?.(v.viewport.from, v.viewport.to);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
@@ -317,6 +358,9 @@ export function Editor({ path, doc, onChange, selectTitle, peker, onSamtale, onS
     v.dispatch({
       changes: { from: 0, to: v.state.doc.length, insert: doc },
       selection: { anchor: klipp(anchor), head: klipp(head) },
+      // Hun byttet ikke teksten selv, så ⌘Z skal ikke kunne sette den
+      // tilbake — og dermed heller ikke lagre den tilbake.
+      annotations: Transaction.addToHistory.of(false),
     });
     bytter.current = false;
   }, [doc]);
