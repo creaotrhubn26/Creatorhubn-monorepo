@@ -86,6 +86,26 @@ test("recovers a lost PATCH response with HEAD without duplicating video bytes",
   assert.equal(remoteOffset, bytes.length);
 });
 
+test("uploads TUS through the Premiere File.read compatibility path", async () => {
+  const bytes = new Uint8Array([1, 2, 3]);
+  let remoteOffset = 0;
+  const result = await uploadFileTus({
+    ticket: ticket({ chunkSize: 5 * 1024 * 1024 }),
+    nativePath: "/tmp/review.mp4",
+    sizeBytes: bytes.length,
+    fsApi: { open: async () => { throw new Error("Unimplemented method: open"); }, read: async () => null },
+    file: { isFile: true, read: async () => bytes.buffer.slice(0) },
+    binaryFormat: Symbol("binary"),
+    fetchImpl: async (_url, init) => {
+      if (init.method === "HEAD") return response(200, remoteOffset);
+      remoteOffset += init.body.byteLength;
+      return response(204, remoteOffset);
+    },
+  });
+  assert.equal(result.complete, true);
+  assert.equal(remoteOffset, bytes.length);
+});
+
 test("rejects expired tickets before opening the local export", async () => {
   let opened = false;
   await assert.rejects(

@@ -39,6 +39,7 @@ describe("Video Room object storage", () => {
     let signedCommand: PutObjectCommand | null = null;
     const ticket = await initiateVideoRoomUpload(state.pool, {
       userId: "owner-user",
+      organizationId: "creatorhub-team",
       createdByUserId: "team-editor",
       projectId: "10000000-0000-4000-8000-000000000002",
       fileName: "Review V2.mp4",
@@ -50,24 +51,24 @@ describe("Video Room object storage", () => {
       storage: {
         provider: "aws_s3",
         region: "eu-north-1",
-        bucket: "role-room-test",
+        bucket: "creatorhub-test",
         client: {} as never,
       },
       signer: async (_client, command) => {
         signedCommand = command as PutObjectCommand;
-        return "https://role-room-test.s3.eu-north-1.amazonaws.com/signed";
+        return "https://creatorhub-test.s3.eu-north-1.amazonaws.com/signed";
       },
     });
 
     expect(ticket).toMatchObject({ strategy: "single", expiresInSeconds: 3600 });
     expect(signedCommand).toBeInstanceOf(PutObjectCommand);
     expect(signedCommand!.input).toMatchObject({
-      Bucket: "role-room-test",
+      Bucket: "creatorhub-test",
       ContentType: "video/mp4",
       ChecksumSHA256: "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo=",
     });
     expect(String(signedCommand!.input.Key)).toMatch(
-      /^users\/[a-f0-9]{32}\/video-room\/10000000-0000-4000-8000-000000000002\/[0-9a-f-]{36}\/original\.mp4$/,
+      /^organizations\/creatorhub-team\/users\/owner-user\/projects\/10000000-0000-4000-8000-000000000002\/video-room\/versions\/[0-9a-f-]{36}\/original\.mp4$/,
     );
     const inserted = state.calls.find(({ sql }) => sql.includes("INSERT INTO role_room_storage_objects"));
     expect(inserted?.params[7]).toBe("team-editor");

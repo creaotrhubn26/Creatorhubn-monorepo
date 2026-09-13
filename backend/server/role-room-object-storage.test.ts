@@ -1,5 +1,20 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
+
+const aws = vi.hoisted(() => ({
+  tokenFileOptions: [] as Array<Record<string, unknown>>,
+  oidcCredentialProvider: vi.fn(async () => ({
+    accessKeyId: "temporary-role-key",
+    secretAccessKey: "temporary-role-secret",
+  })),
+}));
+
+vi.mock("@aws-sdk/credential-providers", () => ({
+  fromTokenFile: vi.fn((options: Record<string, unknown>) => {
+    aws.tokenFileOptions.push(options);
+    return aws.oidcCredentialProvider;
+  }),
+}));
 import {
   getConfiguredRoleRoomStorageProvider,
   getRoleRoomObjectStorage,
@@ -10,11 +25,13 @@ const originalEnv = { ...process.env };
 
 afterEach(() => {
   process.env = { ...originalEnv };
+  vi.clearAllMocks();
+  aws.tokenFileOptions.length = 0;
   resetRoleRoomStorageClientsForTests();
 });
 
 describe("role-room-object-storage", () => {
-  it("allows personal media prefixes and opaque UXP origins in the provisioned S3 contract", () => {
+  it("preserves Role Room prefixes and restricts CORS to Role Room web origins", () => {
     const policy = JSON.parse(fs.readFileSync(new URL(
       "../../infrastructure/aws/role-room-storage/application-policy.json",
       import.meta.url,
@@ -41,7 +58,7 @@ describe("role-room-object-storage", () => {
       "s3:AbortMultipartUpload", "s3:GetObject", "s3:ListMultipartUploadParts", "s3:PutObject",
     ]));
     expect(cors.CORSRules[0]).toMatchObject({
-      AllowedOrigins: ["*"],
+      AllowedOrigins: ["https://theroleroom.com", "https://www.theroleroom.com"],
       AllowedMethods: expect.arrayContaining(["GET", "HEAD", "PUT"]),
       ExposeHeaders: expect.arrayContaining(["ETag", "x-amz-checksum-sha256"]),
     });
@@ -84,6 +101,15 @@ describe("role-room-object-storage", () => {
     expect(storage?.provider).toBe("aws_s3");
     expect(storage?.authentication).toBe("render_web_identity");
     await expect(storage?.client.config.region()).resolves.toBe("eu-north-1");
+    expect(aws.tokenFileOptions).toEqual([{
+      roleArn: "arn:aws:iam::123456789012:role/role-room-runtime",
+      webIdentityTokenFile: "/var/run/secrets/render-oidc-token",
+      roleSessionName: "the-role-room-object-storage",
+      clientConfig: { region: "eu-north-1" },
+    }]);
+    await expect(storage?.client.config.credentials()).resolves.toMatchObject({
+      accessKeyId: "temporary-role-key",
+    });
   });
 
   it("fails closed when web identity is incomplete and no static fallback exists", () => {

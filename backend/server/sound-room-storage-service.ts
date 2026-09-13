@@ -15,11 +15,9 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { Pool, PoolClient } from "pg";
 
+import { getCreatorHubObjectStorage } from "./creatorhub-object-storage.js";
 import { ensureRoleRoomUserStorageAccount } from "./role-room-storage-billing.js";
-import {
-  getRoleRoomObjectStorage,
-  type RoleRoomObjectStorage,
-} from "./role-room-object-storage.js";
+import type { PrivateObjectStorage } from "./private-object-storage.js";
 import { buildSoundRoomObjectKey } from "./sound-room-storage-contract.js";
 import { buildVideoRoomObjectKey } from "./video-room-storage-contract.js";
 export { buildSoundRoomObjectKey } from "./sound-room-storage-contract.js";
@@ -63,6 +61,8 @@ export type SoundRoomUploadChannel = "browser" | "protools" | "migration";
 
 export interface SoundRoomUploadInput {
   userId: string;
+  organizationId?: string | null;
+  workspaceProjectId?: string | null;
   projectId: string;
   fileName: string;
   sizeBytes: number;
@@ -77,6 +77,7 @@ export interface SoundRoomUploadInput {
 export interface VideoRoomUploadInput {
   /** Storage is charged to the project owner, even when a team editor uploads. */
   userId: string;
+  organizationId?: string | null;
   createdByUserId: string;
   projectId: string;
   fileName: string;
@@ -131,7 +132,7 @@ type Signer = (
 ) => Promise<string>;
 
 export interface SoundRoomStorageDeps {
-  storage?: RoleRoomObjectStorage | null;
+  storage?: PrivateObjectStorage | null;
   signer?: Signer;
 }
 
@@ -195,12 +196,12 @@ export async function readOwnedSoundRoomObject(
   return result.rows[0] ?? null;
 }
 
-async function initiateRoleRoomMediaUpload(
+async function initiateCreatorHubMediaUpload(
   pool: Pool,
   input: RoleRoomMediaUploadInput,
   deps: SoundRoomStorageDeps = {},
 ): Promise<SoundRoomUploadTicket> {
-  const storage = deps.storage === undefined ? getRoleRoomObjectStorage() : deps.storage;
+  const storage = deps.storage === undefined ? getCreatorHubObjectStorage() : deps.storage;
   const signer = deps.signer ?? defaultSigner;
   if (!storage) throw new Error("storage_not_configured");
   if (!input.projectId || input.projectId.length > 160 || !/^[a-zA-Z0-9_-]+$/.test(input.projectId)) {
@@ -234,8 +235,17 @@ async function initiateRoleRoomMediaUpload(
 
   const objectId = crypto.randomUUID();
   const objectKey = input.mediaKind === "video"
-    ? buildVideoRoomObjectKey(input.userId, input.projectId, objectId, input.fileName)
-    : buildSoundRoomObjectKey(input.userId, input.projectId, objectId, input.fileName);
+    ? buildVideoRoomObjectKey(input.organizationId, input.userId, input.projectId, objectId, input.fileName)
+    : buildSoundRoomObjectKey({
+        organizationId: input.organizationId,
+        userId: input.userId,
+        workspaceProjectId: input.workspaceProjectId,
+        projectId: input.projectId,
+        sessionId: input.sessionId,
+        channel: input.channel,
+        objectId,
+        fileName: input.fileName,
+      });
   const sourceModule = input.mediaKind === "video" ? "video-room" : "sound-room";
   const multipart = input.forceMultipart === true || input.sizeBytes > SINGLE_PUT_LIMIT;
   const strategy = multipart ? "multipart" : "single";
@@ -347,7 +357,7 @@ export async function initiateSoundRoomUpload(
   input: SoundRoomUploadInput,
   deps: SoundRoomStorageDeps = {},
 ): Promise<SoundRoomUploadTicket> {
-  return initiateRoleRoomMediaUpload(pool, { ...input, mediaKind: "audio" }, deps);
+  return initiateCreatorHubMediaUpload(pool, { ...input, mediaKind: "audio" }, deps);
 }
 
 export async function initiateVideoRoomUpload(
@@ -355,7 +365,7 @@ export async function initiateVideoRoomUpload(
   input: VideoRoomUploadInput,
   deps: SoundRoomStorageDeps = {},
 ): Promise<SoundRoomUploadTicket> {
-  return initiateRoleRoomMediaUpload(pool, { ...input, mediaKind: "video" }, deps);
+  return initiateCreatorHubMediaUpload(pool, { ...input, mediaKind: "video" }, deps);
 }
 
 export async function resumeSoundRoomUpload(
@@ -364,7 +374,7 @@ export async function resumeSoundRoomUpload(
   userId: string,
   deps: SoundRoomStorageDeps = {},
 ): Promise<SoundRoomUploadTicket> {
-  const storage = deps.storage === undefined ? getRoleRoomObjectStorage() : deps.storage;
+  const storage = deps.storage === undefined ? getCreatorHubObjectStorage() : deps.storage;
   const signer = deps.signer ?? defaultSigner;
   if (!storage) throw new Error("storage_not_configured");
   const objectRow = await readOwnedSoundRoomObject(pool, objectId, userId);
@@ -413,7 +423,7 @@ export async function signSoundRoomUploadParts(
   },
   deps: SoundRoomStorageDeps = {},
 ): Promise<Array<{ partNumber: number; uploadUrl: string; requiredHeaders: Record<string, string> }>> {
-  const storage = deps.storage === undefined ? getRoleRoomObjectStorage() : deps.storage;
+  const storage = deps.storage === undefined ? getCreatorHubObjectStorage() : deps.storage;
   const signer = deps.signer ?? defaultSigner;
   if (!storage) throw new Error("storage_not_configured");
   const objectRow = await readOwnedSoundRoomObject(pool, input.objectId, input.userId);
@@ -455,7 +465,7 @@ export async function signSoundRoomUploadParts(
 }
 
 async function listAllParts(
-  storage: RoleRoomObjectStorage,
+  storage: PrivateObjectStorage,
   objectRow: SoundRoomStorageObjectRow,
 ): Promise<Array<{ PartNumber: number; ETag: string; ChecksumSHA256: string | undefined; Size: number }>> {
   const rows: Array<{ PartNumber: number; ETag: string; ChecksumSHA256: string | undefined; Size: number }> = [];
@@ -488,7 +498,7 @@ export async function getSoundRoomUploadStatus(
   userId: string,
   deps: SoundRoomStorageDeps = {},
 ): Promise<{ status: string; strategy: string; uploadedParts: Array<{ partNumber: number; etag: string; checksumSha256?: string; sizeBytes: number }> }> {
-  const storage = deps.storage === undefined ? getRoleRoomObjectStorage() : deps.storage;
+  const storage = deps.storage === undefined ? getCreatorHubObjectStorage() : deps.storage;
   if (!storage) throw new Error("storage_not_configured");
   const objectRow = await readOwnedSoundRoomObject(pool, objectId, userId);
   if (!objectRow) throw new Error("upload_not_found");
@@ -521,7 +531,7 @@ export async function completeSoundRoomUpload(
   },
   deps: SoundRoomStorageDeps = {},
 ): Promise<SoundRoomStorageObjectRow> {
-  const storage = deps.storage === undefined ? getRoleRoomObjectStorage() : deps.storage;
+  const storage = deps.storage === undefined ? getCreatorHubObjectStorage() : deps.storage;
   if (!storage) throw new Error("storage_not_configured");
   const objectRow = await readOwnedSoundRoomObject(pool, input.objectId, input.userId);
   if (!objectRow) throw new Error("upload_not_found");
@@ -632,7 +642,7 @@ export async function abortSoundRoomUpload(
   userId: string,
   deps: SoundRoomStorageDeps = {},
 ): Promise<boolean> {
-  const storage = deps.storage === undefined ? getRoleRoomObjectStorage() : deps.storage;
+  const storage = deps.storage === undefined ? getCreatorHubObjectStorage() : deps.storage;
   if (!storage) throw new Error("storage_not_configured");
   const objectRow = await readOwnedSoundRoomObject(pool, objectId, userId);
   if (!objectRow || objectRow.status !== "pending") return false;
@@ -661,13 +671,13 @@ export async function abortSoundRoomUpload(
 }
 
 /** Delete a verified media object and release its accounted user quota. */
-export async function deleteRoleRoomMediaObject(
+export async function deleteCreatorHubMediaObject(
   pool: Pool,
   objectId: string,
   storageOwnerUserId: string,
   deps: SoundRoomStorageDeps = {},
 ): Promise<boolean> {
-  const storage = deps.storage === undefined ? getRoleRoomObjectStorage() : deps.storage;
+  const storage = deps.storage === undefined ? getCreatorHubObjectStorage() : deps.storage;
   if (!storage) throw new Error("storage_not_configured");
   const objectRow = await readOwnedSoundRoomObject(pool, objectId, storageOwnerUserId);
   if (!objectRow) return false;
@@ -718,7 +728,7 @@ export async function getSoundRoomObjectStream(
   range?: string,
   deps: SoundRoomStorageDeps = {},
 ) {
-  const storage = deps.storage === undefined ? getRoleRoomObjectStorage() : deps.storage;
+  const storage = deps.storage === undefined ? getCreatorHubObjectStorage() : deps.storage;
   if (!storage) throw new Error("storage_not_configured");
   return storage.client.send(new GetObjectCommand({
     Bucket: storage.bucket,
@@ -739,7 +749,7 @@ export async function putSoundRoomDerivedObject(
   },
   deps: SoundRoomStorageDeps = {},
 ): Promise<SoundRoomStorageObjectRow> {
-  const storage = deps.storage === undefined ? getRoleRoomObjectStorage() : deps.storage;
+  const storage = deps.storage === undefined ? getCreatorHubObjectStorage() : deps.storage;
   if (!storage) throw new Error("storage_not_configured");
   const objectId = crypto.randomUUID();
   const keyBase = input.parentObject.object_key.replace(/\/original\.[^/.]+$/, "");

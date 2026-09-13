@@ -9,10 +9,11 @@ import {
 import { Upload } from "@aws-sdk/lib-storage";
 import type { Pool, PoolClient } from "pg";
 
+import { getCreatorHubObjectStorage } from "./creatorhub-object-storage.js";
+import type { PrivateObjectStorage } from "./private-object-storage.js";
 import { ensureRoleRoomUserStorageAccount } from "./role-room-storage-billing.js";
 import {
   getLegacyRoleRoomB2Storage,
-  getRoleRoomObjectStorage,
   type RoleRoomObjectStorage,
 } from "./role-room-object-storage.js";
 import { buildSoundRoomObjectKey, extractLegacyB2Key } from "./sound-room-storage-contract.js";
@@ -30,7 +31,7 @@ export interface LegacySoundRoomVersion {
 
 export interface SoundRoomMigrationDeps {
   source?: RoleRoomObjectStorage | null;
-  target?: RoleRoomObjectStorage | null;
+  target?: PrivateObjectStorage | null;
   upload?: (input: {
     client: S3Client;
     bucket: string;
@@ -59,7 +60,7 @@ function asReadable(body: any): Readable {
 }
 
 async function hashRemoteObject(
-  storage: RoleRoomObjectStorage,
+  storage: PrivateObjectStorage,
   key: string,
 ): Promise<{ checksum: string; bytes: number }> {
   const result = await storage.client.send(new GetObjectCommand({ Bucket: storage.bucket, Key: key }));
@@ -99,7 +100,7 @@ export async function migrateLegacySoundRoomVersion(
   deps: SoundRoomMigrationDeps = {},
 ): Promise<SoundRoomMigrationResult> {
   const source = deps.source === undefined ? getLegacyRoleRoomB2Storage() : deps.source;
-  const target = deps.target === undefined ? getRoleRoomObjectStorage() : deps.target;
+  const target = deps.target === undefined ? getCreatorHubObjectStorage() : deps.target;
   const upload = deps.upload ?? defaultUpload;
   if (!source) throw new Error("legacy_b2_not_configured");
   if (!target || target.provider !== "aws_s3") throw new Error("aws_s3_not_configured");
@@ -121,7 +122,23 @@ export async function migrateLegacySoundRoomVersion(
   const migrationId = crypto.randomUUID();
   const fileName = version.file_name || sourceKey.split("/").pop() || "legacy-audio.bin";
   const contentType = sourceHead.ContentType || version.content_type || "application/octet-stream";
-  const targetKey = buildSoundRoomObjectKey(version.owner_user_id, version.project_id, objectId, fileName);
+  const tenant = await pool.query<{ workspace_project_id: string | null }>(
+    `SELECT room.project_id AS workspace_project_id
+       FROM audio_review_projects project
+       LEFT JOIN project_audio_rooms room ON room.audio_review_project_id = project.id
+      WHERE project.id = $1::uuid AND project.owner_user_id = $2
+      LIMIT 1`,
+    [version.project_id, version.owner_user_id],
+  ).catch(() => ({ rows: [] }));
+  const targetKey = buildSoundRoomObjectKey({
+    organizationId: null,
+    userId: version.owner_user_id,
+    workspaceProjectId: tenant.rows[0]?.workspace_project_id || null,
+    projectId: version.project_id,
+    channel: "migration",
+    objectId,
+    fileName,
+  });
   let copied = false;
   try {
     await pool.query(
@@ -233,7 +250,7 @@ export async function deleteVerifiedLegacySoundRoomSource(
   deps: Pick<SoundRoomMigrationDeps, "source" | "target"> = {},
 ): Promise<boolean> {
   const source = deps.source === undefined ? getLegacyRoleRoomB2Storage() : deps.source;
-  const target = deps.target === undefined ? getRoleRoomObjectStorage() : deps.target;
+  const target = deps.target === undefined ? getCreatorHubObjectStorage() : deps.target;
   if (!source) throw new Error("legacy_b2_not_configured");
   if (!target || target.provider !== "aws_s3") throw new Error("aws_s3_not_configured");
   const result = await pool.query<{

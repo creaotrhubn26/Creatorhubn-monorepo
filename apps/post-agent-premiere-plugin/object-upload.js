@@ -8,6 +8,7 @@ const {
   validateUploadTicket,
 } = require("./publish-core");
 const { Sha256, sha256Hex } = require("./sha256");
+const { createFileReader } = require("./file-reader");
 
 const HASH_CHUNK_SIZE = 8 * 1024 * 1024;
 
@@ -20,46 +21,31 @@ class ObjectUploadError extends Error {
   }
 }
 
-async function readChunk(fsApi, fd, position, length) {
-  const buffer = new ArrayBuffer(length);
-  let total = 0;
-  while (total < length) {
-    const result = await fsApi.read(fd, buffer, total, length - total, position + total);
-    const bytesRead = Number(result && result.bytesRead) || 0;
-    if (!bytesRead) break;
-    total += bytesRead;
-  }
-  if (total !== length) {
-    throw new ObjectUploadError("Eksportfilen ble endret eller avkortet under opplasting.", "file_changed");
-  }
-  return buffer;
-}
-
-function requireFilesystem(nativePath, fsApi) {
-  if (!nativePath || !fsApi || typeof fsApi.open !== "function" || typeof fsApi.read !== "function") {
-    throw new ObjectUploadError("UXP-filsystemet er ikke tilgjengelig.", "filesystem_unavailable");
-  }
-}
-
 async function hashFileSha256(options) {
   const sizeBytes = validateSize(options.sizeBytes);
   const nativePath = String(options.nativePath || "").trim();
   const fsApi = options.fsApi;
   const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => undefined;
-  requireFilesystem(nativePath, fsApi);
   const hasher = new Sha256();
-  const fd = await fsApi.open(nativePath, "r");
+  const reader = await createFileReader({
+    nativePath,
+    sizeBytes,
+    fsApi,
+    file: options.file,
+    binaryFormat: options.binaryFormat,
+    maxBufferedBytes: options.maxBufferedBytes,
+  });
   let offset = 0;
   try {
     while (offset < sizeBytes) {
       const length = Math.min(HASH_CHUNK_SIZE, sizeBytes - offset);
-      const chunk = await readChunk(fsApi, fd, offset, length);
+      const chunk = await reader.read(offset, length);
       hasher.update(chunk);
       offset += length;
       onProgress({ offset, sizeBytes, percent: Math.floor((offset / sizeBytes) * 100) });
     }
   } finally {
-    await fsApi.close(fd).catch(() => undefined);
+    await reader.close();
   }
   return hasher.digestHex();
 }
@@ -104,12 +90,17 @@ async function uploadFileObjectStorage(options) {
   const fetchImpl = options.fetchImpl || fetch;
   const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => undefined;
   if (!/^[a-f0-9]{64}$/.test(checksumSha256)) throw new ObjectUploadError("Fil-checksum mangler.", "invalid_checksum");
-  requireFilesystem(nativePath, fsApi);
-
-  const fd = await fsApi.open(nativePath, "r");
+  const reader = await createFileReader({
+    nativePath,
+    sizeBytes,
+    fsApi,
+    file: options.file,
+    binaryFormat: options.binaryFormat,
+    maxBufferedBytes: options.maxBufferedBytes,
+  });
   try {
     if (ticket.protocol === "s3") {
-      const chunk = await readChunk(fsApi, fd, 0, sizeBytes);
+      const chunk = await reader.read(0, sizeBytes);
       if (sha256Hex(chunk) !== checksumSha256) throw new ObjectUploadError("Eksportfilens checksum har endret seg.", "file_changed");
       await putWithRetry(fetchImpl, ticket.uploadUrl, ticket.requiredHeaders, chunk);
       onProgress({ offset: sizeBytes, sizeBytes, percent: 100 });
@@ -129,7 +120,7 @@ async function uploadFileObjectStorage(options) {
     let offset = 0;
     for (let partNumber = 1; partNumber <= ticket.partCount; partNumber += 1) {
       const length = Math.min(ticket.partSize, sizeBytes - offset);
-      const chunk = await readChunk(fsApi, fd, offset, length);
+      const chunk = await reader.read(offset, length);
       wholeFileHasher.update(chunk);
       const partChecksum = sha256Hex(chunk);
       const existing = remoteParts.get(partNumber);
@@ -158,8 +149,8 @@ async function uploadFileObjectStorage(options) {
     await options.complete(completed);
     return { complete: true, parts: completed };
   } finally {
-    await fsApi.close(fd).catch(() => undefined);
+    await reader.close();
   }
 }
 
-module.exports = { ObjectUploadError, hashFileSha256, readChunk, uploadFileObjectStorage };
+module.exports = { ObjectUploadError, hashFileSha256, uploadFileObjectStorage };

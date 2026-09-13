@@ -41,7 +41,7 @@ vi.mock("./cloudflare-stream-service.js", () => ({
 vi.mock("./sound-room-storage-service.js", () => ({
   abortVideoRoomUpload: vi.fn(async () => true),
   completeVideoRoomUpload: vi.fn(),
-  deleteRoleRoomMediaObject: vi.fn(async () => true),
+  deleteCreatorHubMediaObject: vi.fn(async () => true),
   getVideoRoomUploadStatus: vi.fn(),
   initiateVideoRoomUpload: vi.fn(),
   readOwnedVideoRoomObject: vi.fn(),
