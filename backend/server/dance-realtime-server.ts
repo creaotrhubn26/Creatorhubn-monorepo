@@ -21,6 +21,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
 import crypto from 'crypto';
+import { DANCE_REALTIME_WS_PATH } from './ws-upgrade-paths.js';
 
 interface DanceClient {
   ws: WebSocket;
@@ -54,7 +55,7 @@ export function createDanceRealtimeServer(server: Server): WebSocketServer {
   server.on('upgrade', (req, socket, head) => {
     try {
       const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-      if (url.pathname !== '/ws/dance/realtime') return;
+      if (url.pathname !== DANCE_REALTIME_WS_PATH) return;
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit('connection', ws, req);
       });

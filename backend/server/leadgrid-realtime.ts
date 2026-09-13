@@ -29,13 +29,14 @@ import type { Pool } from "pg";
 import { WebSocketServer, WebSocket } from "ws";
 import { URL } from "url";
 import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
+import { LEADGRID_REALTIME_WS_PATH } from "./ws-upgrade-paths.js";
 import {
   consumeLeadgridRealtimeTicket,
   issueLeadgridRealtimeTicket,
 } from "./leadgrid-realtime-ticket-store.js";
 
 export const LEADGRID_REALTIME_TICKET_PATH = "/api/leadgrid/realtime/ticket";
-export const LEADGRID_REALTIME_WS_PATH = "/ws/leadgrid";
+export { LEADGRID_REALTIME_WS_PATH } from "./ws-upgrade-paths.js";
 export const LEADGRID_REALTIME_MAX_PAYLOAD_BYTES = 16 * 1024;
 export const LEADGRID_REALTIME_MAX_CHANNELS = 32;
 export const LEADGRID_REALTIME_MAX_PENDING_MESSAGES = 16;
