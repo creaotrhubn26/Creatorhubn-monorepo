@@ -1019,46 +1019,96 @@ const BINDEORD: &[&str] = &[
     "ble", "blir", "var", "her", "tråden", "samtalen", "møtet",
 ];
 
-fn inneholder(q: &str, ord: &[&str]) -> bool {
-    ord.iter().any(|o| q.contains(o))
+/// Ord som handler om *når*, ikke om *hva*.
+///
+/// Appen har ikke noe tidsfilter. Før havnet «forrige» og «uke» blant
+/// filterordene, og «hva ble bestemt forrige uke» ble til «beslutninger i
+/// notater som bokstavelig talt inneholder ordet uke» — en kort, troverdig og
+/// gal liste. Nå holdes de utenfor filteret, og svaret sier at det ikke kan
+/// begrense på tid.
+const TIDSORD: &[&str] = &[
+    "dag", "går", "gårsdagens", "morgen", "kveld", "uke", "uka", "uken", "ukas", "uken",
+    "ukene", "måned", "måneden", "måneder", "år", "året", "forrige", "siste", "sist",
+    "denne", "nylig", "tidligere", "nyeste", "nye", "gamle", "eldste",
+    "mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag",
+    "januar", "februar", "mars", "april", "mai", "juni", "juli", "august", "september",
+    "oktober", "november", "desember",
+];
+
+/// Ordene som slår ut hvert mønster, i den rekkefølgen de prøves.
+///
+/// Den samme lista kjenner igjen spørsmålet *og* lukes ut av filterordene.
+/// To lister for det samme er to lister som kommer til å stå ulikt.
+///
+/// Sammenligningen er på hele ord. Før var det delstreng: `contains("avhengig")`
+/// slo ut på «avhengigheter», `contains("forkast")` på et hvilket som helst ord
+/// med det i seg, og et strukturert panel spratt opp over resultatene uten
+/// grunn. Derfor står bøyningene i lista i stedet — de er det som faktisk skal
+/// treffe.
+const NØKLER: [(Mønster, &[&str]); 4] = [
+    (
+        Mønster::Forkastet,
+        &["forkastet", "forkaste", "forkastes", "droppet", "dropper", "vraket", "skrinlagt"],
+    ),
+    (
+        Mønster::Uavklart,
+        &[
+            "uavklart", "uavklarte", "avklart", "åpent", "åpne", "usikkert", "usikker", "tvil",
+            "spørsmål", "spørsmålene", "ubesvart",
+        ],
+    ),
+    (Mønster::Venter, &["venter", "vente", "blokkert", "blokkerer"]),
+    (
+        Mønster::Bestemt,
+        &["bestemt", "bestemte", "besluttet", "beslutning", "beslutninger"],
+    ),
+];
+
+/// Spørsmålet slik appen leste det.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Spørsmål {
+    pub mønster: Mønster,
+    /// Ordene som snevrer inn treffene.
+    pub filter: Vec<String>,
+    /// Ordene som handler om tid. De snevrer ikke inn noe — appen har ikke
+    /// noe tidsfilter — men svaret sier at de ble sett og ikke brukt.
+    pub tid: Vec<String>,
 }
 
-/// Kjenner igjen spørsmålet, og gir tilbake ordene som er igjen etterpå — «hva
-/// har jeg bestemt om pipelinen» gir `Bestemt` og `["pipelinen"]`.
+fn ord_i(q: &str) -> Vec<String> {
+    q.split(|c: char| !c.is_alphanumeric())
+        .filter(|o| !o.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Kjenner igjen spørsmålet, og deler resten av ordene i det som snevrer inn
+/// og det som handler om tid — «hva har jeg bestemt om pipelinen» gir
+/// `Bestemt` og `["pipelinen"]`.
 ///
 /// `None` betyr at dette er et vanlig søk. Da skjer det ingenting her, og
 /// fritekstsøket står alene, som før.
-pub fn mønster(q: &str) -> Option<(Mønster, Vec<String>)> {
-    let lav = q.to_lowercase();
-    let nøkler: &[&str];
-    let m = if inneholder(&lav, &["forkast", "droppet", "vraket", "skrinlagt"]) {
-        nøkler = &["forkastet", "forkaste", "forkastes", "droppet", "vraket", "skrinlagt"];
-        Mønster::Forkastet
-    } else if inneholder(
-        &lav,
-        &["uavklart", "avklart", "åpent", "åpne", "usikker", "tvil", "ubesvart"],
-    ) {
-        nøkler = &[
-            "uavklart", "avklart", "åpent", "åpne", "usikkert", "usikker", "tvil", "spørsmål",
-            "spørsmålene", "ubesvart",
-        ];
-        Mønster::Uavklart
-    } else if inneholder(&lav, &["venter", "blokkert", "blokkerer", "avhengig"]) {
-        nøkler = &["venter", "vente", "blokkert", "blokkerer", "avhengig", "avhengigheter"];
-        Mønster::Venter
-    } else if inneholder(&lav, &["bestemt", "besluttet", "beslutning", "bestemte"]) {
-        nøkler = &["bestemt", "bestemte", "besluttet", "beslutning", "beslutninger"];
-        Mønster::Bestemt
-    } else {
-        return None;
-    };
+pub fn mønster(q: &str) -> Option<Spørsmål> {
+    let ord = ord_i(&q.to_lowercase());
+    let (m, nøkler) = NØKLER
+        .iter()
+        .find(|(_, nøkler)| ord.iter().any(|o| nøkler.contains(&o.as_str())))?;
 
-    let resten = lav
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|o| !o.is_empty() && !nøkler.contains(o) && !BINDEORD.contains(o))
-        .map(str::to_string)
-        .collect();
-    Some((m, resten))
+    let mut filter = Vec::new();
+    let mut tid = Vec::new();
+    for o in ord {
+        if nøkler.contains(&o.as_str()) || BINDEORD.contains(&o.as_str()) {
+            continue;
+        }
+        if TIDSORD.contains(&o.as_str()) {
+            if !tid.contains(&o) {
+                tid.push(o);
+            }
+        } else {
+            filter.push(o);
+        }
+    }
+    Some(Spørsmål { mønster: *m, filter, tid })
 }
 
 /// Ett strukturert treff.
@@ -1081,6 +1131,18 @@ pub struct Linje {
 pub struct Svar {
     pub overskrift: String,
     pub treff: Vec<Linje>,
+    /// Ordene svaret ble snevret inn med. Uten dem kan hun ikke se hvorfor
+    /// svaret er rart — `stamme()` kapper «banner» til «bann*», og det er
+    /// usynlig for den som bare ser resultatet.
+    pub filter: Vec<String>,
+    /// Ord om tid i spørsmålet. De ble sett og ikke brukt: appen kan ikke
+    /// begrense på tid ennå, og et tidsord som ble til et fritekstfilter ga
+    /// et selvsikkert galt svar.
+    pub tid: Vec<String>,
+    /// Hvor mange linjer appen har lest i det hele tatt. `0` betyr at
+    /// mønsteret traff, men at det ikke finnes noe å svare med — og det er
+    /// noe annet enn at ingenting passet.
+    pub lest: i64,
 }
 
 /// Stammen av et ord, til bruk i prefikssøk: «pipelinen» skal finne
@@ -1113,9 +1175,10 @@ fn prefiks_uttrykk(ord: &[String]) -> String {
 /// står den blant de uavklarte selv om lesningen kalte den noe annet, og en
 /// linje hun har fjernet er borte.
 pub fn spør(conn: &Connection, q: &str) -> Result<Option<Svar>> {
-    let Some((m, ord)) = mønster(q) else {
+    let Some(spørsmål) = mønster(q) else {
         return Ok(None);
     };
+    let (m, ord) = (spørsmål.mønster, spørsmål.filter.clone());
 
     let vilkår = match m {
         Mønster::Uavklart => {
@@ -1171,7 +1234,20 @@ pub fn spør(conn: &Connection, q: &str) -> Result<Option<Svar>> {
         spørring.query_map([prefiks_uttrykk(&ord)], les)?.collect::<Result<_>>()?
     };
 
-    Ok(Some(Svar { overskrift: m.overskrift().to_string(), treff }))
+    // Er det ingenting lest i det hele tatt, er «ingen treff» feil svar:
+    // spørsmålet ble forstått, men det finnes ikke noe å svare med. De to
+    // tilstandene så like ut, og seksjonen forsvant i begge.
+    let lest: i64 = conn
+        .query_row("select count(*) from forstatt", [], |r| r.get(0))
+        .unwrap_or(0);
+
+    Ok(Some(Svar {
+        overskrift: m.overskrift().to_string(),
+        treff,
+        filter: spørsmål.filter,
+        tid: spørsmål.tid,
+        lest,
+    }))
 }
 
 /// Hvor et avsnitt står i et notat, slått opp på nøkkelen. Brukes når en linje
@@ -2123,5 +2199,62 @@ mod tests {
         assert_eq!(uavklart.treff.len(), 1);
         assert_eq!(uavklart.treff[0].avsender.as_deref(), Some("Kari"));
         assert_eq!(uavklart.treff[0].kortform, "Vipps i tillegg");
+    }
+
+    /// «forrige uke» ble til filterord, og svaret var «beslutninger i notater
+    /// som bokstavelig talt inneholder ordet uke» — kort, troverdig og galt.
+    #[test]
+    fn tidsord_snevrer_ikke_inn_noe_men_svaret_sier_at_de_sto_der() {
+        let s = mønster("hva ble bestemt forrige uke").unwrap();
+        assert_eq!(s.mønster, Mønster::Bestemt);
+        assert!(s.filter.is_empty(), "ingen av tidsordene skal filtrere: {:?}", s.filter);
+        assert_eq!(s.tid, vec!["forrige".to_string(), "uke".to_string()]);
+
+        // Og et ekte filterord står fortsatt, ved siden av tidsordet.
+        let s = mønster("hva ble bestemt om pipelinen forrige uke").unwrap();
+        assert_eq!(s.filter, vec!["pipelinen".to_string()]);
+        assert_eq!(s.tid.len(), 2);
+    }
+
+    /// Delstrengen var problemet: «avhengigheter» slo ut på «avhengig», og et
+    /// strukturert panel spratt opp over resultatene uten grunn.
+    #[test]
+    fn moensteret_treffer_paa_hele_ord_ikke_paa_delstrenger() {
+        assert!(mønster("avhengigheter").is_none(), "et vanlig søk skal være et vanlig søk");
+        assert!(mønster("forkastningen i berggrunnen").is_none());
+        assert!(mønster("åpnet").is_none());
+
+        // Ordene som faktisk er spørsmål treffer fortsatt.
+        assert_eq!(mønster("hva er uavklart").unwrap().mønster, Mønster::Uavklart);
+        assert_eq!(mønster("hva venter på noe").unwrap().mønster, Mønster::Venter);
+        assert_eq!(mønster("hva har jeg forkastet").unwrap().mønster, Mønster::Forkastet);
+        assert_eq!(mønster("hva ble besluttet").unwrap().mønster, Mønster::Bestemt);
+    }
+
+    /// Mønsteret traff, men det er ikke lest noe ennå. Det er noe annet enn
+    /// «ingenting passet», og svaret må bære forskjellen — ellers forsvinner
+    /// seksjonen i begge tilfellene.
+    #[test]
+    fn et_tomt_svar_sier_om_det_er_lest_noe_i_det_hele_tatt() {
+        let conn = base();
+        let tomt = spør(&conn, "hva er uavklart").unwrap().unwrap();
+        assert!(tomt.treff.is_empty());
+        assert_eq!(tomt.lest, 0, "ingenting er lest");
+
+        let mut conn = conn;
+        let tekst = "Kanskje vi burde ha depositum.";
+        let id = synk(&mut conn, "notat.md", &[tekst.to_string()], &[None]).unwrap()[0];
+        let avsnitt = vec![Paragraph {
+            id,
+            kind: "tvil".into(),
+            action: "marker_åpent".into(),
+            ..p(tekst, "Depositum")
+        }];
+        lagre(&conn, "Låne-app", &avsnitt, Some(1_757_000_000)).unwrap();
+
+        let svar = spør(&conn, "hva er uavklart om leveringen").unwrap().unwrap();
+        assert!(svar.treff.is_empty(), "ingenting passer på «leveringen»");
+        assert_eq!(svar.lest, 1, "men noe er lest");
+        assert_eq!(svar.filter, vec!["leveringen".to_string()]);
     }
 }

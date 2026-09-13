@@ -18,7 +18,7 @@ mod rettelser;
 mod samtale;
 mod understand;
 
-use creatorhub_notes_indexer::{db, index, search, sti};
+use creatorhub_notes_indexer::{db, index, ordbank, search, sti};
 use overvaking::Selvskrift;
 use serde::Serialize;
 use tauri::{Emitter, Manager};
@@ -51,10 +51,80 @@ pub struct Note {
 pub struct SearchHit {
     path: String,
     title: String,
-    /// `snippet()`-utdrag fra FTS5 med treffordene markert med `**…**`.
+    /// `snippet()`-utdrag fra FTS5 med treffordene rammet inn av
+    /// [`search::MERKE_START`] og [`search::MERKE_SLUTT`]. Styretegn, ikke
+    /// `**`: brukerens egen fete skrift skal ikke kunne forskyve markeringen.
     snippet: String,
     start_line: usize,
     end_line: usize,
+    /// Sekunder siden epoke. Uten den mister hun all tidsinformasjon i det
+    /// øyeblikket hun søker — den grupperte lista har dag og klokkeslett.
+    modified: u64,
+}
+
+/// Svaret på et søk: treffene, og om lista er kappet.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Søkesvar {
+    treff: Vec<SearchHit>,
+    /// Det finnes flere notater som treffer enn de som står her. Uten dette
+    /// sto det «40 treff» om det så var fem hundre, og hun trodde det var alt.
+    avkortet: bool,
+}
+
+/// Hvor mange biter søket henter, og hvor mange notater det viser. Biterammen
+/// er større enn notatrammen fordi ett notat kan fylle flere biter.
+const BITER: usize = 80;
+const NOTATER: usize = 40;
+
+/// Feilteksten brukeren får se når søket ikke går.
+///
+/// Rust- og io-feil er vårt vokabular, ikke hennes: «Os { code: 2, kind:
+/// NotFound }» i et varsel hjelper ingen. Den rå feilen skrives til stderr,
+/// der den hører hjemme, og brukeren får en setning hun kan handle på.
+const SØKEFEIL: &str =
+    "Søket virker ikke akkurat nå. Notatene dine er trygge, og du kan skrive videre.";
+
+/// Notatbasen — avsnitt, forståelse, rettelser — lot seg ikke åpne. Skriving,
+/// lagring og søk går som før; det er panelet som blir stående tomt.
+const BASEFEIL: &str =
+    "Fikk ikke åpnet det appen har lest fra før. Skriving, lagring og søk virker som vanlig.";
+
+/// Sier fra med ord brukeren kan handle på, og legger den rå feilen i
+/// konsollen. Rust- og io-språk hører hjemme i stderr, ikke i et varsel:
+/// «Error: Os { code: 2, kind: NotFound }» hjelper ingen som skal skrive et
+/// notat, og det er nøyaktig det åtte `String(e)` viste henne.
+fn si(melding: &str, rå: impl std::fmt::Display) -> String {
+    eprintln!("{melding} ({rå})");
+    melding.to_string()
+}
+
+/// Hvorfor notatet ikke kunne åpnes, sagt slik at det går an å gjøre noe med.
+fn lesefeil(path: &str, e: &std::io::Error) -> String {
+    eprintln!("kunne ikke lese {path}: {e}");
+    match e.kind() {
+        std::io::ErrorKind::NotFound => format!(
+            "Notatet «{path}» finnes ikke lenger. Det er slettet eller gitt et nytt \
+             navn utenfor appen. Lista oppdaterer seg selv."
+        ),
+        std::io::ErrorKind::PermissionDenied => {
+            format!("Appen får ikke lov til å åpne «{path}».")
+        }
+        _ => format!("Kunne ikke åpne «{path}». Fila ligger der, men lot seg ikke lese."),
+    }
+}
+
+/// Og hvorfor det ikke lot seg lagre. Teksten står i appen uansett — det er
+/// bufferet som eier den til skrivet har gått gjennom.
+fn skrivefeil(path: &str, e: &std::io::Error) -> String {
+    eprintln!("kunne ikke lagre {path}: {e}");
+    match e.kind() {
+        std::io::ErrorKind::PermissionDenied => {
+            format!("Appen får ikke lov til å skrive til «{path}».")
+        }
+        std::io::ErrorKind::StorageFull => "Disken er full.".to_string(),
+        _ => format!("Kunne ikke lagre «{path}» akkurat nå."),
+    }
 }
 
 /// Notatmappen, opprettet og git-initiert om den mangler — som `notat` gjør.
@@ -69,13 +139,13 @@ fn notes_dir() -> Result<PathBuf, String> {
         _ => home()?.join("CreatorHub-notater"),
     };
     if !dir.exists() {
-        std::fs::create_dir_all(&dir).map_err(|e| format!("kunne ikke lage {dir:?}: {e}"))?;
+        std::fs::create_dir_all(&dir).map_err(|e| si("Klarte ikke å lage notatmappen.", e))?;
     }
     if !dir.join(".git").exists() {
         git(&dir, &["init", "-q"])?;
     }
     dir.canonicalize()
-        .map_err(|e| format!("finner ikke notatmappen: {e}"))
+        .map_err(|e| si("Finner ikke notatmappen.", e))
 }
 
 fn home() -> Result<PathBuf, String> {
@@ -112,10 +182,10 @@ fn lesning_på() -> bool {
 fn sett_lesning(på: bool) -> Result<(), String> {
     let fil = samtykkefil();
     if let Some(mappe) = fil.parent() {
-        std::fs::create_dir_all(mappe).map_err(|e| format!("kunne ikke lagre valget: {e}"))?;
+        std::fs::create_dir_all(mappe).map_err(|e| si("Klarte ikke å lagre valget.", e))?;
     }
     std::fs::write(&fil, if på { "på" } else { "av" })
-        .map_err(|e| format!("kunne ikke lagre valget: {e}"))
+        .map_err(|e| si("Klarte ikke å lagre valget.", e))
 }
 
 /// Skal dette ene notatet aldri sendes noe sted? `privat: ja` i toppfeltet.
@@ -156,7 +226,7 @@ fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
         .args(args)
         .current_dir(dir)
         .output()
-        .map_err(|e| format!("git {args:?} startet ikke: {e}"))?;
+        .map_err(|e| si("Klarte ikke å snakke med git. Notatene ligger trygt på disken.", e))?;
     if !out.status.success() {
         return Err(format!(
             "git {args:?} feilet: {}",
@@ -255,27 +325,27 @@ fn strip_date_prefix(stem: &str) -> &str {
 /// undermappe kanoniseres til målet sitt.
 fn resolve_in(dir: &Path, rel: &str) -> Result<PathBuf, String> {
     if rel.is_empty() {
-        return Err("tom sti".into());
+        return Err("Notatet har ingen sti.".into());
     }
     let base = dir
         .canonicalize()
-        .map_err(|e| format!("finner ikke notatmappen: {e}"))?;
+        .map_err(|e| si("Finner ikke notatmappen.", e))?;
     let joined = base.join(rel);
     let name = joined
         .file_name()
-        .ok_or_else(|| "ugyldig filnavn".to_string())?
+        .ok_or_else(|| "Notatet har ikke noe filnavn.".to_string())?
         .to_owned();
     let parent = joined
         .parent()
-        .ok_or_else(|| "ugyldig sti".to_string())?
+        .ok_or_else(|| "Notatstien går ikke an å lese.".to_string())?
         .canonicalize()
-        .map_err(|_| format!("finnes ikke: {rel}"))?;
+        .map_err(|_| format!("Finner ikke mappen «{rel}» ligger i."))?;
     let full = parent.join(name);
     if !full.starts_with(&base) {
-        return Err(format!("stien peker utenfor notatmappen: {rel}"));
+        return Err(format!("«{rel}» ligger utenfor notatmappen."));
     }
     if full.extension().and_then(|e| e.to_str()) != Some("md") {
-        return Err(format!("bare .md-filer: {rel}"));
+        return Err(format!("«{rel}» er ikke et notat. Appen åpner bare .md-filer."));
     }
     Ok(full)
 }
@@ -329,7 +399,7 @@ fn create_note_in(dir: &Path, title: &str, date: &str, selv: Option<&Selvskrift>
         if let Some(selv) = selv {
             selv.merk(&full);
         }
-        skriv_atomisk(&full, &body).map_err(|e| format!("kunne ikke skrive {name}: {e}"))?;
+        skriv_atomisk(&full, &body).map_err(|e| skrivefeil(&name, &e))?;
     }
     Ok(name)
 }
@@ -392,10 +462,10 @@ fn reindex_in(notes: &Path, db_file: &Path) -> Result<String, String> {
     let _guard = REINDEX.lock().unwrap_or_else(|e| e.into_inner());
     git(notes, &["add", "-A"])?;
     let conn = db::open(db_file)
-        .map_err(|e| format!("klarte ikke å gjøre notatene søkbare: {e}"))?;
+        .map_err(|e| si("Notatet er lagret, men søket er ikke oppdatert ennå.", e))?;
     let report =
         index::run_no_embed(&conn, notes)
-        .map_err(|e| format!("klarte ikke å gjøre notatene søkbare: {e}"))?;
+        .map_err(|e| si("Notatet er lagret, men søket er ikke oppdatert ennå.", e))?;
 
     // Notater som ikke finnes lenger. `minne::synk` rydder bare i den kilden
     // den kalles med, og den kalles bare når notatet leses — så et slettet
@@ -424,7 +494,7 @@ fn list_notes() -> Result<Vec<Note>, String> {
 fn read_note(path: String) -> Result<String, String> {
     let dir = notes_dir()?;
     let full = resolve_in(&dir, &path)?;
-    std::fs::read_to_string(&full).map_err(|e| format!("kunne ikke lese {path}: {e}"))
+    std::fs::read_to_string(&full).map_err(|e| lesefeil(&path, &e))
 }
 
 /// Skriver notatet uten at det kan bli halvveis skrevet: innholdet går til en
@@ -465,7 +535,7 @@ fn write_note(selv: tauri::State<Arc<Selvskrift>>, path: String, content: String
     let dir = notes_dir()?;
     let full = resolve_in(&dir, &path)?;
     selv.merk(&full);
-    skriv_atomisk(&full, &content).map_err(|e| format!("kunne ikke lagre {path}: {e}"))
+    skriv_atomisk(&full, &content).map_err(|e| skrivefeil(&path, &e))
 }
 
 #[tauri::command]
@@ -475,11 +545,15 @@ fn create_note(selv: tauri::State<Arc<Selvskrift>>, title: String) -> Result<Str
 }
 
 #[tauri::command]
-fn search_notes(query: String) -> Result<Vec<SearchHit>, String> {
+fn search_notes(query: String) -> Result<Søkesvar, String> {
     let dir = notes_dir()?;
-    let conn = db::open(&db_path()).map_err(|e| format!("klarte ikke å søke: {e}"))?;
-    let hits = search::text(&conn, &query, 80).map_err(|e| format!("klarte ikke å søke: {e}"))?;
+    let conn = db::open(&db_path()).map_err(|_| SØKEFEIL.to_string())?;
+    let hits = search::text(&conn, &query, BITER).map_err(|_| SØKEFEIL.to_string())?;
 
+    // Brukte søket opp hele biterammen, finnes det etter alt å dømme flere
+    // notater bakenfor den. Da er lista kappet selv om den er kortere enn
+    // notatrammen.
+    let mut avkortet = hits.len() >= BITER;
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
     for hit in hits {
@@ -496,16 +570,28 @@ fn search_notes(query: String) -> Result<Vec<SearchHit>, String> {
         };
         out.push(SearchHit {
             title: derive_title(&hit.path, &content),
+            modified: endret(&full),
             path: hit.path,
             snippet: hit.text,
             start_line: hit.start_line,
             end_line: hit.end_line,
         });
-        if out.len() == 40 {
+        if out.len() == NOTATER {
+            avkortet = true;
             break;
         }
     }
-    Ok(out)
+    Ok(Søkesvar { treff: out, avkortet })
+}
+
+/// Da fila sist ble skrevet, i sekunder siden epoke. `0` når vi ikke vet.
+fn endret(full: &Path) -> u64 {
+    std::fs::metadata(full)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// Leser notatet og sier hva det har forstått. Feiler kallet — `claude` finnes
@@ -743,7 +829,7 @@ fn avvis_kobling(gjelder: i64, annen_hash: String, sti: String, avvist: bool) ->
         )
         .map_err(|_| "fant ikke avsnittet koblingen peker på".to_string())?;
     minne::avvis(&conn, gjelder, annen, avvist)
-        .map_err(|e| format!("kunne ikke lagre valget: {e}"))
+        .map_err(|e| si("Klarte ikke å lagre valget.", e))
 }
 
 /// Hvem som sa hva, satt på linjene panelet får. Avsenderen leses ut av
@@ -798,7 +884,7 @@ fn avbryt_lesning() {
 #[tauri::command]
 fn spor_notater(query: String) -> Result<Option<minne::Svar>, String> {
     let conn = base()?;
-    minne::spør(&conn, &query).map_err(|e| format!("klarte ikke å søke: {e}"))
+    minne::spør(&conn, &query).map_err(|e| si(SØKEFEIL, e))
 }
 
 /// Hvor et avsnitt står i et notat. Brukes når en linje under «Tidligere om
@@ -808,7 +894,7 @@ fn finn_avsnitt(path: String, hash: String) -> Result<Option<[usize; 2]>, String
     let dir = notes_dir()?;
     let full = resolve_in(&dir, &path)?;
     let innhold =
-        std::fs::read_to_string(&full).map_err(|e| format!("kunne ikke lese {path}: {e}"))?;
+        std::fs::read_to_string(&full).map_err(|e| lesefeil(&path, &e))?;
     Ok(minne::posisjon(&innhold, &hash).map(|(a, b)| [a, b]))
 }
 
@@ -819,11 +905,11 @@ fn finn_avsnitt(path: String, hash: String) -> Result<Option<[usize; 2]>, String
 /// latt et gammelt skjema stå urørt.
 fn base() -> Result<rusqlite::Connection, String> {
     let fil = db_path();
-    let mut conn = db::open(&fil).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
+    let mut conn = db::open(&fil).map_err(|e| si(BASEFEIL, e))?;
     migrering::kjør(&mut conn, Some(&fil))
-        .map_err(|e| format!("fikk ikke migrert notatbasen: {e}"))?;
-    rettelser::sørg_for_tabell(&conn).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
-    minne::sørg_for_tabeller(&conn).map_err(|e| format!("fikk ikke åpnet notatbasen: {e}"))?;
+        .map_err(|e| si(BASEFEIL, e))?;
+    rettelser::sørg_for_tabell(&conn).map_err(|e| si(BASEFEIL, e))?;
+    minne::sørg_for_tabeller(&conn).map_err(|e| si(BASEFEIL, e))?;
     Ok(conn)
 }
 
@@ -836,17 +922,149 @@ fn rett_avsnitt(retting: rettelser::Retting) -> Result<(), String> {
             && plass != rettelser::FJERNET
             && plass != rettelser::FERDIG
         {
-            return Err(format!("ukjent plass: {plass}"));
+            return Err(format!("«{plass}» er ikke en av plassene i panelet."));
         }
     }
     let conn = base()?;
-    rettelser::lagre(&conn, &retting).map_err(|e| format!("kunne ikke lagre rettelsen: {e}"))
+    rettelser::lagre(&conn, &retting).map_err(|e| si("Klarte ikke å lagre rettelsen. Linja står som den var.", e))
 }
 
 #[tauri::command]
 fn reindex() -> Result<String, String> {
     let dir = notes_dir()?;
     reindex_in(&dir, &db_path())
+}
+
+// ---- ordlista -----------------------------------------------------------
+
+/// Norsk Ordbank, slik grensesnittet trenger å vite om den.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Ordbankstatus {
+    /// Setningen brukeren skal se, ordrett fra [`ordbank::status`]. Ingen
+    /// sjargong: den sier hva søket får til og hva det ikke får til.
+    tekst: String,
+    /// Ordlista er ikke lastet ned. Bare da har «Last ned ordlista» noe å
+    /// gjøre, og bare da er søket dårligere enn det kan bli.
+    mangler: bool,
+}
+
+/// Ordlista fra Språkbanken ved Nasjonalbiblioteket, CC BY 4.0. Rundt 98 MB.
+const ORDBANK_URL: &str =
+    "https://www.nb.no/sbfil/leksikalske_databaser/ordbank/20220201_norsk_ordbank_nob_2005.tar.gz";
+
+/// Én nedlasting av gangen. To samtidige ville skrevet i den samme fila.
+static ORDBANK_LASTER: Mutex<()> = Mutex::new(());
+
+#[tauri::command]
+fn ordbank_status() -> Result<Ordbankstatus, String> {
+    let conn = db::open(&db_path()).map_err(|_| SØKEFEIL.to_string())?;
+    let status = ordbank::status(&conn);
+    Ok(Ordbankstatus {
+        tekst: status.to_string(),
+        mangler: status == ordbank::Status::Mangler,
+    })
+}
+
+/// Henter ordlista og leser den inn. Tar et par minutter på en vanlig linje,
+/// og sier fra underveis gjennom hendelsen `ordbank`.
+///
+/// `curl` og `tar` er allerede på maskinen — appen kaller `git` og `claude`
+/// på samme måte. Å dra inn en HTTP-klient og en tar-leser for én nedlasting
+/// som skjer én gang i appens levetid ville vært to avhengigheter for
+/// ingenting.
+///
+/// Alt havner i `ordbank.db` ved siden av `notater.db`. Sletter man den fila,
+/// mister man bøyningen i søket og ingenting annet.
+#[tauri::command]
+fn last_ned_ordbank(app: tauri::AppHandle) -> Result<Ordbankstatus, String> {
+    let Ok(_lås) = ORDBANK_LASTER.try_lock() else {
+        return Err("Nedlastingen er allerede i gang.".into());
+    };
+    let meld = |tekst: &str| {
+        let _ = app.emit("ordbank", tekst);
+    };
+
+    let mappe = std::env::temp_dir().join(format!("creatorhub-ordbank-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&mappe);
+    std::fs::create_dir_all(&mappe)
+        .map_err(|e| skrivefeil(&mappe.to_string_lossy(), &e))?;
+    // Ryddes uansett hvordan dette går: 98 MB skal ikke bli liggende igjen.
+    let rydd = || {
+        let _ = std::fs::remove_dir_all(&mappe);
+    };
+
+    meld("Laster ned ordlista fra Nasjonalbiblioteket. Den er på 98 MB, så det tar noen minutter.");
+    let arkiv = mappe.join("ordbank.tar.gz");
+    let hentet = Command::new("curl")
+        .args(["-fsSL", "--retry", "2", "-o"])
+        .arg(&arkiv)
+        .arg(ORDBANK_URL)
+        .status();
+    match hentet {
+        Ok(s) if s.success() => {}
+        _ => {
+            rydd();
+            return Err("Klarte ikke å laste ned ordlista. Sjekk at maskinen er på nett, \
+                        og prøv igjen."
+                .into());
+        }
+    }
+
+    meld("Pakker ut ordlista.");
+    let pakket = Command::new("tar")
+        .arg("xzf")
+        .arg(&arkiv)
+        .arg("-C")
+        .arg(&mappe)
+        .status();
+    match pakket {
+        Ok(s) if s.success() => {}
+        _ => {
+            rydd();
+            return Err("Nedlastingen ble ødelagt på veien. Prøv igjen.".into());
+        }
+    }
+
+    let Some(fullform) = finn_fil(&mappe, "fullformsliste.txt") else {
+        rydd();
+        return Err("Fant ikke ordlista i det som ble lastet ned. Prøv igjen.".into());
+    };
+
+    meld("Leser inn ordene. Det tar noen sekunder.");
+    let fil = db_path().with_file_name(sti::Lager::Ordbank.filnavn());
+    if let Some(foreldre) = fil.parent() {
+        let _ = std::fs::create_dir_all(foreldre);
+    }
+    let utfall = match rusqlite::Connection::open(&fil) {
+        Ok(conn) => ordbank::load(&conn, &fullform).map_err(|e| e.to_string()),
+        Err(e) => Err(e.to_string()),
+    };
+    rydd();
+    if let Err(e) = utfall {
+        eprintln!("ordbank::load: {e}");
+        return Err("Klarte ikke å lese inn ordlista. Prøv igjen.".into());
+    }
+
+    meld("Ordlista er på plass.");
+    ordbank_status()
+}
+
+/// Første fil med dette navnet under `mappe`. Arkivet fra Språkbanken pakker
+/// ut i en mappe med dato i navnet, og det navnet er ikke vårt å love.
+fn finn_fil(mappe: &Path, navn: &str) -> Option<PathBuf> {
+    let mut køen = vec![mappe.to_path_buf()];
+    while let Some(m) = køen.pop() {
+        for oppføring in std::fs::read_dir(&m).ok()?.flatten() {
+            let sti = oppføring.path();
+            if sti.is_dir() {
+                køen.push(sti);
+            } else if sti.file_name().and_then(|n| n.to_str()) == Some(navn) {
+                return Some(sti);
+            }
+        }
+    }
+    None
 }
 
 /// Holder `notify`-vakten i live for appens levetid. Slipper man den, stopper
@@ -899,7 +1117,9 @@ pub fn run() {
             samtaleform,
             sett_samtale,
             sett_lesning,
-            sett_privat
+            sett_privat,
+            ordbank_status,
+            last_ned_ordbank
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1272,6 +1492,59 @@ mod tests {
 
         let uavklart = minne::spør(&conn, "hva er uavklart").unwrap().unwrap();
         assert_eq!(uavklart.treff.len(), 1);
+    }
+
+    /// Et slettet notat som fortsatt står i lista skal gi en setning hun kan
+    /// gjøre noe med, ikke «Os { code: 2, kind: NotFound }» i et varsel.
+    #[test]
+    fn et_slettet_notat_gir_en_forstaaelig_beskjed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let e = std::fs::read_to_string(tmp.path().join("borte.md")).unwrap_err();
+        let melding = lesefeil("2026-09-10-borte.md", &e);
+
+        assert!(melding.contains("finnes ikke lenger"), "fikk {melding}");
+        assert!(melding.contains("2026-09-10-borte.md"), "notatet skal navngis: {melding}");
+        for sjargong in ["Os {", "NotFound", "kind:", "errno", "No such file"] {
+            assert!(!melding.contains(sjargong), "{sjargong} i «{melding}»");
+        }
+
+        // Og en skrivefeil skal si at teksten ikke gikk ned, uten io-språk.
+        let melding = skrivefeil("notat.md", &e);
+        assert!(!melding.contains("NotFound"), "fikk {melding}");
+        assert!(melding.contains("notat.md"), "fikk {melding}");
+    }
+
+    /// Uten ordlista skal søket virke — bare uten bøyning — og statusen skal
+    /// si hva som mangler, med ord.
+    #[test]
+    fn uten_ordlista_virker_soeket_og_statusen_sier_hva_som_mangler() {
+        let tmp = tempfile::tempdir().unwrap();
+        let notes = tmp.path().join("notater");
+        std::fs::create_dir(&notes).unwrap();
+        git(&notes, &["init", "-q"]).unwrap();
+        // Basen ligger der appen legger den, uten `ordbank.db` ved siden av.
+        let db_file = tmp.path().join("notater.db");
+
+        let name = create_note_in(&notes, "Utstyr", "2026-09-10", None).unwrap();
+        std::fs::write(notes.join(&name), "# Utstyr\n\nVi kjøpte nytt utstyr til kontoret.\n")
+            .unwrap();
+        reindex_in(&notes, &db_file).unwrap();
+
+        let conn = db::open(&db_file).unwrap();
+        assert!(!tmp.path().join("ordbank.db").exists(), "ordlista skal ikke være der");
+
+        // Søket virker på ordet slik det ble skrevet.
+        assert_eq!(search::text(&conn, "utstyr", 5).unwrap().len(), 1);
+        // Og bøyningen mangler, som statusen sier.
+        assert!(search::text(&conn, "utstyret", 5).unwrap().is_empty());
+
+        let status = ordbank::status(&conn);
+        assert_eq!(status, ordbank::Status::Mangler);
+        let tekst = status.to_string();
+        assert!(tekst.contains("Ordlista mangler"), "fikk {tekst}");
+        for sjargong in ["lemma", "fullform", "stemming", "sqlite", "index"] {
+            assert!(!tekst.to_lowercase().contains(sjargong), "{sjargong} i «{tekst}»");
+        }
     }
 
     /// Hele poenget med staging før indeksering: et notat som nettopp ble
