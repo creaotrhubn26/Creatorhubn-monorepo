@@ -190,7 +190,7 @@ function Tidligere_({
   /** Kortformen på linja i dette notatet som utløste koblingen. */
   gjelder: (id: number) => string | null;
   onÅpne: Åpne;
-  onAvvis: Avvis;
+  onAvvis: (t: Tidligere) => void;
 }) {
   const [alle, setAlle] = useState(false);
   const vist = alle ? linjer : linjer.slice(0, FØRST);
@@ -220,7 +220,7 @@ function Tidligere_({
                   <span className="omLinja">Vi er ikke sikre på hvordan de henger sammen.</span>
                 )}
               </button>
-              <button className="endre" onClick={() => onAvvis(t, true)}>
+              <button className="endre" onClick={() => onAvvis(t)}>
                 Henger ikke sammen
               </button>
             </li>
@@ -565,7 +565,12 @@ export function Panel({
           linjer={tidligere}
           gjelder={kortformFor}
           onÅpne={onÅpne}
-          onAvvis={onAvvis}
+          onAvvis={(t) => {
+            // Veien tilbake er den samme som for en retting: banneret over,
+            // med hennes egne ord for hva hun gjorde.
+            onHusk({ tekst: `Koblingen til «${t.kortform}» er tatt bort.`, kobling: t });
+            onAvvis(t, true);
+          }}
         />
       )}
 

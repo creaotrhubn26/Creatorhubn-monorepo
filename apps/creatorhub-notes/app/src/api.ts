@@ -28,11 +28,16 @@ export type Rettelse = {
   venter: string;
 };
 
-/** Ett steg tilbake. Teksten er det hun ser i angrebanneret, `angre` er
- *  rettingen som setter det tilbake slik det var. Stabelen bor i `App`, ikke i
- *  panelet: panelet rives ved hvert notatbytte, og en feilklikket «Ikke
- *  relevant» skal ikke bli permanent av at hun så på et annet notat. */
-export type Angring = { tekst: string; angre: Retting };
+/** Ett steg tilbake. Teksten er det hun ser i angrebanneret, og feltet under
+ *  er det som setter det tilbake slik det var — en retting som skrives om
+ *  igjen, eller en kobling som tas fram igjen.
+ *
+ *  Stabelen bor i `App`, ikke i panelet: panelet rives ved hvert notatbytte,
+ *  og en feilklikket «Ikke relevant» skal ikke bli permanent av at hun så på
+ *  et annet notat. */
+export type Angring =
+  | { tekst: string; angre: Retting }
+  | { tekst: string; kobling: Tidligere };
 
 /** Ett avsnitt slik panelet leser det. `start` og `end` er posisjoner i
  *  teksten, talt slik JavaScript teller, så de kan brukes rett i editoren. */

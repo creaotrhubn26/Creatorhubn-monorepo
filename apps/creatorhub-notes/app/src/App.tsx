@@ -833,7 +833,8 @@ export default function App() {
                 const sist = angre[angre.length - 1];
                 if (!sist) return;
                 setAngre((s) => s.slice(0, -1));
-                void rett(sist.angre, sist.angre.tekst);
+                if ("kobling" in sist) void avvis(sist.kobling, false);
+                else void rett(sist.angre, sist.angre.tekst);
               }}
               onRett={(r, tekst) => void rett(r, tekst)}
               onAvvis={(t, avvist) => void avvis(t, avvist)}
