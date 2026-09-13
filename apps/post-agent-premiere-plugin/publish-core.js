@@ -61,11 +61,14 @@ function validateRequiredHeaders(value) {
   const headers = {};
   for (const [name, headerValue] of Object.entries(value && typeof value === "object" ? value : {})) {
     const normalized = String(name).toLowerCase();
-    if (!["content-type", "x-amz-checksum-sha256"].includes(normalized)) {
+    if (!["content-type", "x-amz-checksum-sha256", "x-amz-sdk-checksum-algorithm"].includes(normalized)) {
       throw new Error("CreatorHub returnerte et ukjent opplastingshode.");
     }
     const text = String(headerValue || "");
     if (!text || text.length > 300 || /[\r\n]/.test(text)) throw new Error("CreatorHub returnerte et ugyldig opplastingshode.");
+    if (normalized === "x-amz-sdk-checksum-algorithm" && text !== "SHA256") {
+      throw new Error("CreatorHub returnerte en ugyldig checksum-algoritme.");
+    }
     headers[normalized] = text;
   }
   return headers;

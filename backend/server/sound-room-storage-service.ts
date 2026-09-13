@@ -29,6 +29,10 @@ const MIN_PART_SIZE = 16 * MIB;
 const MAX_UPLOAD_BYTES = 20 * GIB;
 const MAX_PARTS = 10_000;
 const UPLOAD_TTL_SECONDS = 60 * 60;
+const SIGNED_CHECKSUM_HEADERS = new Set([
+  "x-amz-checksum-sha256",
+  "x-amz-sdk-checksum-algorithm",
+]);
 
 export const SOUND_ROOM_AUDIO_TYPES = new Set([
   "audio/aac",
@@ -158,7 +162,15 @@ async function defaultSigner(
   command: PutObjectCommand | UploadPartCommand,
   expiresIn: number,
 ): Promise<string> {
-  return getSignedUrl(client, command as any, { expiresIn });
+  // Premiere's UXP network layer supplies x-amz-sdk-checksum-algorithm when a
+  // SHA-256 checksum is present. S3 rejects any unsigned x-amz-* header, so
+  // keep both checksum headers in SigV4 SignedHeaders instead of hoisting them
+  // into the query string. The returned requiredHeaders contract makes the
+  // same request work in browsers and native companions as well.
+  return getSignedUrl(client, command as any, {
+    expiresIn,
+    unhoistableHeaders: SIGNED_CHECKSUM_HEADERS,
+  });
 }
 
 async function releaseReservation(
@@ -317,6 +329,7 @@ async function initiateCreatorHubMediaUpload(
       Bucket: storage.bucket,
       Key: objectKey,
       ContentType: contentType,
+      ChecksumAlgorithm: "SHA256",
       ChecksumSHA256: encodedChecksum,
       Metadata: {
         "creatorhub-object-id": objectId,
@@ -330,6 +343,7 @@ async function initiateCreatorHubMediaUpload(
       expiresInSeconds: UPLOAD_TTL_SECONDS,
       requiredHeaders: {
         "content-type": contentType,
+        "x-amz-sdk-checksum-algorithm": "SHA256",
         "x-amz-checksum-sha256": encodedChecksum,
       },
     };
@@ -396,6 +410,7 @@ export async function resumeSoundRoomUpload(
     Bucket: storage.bucket,
     Key: objectRow.object_key,
     ContentType: objectRow.content_type || "application/octet-stream",
+    ChecksumAlgorithm: "SHA256",
     ChecksumSHA256: encodedChecksum,
     Metadata: {
       "creatorhub-object-id": objectRow.id,
@@ -409,6 +424,7 @@ export async function resumeSoundRoomUpload(
     expiresInSeconds: UPLOAD_TTL_SECONDS,
     requiredHeaders: {
       "content-type": objectRow.content_type || "application/octet-stream",
+      "x-amz-sdk-checksum-algorithm": "SHA256",
       "x-amz-checksum-sha256": encodedChecksum,
     },
   };
@@ -454,12 +470,16 @@ export async function signSoundRoomUploadParts(
       Key: objectRow.object_key,
       UploadId: objectRow.multipart_upload_id!,
       PartNumber: part.partNumber,
+      ChecksumAlgorithm: "SHA256",
       ChecksumSHA256: checksum,
     }), UPLOAD_TTL_SECONDS);
     return {
       partNumber: part.partNumber,
       uploadUrl,
-      requiredHeaders: { "x-amz-checksum-sha256": checksum },
+      requiredHeaders: {
+        "x-amz-sdk-checksum-algorithm": "SHA256",
+        "x-amz-checksum-sha256": checksum,
+      },
     };
   }));
 }
