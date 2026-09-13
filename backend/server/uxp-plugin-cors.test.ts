@@ -20,6 +20,8 @@ function createApp() {
   app.get("/api/video-nle/projects", (_req, res) => res.json({ projects: [] }));
   app.post("/api/post-agent/pairing/poll", (_req, res) => res.json({ status: "pending" }));
   app.get("/api/projects/:projectId/video-marker-sync/:editor", (_req, res) => res.json({ markers: [] }));
+  app.get("/api/projects/:projectId/video-collaboration", (_req, res) => res.json({ comments: [], tasks: [] }));
+  app.patch("/api/projects/:projectId/video-tasks/:taskId", (_req, res) => res.json({ status: "done" }));
   app.get("/api/admin/private", (_req, res) => res.json({ ok: true }));
   return app;
 }
@@ -59,6 +61,24 @@ describe("UXP plugin CORS boundary", () => {
     expect(response.status).toBe(200);
     expect(response.headers["access-control-allow-origin"]).toBe("*");
     expect(response.headers["access-control-allow-credentials"]).toBeUndefined();
+  });
+
+  it("accepts bearer-authenticated review reads and task updates", async () => {
+    const app = createApp();
+    const read = await request(app)
+      .get("/api/projects/project-1/video-collaboration?versionId=version-1")
+      .set("Origin", "uxp://no.creatorhubn.video-room-premiere")
+      .set("Authorization", "Bearer test-token");
+    const updatePreflight = await request(app)
+      .options("/api/projects/project-1/video-tasks/task-1")
+      .set("Origin", "null")
+      .set("Access-Control-Request-Method", "PATCH")
+      .set("Access-Control-Request-Headers", "authorization,content-type");
+
+    expect(read.headers["access-control-allow-origin"]).toBe("*");
+    expect(updatePreflight.status).toBe(204);
+    expect(updatePreflight.headers["access-control-allow-methods"]).toContain("PATCH");
+    expect(updatePreflight.headers["access-control-allow-credentials"]).toBeUndefined();
   });
 
   it("does not widen CORS for unrelated API routes", async () => {

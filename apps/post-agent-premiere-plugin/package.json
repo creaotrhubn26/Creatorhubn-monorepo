@@ -1,0 +1,10 @@
+{
+  "name": "@creatorhub/video-room-premiere-uxp",
+  "version": "0.2.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "check": "node --check index.js && node --check sync-core.js && node --check review-core.js && node --check api-client.js && node --check premiere-host.js",
+    "test": "node --test tests/*.test.cjs"
+  }
+}

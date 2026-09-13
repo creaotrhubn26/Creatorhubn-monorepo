@@ -3,6 +3,7 @@ import {
   buildVideoRoomStateUrl,
   filterVideoComments,
   groupVideoCommentReplies,
+  readVideoRoomVersionId,
 } from "./videoRoomModel";
 
 describe("Video Room state model", () => {
@@ -10,6 +11,12 @@ describe("Video Room state model", () => {
     expect(buildVideoRoomStateUrl("project one", "old/version")).toBe(
       "/api/projects/project%20one/video-room?versionId=old%2Fversion",
     );
+  });
+
+  it("reads a bounded version target from a Video Room deep link", () => {
+    expect(readVideoRoomVersionId("?versionId=old%2Fversion")).toBe("old/version");
+    expect(readVideoRoomVersionId(`?versionId=${"x".repeat(100)}`)).toHaveLength(64);
+    expect(readVideoRoomVersionId("?other=value")).toBeNull();
   });
 
   it("keeps replies under their parent and decisions filterable", () => {
