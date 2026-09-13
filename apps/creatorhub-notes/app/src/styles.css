@@ -600,6 +600,13 @@ kbd {
   color: var(--merke-idé);
 }
 
+/* Et avsnitt et senere avsnitt motsier. Ingen hake — den ville sagt at det
+   fortsatt gjelder — og ingen farge, fordi prikken ikke påstår noe. Ordene
+   ved siden av sier hva som skjedde. */
+.tegn-endret {
+  color: var(--ink-faint);
+}
+
 .kort {
   font-family: var(--serif);
   font-size: 16px;
@@ -661,7 +668,7 @@ kbd {
   padding-top: 14px;
   border-top: 1px solid var(--rule);
   font-family: var(--sans);
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.6;
   color: var(--ink-faint);
 }
@@ -669,7 +676,7 @@ kbd {
 .panel .lesningsvalg button {
   display: block;
   margin: 6px 0 0;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 /* En lang kilde tar minutter. Linja sier hvor langt det er kommet, og
@@ -813,9 +820,15 @@ kbd {
 /* Det hun har tenkt om det samme før. Setningen står med ord — «du forkastet
    dette 10. september» — og under den hennes egen kortform, slik at hun kan
    se hva koblingen bygger på før hun klikker seg videre. */
-.tidligere button {
+.tidligere li {
+  display: flex;
+  align-items: center;
+}
+
+.tidligere li > button:first-child {
   display: block;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   min-height: 44px;
   padding: 9px 20px;
   text-align: left;
@@ -851,6 +864,44 @@ kbd {
 .tidligere li.mot .forhold {
   font-weight: 600;
   color: var(--merke-motsier);
+}
+
+/* Linja uten retning. Den bæres ellers utelukkende av ordlyden, og skillet
+   som ble bygget for å slutte å påstå retning overlevde ikke et raskt blikk:
+   7–8 % av linjene er denne, og en leser kunne ikke se hvilke. Stiplet, ikke
+   farget — den sier mindre enn de andre, ikke noe annet. */
+.tidligere li.nøytral > button:first-child {
+  border-left: 3px dashed var(--rule);
+}
+
+.tidligere li.nøytral .forhold {
+  color: var(--ink-soft);
+}
+
+/* Hvilken setning hun nettopp skrev som utløste koblingen, og hva appen ikke
+   vet om den. Uten det er linja en påstand hun ikke kan etterprøve. */
+.omLinja {
+  display: block;
+  margin-top: 2px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--ink-faint);
+}
+
+/* «Vis de N andre». Uten et tak skyves «Hva vi har forstått» ut av synsfeltet
+   av en historikk hun ikke ba om. */
+.mer {
+  min-height: 44px;
+  padding: 0 20px;
+  font-size: 15px;
+  color: var(--ink-soft);
+  text-decoration: underline;
+}
+
+/* Oppgaver hun har krysset av. De blir stående — ingenting går tapt uten vei
+   tilbake — men de blekner, og «Endre» tar dem tilbake. */
+.gjort .kort {
+  color: var(--ink-faint);
 }
 
 /* Svaret på et spørsmål om det som er lest, over de vanlige søketreffene og

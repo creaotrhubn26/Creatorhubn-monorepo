@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AVSLATT, PRIVAT } from "./api";
-import type { Paragraph, Retting, Tidligere, Understanding } from "./api";
+import type { Angring, Paragraph, Retting, Tidligere, Understanding } from "./api";
 
 /// Plassene i panelet, med brukerens ord. De rå typene og handlingene —
 /// `beslutning`, `marker_åpent`, `hold` — er vårt vokabular, ikke hennes.
@@ -15,37 +15,59 @@ const PLASSER: { verdi: Plass; navn: string; tegn: string }[] = [
 ];
 
 const FJERNET = "fjernet";
+/// Oppgaven er gjort. Ikke en lesning av avsnittet, men en beskjed om
+/// virkeligheten — derfor er den ikke en av plassene hun kan velge i skjemaet.
+const FERDIG = "ferdig";
 
 const tegnet = (plass: Plass) => PLASSER.find((p) => p.verdi === plass)?.tegn ?? "";
 
-/// Hvor systemet ville plassert avsnittet. Rekkefølgen er prioriteringen: en
-/// oppgave er en oppgave uansett hvor bestemt den er; ellers gjelder det at er
-/// noe bestemt, står det som bestemt, og resten er enten noe brukeren luftet
-/// uten å velge, eller noe som står åpent.
+/// Hvor systemet ville plassert avsnittet. Rekkefølgen er prioriteringen:
 ///
-/// Et referert eller avvist standpunkt havner blant idéene uansett om
-/// klassifiseringen kalte det `hold` eller `marker_åpent`. Klassifiseringstesten
-/// viste at den grensen er finere enn produktet trenger — begge betyr «ikke
-/// bygg» — mens typen er stabil. Bare `tvil` er ekte tvetydig, og der får
-/// handlingen avgjøre.
+/// - En oppgave er en oppgave uansett hvor bestemt den er.
+/// - Et referert eller avvist standpunkt er en idé, **også når modellen sa
+///   `bygg`**. Kundens ønske er ikke hennes beslutning, og skal ikke stå med
+///   samme hake som hennes egne.
+/// - `marker_åpent` er uavklart. Det er både hennes åpne spørsmål og modellens
+///   egen usikkerhetsutgang — `RESULTAT.md` viste at ni av elleve ekstra feil
+///   var nettopp den — og begge hører hjemme samme sted. Linja sier hvilken av
+///   delene det er.
+/// - **Et krav er avgjort.** `RESULTAT.md` avgjorde den saken: «bestemorvennlig»
+///   og «det må støtte RAW» er beslutninger om *hvordan*, og begge modellene var
+///   uavhengig enige mot fasiten. Før traff en `begrensning` ingen gren her og
+///   forsvant helt ut av panelet — kravet hun formulerte var borte uten spor,
+///   og et avsnitt uten linje ser ut som et avsnitt uten innhold.
+///
+/// Samme rekkefølge som `rettelser::lest_plass` i Rust, og de to må følge
+/// hverandre: står de ulikt, tror appen at hun flyttet en linje hun lot stå,
+/// og et eksempel i prompten blir en rettelse hun aldri gjorde.
 ///
 /// `null` betyr at avsnittet ikke vises. En observasjon, eller en beskjed til
-/// seg selv, er ikke noe panelet har forstått om prosjektet.
+/// seg selv, er ikke noe panelet har forstått om prosjektet — men panelet sier
+/// hvor mange de er, i stedet for å late som de ikke fantes.
 function lest(p: Paragraph): Plass | null {
   if (p.kind === "oppgave") return "oppgave";
-  if (p.action === "bygg") return "forstått";
   if (p.kind === "gjengivelse" || p.kind === "uenighet") return "idé";
-  if (p.kind === "tvil") return p.action === "hold" ? "idé" : "uavklart";
-  if (p.kind === "spørsmål" || p.action === "marker_åpent") return "uavklart";
+  if (p.action === "marker_åpent") return "uavklart";
+  if (p.kind === "begrensning") return "forstått";
+  if (p.action === "bygg") return "forstått";
+  if (p.kind === "tvil") return "idé";
+  if (p.kind === "spørsmål") return "uavklart";
+  // `hold` er «noter som mulighet», og det er nøyaktig hva en idé er. Uten
+  // denne falt en `beslutning|hold` — en modell som sier «bestemt» og «ikke
+  // bygg» i samme åndedrag — ut av panelet uten spor.
+  if (p.action === "hold") return "idé";
   return null;
 }
 
 /// Rettelsen vinner. Den er skrevet av den som vet.
-function plassen(p: Paragraph): Plass | typeof FJERNET | null {
+function plassen(p: Paragraph): Plass | typeof FJERNET | typeof FERDIG | null {
   return (p.correction?.plass as Plass | typeof FJERNET | undefined) ?? lest(p);
 }
 
 const kortformen = (p: Paragraph) => p.correction?.summary?.trim() || p.summary;
+
+/// Hva oppgaven venter på: hennes egen pil om hun skrev en, ellers modellens.
+const venteren = (p: Paragraph) => p.correction?.venter?.trim() || p.dependency;
 
 /// Linja slik den leses: «Marius: bruke Stripe» i en samtale, «bruke Stripe» i
 /// et vanlig notat. Forskjellen på en beslutningslogg og en haug med løsrevne
@@ -55,8 +77,9 @@ export function linjetekst(avsender: string | null, kortform: string): string {
 }
 
 type Velg = (p: Paragraph) => void;
-type Rett = (r: Retting) => void;
+type Rett = (r: Retting, tekst: string) => void;
 type Åpne = (sti: string, hash: string) => void;
+type Avvis = (t: Tidligere, avvist: boolean) => void;
 
 const dagMåned = new Intl.DateTimeFormat("nb-NO", { day: "numeric", month: "long" });
 const dagMånedÅr = new Intl.DateTimeFormat("nb-NO", {
@@ -73,6 +96,25 @@ function dato(sekunder: number): string | null {
   if (!sekunder || sekunder <= 0) return null;
   const d = new Date(sekunder * 1000);
   return d.getFullYear() === new Date().getFullYear() ? dagMåned.format(d) : dagMånedÅr.format(d);
+}
+
+/// Når en lesning begynner å bli gammel nok til å si det.
+///
+/// Tretti dager. Under det er datoen støy — hun skrev jo notatet nylig, og en
+/// dato på hver linje ville skjult linjene. Over det er den svaret på et
+/// spørsmål hun ellers ikke kan stille: *når* leste appen dette? En linje lest
+/// av en eldre modell, under eldre regler, så før nøyaktig ut som en fersk.
+///
+/// Selve foreldelsen skjer i Rust ([`understand::FERSKHET`], nitti dager): da
+/// leses linja om igjen ved neste lesning av notatet. Datoen her er det hun
+/// ser mens det står på, og det hun blir stående med hvis lesningen ikke går
+/// gjennom.
+const GAMMEL = 30 * 24 * 60 * 60;
+
+function lestFor(sekunder: number): string | null {
+  if (!sekunder || sekunder <= 0) return null;
+  if (Date.now() / 1000 - sekunder < GAMMEL) return null;
+  return dato(sekunder);
 }
 
 /// Hva forholdet er, sagt på vanlig norsk. Et forhold som ikke står her — det
@@ -93,33 +135,105 @@ const SETNINGER: Record<string, (dato: string | null) => string> = {
 /// Linjene som skal vises, i den rekkefølgen de kom — motsigelsen først, fordi
 /// den er den eneste som er verdt å avbryte skrivingen for. Det samme
 /// tidligere avsnittet står bare én gang, selv om flere avsnitt peker på det.
-export function tidligereLinjer(alle: Tidligere[]): Tidligere[] {
+///
+/// `sti` er notatet som står åpent. Peker linja på et avsnitt i det samme
+/// notatet, er den ikke «tidligere» — den er to linjer opp på skjermen, og
+/// «Du forkastet dette 13. september» om noe hun ser er ikke en opplysning.
+/// Den koblingen brukes i stedet til å ta haken av det som ble overstyrt, se
+/// [`overstyrte`].
+export function tidligereLinjer(alle: Tidligere[], sti?: string): Tidligere[] {
   const sett = new Set<string>();
   return alle.filter((t) => {
-    if (!(t.forhold in SETNINGER) || sett.has(t.hash)) return false;
+    if (!(t.forhold in SETNINGER) || sett.has(t.hash) || t.sti === sti) return false;
     sett.add(t.hash);
     return true;
   });
 }
 
+/// Avsnitt i dette notatet som et senere avsnitt motsier.
+///
+/// Sier Marius «Vi går for Stripe» klokka 10:32 og «Nei, Vipps likevel» 10:41,
+/// sto begge som ✓ under «Hva vi har forstått» — to motstridende beslutninger,
+/// begge presentert som gjeldende. Koblingen fantes allerede; den ble bare
+/// brukt til å skrive en linje om historikk i stedet for å ta haken av den
+/// utdaterte.
+///
+/// Bare bakover: det som står *før* i notatet er det som blir overstyrt.
+export function overstyrte(avsnitt: Paragraph[], earlier: Tidligere[], sti: string): Set<string> {
+  const plass = new Map(avsnitt.map((p) => [p.hash, p.start]));
+  const ut = new Set<string>();
+  for (const t of earlier) {
+    if (t.forhold !== "motsier" || t.sti !== sti) continue;
+    const gammel = plass.get(t.hash);
+    const ny = avsnitt.find((p) => p.id === t.gjelder)?.start;
+    if (gammel !== undefined && ny !== undefined && gammel < ny) ut.add(t.hash);
+  }
+  return ut;
+}
+
+/// Hvor mange linjer «Tidligere om dette» viser før hun ber om resten.
+///
+/// Uten et tak vokser seksjonen monotont — det lagres nye dommer ved hver
+/// lagring, og ingen av dem slettes — og ved hundre koblinger skyves «Hva vi
+/// har forstått» ut av synsfeltet av en historikk hun ikke ba om.
+const FØRST = 5;
+
 /// Det hun har tenkt om dette før. Klikk åpner notatet og markerer avsnittet:
 /// uten det er koblingen en påstand hun ikke kan etterprøve.
-function Tidligere_({ linjer, onÅpne }: { linjer: Tidligere[]; onÅpne: Åpne }) {
+function Tidligere_({
+  linjer,
+  gjelder,
+  onÅpne,
+  onAvvis,
+}: {
+  linjer: Tidligere[];
+  /** Kortformen på linja i dette notatet som utløste koblingen. */
+  gjelder: (id: number) => string | null;
+  onÅpne: Åpne;
+  onAvvis: Avvis;
+}) {
+  const [alle, setAlle] = useState(false);
+  const vist = alle ? linjer : linjer.slice(0, FØRST);
   return (
     <>
       <h2>Tidligere om dette</h2>
       <ul className="tidligere">
-        {linjer.map((t) => (
-          <li key={`${t.gjelder}-${t.hash}`} className={t.forhold === "motsier" ? "mot" : undefined}>
-            <button onClick={() => onÅpne(t.sti, t.hash)}>
-              <span className="forhold">{SETNINGER[t.forhold](dato(t.tidspunkt))}</span>
-              <span className="kilde">
-                «{t.kortform}» · {t.tittel}
-              </span>
-            </button>
-          </li>
-        ))}
+        {vist.map((t) => {
+          const om = gjelder(t.gjelder);
+          return (
+            <li
+              key={`${t.gjelder}-${t.hash}`}
+              className={t.forhold === "motsier" ? "mot" : t.forhold === "nevnt" ? "nøytral" : undefined}
+            >
+              <button onClick={() => onÅpne(t.sti, t.hash)}>
+                <span className="forhold">{SETNINGER[t.forhold](dato(t.tidspunkt))}</span>
+                <span className="kilde">
+                  «{t.kortform}» · {t.tittel}
+                </span>
+                {/* Uten dette er linja en påstand om historikken hennes uten
+                    at hun ser hvilken setning hun nettopp skrev som utløste
+                    den — og da kan påstanden ikke etterprøves. */}
+                {om && <span className="omLinja">om linja «{om}»</span>}
+                {/* 7–8 % av linjene er den nøytrale, og en leser kunne ikke se
+                    hvilke. Nå står det. */}
+                {t.forhold === "nevnt" && (
+                  <span className="omLinja">Vi er ikke sikre på hvordan de henger sammen.</span>
+                )}
+              </button>
+              <button className="endre" onClick={() => onAvvis(t, true)}>
+                Henger ikke sammen
+              </button>
+            </li>
+          );
+        })}
       </ul>
+      {linjer.length > FØRST && !alle && (
+        <p className="framdrift">
+          <button className="mer" onClick={() => setAlle(true)}>
+            Vis de {linjer.length - FØRST} andre
+          </button>
+        </p>
+      )}
     </>
   );
 }
@@ -131,12 +245,15 @@ function Retteskjema({
   plass,
   onLagre,
   onFjern,
+  onTilbakestill,
   onAvbryt,
 }: {
   p: Paragraph;
   plass: Plass;
   onLagre: (plass: Plass, kortform: string) => void;
   onFjern: () => void;
+  /** Ta rettelsen bort igjen og la lesningen stå. Bare når det finnes en. */
+  onTilbakestill: () => void;
   onAvbryt: () => void;
 }) {
   const [kortform, setKortform] = useState(kortformen(p));
@@ -167,7 +284,7 @@ function Retteskjema({
           <label key={v.verdi}>
             <input
               type="radio"
-              name={`plass-${p.start}`}
+              name={`plass-${p.id || p.start}`}
               value={v.verdi}
               checked={valgt === v.verdi}
               onChange={() => setValgt(v.verdi)}
@@ -190,6 +307,11 @@ function Retteskjema({
         <button type="button" className="fjern" onClick={onFjern}>
           Ikke relevant
         </button>
+        {p.correction && (
+          <button type="button" onClick={onTilbakestill}>
+            Bruk lesningen igjen
+          </button>
+        )}
       </div>
     </form>
   );
@@ -198,29 +320,49 @@ function Retteskjema({
 function Linje({
   p,
   plass,
+  overstyrt,
   onVelg,
   onEndre,
+  onFerdig,
 }: {
   p: Paragraph;
   plass: Plass;
+  /** Et senere avsnitt i det samme notatet motsier dette. */
+  overstyrt: boolean;
   onVelg: Velg;
   onEndre: () => void;
+  onFerdig: (() => void) | null;
 }) {
+  const gammel = lestFor(p.lest);
   return (
     <div className="linjerad">
       <button className="linje" onClick={() => onVelg(p)}>
-        <span className={`tegn tegn-${plass}`} aria-hidden="true">
-          {tegnet(plass)}
+        <span className={`tegn tegn-${overstyrt ? "endret" : plass}`} aria-hidden="true">
+          {overstyrt ? "·" : tegnet(plass)}
         </span>
         <span className="kort">
           {p.avsender && <span className="avsender">{p.avsender}:</span>}
           {kortformen(p)}
-          {plass === "oppgave" && p.dependency && (
-            <span className="venter"> — venter på {p.dependency}</span>
+          {plass === "oppgave" && venteren(p) && (
+            <span className="venter"> — venter på {venteren(p)}</span>
           )}
-          {plass === "uavklart" && <span className="merknad">uavklart</span>}
+          {/* «Uavklart» dekket både hennes åpne spørsmål og modellens egen
+              usikkerhet. Linja sier nå hvilken av delene den er. */}
+          {plass === "uavklart" && (
+            <span className="merknad">
+              {p.correction ? "uavklart" : p.kind === "spørsmål" ? "du spurte" : "ikke avgjort"}
+            </span>
+          )}
+          {overstyrt && <span className="merknad">endret lenger ned</span>}
+          {p.correction && <span className="merknad">rettet av deg</span>}
+          {gammel && <span className="merknad">lest {gammel}</span>}
         </span>
       </button>
+      {onFerdig && (
+        <button className="endre" onClick={onFerdig}>
+          Ferdig
+        </button>
+      )}
       <button className="endre" onClick={onEndre}>
         Endre
       </button>
@@ -235,8 +377,12 @@ export function Panel({
   forståelse,
   framdrift,
   sti,
+  angre,
+  onHusk,
+  onAngre,
   onVelg,
   onRett,
+  onAvvis,
   onLukkMerknad,
   onÅpne,
   onSlåPå,
@@ -246,10 +392,17 @@ export function Panel({
   /** Hvor langt en lang lesning er kommet, eller `null` når det ikke er noe
    *  på gang. En importert samtale tar minutter; hun skal se at det går
    *  framover, ikke om det er ferdig. */
-  framdrift: { lest: number; totalt: number } | null;
+  framdrift: { lest: number; totalt: number; fase: string | null } | null;
   sti: string;
+  /** Angrehistorikken for økta. Den bor i `App`, ikke her: panelet rives og
+   *  bygges opp igjen ved hvert notatbytte, og en feilklikket «Ikke relevant»
+   *  skal ikke bli permanent fordi hun rakk å se på et annet notat. */
+  angre: Angring[];
+  onHusk: (a: Angring) => void;
+  onAngre: () => void;
   onVelg: Velg;
   onRett: Rett;
+  onAvvis: Avvis;
   onLukkMerknad: () => void;
   onÅpne: Åpne;
   /** Brukeren sier ja til lesningen, etter å ha lest hva den gjør. */
@@ -257,41 +410,42 @@ export function Panel({
   /** Og trekker det tilbake. En ekte av-bryter, ikke en visningsbryter. */
   onSlåAv: () => void;
 }) {
-  /// Hvilken linje som rettes, og veien tilbake fra hver retting. Stabelen er
-  /// hele angrehistorikken for økta: en feilklikket sletting skal ikke være
-  /// permanent bare fordi man rakk å gjøre noe annet etterpå.
-  const [redigerer, setRedigerer] = useState<number | null>(null);
-  const [angre, setAngre] = useState<{ tekst: string; retting: Retting }[]>([]);
+  /// Hvilken linje som rettes. Nøkkelen er avsnittets identitet, ikke
+  /// posisjonen: lander en lesning mens hun skriver i feltet, flytter
+  /// posisjonene seg, og skjemaet hoppet før til en annen linje eller
+  /// forsvant med teksten hun hadde skrevet.
+  const [redigerer, setRedigerer] = useState<string | null>(null);
+  const nøkkel = (p: Paragraph) => (p.id > 0 ? `id:${p.id}` : `pos:${p.start}`);
 
   const rett = (p: Paragraph, plass: string | null, kortform: string | null, sagt: string) => {
     const før = p.correction;
-    setAngre((s) => [
-      ...s,
-      {
-        tekst: sagt,
-        retting: {
-          avsnittId: p.id,
-          sti,
-          tekst: p.text,
-          lestType: p.kind,
-          lestHandling: p.action,
-          lestKortform: p.summary,
-          plass: før?.plass ?? null,
-          kortform: før?.summary ?? null,
-        },
+    onHusk({
+      tekst: sagt,
+      angre: {
+        avsnittId: p.id,
+        sti,
+        tekst: p.text,
+        lestType: p.kind,
+        lestHandling: p.action,
+        lestKortform: p.summary,
+        plass: før?.plass ?? null,
+        kortform: før?.summary ?? null,
       },
-    ]);
-    setRedigerer(null);
-    onRett({
-      avsnittId: p.id,
-      sti,
-      tekst: p.text,
-      lestType: p.kind,
-      lestHandling: p.action,
-      lestKortform: p.summary,
-      plass,
-      kortform,
     });
+    setRedigerer(null);
+    onRett(
+      {
+        avsnittId: p.id,
+        sti,
+        tekst: p.text,
+        lestType: p.kind,
+        lestHandling: p.action,
+        lestKortform: p.summary,
+        plass,
+        kortform,
+      },
+      p.text,
+    );
   };
 
   if (forståelse && !forståelse.on) {
@@ -330,31 +484,52 @@ export function Panel({
   }
 
   const avsnitt = forståelse?.paragraphs ?? [];
-  const i = (plass: Plass) => avsnitt.filter((p) => plassen(p) === plass);
+  const i = (plass: string) => avsnitt.filter((p) => plassen(p) === plass);
   const forstått = i("forstått");
   const uavklarte = i("uavklart");
   const oppgaver = i("oppgave");
   const idéer = i("idé");
+  const gjort = i(FERDIG);
+  const skjulte = avsnitt.filter((p) => plassen(p) === null).length;
+  const uleste = forståelse?.uleste ?? 0;
   const sist = angre[angre.length - 1];
   const lestPåNytt = forståelse?.reread ?? [];
-  const tidligere = tidligereLinjer(forståelse?.earlier ?? []);
+  const alleTidligere = forståelse?.earlier ?? [];
+  const tidligere = tidligereLinjer(alleTidligere, sti);
+  const overstyrt = overstyrte(avsnitt, alleTidligere, sti);
+  const kortformFor = (id: number) => {
+    const p = avsnitt.find((a) => a.id === id && a.id > 0);
+    return p ? kortformen(p) : null;
+  };
 
   const rad = (p: Paragraph, plass: Plass) =>
-    redigerer === p.start ? (
-      <li key={p.start} className={plass === "uavklart" ? "åpen" : undefined}>
+    redigerer === nøkkel(p) ? (
+      <li key={nøkkel(p)} className={plass === "uavklart" ? "åpen" : undefined}>
         <Retteskjema
           p={p}
           plass={plass}
-          onLagre={(valgt, kortform) =>
-            rett(p, valgt, kortform, `«${kortform}» er endret.`)
-          }
+          onLagre={(valgt, kortform) => rett(p, valgt, kortform, `«${kortform}» er endret.`)}
           onFjern={() => rett(p, FJERNET, "", `«${kortformen(p)}» er fjernet fra panelet.`)}
+          onTilbakestill={() =>
+            rett(p, null, null, `Rettelsen på «${kortformen(p)}» er tatt bort.`)
+          }
           onAvbryt={() => setRedigerer(null)}
         />
       </li>
     ) : (
-      <li key={p.start} className={plass === "uavklart" ? "åpen" : undefined}>
-        <Linje p={p} plass={plass} onVelg={onVelg} onEndre={() => setRedigerer(p.start)} />
+      <li key={nøkkel(p)} className={plass === "uavklart" ? "åpen" : undefined}>
+        <Linje
+          p={p}
+          plass={plass}
+          overstyrt={overstyrt.has(p.hash)}
+          onVelg={onVelg}
+          onEndre={() => setRedigerer(nøkkel(p))}
+          onFerdig={
+            plass === "oppgave"
+              ? () => rett(p, FERDIG, kortformen(p), `«${kortformen(p)}» er merket ferdig.`)
+              : null
+          }
+        />
       </li>
     );
 
@@ -363,41 +538,50 @@ export function Panel({
       {sist && (
         <p className="angre">
           <span>{sist.tekst}</span>
-          <button
-            onClick={() => {
-              setAngre((s) => s.slice(0, -1));
-              onRett(sist.retting);
-            }}
-          >
-            Angre
-          </button>
+          <button onClick={onAngre}>Angre</button>
         </p>
       )}
 
       {lestPåNytt.length > 0 && (
         <p className="påNytt">
+          {/* Sannheten er hardere enn «lest på nytt»: avsnittet står ikke i
+              notatet lenger, og rettelsen gjelder ikke. Veien tilbake er ekte
+              — skriver hun teksten inn igjen, finner rettelsen tilbake til
+              den, også under et nytt filnavn. */}
           <span>
             {lestPåNytt.length === 1
-              ? `«${lestPåNytt[0]}» er lest på nytt, fordi avsnittet er skrevet om.`
-              : `Disse er lest på nytt, fordi avsnittene er skrevet om: ${lestPåNytt
+              ? `«${lestPåNytt[0]}» gjelder ikke lenger, fordi avsnittet ikke står i notatet.`
+              : `Disse gjelder ikke lenger, fordi avsnittene ikke står i notatet: ${lestPåNytt
                   .map((t) => `«${t}»`)
-                  .join(", ")}.`}
+                  .join(", ")}.`}{" "}
+            Skriver du teksten inn igjen, kommer rettelsen tilbake.
           </span>
           <button onClick={onLukkMerknad}>Lukk</button>
         </p>
       )}
 
-      {tidligere.length > 0 && <Tidligere_ linjer={tidligere} onÅpne={onÅpne} />}
+      {tidligere.length > 0 && (
+        <Tidligere_
+          linjer={tidligere}
+          gjelder={kortformFor}
+          onÅpne={onÅpne}
+          onAvvis={onAvvis}
+        />
+      )}
 
       {framdrift && (
         <p className="framdrift">
-          Leser avsnitt {framdrift.lest} av {framdrift.totalt}.
+          {framdrift.fase === "sammenligner"
+            ? "Ser etter hva du har skrevet om dette før. Det tar litt."
+            : `Leser avsnitt ${framdrift.lest} av ${framdrift.totalt}.`}
         </p>
       )}
 
       <h2>Hva vi har forstått</h2>
       {forstått.length === 0 && uavklarte.length === 0 ? (
-        <p className="ingenting">{forståelse ? "Ingenting er bestemt ennå." : "Leser notatet."}</p>
+        <p className="ingenting">
+          {!forståelse || framdrift ? "Leser notatet." : "Ingenting er bestemt ennå."}
+        </p>
       ) : (
         <ul>
           {forstått.map((p) => rad(p, "forstått"))}
@@ -412,6 +596,13 @@ export function Panel({
         </>
       )}
 
+      {gjort.length > 0 && (
+        <>
+          <h2>Gjort</h2>
+          <ul className="gjort">{gjort.map((p) => rad(p, "oppgave"))}</ul>
+        </>
+      )}
+
       {idéer.length > 0 && (
         <>
           <h2>Idéer og alternativer</h2>
@@ -419,10 +610,28 @@ export function Panel({
         </>
       )}
 
+      {/* Et avsnitt som ikke ble lest, og et avsnitt som ikke sier noe om
+          prosjektet, så begge ut som et avsnitt uten innhold. «Ingenting er
+          bestemt ennå» leses som «vi leste og fant ingenting», ikke som «vi
+          leste og gjemte det». */}
+      {(skjulte > 0 || uleste > 0) && (
+        <p className="ingenting">
+          {skjulte > 0 &&
+            `${skjulte} ${skjulte === 1 ? "avsnitt sier" : "avsnitt sier"} ikke noe om prosjektet, og står ikke her.`}
+          {skjulte > 0 && uleste > 0 && " "}
+          {uleste > 0 &&
+            `${uleste} ${uleste === 1 ? "avsnitt er" : "avsnitt er"} ikke lest ennå.`}
+        </p>
+      )}
+
       {/* Den ekte av-bryteren. «Skjul forståelse» i toppen skjuler bare
           spalten; denne stanser at notatteksten sendes noe sted. */}
       <p className="lesningsvalg">
+        Linjene er lest av en maskin, og noen av dem er feil. Rett dem du ser er gale — det er
+        rettelsene dine som lærer den opp.
+        <br />
         Avsnittene sendes til <code>claude</code> for å leses.
+        {forståelse ? ` Sendt ${forståelse.kall} ganger siden appen startet.` : ""}
         <button onClick={onSlåAv}>Slå av lesning</button>
       </p>
     </aside>
@@ -432,12 +641,17 @@ export function Panel({
 /** Eksportert for testing: plasseringen er produktlogikk, ikke pynt. */
 export const _test = {
   dato,
+  lestFor,
   lest,
   plassen,
   kortformen,
+  venteren,
   linjetekst,
   tidligereLinjer,
+  overstyrte,
   SETNINGER,
   PLASSER,
   FJERNET,
+  FERDIG,
+  FØRST,
 };

@@ -47,6 +47,8 @@ pub fn lest_plass(kind: &str, action: &str) -> Option<&'static str> {
         (_, "bygg") => "forstått",
         ("tvil", _) => "idé",
         ("spørsmål", _) => "uavklart",
+        // `hold` er «noter som mulighet», og det er nøyaktig hva en idé er.
+        (_, "hold") => "idé",
         _ => return None,
     })
 }

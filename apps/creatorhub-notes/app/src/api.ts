@@ -21,7 +21,18 @@ export const reindex = () => invoke<string>("reindex");
 /** Brukerens egen retting av én linje: hvor den hører hjemme, og hva den
  *  skulle stått som. `plass` er «fjernet» når linja ikke hører hjemme noe
  *  sted i det hele tatt. */
-export type Rettelse = { plass: string; summary: string };
+export type Rettelse = {
+  plass: string;
+  summary: string;
+  /** Hva oppgaven venter på, når hun skrev en pil i kortformen sin. */
+  venter: string;
+};
+
+/** Ett steg tilbake. Teksten er det hun ser i angrebanneret, `angre` er
+ *  rettingen som setter det tilbake slik det var. Stabelen bor i `App`, ikke i
+ *  panelet: panelet rives ved hvert notatbytte, og en feilklikket «Ikke
+ *  relevant» skal ikke bli permanent av at hun så på et annet notat. */
+export type Angring = { tekst: string; angre: Retting };
 
 /** Ett avsnitt slik panelet leser det. `start` og `end` er posisjoner i
  *  teksten, talt slik JavaScript teller, så de kan brukes rett i editoren. */
@@ -44,6 +55,12 @@ export type Paragraph = {
   /** Bare oppgaver: hva oppgaven venter på. */
   dependency: string | null;
   correction: Rettelse | null;
+  /** Da linja ble lest, i sekunder siden epoke. Panelet viser datoen når den
+   *  begynner å bli gammel. `0` er ukjent. */
+  lest: number;
+  /** Modellen som leste linja. Ikke vist; den er der for at en linje skal
+   *  kunne spores til den utgaven som faktisk leste den. */
+  modell: string;
 };
 
 /** Noe brukeren har tenkt om det samme før. `forhold` er `motsier`,
@@ -81,6 +98,12 @@ export type Understanding = {
   reread: string[];
   earlier: Tidligere[];
   lesning: number;
+  /** Avsnitt i notatet som ikke har fått en linje — modellen svarte ikke for
+   *  dem, eller pakken de lå i feilet. Uten tallet ser et avsnitt appen ikke
+   *  klarte å lese ut nøyaktig ut som et avsnitt uten innhold. */
+  uleste: number;
+  /** Hvor mange ganger appen har sendt tekst ut av maskinen siden den startet. */
+  kall: number;
 };
 
 /** Brukerens svar på om «Hva vi har forstått» får lese notatene. Av som
@@ -108,6 +131,10 @@ export type Framdrift = {
   lesning: number;
   lest: number;
   totalt: number;
+  /** Hva som pågår når det ikke lenger er avsnitt som leses. `sammenligner` er
+   *  turen til det hun har skrevet før: to modellkall som tar minutter, og som
+   *  panelet før sto ferdig-utseende og taust gjennom. */
+  fase: string | null;
   paragraphs: Paragraph[];
 };
 
@@ -140,6 +167,12 @@ export type Retting = {
 };
 
 export const rettAvsnitt = (retting: Retting) => invoke<void>("rett_avsnitt", { retting });
+
+/** Brukerens egen dom over en kobling: disse to hører ikke sammen. Gjelder
+ *  paret, ikke retningen, og `avvist: false` tar dommen tilbake — da dømmes
+ *  paret på nytt. */
+export const avvisKobling = (gjelder: number, annenHash: string, sti: string, avvist: boolean) =>
+  invoke<void>("avvis_kobling", { gjelder, annenHash, sti, avvist });
 
 /** Ett strukturert treff: en linje appen har lest ut av et notat. */
 export type Strukturert = {

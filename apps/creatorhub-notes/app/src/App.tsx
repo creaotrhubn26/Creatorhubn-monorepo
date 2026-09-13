@@ -4,6 +4,7 @@ import { Editor } from "./Editor";
 import { linjetekst, Panel } from "./Panel";
 import {
   avbrytLesning,
+  avvisKobling,
   createNote,
   finnAvsnitt,
   påLesning,
@@ -20,11 +21,13 @@ import {
   sporNotater,
   understandNote,
   writeNote,
+  type Angring,
   type Framdrift,
   type Note,
   type Paragraph,
   type Retting,
   type Samtaleform,
+  type Tidligere,
   type SearchHit,
   type Sporsmal,
   type Understanding,
@@ -136,7 +139,17 @@ export default function App() {
   const [forståelse, setForståelse] = useState<Understanding | null>(null);
   /** Hvor langt en lang lesning er kommet. `null` når det ikke er noe på gang
    *  — da står det ingenting i panelet. */
-  const [framdrift, setFramdrift] = useState<{ lest: number; totalt: number } | null>(null);
+  const [framdrift, setFramdrift] = useState<{
+    lest: number;
+    totalt: number;
+    fase: string | null;
+  } | null>(null);
+  /** Angrehistorikken for økta. Den bor her, ikke i panelet: panelet er
+   *  `key={path}` og rives ved hvert notatbytte, og en feilklikket «Ikke
+   *  relevant» skal ikke bli permanent fordi hun rakk å se på et annet
+   *  notat. Rettingen bærer stien sin, så den virker uansett hva som er
+   *  åpent. */
+  const [angre, setAngre] = useState<Angring[]>([]);
   /** Notatet som står åpent ble endret utenfra mens hun hadde ulagrede
    *  endringer. Skriveflaten er urørt — dette er bare et varsel, med et valg
    *  hun tar selv. `false` når det ikke er noen konflikt å vise fram. */
@@ -229,9 +242,19 @@ export default function App() {
           paragraphs: [...før, ...d.paragraphs].sort((a, b) => a.start - b.start),
           reread: fersk || !f ? [] : f.reread,
           earlier: fersk || !f ? [] : f.earlier,
+          uleste: f?.uleste ?? 0,
+          kall: f?.kall ?? 0,
         };
       });
-      setFramdrift(d.lest < d.totalt ? { lest: d.lest, totalt: d.totalt } : null);
+      // Fasen etter avsnittene — sammenligningen mot det hun har skrevet før
+      // — er to modellkall til. Panelet så ferdig ut gjennom hele den.
+      setFramdrift(
+        d.fase
+          ? { lest: d.lest, totalt: d.totalt, fase: d.fase }
+          : d.lest < d.totalt
+            ? { lest: d.lest, totalt: d.totalt, fase: null }
+            : null,
+      );
     });
     return () => {
       void av.then((stopp) => stopp()).catch(() => undefined);
@@ -352,16 +375,59 @@ export default function App() {
    *  igjen fra den samme teksten — avsnittene er uendret, så det koster
    *  ingenting utover et oppslag. */
   const rett = useCallback(
-    async (r: Retting) => {
+    async (r: Retting, tekst: string) => {
       try {
         await rettAvsnitt(r);
       } catch (e) {
         setFeil(String(e));
         return;
       }
-      if (path) void les(path, buffer.nå());
+      // Panelet oppdateres her, ikke ved en ny lesning. Avsnittene er
+      // uendret, så klassifiseringen ville vært gratis — men `minne::tidligere`
+      // kjøres på nytt, og har noen par stått udømt, koster hver eneste
+      // retting en Haiku- og en Sonnet-tur. Å rette en skrivefeil i en
+      // kortform skal ikke ta minutter og penger.
+      const rettelse =
+        r.plass === null
+          ? null
+          : { plass: r.plass, summary: r.kortform ?? "", venter: "" };
+      setForståelse((f) =>
+        f
+          ? {
+              ...f,
+              paragraphs: f.paragraphs.map((p) =>
+                p.id === r.avsnittId && p.text === tekst ? { ...p, correction: rettelse } : p,
+              ),
+            }
+          : f,
+      );
     },
-    [buffer, path, les],
+    [],
+  );
+
+  /** «Henger ikke sammen» på en linje under «Tidligere om dette». Dommen
+   *  hennes vinner over modellens, og linja er borte med en gang — uten å
+   *  vente på en ny lesning. */
+  const avvis = useCallback(
+    async (t: Tidligere, avvist: boolean) => {
+      try {
+        await avvisKobling(t.gjelder, t.hash, t.sti, avvist);
+      } catch (e) {
+        setFeil(String(e));
+        return;
+      }
+      setForståelse((f) =>
+        f
+          ? {
+              ...f,
+              earlier: avvist
+                ? f.earlier.filter((l) => !(l.gjelder === t.gjelder && l.hash === t.hash))
+                : [...f.earlier, t],
+            }
+          : f,
+      );
+    },
+    [],
   );
 
   /** «Dette er en samtale» / «dette er det ikke». Valget skrives i toppfeltet,
@@ -754,7 +820,16 @@ export default function App() {
               onVelg={(p: Paragraph) =>
                 setPeker((forrige) => ({ from: p.start, to: p.end, n: (forrige?.n ?? 0) + 1 }))
               }
-              onRett={(r) => void rett(r)}
+              angre={angre}
+              onHusk={(a) => setAngre((s) => [...s, a])}
+              onAngre={() => {
+                const sist = angre[angre.length - 1];
+                if (!sist) return;
+                setAngre((s) => s.slice(0, -1));
+                void rett(sist.angre, sist.angre.tekst);
+              }}
+              onRett={(r, tekst) => void rett(r, tekst)}
+              onAvvis={(t, avvist) => void avvis(t, avvist)}
               onLukkMerknad={() =>
                 setForståelse((f) => (f ? { ...f, reread: [] } : f))
               }
