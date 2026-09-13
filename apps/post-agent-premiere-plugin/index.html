@@ -6,16 +6,7 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="panel">
-      <header class="brand">
-        <div class="brand-mark">CH</div>
-        <div>
-          <h1>Video Room</h1>
-          <p>Review, oppgaver og NLE-synk</p>
-        </div>
-        <span id="connection-pill" class="pill muted">Frakoblet</span>
-      </header>
-
+    <main id="app-panel" class="panel">
       <section id="auth-card" class="card">
         <h2>Koble til CreatorHub</h2>
         <p class="hint">Logg inn i nettleseren. Tokenet lagres kryptert av Adobe UXP.</p>
@@ -28,27 +19,62 @@
         </div>
       </section>
 
-      <section id="workspace-card" class="card hidden">
+      <nav id="workspace-nav" class="workspace-tabs hidden" role="tablist" aria-label="Arbeidsområde">
+        <button id="workspace-tab-review" class="workspace-tab active" type="button" role="tab" aria-selected="true" aria-controls="workspace-pane-review" data-workspace-tab="review">Review</button>
+        <button id="workspace-tab-sync" class="workspace-tab" type="button" role="tab" aria-selected="false" aria-controls="workspace-pane-sync" data-workspace-tab="sync">Synk</button>
+        <button id="workspace-tab-publish" class="workspace-tab" type="button" role="tab" aria-selected="false" aria-controls="workspace-pane-publish" data-workspace-tab="publish">Send</button>
+        <button id="workspace-tab-activity" class="workspace-tab" type="button" role="tab" aria-selected="false" aria-controls="workspace-pane-activity" data-workspace-tab="activity">Aktivitet</button>
+      </nav>
+
+      <section id="workspace-card" class="card context-card hidden">
         <div class="row between">
-          <h2>Video Room-versjon</h2>
-          <button id="refresh-projects-button" class="quiet">Oppdater</button>
+          <div>
+            <span class="section-kicker">Arbeidskontekst</span>
+            <h2>Eksakt Video Room-versjon</h2>
+          </div>
+          <div class="row context-actions">
+            <span id="connection-pill" class="pill muted" role="status">Frakoblet</span>
+            <button id="refresh-projects-button" class="quiet">Hent data</button>
+          </div>
         </div>
-        <label for="project-select">Prosjekt</label>
-        <select id="project-select"></select>
-        <label for="version-select">Versjon</label>
-        <select id="version-select"></select>
-        <p id="access-note" class="hint"></p>
+        <div class="context-grid">
+          <div class="field">
+            <label for="project-select">Prosjekt</label>
+            <select id="project-select"></select>
+          </div>
+          <div class="field">
+            <label for="version-select">Versjon</label>
+            <select id="version-select"></select>
+          </div>
+        </div>
+        <p id="access-note" class="context-note"></p>
       </section>
 
-      <section id="review-card" class="card hidden">
+      <section id="status-card" class="status-card hidden" role="status" aria-live="polite">
+        <div id="status-dot" class="status-dot" aria-hidden="true"></div>
+        <div class="status-copy">
+          <strong id="status-title">Klar</strong>
+          <p id="status-message">Ingen synk er startet.</p>
+          <small id="status-meta"></small>
+        </div>
+      </section>
+
+      <div id="workspace-pane-review" class="workspace-pane" role="tabpanel" data-workspace-pane="review" aria-labelledby="workspace-tab-review">
+        <section id="review-unavailable" class="card empty-card hidden">
+          <span class="section-kicker">Review</span>
+          <h2>Ingen versjon valgt</h2>
+          <p>Velg en eksisterende versjon over, eller gå til Send for å opprette den første.</p>
+        </section>
+
+        <section id="review-card" class="card hidden">
         <div class="row between">
           <div>
             <h2>Review-arbeidsflate</h2>
             <p class="hint compact">All tilbakemelding gjelder versjonen som er valgt over.</p>
           </div>
           <div class="row">
-            <button id="open-video-room-button" class="quiet">Åpne web</button>
-            <button id="refresh-review-button" class="quiet">Oppdater</button>
+            <button id="open-video-room-button" class="quiet">Åpne i Video Room</button>
+            <button id="refresh-review-button" class="quiet">Hent review-data</button>
           </div>
         </div>
 
@@ -59,15 +85,15 @@
           <div><strong id="metric-approvals">0/0</strong><span>approval-steg</span></div>
         </div>
 
-        <nav class="tabs" aria-label="Video Room-verktøy">
-          <button class="tab active" data-review-tab="feedback">Feedback</button>
-          <button class="tab" data-review-tab="tasks">Oppgaver</button>
-          <button class="tab" data-review-tab="workflow">Godkjenning</button>
-          <button class="tab" data-review-tab="media">Tekst &amp; QC</button>
-          <button class="tab" data-review-tab="live">Live</button>
+        <nav class="tabs" role="tablist" aria-label="Review-verktøy">
+          <button id="review-tab-feedback" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="review-pane-feedback" data-review-tab="feedback">Feedback</button>
+          <button id="review-tab-tasks" class="tab" type="button" role="tab" aria-selected="false" aria-controls="review-pane-tasks" data-review-tab="tasks">Oppgaver</button>
+          <button id="review-tab-workflow" class="tab" type="button" role="tab" aria-selected="false" aria-controls="review-pane-workflow" data-review-tab="workflow">Godkjenning</button>
+          <button id="review-tab-media" class="tab" type="button" role="tab" aria-selected="false" aria-controls="review-pane-media" data-review-tab="media">Tekst &amp; QC</button>
+          <button id="review-tab-live" class="tab" type="button" role="tab" aria-selected="false" aria-controls="review-pane-live" data-review-tab="live">Live</button>
         </nav>
 
-        <section class="review-pane" data-review-pane="feedback">
+        <section id="review-pane-feedback" class="review-pane" role="tabpanel" data-review-pane="feedback" aria-labelledby="review-tab-feedback">
           <div id="reply-banner" class="inline-notice hidden">
             <span id="reply-label">Svarer på kommentar</span>
             <button id="cancel-reply-button" class="quiet">Avbryt</button>
@@ -108,12 +134,12 @@
           <div id="comments-list" class="item-list"></div>
         </section>
 
-        <section class="review-pane hidden" data-review-pane="tasks">
+        <section id="review-pane-tasks" class="review-pane hidden" role="tabpanel" data-review-pane="tasks" aria-labelledby="review-tab-tasks">
           <p class="hint">Oppgaver er koblet til «må fikses»-kommentarer og samme native markør.</p>
           <div id="tasks-list" class="item-list"></div>
         </section>
 
-        <section class="review-pane hidden" data-review-pane="workflow">
+        <section id="review-pane-workflow" class="review-pane hidden" role="tabpanel" data-review-pane="workflow" aria-labelledby="review-tab-workflow">
           <div class="subsection">
             <div class="row between"><h3>Revisjonsrunder</h3><button id="create-round-button">Start runde</button></div>
             <div class="form-grid">
@@ -136,7 +162,7 @@
           </div>
         </section>
 
-        <section class="review-pane hidden" data-review-pane="media">
+        <section id="review-pane-media" class="review-pane hidden" role="tabpanel" data-review-pane="media" aria-labelledby="review-tab-media">
           <div class="subsection">
             <div class="row between"><h3>Transkripsjon og captions</h3><button id="generate-transcript-button">Generer</button></div>
             <div class="row">
@@ -164,7 +190,7 @@
           </div>
         </section>
 
-        <section class="review-pane hidden" data-review-pane="live">
+        <section id="review-pane-live" class="review-pane hidden" role="tabpanel" data-review-pane="live" aria-labelledby="review-tab-live">
           <p class="hint">Del Premiere-playhead med review-deltakere. Tegninger fra web beholdes i live-økten.</p>
           <div id="live-empty" class="empty-state">
             <button id="start-live-button" class="primary">Start live review ved playhead</button>
@@ -179,68 +205,88 @@
             </div>
           </div>
         </section>
-      </section>
+        </section>
+      </div>
 
-      <section id="premiere-card" class="card hidden">
-        <div class="row between">
-          <h2>Aktiv Premiere-sekvens</h2>
-          <button id="refresh-context-button" class="quiet">Les på nytt</button>
-        </div>
-        <dl>
-          <div><dt>Prosjekt</dt><dd id="premiere-project">Ikke lest</dd></div>
-          <div><dt>Sekvens</dt><dd id="premiere-sequence">Ikke lest</dd></div>
-          <div><dt>Markører</dt><dd id="premiere-marker-count">–</dd></div>
-        </dl>
-        <div class="actions">
-          <button id="start-sync-button" class="primary">Start toveis synk</button>
-          <button id="sync-now-button">Synk nå</button>
-          <button id="stop-sync-button" class="danger hidden">Stopp</button>
-        </div>
-        <div class="subsection publish-section">
-          <h3>Send sekvens til review</h3>
-          <p class="hint">Eksporterer aktiv sekvens, laster resumérbart til privat Stream eller objektlagring og binder den nye versjonen til samme sekvens.</p>
-          <div class="picker-line">
-            <div><span>Eksportpreset</span><strong id="publish-preset-name">Ikke valgt</strong></div>
-            <button id="choose-preset-button" class="quiet">Velg .epr</button>
+      <div id="workspace-pane-sync" class="workspace-pane hidden" role="tabpanel" data-workspace-pane="sync" aria-labelledby="workspace-tab-sync">
+        <section id="premiere-card" class="card hidden">
+          <div class="row between section-heading">
+            <div>
+              <span class="section-kicker">Premiere</span>
+              <h2>Aktiv sekvens</h2>
+            </div>
+            <button id="refresh-context-button" class="quiet">Les sekvens på nytt</button>
           </div>
-          <div class="picker-line">
-            <div><span>Eksportmappe</span><strong id="publish-folder-name">Ikke valgt</strong></div>
-            <button id="choose-folder-button" class="quiet">Velg mappe</button>
+          <dl class="sequence-summary">
+            <div><dt>Prosjekt</dt><dd id="premiere-project">Ikke lest</dd></div>
+            <div><dt>Sekvens</dt><dd id="premiere-sequence">Ikke lest</dd></div>
+            <div><dt>Markører</dt><dd id="premiere-marker-count">–</dd></div>
+          </dl>
+          <p id="sync-eligibility-note" class="readiness-note">Leser aktiv Premiere-sekvens…</p>
+          <div class="actions primary-actions">
+            <button id="start-sync-button" class="primary">Start toveis synk</button>
+            <button id="sync-now-button">Synk nå</button>
+            <button id="stop-sync-button" class="danger hidden">Stopp synk</button>
           </div>
-          <label for="publish-version-label">Versjonsnavn</label>
-          <input id="publish-version-label" maxlength="80" placeholder="V1" />
-          <label class="check-row"><input id="publish-create-round" type="checkbox" checked /> Start en revisjonsrunde</label>
-          <label for="publish-approver-emails">Varsle godkjennere (valgfritt)</label>
-          <textarea id="publish-approver-emails" rows="2" placeholder="kunde@firma.no, produsent@firma.no"></textarea>
-          <div class="row between">
-            <label for="publish-required-approvals">Påkrevde godkjenninger</label>
-            <input id="publish-required-approvals" type="number" min="1" max="30" value="1" />
+        </section>
+      </div>
+
+      <div id="workspace-pane-publish" class="workspace-pane hidden" role="tabpanel" data-workspace-pane="publish" aria-labelledby="workspace-tab-publish">
+        <section id="publish-card" class="card hidden">
+          <div class="section-heading">
+            <span class="section-kicker">Ny versjon</span>
+            <h2>Send aktiv sekvens til review</h2>
+            <p class="hint">Premiere eksporterer sekvensen og CreatorHub fortsetter trygt gjennom privat, resumérbar opplasting og behandling.</p>
+          </div>
+          <div class="setup-list" aria-label="Eksportoppsett">
+            <div class="picker-line">
+              <div><span>1 · Eksportpreset</span><strong id="publish-preset-name">Ikke valgt</strong></div>
+              <button id="choose-preset-button" class="quiet">Velg .epr</button>
+            </div>
+            <div class="picker-line">
+              <div><span>2 · Eksportmappe</span><strong id="publish-folder-name">Ikke valgt</strong></div>
+              <button id="choose-folder-button" class="quiet">Velg mappe</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="publish-version-label">3 · Versjonsnavn</label>
+            <input id="publish-version-label" maxlength="80" placeholder="V1" />
+          </div>
+          <div class="workflow-options">
+            <label class="check-row"><input id="publish-create-round" type="checkbox" checked /> Start en revisjonsrunde</label>
+            <label for="publish-approver-emails">Varsle godkjennere <span class="optional">valgfritt</span></label>
+            <textarea id="publish-approver-emails" rows="2" placeholder="kunde@firma.no, produsent@firma.no"></textarea>
+            <div class="row between approval-requirement">
+              <label for="publish-required-approvals">Påkrevde godkjenninger</label>
+              <input id="publish-required-approvals" type="number" min="1" max="30" value="1" />
+            </div>
           </div>
           <progress id="publish-progress" class="hidden" max="100" value="0"></progress>
           <p id="publish-progress-label" class="hint compact hidden"></p>
-          <div class="actions">
-            <button id="send-review-button" class="primary">Eksporter og send</button>
-            <button id="resume-upload-button" class="hidden">Fortsett avbrutt sending</button>
+          <p id="publish-readiness" class="readiness-note">Kontrollerer hva som er klart…</p>
+          <div class="actions primary-actions">
+            <button id="send-review-button" class="primary">Klargjør sending</button>
+            <button id="resume-upload-button" class="primary hidden">Fortsett avbrutt sending</button>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
 
-      <section id="status-card" class="status-card hidden">
-        <div id="status-dot" class="status-dot"></div>
-        <div>
-          <strong id="status-title">Klar</strong>
-          <p id="status-message">Ingen synk er startet.</p>
-          <small id="status-meta"></small>
-        </div>
-      </section>
-
-      <section id="log-card" class="card hidden">
-        <div class="row between">
-          <h2>Aktivitet</h2>
-          <button id="clear-log-button" class="quiet">Tøm</button>
-        </div>
-        <div id="log" class="log"></div>
-      </section>
+      <div id="workspace-pane-activity" class="workspace-pane hidden" role="tabpanel" data-workspace-pane="activity" aria-labelledby="workspace-tab-activity">
+        <section class="card activity-card">
+          <div class="row between section-heading">
+            <div>
+              <span class="section-kicker">Diagnostikk</span>
+              <h2>Aktivitet</h2>
+            </div>
+            <button id="clear-log-button" class="quiet">Tøm historikk</button>
+          </div>
+          <p class="hint">Tekniske hendelser fra denne pluginøkten. Vanlig status vises over arbeidsområdet.</p>
+          <div id="activity-empty" class="empty-state">Ingen tekniske hendelser i denne økten.</div>
+          <div id="log-card" class="hidden">
+            <div id="log" class="log" aria-live="polite"></div>
+          </div>
+        </section>
+      </div>
 
       <footer>
         <button id="disconnect-button" class="quiet hidden">Logg ut av pluginen</button>

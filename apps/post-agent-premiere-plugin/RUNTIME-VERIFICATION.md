@@ -1,5 +1,60 @@
 # Premiere runtime verification
 
+## 2026-09-13 · plugin 0.3.5 source smoke
+
+Environment:
+
+- macOS
+- Adobe Premiere Pro 26.5.0
+- Adobe UXP Developer Tool 2.3.0
+- Premiere UXP runtime 9.3.0-local
+
+Verified from the 0.3.5 source in the real host:
+
+- The signed-in panel restored the dedicated `CreatorHub Sound Room E2E`
+  project and exact `V7 / under_review` version without a new login.
+- Review, Sync, Send, and Activity render as separate work areas beneath one
+  persistent project/version context and one user-facing status surface.
+- Review keeps comments, assigned editor tasks, approvals, transcript/QC, and
+  live review inside its own secondary navigation. Send presents export setup
+  as three ordered steps followed by workflow options, readiness, and one
+  primary action.
+- The Sync area shows the active Premiere project, sequence, and local marker
+  count next to its actions. Switching to the isolated `Untitled.prproj ·
+  Sequence 01` correctly produced the existing sequence-binding guard as both
+  global status and adjacent sync guidance.
+- Consecutive identical technical errors collapse into one Activity row with a
+  repeat count, while user-facing status remains outside the diagnostic log.
+- The floating panel was exercised at approximately 1340 × 1100, 520 × 820,
+  and the manifest minimum 300 × 420. The minimum surface remains vertically
+  scrollable, and the compact navigation and context remain reachable.
+- Premiere 26.5 UXP collapsed CSS Grid containers and placed a sticky
+  navigation element outside the intended flow during the first host load.
+  Version 0.3.5 therefore uses flex layouts and normal document flow; the
+  corrected layouts were reloaded and rechecked in the host.
+
+Safety and scope:
+
+- This UX smoke did not start export, object upload, version creation, review
+  mutation, or marker writes. No customer project or The Role Room object was
+  modified.
+
+Packaged-install verification:
+
+- UXP Developer Tool packaged version 0.3.5 as
+  `no.creatorhubn.video-room-premiere_premierepro.ccx`; `unzip -t` reports no
+  archive errors and the packaged manifest declares 0.3.5.
+- Creative Cloud Desktop installed the package under Adobe UXP's external
+  plugin directory. UXP Developer Tool was then closed before Premiere was
+  restarted.
+- Without Developer Tool running, `Window -> UXP Plugins -> CreatorHub Video
+  Room` opened the installed panel. It restored the dedicated project and V7,
+  rendered the redesigned Review workspace, and navigated to the ordered Send
+  workflow.
+- Installed `index.html`, `index.js`, `styles.css`, and `publish-core.js` hashes
+  exactly match the files inside the `.ccx`. Creative Cloud only reformatted
+  `manifest.json`; its parsed content and version remain identical.
+
 ## 2026-09-13 · plugin 0.3.4
 
 Environment:
