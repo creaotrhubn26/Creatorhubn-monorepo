@@ -5,6 +5,7 @@ import {
   LEADGRID_ONBOARDING_SKILLS,
   buildProjectOnboardingPlan,
   commitProjectOnboarding,
+  isUpgradeableTidumMunicipalServicesV1,
   normalizeProjectOnboardingWebsite,
 } from "./leadgrid-domain-onboarding-service.js";
 import type { BrandProfile } from "./role-room-website-analyzer.js";
@@ -157,6 +158,9 @@ describe("Leadgrid domain onboarding classification", () => {
       "BPA og feltbasert omsorg – Norge",
       "Kommunale tjenestesteder – Norge",
     ]);
+    expect(
+      plan.recommended_profiles.map((item) => item.template_version),
+    ).toEqual([1, 1, 1, 2]);
     expect(
       plan.recommended_profiles.filter((item) => item.is_default),
     ).toHaveLength(1);
@@ -861,6 +865,179 @@ describe("Leadgrid domain onboarding transaction", () => {
         String(sql).includes("INSERT INTO leadgrid_discovery_profiles"),
       ),
     ).toHaveLength(5);
+  });
+
+  it("upgrades the untouched Tidum municipal template without replacing user-managed profile settings", async () => {
+    const plan = buildProjectOnboardingPlan(
+      "https://tidum.no",
+      "tidum.no",
+      profile({ businessName: "Tidum" }),
+    );
+    const projectId = "tidum-existing";
+    const legacyMunicipalBrief = {
+      ...plan.recommended_profiles[3].brief,
+      organization_name_queries: ["kommune"],
+      exclusion_terms: [],
+      minimum_fit_score: 65,
+      ideal_customer:
+        "Norsk kommune med tjenester innen barnevern, avlastning, bofellesskap, BPA eller miljøarbeid og behov for trygg arbeidstidsdokumentasjon.",
+      goal: "Finne kommuner der relevante omsorgs- og miljøtjenester kan kvalifiseres videre før kontakt.",
+      organization_forms: ["KOMM"],
+    };
+    const profiles: Array<Record<string, unknown>> =
+      plan.recommended_profiles.map((item, index) => ({
+        id: `33333333-3333-4333-8333-33333333333${index}`,
+        name: item.name,
+        is_default: item.is_default,
+        version: 1,
+        brief: item.brief,
+        status: "active",
+        source_config: {
+          google_places: {
+            enabled: index === 3,
+            mode: "transient_details_only",
+          },
+        },
+        template_key: item.template_key,
+        template_version: item.template_version,
+      }));
+    profiles[3].name = "Kommunale omsorgstjenester – Norge";
+    profiles[3].brief = legacyMunicipalBrief;
+    profiles[3].template_version = 1;
+    expect(
+      isUpgradeableTidumMunicipalServicesV1(
+        profiles[3] as {
+          name: string;
+          template_key: string;
+          template_version: number;
+          brief: unknown;
+        },
+      ),
+    ).toBe(true);
+    expect(
+      isUpgradeableTidumMunicipalServicesV1({
+        ...(profiles[3] as {
+          name: string;
+          template_key: string;
+          template_version: number;
+          brief: Record<string, unknown>;
+        }),
+        brief: { ...legacyMunicipalBrief, target_count: 17 },
+      }),
+    ).toBe(false);
+    expect(
+      isUpgradeableTidumMunicipalServicesV1({
+        name: "Kommunale tjenestesteder – Norge",
+        template_key: "tidum.municipal_services",
+        template_version: 1,
+        brief: plan.recommended_profiles[3].brief,
+      }),
+    ).toBe(true);
+
+    const query = vi.fn(async (sqlValue: string, params: unknown[] = []) => {
+      const sql = String(sqlValue);
+      if (sql.includes("FROM leadgrid_project_onboarding_previews")) {
+        return {
+          rows: [
+            {
+              id: previewId,
+              plan,
+              expires_at: "2099-01-01T00:00:00.000Z",
+              committed_at: null,
+              committed_organization_id: null,
+              committed_project_id: null,
+            },
+          ],
+        };
+      }
+      if (sql.includes("FROM organizations WHERE id")) {
+        return { rows: [{ id: organizationId, name: "Creatorhub AS" }] };
+      }
+      if (sql.includes("LEFT JOIN brand_kits bk")) {
+        return { rows: [{ id: projectId }] };
+      }
+      if (sql.includes("SELECT overrides FROM brand_kits")) return { rows: [] };
+      if (
+        sql.includes("UPDATE leadgrid_discovery_profiles") &&
+        sql.includes("template_version = $4") &&
+        sql.includes("brief = $18::jsonb")
+      ) {
+        const upgraded = profiles.find((item) => item.id === params[2]);
+        if (!upgraded) throw new Error("missing_test_profile");
+        upgraded.template_version = params[3];
+        upgraded.name = params[4];
+        upgraded.version = Number(upgraded.version) + 1;
+        upgraded.brief = JSON.parse(String(params[17]));
+        return { rows: [], rowCount: 1 };
+      }
+      if (
+        sql.includes("UPDATE leadgrid_discovery_profiles") &&
+        sql.includes("template_key = COALESCE")
+      ) {
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("FROM leadgrid_discovery_profiles")) {
+        return { rows: profiles };
+      }
+      if (sql.includes("SELECT p.id::text") && sql.includes("crm_customers")) {
+        return {
+          rows: [
+            {
+              id: projectId,
+              organization_id: organizationId,
+              name: "Tidum",
+              description: plan.project_description,
+              status: "active",
+              lead_count: 0,
+              competitor_count: 0,
+            },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const release = vi.fn();
+    const pool = {
+      connect: vi.fn(async () => ({ query, release })),
+    } as unknown as Pool;
+
+    const result = await commitProjectOnboarding(pool, {
+      previewId,
+      organizationId,
+      userId,
+    });
+
+    const municipal = result.profiles.find(
+      (item) => item.template_key === "tidum.municipal_services",
+    );
+    expect(municipal).toMatchObject({
+      name: "Kommunale tjenestesteder – Norge",
+      template_version: 2,
+      version: 2,
+      places_details_enabled: true,
+      brief: {
+        organization_forms: ["BEDR"],
+        minimum_fit_score: 70,
+      },
+    });
+    expect(municipal?.brief.organization_name_queries).toEqual([
+      "barneverntjeneste",
+      "avlastning",
+      "bofellesskap",
+      "BPA",
+      "miljøarbeidertjeneste",
+    ]);
+    const upgrade = query.mock.calls.find(
+      ([sql]) =>
+        String(sql).includes("template_version = $4") &&
+        String(sql).includes("brief = $18::jsonb"),
+    );
+    expect(upgrade?.[1]?.[3]).toBe(2);
+    expect(String(upgrade?.[0])).toContain("AND brief = $25::jsonb");
+    expect(JSON.parse(String(upgrade?.[1]?.[24]))).toEqual(
+      legacyMunicipalBrief,
+    );
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it("replays a committed preview without performing another write", async () => {
