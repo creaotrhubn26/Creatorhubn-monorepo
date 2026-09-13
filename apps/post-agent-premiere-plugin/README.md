@@ -41,14 +41,14 @@ as the browser Video Room. The panel supports:
 - live review creation, shared-playhead push/follow and session close;
 - direct opening of the exact selected version in the browser for playback,
   drawing, sharing, version upload and destructive administration.
-- native sequence export with an editor-selected `.epr` preset, resumable
-  direct upload to private Cloudflare Stream, processing status and permanent
-  sequence/version binding;
+- native sequence export with an editor-selected `.epr` preset and automatic
+  selection between resumable Cloudflare Stream and checksum-verified private
+  S3 multipart upload, plus permanent sequence/version binding;
 - optional review-round creation and multi-approver setup as part of the same
   “send to review” operation;
-- crash/restart recovery using UXP persistent file tokens and Cloudflare's
-  authoritative TUS offset. The old active cut stays active until the new cut
-  is fully uploaded and ready to stream.
+- crash/restart recovery using UXP persistent file tokens and the storage
+  provider's authoritative TUS offset or multipart part list. The old active
+  cut stays active until the new cut is fully uploaded and verified.
 
 The collaboration API deliberately omits media URLs and share credentials. UXP
 uses a bearer token from SecureStorage; cookie credentials are disabled.

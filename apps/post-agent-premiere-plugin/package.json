@@ -1,10 +1,10 @@
 {
   "name": "@creatorhub/video-room-premiere-uxp",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "check": "node --check index.js && node --check sync-core.js && node --check review-core.js && node --check api-client.js && node --check premiere-host.js && node --check publish-core.js && node --check tus-upload.js",
+    "check": "node --check index.js && node --check sync-core.js && node --check review-core.js && node --check api-client.js && node --check premiere-host.js && node --check publish-core.js && node --check sha256.js && node --check tus-upload.js && node --check object-upload.js",
     "test": "node --test tests/*.test.cjs"
   }
 }

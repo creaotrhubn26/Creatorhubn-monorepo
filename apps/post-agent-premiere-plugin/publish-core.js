@@ -44,8 +44,65 @@ function validateSize(value) {
   return size;
 }
 
+function validateObjectUploadUrl(value) {
+  let url;
+  try { url = new URL(String(value || "")); }
+  catch (_) { throw new Error("CreatorHub returnerte en ugyldig opplastingsadresse."); }
+  const host = url.hostname.toLowerCase();
+  const trusted = host.endsWith(".amazonaws.com") || host.endsWith(".backblazeb2.com") ||
+    host.endsWith(".r2.cloudflarestorage.com");
+  if (url.protocol !== "https:" || !trusted || url.username || url.password || (url.port && url.port !== "443")) {
+    throw new Error("Opplastingsadressen tilhører ikke godkjent objektlagring.");
+  }
+  return url.toString();
+}
+
+function validateRequiredHeaders(value) {
+  const headers = {};
+  for (const [name, headerValue] of Object.entries(value && typeof value === "object" ? value : {})) {
+    const normalized = String(name).toLowerCase();
+    if (!["content-type", "x-amz-checksum-sha256"].includes(normalized)) {
+      throw new Error("CreatorHub returnerte et ukjent opplastingshode.");
+    }
+    const text = String(headerValue || "");
+    if (!text || text.length > 300 || /[\r\n]/.test(text)) throw new Error("CreatorHub returnerte et ugyldig opplastingshode.");
+    headers[normalized] = text;
+  }
+  return headers;
+}
+
 function validateUploadTicket(input) {
   if (!input || typeof input !== "object") throw new Error("CreatorHub returnerte ingen opplastingsbillett.");
+  const versionId = String(input.versionId || "").trim();
+  if (!versionId || versionId.length > 200) throw new Error("Opplastingsbilletten mangler versjonsidentitet.");
+  if (input.protocol === "s3" || input.protocol === "s3-multipart") {
+    const objectId = String(input.objectId || "").trim();
+    if (!objectId || objectId.length > 200) throw new Error("Opplastingsbilletten mangler objektidentitet.");
+    const common = {
+      objectId,
+      versionId,
+      versionNumber: Number(input.versionNumber) || null,
+      provider: "object_storage",
+      protocol: input.protocol,
+      strategy: input.protocol === "s3-multipart" ? "multipart" : "single",
+      expiresAt: String(input.expiresAt || ""),
+    };
+    if (input.protocol === "s3") {
+      return {
+        ...common,
+        uploadUrl: validateObjectUploadUrl(input.uploadUrl),
+        requiredHeaders: validateRequiredHeaders(input.requiredHeaders),
+      };
+    }
+    const partSize = Number(input.partSize);
+    const partCount = Number(input.partCount);
+    if (!Number.isSafeInteger(partSize) || partSize < 5 * 1024 * 1024 || partSize > TUS_MAX_CHUNK_SIZE ||
+        !Number.isSafeInteger(partCount) || partCount < 1 || partCount > 10_000) {
+      throw new Error("CreatorHub returnerte ugyldige multipart-innstillinger.");
+    }
+    return { ...common, partSize, partCount };
+  }
+
   let url;
   try { url = new URL(String(input.uploadUrl || "")); }
   catch (_) { throw new Error("CreatorHub returnerte en ugyldig opplastingsadresse."); }
@@ -53,9 +110,8 @@ function validateUploadTicket(input) {
     throw new Error("Opplastingsadressen tilhører ikke Cloudflare Stream.");
   }
   const uid = String(input.uid || "").trim();
-  const versionId = String(input.versionId || "").trim();
   const chunkSize = Number(input.chunkSize);
-  if (!uid || uid.length > 200 || !versionId || versionId.length > 200) throw new Error("Opplastingsbilletten mangler versjonsidentitet.");
+  if (!uid || uid.length > 200) throw new Error("Opplastingsbilletten mangler versjonsidentitet.");
   if (input.protocol !== "tus" || !Number.isSafeInteger(chunkSize) || chunkSize < TUS_MIN_CHUNK_SIZE ||
       chunkSize > TUS_MAX_CHUNK_SIZE || chunkSize % TUS_CHUNK_GRANULARITY !== 0) {
     throw new Error("CreatorHub returnerte ugyldige TUS-innstillinger.");
@@ -88,6 +144,12 @@ function publishErrorMessage(error) {
   if (code === "cloudflare_stream_capacity_exceeded" || /Storage capacity exceeded|allocated 0 minutes|"code"\s*:\s*10011/i.test(message)) {
     return "Cloudflare Stream har ingen ledig videolagring. Aktiver eller øk Stream-lagring i Cloudflare; eksportfilen er beholdt lokalt og kan sendes videre uten ny eksport.";
   }
+  if (code === "storage_quota_exceeded") {
+    return "Den inkluderte CreatorHub-lagringen er full. Slett gamle versjoner eller øk lagringskvoten; eksportfilen er beholdt lokalt.";
+  }
+  if (code === "storage_not_configured") {
+    return "Privat objektlagring er ikke tilgjengelig akkurat nå. Eksportfilen er beholdt lokalt og kan sendes videre uten ny eksport.";
+  }
   return message;
 }
 
@@ -99,6 +161,8 @@ module.exports = {
   maxStreamDurationSeconds,
   normalizeExtension,
   publishErrorMessage,
+  validateObjectUploadUrl,
+  validateRequiredHeaders,
   validateSize,
   validateUploadTicket,
 };

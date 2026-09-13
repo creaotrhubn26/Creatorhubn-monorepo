@@ -21,6 +21,7 @@ import {
   type RoleRoomObjectStorage,
 } from "./role-room-object-storage.js";
 import { buildSoundRoomObjectKey } from "./sound-room-storage-contract.js";
+import { buildVideoRoomObjectKey } from "./video-room-storage-contract.js";
 export { buildSoundRoomObjectKey } from "./sound-room-storage-contract.js";
 
 const MIB = 1024 ** 2;
@@ -49,6 +50,15 @@ export const SOUND_ROOM_AUDIO_TYPES = new Set([
   "application/octet-stream",
 ]);
 
+export const VIDEO_ROOM_VIDEO_TYPES = new Set([
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "video/mpeg",
+  "video/x-m4v",
+  "application/octet-stream",
+]);
+
 export type SoundRoomUploadChannel = "browser" | "protools" | "migration";
 
 export interface SoundRoomUploadInput {
@@ -63,6 +73,23 @@ export interface SoundRoomUploadInput {
   clientEventId?: string | null;
   forceMultipart?: boolean;
 }
+
+export interface VideoRoomUploadInput {
+  /** Storage is charged to the project owner, even when a team editor uploads. */
+  userId: string;
+  createdByUserId: string;
+  projectId: string;
+  fileName: string;
+  sizeBytes: number;
+  contentType: string;
+  checksumSha256: string;
+  channel: "browser" | "premiere";
+  forceMultipart?: boolean;
+}
+
+type RoleRoomMediaUploadInput =
+  | (SoundRoomUploadInput & { mediaKind: "audio" })
+  | (VideoRoomUploadInput & { mediaKind: "video" });
 
 export interface SoundRoomUploadTicket {
   objectId: string;
@@ -168,9 +195,9 @@ export async function readOwnedSoundRoomObject(
   return result.rows[0] ?? null;
 }
 
-export async function initiateSoundRoomUpload(
+async function initiateRoleRoomMediaUpload(
   pool: Pool,
-  input: SoundRoomUploadInput,
+  input: RoleRoomMediaUploadInput,
   deps: SoundRoomStorageDeps = {},
 ): Promise<SoundRoomUploadTicket> {
   const storage = deps.storage === undefined ? getRoleRoomObjectStorage() : deps.storage;
@@ -183,12 +210,17 @@ export async function initiateSoundRoomUpload(
   if (input.sizeBytes > MAX_UPLOAD_BYTES) throw new Error("file_too_large");
   if (!validChecksum(input.checksumSha256)) throw new Error("invalid_checksum");
   const contentType = normalizeContentType(input.contentType);
-  if (!SOUND_ROOM_AUDIO_TYPES.has(contentType)) throw new Error("unsupported_audio_type");
+  const allowedTypes = input.mediaKind === "video" ? VIDEO_ROOM_VIDEO_TYPES : SOUND_ROOM_AUDIO_TYPES;
+  if (!allowedTypes.has(contentType)) {
+    throw new Error(input.mediaKind === "video" ? "unsupported_video_type" : "unsupported_audio_type");
+  }
   if (
     contentType === "application/octet-stream" &&
-    !/\.(?:aac|aif|aiff|flac|m4a|mp3|oga|ogg|wav|wave|webm)$/i.test(input.fileName)
+    !(input.mediaKind === "video"
+      ? /\.(?:m4v|mov|mp4|mpeg|mpg|webm)$/i.test(input.fileName)
+      : /\.(?:aac|aif|aiff|flac|m4a|mp3|oga|ogg|wav|wave|webm)$/i.test(input.fileName))
   ) {
-    throw new Error("unsupported_audio_type");
+    throw new Error(input.mediaKind === "video" ? "unsupported_video_type" : "unsupported_audio_type");
   }
 
   const account = await ensureRoleRoomUserStorageAccount(pool, input.userId);
@@ -201,15 +233,18 @@ export async function initiateSoundRoomUpload(
   }
 
   const objectId = crypto.randomUUID();
-  const objectKey = buildSoundRoomObjectKey(input.userId, input.projectId, objectId, input.fileName);
+  const objectKey = input.mediaKind === "video"
+    ? buildVideoRoomObjectKey(input.userId, input.projectId, objectId, input.fileName)
+    : buildSoundRoomObjectKey(input.userId, input.projectId, objectId, input.fileName);
+  const sourceModule = input.mediaKind === "video" ? "video-room" : "sound-room";
   const multipart = input.forceMultipart === true || input.sizeBytes > SINGLE_PUT_LIMIT;
   const strategy = multipart ? "multipart" : "single";
   const partSize = multipart ? partSizeFor(input.sizeBytes) : null;
   const metadata = {
-    entityType: "audio_review_project",
+    entityType: input.mediaKind === "video" ? "video_review_project" : "audio_review_project",
     entityId: input.projectId,
-    sessionId: input.sessionId || null,
-    clientEventId: input.clientEventId || null,
+    sessionId: input.mediaKind === "audio" ? input.sessionId || null : null,
+    clientEventId: input.mediaKind === "audio" ? input.clientEventId || null : null,
     originalChecksumSha256: input.checksumSha256.toLowerCase(),
   };
   let uploadId: string | null = null;
@@ -234,9 +269,9 @@ export async function initiateSoundRoomUpload(
          content_type, checksum_sha256, source_module, created_by_user_id,
          metadata, status, reservation_expires_at, upload_strategy,
          multipart_upload_id, multipart_part_size, source_channel
-       ) VALUES (
+      ) VALUES (
          $1::uuid, $2::uuid, $3, $4, $5::bigint,
-         $6, $7, 'sound-room', $8, $9::jsonb, 'pending',
+         $6, $7, $14, $8, $9::jsonb, 'pending',
          NOW() + INTERVAL '1 hour', $10, $11, $12::bigint, $13
        )`,
       [
@@ -247,12 +282,13 @@ export async function initiateSoundRoomUpload(
         input.sizeBytes,
         contentType,
         input.checksumSha256.toLowerCase(),
-        input.userId,
+        input.mediaKind === "video" ? input.createdByUserId : input.userId,
         JSON.stringify(metadata),
         strategy,
         uploadId,
         partSize,
         input.channel,
+        sourceModule,
       ],
     );
 
@@ -304,6 +340,22 @@ export async function initiateSoundRoomUpload(
     await releaseReservation(pool, account.id, input.sizeBytes).catch(() => undefined);
     throw error;
   }
+}
+
+export async function initiateSoundRoomUpload(
+  pool: Pool,
+  input: SoundRoomUploadInput,
+  deps: SoundRoomStorageDeps = {},
+): Promise<SoundRoomUploadTicket> {
+  return initiateRoleRoomMediaUpload(pool, { ...input, mediaKind: "audio" }, deps);
+}
+
+export async function initiateVideoRoomUpload(
+  pool: Pool,
+  input: VideoRoomUploadInput,
+  deps: SoundRoomStorageDeps = {},
+): Promise<SoundRoomUploadTicket> {
+  return initiateRoleRoomMediaUpload(pool, { ...input, mediaKind: "video" }, deps);
 }
 
 export async function resumeSoundRoomUpload(
@@ -558,7 +610,7 @@ export async function completeSoundRoomUpload(
         [
           objectRow.storage_account_id,
           objectRow.id,
-          `sound-room-upload:${objectRow.id}`,
+          `${objectRow.metadata?.entityType === "video_review_project" ? "video-room" : "sound-room"}-upload:${objectRow.id}`,
           Number(objectRow.size_bytes),
           JSON.stringify({ sourceChannel: objectRow.source_channel }),
         ],
@@ -606,6 +658,59 @@ export async function abortSoundRoomUpload(
     await releaseReservation(pool, objectRow.storage_account_id, Number(objectRow.size_bytes));
   }
   return (changed.rowCount ?? 0) > 0;
+}
+
+/** Delete a verified media object and release its accounted user quota. */
+export async function deleteRoleRoomMediaObject(
+  pool: Pool,
+  objectId: string,
+  storageOwnerUserId: string,
+  deps: SoundRoomStorageDeps = {},
+): Promise<boolean> {
+  const storage = deps.storage === undefined ? getRoleRoomObjectStorage() : deps.storage;
+  if (!storage) throw new Error("storage_not_configured");
+  const objectRow = await readOwnedSoundRoomObject(pool, objectId, storageOwnerUserId);
+  if (!objectRow) return false;
+  if (objectRow.status === "pending") {
+    return abortSoundRoomUpload(pool, objectId, storageOwnerUserId, deps);
+  }
+  if (objectRow.status !== "active") return false;
+  await storage.client.send(new DeleteObjectCommand({
+    Bucket: storage.bucket,
+    Key: objectRow.object_key,
+  }));
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const changed = await client.query(
+      `UPDATE role_room_storage_objects
+          SET status = 'deleted', deleted_at = NOW()
+        WHERE id = $1::uuid AND status = 'active'
+        RETURNING id`,
+      [objectRow.id],
+    );
+    if ((changed.rowCount ?? 0) > 0) {
+      await client.query(
+        `SELECT role_room_apply_storage_usage(
+           $1::uuid, $2::uuid, $3, $4::bigint, -1, 'delete', $5::jsonb
+         )`,
+        [
+          objectRow.storage_account_id,
+          objectRow.id,
+          `media-delete:${objectRow.id}`,
+          -Number(objectRow.size_bytes),
+          JSON.stringify({ sourceChannel: objectRow.source_channel }),
+        ],
+      );
+    }
+    await client.query("COMMIT");
+    return (changed.rowCount ?? 0) > 0;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function getSoundRoomObjectStream(
@@ -725,3 +830,12 @@ export async function putSoundRoomDerivedObject(
   }
   return (await readOwnedSoundRoomObject(pool, objectId, input.userId))!;
 }
+
+export type VideoRoomUploadTicket = SoundRoomUploadTicket;
+export type VideoRoomCompletedPart = SoundRoomCompletedPart;
+export const readOwnedVideoRoomObject = readOwnedSoundRoomObject;
+export const resumeVideoRoomUpload = resumeSoundRoomUpload;
+export const signVideoRoomUploadParts = signSoundRoomUploadParts;
+export const getVideoRoomUploadStatus = getSoundRoomUploadStatus;
+export const completeVideoRoomUpload = completeSoundRoomUpload;
+export const abortVideoRoomUpload = abortSoundRoomUpload;

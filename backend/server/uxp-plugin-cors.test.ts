@@ -89,6 +89,10 @@ describe("UXP plugin CORS boundary", () => {
     for (const [path, method] of [
       ["/api/projects/project-1/video-versions/tus", "POST"],
       ["/api/projects/project-1/video-versions/version-1/tus-retry", "POST"],
+      ["/api/projects/project-1/video-versions/version-1/object-parts", "POST"],
+      ["/api/projects/project-1/video-versions/version-1/object-resume", "POST"],
+      ["/api/projects/project-1/video-versions/version-1/object-status", "GET"],
+      ["/api/projects/project-1/video-versions/version-1/object-complete", "POST"],
       ["/api/projects/project-1/video-versions/version-1/stream-status", "GET"],
     ] as const) {
       const response = await request(app)
