@@ -37,6 +37,23 @@ describe("Cloudflare Stream resumable ingest and ready state", () => {
     expect(JSON.stringify(ticket)).not.toContain("stream-secret");
   });
 
+  it("classifies capacity failures without forwarding Cloudflare response bodies", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: false,
+      errors: [{ code: 10011, message: "Storage capacity exceeded: account detail" }],
+    }), { status: 413, headers: { "content-type": "application/json" } })));
+
+    await expect(createDirectStreamTusUpload({
+      sizeBytes: 1024,
+      filename: "review.mp4",
+      creatorId: "creator-hash",
+    })).rejects.toMatchObject({
+      message: "cloudflare_stream_capacity_exceeded",
+      code: "cloudflare_stream_capacity_exceeded",
+      providerStatus: 413,
+    });
+  });
+
   it("imports by link as signed-only media", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       success: true,

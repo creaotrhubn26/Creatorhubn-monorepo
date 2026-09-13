@@ -45,6 +45,7 @@ function fakePremiere(initialMarkers) {
     guid: { toString: () => "sequence-guid" },
     name: "Sekvens",
     playerPosition: 3.5,
+    getEndTime: async () => ({ seconds: 12.25 }),
     getPlayerPosition: async () => ({ seconds: sequence.playerPosition }),
     setPlayerPosition: async (time) => {
       sequence.playerPosition = time.seconds;
@@ -162,6 +163,7 @@ test("exports the exact active sequence through EncoderManager and waits for a s
 
   assert.equal(result.file, outputFile);
   assert.equal(result.sizeBytes, 2048);
+  assert.equal(result.durationSeconds, 12.25);
   assert.deepEqual(fake.exportCalls[0].slice(1), [
     "immediately",
     "/exports/Sekvens - V2.mp4",
