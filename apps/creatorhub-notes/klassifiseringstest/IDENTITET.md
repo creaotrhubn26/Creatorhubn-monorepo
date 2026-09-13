@@ -154,11 +154,23 @@ import ikke merkes.
    «samme setning fra to personer» to avsnitt, og matchingen må trolig avgrenses
    per avsender før likhet i det hele tatt beregnes. Ikke bygget, ikke målt.
 
+   *Oppdatert 13. september 2026:* samtaleimporten er bygget, og
+   avgrensningen med den — `minne::match_per_avsender` kaller `match_avsnitt`
+   én gang per avsender, med lokal rekkefølge innenfor gruppa, så to like
+   innlegg fra to personer aldri kan bytte identitet. Terskelen er fortsatt
+   ikke målt på chat, og forbeholdet over gjelder: Jaccard er svakest under
+   fem ord, og et chat-innlegg er ofte under fem ord.
+
 ## Status
 
 Modulen er frittstående og ren: ingen database, ingen nettverk, ingen
-sideeffekter, ingen modellkall. Den er **ikke** koblet inn i appen — verken
-skjema, migrering eller `understand.rs` er rørt. Det er en senere runde.
+sideeffekter, ingen modellkall.
+
+*Oppdatert 13. september 2026:* den **er** koblet inn i appen.
+`minne::synk` kaller `match_avsnitt` ved hver lesning, `avsnitt`-tabellen er
+skjemaet den forutsetter, og `migrering.rs` migrerer eldre baser til det.
+Setningen over sa det motsatte, og var utdatert på et punkt som avgjør hvor
+mye man skal stole på forbeholdene rundt den.
 
 50 tester grønne i indekseren (34 fra før, 11 nye enhetstester — ett per krav
 pluss en skalatest, og 5 som kjører datasettet og sveipet).

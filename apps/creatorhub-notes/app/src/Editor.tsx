@@ -185,6 +185,30 @@ function kildeplass(doc: EditorState["doc"]): number | null {
   return null; // uavsluttet blokk: rør den ikke
 }
 
+/// Har notatet noe i seg fra før, utenom toppfeltet og overskriften?
+///
+/// Toppfeltet `kilde: samtale` gjelder **hele fila**, og alle avsnitt i den
+/// leses da med samtaleprompten. Limer hun en tråd inn i et notat hun allerede
+/// har skrevet i, ble alt hun hadde skrevet plutselig lest som innlegg i en
+/// samtale. Da settes ikke feltet: innleggene limes inn med avsenderen først,
+/// som de skal, men notatet er fortsatt et notat. Vil hun ha hele fila lest
+/// som en samtale, sier hun det selv med bryteren over skriveflaten.
+export function harInnhold(doc: EditorState["doc"], fra: number, til: number): boolean {
+  let n = 1;
+  if (doc.lines >= 2 && doc.line(1).text.trim() === "---") {
+    for (n = 2; n <= doc.lines && doc.line(n).text.trim() !== "---"; n++);
+    n += 1;
+  }
+  for (; n <= doc.lines; n++) {
+    const linje = doc.line(n);
+    // Det markøren står i skal erstattes, og teller ikke som innhold.
+    if (linje.from >= fra && linje.to <= til) continue;
+    const tekst = linje.text.trim();
+    if (tekst && !tekst.startsWith("#")) return true;
+  }
+  return false;
+}
+
 /// Innliming. Er det en samtale som limes inn, settes den inn som innlegg med
 /// avsender, og toppfeltet sier at kilden er en samtale — da står valget i
 /// fila, og appen trenger ikke gjette på nytt neste gang.
@@ -201,7 +225,8 @@ function innliming(påSamtale: () => void) {
       hendelse.preventDefault();
       const { from, to } = view.state.selection.main;
       const sett = (inn: string, samtale: boolean) => {
-        const plass = samtale ? kildeplass(view.state.doc) : null;
+        const merk = samtale && !harInnhold(view.state.doc, from, to);
+        const plass = merk ? kildeplass(view.state.doc) : null;
         const felt = "kilde: samtale\n";
         const endringer = [{ from, to, insert: inn }];
         if (plass !== null) endringer.unshift({ from: plass, to: plass, insert: felt });
@@ -209,7 +234,7 @@ function innliming(påSamtale: () => void) {
           changes: endringer,
           selection: { anchor: from + inn.length + (plass !== null ? felt.length : 0) },
         });
-        if (samtale) påSamtale();
+        if (merk) påSamtale();
       };
       importerSamtale(tekst)
         .then((samtale) => sett(samtale ?? tekst, samtale !== null))

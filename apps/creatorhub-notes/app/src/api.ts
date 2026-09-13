@@ -209,7 +209,14 @@ export const importerSamtale = (tekst: string) =>
 
 /** Hvordan notatet leses nå. `tvunget` er satt når brukeren har bestemt det
  *  selv — da er det hennes valg som gjelder, ikke gjenkjenningen. */
-export type Samtaleform = { er: boolean; tvunget: string | null; deltakere: string[] };
+export type Samtaleform = {
+  er: boolean;
+  tvunget: string | null;
+  deltakere: string[];
+  /** Avsnitt uten et gjenkjent avsenderhode. Et notat merket «Samtale med
+   *  Marius, Kari» der halve fila ikke er innlegg skal si det. */
+  utenAvsender: number;
+};
 
 export const samtaleform = (innhold: string) =>
   invoke<Samtaleform>("samtaleform", { innhold });

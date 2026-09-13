@@ -750,6 +750,8 @@ export default function App() {
                       ` · Samtale${
                         samtale.deltakere.length ? ` med ${samtale.deltakere.join(", ")}` : ""
                       }`}
+                    {samtale?.er && samtale.utenAvsender > 0 &&
+                      ` · ${samtale.utenAvsender} avsnitt uten avsender`}
                   </span>
                   <span className="status" aria-live="polite">
                     {status}
@@ -789,7 +791,12 @@ export default function App() {
                 onChange={skriv}
                 selectTitle={nytt}
                 peker={peker}
-                onSamtale={() => setSamtale((f) => ({ er: true, tvunget: "samtale", deltakere: f?.deltakere ?? [] }))}
+                onSamtale={() => setSamtale((f) => ({
+                  er: true,
+                  tvunget: "samtale",
+                  deltakere: f?.deltakere ?? [],
+                  utenAvsender: f?.utenAvsender ?? 0,
+                }))}
                 onSynlig={(fra, til) => {
                   synlig.current = [fra, til];
                 }}

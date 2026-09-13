@@ -7,7 +7,7 @@
 import { expect, test, vi } from "vitest";
 import { EditorState, EditorSelection, type Transaction } from "@codemirror/state";
 import { undo } from "@codemirror/commands";
-import { markør, tilstand } from "./Editor";
+import { harInnhold, markør, tilstand } from "./Editor";
 import { lagBuffer } from "./buffer";
 
 /** En liten visningsløs stand-in for `EditorView`: holder tilstanden, tar imot
@@ -145,4 +145,27 @@ test("skriver hun videre mens skrivet pågår, blir det nye stående uskrevet", 
 
   expect(buffer.venter()).toBe(true);
   expect(buffer.ventende()?.tekst).toBe("Ett. To.");
+});
+
+/** Funn 36. `kilde: samtale` i toppfeltet gjelder hele fila, og alle avsnitt i
+ *  den leses med samtaleprompten. Limte hun en tråd inn i et notat hun
+ *  allerede hadde skrevet i, ble alt hun hadde skrevet lest som innlegg. */
+test("et notat med innhold fra før merkes ikke som en samtale av en innliming", () => {
+  const ingen = { anchor: 0, head: 0 };
+  const tomt = tilstand("---\nid: x\ndato: 2026-09-13\n---\n\n# Uten tittel\n\n", ingen);
+  expect(harInnhold(tomt.doc, tomt.doc.length, tomt.doc.length)).toBe(false);
+
+  const skrevet = tilstand(
+    "---\nid: x\n---\n\n# Låne-app\n\nDepositum blir for høy terskel.\n\n",
+    ingen,
+  );
+  expect(harInnhold(skrevet.doc, skrevet.doc.length, skrevet.doc.length)).toBe(true);
+
+  // Markerer hun alt og limer over det, er notatet tomt etterpå — og da er
+  // det hele fila som er samtalen.
+  expect(harInnhold(skrevet.doc, 0, skrevet.doc.length)).toBe(false);
+
+  // Et notat uten toppfelt teller på samme måte.
+  const nakent = tilstand("Bare en setning.\n", ingen);
+  expect(harInnhold(nakent.doc, nakent.doc.length, nakent.doc.length)).toBe(true);
 });

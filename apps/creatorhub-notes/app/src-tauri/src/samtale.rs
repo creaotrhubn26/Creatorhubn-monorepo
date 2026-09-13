@@ -405,6 +405,14 @@ pub struct Form {
     /// `null` — da er det gjenkjenningen som svarer.
     pub tvunget: Option<String>,
     pub deltakere: Vec<String>,
+    /// Avsnitt i notatet uten et gjenkjent avsenderhode.
+    ///
+    /// Deltakerlista er utledet per avsnitt, og et avsnitt uten hode ga før
+    /// ingen deltaker og ingen advarsel. Limte hun en tråd inn i et notat som
+    /// allerede hadde innhold, var halve fila avsnitt uten avsender i et notat
+    /// merket «Samtale med Marius, Kari» — og hvert av dem ble lest som om det
+    /// var noen sitt innlegg.
+    pub uten_avsender: usize,
 }
 
 /// Formen notatet leses i. Deltakerne telles slik panelet vil vise dem: én
@@ -413,16 +421,20 @@ pub fn form(doc: &str) -> Form {
     let tvunget = kilde(doc).filter(|k| k == SAMTALE || k == NOTAT);
     let er = er_samtale(doc);
     let mut deltakere: Vec<String> = Vec::new();
+    let mut uten_avsender = 0;
     if er {
         for bit in crate::understand::split(doc) {
-            if let Some(navn) = avsender(&bit.text) {
-                if !deltakere.contains(&navn) {
-                    deltakere.push(navn);
+            match avsender(&bit.text) {
+                Some(navn) => {
+                    if !deltakere.contains(&navn) {
+                        deltakere.push(navn);
+                    }
                 }
+                None => uten_avsender += 1,
             }
         }
     }
-    Form { er, tvunget, deltakere }
+    Form { er, tvunget, deltakere, uten_avsender }
 }
 
 #[cfg(test)]
