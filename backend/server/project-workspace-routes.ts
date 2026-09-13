@@ -32,6 +32,16 @@ import { signAssetReadUrl, deleteCaptureObjects } from "./capture-upload-service
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { deleteFromRoleRoomB2 } from "./b2-archive-helper";
 import { createDirectStreamTusUpload, deleteStreamVideo, getStreamVideoStatus, importStreamFromUrl, isStreamEnabled, signStreamPlaybackUrl, signStreamThumbnailUrl, uploadToStream } from "./cloudflare-stream-service";
+import { presignCreatorHubObjectDownload } from "./creatorhub-object-storage";
+import {
+  completeVideoRoomUpload,
+  deleteCreatorHubMediaObject,
+  getVideoRoomUploadStatus,
+  initiateVideoRoomUpload,
+  resumeVideoRoomUpload,
+  signVideoRoomUploadParts,
+  type VideoRoomCompletedPart,
+} from "./sound-room-storage-service";
 import {
   VIDEO_COMMENT_CATEGORIES,
   VIDEO_COMMENT_PRIORITIES,
@@ -3902,6 +3912,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS b2_key text`).catch(() => {});
     await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS content_type text`).catch(() => {});
     await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS size_bytes bigint`).catch(() => {});
+    await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS storage_object_id uuid REFERENCES role_room_storage_objects(id) ON DELETE SET NULL`).catch(() => {});
     await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS stream_ready boolean NOT NULL DEFAULT false`).catch(() => {});
     await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS stream_state varchar(24) NOT NULL DEFAULT 'pending'`).catch(() => {});
     await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS stream_error text`).catch(() => {});
@@ -4014,16 +4025,38 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     return status;
   };
 
+  const videoStorageReference = async (v: any) => {
+    if (!v.storage_object_id) return null;
+    if (v.storage_object_key) {
+      return { objectKey: v.storage_object_key, status: v.storage_object_status };
+    }
+    const stored = await pool.query(
+      `SELECT object_key,status FROM role_room_storage_objects
+        WHERE id=$1::uuid AND deleted_at IS NULL LIMIT 1`,
+      [v.storage_object_id],
+    ).catch(() => ({ rows: [] }));
+    return stored.rows[0]
+      ? { objectKey: stored.rows[0].object_key, status: stored.rows[0].status }
+      : null;
+  };
+
   const mapVideoVersion = async (v: any, ttl = 3600, knownStatus?: any) => {
     const status = knownStatus === undefined ? await refreshVideoVersionStream(v) : knownStatus;
-    const streamReady = status?.ready ?? !!v.stream_ready;
-    const streamUrl = v.stream_uid && streamReady ? await signStreamPlaybackUrl(v.stream_uid, ttl).catch(() => null) : null;
-    const signedThumb = v.stream_uid && streamReady ? await signStreamThumbnailUrl(v.stream_uid, ttl).catch(() => null) : null;
+    const storageReference = await videoStorageReference(v);
+    const objectReady = storageReference?.status === "active";
+    const cloudflareReady = status?.ready ?? !!v.stream_ready;
+    const mediaReady = cloudflareReady || objectReady;
+    const streamUrl = v.stream_uid && cloudflareReady ? await signStreamPlaybackUrl(v.stream_uid, ttl).catch(() => null) : null;
+    const objectUrl = objectReady
+      ? await presignCreatorHubObjectDownload(storageReference.objectKey, undefined, ttl).catch(() => null)
+      : null;
+    const signedThumb = v.stream_uid && cloudflareReady ? await signStreamThumbnailUrl(v.stream_uid, ttl).catch(() => null) : null;
     return {
       id: v.id, versionLabel: v.version_label || `V${v.version_number}`, versionNumber: v.version_number,
-      fileUrl: streamUrl || (v.b2_key ? await presignRoleRoomB2Download(v.b2_key, undefined, ttl) : (v.file_url || null)),
+      fileUrl: streamUrl || objectUrl || (v.b2_key ? await presignRoleRoomB2Download(v.b2_key, undefined, ttl) : (v.file_url || null)),
       streamUid: v.stream_uid || null, thumbnailUrl: signedThumb || status?.thumbnailUrl || v.thumbnail_url || null,
-      streamReady, streamState: status?.state || v.stream_state || (streamReady ? "ready" : "pending"),
+      streamReady: mediaReady,
+      streamState: objectReady ? "ready" : status?.state || v.stream_state || (mediaReady ? "ready" : "pending"),
       streamProgress: status?.progressPercent ?? null, streamError: status?.error || v.stream_error || null,
       duration: v.duration != null ? Number(v.duration) : null, status: v.status, createdAt: v.created_at,
       commentCount: v.comment_count || 0, openCount: v.open_count || 0,
@@ -4031,11 +4064,14 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   };
   const videoRoomState = async (pid: string, requestedVersionId?: string | null, allowHistory = true, ttl = 3600) => {
     const vs = await pool.query(
-      `SELECT id, project_id, version_label, version_number, file_url, b2_key, stream_uid, thumbnail_url, duration, chapters, status, created_at, uploaded_by,
-              stream_ready, stream_state, stream_error,
+      `SELECT v.id, v.project_id, v.version_label, v.version_number, v.file_url, v.b2_key, v.stream_uid, v.thumbnail_url, v.duration, v.chapters, v.status, v.created_at, v.uploaded_by,
+              v.storage_object_id, stored.object_key AS storage_object_key, stored.status AS storage_object_status,
+              v.stream_ready, v.stream_state, v.stream_error,
               (SELECT count(*) FROM project_video_comments c WHERE c.version_id=v.id)::int comment_count,
               (SELECT count(*) FROM project_video_comments c WHERE c.version_id=v.id AND c.status NOT IN ('resolved','done'))::int open_count
-         FROM project_video_versions v WHERE project_id=$1 ORDER BY version_number ASC`, [pid],
+         FROM project_video_versions v
+         LEFT JOIN role_room_storage_objects stored ON stored.id=v.storage_object_id AND stored.deleted_at IS NULL
+        WHERE v.project_id=$1 ORDER BY v.version_number ASC`, [pid],
     ).catch(() => ({ rows: [] }));
     const streamStatuses = new Map<string, any>();
     for (const version of vs.rows) {
@@ -4168,6 +4204,111 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     }
   });
 
+  const videoUploadStorageContext = async (projectId: string, versionId?: string) => {
+    const result = await pool.query(
+      versionId
+        ? `SELECT COALESCE(storage_account.user_id, project.user_id) AS storage_owner_user_id,
+                  version.id,version.storage_object_id,version.status,version.stream_ready
+             FROM projects project
+             JOIN project_video_versions version
+               ON version.project_id=project.id AND version.id=$2
+        LEFT JOIN role_room_storage_objects stored ON stored.id=version.storage_object_id
+        LEFT JOIN role_room_storage_accounts storage_account ON storage_account.id=stored.storage_account_id
+            WHERE project.id=$1 LIMIT 1`
+        : `SELECT project.user_id AS storage_owner_user_id,
+                  NULL::text AS storage_organization_id
+             FROM projects project WHERE project.id=$1 LIMIT 1`,
+      versionId ? [projectId, versionId] : [projectId],
+    ).catch(() => ({ rows: [] }));
+    return result.rows[0] || null;
+  };
+
+  const videoObjectUploadError = (error: any): { code: string; status: number } => {
+    const statusByCode: Record<string, number> = {
+      invalid_project_id: 400,
+      invalid_size: 400,
+      invalid_checksum: 400,
+      invalid_parts: 400,
+      invalid_part_number: 400,
+      invalid_part_checksum: 400,
+      multipart_parts_required: 400,
+      unsupported_video_type: 415,
+      file_too_large: 413,
+      storage_quota_exceeded: 507,
+      storage_not_configured: 503,
+      upload_not_found: 404,
+      not_multipart_upload: 409,
+      upload_not_completable: 409,
+      multipart_parts_incomplete: 409,
+      multipart_part_verification_failed: 422,
+      size_mismatch: 422,
+      checksum_mismatch: 422,
+      object_upload_changed: 409,
+    };
+    const candidate = String(error?.message || error || "");
+    const code = Object.prototype.hasOwnProperty.call(statusByCode, candidate)
+      ? candidate
+      : "object_storage_upload_failed";
+    return { code, status: statusByCode[code] || 503 };
+  };
+
+  const createVideoObjectUploadVersion = async (input: {
+    projectId: string;
+    actorUserId: string;
+    versionId: string;
+    fileName: string;
+    sizeBytes: number;
+    contentType: string;
+    checksumSha256: string;
+    versionLabel: string;
+  }) => {
+    const context = await videoUploadStorageContext(input.projectId);
+    const storageOwnerUserId = String(context?.storage_owner_user_id || "").trim();
+    if (!storageOwnerUserId) throw new Error("storage_owner_not_found");
+    const ticket = await initiateVideoRoomUpload(pool, {
+      userId: storageOwnerUserId,
+      organizationId: context?.storage_organization_id || null,
+      createdByUserId: input.actorUserId,
+      projectId: input.projectId,
+      fileName: input.fileName,
+      sizeBytes: input.sizeBytes,
+      contentType: input.contentType,
+      checksumSha256: input.checksumSha256,
+      channel: "premiere",
+      // Premiere exports can approach the 20 GiB service limit. Always use
+      // bounded 16 MiB parts so the UXP panel never allocates a whole proxy.
+      forceMultipart: true,
+    });
+    try {
+      const next = await pool.query(
+        `SELECT COALESCE(MAX(version_number),0)+1 AS n
+           FROM project_video_versions WHERE project_id=$1`,
+        [input.projectId],
+      );
+      const versionNumber = Number(next.rows[0]?.n || 1);
+      await pool.query(
+        `INSERT INTO project_video_versions
+           (id,project_id,version_label,version_number,storage_object_id,content_type,size_bytes,status,uploaded_by,
+            stream_ready,stream_state,stream_checked_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'uploading',$8,false,'object_pending',NOW())`,
+        [input.versionId, input.projectId, input.versionLabel, versionNumber, ticket.objectId,
+         input.contentType, input.sizeBytes, input.actorUserId],
+      );
+      notifyVideoRoomUpdated(input.projectId, input.actorUserId, "version");
+      return {
+        ...ticket,
+        provider: "object_storage",
+        protocol: ticket.strategy === "multipart" ? "s3-multipart" : "s3",
+        versionId: input.versionId,
+        versionNumber,
+        expiresAt: new Date(Date.now() + ticket.expiresInSeconds * 1000).toISOString(),
+      };
+    } catch (error) {
+      await deleteCreatorHubMediaObject(pool, ticket.objectId, storageOwnerUserId).catch(() => undefined);
+      throw error;
+    }
+  };
+
   // Direct browser → Cloudflare Stream TUS. Handles large files and restart
   // without buffering video bytes in Node or exposing the Stream API token.
   app.post("/api/projects/:projectId/video-versions/tus", async (req, res) => {
@@ -4176,6 +4317,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const pid = req.params.projectId;
     const fileName = String(req.body?.fileName || "video.mp4").trim().slice(0, 200);
     const sizeBytes = Number(req.body?.sizeBytes);
+    const contentType = String(req.body?.contentType || "video/mp4").trim().toLowerCase().slice(0, 200);
+    const checksumSha256 = String(req.body?.checksumSha256 || "").trim().toLowerCase();
     if (!fileName || !Number.isSafeInteger(sizeBytes) || sizeBytes <= 0) {
       return res.status(400).json({ error: "fileName_and_sizeBytes_required" });
     }
@@ -4205,11 +4348,146 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       return res.status(201).json({ ...ticket, versionId: id, versionNumber });
     } catch (error: any) {
       if (streamUid) await deleteStreamVideo(streamUid);
-      console.error("POST video TUS provision", error);
       const code = String(error?.code || error?.message || "stream_tus_failed");
+      if (["cloudflare_stream_not_configured", "cloudflare_stream_capacity_exceeded"].includes(code) && /^[a-f0-9]{64}$/.test(checksumSha256)) {
+        try {
+          const ticket = await createVideoObjectUploadVersion({
+            projectId: pid,
+            actorUserId: uid,
+            versionId: id,
+            fileName,
+            sizeBytes,
+            contentType,
+            checksumSha256,
+            versionLabel: String(req.body?.versionLabel || "Review").trim().slice(0, 80) || "Review",
+          });
+          return res.status(201).json(ticket);
+        } catch (storageError) {
+          console.error("POST video object fallback provision", storageError);
+          const mapped = videoObjectUploadError(storageError);
+          return res.status(mapped.status).json({ error: mapped.code });
+        }
+      }
+      console.error("POST video TUS provision", error);
       const status = code === "invalid_stream_upload_size" ? 413
         : code === "cloudflare_stream_not_configured" || code === "cloudflare_stream_capacity_exceeded" ? 503 : 502;
       return res.status(status).json({ error: code });
+    }
+  });
+
+  app.post("/api/projects/:projectId/video-versions/:vid/object-parts", async (req, res) => {
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
+    await ensureVideoSchema();
+    const context = await videoUploadStorageContext(req.params.projectId, req.params.vid);
+    if (!context?.storage_object_id) return res.status(404).json({ error: "upload_not_found" });
+    try {
+      const parts = await signVideoRoomUploadParts(pool, {
+        objectId: String(context.storage_object_id),
+        userId: String(context.storage_owner_user_id),
+        parts: Array.isArray(req.body?.parts) ? req.body.parts.map((part: any) => ({
+          partNumber: Number(part.partNumber),
+          checksumSha256: String(part.checksumSha256 || "").trim().toLowerCase(),
+        })) : [],
+      });
+      return res.json({ parts });
+    } catch (error) {
+      const mapped = videoObjectUploadError(error);
+      return res.status(mapped.status).json({ error: mapped.code });
+    }
+  });
+
+  app.post("/api/projects/:projectId/video-versions/:vid/object-resume", async (req, res) => {
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
+    await ensureVideoSchema();
+    const context = await videoUploadStorageContext(req.params.projectId, req.params.vid);
+    if (!context?.storage_object_id) return res.status(404).json({ error: "upload_not_found" });
+    if (context.status !== "uploading" || context.stream_ready) {
+      return res.status(409).json({ error: "object_upload_not_retryable" });
+    }
+    try {
+      const ticket = await resumeVideoRoomUpload(
+        pool,
+        String(context.storage_object_id),
+        String(context.storage_owner_user_id),
+      );
+      return res.json({
+        ...ticket,
+        provider: "object_storage",
+        protocol: ticket.strategy === "multipart" ? "s3-multipart" : "s3",
+        versionId: req.params.vid,
+        expiresAt: new Date(Date.now() + ticket.expiresInSeconds * 1000).toISOString(),
+      });
+    } catch (error) {
+      const mapped = videoObjectUploadError(error);
+      return res.status(mapped.status).json({ error: mapped.code });
+    }
+  });
+
+  app.get("/api/projects/:projectId/video-versions/:vid/object-status", async (req, res) => {
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
+    await ensureVideoSchema();
+    const context = await videoUploadStorageContext(req.params.projectId, req.params.vid);
+    if (!context?.storage_object_id) return res.status(404).json({ error: "upload_not_found" });
+    try {
+      return res.json(await getVideoRoomUploadStatus(
+        pool,
+        String(context.storage_object_id),
+        String(context.storage_owner_user_id),
+      ));
+    } catch (error) {
+      const mapped = videoObjectUploadError(error);
+      return res.status(mapped.status).json({ error: mapped.code });
+    }
+  });
+
+  app.post("/api/projects/:projectId/video-versions/:vid/object-complete", async (req, res) => {
+    const uid = await requireVideoEditor(req, res); if (!uid) return;
+    await ensureVideoSchema();
+    const pid = req.params.projectId;
+    const versionId = req.params.vid;
+    const context = await videoUploadStorageContext(pid, versionId);
+    if (!context?.storage_object_id) return res.status(404).json({ error: "upload_not_found" });
+    if (context.status !== "uploading" || context.stream_ready) {
+      return res.status(409).json({ error: "object_upload_not_completable" });
+    }
+    try {
+      await completeVideoRoomUpload(pool, {
+        objectId: String(context.storage_object_id),
+        userId: String(context.storage_owner_user_id),
+        parts: Array.isArray(req.body?.parts) ? req.body.parts.map((part: any): VideoRoomCompletedPart => ({
+          partNumber: Number(part.partNumber),
+          etag: String(part.etag || "").trim().slice(0, 512),
+          checksumSha256: String(part.checksumSha256 || "").trim().toLowerCase(),
+        })) : undefined,
+      });
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const activated = await client.query(
+          `UPDATE project_video_versions
+              SET status='under_review',stream_ready=true,stream_state='ready',stream_error=NULL,stream_checked_at=NOW()
+            WHERE id=$1 AND project_id=$2 AND status='uploading' AND storage_object_id=$3
+            RETURNING id`,
+          [versionId, pid, context.storage_object_id],
+        );
+        if (!activated.rows[0]) throw new Error("object_upload_changed");
+        await client.query(
+          `UPDATE project_video_versions SET status='superseded'
+            WHERE project_id=$1 AND id<>$2 AND status IN ('under_review','changes_requested')`,
+          [pid, versionId],
+        );
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+      notifyVideoRoomUpdated(pid, uid, "version");
+      return res.json({ ok: true, versionId, ready: true, state: "ready", status: "under_review" });
+    } catch (error) {
+      const mapped = videoObjectUploadError(error);
+      return res.status(mapped.status).json({ error: mapped.code });
     }
   });
 
@@ -4450,7 +4728,16 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await requireVideoEditor(req, res); if (!uid) return;
     try {
       await ensureVideoSchema();
-      const found = await pool.query(`SELECT b2_key,stream_uid FROM project_video_versions WHERE id=$1 AND project_id=$2`, [req.params.vid, req.params.projectId]).catch(() => ({ rows: [] }));
+      const found = await pool.query(
+        `SELECT version.b2_key,version.stream_uid,version.storage_object_id,
+                COALESCE(storage_account.user_id, project.user_id) AS storage_owner_user_id
+           FROM project_video_versions version
+           JOIN projects project ON project.id=version.project_id
+      LEFT JOIN role_room_storage_objects stored ON stored.id=version.storage_object_id
+      LEFT JOIN role_room_storage_accounts storage_account ON storage_account.id=stored.storage_account_id
+          WHERE version.id=$1 AND version.project_id=$2`,
+        [req.params.vid, req.params.projectId],
+      ).catch(() => ({ rows: [] }));
       if (!found.rows.length) return res.status(404).json({ error: "not_found" });
       await pool.query(`DELETE FROM project_video_comments WHERE version_id=$1 AND project_id=$2`, [req.params.vid, req.params.projectId]);
       await pool.query(`DELETE FROM project_video_decisions WHERE version_id=$1 AND project_id=$2`, [req.params.vid, req.params.projectId]).catch(() => {});
@@ -4458,16 +4745,33 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await pool.query(`UPDATE project_video_versions SET status='under_review' WHERE id=(SELECT id FROM project_video_versions WHERE project_id=$1 ORDER BY version_number DESC LIMIT 1) AND NOT EXISTS (SELECT 1 FROM project_video_versions WHERE project_id=$1 AND status IN ('under_review','changes_requested','approved'))`, [req.params.projectId]).catch(() => {});
       if (found.rows[0].b2_key) await deleteFromRoleRoomB2(found.rows[0].b2_key);
       if (found.rows[0].stream_uid) await deleteStreamVideo(found.rows[0].stream_uid);
+      if (found.rows[0].storage_object_id && found.rows[0].storage_owner_user_id) {
+        await deleteCreatorHubMediaObject(
+          pool,
+          String(found.rows[0].storage_object_id),
+          String(found.rows[0].storage_owner_user_id),
+        ).catch((storageError) => console.error("DELETE video version object", storageError));
+      }
       notifyVideoRoomUpdated(req.params.projectId, uid, "version"); res.json({ ok: true });
     } catch (e) { console.error("DELETE video version", e); res.status(500).json({ error: "failed" }); }
   });
 
   app.get("/api/projects/:projectId/video-versions/:vid/download", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
-    const row = await pool.query(`SELECT b2_key,file_url,version_label FROM project_video_versions WHERE id=$1 AND project_id=$2`, [req.params.vid, req.params.projectId]).catch(() => ({ rows: [] }));
+    const row = await pool.query(
+      `SELECT version.b2_key,version.file_url,version.version_label,stored.object_key AS storage_object_key
+         FROM project_video_versions version
+         LEFT JOIN role_room_storage_objects stored
+           ON stored.id=version.storage_object_id AND stored.status='active' AND stored.deleted_at IS NULL
+        WHERE version.id=$1 AND version.project_id=$2`,
+      [req.params.vid, req.params.projectId],
+    ).catch(() => ({ rows: [] }));
     if (!row.rows.length) return res.status(404).json({ error: "not_found" });
     const v = row.rows[0];
-    const url = v.b2_key ? await presignRoleRoomB2Download(v.b2_key, `${slugifyForKey(v.version_label || "video")}.mp4`, 300) : v.file_url;
+    const downloadName = `${slugifyForKey(v.version_label || "video")}.mp4`;
+    const url = v.storage_object_key
+      ? await presignCreatorHubObjectDownload(v.storage_object_key, downloadName, 300)
+      : v.b2_key ? await presignRoleRoomB2Download(v.b2_key, downloadName, 300) : v.file_url;
     if (!url) return res.status(503).json({ error: "download_unavailable" });
     if (req.query.format === "json") return res.json({ url });
     res.redirect(url);
@@ -4604,9 +4908,19 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   app.get("/api/video-review/:token/versions/:vid/download", async (req, res) => {
     const share = await loadPublicVideoShare(req, res); if (!share) return;
     if (!share.allow_download) return res.status(403).json({ error: "download_not_allowed" });
-    const row = await pool.query(`SELECT b2_key,file_url,version_label FROM project_video_versions WHERE id=$1 AND project_id=$2`, [req.params.vid, share.project_id]).catch(() => ({ rows: [] }));
+    const row = await pool.query(
+      `SELECT version.b2_key,version.file_url,version.version_label,stored.object_key AS storage_object_key
+         FROM project_video_versions version
+         LEFT JOIN role_room_storage_objects stored
+           ON stored.id=version.storage_object_id AND stored.status='active' AND stored.deleted_at IS NULL
+        WHERE version.id=$1 AND version.project_id=$2`,
+      [req.params.vid, share.project_id],
+    ).catch(() => ({ rows: [] }));
     if (!row.rows.length) return res.status(404).json({ error: "not_found" });
-    const v = row.rows[0]; const url = v.b2_key ? await presignRoleRoomB2Download(v.b2_key, `${slugifyForKey(v.version_label || "video")}.mp4`, 300) : v.file_url;
+    const v = row.rows[0]; const downloadName = `${slugifyForKey(v.version_label || "video")}.mp4`;
+    const url = v.storage_object_key
+      ? await presignCreatorHubObjectDownload(v.storage_object_key, downloadName, 300)
+      : v.b2_key ? await presignRoleRoomB2Download(v.b2_key, downloadName, 300) : v.file_url;
     if (!url) return res.status(503).json({ error: "download_unavailable" });
     if (req.query.format === "json") return res.json({ url });
     res.redirect(url);

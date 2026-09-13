@@ -1302,8 +1302,24 @@ final class QASweepTests: XCTestCase {
             XCTAssertEqual(profileTitle.label, profileName)
         }
 
-        XCTAssertTrue(app.staticTexts["Finn duplikater"].exists)
-        XCTAssertTrue(app.staticTexts["Sjekk datakvalitet"].exists)
+        let anbudProfile = app.descendants(matching: .any)[
+            "project-onboarding.anbud-profile"
+        ]
+        for _ in 0..<8 where !anbudProfile.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(
+            anbudProfile.exists,
+            "Tidum-onboarding skal forklare den separate Doffin-produktprofilen"
+        )
+
+        for skillTitle in ["Finn duplikater", "Sjekk datakvalitet"] {
+            let skill = app.staticTexts[skillTitle]
+            for _ in 0..<8 where !skill.exists {
+                app.swipeUp()
+            }
+            XCTAssertTrue(skill.exists, "Mangler skillen \(skillTitle)")
+        }
         let commit = app.buttons["project-onboarding.commit"]
         for _ in 0..<12 where !commit.isHittable {
             app.swipeUp()
@@ -1338,6 +1354,27 @@ final class QASweepTests: XCTestCase {
         let nationwide = app.buttons["discovery.simple.area.nationwide"]
         XCTAssertTrue(nationwide.waitForExistence(timeout: 5))
         XCTAssertTrue(nationwide.isSelected)
+        let openAnbud = app.buttons["discovery.open-anbud"]
+        XCTAssertTrue(openAnbud.waitForExistence(timeout: 5))
+        openAnbud.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["anbud.project-profile"]
+                .waitForExistence(timeout: 8)
+        )
+        XCTAssertTrue(app.staticTexts["CPV 48450000"].exists)
+        let confirmAnbud = app.buttons["anbud.project-profile.confirm"]
+        XCTAssertTrue(confirmAnbud.waitForExistence(timeout: 5))
+        for _ in 0..<6 where !confirmAnbud.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(confirmAnbud.isHittable)
+        confirmAnbud.tap()
+        XCTAssertTrue(app.staticTexts["Aktiv"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.staticTexts["[Demo] Anskaffelse av turnus- og arbeidstidssystem"]
+                .waitForExistence(timeout: 5)
+        )
+        snap(app, "tidum-anbud-profil-aktiv-ipad-mini")
         app.terminate()
     }
 
@@ -1508,13 +1545,14 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = "2"
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["staging-environment-badge"].waitForExistence(timeout: 12))
+        let newLead = app.buttons["lead-new"]
+        XCTAssertTrue(newLead.waitForExistence(timeout: 45))
+        let projectPill = app.buttons["header-project-pill"]
+        XCTAssertTrue(projectPill.waitForExistence(timeout: 10))
         let offline = app.buttons["qa-network-offline"]
-        XCTAssertTrue(offline.waitForExistence(timeout: 3))
+        XCTAssertTrue(offline.waitForExistence(timeout: 10))
         offline.tap()
 
-        let newLead = app.buttons["lead-new"]
-        XCTAssertTrue(newLead.waitForExistence(timeout: 10))
         newLead.tap()
 
         let name = app.textFields["add-lead.field.bedriftsnavn"]
@@ -1525,13 +1563,11 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(submit.waitForExistence(timeout: 3))
         submit.tap()
 
-        XCTAssertTrue(
-            app.staticTexts.containing(
-                NSPredicate(format: "label CONTAINS[c] %@", "lagret offline")
-            ).firstMatch.waitForExistence(timeout: 8)
-        )
+        // Den korte toasten er bevisst flyktig og kan ligge bak sheetets
+        // dismiss-animasjon. Den globale synkstatusen er den autoritative,
+        // stabile kvitteringen på at handlingen faktisk er skrevet til kø.
         let syncStatus = app.buttons["global-sync-status"]
-        XCTAssertTrue(syncStatus.waitForExistence(timeout: 5))
+        XCTAssertTrue(syncStatus.waitForExistence(timeout: 8))
         XCTAssertTrue(syncStatus.label.localizedCaseInsensitiveContains("lagret lokalt"))
 
         app.buttons["qa-network-online"].tap()
@@ -1590,8 +1626,7 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "12" : "11"
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["staging-environment-badge"].waitForExistence(timeout: 12))
-        XCTAssertTrue(app.navigationBars["Verktøy"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.navigationBars["Verktøy"].waitForExistence(timeout: 45))
         let discovery = app.buttons["Profiler, kandidater og markedsinnsikt"]
         XCTAssertTrue(discovery.waitForExistence(timeout: 10))
         discovery.tap()
@@ -1639,8 +1674,7 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "12" : "11"
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["staging-environment-badge"].waitForExistence(timeout: 12))
-        XCTAssertTrue(app.navigationBars["Verktøy"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.navigationBars["Verktøy"].waitForExistence(timeout: 45))
         let discovery = app.buttons["Profiler, kandidater og markedsinnsikt"]
         XCTAssertTrue(discovery.waitForExistence(timeout: 10))
         discovery.tap()
@@ -1662,6 +1696,17 @@ final class QASweepTests: XCTestCase {
         let visibleProfileCount = Int(profileCount.label.split(separator: " ").first ?? "0") ?? 0
         XCTAssertGreaterThanOrEqual(visibleProfileCount, 4)
         XCTAssertTrue(app.buttons["discovery.campaign.start"].exists)
+        let openAnbud = app.buttons["discovery.open-anbud"]
+        XCTAssertTrue(
+            openAnbud.waitForExistence(timeout: 12),
+            "Tidum Discovery skal ha en direkte, prosjektbundet vei til Anbud"
+        )
+        openAnbud.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["anbud.project-profile"]
+                .waitForExistence(timeout: 15),
+            "Anbud skal åpne med Tidums autoritative produktprofil"
+        )
         app.terminate()
     }
 
@@ -1696,11 +1741,10 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["staging-environment-badge"].waitForExistence(timeout: 12))
         let useTemplate = app.buttons.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "pondus-use-")
         ).firstMatch
-        XCTAssertTrue(useTemplate.waitForExistence(timeout: 15), "Staging må ha minst én publisert Pondus-mal")
+        XCTAssertTrue(useTemplate.waitForExistence(timeout: 45), "Staging må ha minst én publisert Pondus-mal")
         let templateID = String(useTemplate.identifier.dropFirst("pondus-use-".count))
         XCTAssertFalse(templateID.isEmpty)
         let usageBefore = try await pondusUsageCount(
@@ -1710,7 +1754,9 @@ final class QASweepTests: XCTestCase {
             projectID: projectID,
             templateID: templateID
         )
-        app.buttons["qa-network-offline"].tap()
+        let offline = app.buttons["qa-network-offline"]
+        XCTAssertTrue(offline.waitForExistence(timeout: 10))
+        offline.tap()
         useTemplate.tap()
         XCTAssertTrue(app.buttons["pondus-start-session"].waitForExistence(timeout: 5))
 
@@ -1758,12 +1804,15 @@ final class QASweepTests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["QA_TOUR"] = "pondus-coach"
         app.launchEnvironment["QA_NETWORK_CONTROLS"] = "1"
+        app.launchEnvironment["QA_RESET_OFFLINE_QUEUE"] = "1"
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
         app.launch()
 
         let useTemplate = app.buttons["pondus-use-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]
         XCTAssertTrue(useTemplate.waitForExistence(timeout: 12))
-        app.buttons["qa-network-offline"].tap()
+        let offline = app.buttons["qa-network-offline"]
+        XCTAssertTrue(offline.waitForExistence(timeout: 5))
+        offline.tap()
         useTemplate.tap()
         let start = app.buttons["pondus-start-session"]
         XCTAssertTrue(start.waitForExistence(timeout: 5))

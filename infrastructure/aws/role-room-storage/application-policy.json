@@ -8,7 +8,19 @@
       "Resource": "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1",
       "Condition": {
         "StringLike": {
-          "s3:prefix": ["organizations/*", "temporary/*", "exports/*", "quarantine/*"]
+          "s3:prefix": [
+            "agencies/*",
+            "education/*",
+            "exports/*",
+            "organizations/*",
+            "platform/*",
+            "projects/*",
+            "quarantine/*",
+            "talents/*",
+            "temporary/*",
+            "users/*",
+            "workspaces/*"
+          ]
         }
       }
     },
@@ -24,10 +36,17 @@
         "s3:PutObject"
       ],
       "Resource": [
-        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/organizations/*",
-        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/temporary/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/agencies/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/education/*",
         "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/exports/*",
-        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/quarantine/*"
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/organizations/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/platform/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/projects/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/quarantine/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/talents/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/temporary/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/users/*",
+        "arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/workspaces/*"
       ]
     }
   ]

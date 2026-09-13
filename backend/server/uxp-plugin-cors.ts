@@ -29,6 +29,10 @@ export const UXP_PLUGIN_API_PATHS = [
   "/api/projects/:projectId/video-live/:sessionId",
   "/api/projects/:projectId/video-versions/tus",
   "/api/projects/:projectId/video-versions/:vid/tus-retry",
+  "/api/projects/:projectId/video-versions/:vid/object-parts",
+  "/api/projects/:projectId/video-versions/:vid/object-resume",
+  "/api/projects/:projectId/video-versions/:vid/object-status",
+  "/api/projects/:projectId/video-versions/:vid/object-complete",
   "/api/projects/:projectId/video-versions/:vid/stream-status",
 ] as const;
 

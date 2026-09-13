@@ -15,9 +15,11 @@ organizations/{organizationId}/
   users/{userId}/
     projects/{projectId}/
       sound-room/{audioRoomId}/
-        protools/sessions/{sessionId}/bounces/{objectId}-{filename}
+        browser/uploads/{objectId}/original.{extension}
+        protools/sessions/{sessionId}/bounces/{objectId}/original.{extension}
         references/{objectId}-{filename}
         keepers/{objectId}-{filename}
+      video-room/versions/{objectId}/original.{extension}
       assets/{module}/{objectId}-{filename}
 ```
 
@@ -36,3 +38,8 @@ Operational prefixes are deliberately outside tenant storage:
 
 The zero-byte prefix markers in S3 exist for console discoverability only.
 Objects must always use the complete canonical hierarchy above.
+
+Browser and Adobe UXP uploads receive short-lived, checksum-bound presigned
+URLs after PostgreSQL authorization. The bucket CORS origin is therefore `*`
+because UXP origins vary by host/runtime; this does not make the bucket public
+or bypass the signature, expiry, object key or checksum bound into each URL.

@@ -6,7 +6,9 @@ ROLE_ROOM_AWS_PROFILE="${1:-}"
 ROLE_ROOM_AWS_ACCOUNT_ID="745600963362"
 ROLE_ROOM_AWS_REGION="eu-north-1"
 ROLE_ROOM_BUCKET="the-role-room-prod-${ROLE_ROOM_AWS_ACCOUNT_ID}-${ROLE_ROOM_AWS_REGION}"
-ROLE_ROOM_INFRA_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROLE_ROOM_RUNTIME_ROLE="TheRoleRoomStorageRuntimeProd"
+ROLE_ROOM_RUNTIME_POLICY_ARN="arn:aws:iam::${ROLE_ROOM_AWS_ACCOUNT_ID}:policy/TheRoleRoomStorageRuntimeProd"
+ROLE_ROOM_INFRA_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 
 if [ -z "$ROLE_ROOM_AWS_PROFILE" ]; then
   echo "Usage: $0 <aws-profile>" >&2
@@ -76,4 +78,52 @@ aws s3api put-bucket-tagging \
   --bucket "$ROLE_ROOM_BUCKET" \
   --tagging "file://${ROLE_ROOM_INFRA_DIR}/tags.json"
 
-echo "The Role Room S3 bucket is configured: $ROLE_ROOM_BUCKET"
+ROLE_ROOM_ATTACHED_POLICY=$(aws iam list-attached-role-policies \
+  --profile "$ROLE_ROOM_AWS_PROFILE" \
+  --role-name "$ROLE_ROOM_RUNTIME_ROLE" \
+  --query "AttachedPolicies[?PolicyArn=='${ROLE_ROOM_RUNTIME_POLICY_ARN}'].PolicyArn | [0]" \
+  --output text)
+if [ "$ROLE_ROOM_ATTACHED_POLICY" != "$ROLE_ROOM_RUNTIME_POLICY_ARN" ]; then
+  echo "Refusing to replace the runtime policy: $ROLE_ROOM_RUNTIME_POLICY_ARN is not attached to $ROLE_ROOM_RUNTIME_ROLE" >&2
+  exit 1
+fi
+
+ROLE_ROOM_DEFAULT_POLICY_VERSION=$(aws iam get-policy \
+  --profile "$ROLE_ROOM_AWS_PROFILE" \
+  --policy-arn "$ROLE_ROOM_RUNTIME_POLICY_ARN" \
+  --query Policy.DefaultVersionId \
+  --output text)
+ROLE_ROOM_CURRENT_POLICY=$(mktemp)
+trap 'rm -f "$ROLE_ROOM_CURRENT_POLICY"' EXIT
+aws iam get-policy-version \
+  --profile "$ROLE_ROOM_AWS_PROFILE" \
+  --policy-arn "$ROLE_ROOM_RUNTIME_POLICY_ARN" \
+  --version-id "$ROLE_ROOM_DEFAULT_POLICY_VERSION" \
+  --query PolicyVersion.Document \
+  --output json > "$ROLE_ROOM_CURRENT_POLICY"
+
+if ! python3 - "$ROLE_ROOM_CURRENT_POLICY" "${ROLE_ROOM_INFRA_DIR}/application-policy.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as current, open(sys.argv[2], encoding="utf-8") as desired:
+    raise SystemExit(0 if json.load(current) == json.load(desired) else 1)
+PY
+then
+  ROLE_ROOM_POLICY_VERSION_COUNT=$(aws iam list-policy-versions \
+    --profile "$ROLE_ROOM_AWS_PROFILE" \
+    --policy-arn "$ROLE_ROOM_RUNTIME_POLICY_ARN" \
+    --query 'length(Versions)' \
+    --output text)
+  if [ "$ROLE_ROOM_POLICY_VERSION_COUNT" -ge 5 ]; then
+    echo "Refusing to delete an IAM rollback version: $ROLE_ROOM_RUNTIME_POLICY_ARN already has five versions" >&2
+    exit 1
+  fi
+  aws iam create-policy-version \
+    --profile "$ROLE_ROOM_AWS_PROFILE" \
+    --policy-arn "$ROLE_ROOM_RUNTIME_POLICY_ARN" \
+    --policy-document "file://${ROLE_ROOM_INFRA_DIR}/application-policy.json" \
+    --set-as-default
+fi
+
+echo "The Role Room S3 bucket and runtime policy are configured: $ROLE_ROOM_BUCKET"

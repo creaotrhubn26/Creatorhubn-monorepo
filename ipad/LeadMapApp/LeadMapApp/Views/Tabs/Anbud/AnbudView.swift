@@ -39,6 +39,14 @@ struct AnbudView: View {
     @State private var watches: [DoffinWatchDTO] = []
     @State private var showWatches = false
     @State private var copiedToastId: String?
+    // Produktprofilen beskriver hva kunden selger inn i offentlige anbud.
+    // Den er adskilt fra Discovery-profilene, som beskriver hvem kunden
+    // ønsker å finne. Bakgrunnsovervåkning krever eksplisitt adminvalg.
+    @State private var projectProfile: DoffinProjectProfileDTO?
+    @State private var selectedSuggestedWatchKeys: Set<String> = []
+    @State private var profileIsLoading = false
+    @State private var profileIsConfirming = false
+    @State private var profileError: String?
     // «Opprett lead» (fase 2, 2026-08-02): kunngjøring → ekte CRM-lead
     // via from-card-løypa (BRREG-kobling på org.nr + full berikelse).
     @State private var creatingLeadId: String?
@@ -80,6 +88,15 @@ struct AnbudView: View {
     private var isDentumProject: Bool {
         DemoModeManager.isDentumTour
             || activeProjectName?.localizedCaseInsensitiveContains("dentum") == true
+    }
+
+    private var usesTidumOnboardingQAFixture: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["QA_TOUR"] == "domain-onboarding"
+            && appState.activeLeadgridProjectId == "qa-tidum-project"
+        #else
+        return false
+        #endif
     }
 
     private var hasProjectSearchBasis: Bool {
@@ -194,6 +211,7 @@ struct AnbudView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     header
+                    projectProfileCard
                     searchCard
                     if let errorText {
                         errorBanner(errorText)
@@ -215,7 +233,18 @@ struct AnbudView: View {
             pipelineStats = nil
             iPipelineIds = []
             scores = [:]
+            projectProfile = nil
+            selectedSuggestedWatchKeys = []
+            profileError = nil
             await initialLoad()
+        }
+        .onChange(of: appState.pendingAnbudSearch?.id) { _, intentId in
+            guard intentId != nil else { return }
+            Task {
+                if consumePendingAnbudSearch() {
+                    await search()
+                }
+            }
         }
     }
 
@@ -292,6 +321,197 @@ struct AnbudView: View {
         .fixedSize(horizontal: true, vertical: false)
     }
 
+    // MARK: Prosjektprofil
+
+    @ViewBuilder
+    private var projectProfileCard: some View {
+        if profileIsLoading {
+            HStack(spacing: 10) {
+                ProgressView().tint(.white)
+                Text("Henter prosjektets anbudsprofil …")
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(LBrand.textSecondary)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(LBrand.card, in: RoundedRectangle(cornerRadius: 14))
+            .accessibilityIdentifier("anbud.project-profile.loading")
+        } else if let profile = projectProfile {
+            VStack(alignment: .leading, spacing: 12) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 12) {
+                        projectProfileTitle(profile)
+                        Spacer(minLength: 12)
+                        projectProfileStatus(profile)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        projectProfileTitle(profile)
+                        projectProfileStatus(profile)
+                    }
+                }
+
+                Text(profile.description)
+                    .font(.appScaled(size: 12))
+                    .foregroundStyle(LBrand.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(profile.cpvCodes, id: \.self) { code in
+                            Text("CPV \(code)")
+                                .font(.appScaled(size: 10, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 6)
+                                .background(LBrand.cardHi, in: Capsule())
+                        }
+                    }
+                }
+                .accessibilityLabel("\(profile.cpvCodes.count) produktkoder")
+
+                if profile.isActive {
+                    Label(
+                        "\(profile.selectedWatchKeys.count) valgte overvåkninger følger nye Doffin-treff for dette prosjektet.",
+                        systemImage: "checkmark.shield.fill"
+                    )
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(LBrand.green)
+                } else {
+                    Divider().overlay(LBrand.stroke)
+                    Text("Velg hva prosjektet skal følge")
+                        .font(.appScaled(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("Du kan søke med profilen med én gang. Nye treff overvåkes først etter bekreftelse.")
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(LBrand.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    ForEach(profile.suggestedWatches) { watch in
+                        Toggle(isOn: suggestedWatchBinding(watch.key)) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(watch.name)
+                                    .font(.appScaled(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                Text(watch.query.cpv ?? "")
+                                    .font(.appScaled(size: 10, design: .monospaced))
+                                    .foregroundStyle(LBrand.textTertiary)
+                            }
+                        }
+                        .tint(LBrand.purpleLight)
+                        .disabled(!profile.canManage || profileIsConfirming)
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("anbud.project-profile.watch.\(watch.key)")
+                    }
+
+                    if profile.canManage {
+                        Button {
+                            Task { await confirmProjectProfile() }
+                        } label: {
+                            HStack(spacing: 8) {
+                                if profileIsConfirming {
+                                    ProgressView().controlSize(.small).tint(.white)
+                                } else {
+                                    Image(systemName: "bell.badge.fill")
+                                }
+                                Text(profileIsConfirming
+                                     ? "Aktiverer …"
+                                     : "Aktiver valgte overvåkninger")
+                                    .font(.appScaled(size: 12, weight: .bold))
+                            }
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .background(
+                                LinearGradient(
+                                    colors: [LBrand.purple, LBrand.purpleLight],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                                in: RoundedRectangle(cornerRadius: 11)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(selectedSuggestedWatchKeys.isEmpty || profileIsConfirming)
+                        .opacity(selectedSuggestedWatchKeys.isEmpty ? 0.55 : 1)
+                        .accessibilityIdentifier("anbud.project-profile.confirm")
+                    } else {
+                        Label(
+                            "Prosjekteier eller organisasjonsadmin må bekrefte overvåkningene.",
+                            systemImage: "lock.shield.fill"
+                        )
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(LBrand.orange)
+                    }
+                }
+
+                if let profileError {
+                    Text(profileError)
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(LBrand.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(14)
+            .background(LBrand.card, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(LBrand.purple.opacity(0.35), lineWidth: 1)
+            )
+        } else if let profileError {
+            errorBanner(profileError)
+                .accessibilityIdentifier("anbud.project-profile.error")
+        }
+    }
+
+    private func projectProfileTitle(_ profile: DoffinProjectProfileDTO) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "scope")
+                .font(.appScaled(size: 16, weight: .bold))
+                .foregroundStyle(LBrand.purpleLight)
+                .frame(width: 28, height: 28)
+                .background(LBrand.purple.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Produktprofil for \(activeProjectName ?? "prosjektet")")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(LBrand.textTertiary)
+                Text(profile.name)
+                    .font(.appScaled(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("anbud.project-profile")
+    }
+
+    private func projectProfileStatus(_ profile: DoffinProjectProfileDTO) -> some View {
+        Label(
+            profile.isActive ? "Aktiv" : "Krever bekreftelse",
+            systemImage: profile.isActive ? "checkmark.circle.fill" : "hand.raised.fill"
+        )
+        .font(.appScaled(size: 10, weight: .bold))
+        .foregroundStyle(profile.isActive ? LBrand.green : LBrand.orange)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(
+            (profile.isActive ? LBrand.green : LBrand.orange).opacity(0.13),
+            in: Capsule()
+        )
+        .fixedSize()
+    }
+
+    private func suggestedWatchBinding(_ key: String) -> Binding<Bool> {
+        Binding(
+            get: { selectedSuggestedWatchKeys.contains(key) },
+            set: { selected in
+                if selected {
+                    selectedSuggestedWatchKeys.insert(key)
+                } else {
+                    selectedSuggestedWatchKeys.remove(key)
+                }
+            }
+        )
+    }
+
     // MARK: Søk
 
     private var searchCard: some View {
@@ -316,11 +536,17 @@ struct AnbudView: View {
             if !externalCpv.isEmpty && selectedBransje == nil && !brukKundeCpv {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkles").font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
-                    Text("Foreslått fra din bransje (NACE)").font(.appScaled(size: 11)).foregroundStyle(LBrand.textTertiary)
-                    Spacer()
-                    Button("Fjern") { externalCpv = []; Task { await search() } }
-                        .font(.appScaled(size: 11, weight: .semibold))
+                    Text(projectProfile == nil
+                         ? "Foreslått fra prosjektets Discovery-grunnlag"
+                         : "Produktprofil · \(externalCpv.count) relevante CPV-koder")
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(LBrand.textTertiary)
+                    Spacer()
+                    if projectProfile == nil {
+                        Button("Fjern") { externalCpv = []; Task { await search() } }
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(LBrand.textTertiary)
+                    }
                 }
             }
 
@@ -1651,6 +1877,12 @@ struct AnbudView: View {
                             searchText = w.query.q ?? ""
                             selectedFylke = Fylke(rawValue: w.query.location ?? "")
                             selectedBransje = Bransje.allCases.first { $0.cpv == w.query.cpv }
+                            if selectedBransje == nil {
+                                externalCpv = (w.query.cpv ?? "")
+                                    .split(separator: ",")
+                                    .map(String.init)
+                            }
+                            brukKundeCpv = false
                             showWatches = false
                             // Kjøring = sett: nullstill «nye treff»-badgen
                             // (fire-and-forget — søket er hovedhandlingen).
@@ -1710,7 +1942,9 @@ struct AnbudView: View {
     // MARK: Handlinger
 
     private func initialLoad() async {
+        await loadProjectProfile()
         await reloadWatches()
+        _ = consumePendingAnbudSearch()
         guard !(isDentumProject && !hasProjectSearchBasis) else {
             results = []
             total = 0
@@ -1720,6 +1954,20 @@ struct AnbudView: View {
     }
 
     private func search() async {
+        if usesTidumOnboardingQAFixture {
+            isLoading = false
+            errorText = nil
+            let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                .localizedLowercase
+            let relevant = Self.demoTidumKunngjoringer.filter { item in
+                query.isEmpty
+                    || item.tittel.localizedLowercase.contains(query)
+                    || item.beskrivelse.localizedLowercase.contains(query)
+            }
+            results = relevant
+            total = relevant.count
+            return
+        }
         // Demo-modus (2026-08-03): fanen skal være testbar/demobar uten
         // ekte innlogging + entitlement — statiske mock-kunngjøringer,
         // lett filtrert så kontrollene kjennes ekte.
@@ -1754,7 +2002,8 @@ struct AnbudView: View {
                 q: searchText.isEmpty ? nil : searchText,
                 location: selectedFylke?.rawValue,
                 cpv: effektivCpv,
-                status: status
+                status: status,
+                useProjectProfile: projectProfile != nil
             )
             guard appState.activeLeadgridProjectId == projectId else { return }
             results = r.kunngjoringer
@@ -1770,6 +2019,10 @@ struct AnbudView: View {
     }
 
     private func reloadWatches() async {
+        if usesTidumOnboardingQAFixture {
+            watches = []
+            return
+        }
         if DemoModeManager.isActiveNonisolated {
             watches = isDentumProject ? [] : Self.demoWatches
             return
@@ -1781,6 +2034,79 @@ struct AnbudView: View {
         watches = loaded
     }
 
+    private func loadProjectProfile() async {
+        guard !DemoModeManager.isActiveNonisolated,
+              let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else {
+            projectProfile = nil
+            return
+        }
+        profileIsLoading = true
+        defer { profileIsLoading = false }
+        profileError = nil
+        do {
+            let loaded = try await api.fetchDoffinProjectProfile(projectId: projectId)
+            guard appState.activeLeadgridProjectId == projectId else { return }
+            projectProfile = loaded
+            if let loaded {
+                if externalCpv.isEmpty {
+                    externalCpv = loaded.cpvCodes
+                }
+                let selected = loaded.selectedWatchKeys.isEmpty
+                    ? loaded.suggestedWatches.map(\.key)
+                    : loaded.selectedWatchKeys
+                selectedSuggestedWatchKeys = Set(selected)
+            }
+        } catch {
+            guard appState.activeLeadgridProjectId == projectId else { return }
+            projectProfile = nil
+            profileError = "Kunne ikke hente prosjektets anbudsprofil. Du kan fortsatt søke manuelt."
+        }
+    }
+
+    @discardableResult
+    private func consumePendingAnbudSearch() -> Bool {
+        guard let intent = appState.pendingAnbudSearch,
+              intent.projectId == appState.activeLeadgridProjectId else { return false }
+        externalCpv = intent.cpvCodes
+        selectedBransje = nil
+        brukKundeCpv = false
+        if let query = intent.query, !query.isEmpty {
+            searchText = query
+        }
+        appState.clearAnbudSearchIntent(id: intent.id)
+        return true
+    }
+
+    private func confirmProjectProfile() async {
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId,
+              let profile = projectProfile,
+              profile.canManage,
+              !selectedSuggestedWatchKeys.isEmpty else { return }
+        profileIsConfirming = true
+        defer { profileIsConfirming = false }
+        profileError = nil
+        do {
+            let orderedKeys = profile.suggestedWatches
+                .map(\.key)
+                .filter(selectedSuggestedWatchKeys.contains)
+            let confirmed = try await api.confirmDoffinProjectProfile(
+                projectId: projectId,
+                watchKeys: orderedKeys
+            )
+            guard appState.activeLeadgridProjectId == projectId else { return }
+            projectProfile = confirmed.profile
+            selectedSuggestedWatchKeys = Set(confirmed.profile.selectedWatchKeys)
+            watches = confirmed.watches
+            externalCpv = confirmed.profile.cpvCodes
+            await search()
+        } catch {
+            guard appState.activeLeadgridProjectId == projectId else { return }
+            profileError = "Kunne ikke aktivere overvåkningene. Prøv igjen. (\(error.localizedDescription))"
+        }
+    }
+
     private func saveCurrentAsWatch() async {
         guard let api = appState.api,
               let projectId = appState.activeLeadgridProjectId else { return }
@@ -1790,7 +2116,7 @@ struct AnbudView: View {
         let query = DoffinWatchQueryDTO(
             q: searchText.isEmpty ? nil : searchText,
             location: selectedFylke?.rawValue,
-            cpv: selectedBransje?.cpv
+            cpv: effektivCpv
         )
         do {
             try await api.createDoffinWatch(
@@ -1839,13 +2165,32 @@ struct AnbudView: View {
               url: "https://doffin.no"),
     ]
 
+    private static let demoTidumKunngjoringer: [DoffinKunngjoringDTO] = [
+        .init(
+            id: "qa-tidum-anbud-1",
+            tittel: "[Demo] Anskaffelse av turnus- og arbeidstidssystem",
+            beskrivelse: "Programvare for arbeidstidsregistrering, bemanningsplanlegging og digital dokumentasjon.",
+            oppdragsgivere: [.init(navn: "Eksempel kommune", orgnr: "999999999")],
+            verdi: nil,
+            type: "COMPETITION",
+            status: "ACTIVE",
+            kunngjort: "2026-09-10",
+            frist: "2026-10-15",
+            nutsKoder: ["NO081"],
+            cpvKoder: ["48450000", "48332000"],
+            url: "https://doffin.no"
+        ),
+    ]
+
     private static let demoWatches: [DoffinWatchDTO] = [
         .init(id: "demo-w1", name: "Elektro · Akershus",
               query: .init(q: nil, location: "NO084", cpv: "45310000"),
-              createdAt: nil, newHitsCount: 2),
+              createdAt: nil, newHitsCount: 2,
+              templateKey: nil, templateVersion: nil),
         .init(id: "demo-w2", name: "rammeavtale",
               query: .init(q: "rammeavtale", location: nil, cpv: nil),
-              createdAt: nil, newHitsCount: 0),
+              createdAt: nil, newHitsCount: 0,
+              templateKey: nil, templateVersion: nil),
     ]
 
     // MARK: Helpers

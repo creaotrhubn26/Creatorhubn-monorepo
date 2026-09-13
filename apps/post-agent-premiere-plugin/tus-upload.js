@@ -1,6 +1,7 @@
 "use strict";
 
 const { TUS_VERSION, isUploadTicketExpired, validateSize, validateUploadTicket } = require("./publish-core");
+const { createFileReader } = require("./file-reader");
 
 class TusUploadError extends Error {
   constructor(message, code, status) {
@@ -33,19 +34,6 @@ async function readOffset(fetchImpl, uploadUrl) {
   return responseOffset(response);
 }
 
-async function readChunk(fsApi, fd, position, length) {
-  const buffer = new ArrayBuffer(length);
-  let total = 0;
-  while (total < length) {
-    const result = await fsApi.read(fd, buffer, total, length - total, position + total);
-    const bytesRead = Number(result && result.bytesRead) || 0;
-    if (!bytesRead) break;
-    total += bytesRead;
-  }
-  if (total !== length) throw new TusUploadError("Eksportfilen ble endret eller avkortet under opplasting.", "file_changed");
-  return buffer;
-}
-
 async function uploadFileTus(options) {
   const ticket = validateUploadTicket(options.ticket);
   const sizeBytes = validateSize(options.sizeBytes);
@@ -53,19 +41,23 @@ async function uploadFileTus(options) {
   const fsApi = options.fsApi;
   const fetchImpl = options.fetchImpl || fetch;
   const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => undefined;
-  if (!nativePath || !fsApi || typeof fsApi.open !== "function" || typeof fsApi.read !== "function") {
-    throw new TusUploadError("UXP-filsystemet er ikke tilgjengelig.", "filesystem_unavailable");
-  }
   if (isUploadTicketExpired(ticket)) throw new TusUploadError("Opplastingsbilletten er utløpt.", "ticket_expired");
 
   let offset = await readOffset(fetchImpl, ticket.uploadUrl);
   if (offset > sizeBytes) throw new TusUploadError("Cloudflare-offset er større enn eksportfilen.", "invalid_offset");
   onProgress({ offset, sizeBytes, percent: Math.floor((offset / sizeBytes) * 100) });
-  const fd = await fsApi.open(nativePath, "r");
+  const reader = await createFileReader({
+    nativePath,
+    sizeBytes,
+    fsApi,
+    file: options.file,
+    binaryFormat: options.binaryFormat,
+    maxBufferedBytes: options.maxBufferedBytes,
+  });
   try {
     while (offset < sizeBytes) {
       const length = Math.min(ticket.chunkSize, sizeBytes - offset);
-      const chunk = await readChunk(fsApi, fd, offset, length);
+      const chunk = await reader.read(offset, length);
       let response;
       try {
         response = await fetchImpl(ticket.uploadUrl, {
@@ -102,7 +94,7 @@ async function uploadFileTus(options) {
       onProgress({ offset, sizeBytes, percent: Math.floor((offset / sizeBytes) * 100) });
     }
   } finally {
-    await fsApi.close(fd).catch(() => undefined);
+    await reader.close();
   }
   return { offset, sizeBytes, complete: offset === sizeBytes };
 }

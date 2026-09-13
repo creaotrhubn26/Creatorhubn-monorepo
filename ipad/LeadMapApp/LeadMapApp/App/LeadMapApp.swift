@@ -332,6 +332,7 @@ struct RootView: View {
     @Environment(AppState.self) private var appState
     #if DEBUG
     @State private var qaFeedback = false
+    @State private var qaOfflineQueueReady = false
     #endif
 
     var body: some View {
@@ -389,7 +390,8 @@ struct RootView: View {
         }
         #if DEBUG
         .overlay(alignment: .bottomTrailing) {
-            if ProcessInfo.processInfo.environment["QA_NETWORK_CONTROLS"] == "1" {
+            if ProcessInfo.processInfo.environment["QA_NETWORK_CONTROLS"] == "1",
+               qaOfflineQueueReady {
                 HStack(spacing: 6) {
                     Button("QA Offline") {
                         NetworkMonitor.shared.setConnectivityForTesting(online: false)
@@ -431,16 +433,18 @@ struct RootView: View {
         .onAppear {
             if ProcessInfo.processInfo.environment["QA_FEEDBACK"] == "1" { qaFeedback = true }
         }
-        #endif
+        // Nullstill staging-køen uavhengig av den fullstendige bootstrapen.
+        // Nettverkskontrollene rendres først når dette er ferdig, slik at
+        // offline-testene aldri kan løpe mot gammel eller halvryddet tilstand.
         .task {
-            await appState.bootstrap()
-            #if DEBUG
-            // Staging-UI-testene skal være hermetiske selv når samme simulator
-            // tidligere har blitt avbrutt med ventende eller feilede handlinger.
             if ProcessInfo.processInfo.environment["QA_RESET_OFFLINE_QUEUE"] == "1" {
                 await OfflineActionQueue.shared.clearAll()
             }
-            #endif
+            qaOfflineQueueReady = true
+        }
+        #endif
+        .task {
+            await appState.bootstrap()
             // Start Leadgrid-polling så snart auth er på plass.
             if appState.api != nil {
                 appState.startLeadgridPolling()
@@ -1100,6 +1104,7 @@ struct MainTabView: View {
                 case .kart: selection = 1
                 case .leads where EntitlementStore.shared.canUse(.leads): selection = 2
                 case .moter: selection = 3
+                case .anbud: selection = 4
                 default: break
                 }
             }
@@ -1209,6 +1214,15 @@ struct PhoneMerTab: View {
                 }
             }
         }
+        .onAppear { routeGlobalSelection(state.selectedSidebarItem) }
+        .onChange(of: state.selectedSidebarItem) { _, item in
+            routeGlobalSelection(item)
+        }
+    }
+
+    private func routeGlobalSelection(_ item: SidebarItem) {
+        guard item == .anbud, path.last != .anbud else { return }
+        path = [.anbud]
     }
 
     private func merRow(_ dest: Destination, icon: String, color: Color,

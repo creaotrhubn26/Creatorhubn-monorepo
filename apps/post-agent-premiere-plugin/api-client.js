@@ -90,6 +90,30 @@ function createApiClient(options) {
         `video-versions/${encodeURIComponent(versionId)}/tus-retry`,
       ), input);
     },
+    signVideoVersionObjectParts(token, projectId, versionId, parts) {
+      return authenticatedJson(token, "POST", projectUrl(
+        projectId,
+        `video-versions/${encodeURIComponent(versionId)}/object-parts`,
+      ), { parts });
+    },
+    resumeVideoVersionObject(token, projectId, versionId) {
+      return authenticatedJson(token, "POST", projectUrl(
+        projectId,
+        `video-versions/${encodeURIComponent(versionId)}/object-resume`,
+      ), {});
+    },
+    fetchVideoVersionObjectStatus(token, projectId, versionId) {
+      return authenticatedJson(token, "GET", projectUrl(
+        projectId,
+        `video-versions/${encodeURIComponent(versionId)}/object-status`,
+      ));
+    },
+    completeVideoVersionObject(token, projectId, versionId, parts) {
+      return authenticatedJson(token, "POST", projectUrl(
+        projectId,
+        `video-versions/${encodeURIComponent(versionId)}/object-complete`,
+      ), { parts });
+    },
     fetchVideoVersionStreamStatus(token, projectId, versionId) {
       return authenticatedJson(token, "GET", projectUrl(
         projectId,

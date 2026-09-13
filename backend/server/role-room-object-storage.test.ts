@@ -1,4 +1,20 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+
+const aws = vi.hoisted(() => ({
+  tokenFileOptions: [] as Array<Record<string, unknown>>,
+  oidcCredentialProvider: vi.fn(async () => ({
+    accessKeyId: "temporary-role-key",
+    secretAccessKey: "temporary-role-secret",
+  })),
+}));
+
+vi.mock("@aws-sdk/credential-providers", () => ({
+  fromTokenFile: vi.fn((options: Record<string, unknown>) => {
+    aws.tokenFileOptions.push(options);
+    return aws.oidcCredentialProvider;
+  }),
+}));
 import {
   getConfiguredRoleRoomStorageProvider,
   getRoleRoomObjectStorage,
@@ -9,10 +25,49 @@ const originalEnv = { ...process.env };
 
 afterEach(() => {
   process.env = { ...originalEnv };
+  vi.clearAllMocks();
+  aws.tokenFileOptions.length = 0;
   resetRoleRoomStorageClientsForTests();
 });
 
 describe("role-room-object-storage", () => {
+  it("preserves Role Room prefixes and restricts CORS to Role Room web origins", () => {
+    const policy = JSON.parse(fs.readFileSync(new URL(
+      "../../infrastructure/aws/role-room-storage/application-policy.json",
+      import.meta.url,
+    ), "utf8"));
+    const cors = JSON.parse(fs.readFileSync(new URL(
+      "../../infrastructure/aws/role-room-storage/cors.json",
+      import.meta.url,
+    ), "utf8"));
+    const provision = fs.readFileSync(new URL(
+      "../../infrastructure/aws/role-room-storage/provision.sh",
+      import.meta.url,
+    ), "utf8");
+    const metadata = policy.Statement.find((statement: any) => statement.Sid === "RoleRoomBucketMetadata");
+    const objects = policy.Statement.find((statement: any) => statement.Sid === "RoleRoomObjectAccess");
+    const productionPrefixes = [
+      "agencies/*", "education/*", "exports/*", "organizations/*", "platform/*", "projects/*",
+      "quarantine/*", "talents/*", "temporary/*", "users/*", "workspaces/*",
+    ];
+    expect(metadata.Condition.StringLike["s3:prefix"]).toEqual(expect.arrayContaining(productionPrefixes));
+    expect(objects.Resource).toEqual(expect.arrayContaining(productionPrefixes.map(
+      (prefix) => `arn:aws:s3:::the-role-room-prod-745600963362-eu-north-1/${prefix}`,
+    )));
+    expect(objects.Action).toEqual(expect.arrayContaining([
+      "s3:AbortMultipartUpload", "s3:GetObject", "s3:ListMultipartUploadParts", "s3:PutObject",
+    ]));
+    expect(cors.CORSRules[0]).toMatchObject({
+      AllowedOrigins: ["https://theroleroom.com", "https://www.theroleroom.com"],
+      AllowedMethods: expect.arrayContaining(["GET", "HEAD", "PUT"]),
+      ExposeHeaders: expect.arrayContaining(["ETag", "x-amz-checksum-sha256"]),
+    });
+    expect(provision).toContain("aws iam create-policy-version");
+    expect(provision).toContain("--set-as-default");
+    expect(provision).toContain("already has five versions");
+    expect(provision).toContain("TheRoleRoomStorageRuntimeProd");
+  });
+
   it("defaults to AWS and requires an explicit opt-in for the legacy B2 rollback", () => {
     delete process.env.ROLE_ROOM_STORAGE_PROVIDER;
     expect(getConfiguredRoleRoomStorageProvider()).toBe("aws_s3");
@@ -46,6 +101,15 @@ describe("role-room-object-storage", () => {
     expect(storage?.provider).toBe("aws_s3");
     expect(storage?.authentication).toBe("render_web_identity");
     await expect(storage?.client.config.region()).resolves.toBe("eu-north-1");
+    expect(aws.tokenFileOptions).toEqual([{
+      roleArn: "arn:aws:iam::123456789012:role/role-room-runtime",
+      webIdentityTokenFile: "/var/run/secrets/render-oidc-token",
+      roleSessionName: "the-role-room-object-storage",
+      clientConfig: { region: "eu-north-1" },
+    }]);
+    await expect(storage?.client.config.credentials()).resolves.toMatchObject({
+      accessKeyId: "temporary-role-key",
+    });
   });
 
   it("fails closed when web identity is incomplete and no static fallback exists", () => {

@@ -145,6 +145,19 @@ describe("Leadgrid domain onboarding classification", () => {
       },
     });
     expect(plan.brand_profile.targetAudience).toContain("kommunale tjenester");
+    expect(plan.recommended_anbud_profile).toMatchObject({
+      template_key: "tidum.procurement",
+      template_version: 1,
+      cpv_codes: [
+        "48450000",
+        "72212450",
+        "48332000",
+        "48311000",
+        "48311100",
+      ],
+      requires_admin_confirmation: true,
+    });
+    expect(plan.recommended_anbud_profile?.cpv_codes).not.toContain("85000000");
     expect(plan.recommended_profiles).toHaveLength(4);
     expect(plan.recommended_profiles.map((item) => item.template_key)).toEqual([
       "tidum.child_welfare",

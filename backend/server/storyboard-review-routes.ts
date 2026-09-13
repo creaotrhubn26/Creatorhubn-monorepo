@@ -89,13 +89,36 @@ const decisionBody = z.object({
   note: z.string().trim().max(5_000).nullable().optional(),
   confirmOpenComments: z.boolean().default(false),
 }).strict();
+const pairedAnchorFields = {
+  anchorX: z.number().finite().min(0).max(1).nullable().optional(),
+  anchorY: z.number().finite().min(0).max(1).nullable().optional(),
+};
+
+function requirePairedAnchorUpdate(
+  value: { anchorX?: number | null; anchorY?: number | null },
+  context: z.RefinementCtx,
+) {
+  const hasAnchorX = Object.prototype.hasOwnProperty.call(value, 'anchorX');
+  const hasAnchorY = Object.prototype.hasOwnProperty.call(value, 'anchorY');
+  if (hasAnchorX !== hasAnchorY || (hasAnchorX && ((value.anchorX == null) !== (value.anchorY == null)))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'anchor_coordinates_must_be_paired' });
+  }
+}
+
 const commentResolutionBody = z.object({
   status: z.enum(['open', 'resolved']).optional(),
   assignedTo: z.string().trim().min(1).max(180).nullable().optional(),
   dueAt: z.string().datetime({ offset: true }).nullable().optional(),
   resolutionNote: z.string().trim().max(5_000).nullable().optional(),
   resolvedInRoundId: z.string().uuid().nullable().optional(),
-}).strict().refine((value) => Object.keys(value).length > 0);
+  ...pairedAnchorFields,
+}).strict()
+  .refine((value) => Object.keys(value).length > 0)
+  .superRefine(requirePairedAnchorUpdate);
+
+const commentMarkupUpdateBody = z.object(pairedAnchorFields).strict()
+  .refine((value) => Object.keys(value).length > 0)
+  .superRefine(requirePairedAnchorUpdate);
 
 const reviewChangeFields = [
   'description', 'notes', 'shotType', 'cameraAngle', 'movement', 'lensMm',
@@ -896,7 +919,7 @@ export function registerStoryboardReviewRoutes(
     if (!parsed.success) { res.status(400).json({ error: 'invalid_request' }); return; }
     const { projectId, manuscriptId, roundId, commentId } = req.params;
     const sourceRound = await pool.query(
-      `SELECT id, version FROM storyboard_review_rounds
+      `SELECT id, version, status FROM storyboard_review_rounds
         WHERE id = $1 AND project_id = $2 AND manuscript_id = $3`,
       [roundId, projectId, manuscriptId],
     );
@@ -932,6 +955,26 @@ export function registerStoryboardReviewRoutes(
     const hasDueAt = Object.prototype.hasOwnProperty.call(parsed.data, 'dueAt');
     const hasResolutionNote = Object.prototype.hasOwnProperty.call(parsed.data, 'resolutionNote');
     const hasResolvedInRoundId = Object.prototype.hasOwnProperty.call(parsed.data, 'resolvedInRoundId');
+    const hasAnchor = Object.prototype.hasOwnProperty.call(parsed.data, 'anchorX');
+    if (hasAnchor && ['approved', 'superseded'].includes(String(sourceRound.rows[0].status))) {
+      res.status(409).json({ error: 'review_round_locked' }); return;
+    }
+    if (hasAnchor && parsed.data.anchorX != null) {
+      const anchoredComment = await pool.query(
+        `SELECT comment.frame_id
+           FROM storyboard_review_comments AS comment
+           JOIN storyboard_review_rounds AS review_round ON review_round.id = comment.review_round_id
+          WHERE comment.id = $1 AND comment.review_round_id = $2
+            AND review_round.project_id = $3 AND review_round.manuscript_id = $4`,
+        [commentId, roundId, projectId, manuscriptId],
+      );
+      if (!anchoredComment.rows[0]) {
+        res.status(404).json({ error: 'review_comment_not_found' }); return;
+      }
+      if (!anchoredComment.rows[0].frame_id) {
+        res.status(409).json({ error: 'review_comment_has_no_frame' }); return;
+      }
+    }
     const actorUserId = String((req as AuthedRequest).userId ?? '');
     const updated = await pool.query(
       `UPDATE storyboard_review_comments AS comment
@@ -950,6 +993,8 @@ export function registerStoryboardReviewRoutes(
               resolved_at = CASE
                 WHEN $5::text = 'resolved' THEN now()
                 WHEN $5::text = 'open' THEN NULL ELSE comment.resolved_at END,
+              anchor_x = CASE WHEN $15 THEN $16::real ELSE comment.anchor_x END,
+              anchor_y = CASE WHEN $15 THEN $17::real ELSE comment.anchor_y END,
               updated_at = now()
          FROM storyboard_review_rounds AS review_round
         WHERE comment.id = $1
@@ -963,7 +1008,7 @@ export function registerStoryboardReviewRoutes(
         hasDueAt, parsed.data.dueAt ?? null,
         hasResolutionNote, parsed.data.resolutionNote ?? null,
         hasResolvedInRoundId, parsed.data.resolvedInRoundId ?? null,
-        actorUserId],
+        actorUserId, hasAnchor, parsed.data.anchorX ?? null, parsed.data.anchorY ?? null],
     );
     const comment = updated.rows[0];
     if (!comment) { res.status(404).json({ error: 'review_comment_not_found' }); return; }
@@ -1363,7 +1408,14 @@ export function registerStoryboardReviewRoutes(
     ]);
     res.json({ success: true, data: {
       requiresIdentity: false,
-      round: { ...round, comments: comments.rows.map(mapComment), decisions: decisions.rows.map(mapDecision) },
+      round: {
+        ...round,
+        comments: comments.rows.map((comment) => ({
+          ...mapComment(comment),
+          canEdit: Boolean(reviewer) && String(comment.reviewer_session_id) === String(reviewer.id),
+        })),
+        decisions: decisions.rows.map(mapDecision),
+      },
       share: { accessMode: share.share_access_mode, requireIdentity: share.share_require_identity,
         expiresAt: share.share_expires_at },
       reviewer: reviewer ? { id: reviewer.id, displayName: reviewer.display_name, email: reviewer.email } : null,
@@ -1456,7 +1508,38 @@ export function registerStoryboardReviewRoutes(
         frameId: inserted.frame_id ?? null, actorDisplayName: String(reviewer.display_name),
       },
     });
-    res.status(201).json({ success: true, data: mapComment(inserted) });
+    res.status(201).json({ success: true, data: { ...mapComment(inserted), canEdit: true } });
+  }));
+
+  router.patch('/storyboard-review/:token/comments/:commentId/markup', asyncHandler(async (req, res) => {
+    if (rejectIfRateLimited(req, res, 'storyboard-review:comment-markup', 90)) return;
+    const parsed = commentMarkupUpdateBody.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_request' }); return; }
+    const share = await resolveShare(pool, String(req.params.token));
+    if (!share) { res.status(404).json({ error: 'review_link_not_found' }); return; }
+    if (!['comment', 'approve'].includes(share.share_access_mode)) {
+      res.status(403).json({ error: 'comments_not_allowed' }); return;
+    }
+    if (['approved', 'superseded'].includes(String(share.status))) {
+      res.status(409).json({ error: 'review_round_locked' }); return;
+    }
+    const reviewer = await resolveReviewer(
+      pool, String(share.share_link_id), req.header('x-storyboard-reviewer') || undefined,
+    );
+    if (!reviewer) { res.status(401).json({ error: 'reviewer_identity_required' }); return; }
+    const updated = await pool.query(
+      `UPDATE storyboard_review_comments
+          SET anchor_x = $4::real, anchor_y = $5::real, updated_at = now()
+        WHERE id = $1 AND review_round_id = $2 AND reviewer_session_id = $3
+          AND ($4::real IS NULL OR frame_id IS NOT NULL)
+      RETURNING *`,
+      [req.params.commentId, share.id, reviewer.id,
+        parsed.data.anchorX ?? null, parsed.data.anchorY ?? null],
+    );
+    if (!updated.rows[0]) {
+      res.status(404).json({ error: 'review_comment_not_found' }); return;
+    }
+    res.json({ success: true, data: { ...mapComment(updated.rows[0]), canEdit: true } });
   }));
 
   router.post('/storyboard-review/:token/decisions', asyncHandler(async (req, res) => {

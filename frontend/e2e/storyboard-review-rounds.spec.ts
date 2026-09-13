@@ -148,6 +148,7 @@ test('guest identity, frame comment and exact-revision sign-off work end to end'
   let identified = false;
   let approved = false;
   let submittedCommentBody: Record<string, any> | null = null;
+  let movedCommentBody: Record<string, any> | null = null;
   const comments: any[] = [{
     id: 'comment-resolved-e2e', reviewRoundId: 'round-e2e', frameId: 'frame-e2e',
     authorDisplayName: 'Ola Kunde', body: 'Gjør utsnittet tettere.', visibility: 'client',
@@ -158,12 +159,14 @@ test('guest identity, frame comment and exact-revision sign-off work end to end'
       points: [{ x: 0.12, y: 0.22 }, { x: 0.28, y: 0.42 }],
     }],
     resolvedInRoundId: 'round-e2e', createdAt: '2026-09-12T12:01:00Z',
+    canEdit: false,
   }, {
     id: 'comment-legacy-e2e', reviewRoundId: 'round-e2e', frameId: 'frame-e2e',
     authorDisplayName: 'Tidligere kunde', body: 'Eksisterende kommentar uten markering.',
     visibility: 'client', status: 'resolved', assignedTo: null,
     resolutionNote: 'Beholdt som før.', resolvedInRoundId: 'round-e2e',
     createdAt: '2026-09-12T11:55:00Z',
+    canEdit: false,
   }];
   await page.route('**/api/role-room/storyboard-review/review-token-e2e**', async (route) => {
     const url = route.request().url();
@@ -180,8 +183,15 @@ test('guest identity, frame comment and exact-revision sign-off work end to end'
       comments.push({ id: 'comment-e2e', reviewRoundId: 'round-e2e', frameId: body.frameId,
         authorDisplayName: 'Kari Klient', body: body.body, visibility: 'client', status: 'open',
         anchorX: body.anchorX, anchorY: body.anchorY, annotations: body.annotations,
-        createdAt: '2026-09-12T12:02:00Z' });
+        createdAt: '2026-09-12T12:02:00Z', canEdit: true });
       await route.fulfill({ status: 201, json: { success: true, data: comments.at(-1) } }); return;
+    }
+    if (url.endsWith('/comments/comment-e2e/markup') && method === 'PATCH') {
+      const body = route.request().postDataJSON();
+      movedCommentBody = body;
+      const ownComment = comments.find((entry) => entry.id === 'comment-e2e');
+      Object.assign(ownComment, { anchorX: body.anchorX, anchorY: body.anchorY });
+      await route.fulfill({ json: { success: true, data: ownComment } }); return;
     }
     if (url.endsWith('/decisions') && method === 'POST') {
       const body = route.request().postDataJSON();
@@ -227,6 +237,12 @@ test('guest identity, frame comment and exact-revision sign-off work end to end'
   const bounds = await canvas.boundingBox();
   expect(bounds).not.toBeNull();
   if (!bounds) throw new Error('Missing storyboard review markup canvas bounds');
+  await page.getByTestId('storyboard-review-tool-pin').click();
+  await page.mouse.move(bounds.x + bounds.width * 0.42, bounds.y + bounds.height * 0.22);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width * 0.42, bounds.y + bounds.height * 0.62, { steps: 6 });
+  await page.mouse.up();
+  await expect(page.getByTestId('storyboard-review-draft-markup').locator('circle')).toHaveCount(0);
   await page.getByTestId('storyboard-review-tool-freehand').click();
   await page.mouse.move(bounds.x + bounds.width * 0.12, bounds.y + bounds.height * 0.72);
   await page.mouse.down();
@@ -256,6 +272,38 @@ test('guest identity, frame comment and exact-revision sign-off work end to end'
     expect.objectContaining({ tool: 'arrow', color: '#fbbf24', strokeWidth: 3 }),
   ]);
   await expect(page.getByTestId('storyboard-review-persisted-markup-comment-e2e')).toBeVisible();
+  const ownPin = page.getByTestId('storyboard-review-pin-comment-e2e');
+  await expect(ownPin).toBeVisible();
+  await ownPin.scrollIntoViewIfNeeded();
+  const pinBounds = await ownPin.boundingBox();
+  expect(pinBounds?.width).toBeGreaterThanOrEqual(44);
+  expect(pinBounds?.height).toBeGreaterThanOrEqual(44);
+  if (!pinBounds) throw new Error('Missing movable review pin bounds');
+  const dragCanvasBounds = await page
+    .getByTestId('storyboard-review-markup-canvas-frame-e2e').boundingBox();
+  if (!dragCanvasBounds) throw new Error('Missing review canvas bounds after pin scroll');
+  await page.mouse.move(pinBounds.x + pinBounds.width / 2, pinBounds.y + pinBounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    dragCanvasBounds.x + dragCanvasBounds.width * 0.46,
+    dragCanvasBounds.y + dragCanvasBounds.height * 0.37,
+    { steps: 6 },
+  );
+  await page.mouse.up();
+  await expect.poll(() => movedCommentBody).not.toBeNull();
+  expect(movedCommentBody?.anchorX).toBeCloseTo(0.46, 1);
+  expect(movedCommentBody?.anchorY).toBeCloseTo(0.37, 1);
+  await expect(page.getByTestId('storyboard-review-undo-pin-comment-e2e')).toBeVisible();
+  await page.getByTestId('storyboard-review-undo-pin-comment-e2e').click();
+  await expect.poll(() => movedCommentBody?.anchorX).toBeCloseTo(0.72, 1);
+  await ownPin.press('ArrowRight');
+  await expect.poll(() => movedCommentBody?.anchorX).toBeCloseTo(0.73, 2);
+  await page.getByTestId('storyboard-review-remove-pin-comment-e2e').click();
+  await expect.poll(() => movedCommentBody?.anchorX).toBeNull();
+  expect(movedCommentBody?.anchorY).toBeNull();
+  await expect(page.getByText('Hold to bilder lenger.')).toBeVisible();
+  await page.getByTestId('storyboard-review-undo-pin-comment-e2e').click();
+  await expect.poll(() => movedCommentBody?.anchorX).toBeCloseTo(0.73, 2);
   await page.getByTestId('storyboard-review-toggle-markup').click();
   await expect(page.getByTestId('storyboard-review-persisted-markup-comment-e2e')).toHaveCount(0);
   await page.getByTestId('storyboard-review-toggle-markup').click();

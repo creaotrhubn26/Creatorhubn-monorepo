@@ -130,3 +130,28 @@ test("publishing provisions, retries and polls one project-scoped Stream version
   assert.deepEqual(calls.map(({ init }) => init.method), ["POST", "POST", "GET"]);
   assert.equal(calls[2].init.headers.Authorization, "Bearer token");
 });
+
+test("object-storage fallback signs parts, resumes, checks status and completes one version", async () => {
+  const calls = [];
+  const client = createApiClient({
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return response(200, { ok: true });
+    },
+  });
+
+  await client.signVideoVersionObjectParts("token", "project/one", "version/two", [{
+    partNumber: 1,
+    checksumSha256: "a".repeat(64),
+  }]);
+  await client.resumeVideoVersionObject("token", "project/one", "version/two");
+  await client.fetchVideoVersionObjectStatus("token", "project/one", "version/two");
+  await client.completeVideoVersionObject("token", "project/one", "version/two", []);
+
+  assert.match(calls[0].url, /version%2Ftwo\/object-parts$/);
+  assert.match(calls[1].url, /version%2Ftwo\/object-resume$/);
+  assert.match(calls[2].url, /version%2Ftwo\/object-status$/);
+  assert.match(calls[3].url, /version%2Ftwo\/object-complete$/);
+  assert.deepEqual(calls.map(({ init }) => init.method), ["POST", "POST", "GET", "POST"]);
+  assert.deepEqual(JSON.parse(calls[0].init.body), { parts: [{ partNumber: 1, checksumSha256: "a".repeat(64) }] });
+});

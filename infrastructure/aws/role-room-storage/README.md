@@ -48,6 +48,10 @@ streaming the object to S3 and stores only S3 metadata in
 `casting_production_continuity_media`. Reads require current project access and
 return a signed URL lasting at most ten minutes.
 
+The bucket CORS rule is restricted to The Role Room's own web origins. Sound
+Room, Video Room and Adobe integrations use the separate CreatorHub storage
+boundary documented under `infrastructure/aws/creatorhubn-storage`.
+
 ## Provisioning checklist
 
 After authenticating an AWS CLI profile for account `745600963362`, run:
@@ -59,7 +63,10 @@ After authenticating an AWS CLI profile for account `745600963362`, run:
 The idempotent script creates the exact bucket when needed and applies public
 access blocking, BucketOwnerEnforced ownership, AES256 encryption, versioning,
 TLS-only bucket policy, lifecycle, CORS and tags. It refuses to run in another
-AWS account.
+AWS account. If the policy document changed, it creates and activates a new
+version of the existing customer-managed runtime policy so the previous version
+remains available for rollback. It refuses to delete old policy versions when
+AWS's five-version limit has been reached.
 
 The production account already defines `TheRoleRoomStorageRuntimeProd`, trusted
 only by the exact Render backend service through the workspace OIDC provider.
@@ -70,3 +77,7 @@ redeploy so Render can inject its rotating token file, and run:
 ```bash
 node scripts/deploy/render-backend.mjs assert-role-room-storage-runtime
 ```
+
+The attached runtime policy preserves every existing production Role Room
+namespace, including legacy `users/*` objects. CreatorHub media must never be
+written here.

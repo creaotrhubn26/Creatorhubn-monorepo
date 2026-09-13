@@ -13,6 +13,7 @@ const {
   validateUploadTicket,
 } = require("./publish-core");
 const { TusUploadError, uploadFileTus } = require("./tus-upload");
+const { ObjectUploadError, hashFileSha256, uploadFileObjectStorage } = require("./object-upload");
 const {
   buildVerificationUrl,
   markerSnapshotSignature,
@@ -1021,10 +1022,12 @@ function bindPublishedVersion(checkpoint, version) {
 }
 
 async function retryExpiredUpload(checkpoint) {
-  const replacement = await api.retryVideoVersionTus(token, checkpoint.projectId, checkpoint.ticket.versionId, {
-    expectedStreamUid: checkpoint.ticket.uid,
-    fileName: checkpoint.fileName,
-  });
+  const replacement = checkpoint.ticket.protocol === "tus"
+    ? await api.retryVideoVersionTus(token, checkpoint.projectId, checkpoint.ticket.versionId, {
+      expectedStreamUid: checkpoint.ticket.uid,
+      fileName: checkpoint.fileName,
+    })
+    : await api.resumeVideoVersionObject(token, checkpoint.projectId, checkpoint.ticket.versionId);
   checkpoint.ticket = validateUploadTicket(replacement);
   checkpoint.stage = "uploading";
   await savePublishCheckpoint(checkpoint);
@@ -1035,20 +1038,39 @@ async function uploadCheckpointFile(checkpoint, file) {
   if (Number(metadata && metadata.size) !== Number(checkpoint.sizeBytes)) {
     throw new Error("Eksportfilen er endret siden sendingen startet. Start en ny eksport.");
   }
-  const runUpload = () => uploadFileTus({
-    ticket: checkpoint.ticket,
-    nativePath: file.nativePath,
-    sizeBytes: checkpoint.sizeBytes,
-    fsApi: fs,
-    fetchImpl: fetch,
-    onProgress: ({ percent, offset, sizeBytes }) => {
-      setPublishProgress(percent, `Laster opp ${percent}% · ${Math.round(offset / 1024 / 1024)} av ${Math.round(sizeBytes / 1024 / 1024)} MiB`);
-    },
-  });
+  const progress = ({ percent, offset, sizeBytes }) => {
+    setPublishProgress(percent, `Laster opp ${percent}% · ${Math.round(offset / 1024 / 1024)} av ${Math.round(sizeBytes / 1024 / 1024)} MiB`);
+  };
+  const runUpload = () => checkpoint.ticket.protocol === "tus"
+    ? uploadFileTus({
+      ticket: checkpoint.ticket,
+      nativePath: file.nativePath,
+      sizeBytes: checkpoint.sizeBytes,
+      fsApi: fs,
+      file,
+      binaryFormat: storage.formats.binary,
+      fetchImpl: fetch,
+      onProgress: progress,
+    })
+    : uploadFileObjectStorage({
+      ticket: checkpoint.ticket,
+      nativePath: file.nativePath,
+      sizeBytes: checkpoint.sizeBytes,
+      checksumSha256: checkpoint.checksumSha256,
+      fsApi: fs,
+      file,
+      binaryFormat: storage.formats.binary,
+      fetchImpl: fetch,
+      onProgress: progress,
+      status: () => api.fetchVideoVersionObjectStatus(token, checkpoint.projectId, checkpoint.ticket.versionId),
+      signParts: (parts) => api.signVideoVersionObjectParts(token, checkpoint.projectId, checkpoint.ticket.versionId, parts),
+      complete: (parts) => api.completeVideoVersionObject(token, checkpoint.projectId, checkpoint.ticket.versionId, parts),
+    });
   try {
     await runUpload();
   } catch (error) {
-    if (!(error instanceof TusUploadError) || error.code !== "ticket_expired") throw error;
+    const expired = (error instanceof TusUploadError || error instanceof ObjectUploadError) && error.code === "ticket_expired";
+    if (!expired) throw error;
     setPublishProgress(0, "Fornyer utløpt opplastingsbillett…");
     await retryExpiredUpload(checkpoint);
     await runUpload();
@@ -1059,14 +1081,15 @@ async function uploadCheckpointFile(checkpoint, file) {
 }
 
 async function provisionCheckpoint(checkpoint) {
-  setStatus("Klargjør opplasting", "CreatorHub oppretter en privat, resumérbar Stream-versjon.", "warn");
-  setPublishProgress(0, "Reserverer plass i Cloudflare Stream…");
+  setStatus("Klargjør opplasting", "CreatorHub velger privat Stream eller verifisert objektlagring automatisk.", "warn");
+  setPublishProgress(0, "Reserverer privat videolagring…");
   const rawTicket = await api.provisionVideoVersionTus(token, checkpoint.projectId, {
     fileName: checkpoint.fileName,
     sizeBytes: checkpoint.sizeBytes,
     contentType: checkpoint.contentType,
     versionLabel: checkpoint.versionLabel,
     maxDurationSeconds: checkpoint.maxDurationSeconds,
+    checksumSha256: checkpoint.checksumSha256,
   });
   checkpoint.ticket = validateUploadTicket(rawTicket);
   checkpoint.stage = "uploading";
@@ -1079,7 +1102,9 @@ async function waitForPublishedVersion(checkpoint) {
     const progress = Number.isFinite(Number(status.progressPercent)) ? Math.round(Number(status.progressPercent)) : null;
     setPublishProgress(
       progress == null ? 100 : progress,
-      status.ready ? "Videoen er klar." : `Cloudflare behandler videoen${progress == null ? "…" : ` · ${progress}%`}`,
+      status.ready ? "Videoen er klar." : checkpoint.ticket.protocol === "tus"
+        ? `Cloudflare behandler videoen${progress == null ? "…" : ` · ${progress}%`}`
+        : "CreatorHub verifiserer den private videofilen…",
     );
     if (status.ready && status.status === "under_review") return status;
     if (status.ready) {
@@ -1154,6 +1179,25 @@ async function finishPublishWorkflow(checkpoint) {
 async function continuePublishCheckpoint() {
   if (!publishCheckpoint) throw new Error("Ingen avbrutt sending ble funnet.");
   const checkpoint = publishCheckpoint;
+  if (checkpoint.stage === "hashing") {
+    const file = await storage.localFileSystem.getEntryForPersistentToken(checkpoint.fileToken).catch(() => null);
+    if (!file?.isFile || !file.nativePath) throw new Error("Eksportfilen finnes ikke lenger. Start en ny eksport.");
+    const metadata = await file.getMetadata();
+    if (Number(metadata && metadata.size) !== Number(checkpoint.sizeBytes)) {
+      throw new Error("Eksportfilen er endret siden sendingen startet. Start en ny eksport.");
+    }
+    setStatus("Verifiserer eksport", "CreatorHub beregner SHA-256 før privat opplasting.", "warn");
+    checkpoint.checksumSha256 = await hashFileSha256({
+      nativePath: file.nativePath,
+      sizeBytes: checkpoint.sizeBytes,
+      fsApi: fs,
+      file,
+      binaryFormat: storage.formats.binary,
+      onProgress: ({ percent }) => setPublishProgress(percent, `Kontrollerer eksportfil · ${percent}%`),
+    });
+    checkpoint.stage = "provisioning";
+    await savePublishCheckpoint(checkpoint);
+  }
   if (checkpoint.stage === "provisioning") await provisionCheckpoint(checkpoint);
   checkpoint.ticket = validateUploadTicket(checkpoint.ticket);
   if (checkpoint.stage === "uploading") {
@@ -1196,7 +1240,7 @@ async function sendSequenceToReview() {
     const fileName = exported.fileName;
     const fileToken = await storage.localFileSystem.createPersistentToken(exported.file);
     await savePublishCheckpoint({
-      stage: "provisioning",
+      stage: "hashing",
       projectId: project.id,
       projectName: project.name,
       versionLabel,
@@ -1205,6 +1249,7 @@ async function sendSequenceToReview() {
       sizeBytes: exported.sizeBytes,
       contentType: contentTypeForExtension(exported.extension),
       maxDurationSeconds: maxStreamDurationSeconds(exported.durationSeconds),
+      checksumSha256: null,
       ticket: null,
       premiereBinding: {
         projectGuid: exported.context.projectGuid,
@@ -1613,7 +1658,7 @@ async function initialize() {
   renderAuthState();
   renderButtons();
   if (publishCheckpoint) {
-    const stage = publishCheckpoint.stage === "provisioning" ? "klargjøring" : publishCheckpoint.stage === "processing" ? "Cloudflare-behandling" : publishCheckpoint.stage === "workflow" ? "review-workflow" : "opplasting";
+    const stage = publishCheckpoint.stage === "hashing" ? "filverifisering" : publishCheckpoint.stage === "provisioning" ? "klargjøring" : publishCheckpoint.stage === "processing" ? "mediebehandling" : publishCheckpoint.stage === "workflow" ? "review-workflow" : "opplasting";
     setPublishProgress(0, `Avbrutt ${stage} kan fortsettes.`);
   }
   if (!token) return;

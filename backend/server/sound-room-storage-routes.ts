@@ -3,7 +3,7 @@ import type express from "express";
 import type { Pool } from "pg";
 
 import { canAccessProject } from "./project-team-routes.js";
-import { getRoleRoomObjectStorage } from "./role-room-object-storage.js";
+import { getCreatorHubObjectStorage } from "./creatorhub-object-storage.js";
 import { processSoundRoomAudioVersion } from "./sound-room-audio-processing.js";
 import { validatedSoundRoomRange } from "./sound-room-storage-contract.js";
 export { validatedSoundRoomRange } from "./sound-room-storage-contract.js";
@@ -67,6 +67,27 @@ async function ownedAudioProject(pool: Pool, projectId: string, userId: string):
     [projectId, userId],
   ).catch(() => ({ rowCount: 0 }));
   return (result.rowCount ?? 0) > 0;
+}
+
+async function audioStorageTenant(
+  pool: Pool,
+  projectId: string,
+  ownerUserId: string,
+): Promise<{ organizationId: string | null; workspaceProjectId: string | null }> {
+  const result = await pool.query<{ workspace_project_id: string | null }>(
+    `SELECT room.project_id AS workspace_project_id
+       FROM audio_review_projects project
+       LEFT JOIN project_audio_rooms room ON room.audio_review_project_id = project.id
+      WHERE project.id = $1::uuid AND project.owner_user_id = $2
+      LIMIT 1`,
+    [projectId, ownerUserId],
+  ).catch(() => ({ rows: [] }));
+  return {
+    // Workspace projects are user-owned and do not carry an authoritative
+    // organization_id. Never infer a tenant from mutable memberships.
+    organizationId: null,
+    workspaceProjectId: result.rows[0]?.workspace_project_id || null,
+  };
 }
 
 async function canReadAudioProject(pool: Pool, projectId: string, userId: string): Promise<boolean> {
@@ -194,8 +215,11 @@ export function setupSoundRoomStorageRoutes({
       return res.status(404).json({ error: "project_not_found" });
     }
     try {
+      const tenant = await audioStorageTenant(pool, projectId, session.userId);
       const ticket = await initiateSoundRoomUpload(pool, {
         userId: session.userId,
+        organizationId: tenant.organizationId,
+        workspaceProjectId: tenant.workspaceProjectId,
         projectId,
         fileName: text(req.body?.fileName, 255),
         sizeBytes: Number(req.body?.sizeBytes),
@@ -423,7 +447,7 @@ export function setupSoundRoomStorageRoutes({
 
   // Lightweight readiness probe used by Sound Room and the desktop companion.
   app.get("/api/audio-storage/health", async (_req, res) => {
-    const storage = getRoleRoomObjectStorage();
+    const storage = getCreatorHubObjectStorage();
     if (!storage) return res.status(503).json({ ready: false, provider: null });
     return res.json({ ready: true, provider: storage.provider, region: storage.region });
   });

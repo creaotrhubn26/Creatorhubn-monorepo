@@ -17,6 +17,51 @@ private func doffinScopedPath(
     return components.string ?? path
 }
 
+#if DEBUG
+private func tidumDoffinQAProfile(
+    status: String = "draft",
+    selectedWatchKeys: [String] = []
+) -> DoffinProjectProfileDTO {
+    DoffinProjectProfileDTO(
+        id: "22222222-2222-4222-8222-222222222222",
+        templateKey: "tidum.procurement",
+        templateVersion: 1,
+        name: "Tidum – arbeidstid, turnus og dokumentasjon",
+        description: "Offentlige anskaffelser av arbeidstids-, HR-, turnus- og dokumentasjonsprogramvare.",
+        status: status,
+        cpvCodes: ["48450000", "72212450", "48332000", "48311000", "48311100"],
+        keywords: ["arbeidstid", "turnus", "digital dokumentasjon"],
+        exclusionTerms: ["kjøp av omsorgsplasser", "bemanningstjenester"],
+        suggestedWatches: [
+            .init(
+                key: "tidum.time_hr_software",
+                name: "Tidum · Arbeidstid og HR-programvare",
+                query: .init(q: nil, location: nil, cpv: "48450000,72212450")
+            ),
+            .init(
+                key: "tidum.scheduling",
+                name: "Tidum · Turnus og planlegging",
+                query: .init(q: "turnus", location: nil, cpv: "48332000,48450000")
+            ),
+            .init(
+                key: "tidum.documentation",
+                name: "Tidum · Digital dokumentasjon",
+                query: .init(q: "dokumentasjon", location: nil, cpv: "48311000,48311100")
+            ),
+        ],
+        selectedWatchKeys: selectedWatchKeys,
+        requiresAdminConfirmation: true,
+        confirmedAt: status == "active" ? "2026-09-13T10:00:00.000Z" : nil,
+        canManage: true
+    )
+}
+
+private func usesTidumDoffinQAFixture(projectId: String) -> Bool {
+    ProcessInfo.processInfo.environment["QA_TOUR"] == "domain-onboarding"
+        && projectId == "qa-tidum-project"
+}
+#endif
+
 // MARK: - DTO-er
 
 struct DoffinOppdragsgiverDTO: Decodable, Hashable {
@@ -36,13 +81,6 @@ struct DoffinKundeMatchDTO: Decodable, Hashable {
     let leadNavn: String
     let leadStatus: String?
     let eier: String?
-
-    enum CodingKeys: String, CodingKey {
-        case leadId = "lead_id"
-        case leadNavn = "lead_navn"
-        case leadStatus = "lead_status"
-        case eier
-    }
 }
 
 struct DoffinKunngjoringDTO: Decodable, Identifiable, Hashable {
@@ -62,12 +100,6 @@ struct DoffinKunngjoringDTO: Decodable, Identifiable, Hashable {
     var kundeMatch: DoffinKundeMatchDTO?
     /// AWARDED best-effort — tom når Doffin ikke eksponerer vinnere.
     var vinnere: [DoffinOppdragsgiverDTO]?
-
-    enum CodingKeys: String, CodingKey {
-        case id, tittel, beskrivelse, oppdragsgivere, verdi, type, status
-        case kunngjort, frist, nutsKoder, cpvKoder, url, vinnere
-        case kundeMatch = "kunde_match"
-    }
 }
 
 /// AI-prioritering (nivå 1): score 0-100 + kort begrunnelse per treff.
@@ -90,13 +122,6 @@ struct DoffinTildelingerDTO: Decodable {
     let sumVerdi: Double
     let toppOppdragsgivere: [AktorDTO]
     let toppVinnere: [AktorDTO]
-
-    enum CodingKeys: String, CodingKey {
-        case total, utvalg
-        case sumVerdi = "sum_verdi"
-        case toppOppdragsgivere = "topp_oppdragsgivere"
-        case toppVinnere = "topp_vinnere"
-    }
 }
 
 struct DoffinSearchResponseDTO: Decodable {
@@ -112,18 +137,47 @@ struct DoffinWatchDTO: Decodable, Identifiable, Hashable {
     /// Nye treff siden sist bruker åpnet/kjørte overvåkningen (2026-08-03).
     /// Akkumuleres av cron-sjekken, nullstilles via mark-seen.
     let newHitsCount: Int?
-
-    enum CodingKeys: String, CodingKey {
-        case id, name, query
-        case createdAt = "created_at"
-        case newHitsCount = "new_hits_count"
-    }
+    /// Stable identity for watches provisioned from a project tender profile.
+    let templateKey: String?
+    let templateVersion: Int?
 }
 
-struct DoffinWatchQueryDTO: Codable, Hashable {
+struct DoffinWatchQueryDTO: Codable, Hashable, Sendable {
     var q: String?
     var location: String?
     var cpv: String?
+}
+
+struct DoffinProjectProfileDTO: Decodable, Identifiable, Hashable, Sendable {
+    struct SuggestedWatch: Decodable, Identifiable, Hashable, Sendable {
+        let key: String
+        let name: String
+        let query: DoffinWatchQueryDTO
+        var id: String { key }
+    }
+
+    let id: String
+    let templateKey: String
+    let templateVersion: Int
+    let name: String
+    let description: String
+    let status: String
+    let cpvCodes: [String]
+    let keywords: [String]
+    let exclusionTerms: [String]
+    let suggestedWatches: [SuggestedWatch]
+    let selectedWatchKeys: [String]
+    let requiresAdminConfirmation: Bool
+    let confirmedAt: String?
+    let canManage: Bool
+
+    var isActive: Bool { status == "active" }
+}
+
+struct DoffinProjectProfileConfirmationDTO: Decodable, Sendable {
+    let ok: Bool
+    let profile: DoffinProjectProfileDTO
+    let watches: [DoffinWatchDTO]
 }
 
 // MARK: - Pipeline (nivå 2, 2026-08-03)
@@ -148,15 +202,6 @@ struct AnbudPipelineItemDTO: Decodable, Identifiable, Hashable {
     var adresse: String?
     /// Nivå 3: læringssløyfe — hvorfor tapte vi (whitelist i backend).
     var taptAarsak: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id, tittel, oppdragsgiver, orgnr, url, frist, verdi, status, notat
-        case lat, lng, adresse
-        case doffinId = "doffin_id"
-        case assignedUserId = "assigned_user_id"
-        case assignedNavn = "assigned_navn"
-        case taptAarsak = "tapt_aarsak"
-    }
 }
 
 struct AnbudTapsAarsakDTO: Decodable, Identifiable, Hashable {
@@ -172,11 +217,6 @@ struct AnbudPipelineStatsDTO: Decodable, Hashable {
     let vinnrate: Double?
     let sumAapneVerdi: Double
     var tapsaarsaker: [AnbudTapsAarsakDTO]?
-
-    enum CodingKeys: String, CodingKey {
-        case aapne, vant, tapt, vinnrate, tapsaarsaker
-        case sumAapneVerdi = "sum_aapne_verdi"
-    }
 }
 
 /// AI-lesehjelp (nivå 2): oppsummering + krav-ekstraksjon.
@@ -184,11 +224,6 @@ struct AnbudOppsummeringDTO: Decodable, Hashable {
     let sammendrag: String
     let krav: [String]
     let verdtAaVite: String?
-
-    enum CodingKeys: String, CodingKey {
-        case sammendrag, krav
-        case verdtAaVite = "verdt_aa_vite"
-    }
 }
 
 /// Tilbuds-assistent (2026-08-04): AI-UTKAST til disposisjon + følgebrev
@@ -209,11 +244,63 @@ struct AnbudTilbudsutkastDTO: Decodable, Hashable {
 
 extension APIClient {
 
+    func fetchDoffinProjectProfile(
+        projectId: String
+    ) async throws -> DoffinProjectProfileDTO? {
+        #if DEBUG
+        if usesTidumDoffinQAFixture(projectId: projectId) {
+            return tidumDoffinQAProfile()
+        }
+        #endif
+        struct Response: Decodable { let profile: DoffinProjectProfileDTO? }
+        let response: Response = try await _get(doffinScopedPath(
+            "/api/leadgrid/doffin/project-profile", projectId: projectId))
+        return response.profile
+    }
+
+    func confirmDoffinProjectProfile(
+        projectId: String,
+        watchKeys: [String]
+    ) async throws -> DoffinProjectProfileConfirmationDTO {
+        #if DEBUG
+        if usesTidumDoffinQAFixture(projectId: projectId) {
+            let draft = tidumDoffinQAProfile()
+            let selected = draft.suggestedWatches.filter { watchKeys.contains($0.key) }
+            let profile = tidumDoffinQAProfile(
+                status: "active",
+                selectedWatchKeys: selected.map(\.key)
+            )
+            return DoffinProjectProfileConfirmationDTO(
+                ok: true,
+                profile: profile,
+                watches: selected.map { watch in
+                    DoffinWatchDTO(
+                        id: "qa-\(watch.key)",
+                        name: watch.name,
+                        query: watch.query,
+                        createdAt: nil,
+                        newHitsCount: 0,
+                        templateKey: watch.key,
+                        templateVersion: 1
+                    )
+                }
+            )
+        }
+        #endif
+        struct Payload: Encodable {
+            let watchKeys: [String]
+        }
+        return try await _post(doffinScopedPath(
+            "/api/leadgrid/doffin/project-profile/confirm", projectId: projectId),
+                               body: Payload(watchKeys: watchKeys))
+    }
+
     /// Søk i Doffin. `location` = NUTS-koder kommaseparert, `cpv` = CPV-koder.
     func searchDoffin(
         projectId: String,
         q: String? = nil, location: String? = nil, cpv: String? = nil,
-        status: String = "ACTIVE", hits: Int = 25, page: Int = 1
+        status: String = "ACTIVE", hits: Int = 25, page: Int = 1,
+        useProjectProfile: Bool = false
     ) async throws -> DoffinSearchResponseDTO {
         var comps = URLComponents()
         comps.path = "/api/leadgrid/doffin/search"
@@ -226,6 +313,9 @@ extension APIClient {
         if let q, !q.isEmpty { items.append(.init(name: "q", value: q)) }
         if let location, !location.isEmpty { items.append(.init(name: "location", value: location)) }
         if let cpv, !cpv.isEmpty { items.append(.init(name: "cpv", value: cpv)) }
+        if useProjectProfile {
+            items.append(.init(name: "projectProfile", value: "true"))
+        }
         comps.queryItems = items
         return try await _get(comps.string ?? comps.path)
     }

@@ -101,6 +101,8 @@ export interface StoryboardReviewComment {
   visibility: 'client' | 'team';
   anchorX?: number | null;
   anchorY?: number | null;
+  /** Public review only: the active reviewer owns this comment's markup. */
+  canEdit?: boolean;
   annotations: StoryboardReviewAnnotation[];
   status: 'open' | 'resolved';
   assignedTo?: string | null;
