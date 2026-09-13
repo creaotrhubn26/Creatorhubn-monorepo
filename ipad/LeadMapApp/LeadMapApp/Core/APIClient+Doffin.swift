@@ -81,13 +81,6 @@ struct DoffinKundeMatchDTO: Decodable, Hashable {
     let leadNavn: String
     let leadStatus: String?
     let eier: String?
-
-    enum CodingKeys: String, CodingKey {
-        case leadId = "lead_id"
-        case leadNavn = "lead_navn"
-        case leadStatus = "lead_status"
-        case eier
-    }
 }
 
 struct DoffinKunngjoringDTO: Decodable, Identifiable, Hashable {
@@ -107,12 +100,6 @@ struct DoffinKunngjoringDTO: Decodable, Identifiable, Hashable {
     var kundeMatch: DoffinKundeMatchDTO?
     /// AWARDED best-effort — tom når Doffin ikke eksponerer vinnere.
     var vinnere: [DoffinOppdragsgiverDTO]?
-
-    enum CodingKeys: String, CodingKey {
-        case id, tittel, beskrivelse, oppdragsgivere, verdi, type, status
-        case kunngjort, frist, nutsKoder, cpvKoder, url, vinnere
-        case kundeMatch = "kunde_match"
-    }
 }
 
 /// AI-prioritering (nivå 1): score 0-100 + kort begrunnelse per treff.
@@ -135,13 +122,6 @@ struct DoffinTildelingerDTO: Decodable {
     let sumVerdi: Double
     let toppOppdragsgivere: [AktorDTO]
     let toppVinnere: [AktorDTO]
-
-    enum CodingKeys: String, CodingKey {
-        case total, utvalg
-        case sumVerdi = "sum_verdi"
-        case toppOppdragsgivere = "topp_oppdragsgivere"
-        case toppVinnere = "topp_vinnere"
-    }
 }
 
 struct DoffinSearchResponseDTO: Decodable {
@@ -160,14 +140,6 @@ struct DoffinWatchDTO: Decodable, Identifiable, Hashable {
     /// Stable identity for watches provisioned from a project tender profile.
     let templateKey: String?
     let templateVersion: Int?
-
-    enum CodingKeys: String, CodingKey {
-        case id, name, query
-        case createdAt = "created_at"
-        case newHitsCount = "new_hits_count"
-        case templateKey = "template_key"
-        case templateVersion = "template_version"
-    }
 }
 
 struct DoffinWatchQueryDTO: Codable, Hashable, Sendable {
@@ -200,19 +172,6 @@ struct DoffinProjectProfileDTO: Decodable, Identifiable, Hashable, Sendable {
     let canManage: Bool
 
     var isActive: Bool { status == "active" }
-
-    enum CodingKeys: String, CodingKey {
-        case id, name, description, status, keywords
-        case templateKey = "template_key"
-        case templateVersion = "template_version"
-        case cpvCodes = "cpv_codes"
-        case exclusionTerms = "exclusion_terms"
-        case suggestedWatches = "suggested_watches"
-        case selectedWatchKeys = "selected_watch_keys"
-        case requiresAdminConfirmation = "requires_admin_confirmation"
-        case confirmedAt = "confirmed_at"
-        case canManage = "can_manage"
-    }
 }
 
 struct DoffinProjectProfileConfirmationDTO: Decodable, Sendable {
@@ -243,15 +202,6 @@ struct AnbudPipelineItemDTO: Decodable, Identifiable, Hashable {
     var adresse: String?
     /// Nivå 3: læringssløyfe — hvorfor tapte vi (whitelist i backend).
     var taptAarsak: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id, tittel, oppdragsgiver, orgnr, url, frist, verdi, status, notat
-        case lat, lng, adresse
-        case doffinId = "doffin_id"
-        case assignedUserId = "assigned_user_id"
-        case assignedNavn = "assigned_navn"
-        case taptAarsak = "tapt_aarsak"
-    }
 }
 
 struct AnbudTapsAarsakDTO: Decodable, Identifiable, Hashable {
@@ -267,11 +217,6 @@ struct AnbudPipelineStatsDTO: Decodable, Hashable {
     let vinnrate: Double?
     let sumAapneVerdi: Double
     var tapsaarsaker: [AnbudTapsAarsakDTO]?
-
-    enum CodingKeys: String, CodingKey {
-        case aapne, vant, tapt, vinnrate, tapsaarsaker
-        case sumAapneVerdi = "sum_aapne_verdi"
-    }
 }
 
 /// AI-lesehjelp (nivå 2): oppsummering + krav-ekstraksjon.
@@ -279,11 +224,6 @@ struct AnbudOppsummeringDTO: Decodable, Hashable {
     let sammendrag: String
     let krav: [String]
     let verdtAaVite: String?
-
-    enum CodingKeys: String, CodingKey {
-        case sammendrag, krav
-        case verdtAaVite = "verdt_aa_vite"
-    }
 }
 
 /// Tilbuds-assistent (2026-08-04): AI-UTKAST til disposisjon + følgebrev
@@ -349,7 +289,6 @@ extension APIClient {
         #endif
         struct Payload: Encodable {
             let watchKeys: [String]
-            enum CodingKeys: String, CodingKey { case watchKeys = "watch_keys" }
         }
         return try await _post(doffinScopedPath(
             "/api/leadgrid/doffin/project-profile/confirm", projectId: projectId),

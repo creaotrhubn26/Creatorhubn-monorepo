@@ -330,6 +330,7 @@ extension Notification.Name {
 /// bottom tabs. Dermed avmonteres ikke en åpen Canvas-editor ved resize.
 struct RootView: View {
     @Environment(AppState.self) private var appState
+    @State private var qaBootstrapComplete = false
     #if DEBUG
     @State private var qaFeedback = false
     #endif
@@ -376,7 +377,11 @@ struct RootView: View {
                     .padding(.vertical, 4)
                     .background(.yellow, in: Capsule())
                     .padding(.top, 6)
-                    .accessibilityIdentifier("staging-environment-badge")
+                    .accessibilityIdentifier(
+                        qaBootstrapComplete
+                            ? "staging-session-ready"
+                            : "staging-environment-badge"
+                    )
                     .allowsHitTesting(false)
             }
         }
@@ -498,6 +503,11 @@ struct RootView: View {
                     api: api
                 )
             }
+            #if DEBUG
+            // Staging-UI-testene skal ikke begynne mens bootstrap fremdeles
+            // validerer tenant/prosjekt eller nullstiller en gammel offline-kø.
+            qaBootstrapComplete = true
+            #endif
         }
         .onChange(of: appState.authToken) { _, newValue in
             if newValue != nil {
