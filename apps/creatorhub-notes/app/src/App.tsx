@@ -1,4 +1,12 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as TastHendelse,
+  type ReactNode,
+} from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Editor } from "./Editor";
 import { linjetekst, Panel } from "./Panel";
@@ -7,8 +15,13 @@ import {
   avvisKobling,
   createNote,
   finnAvsnitt,
+  lastNedOrdbank,
+  MERKE_SLUTT,
+  MERKE_START,
+  ordbankStatus,
   påLesning,
   påNotatEndret,
+  påOrdbank,
   listNotes,
   readNote,
   reindex,
@@ -24,11 +37,12 @@ import {
   type Angring,
   type Framdrift,
   type Note,
+  type Ordbankstatus,
   type Paragraph,
   type Retting,
   type Samtaleform,
+  type Søkesvar,
   type Tidligere,
-  type SearchHit,
   type Sporsmal,
   type Understanding,
 } from "./api";
@@ -115,20 +129,152 @@ function SøkeSyntaks() {
   );
 }
 
-/** FTS5 markerer treffordene med `**…**`. */
+/** Utdraget, delt i det som traff og det som står rundt.
+ *
+ *  Merkene er styretegn fra FTS5, ikke `**`. Delte man på `**` og markerte
+ *  annethvert stykke, forskjøv et notat med sin egen fete skrift pariteten:
+ *  markeringen la seg på ord som ikke traff, og treffordet sto umarkert. Nå
+ *  bæres markeringen av tegn som ikke kan stå i et notat, og hvert stykke vet
+ *  selv om det traff. */
+export function utdragsdeler(tekst: string): { tekst: string; traff: boolean }[] {
+  const ut: { tekst: string; traff: boolean }[] = [];
+  let rest = tekst;
+  while (rest) {
+    const start = rest.indexOf(MERKE_START);
+    if (start < 0) break;
+    const slutt = rest.indexOf(MERKE_SLUTT, start + 1);
+    if (slutt < 0) break;
+    if (start > 0) ut.push({ tekst: rest.slice(0, start), traff: false });
+    ut.push({ tekst: rest.slice(start + 1, slutt), traff: true });
+    rest = rest.slice(slutt + 1);
+  }
+  if (rest) ut.push({ tekst: rest, traff: false });
+  return ut;
+}
+
 function Utdrag({ tekst }: { tekst: string }) {
   return (
     <p className="utdrag">
-      {tekst.split("**").map((del, i) => (i % 2 ? <mark key={i}>{del}</mark> : <span key={i}>{del}</span>))}
+      {utdragsdeler(tekst).map((del, i) =>
+        del.traff ? <mark key={i}>{del.tekst}</mark> : <span key={i}>{del.tekst}</span>,
+      )}
     </p>
+  );
+}
+
+/** Tegnposisjonene til et linjeområde, talt slik editoren teller. Linjene er
+ *  1-baserte og peker inn i fila slik den ligger på disk, som er nøyaktig det
+ *  søketreffet bærer med seg.
+ *
+ *  `null` når linja ikke finnes i teksten lenger — da hopper vi heller ingen
+ *  steder enn til feil sted. */
+export function linjeområde(
+  tekst: string,
+  fra: number,
+  til: number,
+): { from: number; to: number } | null {
+  if (fra < 1) return null;
+  const linjer = tekst.split("\n");
+  if (fra > linjer.length) return null;
+  let from = 0;
+  for (let i = 0; i < fra - 1; i++) from += linjer[i].length + 1;
+  // Til og med siste linje, men uten linjeskiftet etter den: markeringen skal
+  // ligge på teksten, ikke på tomrommet under den.
+  let to = from;
+  for (let i = fra - 1; i < Math.min(til, linjer.length); i++) {
+    if (i > fra - 1) to += 1;
+    to += linjer[i].length;
+  }
+  return { from, to: Math.max(to, from) };
+}
+
+/** Overskriften over søketreffene. Tallet var lengden på den kappede lista,
+ *  presentert som om det var totalen — hun så fem treff og trodde det var
+ *  alt. */
+export function treffmelding(antall: number, avkortet: boolean): string {
+  if (antall === 0) return "Ingen treff";
+  if (avkortet) return `De ${antall} første treffene`;
+  return antall === 1 ? "1 treff" : `${antall} treff`;
+}
+
+/** Hva brukeren skal få se når noe går galt.
+ *
+ *  Kommandoene i Rust svarer med hele setningen — `lesefeil`, `skrivefeil`,
+ *  `si` — og den er skrevet for henne. En feil som *ikke* er en slik streng
+ *  er en JavaScript-feil eller et brudd i broen, og har ingen setning; da er
+ *  reserven det ærligste vi har. `String(e)` på alt var det som ga
+ *  «Error: Os { code: 2, kind: NotFound }» i et varsel. */
+function feiltekst(e: unknown, reserve: string): string {
+  console.error(reserve, e);
+  return typeof e === "string" && e.trim() ? e : reserve;
+}
+
+/** Dagen noe ble skrevet, eller `null` når kilden ikke visste den. */
+function dato(sekunder: number): string | null {
+  return sekunder > 0 ? dagsetikett(sekunder) : null;
+}
+
+/** Én rad i registeret.
+ *
+ *  Lista er ett tabstopp: bare raden `stopp` peker på har `tabIndex=0`, og
+ *  pilene i `nav.liste` flytter fokus mellom radene. Før var hvert notat sitt
+ *  eget tabstopp, og hundre notater var hundre trykk på Tab.
+ *
+ *  Det åpne notatet bærer `aria-current`, ikke bare en farge: en 9 %-tone
+ *  mot bakgrunnen er 1,1:1, og en skjermleser fikk ingenting. */
+function Rad({
+  nøkkel,
+  stopp,
+  valgt,
+  onKlikk,
+  onFokus,
+  children,
+}: {
+  nøkkel: string;
+  stopp: string | undefined;
+  valgt: boolean;
+  onKlikk: () => void;
+  onFokus: (nøkkel: string) => void;
+  children: ReactNode;
+}) {
+  const meg = useRef<HTMLButtonElement>(null);
+  // Åpner hun et notat fra et søk og trykker «Vis alle», er lista tilbake på
+  // toppen og det åpne notatet står markert et sted hun ikke ser.
+  useEffect(() => {
+    if (valgt) meg.current?.scrollIntoView({ block: "nearest" });
+  }, [valgt]);
+  return (
+    <li>
+      <button
+        ref={meg}
+        className={valgt ? "rad valgt" : "rad"}
+        aria-current={valgt ? "true" : undefined}
+        tabIndex={nøkkel === stopp ? 0 : -1}
+        onFocus={() => onFokus(nøkkel)}
+        onClick={onKlikk}
+      >
+        {children}
+      </button>
+    </li>
   );
 }
 
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
-  const [treff, setTreff] = useState<SearchHit[] | null>(null);
+  const [treff, setTreff] = useState<Søkesvar | null>(null);
   const [spurt, setSpurt] = useState<Sporsmal | null>(null);
   const [query, setQuery] = useState("");
+  /** Søket hun nettopp tømte med Escape. Ingenting skal gå tapt uten en vei
+   *  tilbake, og en lang søkestreng er noe. */
+  const [tømt, setTømt] = useState("");
+  /** Norsk Ordbank: uten den finner ikke «utstyret» ordet «utstyr». `null`
+   *  til vi har spurt. */
+  const [ordbank, setOrdbank] = useState<Ordbankstatus | null>(null);
+  /** Nedlastingen som pågår, med den siste beskjeden fra Rust. */
+  const [ordbankArbeid, setOrdbankArbeid] = useState<string | null>(null);
+  /** Raden som sist hadde fokus. Den bærer lista sitt ene tabstopp, slik at
+   *  Tab tilbake til lista lander der pilene forlot den. */
+  const [fokusRad, setFokusRad] = useState<string | null>(null);
   const [path, setPath] = useState<string | null>(null);
   const [doc, setDoc] = useState("");
   const [nytt, setNytt] = useState(false);
@@ -155,6 +301,13 @@ export default function App() {
    *  hun tar selv. `false` når det ikke er noen konflikt å vise fram. */
   const [endretUtenfor, setEndretUtenfor] = useState(false);
   const [peker, setPeker] = useState<{ from: number; to: number; n: number } | null>(null);
+  /** En rolig beskjed under skriveflaten — ikke en feil, bare noe hun bør
+   *  vite. «Avsnittet er skrevet om siden» er den viktigste: uten den lander
+   *  hun i et fremmed notat uten markering og uten forklaring. */
+  const [merknad, setMerknad] = useState<string | null>(null);
+  /** Det hun hadde skrevet da hun ba om å laste notatet inn på nytt. Står
+   *  her til hun tar det tilbake eller går videre. */
+  const [forkastet, setForkastet] = useState<{ sti: string; tekst: string } | null>(null);
   /** Leses notatet som en samtale, og hvem er i så fall med? `null` før vi har
    *  spurt. Valget er synlig i notatlinja, ikke gjemt i en meny. */
   const [samtale, setSamtale] = useState<Samtaleform | null>(null);
@@ -271,7 +424,9 @@ export default function App() {
     if ("feil" in utfall) {
       // Teksten står fortsatt i bufferet — det er det eneste stedet den
       // finnes. Vi prøver igjen av oss selv, og hun kan skrive videre imens.
-      setFeil(`Kunne ikke lagre: ${utfall.feil}. Teksten står, og vi prøver igjen.`);
+      setFeil(
+        `${feiltekst(utfall.feil, "Kunne ikke lagre notatet.")} Teksten står i appen, og vi prøver igjen.`,
+      );
       setStatus("Ikke lagret");
       window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => void lagreIgjen.current(), 4000);
@@ -312,7 +467,14 @@ export default function App() {
   );
 
   const åpne = useCallback(
-    async (p: string, ferskt = false, avsnitt?: string) => {
+    async (
+      p: string,
+      /** Hvor i notatet hun skal lande. `avsnitt` er en hash fra panelet;
+       *  `linjer` er `[fra, til]` fra et søketreff, talt fra 1 i fila. Uten
+       *  noen av dem havner markøren nederst, som er der ingenting står. */
+      valg: { ferskt?: boolean; avsnitt?: string; linjer?: [number, number] } = {},
+    ) => {
+      const { ferskt = false, avsnitt, linjer } = valg;
       await lagre();
       // Gikk ikke lagringen gjennom, står teksten fra det forrige notatet
       // fortsatt i bufferet. Å bytte notat nå ville skrevet den til feil fil
@@ -330,14 +492,30 @@ export default function App() {
         setFramdrift(null);
         setSamtale(null);
         setEndretUtenfor(false);
+        setMerknad(null);
         void samtaleform(tekst).then(setSamtale).catch(() => undefined);
         void les(p, tekst);
+        // Kom hun hit fra et søketreff, bærer treffet linjene sine. De peker
+        // inn i fila slik den ligger på disk, og det er nøyaktig teksten vi
+        // nettopp leste — så det er bare å regne dem om til tegnposisjoner.
+        if (linjer) {
+          const sted = linjeområde(tekst, linjer[0], linjer[1]);
+          if (sted) setPeker((forrige) => ({ ...sted, n: (forrige?.n ?? 0) + 1 }));
+        }
         // Kom man hit fra en linje om noe som ble skrevet før, skal avsnittet
-        // markeres. Er det skrevet om siden, står notatet åpent uten merke.
+        // markeres. Er det skrevet om siden, sier vi det — før sto notatet
+        // åpent uten merke og uten forklaring på hvorfor.
         if (avsnitt) {
           finnAvsnitt(p, avsnitt)
             .then((sted) => {
-              if (sted) setPeker((forrige) => ({ from: sted[0], to: sted[1], n: (forrige?.n ?? 0) + 1 }));
+              if (sted) {
+                setPeker((forrige) => ({ from: sted[0], to: sted[1], n: (forrige?.n ?? 0) + 1 }));
+              } else {
+                setMerknad(
+                  "Avsnittet er skrevet om siden appen leste det, så vi kan ikke peke på " +
+                    "det. Notatet står åpent.",
+                );
+              }
             })
             .catch(() => undefined);
         }
@@ -346,30 +524,48 @@ export default function App() {
         const rørt = notater.current.find((n) => n.path === p)?.modified;
         setStatus(rørt ? `Lagret ${klokke.format(new Date(rørt * 1000))}` : "Lagret");
       } catch (e) {
-        setFeil(String(e));
+        setFeil(feiltekst(e, "Kunne ikke åpne notatet."));
       }
     },
     [buffer, lagre, les],
   );
 
   /** «Last inn på nytt» — svaret på varselet om at notatet ble endret utenfra
-   *  mens hun hadde ulagrede endringer. Det hun skrev forsvinner til fordel
-   *  for det som står på disk; det var nettopp det hun ba om ved å trykke. */
+   *  mens hun hadde ulagrede endringer. Det som står på disk vinner.
+   *
+   *  Men det hun skrev kastes ikke: det legges til side, og banneret som
+   *  kommer i stedet sier hvor mye det var og gir det tilbake med ett trykk.
+   *  Før var ⌘Z i CodeMirror den eneste veien tilbake, og ingenting i
+   *  grensesnittet nevnte den. */
   const lastInnPåNytt = useCallback(async () => {
     if (!path) return;
     window.clearTimeout(timer.current);
+    const mitt = buffer.ventende();
     buffer.forkast();
     try {
       const tekst = await readNote(path);
       buffer.sett(path, tekst);
       setDoc(tekst);
       setEndretUtenfor(false);
+      setForkastet(mitt && mitt.tekst !== tekst ? mitt : null);
       setStatus(`Lastet inn på nytt ${klokke.format(new Date())}`);
       void les(path, tekst);
     } catch (e) {
-      setFeil(String(e));
+      setFeil(feiltekst(e, "Kunne ikke laste notatet inn på nytt."));
     }
   }, [buffer, path, les]);
+
+  /** Angre «Last inn på nytt»: sett tilbake det hun hadde skrevet. Det er
+   *  hennes tekst, og den skal ikke være borte fordi hun trykket på noe. */
+  const taTilbake = useCallback(() => {
+    if (!forkastet || forkastet.sti !== path) return;
+    buffer.endret(forkastet.tekst);
+    setDoc(forkastet.tekst);
+    setForkastet(null);
+    setStatus("Lagrer …");
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => void lagre(), 900);
+  }, [buffer, forkastet, path, lagre]);
 
   /** Brukerens egen retting av én linje. Den lagres, og panelet leses opp
    *  igjen fra den samme teksten — avsnittene er uendret, så det koster
@@ -379,7 +575,7 @@ export default function App() {
       try {
         await rettAvsnitt(r);
       } catch (e) {
-        setFeil(String(e));
+        setFeil(feiltekst(e, "Klarte ikke å lagre rettelsen. Linja står som den var."));
         return;
       }
       // Panelet oppdateres her, ikke ved en ny lesning. Avsnittene er
@@ -413,7 +609,7 @@ export default function App() {
       try {
         await avvisKobling(t.gjelder, t.hash, t.sti, avvist);
       } catch (e) {
-        setFeil(String(e));
+        setFeil(feiltekst(e, "Klarte ikke å lagre dommen din over koblingen."));
         return;
       }
       setForståelse((f) =>
@@ -440,7 +636,7 @@ export default function App() {
       setDoc(ny);
       await lagre();
     } catch (e) {
-      setFeil(String(e));
+      setFeil(feiltekst(e, "Klarte ikke å endre om notatet leses som en samtale."));
     }
   }, [buffer, path, samtale, lagre]);
 
@@ -454,7 +650,7 @@ export default function App() {
       setDoc(ny);
       await lagre();
     } catch (e) {
-      setFeil(String(e));
+      setFeil(feiltekst(e, "Klarte ikke å endre om notatet får leses."));
     }
   }, [buffer, path, privat, lagre]);
 
@@ -467,7 +663,7 @@ export default function App() {
         setForståelse(null);
         if (path) void les(path, buffer.nå());
       } catch (e) {
-        setFeil(String(e));
+        setFeil(feiltekst(e, "Klarte ikke å lagre valget om lesning."));
       }
     },
     [buffer, path, les],
@@ -483,11 +679,11 @@ export default function App() {
       setQuery("");
       setTreff(null);
       setSpurt(null);
-      await åpne(p, true);
+      await åpne(p, { ferskt: true });
       setNotes(await listNotes());
       await reindex().catch(() => undefined);
     } catch (e) {
-      setFeil(String(e));
+      setFeil(feiltekst(e, "Klarte ikke å lage et nytt notat."));
     }
   }, [buffer, lagre, åpne]);
 
@@ -496,12 +692,35 @@ export default function App() {
       try {
         setNotes(await listNotes());
       } catch (e) {
-        setFeil(String(e));
+        setFeil(feiltekst(e, "Klarte ikke å hente notatlista."));
       }
       // Notater kan ha kommet til utenfor appen. Feiler dette, virker alt
       // annet fortsatt, og brukeren har ingenting å gjøre med beskjeden.
       await reindex().catch(() => undefined);
+      // Og hva søket kan: er ordlista ikke lastet ned, finner ikke «utstyret»
+      // ordet «utstyr», og det skal stå et sted hun kan se det.
+      setOrdbank(await ordbankStatus().catch(() => null));
     })();
+  }, []);
+
+  /** Beskjedene fra nedlastingen av ordlista. Den tar minutter, og et vindu
+   *  som ikke sier noe på to minutter ser ødelagt ut. */
+  useEffect(() => {
+    const av = påOrdbank((tekst) => setOrdbankArbeid(tekst));
+    return () => {
+      void av.then((stopp) => stopp()).catch(() => undefined);
+    };
+  }, []);
+
+  const hentOrdlista = useCallback(async () => {
+    setOrdbankArbeid("Begynner …");
+    try {
+      setOrdbank(await lastNedOrdbank());
+    } catch (e) {
+      setFeil(feiltekst(e, "Klarte ikke å hente ordlista."));
+    } finally {
+      setOrdbankArbeid(null);
+    }
   }, []);
 
   /** Notatmappen endret seg mens appen kjørte — en ny fil, en slettet fil,
@@ -550,7 +769,7 @@ export default function App() {
       try {
         setTreff(await searchNotes(q));
       } catch (e) {
-        setFeil(String(e));
+        setFeil(feiltekst(e, "Søket virker ikke akkurat nå. Notatene dine er trygge."));
       }
       // Treffer ordene et av spørsmålene appen kjenner, kommer de strukturerte
       // treffene i tillegg. Bommer den, er fritekstsøket akkurat som før.
@@ -582,6 +801,23 @@ export default function App() {
     };
   }, [buffer, lagre]);
 
+  /** Tøm søket, og husk det så det kan hentes tilbake. */
+  const tømSøket = useCallback(() => {
+    setQuery((q) => {
+      if (q.trim()) setTømt(q);
+      return "";
+    });
+    setTreff(null);
+    setSpurt(null);
+  }, []);
+
+  /** De to hurtigtastene som gjelder overalt. Begge har en synlig knapp ved
+   *  siden av seg — «Nytt notat» i toppen, og søkefeltet er alltid der.
+   *
+   *  Escape er **ikke** blant dem lenger. Den lå på `window` og tømte søket
+   *  fra hvor som helst i appen, også midt i skrivingen og midt i
+   *  rettingsskjemaet, og kastet fokus inn i skriveflaten etterpå. Nå
+   *  håndteres den der fokus er: i søkefeltet, og i rettefeltet i panelet. */
   useEffect(() => {
     const tast = (e: KeyboardEvent) => {
       const kommando = e.metaKey || e.ctrlKey;
@@ -592,21 +828,90 @@ export default function App() {
         e.preventDefault();
         søkefelt.current?.focus();
         søkefelt.current?.select();
-      } else if (e.key === "Escape") {
-        setQuery("");
-        setTreff(null);
-        setSpurt(null);
-        document.querySelector<HTMLElement>(".cm-content")?.focus();
       }
     };
     window.addEventListener("keydown", tast);
     return () => window.removeEventListener("keydown", tast);
   }, [nyttNotat]);
 
+  /** Piltaster i registeret. Hundre notater var hundre tabstopp; nå er lista
+   *  ett stopp, og pilene flytter seg innenfor den — mønsteret alle
+   *  listekontroller bruker.
+   *
+   *  Radene finnes gjennom DOM-en i stedet for gjennom hundre refs: lista er
+   *  én `nav`, radene er `button.rad` i den, og rekkefølgen på skjermen er
+   *  akkurat den rekkefølgen pilene skal følge. */
+  const listetast = useCallback((e: React.KeyboardEvent<HTMLElement>) => {
+    const retning = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+    const kant = e.key === "Home" ? 0 : e.key === "End" ? -1 : null;
+    if (!retning && kant === null) return;
+    const rader = Array.from(e.currentTarget.querySelectorAll<HTMLElement>("button.rad"));
+    if (rader.length === 0) return;
+    e.preventDefault();
+    if (kant !== null) {
+      (kant === 0 ? rader[0] : rader[rader.length - 1]).focus();
+      return;
+    }
+    const nå = rader.indexOf(document.activeElement as HTMLElement);
+    const neste = nå < 0 ? 0 : Math.min(rader.length - 1, Math.max(0, nå + retning));
+    rader[neste]?.focus();
+  }, []);
+
   const tomtArkiv = notes.length === 0;
+  const tittel = notes.find((n) => n.path === path)?.title ?? "Notat";
+
+  /** Radene i registeret, i den rekkefølgen de står på skjermen. Lista er
+   *  ett tabstopp: én rad har `tabIndex=0`, resten −1, og pilene flytter
+   *  fokus mellom dem. Hundre notater var før hundre tabstopp. */
+  const radnøkler: string[] = (spurt?.treff ?? []).map((_, i) => `s${i}`);
+  if (treff) radnøkler.push(...treff.treff.map((t) => `t${t.path}`));
+  else if (!tomtArkiv) radnøkler.push(...notes.map((n) => `n${n.path}`));
+  const stopp = fokusRad && radnøkler.includes(fokusRad) ? fokusRad : radnøkler[0];
+
+  /** Hva søket fant, sagt i én setning. Den står i et live-område, fordi
+   *  lista bytter seg ut mens hun skriver og fokus blir i søkefeltet — en
+   *  blind bruker fikk aldri vite om det fantes treff. */
+  const søkemelding = (() => {
+    if (treff === null) return "";
+    const deler = [treffmelding(treff.treff.length, treff.avkortet)];
+    if (spurt) {
+      deler.push(
+        spurt.treff.length > 0
+          ? `${spurt.treff.length} svar under «${spurt.overskrift}»`
+          : `Ingen svar under «${spurt.overskrift}»`,
+      );
+    }
+    return `${deler.join(". ")}.`;
+  })();
+
+  const søketast = (e: TastHendelse<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      // Escape hører hjemme her, i feltet den tømmer — ikke på `window`, der
+      // den tømte søket midt i skrivingen og midt i rettingsskjemaet.
+      e.preventDefault();
+      tømSøket();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const første = treff?.treff[0];
+      if (første) void åpne(første.path, { linjer: [første.startLine, første.endLine] });
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      document.querySelector<HTMLElement>("nav.liste button.rad")?.focus();
+    }
+  };
 
   return (
     <div className="skall">
+      {/* Første fokuserbare element. Uten den måtte man shift-tabbe gjennom
+          hver eneste notatrad for å komme fra panelet til søket, og Escape
+          var den eneste veien til skriveflaten — en hurtigtast uten knapp. */}
+      <button
+        className="hopp"
+        onClick={() => document.querySelector<HTMLElement>(".cm-content")?.focus()}
+      >
+        Hopp til skriveflaten
+      </button>
+
       <header className="topp">
         <div className="søk">
           <span className="søkfelt">
@@ -615,26 +920,41 @@ export default function App() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={søketast}
               placeholder="Søk i notatene"
               aria-label="Søk i notatene"
+              aria-keyshortcuts="Meta+F"
               title={'To ord: ett av dem. "flere ord": frase. -ord: uten. AND: begge.'}
               spellCheck={false}
             />
-            {!query && <kbd>⌘F</kbd>}
+            {/* Et tegn uten et ord ved seg. Det er en påminnelse for øyet, og
+                skjermleseren skal ikke lese «kommando F» inne i feltnavnet —
+                hurtigtasten står i `aria-keyshortcuts` i stedet. */}
+            {!query && <kbd aria-hidden="true">⌘F</kbd>}
           </span>
-          {query && (
+          {query ? (
             <button
               className="tøm"
               onClick={() => {
-                setQuery("");
-                setTreff(null);
-                setSpurt(null);
+                tømSøket();
                 søkefelt.current?.focus();
               }}
             >
               Vis alle
             </button>
-          )}
+          ) : tømt ? (
+            // Escape tømte søket. Det skal gå an å få det tilbake.
+            <button
+              className="tøm"
+              onClick={() => {
+                setQuery(tømt);
+                setTømt("");
+                søkefelt.current?.focus();
+              }}
+            >
+              Søk «{tømt.length > 24 ? `${tømt.slice(0, 24)}…` : tømt}» igjen
+            </button>
+          ) : null}
         </div>
         <label className="tema">
           Tema
@@ -649,9 +969,11 @@ export default function App() {
             ))}
           </select>
         </label>
+        {/* Etiketten bytter, og da skal det ikke stå en trykt-tilstand ved
+            siden av: «Skjul forståelse, veksleknapp, aktivert» er en dobbel
+            negasjon. Ordene alene sier hva knappen gjør. */}
         <button
-          className="bryter"
-          aria-pressed={panel}
+          className={panel ? "bryter på" : "bryter"}
           onClick={() => {
             const på = !panel;
             setPanel(på);
@@ -661,84 +983,149 @@ export default function App() {
         >
           {panel ? "Skjul forståelse" : "Vis forståelse"}
         </button>
-        <button className="nytt" onClick={() => void nyttNotat()}>
-          Nytt notat <kbd>⌘N</kbd>
+        <button className="nytt" onClick={() => void nyttNotat()} aria-keyshortcuts="Meta+N">
+          Nytt notat{" "}
+          <kbd aria-hidden="true">⌘N</kbd>
         </button>
       </header>
 
       <div className={panel ? "kropp med-panel" : "kropp"}>
-        <nav className="liste" aria-label="Notater">
-          {spurt && spurt.treff.length > 0 && (
-            <section className="spurt">
-              <h2 className="dag">{spurt.overskrift}</h2>
-              <p className="spurtOm">Fra det du har skrevet før, ikke fra ordene du søkte på.</p>
-              {spurt.treff.map((t) => (
-                <button
-                  key={`${t.sti}-${t.hash}`}
-                  className="rad"
-                  onClick={() => void åpne(t.sti, false, t.hash)}
-                >
-                  <span className="tittel">{linjetekst(t.avsender, t.kortform)}</span>
-                  <span className="fra">
-                    {t.venter ? `venter på ${t.venter} · ` : ""}
-                    {t.tittel}
-                  </span>
-                </button>
-              ))}
-            </section>
-          )}
-          {treff !== null ? (
-            treff.length === 0 ? (
-              <p className="tomt">
-                Fant ingen notater med «{query.trim()}».
-                <span>Søket leter etter hele ord. Prøv ett ord færre, eller et annet ord.</span>
-                <SøkeSyntaks />
-              </p>
+        <div className="spalte">
+          <p className="skjult" role="status">
+            {søkemelding}
+          </p>
+          <nav className="liste" aria-label="Notater" onKeyDown={listetast}>
+            {spurt && (
+              <section className="spurt">
+                <h2 className="dag">{spurt.overskrift}</h2>
+                <p className="spurtOm">
+                  Fra det du har skrevet før, ikke fra ordene du søkte på.
+                  {spurt.filter.length > 0 && ` Snevret inn med «${spurt.filter.join(", ")}».`}
+                  {/* Appen har ikke noe tidsfilter. Før ble «forrige uke» til
+                      to filterord, og svaret var en kort, troverdig og gal
+                      liste. Nå står det hva som skjedde med dem. */}
+                  {spurt.tid.length > 0 &&
+                    ` Ordene «${spurt.tid.join(", ")}» handler om tid, og søket kan ikke` +
+                      " begrense på tid ennå — dette er alt, uansett når det ble skrevet."}
+                </p>
+                {spurt.treff.length === 0 && (
+                  <p className="tomt">
+                    {spurt.lest === 0
+                      ? "Appen har ikke lest noen notater ennå, så det finnes ikke noe å svare med. «Hva vi har forstått» må være slått på."
+                      : "Ingen av linjene appen har lest passer på dette."}
+                  </p>
+                )}
+                <ul className="rader">
+                  {spurt.treff.map((t, i) => (
+                    <Rad
+                      key={`${t.sti}-${t.hash}-${i}`}
+                      nøkkel={`s${i}`}
+                      stopp={stopp}
+                      valgt={false}
+                      onFokus={setFokusRad}
+                      onKlikk={() => void åpne(t.sti, { avsnitt: t.hash })}
+                    >
+                      <span className="tittel">{linjetekst(t.avsender, t.kortform)}</span>
+                      {dato(t.tidspunkt) && <span className="tid">{dato(t.tidspunkt)}</span>}
+                      <span className="fra">
+                        {t.venter ? `venter på ${t.venter} · ` : ""}
+                        {t.tittel}
+                      </span>
+                    </Rad>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {treff !== null ? (
+              treff.treff.length === 0 ? (
+                // Står det strukturerte svar over, er «fant ingen notater»
+                // bare halve sannheten — og de to sto rett under hverandre.
+                <p className="tomt">
+                  {spurt && spurt.treff.length > 0
+                    ? `Ingen notater har ordene «${query.trim()}» i teksten.`
+                    : `Fant ingen notater med «${query.trim()}».`}
+                  <span>Søket leter etter hele ord. Prøv ett ord færre, eller et annet ord.</span>
+                  <SøkeSyntaks />
+                </p>
+              ) : (
+                <section>
+                  <h2 className="dag">{treffmelding(treff.treff.length, treff.avkortet)}</h2>
+                  {treff.avkortet && (
+                    <p className="spurtOm">
+                      Det finnes flere. Skriv ett ord til for å snevre inn.
+                    </p>
+                  )}
+                  <ul className="rader">
+                    {treff.treff.map((t) => (
+                      <Rad
+                        key={t.path}
+                        nøkkel={`t${t.path}`}
+                        stopp={stopp}
+                        valgt={t.path === path}
+                        onFokus={setFokusRad}
+                        onKlikk={() =>
+                          void åpne(t.path, { linjer: [t.startLine, t.endLine] })
+                        }
+                      >
+                        <span className="tittel">{t.title}</span>
+                        {t.modified > 0 && (
+                          <span className="tid">{dagsetikett(t.modified)}</span>
+                        )}
+                        <Utdrag tekst={t.snippet} />
+                      </Rad>
+                    ))}
+                  </ul>
+                </section>
+              )
+            ) : tomtArkiv ? (
+              <p className="tomt">Ingen notater ennå.</p>
             ) : (
-              <section>
-                <h2 className="dag">{treff.length} treff</h2>
-                {treff.map((t) => (
-                  <button
-                    key={t.path}
-                    className={`rad${t.path === path ? " valgt" : ""}`}
-                    onClick={() => void åpne(t.path)}
-                  >
-                    <span className="tittel">{t.title}</span>
-                    <Utdrag tekst={t.snippet} />
-                  </button>
-                ))}
-              </section>
-            )
-          ) : tomtArkiv ? (
-            <p className="tomt">Ingen notater ennå.</p>
-          ) : (
-            grupper(notes).map(([etikett, rader]) => (
-              <section key={etikett}>
-                <h2 className="dag">{etikett}</h2>
-                {rader.map((n) => (
-                  <button
-                    key={n.path}
-                    className={`rad${n.path === path ? " valgt" : ""}`}
-                    onClick={() => void åpne(n.path)}
-                  >
-                    <span className="tittel">{n.title}</span>
-                    <span className="tid">{klokke.format(new Date(n.modified * 1000))}</span>
-                  </button>
-                ))}
-              </section>
-            ))
+              grupper(notes).map(([etikett, rader]) => (
+                <section key={etikett}>
+                  <h2 className="dag">{etikett}</h2>
+                  <ul className="rader">
+                    {rader.map((n) => (
+                      <Rad
+                        key={n.path}
+                        nøkkel={`n${n.path}`}
+                        stopp={stopp}
+                        valgt={n.path === path}
+                        onFokus={setFokusRad}
+                        onKlikk={() => void åpne(n.path)}
+                      >
+                        <span className="tittel">{n.title}</span>
+                        <span className="tid">
+                          {klokke.format(new Date(n.modified * 1000))}
+                        </span>
+                      </Rad>
+                    ))}
+                  </ul>
+                </section>
+              ))
+            )}
+          </nav>
+          {/* Hva søket kan. Den står nederst i registerspalten, utenfor
+              rullingen, så den er der uten å ta plass fra notatene — og hun
+              slipper å lure på hvorfor «utstyret» ikke finner «utstyr». */}
+          {ordbank && (
+            <div className="ordbank">
+              <p role={ordbankArbeid ? "status" : undefined}>{ordbankArbeid ?? ordbank.tekst}</p>
+              {ordbank.mangler && (
+                <button onClick={() => void hentOrdlista()} disabled={ordbankArbeid !== null}>
+                  {ordbankArbeid ? "Henter ordlista …" : "Last ned ordlista (98 MB)"}
+                </button>
+              )}
+            </div>
           )}
-        </nav>
+        </div>
 
         <main className="ark">
-          {feil && (
-            <p className="feil" role="alert">
-              {feil}
-              <button onClick={() => setFeil(null)}>Lukk</button>
-            </p>
-          )}
           {path ? (
             <>
+              {/* Notatets egen overskrift er markdown inne i skriveflaten, og
+                  `#` er fjernet fra DOM-en. Dokumentet hadde derfor ingen h1,
+                  og ingen overskrift å navigere til. */}
+              <h1 className="skjult">{tittel}</h1>
               {/* Lagringsmerket står her, ikke nede i hjørnet: det er her øyet
                   allerede er når man ser på notatet, og et lagringsmerke ingen
                   finner gjør ingen trygge. */}
@@ -753,9 +1140,11 @@ export default function App() {
                     {samtale?.er && samtale.utenAvsender > 0 &&
                       ` · ${samtale.utenAvsender} avsnitt uten avsender`}
                   </span>
-                  <span className="status" aria-live="polite">
-                    {status}
-                  </span>
+                  {/* Ikke et live-område. «Lagrer …» kom ved hvert opphold i
+                      skrivingen, og skjermleseren avbrøt seg selv hvert par
+                      sekunder. Merket leses når hun går til det; det som
+                      *må* sies — at lagringen feilet — står i feilbanneret. */}
+                  <span className="status">{status}</span>
                   <button onClick={() => void byttSamtale()}>
                     {samtale?.er ? "Ikke en samtale" : "Dette er en samtale"}
                   </button>
@@ -764,7 +1153,7 @@ export default function App() {
                   </button>
                   {topp && (
                     <button onClick={() => setDetaljer(!detaljer)}>
-                      {detaljer ? "Skjul detaljer" : "Vis detaljer"}
+                      {detaljer ? "Skjul feltene" : "Vis feltene slik de står i fila"}
                     </button>
                   )}
                 </div>
@@ -779,15 +1168,10 @@ export default function App() {
                   </dl>
                 )}
               </div>
-              {endretUtenfor && (
-                <p className="feil" role="status">
-                  Notatet er endret utenfor appen.
-                  <button onClick={() => void lastInnPåNytt()}>Last inn på nytt</button>
-                </p>
-              )}
               <Editor
                 path={path}
                 doc={doc}
+                navn={tittel}
                 onChange={skriv}
                 selectTitle={nytt}
                 peker={peker}
@@ -815,6 +1199,47 @@ export default function App() {
               </button>
             </div>
           )}
+
+          {/* Beskjedene står under skriveflaten, ikke over den. Satt inn over
+              editoren dyttet de hele teksten nedover mens hun skrev, og linja
+              hoppet under fingeren. */}
+          <div className="beskjeder">
+            {feil && (
+              <p className="feil" role="alert">
+                {feil}
+                <button
+                  onClick={() => {
+                    setFeil(null);
+                    document.querySelector<HTMLElement>(".cm-content")?.focus();
+                  }}
+                >
+                  Lukk
+                </button>
+              </p>
+            )}
+            {endretUtenfor && (
+              // «Notatet du skriver i ble endret et annet sted» er nettopp
+              // meldingen som ikke skal stå i kø bak noe annet.
+              <p className="feil" role="alert">
+                Notatet er endret utenfor appen, og du har skrevet noe som ikke er lagret.
+                <button onClick={() => void lastInnPåNytt()}>
+                  Last inn på nytt, og legg det jeg skrev til side
+                </button>
+              </p>
+            )}
+            {forkastet && forkastet.sti === path && (
+              <p className="feil" role="status">
+                Det du hadde skrevet ({forkastet.tekst.length} tegn) er lagt til side.
+                <button onClick={taTilbake}>Ta det tilbake</button>
+              </p>
+            )}
+            {merknad && (
+              <p className="feil" role="status">
+                {merknad}
+                <button onClick={() => setMerknad(null)}>Lukk</button>
+              </p>
+            )}
+          </div>
         </main>
 
         {panel &&
@@ -841,7 +1266,7 @@ export default function App() {
               onLukkMerknad={() =>
                 setForståelse((f) => (f ? { ...f, reread: [] } : f))
               }
-              onÅpne={(annen, avsnitt) => void åpne(annen, false, avsnitt)}
+              onÅpne={(annen, avsnitt) => void åpne(annen, { avsnitt })}
               onSlåPå={() => void settLesningPå(true)}
               onSlåAv={() => void settLesningPå(false)}
             />

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AVSLATT, PRIVAT } from "./api";
 import type { Angring, Paragraph, Retting, Tidligere, Understanding } from "./api";
 
@@ -320,6 +320,7 @@ function Retteskjema({
 function Linje({
   p,
   plass,
+  nøkkel,
   overstyrt,
   onVelg,
   onEndre,
@@ -327,6 +328,9 @@ function Linje({
 }: {
   p: Paragraph;
   plass: Plass;
+  /** Linjas identitet, så fokus finner veien tilbake hit når rettingen
+   *  lukkes. */
+  nøkkel: string;
   /** Et senere avsnitt i det samme notatet motsier dette. */
   overstyrt: boolean;
   onVelg: Velg;
@@ -363,7 +367,7 @@ function Linje({
           Ferdig
         </button>
       )}
-      <button className="endre" onClick={onEndre}>
+      <button className="endre" data-endre={nøkkel} onClick={onEndre}>
         Endre
       </button>
     </div>
@@ -417,6 +421,28 @@ export function Panel({
   const [redigerer, setRedigerer] = useState<string | null>(null);
   const nøkkel = (p: Paragraph) => (p.id > 0 ? `id:${p.id}` : `pos:${p.start}`);
 
+  const flate = useRef<HTMLElement>(null);
+
+  /** Fokus tilbake dit hun kom fra.
+   *
+   *  «Avbryt», «Lagre», «Angre» og «Lukk» avmonterer elementet som hadde
+   *  fokus, og da faller fokus til `<body>`: neste Tab begynner på toppen av
+   *  dokumentet. Rettingen har en «Endre»-knapp å gå tilbake til; banneret
+   *  har ingen, og da er panelet selv nærmeste sted. */
+  const tilbake = (til?: string) => {
+    queueMicrotask(() => {
+      const knapp = til
+        ? flate.current?.querySelector<HTMLElement>(`[data-endre="${CSS.escape(til)}"]`)
+        : null;
+      (knapp ?? flate.current)?.focus();
+    });
+  };
+
+  const lukkSkjema = (nøkkel: string) => {
+    setRedigerer(null);
+    tilbake(nøkkel);
+  };
+
   const rett = (p: Paragraph, plass: string | null, kortform: string | null, sagt: string) => {
     const før = p.correction;
     onHusk({
@@ -432,7 +458,7 @@ export function Panel({
         kortform: før?.summary ?? null,
       },
     });
-    setRedigerer(null);
+    lukkSkjema(nøkkel(p));
     onRett(
       {
         avsnittId: p.id,
@@ -513,7 +539,7 @@ export function Panel({
           onTilbakestill={() =>
             rett(p, null, null, `Rettelsen på «${kortformen(p)}» er tatt bort.`)
           }
-          onAvbryt={() => setRedigerer(null)}
+          onAvbryt={() => lukkSkjema(nøkkel(p))}
         />
       </li>
     ) : (
@@ -521,6 +547,7 @@ export function Panel({
         <Linje
           p={p}
           plass={plass}
+          nøkkel={nøkkel(p)}
           overstyrt={overstyrt.has(p.hash)}
           onVelg={onVelg}
           onEndre={() => setRedigerer(nøkkel(p))}
@@ -534,11 +561,32 @@ export function Panel({
     );
 
   return (
-    <aside className="panel" aria-label="Hva vi har forstått">
+    <aside className="panel" aria-label="Hva vi har forstått" ref={flate} tabIndex={-1}>
+      {/* Panelet fylles ut mens en lesning står på, og gjorde det uten et
+          ord. Setningen her endrer seg når panelet gjør det, og leses da. */}
+      <p className="skjult" role="status">
+        {panelmelding(
+          {
+            forstått: forstått.length,
+            uavklart: uavklarte.length,
+            oppgave: oppgaver.length,
+            idé: idéer.length,
+          },
+          framdrift,
+          forståelse !== null,
+        )}
+      </p>
       {sist && (
         <p className="angre">
           <span>{sist.tekst}</span>
-          <button onClick={onAngre}>Angre</button>
+          <button
+            onClick={() => {
+              onAngre();
+              tilbake();
+            }}
+          >
+            Angre
+          </button>
         </p>
       )}
 
@@ -556,7 +604,14 @@ export function Panel({
                   .join(", ")}.`}{" "}
             Skriver du teksten inn igjen, kommer rettelsen tilbake.
           </span>
-          <button onClick={onLukkMerknad}>Lukk</button>
+          <button
+            onClick={() => {
+              onLukkMerknad();
+              tilbake();
+            }}
+          >
+            Lukk
+          </button>
         </p>
       )}
 
@@ -643,6 +698,37 @@ export function Panel({
   );
 }
 
+/** Panelet i én setning, for den som ikke ser det.
+ *
+ *  Panelet er hele produktideen, og det fylles ut ovenfra og nedover mens en
+ *  lesning står på — uten et ord til en skjermleser. Setningen her går i et
+ *  `role="status"`: den endrer seg når panelet endrer seg, og blir lest når
+ *  den gjør det.
+ *
+ *  Kortformene leses ikke opp: de er notatets egne setninger, og de står i
+ *  lista rett under. Det som må sies er *hvor mange* og *hva som pågår*. */
+export function panelmelding(
+  antall: { forstått: number; uavklart: number; oppgave: number; idé: number },
+  framdrift: { lest: number; totalt: number; fase: string | null } | null,
+  lesning: boolean,
+): string {
+  if (framdrift) {
+    return framdrift.fase === "sammenligner"
+      ? "Ser etter hva du har skrevet om dette før."
+      : `Leser avsnitt ${framdrift.lest} av ${framdrift.totalt}.`;
+  }
+  if (!lesning) return "";
+  const deler: string[] = [];
+  const si = (n: number, ett: string, flere: string) => {
+    if (n > 0) deler.push(`${n} ${n === 1 ? ett : flere}`);
+  };
+  si(antall.forstått, "forstått linje", "forstått");
+  si(antall.uavklart, "uavklart linje", "uavklarte");
+  si(antall.oppgave, "oppgave", "oppgaver");
+  si(antall.idé, "idé", "idéer");
+  return deler.length === 0 ? "Ingenting er bestemt ennå." : `${deler.join(", ")}.`;
+}
+
 /** Eksportert for testing: plasseringen er produktlogikk, ikke pynt. */
 export const _test = {
   dato,
@@ -652,6 +738,7 @@ export const _test = {
   kortformen,
   venteren,
   linjetekst,
+  panelmelding,
   tidligereLinjer,
   overstyrte,
   SETNINGER,

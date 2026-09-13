@@ -5,18 +5,49 @@ export type Note = { path: string; title: string; modified: number };
 export type SearchHit = {
   path: string;
   title: string;
+  /** Utdraget fra FTS5. Treffordene er rammet inn av [`MERKE_START`] og
+   *  [`MERKE_SLUTT`]. */
   snippet: string;
+  /** Linjene biten dekker, talt fra 1 i fila slik den ligger på disk. Det er
+   *  disse som gjør at et klikk på et treff lander på treffet. */
   startLine: number;
   endLine: number;
+  /** Sekunder siden epoke. Uten den forsvinner all tid i det øyeblikket hun
+   *  søker — den grupperte lista har både dag og klokkeslett. */
+  modified: number;
 };
+
+/** Treffene, og om lista er kappet. Uten det siste sto det «40 treff» om det
+ *  så var fem hundre. */
+export type Søkesvar = { treff: SearchHit[]; avkortet: boolean };
+
+/** Tegnene FTS5 rammer treffordene inn med. Styretegn, ikke `**`: brukerens
+ *  egen fete skrift skal ikke kunne forskyve markeringen. Må stemme med
+ *  `search::MERKE_START` / `MERKE_SLUTT` i indekseren. */
+export const MERKE_START = "\u0002";
+export const MERKE_SLUTT = "\u0003";
 
 export const listNotes = () => invoke<Note[]>("list_notes");
 export const readNote = (path: string) => invoke<string>("read_note", { path });
 export const writeNote = (path: string, content: string) =>
   invoke<void>("write_note", { path, content });
 export const createNote = (title: string) => invoke<string>("create_note", { title });
-export const searchNotes = (query: string) => invoke<SearchHit[]>("search_notes", { query });
+export const searchNotes = (query: string) => invoke<Søkesvar>("search_notes", { query });
 export const reindex = () => invoke<string>("reindex");
+
+/** Norsk Ordbank: hva søket får til akkurat nå. `tekst` er hele setningen
+ *  brukeren skal se — den er skrevet i Rust, uten sjargong, og skal ikke
+ *  bygges om her. */
+export type Ordbankstatus = { tekst: string; mangler: boolean };
+
+export const ordbankStatus = () => invoke<Ordbankstatus>("ordbank_status");
+
+/** Henter ordlista (98 MB) og leser den inn. Tar noen minutter, og sier fra
+ *  underveis gjennom [`påOrdbank`]. */
+export const lastNedOrdbank = () => invoke<Ordbankstatus>("last_ned_ordbank");
+
+export const påOrdbank = (f: (tekst: string) => void) =>
+  listen<string>("ordbank", (e) => f(e.payload));
 
 /** Brukerens egen retting av én linje: hvor den hører hjemme, og hva den
  *  skulle stått som. `plass` er «fjernet» når linja ikke hører hjemme noe
@@ -193,8 +224,19 @@ export type Strukturert = {
 
 /** Svar på et spørsmål om det som er lest — «hva er uavklart», «hva venter på
  *  noe». `null` betyr at søket var et vanlig søk, og da står fritekstsøket
- *  alene, som før. */
-export type Sporsmal = { overskrift: string; treff: Strukturert[] };
+ *  alene, som før.
+ *
+ *  `filter` er ordene svaret ble snevret inn med, `tid` er ordene om tid som
+ *  ble sett og ikke brukt, og `lest` er hvor mange linjer appen har lest i det
+ *  hele tatt. De tre er forskjellen på «ingenting passet» og «det finnes ikke
+ *  noe å svare med» — to tilstander som før så helt like ut. */
+export type Sporsmal = {
+  overskrift: string;
+  treff: Strukturert[];
+  filter: string[];
+  tid: string[];
+  lest: number;
+};
 
 export const sporNotater = (query: string) =>
   invoke<Sporsmal | null>("spor_notater", { query });

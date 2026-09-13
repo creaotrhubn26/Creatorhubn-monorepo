@@ -23,9 +23,17 @@ const skriveflate = EditorView.theme({
     color: "var(--ink)",
     backgroundColor: "transparent",
     fontFamily: "var(--serif)",
-    fontSize: "17.5px",
+    // `rem`, ikke px: skriveflaten skal følge brukerens egen tekststørrelse.
+    fontSize: "1.09375rem",
   },
-  "&.cm-focused": { outline: "none" },
+  // Skriveflaten skal si fra når den har fokus. Eneste tegn var før
+  // tekstmarkøren — en 2px strek, og i et tomt notat ingenting i det hele
+  // tatt. Ringen ligger innenfor kanten (`-2px`) så den ikke klippes av
+  // spalten rundt.
+  "&.cm-focused": {
+    outline: "2px solid var(--accent)",
+    outlineOffset: "-2px",
+  },
   ".cm-scroller": {
     fontFamily: "var(--serif)",
     lineHeight: "1.78",
@@ -35,7 +43,9 @@ const skriveflate = EditorView.theme({
   ".cm-content": {
     maxWidth: "44rem",
     margin: "0 auto",
-    padding: "0 32px",
+    // Smalner vinduet — eller zoomer hun inn — skal luften gi etter før
+    // teksten gjør det.
+    padding: "0 clamp(16px, 5vw, 32px)",
     caretColor: "var(--accent)",
   },
   ".cm-line": { padding: "0" },
@@ -73,6 +83,11 @@ const vistAvsnitt = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(verdi, tr) {
     verdi = verdi.map(tr.changes);
+    // Markeringen sto i 1,8 sekund og forsvant. Hele poenget med å klikke en
+    // panellinje eller et søketreff er å finne igjen stedet, og 1,8 s er kort
+    // for den som leser sakte. Nå står den til hun begynner å skrive, eller
+    // til hun klikker seg videre.
+    if (tr.docChanged) verdi = Decoration.none;
     for (const e of tr.effects) {
       if (e.is(vis)) {
         verdi = e.value
@@ -248,6 +263,10 @@ type Props = {
   /** Byttes stien, byttes hele dokumentet. */
   path: string;
   doc: string;
+  /** Notatets tittel. Den blir skriveflatens navn: CodeMirror gir
+   *  `.cm-content` `role="textbox"` uten navn, og VoiceOver sa bare
+   *  «tekstområde» — i et felt fokus kastes inn i ved hvert notatbytte. */
+  navn: string;
   onChange: (text: string) => void;
   /** Nytt notat: marker overskriften så første tastetrykk erstatter den. */
   selectTitle: boolean;
@@ -263,9 +282,25 @@ type Props = {
   onSynlig?: (fra: number, til: number) => void;
 };
 
-/// Markøren når et notat åpnes: hele overskriften markert for et ferskt
-/// notat, ellers slutten av teksten.
-export function markør(doc: string, selectTitle: boolean): { anchor: number; head: number } {
+/// Markøren når et notat åpnes.
+///
+/// Rekkefølgen er hvor mye vi vet om hvor hun skal:
+///
+/// 1. **Et sted hun ba om.** Kom hun hit fra et søketreff, bærer treffet
+///    linjene sine, og markøren skal stå der treffet står — ikke i bunnen av
+///    et notat på tre tusen ord.
+/// 2. **Overskriften, markert**, i et ferskt notat: første tastetrykk
+///    erstatter den.
+/// 3. **Slutten av teksten** ellers, som er der man skriver videre.
+export function markør(
+  doc: string,
+  selectTitle: boolean,
+  sted?: { from: number; to: number } | null,
+): { anchor: number; head: number } {
+  if (sted && sted.from <= doc.length) {
+    const from = Math.min(sted.from, doc.length);
+    return { anchor: from, head: from };
+  }
   const title = /^#+\s+(.*)$/m.exec(doc);
   if (!(selectTitle && title)) return { anchor: doc.length, head: doc.length };
   return {
@@ -282,7 +317,12 @@ export function markør(doc: string, selectTitle: boolean): { anchor: number; he
 ///
 /// Eksportert for testing: at et bytte ikke er angrbart er produktlogikk, ikke
 /// oppsett.
-export function tilstand(doc: string, valg: { anchor: number; head: number }, ekstra: Extension[] = []) {
+export function tilstand(
+  doc: string,
+  valg: { anchor: number; head: number },
+  ekstra: Extension[] = [],
+  navn = "Notatet",
+) {
   return EditorState.create({
     doc,
     selection: valg,
@@ -295,12 +335,18 @@ export function tilstand(doc: string, valg: { anchor: number; head: number }, ek
       vistAvsnitt,
       skriveflate,
       EditorView.lineWrapping,
+      // Uten dette er skriveflaten et `role="textbox"` uten navn, og
+      // VoiceOver sier «tekstområde» — om produktets midtpunkt.
+      EditorView.contentAttributes.of({
+        "aria-label": navn,
+        "aria-multiline": "true",
+      }),
       ...ekstra,
     ],
   });
 }
 
-export function Editor({ path, doc, onChange, selectTitle, peker, onSamtale, onSynlig }: Props) {
+export function Editor({ path, doc, navn, onChange, selectTitle, peker, onSamtale, onSynlig }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const change = useRef(onChange);
@@ -333,14 +379,22 @@ export function Editor({ path, doc, onChange, selectTitle, peker, onSamtale, onS
     ];
   }
 
+  const navnet = useRef(navn);
+  navnet.current = navn;
+  /** Hvor panelet eller søketreffet peker, tilgjengelig for effekten som
+   *  bygger tilstanden på nytt. */
+  const pekt = useRef(peker);
+  pekt.current = peker;
+
   useEffect(() => {
     if (!host.current) return;
     const v = new EditorView({
       parent: host.current,
       state: tilstand(
         tekst.current,
-        markør(tekst.current, valgt.current.selectTitle),
+        markør(tekst.current, valgt.current.selectTitle, pekt.current),
         kroker.current,
+        navnet.current,
       ),
     });
     view.current = v;
@@ -353,12 +407,18 @@ export function Editor({ path, doc, onChange, selectTitle, peker, onSamtale, onS
   useEffect(() => {
     const v = view.current;
     if (!v) return;
-    const valg = markør(doc, selectTitle);
+    const valg = markør(doc, selectTitle, pekt.current);
     // Hele tilstanden byttes. `setState` går utenom transaksjonene, så det
     // fyrer verken `onChange` eller en angrbar endring — historikken til
     // notatet man kom fra følger ikke med hit.
-    v.setState(tilstand(doc, valg, kroker.current));
-    v.focus();
+    v.setState(tilstand(doc, valg, kroker.current, navnet.current));
+    // Fokus flyttes bare til et *ferskt* notat, der hun nettopp ba om å få
+    // skrive. Før ble fokus kastet hit ved hvert eneste notatbytte: sto hun i
+    // lista og bladde, mistet hun stedet sitt, og den som navigerte med
+    // tastatur måtte tilbake gjennom hele registeret. Å åpne et notat er
+    // ikke det samme som å be om å skrive i det — «Hopp til skriveflaten»
+    // øverst, Tab, og et klikk i teksten er de tre veiene dit.
+    if (selectTitle) v.focus();
     v.dispatch({ effects: EditorView.scrollIntoView(valg.head) });
     synlig.current?.(v.viewport.from, v.viewport.to);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -399,13 +459,12 @@ export function Editor({ path, doc, onChange, selectTitle, peker, onSamtale, onS
     const to = Math.min(peker.to, v.state.doc.length);
     const from = Math.min(peker.from, to);
     if (from === to) return;
+    // Markeringen står til hun skriver eller klikker seg videre. Ingen
+    // nedtelling: den som leser sakte skal ikke miste stedet mens hun leser.
     v.dispatch({
+      selection: { anchor: from },
       effects: [vis.of({ from, to }), EditorView.scrollIntoView(from, { y: "center" })],
     });
-    const t = window.setTimeout(() => {
-      view.current?.dispatch({ effects: vis.of(null) });
-    }, 1800);
-    return () => window.clearTimeout(t);
   }, [peker]);
 
   return <div className="editor" ref={host} />;

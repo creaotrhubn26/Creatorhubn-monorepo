@@ -1,4 +1,6 @@
-import { defineConfig } from "vite";
+// Fra `vitest/config`, ikke `vite`: den kjenner `test`-feltet under, og er
+// den samme `defineConfig` ellers.
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
@@ -10,6 +12,10 @@ export default defineConfig({
   // også i bunten om et nytt ledd i treet drar inn en tredje.
   resolve: { dedupe: ["@codemirror/state", "@codemirror/view"] },
   clearScreen: false,
+  // Vitest stubber CSS som standard, og da gir `import "./styles.css?raw"` en
+  // tom streng. Tilgjengelighetstesten regner kontrastene ut av stilarket i
+  // stedet for å skrive tallene av, så den trenger fila slik den er.
+  test: { css: true },
   server: {
     port: 1426,
     strictPort: true,
