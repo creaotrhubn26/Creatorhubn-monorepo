@@ -4,6 +4,7 @@ import {
   buildLocationManagerOperations,
   locationReadiness,
   portfolioReadiness,
+  verifiedScoutEvidence,
 } from './locationManagerWorkspaceModel';
 
 const project: CastingProject = {
@@ -48,5 +49,17 @@ describe('locationManagerWorkspaceModel', () => {
     };
     expect(locationReadiness(operations)).toEqual(expect.objectContaining({ score: 100, blockers: [] }));
     expect(portfolioReadiness([{ ...project.locations![0], locationOperations: operations }])).toEqual(expect.objectContaining({ shootReady: 1, blocked: 0, averageScore: 100 }));
+  });
+
+  it('only exposes explicitly verified observations as factual analysis evidence', () => {
+    const operations = buildLocationManagerOperations(project.locations![0], project);
+    operations.scoutCapture.observations = [
+      { id: 'unknown', category: 'power', status: 'unknown', value: 'Mulig uttak', source: 'manual', observedAt: '2026-09-13T10:00:00Z', mediaIds: [], sceneIds: [] },
+      { id: 'seen', category: 'noise', status: 'observed', value: 'Trafikk hørt', source: 'field_observation', observedAt: '2026-09-13T10:01:00Z', mediaIds: [], sceneIds: [] },
+      { id: 'meter', category: 'noise', status: 'verified', value: '62 dBA', source: 'measurement', observedAt: '2026-09-13T10:02:00Z', mediaIds: ['audio-1'], sceneIds: ['12A'] },
+    ];
+    expect(verifiedScoutEvidence(operations)).toEqual([
+      expect.objectContaining({ id: 'meter', value: '62 dBA' }),
+    ]);
   });
 });

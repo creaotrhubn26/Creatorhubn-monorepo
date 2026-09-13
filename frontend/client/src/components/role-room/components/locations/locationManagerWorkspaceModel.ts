@@ -81,6 +81,8 @@ export function buildLocationManagerOperations(
         power: 'unknown',
       },
       checks: DEFAULT_SCOUT_CHECKS.map((check) => ({ ...check })),
+      observations: [],
+      pins: [],
     },
     nextAction: location.contactInfo?.name
       ? 'Følg opp eier og avklar tilgjengelige opptaksdatoer.'
@@ -106,6 +108,8 @@ export function buildLocationManagerOperations(
       checks: existing.scoutCapture?.checks?.length
         ? existing.scoutCapture.checks
         : initial.scoutCapture.checks,
+      observations: existing.scoutCapture?.observations ?? initial.scoutCapture.observations,
+      pins: existing.scoutCapture?.pins ?? initial.scoutCapture.pins,
     },
   };
 }
@@ -124,6 +128,11 @@ export function mergeLocationOperations(
     locationOperationsUpdatedAt: updatedAt,
     locationOperationsUpdatedBy: updatedBy,
   };
+}
+
+/** The only scout observations safe to pass on as factual analysis context. */
+export function verifiedScoutEvidence(operations: LocationManagerOperations) {
+  return operations.scoutCapture.observations.filter((observation) => observation.status === 'verified');
 }
 
 export interface LocationReadiness {

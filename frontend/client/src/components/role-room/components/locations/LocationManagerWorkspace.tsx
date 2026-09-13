@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -32,6 +32,10 @@ import {
   MyLocationOutlined as MyLocationIcon,
   OpenInNewOutlined as OpenInNewIcon,
   PhotoCameraOutlined as PhotoCameraIcon,
+  VideocamOutlined as VideoIcon,
+  MicOutlined as AudioIcon,
+  ThreeSixtyOutlined as PanoramaIcon,
+  PushPinOutlined as PinIcon,
   OpenInFullOutlined as FullWorkspaceIcon,
   RefreshOutlined as RefreshIcon,
   SaveOutlined as SaveIcon,
@@ -45,6 +49,8 @@ import type {
   LocationDecisionStatus,
   LocationGateStatus,
   LocationManagerOperations,
+  LocationScoutObservationCategory,
+  LocationScoutEvidenceStatus,
   LocationWorkflowStage,
 } from '../../models/casting';
 import { useBeforeUnloadIfDirty } from '../../hooks/useBeforeUnloadIfDirty';
@@ -53,9 +59,12 @@ import {
   LocationOperationsNetworkError,
   locationManagerService,
   type LocationScoutMedia,
+  type LocationScoutMediaKind,
+  type LocationScoutMediaMetadata,
 } from '../../services/locationManagerService';
 import {
   locationManagerOfflineStore,
+  type PendingLocationMedia,
 } from '../../services/locationManagerOfflineStore';
 import {
   buildLocationManagerOperations,
@@ -132,6 +141,57 @@ const fieldSx = {
 };
 
 const toLocalDateTime = (value?: string): string => value ? value.slice(0, 16) : '';
+const scoutUuid = (): string => typeof crypto !== 'undefined' && 'randomUUID' in crypto
+  ? crypto.randomUUID()
+  : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (token) => {
+    const value = Math.floor(Math.random() * 16);
+    return (token === 'x' ? value : (value & 0x3) | 0x8).toString(16);
+  });
+const scoutId = (prefix: string): string => `${prefix}-${scoutUuid()}`;
+
+const MEDIA_KIND_LABELS: Record<LocationScoutMediaKind, string> = {
+  photo: 'Bilde', video: 'Video', audio: 'Lyd', panorama: '360°',
+};
+const MEDIA_SOURCE_LABELS: Record<LocationScoutMediaMetadata['source'], string> = {
+  camera: 'Kamera', library: 'Bibliotek', recorder: 'Opptaker', import: 'Import',
+};
+
+const OBSERVATION_CATEGORY_LABELS: Record<LocationScoutObservationCategory, string> = {
+  access: 'Adkomst', parking: 'Parkering', power: 'Strøm', signal: 'Dekning', noise: 'Støy',
+  light: 'Lys', weather: 'Vær', safety: 'Sikkerhet', other: 'Annet',
+};
+
+function pendingMediaView(item: PendingLocationMedia): LocationScoutMedia {
+  return {
+    id: item.id,
+    projectId: item.projectId,
+    locationId: item.locationId,
+    uploadedBy: 'local-device',
+    clientUploadId: item.upload.clientUploadId,
+    kind: item.upload.kind,
+    captureMetadata: item.upload.metadata,
+    displayName: item.displayName,
+    contentType: item.contentType,
+    sizeBytes: item.sizeBytes,
+    checksumSha256: '',
+    createdAt: item.createdAt,
+    pendingUpload: true,
+  };
+}
+
+function remapScoutMediaId(operations: LocationManagerOperations, fromId: string, toId: string): LocationManagerOperations {
+  return {
+    ...operations,
+    scoutCapture: {
+      ...operations.scoutCapture,
+      pins: operations.scoutCapture.pins.map((pin) => pin.mediaId === fromId ? { ...pin, mediaId: toId } : pin),
+      observations: operations.scoutCapture.observations.map((observation) => ({
+        ...observation,
+        mediaIds: observation.mediaIds.map((mediaId) => mediaId === fromId ? toId : mediaId),
+      })),
+    },
+  };
+}
 
 interface WorkflowSectionProps {
   compact: boolean;
@@ -220,11 +280,24 @@ export function LocationManagerWorkspace({
   const [dirty, setDirty] = useState(false);
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
   const [pendingCount, setPendingCount] = useState(0);
+  const [pendingMediaCount, setPendingMediaCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [locating, setLocating] = useState(false);
   const [media, setMedia] = useState<LocationScoutMedia[]>([]);
   const [mediaLoading, setMediaLoading] = useState(false);
   const [mediaUploading, setMediaUploading] = useState(false);
+  const [selectedMediaId, setSelectedMediaId] = useState('');
+  const [selectedMediaUrl, setSelectedMediaUrl] = useState('');
+  const [mediaNote, setMediaNote] = useState('');
+  const [mediaSceneRefs, setMediaSceneRefs] = useState('');
+  const [mediaSearch, setMediaSearch] = useState('');
+  const [captureBearing, setCaptureBearing] = useState('');
+  const [captureDevice, setCaptureDevice] = useState('');
+  const [linkedCheckId, setLinkedCheckId] = useState('');
+  const [pinLabel, setPinLabel] = useState('');
+  const [observationValue, setObservationValue] = useState('');
+  const [observationCategory, setObservationCategory] = useState<LocationScoutObservationCategory>('access');
+  const [observationStatus, setObservationStatus] = useState<LocationScoutEvidenceStatus>('observed');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'warning' | 'error'; text: string } | null>(null);
   const { confirmIfDirty } = useBeforeUnloadIfDirty({
     isDirty: dirty,
@@ -236,9 +309,10 @@ export function LocationManagerWorkspace({
     setFeedback(null);
     const baseLocations = project.locations ?? [];
     try {
-      const [records, pending] = await Promise.all([
+      const [records, pending, pendingMedia] = await Promise.all([
         locationManagerService.list(project.id),
         locationManagerOfflineStore.list(project.id),
+        locationManagerOfflineStore.listMedia(project.id).catch(() => []),
       ]);
       const byLocationId = new Map(records.map((record) => [record.locationId, record]));
       const pendingByLocationId = new Map(pending.map((record) => [record.locationId, record]));
@@ -253,8 +327,9 @@ export function LocationManagerWorkspace({
           : location;
       }));
       setPendingCount(pending.length);
-      if (pending.length > 0) {
-        setFeedback({ type: 'warning', text: `${pending.length} lokal endring venter på synkronisering.` });
+      setPendingMediaCount(pendingMedia.length);
+      if (pending.length + pendingMedia.length > 0) {
+        setFeedback({ type: 'warning', text: `${pending.length + pendingMedia.length} lokale elementer venter på synkronisering.` });
       }
     } catch (error) {
       setLocations(baseLocations);
@@ -273,12 +348,51 @@ export function LocationManagerWorkspace({
 
   const syncPending = useCallback(async () => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-    const pending = await locationManagerOfflineStore.list(project.id);
-    if (pending.length === 0) {
+    const [pending, pendingMedia] = await Promise.all([
+      locationManagerOfflineStore.list(project.id),
+      locationManagerOfflineStore.listMedia(project.id).catch(() => []),
+    ]);
+    if (pending.length === 0 && pendingMedia.length === 0) {
       setPendingCount(0);
+      setPendingMediaCount(0);
       return;
     }
     setSyncing(true);
+    for (const item of pendingMedia) {
+      try {
+        const saved = await locationManagerService.uploadMedia(
+          item.projectId,
+          item.locationId,
+          item.blob,
+          item.upload,
+          item.displayName,
+        );
+        await locationManagerOfflineStore.removeMedia(item.id);
+        if (item.locationId === selectedLocationId) {
+          setMedia((current) => [saved, ...current.filter((entry) => entry.id !== saved.id && entry.id !== item.id)]);
+          setSelectedMediaId((current) => current === item.id ? saved.id : current);
+          setOperations((current) => current ? remapScoutMediaId(current, item.id, saved.id) : current);
+        }
+        for (const pendingOperation of pending.filter((entry) => entry.locationId === item.locationId)) {
+          pendingOperation.operations = remapScoutMediaId(pendingOperation.operations, item.id, saved.id);
+          await locationManagerOfflineStore.put({
+            projectId: pendingOperation.projectId,
+            locationId: pendingOperation.locationId,
+            expectedVersion: pendingOperation.expectedVersion,
+            operations: pendingOperation.operations,
+          });
+        }
+      } catch (error) {
+        await locationManagerOfflineStore.incrementMediaAttempts(item).catch(() => undefined);
+        setFeedback({
+          type: error instanceof LocationOperationsNetworkError ? 'warning' : 'error',
+          text: error instanceof Error ? error.message : 'Synkronisering av scout-mediet feilet.',
+        });
+        setPendingMediaCount((await locationManagerOfflineStore.listMedia(project.id).catch(() => [])).length);
+        setSyncing(false);
+        return;
+      }
+    }
     for (const item of pending) {
       try {
         const saved = await locationManagerService.save(
@@ -303,11 +417,15 @@ export function LocationManagerWorkspace({
       }
     }
     setPendingCount((await locationManagerOfflineStore.list(project.id)).length);
+    setPendingMediaCount((await locationManagerOfflineStore.listMedia(project.id).catch(() => [])).length);
     setSyncing(false);
   }, [project.id, selectedLocationId]);
 
   useEffect(() => {
-    const refreshCount = async () => setPendingCount((await locationManagerOfflineStore.list(project.id)).length);
+    const refreshCount = async () => {
+      setPendingCount((await locationManagerOfflineStore.list(project.id)).length);
+      setPendingMediaCount((await locationManagerOfflineStore.listMedia(project.id).catch(() => [])).length);
+    };
     void refreshCount();
     const handleOnline = () => {
       setOnline(true);
@@ -323,18 +441,29 @@ export function LocationManagerWorkspace({
   }, [project.id, syncPending]);
 
   useEffect(() => {
-    if (!selectedLocationId || !online) {
+    setSelectedMediaId('');
+    setSelectedMediaUrl('');
+    if (!selectedLocationId) {
       setMedia([]);
       return;
     }
     let active = true;
     setMediaLoading(true);
-    void locationManagerService.listMedia(project.id, selectedLocationId)
-      .then((items) => { if (active) setMedia(items); })
+    const pending = locationManagerOfflineStore.listMedia(project.id)
+      .then((items) => items.filter((item) => item.locationId === selectedLocationId))
+      .catch(() => []);
+    void Promise.all([online ? locationManagerService.listMedia(project.id, selectedLocationId) : Promise.resolve([]), pending])
+      .then(([remoteItems, pendingItems]) => {
+        if (active) setMedia([...pendingItems.map(pendingMediaView), ...remoteItems]);
+      })
       .catch(() => { if (active) setMedia([]); })
       .finally(() => { if (active) setMediaLoading(false); });
     return () => { active = false; };
   }, [online, project.id, selectedLocationId]);
+
+  useEffect(() => () => {
+    if (selectedMediaUrl.startsWith('blob:')) URL.revokeObjectURL(selectedMediaUrl);
+  }, [selectedMediaUrl]);
 
   useEffect(() => {
     setSelectedLocationId((current) => locations.some((location) => location.id === current)
@@ -449,36 +578,157 @@ export function LocationManagerWorkspace({
     );
   };
 
-  const uploadScoutPhoto = async (file?: File) => {
-    if (!file || !selectedLocation || readOnly) return;
-    if (!online) {
-      setFeedback({ type: 'warning', text: 'Feltdata kan lagres uten nett, men bilder må lastes til privat S3 når forbindelsen er tilbake.' });
+  const uploadScoutMedia = async (file: File | undefined, kind: LocationScoutMediaKind, source: LocationScoutMediaMetadata['source']) => {
+    if (!file || !selectedLocation || !operations || readOnly) return;
+    const expectedFamily = kind === 'panorama' || kind === 'photo' ? 'image/' : `${kind}/`;
+    const maxBytes = kind === 'video' ? 250 * 1024 * 1024 : kind === 'audio' ? 50 * 1024 * 1024 : 25 * 1024 * 1024;
+    if (!file.type.startsWith(expectedFamily) || file.size < 1 || file.size > maxBytes) {
+      setFeedback({ type: 'error', text: `Velg en gyldig ${MEDIA_KIND_LABELS[kind].toLowerCase()}fil på maksimalt ${Math.round(maxBytes / 1024 / 1024)} MB.` });
       return;
     }
-    if (!file.type.startsWith('image/') || file.size < 1 || file.size > 25 * 1024 * 1024) {
-      setFeedback({ type: 'error', text: 'Velg et gyldig bilde på maksimalt 25 MB.' });
+    const bearingDegrees = captureBearing === '' ? undefined : Number(captureBearing);
+    if (bearingDegrees !== undefined && (!Number.isFinite(bearingDegrees) || bearingDegrees < 0 || bearingDegrees > 360)) {
+      setFeedback({ type: 'error', text: 'Kameraretning må være mellom 0 og 360 grader.' });
+      return;
+    }
+    const upload = {
+      clientUploadId: scoutUuid(),
+      kind,
+      metadata: {
+        capturedAt: operations.scoutCapture.capturedAt ?? new Date().toISOString(),
+        coordinates: operations.scoutCapture.coordinates,
+        bearingDegrees,
+        source,
+        deviceLabel: captureDevice.trim() || undefined,
+        sceneIds: mediaSceneRefs.split(',').map((item) => item.trim()).filter(Boolean).slice(0, 80),
+        checkId: linkedCheckId || undefined,
+        note: mediaNote.trim() || undefined,
+      } satisfies LocationScoutMediaMetadata,
+    };
+    const queue = async () => {
+      try {
+        const pending = await locationManagerOfflineStore.putMedia({
+          projectId: project.id,
+          locationId: selectedLocation.id,
+          displayName: file.name,
+          contentType: file.type,
+          sizeBytes: file.size,
+          blob: file,
+          upload,
+        });
+        const view = pendingMediaView(pending);
+        setMedia((current) => [view, ...current.filter((item) => item.id !== view.id)]);
+        setSelectedMediaId(view.id);
+        setSelectedMediaUrl(URL.createObjectURL(file));
+        setPendingMediaCount((await locationManagerOfflineStore.listMedia(project.id)).length);
+        setFeedback({ type: 'warning', text: `${file.name} er trygt lagret på enheten og synkroniseres til privat Role Room S3 når nettet er tilbake.` });
+      } catch {
+        setFeedback({ type: 'error', text: 'Denne enheten kan ikke opprette en sikker offlinekø. Filen er ikke registrert; behold originalen og prøv igjen på nett.' });
+      }
+    };
+    if (!online) {
+      await queue();
       return;
     }
     setMediaUploading(true);
     try {
-      const saved = await locationManagerService.uploadPhoto(project.id, selectedLocation.id, file);
+      const saved = await locationManagerService.uploadMedia(project.id, selectedLocation.id, file, upload);
       setMedia((items) => [saved, ...items.filter((item) => item.id !== saved.id)]);
+      setMediaNote('');
       setFeedback({ type: 'success', text: `${saved.displayName} er lagret privat i Role Room S3.` });
     } catch (error) {
-      setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Kunne ikke laste opp scout-bildet.' });
+      if (error instanceof LocationOperationsNetworkError) await queue();
+      else setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Kunne ikke laste opp scout-filen.' });
     } finally {
       setMediaUploading(false);
     }
   };
 
-  const openScoutPhoto = async (item: LocationScoutMedia) => {
+  const selectScoutMedia = async (item: LocationScoutMedia) => {
     if (!selectedLocation) return;
+    setSelectedMediaId(item.id);
+    if (selectedMediaUrl.startsWith('blob:')) URL.revokeObjectURL(selectedMediaUrl);
+    setSelectedMediaUrl('');
     try {
+      if (item.pendingUpload) {
+        const pending = (await locationManagerOfflineStore.listMedia(project.id)).find((entry) => entry.id === item.id);
+        if (!pending) throw new Error('Den lokale originalen finnes ikke lenger.');
+        setSelectedMediaUrl(URL.createObjectURL(pending.blob));
+        return;
+      }
       const url = await locationManagerService.getMediaUrl(project.id, selectedLocation.id, item.id);
-      window.open(url, '_blank', 'noopener,noreferrer');
+      setSelectedMediaUrl(url);
     } catch (error) {
-      setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Kunne ikke åpne scout-bildet.' });
+      setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Kunne ikke åpne scout-filen.' });
     }
+  };
+
+  const openScoutMedia = () => {
+    if (selectedMediaUrl) window.open(selectedMediaUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const addObservation = () => {
+    if (!observationValue.trim() || !operations || readOnly) return;
+    updateOperations((current) => ({
+      ...current,
+      scoutCapture: {
+        ...current.scoutCapture,
+        observations: [{
+          id: scoutId('observation'),
+          category: observationCategory,
+          status: observationStatus,
+          value: observationValue.trim(),
+          source: 'field_observation',
+          observedAt: new Date().toISOString(),
+          coordinates: current.scoutCapture.coordinates,
+          mediaIds: selectedMediaId ? [selectedMediaId] : [],
+          sceneIds: mediaSceneRefs.split(',').map((item) => item.trim()).filter(Boolean).slice(0, 80),
+          checkId: linkedCheckId || undefined,
+        }, ...current.scoutCapture.observations],
+      },
+    }));
+    setObservationValue('');
+  };
+
+  const addPinAt = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!selectedMediaId || readOnly || event.currentTarget !== event.target) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    updateOperations((current) => ({
+      ...current,
+      scoutCapture: {
+        ...current.scoutCapture,
+        pins: [...current.scoutCapture.pins, {
+          id: scoutId('pin'),
+          mediaId: selectedMediaId,
+          x,
+          y,
+          label: pinLabel.trim() || `Pin ${current.scoutCapture.pins.filter((pin) => pin.mediaId === selectedMediaId).length + 1}`,
+          status: 'observed',
+          sceneIds: mediaSceneRefs.split(',').map((item) => item.trim()).filter(Boolean).slice(0, 80),
+          checkId: linkedCheckId || undefined,
+          createdAt: new Date().toISOString(),
+        }],
+      },
+    }));
+    setPinLabel('');
+  };
+
+  const movePin = (event: ReactPointerEvent<HTMLButtonElement>, pinId: string) => {
+    if (readOnly || event.buttons !== 1) return;
+    const canvas = event.currentTarget.parentElement;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    updateOperations((current) => ({
+      ...current,
+      scoutCapture: {
+        ...current.scoutCapture,
+        pins: current.scoutCapture.pins.map((pin) => pin.id === pinId ? { ...pin, x, y } : pin),
+      },
+    }));
   };
 
   const discard = () => {
@@ -493,6 +743,15 @@ export function LocationManagerWorkspace({
   const totalBudget = operations
     ? operations.finance.locationFee + operations.finance.permitFees + operations.finance.restorationReserve
     : 0;
+  const selectedMedia = media.find((item) => item.id === selectedMediaId);
+  const selectedPins = operations?.scoutCapture.pins.filter((pin) => pin.mediaId === selectedMediaId) ?? [];
+  const visibleMedia = media.filter((item) => {
+    const query = mediaSearch.trim().toLocaleLowerCase('nb-NO');
+    if (!query) return true;
+    return [item.displayName, MEDIA_KIND_LABELS[item.kind], item.captureMetadata.note, ...item.captureMetadata.sceneIds]
+      .filter(Boolean)
+      .some((value) => String(value).toLocaleLowerCase('nb-NO').includes(query));
+  });
 
   if (loading && locations.length === 0) {
     return (
@@ -696,36 +955,96 @@ export function LocationManagerWorkspace({
                     </Typography>
                   </Box>
 
-                  <Box sx={{ p: 1.2, borderRadius: 2, bgcolor: 'rgba(56,189,248,.045)', border: '1px solid rgba(56,189,248,.18)' }}>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} gap={1}>
+                  <Box data-testid="scout-media-panel" sx={{ p: { xs: 1.1, sm: 1.5 }, borderRadius: 2, bgcolor: 'rgba(56,189,248,.045)', border: '1px solid rgba(56,189,248,.18)' }}>
+                    <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} gap={1}>
                       <Box>
-                        <Typography sx={{ fontWeight: 800 }}>Scout-bilder</Typography>
-                        <Typography sx={{ color: 'rgba(226,232,240,.55)', fontSize: '.75rem' }}>Private originaler · sjekksumverifisert · Role Room AWS S3</Typography>
+                        <Stack direction="row" alignItems="center" spacing={.75} flexWrap="wrap" useFlexGap>
+                          <Typography sx={{ fontWeight: 800 }}>Feltmedier</Typography>
+                          {pendingMediaCount > 0 && <Chip size="small" label={`${pendingMediaCount} lagret offline`} sx={{ bgcolor: 'rgba(251,191,36,.12)', color: '#fde68a' }} />}
+                        </Stack>
+                        <Typography sx={{ color: 'rgba(226,232,240,.55)', fontSize: '.75rem' }}>Bilde, 360°, video og lyd · privat · sjekksumverifisert · Role Room AWS S3</Typography>
                       </Box>
-                      <Button component="label" variant="outlined" startIcon={mediaUploading ? <CircularProgress size={16} color="inherit" /> : <PhotoCameraIcon />} disabled={readOnly || mediaUploading} sx={{ minHeight: 48, color: '#7dd3fc', borderColor: 'rgba(125,211,252,.3)' }}>
-                        Ta eller velg bilde
-                        <input
-                          hidden
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/avif"
-                          capture="environment"
-                          onChange={(event) => {
-                            void uploadScoutPhoto(event.target.files?.[0]);
-                            event.target.value = '';
-                          }}
-                        />
-                      </Button>
+                      {mediaUploading && <Stack direction="row" spacing={.7} alignItems="center"><CircularProgress size={16} /><Typography sx={{ fontSize: '.75rem' }}>Laster opp …</Typography></Stack>}
                     </Stack>
+
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2,minmax(0,1fr))', lg: 'repeat(3,minmax(0,1fr))' }, gap: .8, mt: 1.2 }}>
+                      <TextField label="Scener / opptak" placeholder="12A, 14" value={mediaSceneRefs} onChange={(event) => setMediaSceneRefs(event.target.value)} disabled={readOnly} sx={fieldSx} />
+                      <FormControl sx={fieldSx}><InputLabel>Koble til kontroll</InputLabel><Select label="Koble til kontroll" value={linkedCheckId} disabled={readOnly} onChange={(event) => setLinkedCheckId(event.target.value)}><MenuItem value="">Ingen</MenuItem>{operations.scoutCapture.checks.map((check) => <MenuItem key={check.id} value={check.id}>{check.title}</MenuItem>)}</Select></FormControl>
+                      <TextField label="Opptaksnotat" value={mediaNote} onChange={(event) => setMediaNote(event.target.value)} disabled={readOnly} sx={fieldSx} />
+                      <TextField label="Kameraretning" type="number" value={captureBearing} onChange={(event) => setCaptureBearing(event.target.value)} disabled={readOnly} inputProps={{ min: 0, max: 360, 'aria-label': 'Kameraretning i grader' }} InputProps={{ endAdornment: <Typography sx={{ color: 'rgba(226,232,240,.5)' }}>°</Typography> }} sx={fieldSx} />
+                      <TextField label="Enhet / kamera" placeholder="Scout iPhone A" value={captureDevice} onChange={(event) => setCaptureDevice(event.target.value)} disabled={readOnly} sx={fieldSx} />
+                      <TextField label="Søk i feltmedier" value={mediaSearch} onChange={(event) => setMediaSearch(event.target.value)} sx={fieldSx} />
+                    </Box>
+
+                    <Stack direction="row" spacing={.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                      {([
+                        ['photo', 'Ta / velg bilde', <PhotoCameraIcon />, 'image/jpeg,image/png,image/webp,image/heic,image/heif,image/avif', 'environment', 'camera'],
+                        ['panorama', 'Legg til 360°', <PanoramaIcon />, 'image/jpeg,image/png,image/webp,image/heic,image/heif,image/avif', undefined, 'library'],
+                        ['video', 'Ta video', <VideoIcon />, 'video/mp4,video/quicktime,video/webm', 'environment', 'camera'],
+                        ['audio', 'Ta opp lyd', <AudioIcon />, 'audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a', 'user', 'recorder'],
+                      ] as const).map(([kind, label, icon, accept, capture, source]) => (
+                        <Button key={kind} component="label" variant="outlined" startIcon={icon} disabled={readOnly || mediaUploading} sx={{ minHeight: 48, color: '#7dd3fc', borderColor: 'rgba(125,211,252,.3)', flex: { xs: '1 1 145px', sm: '0 1 auto' } }}>
+                          {label}
+                          <input hidden type="file" accept={accept} capture={capture} onChange={(event) => { void uploadScoutMedia(event.target.files?.[0], kind, source); event.target.value = ''; }} />
+                        </Button>
+                      ))}
+                    </Stack>
+
                     {mediaLoading ? <LinearProgress sx={{ mt: 1.1 }} /> : (
-                      <Stack direction="row" spacing={.75} flexWrap="wrap" useFlexGap sx={{ mt: media.length > 0 ? 1 : 0 }}>
-                        {media.map((item) => (
-                          <Button key={item.id} size="small" endIcon={<OpenInNewIcon />} onClick={() => void openScoutPhoto(item)} sx={{ minHeight: 44, color: '#bae6fd', bgcolor: 'rgba(56,189,248,.08)', maxWidth: '100%' }}>
-                            <Typography noWrap component="span" sx={{ maxWidth: 220, fontSize: '.75rem' }}>{item.displayName}</Typography>
+                      <Stack direction="row" spacing={.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                        {visibleMedia.map((item) => (
+                          <Button key={item.id} size="small" startIcon={item.kind === 'audio' ? <AudioIcon /> : item.kind === 'video' ? <VideoIcon /> : item.kind === 'panorama' ? <PanoramaIcon /> : <PhotoCameraIcon />} onClick={() => void selectScoutMedia(item)} aria-pressed={selectedMediaId === item.id} sx={{ minHeight: 44, color: '#bae6fd', bgcolor: selectedMediaId === item.id ? 'rgba(45,212,191,.18)' : 'rgba(56,189,248,.08)', maxWidth: '100%' }}>
+                            <Typography noWrap component="span" sx={{ maxWidth: 220, fontSize: '.75rem' }}>{MEDIA_KIND_LABELS[item.kind]} · {item.displayName}</Typography>
                           </Button>
                         ))}
-                        {!media.length && <Typography sx={{ color: 'rgba(226,232,240,.45)', fontSize: '.76rem' }}>{online ? 'Ingen scout-bilder lastet opp.' : 'Bildeopplasting venter til du er på nett.'}</Typography>}
+                        {!visibleMedia.length && <Typography sx={{ color: 'rgba(226,232,240,.45)', fontSize: '.76rem' }}>{media.length ? 'Ingen feltmedier matcher søket.' : online ? 'Ingen feltmedier lastet opp.' : 'Nye filer lagres lokalt til nettet er tilbake.'}</Typography>}
                       </Stack>
                     )}
+
+                    {selectedMedia && selectedMediaUrl && (
+                      <Box sx={{ mt: 1.25 }}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1} sx={{ mb: .75 }}>
+                          <Box sx={{ minWidth: 0 }}><Typography noWrap sx={{ fontWeight: 750 }}>{selectedMedia.displayName}</Typography><Typography sx={{ color: 'rgba(226,232,240,.5)', fontSize: '.7rem' }}>{MEDIA_KIND_LABELS[selectedMedia.kind]} · {(selectedMedia.sizeBytes / 1024 / 1024).toFixed(1)} MB</Typography></Box>
+                          <IconButton aria-label="Åpne original" onClick={openScoutMedia} sx={{ minWidth: 44, minHeight: 44, color: '#bae6fd' }}><OpenInNewIcon /></IconButton>
+                        </Stack>
+                        <Stack direction="row" spacing={.6} flexWrap="wrap" useFlexGap sx={{ mb: .75 }}>
+                          <Chip size="small" label={MEDIA_SOURCE_LABELS[selectedMedia.captureMetadata.source]} sx={{ bgcolor: 'rgba(255,255,255,.05)', color: '#cbd5e1' }} />
+                          {selectedMedia.captureMetadata.capturedAt && <Chip size="small" label={new Date(selectedMedia.captureMetadata.capturedAt).toLocaleString('nb-NO')} sx={{ bgcolor: 'rgba(255,255,255,.05)', color: '#cbd5e1' }} />}
+                          {selectedMedia.captureMetadata.coordinates && <Chip size="small" label={`${selectedMedia.captureMetadata.coordinates.latitude.toFixed(5)}, ${selectedMedia.captureMetadata.coordinates.longitude.toFixed(5)}`} sx={{ bgcolor: 'rgba(45,212,191,.08)', color: '#99f6e4' }} />}
+                          {selectedMedia.captureMetadata.bearingDegrees !== undefined && <Chip size="small" label={`${selectedMedia.captureMetadata.bearingDegrees}°`} sx={{ bgcolor: 'rgba(56,189,248,.08)', color: '#bae6fd' }} />}
+                          {selectedMedia.captureMetadata.deviceLabel && <Chip size="small" label={selectedMedia.captureMetadata.deviceLabel} sx={{ bgcolor: 'rgba(255,255,255,.05)', color: '#cbd5e1' }} />}
+                          {selectedMedia.captureMetadata.sceneIds.map((sceneId) => <Chip key={sceneId} size="small" label={`Scene ${sceneId}`} sx={{ bgcolor: 'rgba(168,85,247,.1)', color: '#ddd6fe' }} />)}
+                        </Stack>
+                        {(selectedMedia.kind === 'photo' || selectedMedia.kind === 'panorama') && (
+                          <>
+                            <TextField fullWidth size="small" label="Pin-kommentar" placeholder="Skriv kommentar, trykk så på bildet" value={pinLabel} onChange={(event) => setPinLabel(event.target.value)} disabled={readOnly} sx={{ ...fieldSx, mb: .75 }} />
+                            <Box data-testid="scout-pin-canvas" onPointerDown={addPinAt} sx={{ position: 'relative', overflow: 'hidden', borderRadius: 2, minHeight: 220, maxHeight: 520, bgcolor: '#020617', border: '1px solid rgba(125,211,252,.2)', touchAction: 'pan-y', cursor: readOnly ? 'default' : 'crosshair' }}>
+                              <Box component="img" src={selectedMediaUrl} alt={selectedMedia.displayName} draggable={false} sx={{ width: '100%', height: 'auto', maxHeight: 520, display: 'block', objectFit: 'contain', pointerEvents: 'none', userSelect: 'none' }} />
+                              {selectedPins.map((pin, index) => (
+                                <IconButton key={pin.id} aria-label={`Flytt pin ${index + 1}: ${pin.label}`} title={`${pin.label} · dra for å flytte`} onPointerDown={(event) => { event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => movePin(event, pin.id)} sx={{ position: 'absolute', left: `${pin.x * 100}%`, top: `${pin.y * 100}%`, transform: 'translate(-50%,-50%)', width: 44, height: 44, color: '#fff', bgcolor: pin.status === 'verified' ? '#059669' : '#e11d48', border: '2px solid white', boxShadow: '0 4px 16px rgba(0,0,0,.45)', '&:hover': { bgcolor: pin.status === 'verified' ? '#047857' : '#be123c' }, touchAction: 'none', zIndex: 2 }}><Typography component="span" sx={{ fontSize: '.75rem', fontWeight: 900 }}>{index + 1}</Typography></IconButton>
+                              ))}
+                            </Box>
+                            {selectedPins.length > 0 && <Stack spacing={.6} sx={{ mt: .75 }}>{selectedPins.map((pin, index) => <Box key={pin.id} sx={{ display: 'flex', alignItems: 'center', gap: .7, minHeight: 44 }}><PinIcon sx={{ color: pin.status === 'verified' ? '#34d399' : '#fb7185' }} /><Typography sx={{ flex: 1, fontSize: '.78rem' }}>{index + 1}. {pin.label}</Typography><Button size="small" disabled={readOnly} onClick={() => updateOperations((current) => ({ ...current, scoutCapture: { ...current.scoutCapture, pins: current.scoutCapture.pins.map((entry) => entry.id === pin.id ? { ...entry, status: entry.status === 'verified' ? 'observed' : 'verified' } : entry) } }))} sx={{ minHeight: 44, color: '#99f6e4' }}>{pin.status === 'verified' ? 'Verifisert' : 'Observert'}</Button><IconButton aria-label={`Slett pin ${index + 1}`} disabled={readOnly} onClick={() => updateOperations((current) => ({ ...current, scoutCapture: { ...current.scoutCapture, pins: current.scoutCapture.pins.filter((entry) => entry.id !== pin.id) } }))} sx={{ minWidth: 44, minHeight: 44, color: '#fda4af' }}><DeleteIcon /></IconButton></Box>)}</Stack>}
+                          </>
+                        )}
+                        {selectedMedia.kind === 'video' && <Box component="video" src={selectedMediaUrl} controls playsInline sx={{ width: '100%', maxHeight: 480, borderRadius: 2, bgcolor: '#020617' }} />}
+                        {selectedMedia.kind === 'audio' && <Box component="audio" src={selectedMediaUrl} controls sx={{ width: '100%' }} />}
+                      </Box>
+                    )}
+                  </Box>
+
+                  <Box sx={{ p: 1.2, borderRadius: 2, bgcolor: 'rgba(45,212,191,.035)', border: '1px solid rgba(45,212,191,.16)' }}>
+                    <Typography sx={{ fontWeight: 800 }}>Strukturerte observasjoner</Typography>
+                    <Typography sx={{ color: 'rgba(226,232,240,.55)', fontSize: '.75rem', mb: 1 }}>Bare eksplisitt verifisert evidens kan behandles som fakta i videre analyse.</Typography>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '150px 150px minmax(0,1fr) auto' }, gap: .8, alignItems: 'center' }}>
+                      <FormControl size="small" sx={fieldSx}><InputLabel>Kategori</InputLabel><Select label="Kategori" inputProps={{ 'aria-label': 'Observasjonskategori' }} value={observationCategory} disabled={readOnly} onChange={(event) => setObservationCategory(event.target.value as LocationScoutObservationCategory)}>{Object.entries(OBSERVATION_CATEGORY_LABELS).map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}</Select></FormControl>
+                      <FormControl size="small" sx={fieldSx}><InputLabel>Evidensstatus</InputLabel><Select label="Evidensstatus" inputProps={{ 'aria-label': 'Evidensstatus' }} value={observationStatus} disabled={readOnly} onChange={(event) => setObservationStatus(event.target.value as LocationScoutEvidenceStatus)}><MenuItem value="unknown">Ukjent</MenuItem><MenuItem value="observed">Observert</MenuItem><MenuItem value="verified">Verifisert</MenuItem></Select></FormControl>
+                      <TextField size="small" label="Hva ble observert eller målt?" value={observationValue} disabled={readOnly} onChange={(event) => setObservationValue(event.target.value)} sx={fieldSx} />
+                      <Button variant="outlined" onClick={addObservation} disabled={readOnly || !observationValue.trim()} sx={{ minHeight: 48, color: '#99f6e4', borderColor: 'rgba(94,234,212,.3)' }}>Legg til</Button>
+                    </Box>
+                    <Stack spacing={.6} sx={{ mt: operations.scoutCapture.observations.length ? 1 : 0 }}>
+                      {operations.scoutCapture.observations.map((observation) => <Box key={observation.id} sx={{ display: 'flex', gap: .75, alignItems: 'center', minHeight: 44, p: .65, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,.025)' }}><Chip size="small" label={observation.status === 'verified' ? 'Verifisert' : observation.status === 'observed' ? 'Observert' : 'Ukjent'} sx={{ bgcolor: observation.status === 'verified' ? 'rgba(52,211,153,.12)' : observation.status === 'observed' ? 'rgba(56,189,248,.12)' : 'rgba(148,163,184,.1)', color: observation.status === 'verified' ? '#6ee7b7' : '#bae6fd' }} /><Typography sx={{ flex: 1, fontSize: '.78rem' }}><strong>{OBSERVATION_CATEGORY_LABELS[observation.category]}:</strong> {observation.value}</Typography><IconButton aria-label={`Slett observasjon ${observation.value}`} disabled={readOnly} onClick={() => updateOperations((current) => ({ ...current, scoutCapture: { ...current.scoutCapture, observations: current.scoutCapture.observations.filter((entry) => entry.id !== observation.id) } }))} sx={{ minWidth: 44, minHeight: 44, color: '#fda4af' }}><DeleteIcon /></IconButton></Box>)}
+                    </Stack>
                   </Box>
 
                   <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2,minmax(0,1fr))', lg: 'repeat(3,minmax(0,1fr))' }, gap: 1 }}>
@@ -845,8 +1164,8 @@ export function LocationManagerWorkspace({
                       <Chip
                         size="small"
                         icon={syncing ? <SyncIcon /> : undefined}
-                        label={!online ? 'Frakoblet' : pendingCount > 0 ? `${pendingCount} venter på synk` : 'Synkronisert'}
-                        sx={{ height: 24, bgcolor: !online || pendingCount > 0 ? 'rgba(251,191,36,.12)' : 'rgba(52,211,153,.1)', color: !online || pendingCount > 0 ? '#fde68a' : '#6ee7b7' }}
+                        label={!online ? 'Frakoblet' : pendingCount + pendingMediaCount > 0 ? `${pendingCount + pendingMediaCount} venter på synk` : 'Synkronisert'}
+                        sx={{ height: 24, bgcolor: !online || pendingCount + pendingMediaCount > 0 ? 'rgba(251,191,36,.12)' : 'rgba(52,211,153,.1)', color: !online || pendingCount + pendingMediaCount > 0 ? '#fde68a' : '#6ee7b7' }}
                       />
                     </Stack>
                     <Typography sx={{ color: 'rgba(226,232,240,.5)', fontSize: '.73rem' }}>{readOnly ? 'Lesetilgang' : 'Feltdata lagres lokalt ved nettbrudd og synkroniseres konfliktbeskyttet.'}</Typography>
@@ -854,7 +1173,7 @@ export function LocationManagerWorkspace({
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                     <Button variant="text" startIcon={<RefreshIcon />} onClick={discard} disabled={!dirty || saving} sx={{ minHeight: 48, color: '#cbd5e1' }}>Forkast</Button>
                     <Button variant="outlined" startIcon={<FullWorkspaceIcon />} onClick={onOpenFullWorkspace} sx={{ minHeight: 48, color: '#ccfbf1', borderColor: 'rgba(94,234,212,.3)' }}>Hele Role Room</Button>
-                    {online && pendingCount > 0 && <Button variant="outlined" startIcon={syncing ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />} onClick={() => void syncPending()} disabled={syncing} sx={{ minHeight: 48, color: '#fde68a', borderColor: 'rgba(251,191,36,.35)' }}>Synkroniser</Button>}
+                    {online && pendingCount + pendingMediaCount > 0 && <Button variant="outlined" startIcon={syncing ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />} onClick={() => void syncPending()} disabled={syncing} sx={{ minHeight: 48, color: '#fde68a', borderColor: 'rgba(251,191,36,.35)' }}>Synkroniser</Button>}
                     <Button variant="contained" startIcon={saving ? <CircularProgress size={17} color="inherit" /> : <SaveIcon />} onClick={() => void save()} disabled={!dirty || saving || readOnly} sx={{ minHeight: 48, bgcolor: '#14b8a6', '&:hover': { bgcolor: '#0f9f92' } }}>{online ? 'Lagre beredskap' : 'Lagre lokalt'}</Button>
                   </Stack>
                 </Box>

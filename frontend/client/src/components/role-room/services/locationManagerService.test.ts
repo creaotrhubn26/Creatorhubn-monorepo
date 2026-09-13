@@ -30,4 +30,28 @@ describe('locationManagerService media', () => {
       }),
     );
   });
+
+  it('sends retry identity and capture context with video media', async () => {
+    const media = {
+      id: 'file-2', projectId: 'troll', locationId: 'forest', uploadedBy: 'user-1',
+      clientUploadId: '11111111-1111-4111-8111-111111111111', kind: 'video',
+      captureMetadata: { source: 'camera', sceneIds: ['12A'] },
+      displayName: 'recce.mp4', contentType: 'video/mp4', sizeBytes: 12,
+      checksumSha256: 'b'.repeat(64), createdAt: '2026-09-13T12:00:00Z',
+    };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({ media }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const file = new File([new Uint8Array(12)], 'recce.mp4', { type: 'video/mp4' });
+
+    await locationManagerService.uploadMedia('troll', 'forest', file, {
+      clientUploadId: media.clientUploadId,
+      kind: 'video',
+      metadata: { source: 'camera', sceneIds: ['12A'], note: 'Nordport' },
+    });
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    const form = init.body as FormData;
+    expect(form.get('clientUploadId')).toBe(media.clientUploadId);
+    expect(form.get('kind')).toBe('video');
+    expect(JSON.parse(String(form.get('metadata')))).toEqual(expect.objectContaining({ sceneIds: ['12A'], note: 'Nordport' }));
+  });
 });

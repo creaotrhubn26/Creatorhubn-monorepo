@@ -22,6 +22,8 @@ const initialOperations = {
   risks: [{ id: 'weather', title: 'Kraftig vind', severity: 'high', status: 'mitigating', mitigation: 'Ny måling kl. 05:00' }],
   scoutCapture: {
     conditions: { ambientNoise: 'unknown', mobileSignal: 'unknown', power: 'unknown' },
+    observations: [],
+    pins: [],
     checks: [
       { id: 'access-load-in', title: 'Adkomst og load-in', status: 'unchecked' },
       { id: 'sound', title: 'Støy og lydforhold', status: 'unchecked' },
@@ -86,8 +88,11 @@ async function installAuthenticatedLocationManagerApi(page: Page) {
   await page.route(`**/api/role-room/projects/${projectId}/locations/${locationId}/media`, async (route) => {
     authenticatedRequests.push(route.request().headers().authorization ?? '');
     if (route.request().method() === 'POST') {
+      const sequence = scoutMedia.length + 1;
       const item = {
-        id: '3d1357e0-7fe8-4c11-b5f1-0b1fe4c586d2', projectId, locationId, uploadedBy: 'e2e-test-user',
+        id: `00000000-0000-4000-8000-${String(sequence).padStart(12, '0')}`, projectId, locationId, uploadedBy: 'e2e-test-user',
+        clientUploadId: '11111111-1111-4111-8111-111111111111', kind: 'photo',
+        captureMetadata: { source: 'camera', sceneIds: [] },
         displayName: 'troll-scout.png', contentType: 'image/png', sizeBytes: 33, checksumSha256: 'a'.repeat(64), createdAt: '2026-09-13T12:00:00.000Z',
       };
       scoutMedia = [item, ...scoutMedia];
@@ -95,6 +100,13 @@ async function installAuthenticatedLocationManagerApi(page: Page) {
       return;
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ media: scoutMedia }) });
+  });
+  await page.route(`**/api/role-room/projects/${projectId}/locations/${locationId}/media/*/url`, async (route) => {
+    authenticatedRequests.push(route.request().headers().authorization ?? '');
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      displayName: 'troll-scout.png', contentType: 'image/png', sizeBytes: 33, expiresInSeconds: 300,
+    }) });
   });
   await page.route(`**/api/role-room/projects/${projectId}/roles`, async (route) => {
     authenticatedRequests.push(route.request().headers().authorization ?? '');
@@ -146,7 +158,7 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
     await expect(page.getByText('Hold < 72 t')).toBeVisible();
     await expect.poll(() => new URL(page.url()).searchParams.get('lens')).toBe('location-management');
 
-    await page.getByTestId('location-manager-workspace').locator('input[type="file"]').setInputFiles({
+    await page.getByTestId('location-manager-workspace').locator('input[type="file"]').first().setInputFiles({
       name: 'troll-scout.png',
       mimeType: 'image/png',
       buffer: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(25)]),
@@ -154,11 +166,33 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
     await expect(page.getByText('troll-scout.png er lagret privat i Role Room S3.')).toBeVisible();
     expect(api.scoutMedia).toHaveLength(1);
 
+    await page.getByRole('button', { name: /Bilde · troll-scout.png/ }).click();
+    const pinCanvas = page.getByTestId('scout-pin-canvas');
+    await expect(pinCanvas).toBeVisible();
+    await page.getByLabel('Pin-kommentar').fill('Smal nødutgang');
+    await pinCanvas.click({ position: { x: 80, y: 70 } });
+    await expect(page.getByText('1. Smal nødutgang')).toBeVisible();
+    const pinMarker = page.getByRole('button', { name: /Flytt pin 1:/ });
+    const canvasBox = await pinCanvas.boundingBox();
+    await pinMarker.hover();
+    await page.mouse.down();
+    await page.mouse.move((canvasBox?.x ?? 0) + (canvasBox?.width ?? 300) * 0.72, (canvasBox?.y ?? 0) + (canvasBox?.height ?? 220) * 0.58);
+    await page.mouse.up();
+    await page.getByRole('button', { name: 'Observert' }).click();
+    await expect(page.getByRole('button', { name: 'Verifisert' })).toBeVisible();
+    if (process.env.SCOUT_VISUAL_EVIDENCE) {
+      await page.getByTestId('scout-media-panel').screenshot({ path: '/tmp/scout-capture-wide.png' });
+    }
+
     await page.getByLabel('Neste kritiske handling').fill('Ring kommunen og send revidert trafikkplan kl. 09:00.');
     await page.getByRole('button', { name: 'Lagre beredskap' }).click();
     await expect(page.getByText('Lokasjonsberedskapen er lagret som versjon 1.')).toBeVisible();
     expect(api.savedVersions).toEqual([1]);
     expect(api.operation.operations.nextAction).toBe('Ring kommunen og send revidert trafikkplan kl. 09:00.');
+    expect(api.operation.operations.scoutCapture.pins).toEqual([
+      expect.objectContaining({ label: 'Smal nødutgang', status: 'verified', x: expect.any(Number), y: expect.any(Number) }),
+    ]);
+    expect(api.operation.operations.scoutCapture.pins[0].x).toBeGreaterThan(0.6);
 
     await page.reload();
     await expect(page.getByTestId('location-manager-workspace')).toBeVisible({ timeout: 20_000 });
@@ -205,6 +239,46 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
     await page.setViewportSize({ width: 852, height: 393 });
     await expect(page.getByText('Scout Capture', { exact: true }).first()).toBeVisible();
     await expect(nextAction).toBeVisible();
+    await expect.poll(() => workspace.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    if (process.env.SCOUT_VISUAL_EVIDENCE) {
+      await page.getByTestId('scout-media-panel').screenshot({ path: '/tmp/scout-capture-landscape.png' });
+    }
+  });
+
+  test('@mobile synkroniserer ti offline-opptak én gang hver', async ({ page, context }) => {
+    const api = await installAuthenticatedLocationManagerApi(page);
+    await openCastingPlanner(page, {
+      urlFlags: { seed: 'production-manager-troll', session: 'location-manager', lens: 'location-management' },
+    });
+    await selectFirstProject(page);
+    const workspace = page.getByTestId('location-manager-workspace');
+    await expect(workspace).toBeVisible({ timeout: 20_000 });
+
+    await context.setOffline(true);
+    await expect(page.getByText('Frakoblet')).toBeVisible();
+    const photoInput = workspace.locator('input[type="file"]').first();
+    for (let index = 1; index <= 10; index += 1) {
+      await photoInput.setInputFiles({
+        name: `offline-${index}.png`,
+        mimeType: 'image/png',
+        buffer: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(25, index)]),
+      });
+    }
+    await expect(page.getByText('10 lagret offline')).toBeVisible();
+    expect(api.scoutMedia).toHaveLength(0);
+    await page.getByLabel('Pin-kommentar').fill('Offline portnotat');
+    await page.getByTestId('scout-pin-canvas').tap({ position: { x: 95, y: 80 } });
+    await expect(page.getByText('1. Offline portnotat')).toBeVisible();
+    await page.getByRole('button', { name: 'Lagre lokalt' }).click();
+
+    await context.setOffline(false);
+    await expect.poll(() => api.scoutMedia.length, { timeout: 20_000 }).toBe(10);
+    await expect(page.getByText('10 lagret offline')).toBeHidden();
+    expect(new Set(api.scoutMedia.map((item) => item.id)).size).toBe(10);
+    await expect.poll(() => api.savedVersions.length, { timeout: 20_000 }).toBe(1);
+    const syncedPin = api.operation.operations.scoutCapture.pins[0];
+    expect(syncedPin.label).toBe('Offline portnotat');
+    expect(api.scoutMedia.some((item) => item.id === syncedPin.mediaId)).toBe(true);
   });
 
   test('kjører kildebevisst lokasjonsanalyse, lagrer resultatet og viser det igjen', async ({ page }) => {
