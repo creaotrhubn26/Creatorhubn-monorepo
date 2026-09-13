@@ -4,7 +4,7 @@
 //! Kjør sveipet med:
 //!   cargo test --test identitet_datasett terskelen_er_målt -- --nocapture
 
-use creatorhub_notes_indexer::identitet::{match_med_terskel, Kjent, Match, Ny, TERSKEL};
+use creatorhub_notes_indexer::identitet::{match_med_terskel, Kjent, Match, Ny, MINSTE_ORD, TERSKEL};
 
 /// Fasit for ett nytt avsnitt: enten er det avsnitt nr. N i før-teksten
 /// (nullindeksert), eller så er det nytt.
@@ -398,4 +398,183 @@ fn ordbasert_jaccard_taper_på_korte_avsnitt() {
         ord_jaccard(c, d)
     );
     assert!(likhet(c, d) < TERSKEL);
+}
+
+// ---------------------------------------------------------------------------
+// Korte innlegg. Målt 13. september 2026, etter at samtaleimporten kom.
+// ---------------------------------------------------------------------------
+
+/// Chat-innlegg fra **samme avsender** — `minne::match_per_avsender` grupperer
+/// allerede per person, så det er innenfor én persons egne innlegg id-ene kan
+/// bytte plass. Et innlegg er ofte ett til fem ord, og `IDENTITET.md` sa selv
+/// at Jaccard er svakest der. Dette er målingen forbeholdet ba om.
+///
+/// `LANG` er med i hvert par bare for å gi gruppa noe å bestå av; den er
+/// alltid uendret og alltid eksakt treff.
+const LANG: &str =
+    "Vi bør ta depositum på tretti prosent før oppstart, ellers bærer vi hele risikoen selv.";
+
+#[rustfmt::skip]
+const KORTE: &[Par] = &[
+    // ---- Skal IKKE arve: to ulike korte innlegg fra samme person ----
+    Par { navn: "«Enig.» byttet ut med «Uenig.»", krav: 11,
+        før: &["Enig.", LANG], etter: &[LANG, "Uenig."],
+        fasit: &[Lik(1), FNy] },
+    Par { navn: "«Vi tar det senere» byttet ut med «Vi tar det nå»", krav: 11,
+        før: &["Vi tar det senere.", LANG], etter: &[LANG, "Vi tar det nå."],
+        fasit: &[Lik(1), FNy] },
+    Par { navn: "«Ja, det tror jeg» byttet ut med «Nei, det tror jeg ikke»", krav: 11,
+        før: &["Ja, det tror jeg.", LANG], etter: &[LANG, "Nei, det tror jeg ikke."],
+        fasit: &[Lik(1), FNy] },
+    Par { navn: "«i morgen» byttet ut med «på torsdag»", krav: 11,
+        før: &["Kan vi ta det i morgen?", LANG], etter: &[LANG, "Kan vi ta det på torsdag?"],
+        fasit: &[Lik(1), FNy] },
+    Par { navn: "«Depositum?» byttet ut med «Deposit?»", krav: 11,
+        før: &["Depositum?", LANG], etter: &[LANG, "Deposit?"],
+        fasit: &[Lik(1), FNy] },
+
+    // ---- Uendret kort innlegg: skal alltid holde, via eksakt treff ----
+    Par { navn: "uendret tråd med tre korte innlegg", krav: 11,
+        før: &["Enig.", "Kanskje.", "Dyrere i oppsett.", LANG],
+        etter: &["Enig.", "Kanskje.", "Dyrere i oppsett.", LANG],
+        fasit: &[Lik(0), Lik(1), Lik(2), Lik(3)] },
+    Par { navn: "kort innlegg flyttet i tråden", krav: 11,
+        før: &["Enig.", "Kanskje.", LANG], etter: &[LANG, "Kanskje.", "Enig."],
+        fasit: &[Lik(2), Lik(1), Lik(0)] },
+    Par { navn: "kort innlegg slettet, resten står", krav: 11,
+        før: &["Enig.", "Kanskje.", LANG], etter: &["Enig.", LANG],
+        fasit: &[Lik(0), Lik(2)] },
+];
+
+/// De korte innleggene som er *redigert*. Fasiten sier «samme innlegg», og
+/// lengdegulvet gjør at de likevel blir `Nytt`. Det er den billige feilen, og
+/// den er betalt med vilje — se `identitet::MINSTE_ORD`.
+#[rustfmt::skip]
+const KORTE_REDIGERT: &[Par] = &[
+    Par { navn: "«Enig.» → «Enig!»", krav: 11,
+        før: &["Enig.", LANG], etter: &["Enig!", LANG], fasit: &[Lik(0), Lik(1)] },
+    Par { navn: "«Kanskje.» → «Kanskje?»", krav: 11,
+        før: &["Kanskje.", LANG], etter: &["Kanskje?", LANG], fasit: &[Lik(0), Lik(1)] },
+    Par { navn: "«Dyrere i oppsett.» → «Dyrere i oppsettet.»", krav: 11,
+        før: &["Dyrere i oppsett.", LANG], etter: &["Dyrere i oppsettet.", LANG],
+        fasit: &[Lik(0), Lik(1)] },
+    Par { navn: "«ok» → «ok.»", krav: 11,
+        før: &["ok", LANG], etter: &["ok.", LANG], fasit: &[Lik(0), Lik(1)] },
+];
+
+fn feil_i(sett: &[Par], terskel: f64) -> (usize, usize) {
+    let (mut falsk, mut tapt) = (0, 0);
+    for par in sett {
+        let ut = kjør(par, terskel);
+        for (n, fasit) in par.fasit.iter().enumerate() {
+            match (fasit, ut[n]) {
+                (F::Ny, Match::Samme(_)) | (F::Ny, Match::Endret(_)) => falsk += 1,
+                (F::Lik(_), Match::Nytt) => tapt += 1,
+                (F::Lik(i), Match::Samme(id)) | (F::Lik(i), Match::Endret(id)) => {
+                    if id != *i as i64 + 1 {
+                        falsk += 1;
+                    }
+                }
+                (F::Ny, Match::Nytt) => {}
+            }
+        }
+    }
+    (falsk, tapt)
+}
+
+/// Hovedfunnet: for korte innlegg finnes det ingen terskel som virker. De to
+/// fordelingene — «samme innlegg, redigert» og «to ulike innlegg» — ligger
+/// oppå hverandre. «Enig.» mot «Uenig.» er 0,75; «Enig.» mot «Enig!» er 0,50.
+#[test]
+fn korte_innlegg_har_ikke_noe_vindu_i_det_hele_tatt() {
+    use creatorhub_notes_indexer::identitet::likhet;
+
+    // Motsatt mening, høyere likhet enn den ekte redigeringen. Det er hele
+    // problemet på én linje: «uenig» inneholder «enig».
+    let motsatt = likhet("Enig.", "Uenig.");
+    let redigert = likhet("Enig.", "Enig!");
+    eprintln!("«Enig.»/«Uenig.» {motsatt:.2}   «Enig.»/«Enig!» {redigert:.2}");
+    assert!(
+        motsatt > redigert,
+        "hvis dette snur, finnes det plutselig et vindu, og gulvet kan tas bort"
+    );
+
+    // Fem par korte innlegg som betyr forskjellige ting. Uten lengdegulvet
+    // ville hvert eneste av dem arvet en fremmed id ved 0,36.
+    let ulike = [
+        ("Enig.", "Uenig."),
+        ("Vi tar det senere.", "Vi tar det nå."),
+        ("Ja, det tror jeg.", "Nei, det tror jeg ikke."),
+        ("Kan vi ta det i morgen?", "Kan vi ta det på torsdag?"),
+        ("Depositum?", "Deposit?"),
+    ];
+    // Fire ekte redigeringer av korte innlegg, til sammenlikning.
+    let samme = [
+        ("Enig.", "Enig!"),
+        ("Kanskje.", "Kanskje?"),
+        ("Dyrere i oppsett.", "Dyrere i oppsettet."),
+        ("Sender i kveld.", "Sender det i kveld."),
+    ];
+    eprintln!("ulike innlegg:");
+    for (a, b) in ulike {
+        eprintln!("  {:.2}  «{a}» / «{b}»", likhet(a, b));
+    }
+    eprintln!("samme innlegg, redigert:");
+    for (a, b) in samme {
+        eprintln!("  {:.2}  «{a}» / «{b}»", likhet(a, b));
+    }
+    assert!(
+        ulike.iter().all(|(a, b)| likhet(a, b) >= TERSKEL),
+        "alle fem ville arvet en fremmed id ved {TERSKEL}"
+    );
+    // Og fordelingene overlapper: det laveste ekte paret ligger under det
+    // høyeste falske. Derfor finnes det ingen terskel — bare et gulv.
+    let lavest_ekte = samme.iter().map(|(a, b)| likhet(a, b)).fold(1.0, f64::min);
+    let høyest_falsk = ulike.iter().map(|(a, b)| likhet(a, b)).fold(0.0, f64::max);
+    assert!(
+        lavest_ekte < høyest_falsk,
+        "ekte {lavest_ekte:.2} mot falsk {høyest_falsk:.2} — hadde disse ikke \
+         overlappet, ville en terskel holdt"
+    );
+}
+
+/// Den dyre feilen skal være borte, ved enhver terskel. Det er lengdegulvet
+/// som gjør det, ikke terskelen — så sveipet skal være flatt på null.
+#[test]
+fn et_kort_innlegg_arver_aldri_en_fremmed_id() {
+    eprintln!("terskel  falsk arv  tapt id   (korte innlegg)");
+    for steg in 2..=45 {
+        let t = steg as f64 / 50.0;
+        let (falsk, tapt) = feil_i(KORTE, t);
+        eprintln!("  {t:.2}       {falsk:>2}        {tapt:>2}");
+        assert_eq!(
+            falsk, 0,
+            "terskel {t:.2}: et kort innlegg arvet en fremmed id"
+        );
+        assert_eq!(tapt, 0, "terskel {t:.2}: et uendret kort innlegg mistet id-en");
+    }
+}
+
+/// Prisen, målt og oppført. Et redigert kort innlegg mister id-en sin — den
+/// billige feilen, og dagens oppførsel for alt.
+#[test]
+fn prisen_for_gulvet_er_at_et_redigert_kort_innlegg_blir_nytt() {
+    let (falsk, tapt) = feil_i(KORTE_REDIGERT, TERSKEL);
+    eprintln!("redigerte korte innlegg: falsk arv {falsk}, tapt id {tapt} av 4");
+    assert_eq!(falsk, 0, "den dyre feilen skal ikke finnes noe sted");
+    assert_eq!(tapt, 4, "alle fire mister id-en, og det er valget som ble tatt");
+}
+
+/// Gulvet slår bare til under `MINSTE_ORD`. Over det skal alt være som før —
+/// og de 34 parene i `DATASETT` er beviset: de er uberørt.
+#[test]
+fn gulvet_rører_ikke_avsnitt_som_er_lange_nok() {
+    assert_eq!(feil_ved(TERSKEL), (0, 0));
+    let langt_nok = DATASETT
+        .iter()
+        .flat_map(|p| p.før.iter().chain(p.etter.iter()))
+        .filter(|t| t.split_whitespace().count() >= MINSTE_ORD)
+        .count();
+    let alle = DATASETT.iter().map(|p| p.før.len() + p.etter.len()).sum::<usize>();
+    eprintln!("{langt_nok} av {alle} tekster i datasettet er sju ord eller mer");
 }

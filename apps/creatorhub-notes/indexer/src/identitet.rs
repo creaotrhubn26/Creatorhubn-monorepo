@@ -41,6 +41,33 @@ pub const TERSKEL: f64 = 0.36;
 /// avsnitt med lik tekst vinner derfor alltid over en nabo med lik posisjon.
 const POSISJONSVEKT: f64 = 0.03;
 
+/// Korteste tekst som i det hele tatt sammenliknes skjønnsmessig. Under dette
+/// gjelder bare eksakt treff.
+///
+/// Ikke en strengere terskel — **ingen** terskel virker her. Målt på 22 par
+/// korte innlegg, av den typen en chat er full av:
+///
+/// | | «samme innlegg, redigert» | «to ulike innlegg» |
+/// |---|---|---|
+/// | ett til seks ord | 0,00 – 0,78 | 0,00 – 0,75 |
+/// | sju ord og opp | 0,73 – 1,00 | 0,00 – 0,38 |
+///
+/// De to fordelingene ligger oppå hverandre for korte tekster. «Enig.» mot
+/// «Uenig.» er 0,75 — motsatt mening, høyest likhet i hele settet, fordi
+/// «uenig» inneholder «enig». «Enig.» mot «Enig!» er 0,50. Det finnes ingen
+/// verdi mellom dem.
+///
+/// Så valget står mellom de to feilene, og `IDENTITET.md` har allerede
+/// avgjort hvilken som er dyrest: en rettelse som havner på feil innlegg er
+/// verre enn en rettelse som forsvinner. Ved 0,36 arvet fire av elleve ulike
+/// korte innlegg en fremmed id. Nå arver ingen.
+///
+/// Det koster: redigerer hun et kort innlegg, mister det id-en sin, og
+/// rettelsen på det forsvinner. Det er dagens oppførsel for alt, ikke en
+/// forverring — og steg 1 tar uendrede innlegg gratis, som er det et innlegg
+/// i en tråd stort sett er.
+pub const MINSTE_ORD: usize = 7;
+
 /// Én `Match` per element i `nye`, i samme rekkefølge. En id tildeles aldri to
 /// nye avsnitt.
 ///
@@ -78,8 +105,15 @@ pub fn match_med_terskel(kjente: &[Kjent], nye: &[Ny], terskel: f64) -> Vec<Matc
     // 2. Resten: tekstlikhet over terskelen, beste tilgjengelige treff først.
     //    Trigrammene bygges én gang per avsnitt, ikke én gang per par — uten
     //    det koster en kilde på 300 redigerte avsnitt et halvt sekund.
-    let åpne_n: Vec<usize> = (0..nye.len()).filter(|n| ut[*n] == Match::Nytt).collect();
-    let åpne_k: Vec<usize> = (0..kjente.len()).filter(|k| !brukt[*k]).collect();
+    //    Tekster under `MINSTE_ORD` er ikke med: der skiller ikke målet
+    //    «samme innlegg, redigert» fra «to ulike innlegg», og det gjør det
+    //    ikke ved noen terskel. De har allerede hatt sin sjanse i steg 1.
+    let åpne_n: Vec<usize> = (0..nye.len())
+        .filter(|n| ut[*n] == Match::Nytt && langt_nok(&nye[*n].tekst))
+        .collect();
+    let åpne_k: Vec<usize> = (0..kjente.len())
+        .filter(|k| !brukt[*k] && langt_nok(&kjente[*k].tekst))
+        .collect();
     let tri_n: Vec<Trigram> = åpne_n.iter().map(|&n| trigrammer(&nye[n].tekst)).collect();
     let tri_k: Vec<Trigram> = åpne_k
         .iter()
@@ -118,6 +152,11 @@ pub fn match_med_terskel(kjente: &[Kjent], nye: &[Ny], terskel: f64) -> Vec<Matc
     }
 
     ut
+}
+
+/// Om teksten er lang nok til at likhet betyr noe. Se `MINSTE_ORD`.
+fn langt_nok(tekst: &str) -> bool {
+    tekst.split_whitespace().count() >= MINSTE_ORD
 }
 
 /// Jaccard over tegn-trigram: |A ∩ B| / |A ∪ B|.

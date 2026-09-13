@@ -148,6 +148,10 @@ import ikke merkes.
    terskelen er målt på ett språk med én ordlengdefordeling.
 4. **Korte avsnitt er svakest.** Under omtrent fem ord blir Jaccard støyete,
    fordi hvert trigram veier for mye. Datasettet har få slike.
+
+   *Målt 13. september 2026:* det er verre enn «støyete». Se «Korte innlegg»
+   under — det finnes ikke noen terskel som virker, og forbeholdet er byttet
+   ut med et lengdegulv.
 5. **Likt store deler ved splitting er en kastet mynt.** Deterministisk, men
    uten begrunnelse i teksten.
 6. **Terskelen er ikke målt mot avsendere.** Når samtaleimport kommer, er
@@ -157,9 +161,71 @@ import ikke merkes.
    *Oppdatert 13. september 2026:* samtaleimporten er bygget, og
    avgrensningen med den — `minne::match_per_avsender` kaller `match_avsnitt`
    én gang per avsender, med lokal rekkefølge innenfor gruppa, så to like
-   innlegg fra to personer aldri kan bytte identitet. Terskelen er fortsatt
-   ikke målt på chat, og forbeholdet over gjelder: Jaccard er svakest under
-   fem ord, og et chat-innlegg er ofte under fem ord.
+   innlegg fra to personer aldri kan bytte identitet. Terskelen er nå målt på
+   chat også; se «Korte innlegg» under.
+
+## Korte innlegg: ingen terskel virker, så det ble et gulv
+
+*Målt 13. september 2026, etter at samtaleimporten kom.*
+
+0,36 ble målt på notatavsnitt. Et chat-innlegg er ofte ett til fem ord, og
+punkt 4 over sa allerede at Jaccard er svakest der. Målingen viser at det ikke
+er et spørsmål om å flytte terskelen.
+
+Avgrensningen per avsender løser bare halve problemet: to personer kan ikke
+bytte identitet. Men **én person** som skriver «Enig.» tidlig og «Uenig.»
+senere i samme tråd — det er én gruppe, og de to konkurrerer.
+
+Likheten mellom fem par korte innlegg som betyr forskjellige ting, mot fire
+ekte redigeringer av korte innlegg:
+
+| ulike innlegg | | samme innlegg, redigert | |
+|---|---|---|---|
+| «Enig.» / «Uenig.» | **0,75** | «Dyrere i oppsett.» / «…oppsettet.» | 0,78 |
+| «Depositum?» / «Deposit?» | 0,56 | «Kanskje.» / «Kanskje?» | 0,71 |
+| «Ja, det tror jeg.» / «Nei, det tror jeg ikke.» | 0,50 | «Sender i kveld.» / «Sender det i kveld.» | 0,67 |
+| «Vi tar det senere.» / «Vi tar det nå.» | 0,47 | «Enig.» / «Enig!» | **0,50** |
+| «i morgen» / «på torsdag» | 0,38 | | |
+
+Fordelingene ligger oppå hverandre. Ulike: 0,38 – 0,75. Samme: 0,50 – 0,78.
+Det finnes ingen verdi imellom.
+
+Verste enkelttilfelle er «Enig.» mot «Uenig.» på 0,75 — motsatt mening, høyere
+likhet enn den ekte redigeringen «Enig.» → «Enig!» på 0,50. Grunnen er triviell
+og uunngåelig: «uenig» inneholder «enig». Alle fem ulike parene ligger på eller
+over 0,36, så hvert eneste av dem ville arvet en fremmed id.
+
+Sveipet, samlet for ett til seks ord mot sju ord og opp:
+
+| | «samme, redigert» | «to ulike» | vindu |
+|---|---|---|---|
+| ett til seks ord | 0,00 – 0,78 | 0,00 – 0,75 | **tomt** |
+| sju ord og opp | 0,73 – 1,00 | 0,00 – 0,38 | [0,38 – 0,73] |
+
+**Svaret er ikke en annen terskel, det er et gulv.** `identitet::MINSTE_ORD =
+7`: under sju ord gjøres ingen skjønnsmessig sammenlikning i det hele tatt.
+Bare eksakt treff teller, og det er steg 1, som allerede er gratis.
+
+Valget følger kostnadsmodellen som står øverst i denne fila: falsk arv er den
+dyre feilen, tapt id den billige. Ved 0,36 arvet fem av fem ulike korte
+innlegg en fremmed id. Nå arver ingen, ved noen terskel — sveipet over
+0,04–0,90 er flatt på null.
+
+Prisen er målt og betalt med vilje: alle fire redigerte korte innlegg mister
+id-en sin, og en rettelse på et kort innlegg forsvinner hvis innlegget
+redigeres. Det er dagens oppførsel for alt, ikke en forverring. Et uendret
+innlegg — som er det et innlegg i en tråd stort sett er — tas fortsatt av
+eksakt treff, også når det flyttes eller naboen slettes.
+
+De 34 parene i `DATASETT` er uberørt: fortsatt null feil av begge slag ved
+0,36. Gulvet rører bare det Jaccard ikke kunne svare på uansett.
+
+**En ting til, funnet på veien:** `trigrammer` polstrer bare tekster under tre
+tegn. «ok» blir `{" ok", "ok "}` og «ok.» blir `{"ok."}` — null felles, likhet
+0,00 for to skrivemåter av samme innlegg. Det er en kant nøyaktig ved tre
+tegn. Ikke rettet, fordi gulvet gjør begge til `Nytt` uansett og en endring i
+polstringen ville flyttet alle de målte tallene for lange avsnitt. Nevnt her
+så den ikke oppdages på nytt.
 
 ## Status
 
@@ -172,5 +238,6 @@ skjemaet den forutsetter, og `migrering.rs` migrerer eldre baser til det.
 Setningen over sa det motsatte, og var utdatert på et punkt som avgjør hvor
 mye man skal stole på forbeholdene rundt den.
 
-50 tester grønne i indekseren (34 fra før, 11 nye enhetstester — ett per krav
-pluss en skalatest, og 5 som kjører datasettet og sveipet).
+78 tester grønne i indekseren. Av dem hører 20 til denne modulen: 11
+enhetstester (ett per krav pluss en skalatest), 5 som kjører datasettet og
+sveipet, og 4 som måler korte innlegg og lengdegulvet.
