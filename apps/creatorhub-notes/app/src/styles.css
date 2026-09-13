@@ -649,6 +649,15 @@ kbd {
   color: var(--ink-soft);
 }
 
+/* «Hvor mye har jeg skrevet i dag». Tabulære tall så bredden ikke rykker
+   mens hun skriver — et tall som hopper i øyekroken er det motsatte av det
+   denne linja er til for. */
+.ordtall {
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
 /* Beskjedene står under skriveflaten. Over den dyttet de hele teksten nedover
    idet de dukket opp, og linja hoppet under fingeren midt i en setning. */
 .beskjeder:empty {

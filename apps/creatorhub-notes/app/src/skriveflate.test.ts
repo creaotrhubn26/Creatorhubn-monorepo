@@ -5,9 +5,22 @@
  *  tilstandskommando — det som faktisk gikk galt er derfor testbart uten en
  *  visning. */
 import { expect, test, vi } from "vitest";
-import { EditorState, EditorSelection, type Transaction } from "@codemirror/state";
-import { undo } from "@codemirror/commands";
-import { harInnhold, markør, tilstand } from "./Editor";
+import {
+  EditorState,
+  EditorSelection,
+  type Transaction,
+  type TransactionSpec,
+} from "@codemirror/state";
+import { cursorDocStart, selectAll, undo } from "@codemirror/commands";
+import { ensureSyntaxTree } from "@codemirror/language";
+import {
+  harInnhold,
+  markør,
+  ordtelling,
+  skriveflateCSS,
+  tilstand,
+  utenVern,
+} from "./Editor";
 import { lagBuffer } from "./buffer";
 
 /** En liten visningsløs stand-in for `EditorView`: holder tilstanden, tar imot
@@ -168,4 +181,145 @@ test("et notat med innhold fra før merkes ikke som en samtale av en innliming",
   // Et notat uten toppfelt teller på samme måte.
   const nakent = tilstand("Bare en setning.\n", ingen);
   expect(harInnhold(nakent.doc, nakent.doc.length, nakent.doc.length)).toBe(true);
+});
+
+// ---- toppfeltet kan ikke slettes ved uhell -------------------------------
+
+/** Et notat slik appen skriver det: bokføringen først, teksten under. */
+const TOPP = "---\nid: 2026-09-13-notat\ntype: \n---\n\n";
+const NOTAT = `${TOPP}# Tittel\n\nEn setning hun skrev.\n`;
+/** Der den skjulte blokka slutter — første posisjon hun faktisk ser. */
+const SLUTT = TOPP.length - 1;
+
+function åpnet(doc = NOTAT) {
+  let state = tilstand(doc, { anchor: doc.length, head: doc.length });
+  return {
+    get tekst() {
+      return state.doc.toString();
+    },
+    get valg() {
+      return state.selection.main;
+    },
+    get bokføring() {
+      return state.doc.toString().includes("id: 2026-09-13-notat");
+    },
+    kjør(kommando: (m: { state: EditorState; dispatch: (tr: Transaction) => void }) => boolean) {
+      return kommando({ state, dispatch: (tr) => (state = tr.state) });
+    },
+    /** En transaksjon slik CodeMirror ville laget den. Filtrene kjører i
+     *  `update`, som er nøyaktig der de kjører i appen. */
+    endre(spec: TransactionSpec) {
+      state = state.update(spec).state;
+    },
+  };
+}
+
+test("Backspace øverst i teksten sletter ikke toppfeltet", () => {
+  const f = åpnet();
+  // Slik `deleteBy` i @codemirror/commands ender opp: slettingen treffer det
+  // atomiske området og utvides til hele det. Ett trykk tok før hele blokka.
+  f.endre({ changes: { from: 0, to: SLUTT } });
+
+  expect(f.bokføring, "notatets id er det rettelser og minne henger på").toBe(true);
+  expect(f.tekst).toBe(NOTAT);
+});
+
+test("⌘A og så skrive bytter ut teksten, ikke bokføringen", () => {
+  const f = åpnet();
+  expect(f.kjør(selectAll)).toBe(true);
+  f.endre({ changes: { from: f.valg.from, to: f.valg.to, insert: "Alt nytt." } });
+
+  expect(f.bokføring).toBe(true);
+  expect(f.tekst).toBe(`${TOPP.slice(0, -1)}Alt nytt.`);
+});
+
+test("⌘A markerer det hun ser, så ⌘C ikke tar med tre linjer skjult bokføring", () => {
+  const f = åpnet();
+  f.kjør(selectAll);
+
+  expect(f.valg.from).toBe(SLUTT);
+  expect(f.valg.to).toBe(NOTAT.length);
+});
+
+test("⌘↑ setter markøren på første synlige tegn, ikke inne i det skjulte", () => {
+  const f = åpnet();
+  expect(f.kjør(cursorDocStart)).toBe(true);
+
+  expect(f.valg.from).toBe(SLUTT);
+});
+
+test("uten et toppfelt vernes ingenting", () => {
+  const f = åpnet("Bare en setning.\n");
+  f.kjør(selectAll);
+  expect(f.valg.from).toBe(0);
+  f.endre({ changes: { from: 0, to: f.valg.to, insert: "Noe annet." } });
+  expect(f.tekst).toBe("Noe annet.");
+});
+
+test("appen får bytte hele teksten, toppfeltet med", () => {
+  const f = åpnet();
+  // Notatbytte, «dette er en samtale», `kilde: samtale` ved innliming — de
+  // skrivene bærer `utenVern` og skal gjennom.
+  f.endre({
+    changes: { from: 0, to: NOTAT.length, insert: "---\nid: annet\n---\n\nAnnet notat.\n" },
+    annotations: utenVern.of(true),
+  });
+  expect(f.tekst).toBe("---\nid: annet\n---\n\nAnnet notat.\n");
+});
+
+// ---- klikk under siste linje ---------------------------------------------
+
+test("luften under og ved siden av teksten ligger på skriveflaten, ikke scrolleren", () => {
+  // CodeMirror binder musehendelsene på `contentDOM`, altså `.cm-content`.
+  // Lå luften på `.cm-scroller`, traff et klikk i de nederste 45vh — det
+  // vanligste klikket i en notatapp — ingenting: ingen markør, og fokus ut av
+  // skriveflaten. Regelen er selve fiksen, og en test uten layout kan ikke se
+  // den på annen måte enn ved å lese den.
+  expect(skriveflateCSS[".cm-scroller"].padding).toBeUndefined();
+  expect(skriveflateCSS[".cm-content"].padding).toContain("45vh");
+  // Sentreringen må være padding, ikke `margin: 0 auto` med `max-width`:
+  // ellers er sidemargene scrollerens, og et klikk i dem treffer ingenting.
+  expect(skriveflateCSS[".cm-content"].maxWidth).toBeUndefined();
+  expect(skriveflateCSS[".cm-content"].padding).toContain("22rem");
+});
+
+// ---- markdown ------------------------------------------------------------
+
+test("tabeller, oppgavelister og gjennomstreking finnes", () => {
+  const doc = [
+    "| Ting | Pris |",
+    "| --- | --- |",
+    "| Stativ | 400 |",
+    "",
+    "- [ ] ringe utleier",
+    "- [x] hentet nøkkelen",
+    "",
+    "~~droppet~~",
+    "",
+  ].join("\n");
+  const state = tilstand(doc, { anchor: 0, head: 0 });
+  const tre = ensureSyntaxTree(state, doc.length, 5000);
+  const navn = new Set<string>();
+  tre?.iterate({ enter: (n) => void navn.add(n.name) });
+
+  // Uten `base: markdownLanguage` var `| a | b |` ett vanlig avsnitt,
+  // `- [ ] noe` et vanlig punkt med teksten «[ ] noe», og `~~` ingenting.
+  expect(navn.has("Table")).toBe(true);
+  expect(navn.has("Task")).toBe(true);
+  expect(navn.has("TaskMarker")).toBe(true);
+  expect(navn.has("Strikethrough")).toBe(true);
+});
+
+// ---- ordtelling ----------------------------------------------------------
+
+test("ordtellingen teller notatet, ikke bokføringen", () => {
+  expect(ordtelling(NOTAT)).toEqual({
+    ord: 5,
+    tegn: "# Tittel\n\nEn setning hun skrev.".length,
+  });
+  expect(ordtelling("")).toEqual({ ord: 0, tegn: 0 });
+  // Bindestrek og apostrof holder ordet samlet.
+  expect(ordtelling("e-post til Ola’s bror").ord).toBe(4);
+  // Æ, ø og å er bokstaver.
+  expect(ordtelling("Ærlig øl på Åsen").ord).toBe(4);
 });

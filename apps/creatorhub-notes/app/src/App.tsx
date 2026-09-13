@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Editor } from "./Editor";
+import { Editor, ordtelling, åpneSøkINotatet } from "./Editor";
 import { linjetekst, Panel } from "./Panel";
 import {
   avbrytLesning,
@@ -325,6 +325,10 @@ export default function App() {
   // Toppfeltene, lest av den ene kilden til gjeldende tekst. `doc` ville vist
   // dem slik de var da notatet ble åpnet.
   const topp = toppfelt(buffer.nå());
+  /** Ord og tegn, av den samme ene kilden. Regnes ved hvert tastetrykk, som
+   *  App uansett tegner om: 0,3 ms på et notat på 83 KB (målt, se
+   *  `klassifiseringstest/YTELSE.md`). */
+  const tall = ordtelling(buffer.nå());
   /** Notatet er merket `privat: ja` og sendes aldri noe sted. */
   const privat = topp?.felt.some(([k, v]) => k === "privat" && v === "ja") ?? false;
   /** Panelet slik det er nå, uten å binde lagringen til det. */
@@ -825,6 +829,12 @@ export default function App() {
         e.preventDefault();
         void nyttNotat();
       } else if (kommando && e.key.toLowerCase() === "f") {
+        // Står hun i skriveflaten, mener hun notatet hun har foran seg — det
+        // er hva ⌘F gjør i enhver editor, og det var det eneste søket appen
+        // ikke hadde. Skriveflaten tar tasten selv; her skal den bare ikke
+        // rives ut derfra og over i registersøket, som uansett står synlig
+        // øverst hele tiden.
+        if ((e.target as HTMLElement | null)?.closest?.(".cm-editor")) return;
         e.preventDefault();
         søkefelt.current?.focus();
         søkefelt.current?.select();
@@ -1144,7 +1154,18 @@ export default function App() {
                       skrivingen, og skjermleseren avbrøt seg selv hvert par
                       sekunder. Merket leses når hun går til det; det som
                       *må* sies — at lagringen feilet — står i feilbanneret. */}
+                  {/* «Hvor mye har jeg skrevet» — det enkleste målet som
+                      finnes, og det eneste som ikke krever at hun holder noe
+                      ved like selv. Ikke et live-område: tallet endrer seg
+                      ved hvert tastetrykk, og en skjermleser som leste det
+                      ville avbrutt seg selv i ett kjør. */}
+                  <span className="ordtall">
+                    {tall.ord === 1 ? "1 ord" : `${tall.ord} ord`} · {tall.tegn} tegn
+                  </span>
                   <span className="status">{status}</span>
+                  <button className="finn" onClick={() => åpneSøkINotatet()} aria-keyshortcuts="Meta+F">
+                    Finn i notatet <kbd aria-hidden="true">⌘F</kbd>
+                  </button>
                   <button onClick={() => void byttSamtale()}>
                     {samtale?.er ? "Ikke en samtale" : "Dette er en samtale"}
                   </button>

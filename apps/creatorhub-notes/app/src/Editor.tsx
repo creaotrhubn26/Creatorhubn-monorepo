@@ -1,15 +1,24 @@
 import { useEffect, useRef } from "react";
 import { EditorView, minimalSetup } from "codemirror";
-import { Decoration, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import {
+  Decoration,
+  keymap,
+  ViewPlugin,
+  type DecorationSet,
+  type ViewUpdate,
+} from "@codemirror/view";
+import {
+  Annotation,
+  EditorSelection,
   EditorState,
-  RangeSetBuilder,
+  Prec,
   StateEffect,
   StateField,
   Transaction,
   type Extension,
 } from "@codemirror/state";
-import { markdown } from "@codemirror/lang-markdown";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { importerSamtale } from "./api";
@@ -17,7 +26,10 @@ import { importerSamtale } from "./api";
 /// Skriveflaten. Alt som angår hvordan teksten ser ut bor her, ikke i
 /// styles.css: CodeMirror injiserer sine egne regler med høyere spesifisitet,
 /// så et tema-objekt er det ene stedet som faktisk vinner.
-const skriveflate = EditorView.theme({
+/// Eksportert for testing. Hvor luften ligger er ikke pynt: den avgjør om et
+/// klikk treffer skriveflaten eller ingenting, og det er ikke synlig i en
+/// visningsløs test på annen måte enn ved å lese regelen.
+export const skriveflateCSS: Record<string, Record<string, string>> = {
   "&": {
     height: "100%",
     color: "var(--ink)",
@@ -38,14 +50,22 @@ const skriveflate = EditorView.theme({
     fontFamily: "var(--serif)",
     lineHeight: "1.78",
     overflowY: "auto",
-    padding: "28px 0 45vh",
   },
+  // All luften rundt teksten ligger på `.cm-content`, ikke på scrolleren.
+  //
+  // CodeMirror binder musehendelsene på `contentDOM`. Lå luften på scrolleren
+  // — 45vh under siste linje, og ~168 px på hver side når spalten er bred —
+  // traff det vanligste klikket i en notatapp, «under teksten, for å skrive
+  // videre», ingenting: ingen markør, og fokus forlot skriveflaten. Nå er
+  // luften innenfor det klikkbare feltet, og `posAtCoords` svarer med siste
+  // linje.
+  //
+  // Sentreringen er derfor padding, ikke `margin: 0 auto` med `max-width`:
+  // tekstspalten er fortsatt 44rem, men elementet er så bredt som vinduet.
+  // Smalner vinduet — eller zoomer hun inn — gir luften etter før teksten gjør
+  // det.
   ".cm-content": {
-    maxWidth: "44rem",
-    margin: "0 auto",
-    // Smalner vinduet — eller zoomer hun inn — skal luften gi etter før
-    // teksten gjør det.
-    padding: "0 clamp(16px, 5vw, 32px)",
+    padding: "28px max(clamp(16px, 5vw, 32px), calc(50% - 22rem)) 45vh",
     caretColor: "var(--accent)",
   },
   ".cm-line": { padding: "0" },
@@ -59,6 +79,98 @@ const skriveflate = EditorView.theme({
     borderRadius: "3px",
     boxShadow: "0 0 0 4px var(--mark)",
   },
+
+  // Markdown-merket på linja markøren står i. Uten dette arver `#` på en H1
+  // sine 1,5 em, og hele overskriften rykket ~26 px sidelengs i det øyeblikket
+  // markøren traff linja — tegnet du siktet på var ikke der lenger. Merket er
+  // instruks, ikke tekst, og skal ha instruksens størrelse.
+  ".cm-merke": {
+    fontSize: "1rem",
+    fontWeight: "400",
+    fontStyle: "normal",
+    lineHeight: "1",
+    color: "var(--ink-faint)",
+  },
+
+  // En tabell i proporsjonal serif er ikke en tabell — kolonnene står ikke
+  // under hverandre. Mono er hele forskjellen på at `| a | b |` er lesbart og
+  // at det ikke er det.
+  ".cm-tabell": { fontFamily: "var(--mono)", fontSize: "0.86em" },
+  // Avkrysset oppgave. Streken er ikke det eneste skillet: `[x]` står i
+  // teksten, og fargen er dempet i tillegg.
+  ".cm-gjort": { color: "var(--ink-soft)", textDecoration: "line-through" },
+
+  // Søket i notatet. CodeMirrors egen panel-CSS gir 12–13 px knapper på ~24 px
+  // høyde; kravene her er 15 px brødtekst og 44 px klikkflate, og panelet er
+  // en del av produktet.
+  ".cm-panels": {
+    backgroundColor: "var(--paper)",
+    color: "var(--ink)",
+    borderBottom: "1px solid var(--rule)",
+    fontFamily: "var(--sans)",
+  },
+  ".cm-panel.cm-search": {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "8px 12px",
+    padding: "8px clamp(16px, 5vw, 32px)",
+    fontSize: "0.9375rem",
+  },
+  ".cm-panel.cm-search input, .cm-panel.cm-search button": {
+    minHeight: "44px",
+    fontFamily: "var(--sans)",
+    fontSize: "0.9375rem",
+  },
+  ".cm-panel.cm-search input[type=text]": {
+    padding: "0 10px",
+    color: "var(--ink)",
+    backgroundColor: "transparent",
+    border: "1px solid var(--kant)",
+    borderRadius: "8px",
+  },
+  ".cm-panel.cm-search button": {
+    padding: "0 12px",
+    color: "var(--ink)",
+    backgroundImage: "none",
+    backgroundColor: "transparent",
+    border: "1px solid var(--kant)",
+    borderRadius: "8px",
+  },
+  ".cm-panel.cm-search label": {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    minHeight: "44px",
+    fontSize: "0.9375rem",
+  },
+  ".cm-panel.cm-search input[type=checkbox]": { minHeight: "auto", width: "18px", height: "18px" },
+  ".cm-panel.cm-search .cm-button": { textTransform: "none" },
+  ".cm-searchMatch": { backgroundColor: "var(--sel)" },
+  ".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: "var(--mark)" },
+};
+
+const skriveflate = EditorView.theme(skriveflateCSS);
+
+/// Panelet til søket, på norsk. CodeMirror slår opp hver etikett i
+/// `EditorState.phrases`, og uten dette står produktets eneste søk i notatet
+/// på engelsk midt i en norsk app.
+const søkeord = EditorState.phrases.of({
+  Find: "Finn",
+  Replace: "Erstatt",
+  next: "Neste",
+  previous: "Forrige",
+  all: "Alle",
+  "match case": "Skill store og små",
+  "by word": "Hele ord",
+  regexp: "Uttrykk",
+  replace: "Erstatt",
+  "replace all": "Erstatt alle",
+  close: "Lukk",
+  "current match": "dette treffet",
+  "replaced $ matches": "erstattet $ treff",
+  "replaced match on line $": "erstattet treffet på linje $",
+  "on line": "på linje",
 });
 
 const markdownFarger = HighlightStyle.define([
@@ -71,7 +183,13 @@ const markdownFarger = HighlightStyle.define([
   { tag: tags.url, color: "var(--ink-faint)" },
   { tag: [tags.monospace, tags.contentSeparator], fontFamily: "var(--mono)", fontSize: "0.86em" },
   { tag: tags.quote, color: "var(--ink-soft)", fontStyle: "italic" },
-  { tag: tags.list, color: "var(--accent)" },
+  // `tags.list` sto her med aksentfargen. `@lezer/markdown` tagger **alle
+  // etterkommere** av en liste — `"BulletList/..."` — så et notat som var
+  // halvt punktliste var halvt grønt, og en lenke i en liste var ikke til å
+  // skille fra listeteksten rundt. Selve kulepunktet er
+  // `processingInstruction` og er farget under.
+  { tag: tags.strikethrough, textDecoration: "line-through" },
+  { tag: tags.heading, fontWeight: "600" },
   { tag: tags.processingInstruction, color: "var(--ink-faint)" },
 ]);
 
@@ -116,8 +234,66 @@ function toppfeltSlutt(doc: EditorState["doc"]): number | null {
   return doc.line(n).to;
 }
 
-/// Merkene som bare er instruks til markdown, ikke tekst: `#`, `**`, `_`.
-const merker = new Set(["HeaderMark", "EmphasisMark"]);
+/// Merkene som bare er instruks til markdown, ikke tekst: `#`, `**`, `_`, `~~`.
+const merker = new Set(["HeaderMark", "EmphasisMark", "StrikethroughMark"]);
+
+/// Så langt inn i dokumentet toppfeltblokka rekker, eller `0` når det ikke er
+/// noen å verne. Samme regel som [`byggToppfelt`]: skjules den ikke, vernes
+/// den ikke heller — da ser hun den, og kan redigere den som tekst.
+function vernetTil(doc: EditorState["doc"]): number {
+  const slutt = toppfeltSlutt(doc);
+  return slutt !== null && slutt < doc.length ? slutt : 0;
+}
+
+/// Appen bytter teksten selv — et notatbytte, «dette er en samtale», eller
+/// `kilde: samtale` skrevet inn ved en innliming. De skrivene skal gjennom
+/// vernet; det er brukerens tastetrykk som ikke skal kunne treffe blokka.
+export const utenVern = Annotation.define<boolean>();
+
+/// Vernet om toppfeltblokka.
+///
+/// Blokka er skjult, men den står fortsatt i dokumentet, og alt som regner i
+/// tegnposisjoner kan nå den. Fire veier, alle uten et eneste synlig tegn på
+/// at noe skjedde: Backspace øverst i den synlige teksten (en atomisk
+/// sletting utvides til hele området), ⌘A og så skrive, ⌘A ⌘C — som la tre
+/// linjer bokføring i utklippstavla — og ⌘↑, som satte markøren på posisjon 0
+/// inne i blokka, der hun verken ser den eller ser hva neste tegn gjør.
+/// Resultatet var det samme hver gang: notatets `id` — det rettelser og minne
+/// henger på — borte, og autolagringen skrev det til disk 900 ms senere.
+///
+/// To vakter, fordi det er to veier inn.
+///
+/// `changeFilter` svarer med området endringer skal undertrykkes i, og
+/// CodeMirror *kapper* endringen i stedet for å avvise den: ⌘A og så skrive
+/// bytter fortsatt ut alt hun ser, og lar bokføringen stå. Backspace øverst
+/// blir til ingenting.
+///
+/// `transactionFilter` klemmer markeringen på transaksjoner som ikke endrer
+/// noe. Da markerer ⌘A det hun ser, ⌘C kopierer det hun markerte, og ⌘↑
+/// lander på første synlige tegn i stedet for et sted uten skjerm.
+const vernToppfelt: Extension[] = [
+  EditorState.changeFilter.of((tr) => {
+    const slutt = vernetTil(tr.startState.doc);
+    return slutt === 0 || tr.annotation(utenVern) === true ? true : [0, slutt];
+  }),
+  EditorState.transactionFilter.of((tr) => {
+    if (tr.docChanged || !tr.selection || tr.annotation(utenVern) === true) return tr;
+    const slutt = vernetTil(tr.startState.doc);
+    if (slutt === 0 || !tr.selection.ranges.some((r) => r.from < slutt)) return tr;
+    // Flermarkør er ikke slått på i denne editoren, så det er én range å
+    // klemme. Går det flere gjennom her, klemmes de hver for seg og
+    // `EditorSelection.create` normaliserer resten.
+    const klemt = tr.selection.ranges.map((r) =>
+      EditorSelection.range(Math.max(r.anchor, slutt), Math.max(r.head, slutt)),
+    );
+    return {
+      selection: EditorSelection.create(klemt, tr.selection.mainIndex),
+      effects: tr.effects,
+      scrollIntoView: tr.scrollIntoView,
+      annotations: Transaction.userEvent.of(tr.annotation(Transaction.userEvent) ?? "select"),
+    };
+  }),
+];
 
 /// Skjuler toppfeltblokka. Dette må være et StateField, ikke et ViewPlugin:
 /// CodeMirror krever at dekorasjoner som endrer den vertikale oppbygningen —
@@ -146,8 +322,17 @@ function byggToppfelt(state: EditorState): DecorationSet {
 /// Skjuler markdown-merkene på alle linjer markøren ikke står i. Står du på
 /// linja, kommer de tilbake, så teksten er fortsatt til å redigere — det er
 /// visningen som er ren, ikke dokumentet.
-function byggMerker(view: EditorView): DecorationSet {
-  const b = new RangeSetBuilder<Decoration>();
+const vist = Decoration.mark({ class: "cm-merke" });
+const tabellinje = Decoration.line({ class: "cm-tabell" });
+const gjortlinje = Decoration.line({ class: "cm-gjort" });
+
+/// `alle` er det som tegnes; `skjulte` er bare de erstattede merkene, som er
+/// de eneste som skal være atomiske. Merket som *vises* igjen på linja
+/// markøren står i må være til å pile gjennom og slette — det er hele grunnen
+/// til at det vises.
+function byggMerker(view: EditorView): { alle: DecorationSet; skjulte: DecorationSet } {
+  const ut: ReturnType<Decoration["range"]>[] = [];
+  const atomiske: ReturnType<Decoration["range"]>[] = [];
   const { doc, selection } = view.state;
 
   const redigeres = new Set<number>();
@@ -159,31 +344,60 @@ function byggMerker(view: EditorView): DecorationSet {
     from: toppfeltSlutt(doc) ?? 0,
     to: doc.length,
     enter(node) {
+      // En tabell er bare tekst her; mono er det som gjør at kolonnene står
+      // under hverandre.
+      if (node.name === "Table") {
+        const første = doc.lineAt(node.from).number;
+        const siste = doc.lineAt(node.to).number;
+        for (let n = første; n <= siste; n++) ut.push(tabellinje.range(doc.line(n).from));
+        return;
+      }
+      // En avkrysset oppgave. `[x]` blir stående i teksten — det er slik hun
+      // krysser av og av igjen — men linja er tydelig gjort fra seg.
+      if (node.name === "TaskMarker") {
+        if (doc.sliceString(node.from, node.to).toLowerCase() === "[x]") {
+          ut.push(gjortlinje.range(doc.lineAt(node.from).from));
+        }
+        return;
+      }
       if (!merker.has(node.name)) return;
-      if (redigeres.has(doc.lineAt(node.from).number)) return;
       // `# ` — mellomrommet etter tegnet skal vekk sammen med tegnet, ellers
       // står overskriften rykket inn.
       const til = doc.sliceString(node.to, node.to + 1) === " " ? node.to + 1 : node.to;
-      b.add(node.from, til, skjult);
+      // På linja markøren står i vises merket igjen, så teksten er til å
+      // redigere. Da skal det ha instruksens størrelse, ikke overskriftens:
+      // uten klassen arver `#` sine 1,5 em og skyver hele linja sidelengs.
+      if (redigeres.has(doc.lineAt(node.from).number)) {
+        ut.push(vist.range(node.from, til));
+      } else {
+        const r = skjult.range(node.from, til);
+        ut.push(r);
+        atomiske.push(r);
+      }
     },
   });
-  return b.finish();
+  // `true`: rekkefølgen kommer fra treet, og linjedekorasjonene over ligger
+  // ikke der merkene gjør. Sorteringen er RangeSets jobb.
+  return { alle: Decoration.set(ut, true), skjulte: Decoration.set(atomiske, true) };
 }
 
 const skjulMerker = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
+    skjulte: DecorationSet;
     constructor(view: EditorView) {
-      this.decorations = byggMerker(view);
+      ({ alle: this.decorations, skjulte: this.skjulte } = byggMerker(view));
     }
     update(u: ViewUpdate) {
-      if (u.docChanged || u.selectionSet || u.viewportChanged) this.decorations = byggMerker(u.view);
+      if (u.docChanged || u.selectionSet || u.viewportChanged) {
+        ({ alle: this.decorations, skjulte: this.skjulte } = byggMerker(u.view));
+      }
     }
   },
   {
     decorations: (v) => v.decorations,
     provide: (p) =>
-      EditorView.atomicRanges.of((view) => view.plugin(p)?.decorations ?? Decoration.none),
+      EditorView.atomicRanges.of((view) => view.plugin(p)?.skjulte ?? Decoration.none),
   },
 );
 
@@ -248,6 +462,9 @@ function innliming(påSamtale: () => void) {
         view.dispatch({
           changes: endringer,
           selection: { anchor: from + inn.length + (plass !== null ? felt.length : 0) },
+          // `kilde: samtale` skrives *inne i* toppfeltblokka. Det er appen som
+          // skriver, på hennes forespørsel, så vernet skal ikke kappe det.
+          annotations: utenVern.of(true),
         });
         if (merk) påSamtale();
       };
@@ -257,6 +474,38 @@ function innliming(påSamtale: () => void) {
       return true;
     },
   });
+}
+
+/// Åpner søket i notatet. ⌘F i skriveflaten gjør det samme, men en hurtigtast
+/// er en snarvei og aldri den eneste veien — knappen over skriveflaten kaller
+/// denne.
+///
+/// Visningen finnes gjennom DOM-en i stedet for gjennom en ref: skriveflaten
+/// er ett element i appen, og `findFromDOM` er CodeMirrors egen vei tilbake
+/// til den.
+export function åpneSøkINotatet(): boolean {
+  const dom = document.querySelector<HTMLElement>(".editor");
+  const v = dom && EditorView.findFromDOM(dom);
+  if (!v) return false;
+  v.focus();
+  return openSearchPanel(v);
+}
+
+/// Ord og tegn i notatteksten, uten toppfeltet.
+///
+/// «Hvor mye har jeg skrevet» er det enkleste målet som finnes for den som
+/// skriver for å tenke, og det eneste som ikke krever at hun vedlikeholder
+/// noe. Bindestrek og apostrof holder ordet samlet: «e-post» og «Ola's» er
+/// ett ord hver.
+export function ordtelling(tekst: string): { ord: number; tegn: number } {
+  let fra = 0;
+  if (tekst.startsWith("---\n")) {
+    const slutt = tekst.indexOf("\n---", 3);
+    if (slutt >= 0) fra = tekst.indexOf("\n", slutt + 1) + 1 || tekst.length;
+  }
+  const kropp = tekst.slice(fra);
+  const ord = kropp.match(/[\p{L}\p{N}]+(?:[’'\-][\p{L}\p{N}]+)*/gu);
+  return { ord: ord ? ord.length : 0, tegn: kropp.trim().length };
 }
 
 type Props = {
@@ -328,11 +577,23 @@ export function tilstand(
     selection: valg,
     extensions: [
       minimalSetup,
-      markdown(),
+      // `base` er ikke pynt: uten den er grunnlaget commonmark, og da finnes
+      // verken tabeller, oppgavelister (`- [ ]`) eller gjennomstreking —
+      // `- [ ] noe` ble et vanlig punkt med teksten «[ ] noe», og en tabell
+      // ett vanlig avsnitt.
+      markdown({ base: markdownLanguage }),
       syntaxHighlighting(markdownFarger),
       skjulToppfelt,
+      vernToppfelt,
       skjulMerker,
       vistAvsnitt,
+      // `minimalSetup` har ikke søk, og ⌘F er tatt av søket i *alle* notater.
+      // I et notat på tusen linjer fantes det ingen måte å finne et ord på.
+      // Panelet ligger øverst, ikke nederst: nederst lå det bak 45vh luft.
+      search({ top: true }),
+      søkeord,
+      // Over `defaultKeymap`, ellers tar den ⌘F først.
+      Prec.high(keymap.of(searchKeymap)),
       skriveflate,
       EditorView.lineWrapping,
       // Uten dette er skriveflaten et `role="textbox"` uten navn, og
@@ -443,9 +704,15 @@ export function Editor({ path, doc, navn, onChange, selectTitle, peker, onSamtal
     v.dispatch({
       changes: { from: 0, to: v.state.doc.length, insert: doc },
       selection: { anchor: klipp(anchor), head: klipp(head) },
-      // Hun byttet ikke teksten selv, så ⌘Z skal ikke kunne sette den
-      // tilbake — og dermed heller ikke lagre den tilbake.
-      annotations: Transaction.addToHistory.of(false),
+      annotations: [
+        // Hun byttet ikke teksten selv, så ⌘Z skal ikke kunne sette den
+        // tilbake — og dermed heller ikke lagre den tilbake.
+        Transaction.addToHistory.of(false),
+        // Og det er appen som bytter hele teksten, toppfeltet med: vernet
+        // ville ellers kappet byttet og latt det gamle toppfeltet stå igjen
+        // over den nye teksten.
+        utenVern.of(true),
+      ],
     });
     bytter.current = false;
   }, [doc]);
