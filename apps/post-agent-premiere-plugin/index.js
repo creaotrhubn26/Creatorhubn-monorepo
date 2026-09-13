@@ -8,6 +8,8 @@ const { createPremiereHost } = require("./premiere-host");
 const {
   buildExportFileName,
   contentTypeForExtension,
+  maxStreamDurationSeconds,
+  publishErrorMessage,
   validateUploadTicket,
 } = require("./publish-core");
 const { TusUploadError, uploadFileTus } = require("./tus-upload");
@@ -23,6 +25,7 @@ const {
   formatTimecode,
   itemTimecode,
   normalizeCollaboration,
+  selectableId,
 } = require("./review-core");
 
 const TOKEN_KEY = "creatorhub.video-room.bearer";
@@ -266,9 +269,7 @@ function renderVersions(preferredVersionId) {
   for (const version of project ? project.versions : []) {
     select.appendChild(option(version.id, `${version.label} · ${version.status || "ukjent status"}`));
   }
-  if (preferredVersionId && Array.from(select.options).some((candidate) => candidate.value === preferredVersionId)) {
-    select.value = preferredVersionId;
-  }
+  select.value = selectableId(project ? project.versions : [], preferredVersionId);
   if (config && config.enabled && project && project.id === config.projectId &&
       !project.versions.some((version) => version.id === config.versionId)) {
     config.enabled = false;
@@ -297,9 +298,7 @@ function renderProjects() {
     select.appendChild(option(project.id, project.name));
   }
   const configuredProject = config ? projects.find((project) => project.id === config.projectId) : null;
-  if (configuredProject) {
-    select.value = config.projectId;
-  }
+  select.value = selectableId(projects, configuredProject ? config.projectId : "");
   if (config && config.enabled && (!configuredProject || !configuredProject.canEdit)) {
     config.enabled = false;
     saveConfig();
@@ -1059,6 +1058,21 @@ async function uploadCheckpointFile(checkpoint, file) {
   await savePublishCheckpoint(checkpoint);
 }
 
+async function provisionCheckpoint(checkpoint) {
+  setStatus("Klargjør opplasting", "CreatorHub oppretter en privat, resumérbar Stream-versjon.", "warn");
+  setPublishProgress(0, "Reserverer plass i Cloudflare Stream…");
+  const rawTicket = await api.provisionVideoVersionTus(token, checkpoint.projectId, {
+    fileName: checkpoint.fileName,
+    sizeBytes: checkpoint.sizeBytes,
+    contentType: checkpoint.contentType,
+    versionLabel: checkpoint.versionLabel,
+    maxDurationSeconds: checkpoint.maxDurationSeconds,
+  });
+  checkpoint.ticket = validateUploadTicket(rawTicket);
+  checkpoint.stage = "uploading";
+  await savePublishCheckpoint(checkpoint);
+}
+
 async function waitForPublishedVersion(checkpoint) {
   for (let attempt = 0; attempt < 7200; attempt += 1) {
     const status = await api.fetchVideoVersionStreamStatus(token, checkpoint.projectId, checkpoint.ticket.versionId);
@@ -1140,6 +1154,7 @@ async function finishPublishWorkflow(checkpoint) {
 async function continuePublishCheckpoint() {
   if (!publishCheckpoint) throw new Error("Ingen avbrutt sending ble funnet.");
   const checkpoint = publishCheckpoint;
+  if (checkpoint.stage === "provisioning") await provisionCheckpoint(checkpoint);
   checkpoint.ticket = validateUploadTicket(checkpoint.ticket);
   if (checkpoint.stage === "uploading") {
     const file = await storage.localFileSystem.getEntryForPersistentToken(checkpoint.fileToken).catch(() => null);
@@ -1180,16 +1195,8 @@ async function sendSequenceToReview() {
     });
     const fileName = exported.fileName;
     const fileToken = await storage.localFileSystem.createPersistentToken(exported.file);
-    setStatus("Klargjør opplasting", "CreatorHub oppretter en privat, resumérbar Stream-versjon.", "warn");
-    const rawTicket = await api.provisionVideoVersionTus(token, project.id, {
-      fileName,
-      sizeBytes: exported.sizeBytes,
-      contentType: contentTypeForExtension(exported.extension),
-      versionLabel,
-    });
-    const ticket = validateUploadTicket(rawTicket);
     await savePublishCheckpoint({
-      stage: "uploading",
+      stage: "provisioning",
       projectId: project.id,
       projectName: project.name,
       versionLabel,
@@ -1197,7 +1204,8 @@ async function sendSequenceToReview() {
       fileToken,
       sizeBytes: exported.sizeBytes,
       contentType: contentTypeForExtension(exported.extension),
-      ticket,
+      maxDurationSeconds: maxStreamDurationSeconds(exported.durationSeconds),
+      ticket: null,
       premiereBinding: {
         projectGuid: exported.context.projectGuid,
         projectName: exported.context.projectName,
@@ -1213,8 +1221,10 @@ async function sendSequenceToReview() {
     await continuePublishCheckpoint();
   } catch (error) {
     if (!await handleAuthError(error, token)) {
-      setStatus("Sendingen stoppet", error.message || String(error), "bad", publishCheckpoint ? "Du kan fortsette uten ny eksport." : "Ingen aktiv review-versjon ble erstattet.");
-      log(error.message || String(error), "bad");
+      setPublishProgress(0, "");
+      const message = publishErrorMessage(error);
+      setStatus("Sendingen stoppet", message, "bad", publishCheckpoint ? "Bruk «Fortsett avbrutt sending» når årsaken er rettet." : "Ingen aktiv review-versjon ble erstattet.");
+      log(message, "bad");
     }
   } finally {
     publishRunning = false;
@@ -1230,8 +1240,10 @@ async function resumeSequencePublish() {
     await continuePublishCheckpoint();
   } catch (error) {
     if (!await handleAuthError(error, token)) {
-      setStatus("Kunne ikke fortsette sendingen", error.message || String(error), "bad");
-      log(error.message || String(error), "bad");
+      setPublishProgress(0, "");
+      const message = publishErrorMessage(error);
+      setStatus("Kunne ikke fortsette sendingen", message, "bad");
+      log(message, "bad");
     }
   } finally {
     publishRunning = false;
@@ -1601,7 +1613,7 @@ async function initialize() {
   renderAuthState();
   renderButtons();
   if (publishCheckpoint) {
-    const stage = publishCheckpoint.stage === "processing" ? "Cloudflare-behandling" : publishCheckpoint.stage === "workflow" ? "review-workflow" : "opplasting";
+    const stage = publishCheckpoint.stage === "provisioning" ? "klargjøring" : publishCheckpoint.stage === "processing" ? "Cloudflare-behandling" : publishCheckpoint.stage === "workflow" ? "review-workflow" : "opplasting";
     setPublishProgress(0, `Avbrutt ${stage} kan fortsettes.`);
   }
   if (!token) return;
