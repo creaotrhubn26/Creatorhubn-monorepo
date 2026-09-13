@@ -565,6 +565,9 @@ private struct LeadgridProductOnboardingGuide: View {
     @State private var tourState: LeadgridOnboardingState?
     @State private var isBusy = false
     @State private var errorText: String?
+    @State private var loadFailed = false
+    @State private var pendingEvent: LeadgridTrainingEvent?
+    @State private var didSimulateLoadFailure = false
 
     private static let steps = [
         "welcome", "choose_project", "find_candidates",
@@ -626,8 +629,8 @@ private struct LeadgridProductOnboardingGuide: View {
         case "follow_up":
             return (
                 "Avtal neste steg",
-                "Åpne leadet, velg riktig kontaktkanal og lagre neste oppfølging. Leadgrid minner deg på det som forfaller.",
-                "Fullfør guiden",
+                "Åpne leadet, velg «Logg aktivitet», slå på oppfølging og lagre. Leadgrid minner deg på det som forfaller.",
+                "Åpne Leads",
                 "calendar.badge.checkmark"
             )
         default:
@@ -636,8 +639,36 @@ private struct LeadgridProductOnboardingGuide: View {
     }
 
     var body: some View {
-        if let tourState, let copy {
-            VStack(alignment: .leading, spacing: 12) {
+        Group {
+            if let tourState, let copy {
+                guideCard(state: tourState, copy: copy)
+            } else if loadFailed {
+                loadFailureCard
+            } else {
+                Color.clear.frame(width: 0, height: 0)
+            }
+        }
+        .task(id: scopeKey) { await load() }
+        .onReceive(NotificationCenter.default.publisher(for: .leadgridTrainingReload)) { note in
+            guard notificationProjectId(note) == appState.activeLeadgridProjectId else { return }
+            Task { await load() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .leadgridTrainingEvent)) { note in
+            guard let projectId = notificationProjectId(note),
+                  projectId == appState.activeLeadgridProjectId,
+                  let rawEvent = note.userInfo?[LeadgridTrainingNotification.eventKey] as? String,
+                  let event = LeadgridTrainingEvent(rawValue: rawEvent),
+                  let currentStep = tourState?.currentStep,
+                  self.event(for: currentStep) == event else { return }
+            Task { await record(event, projectId: projectId) }
+        }
+    }
+
+    private func guideCard(
+        state tourState: LeadgridOnboardingState,
+        copy: (title: String, body: String, action: String, icon: String)
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: copy.icon)
                         .font(.appScaled(size: 18, weight: .semibold))
@@ -678,14 +709,34 @@ private struct LeadgridProductOnboardingGuide: View {
                     .foregroundStyle(Color.white.opacity(0.76))
                     .fixedSize(horizontal: false, vertical: true)
 
+                if event(for: tourState.currentStep) != nil {
+                    Label(
+                        "Steget fullføres automatisk når handlingen er utført.",
+                        systemImage: "checkmark.circle"
+                    )
+                    .font(.appScaled(size: 11, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.58))
+                }
+
                 if let errorText {
                     Label(errorText, systemImage: "wifi.exclamationmark")
                         .font(.appScaled(size: 11, weight: .medium))
                         .foregroundStyle(Color.orange)
                 }
 
+                if pendingEvent != nil {
+                    Button("Lagre fremdriften på nytt") {
+                        guard let pendingEvent else { return }
+                        Task { await record(pendingEvent, projectId: tourState.projectId) }
+                    }
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.orange)
+                    .disabled(isBusy)
+                    .accessibilityIdentifier("product-onboarding.retry-event")
+                }
+
                 Button {
-                    Task { await advance(tourState) }
+                    Task { await performPrimaryAction(tourState) }
                 } label: {
                     HStack {
                         if isBusy { ProgressView().tint(.white) }
@@ -724,29 +775,75 @@ private struct LeadgridProductOnboardingGuide: View {
                 RoundedRectangle(cornerRadius: 18)
                     .stroke(Color(red: 0.66, green: 0.32, blue: 0.99).opacity(0.35), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.45), radius: 22, y: 10)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("product-onboarding.card")
-            .task(id: scopeKey) { await load() }
-        } else {
-            Color.clear
-                .frame(width: 0, height: 0)
-                .task(id: scopeKey) { await load() }
+        .shadow(color: .black.opacity(0.45), radius: 22, y: 10)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("product-onboarding.card")
+    }
+
+    private var loadFailureCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Opplæringen kunne ikke lastes", systemImage: "wifi.exclamationmark")
+                .font(.appScaled(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+            Text("Leadgrid kan fortsatt brukes. Prøv å hente guiden på nytt når forbindelsen er klar.")
+                .font(.appScaled(size: 11))
+                .foregroundStyle(Color.white.opacity(0.68))
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Prøv igjen") { Task { await load() } }
+                .buttonStyle(.borderedProminent)
+                .tint(Color(red: 0.66, green: 0.32, blue: 0.99))
+                .disabled(isBusy)
+                .accessibilityIdentifier("product-onboarding.retry-load")
         }
+        .padding(14)
+        .frame(maxWidth: DeviceIdiom.isPhone ? 340 : 370)
+        .background(
+            Color(red: 0.08, green: 0.06, blue: 0.13).opacity(0.98),
+            in: RoundedRectangle(cornerRadius: 16)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("product-onboarding.load-error")
     }
 
     private func stepNumber(_ step: String) -> Int {
         (Self.steps.firstIndex(of: step) ?? 0) + 1
     }
 
+    private func notificationProjectId(_ note: Notification) -> String? {
+        note.userInfo?[LeadgridTrainingNotification.projectIdKey] as? String
+    }
+
+    private func event(for step: String) -> LeadgridTrainingEvent? {
+        switch step {
+        case "find_candidates": return .discoveryRunStarted
+        case "approve_candidates": return .candidateApproved
+        case "work_leads": return .leadOpened
+        case "follow_up": return .followUpScheduled
+        default: return nil
+        }
+    }
+
     @MainActor
     private func load() async {
         errorText = nil
+        pendingEvent = nil
+        loadFailed = false
         guard let projectId = appState.activeLeadgridProjectId else {
             tourState = nil
             return
         }
         #if DEBUG
+        if ProcessInfo.processInfo.environment["QA_PRODUCT_ONBOARDING_LOAD_FAILURE_ONCE"] == "1",
+           !didSimulateLoadFailure {
+            didSimulateLoadFailure = true
+            tourState = nil
+            loadFailed = true
+            return
+        }
         if ProcessInfo.processInfo.environment["QA_PRODUCT_ONBOARDING"] == "1" {
             tourState = LeadgridOnboardingState(
                 currentStep: "welcome",
@@ -766,6 +863,7 @@ private struct LeadgridProductOnboardingGuide: View {
         #endif
         guard let api = appState.api else {
             tourState = nil
+            loadFailed = true
             return
         }
         do {
@@ -781,6 +879,35 @@ private struct LeadgridProductOnboardingGuide: View {
         } catch {
             // The optional guide must never block use of the underlying CRM.
             tourState = nil
+            loadFailed = true
+        }
+    }
+
+    @MainActor
+    private func performPrimaryAction(_ current: LeadgridOnboardingState) async {
+        if let expectedEvent = event(for: current.currentStep) {
+            await openDestination(for: current.currentStep)
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["QA_PRODUCT_ONBOARDING_AUTOMATION"] == "1" {
+                await record(expectedEvent, projectId: current.projectId)
+            }
+            #endif
+        } else {
+            await advance(current)
+        }
+    }
+
+    @MainActor
+    private func openDestination(for step: String) async {
+        switch step {
+        case "find_candidates", "approve_candidates":
+            appState.selectedSidebarItem = .kart
+            await appState.configureDiscovery()
+            appState.discoveryCoordinator.showWorkspace()
+        case "work_leads", "follow_up":
+            appState.selectedSidebarItem = .leads
+        default:
+            break
         }
     }
 
@@ -835,20 +962,67 @@ private struct LeadgridProductOnboardingGuide: View {
             tourState = response.state.completed ? nil : response.state
             #endif
 
-            switch current.currentStep {
-            case "find_candidates", "approve_candidates":
-                appState.selectedSidebarItem = .kart
-                await appState.configureDiscovery()
-                appState.discoveryCoordinator.showWorkspace()
-            case "work_leads", "follow_up":
-                appState.selectedSidebarItem = .leads
-            default:
-                break
-            }
         } catch {
             errorText = "Kunne ikke lagre fremdriften. Prøv igjen."
         }
     }
+
+    @MainActor
+    private func record(_ event: LeadgridTrainingEvent, projectId: String) async {
+        guard !isBusy else { return }
+        isBusy = true
+        errorText = nil
+        defer { isBusy = false }
+        do {
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["QA_PRODUCT_ONBOARDING"] == "1" {
+                applyLocal(event)
+            } else {
+                guard let api = appState.api else {
+                    throw APIError.invalidURL
+                }
+                let response = try await api.recordOnboardingEvent(event, projectId: projectId)
+                tourState = response.state.completed ? nil : response.state
+            }
+            #else
+            guard let api = appState.api else {
+                throw APIError.invalidURL
+            }
+            let response = try await api.recordOnboardingEvent(event, projectId: projectId)
+            tourState = response.state.completed ? nil : response.state
+            #endif
+            pendingEvent = nil
+        } catch {
+            pendingEvent = event
+            errorText = "Handlingen er utført, men fremdriften ble ikke lagret."
+        }
+    }
+
+    #if DEBUG
+    @MainActor
+    private func applyLocal(_ event: LeadgridTrainingEvent) {
+        guard let current = tourState, self.event(for: current.currentStep) == event else { return }
+        let currentIndex = Self.steps.firstIndex(of: current.currentStep) ?? 0
+        let next = Self.steps.indices.contains(currentIndex + 1)
+            ? Self.steps[currentIndex + 1]
+            : "completed"
+        tourState = next == "completed"
+            ? nil
+            : LeadgridOnboardingState(
+                currentStep: next,
+                stepsCompleted: current.stepsCompleted + [current.currentStep],
+                completed: false,
+                organizationId: current.organizationId,
+                projectId: current.projectId,
+                roleTrack: current.roleTrack,
+                onboardingVersion: current.onboardingVersion,
+                startedAt: current.startedAt,
+                lastActivityAt: nil,
+                completedAt: nil,
+                skippedAt: nil
+            )
+    }
+    #endif
 
     @MainActor
     private func skip(projectId: String) async {
@@ -873,6 +1047,7 @@ private struct LeadgridProductOnboardingGuide: View {
             try await api.skipOnboarding(projectId: projectId)
             #endif
             tourState = nil
+            loadFailed = false
         } catch {
             errorText = "Kunne ikke avslutte guiden. Prøv igjen."
         }

@@ -5126,10 +5126,13 @@ struct ProfilePopover: View {
     /// eier root-switchen (Leadbook).
     var onOpenSuperAdmin: (() -> Void)? = nil
     @Environment(AppState.self) private var appState
+    @Environment(\.dismiss) private var dismissPopover
     @State private var pinGuideOpen = false
     @State private var aboutOpen = false
     @State private var abonnementOpen = false
     @State private var workspaceSettingsOpen = false
+    @State private var isRestartingTraining = false
+    @State private var trainingError: String?
 
 
     /// Ekte app-versjon fra bundelen (før: hardkodet «v1.3.1»).
@@ -5239,6 +5242,18 @@ struct ProfilePopover: View {
                     }
                     section(title: "Hjelp") {
                         Button {
+                            Task { await restartTraining() }
+                        } label: {
+                            row(
+                                icon: "graduationcap.fill",
+                                color: Brand.purple,
+                                label: isRestartingTraining ? "Starter guiden …" : "Bli trygg i Leadgrid"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isRestartingTraining)
+                        .accessibilityIdentifier("profile.start-product-training")
+                        Button {
                             if let url = URL(string: "mailto:support@creatorhubn.com?subject=Leadgrid%20support") {
                                 UIApplication.shared.open(url)
                             }
@@ -5294,6 +5309,36 @@ struct ProfilePopover: View {
         }
         .sheet(isPresented: $workspaceSettingsOpen) {
             WorkspaceSettingsSheet()
+        }
+        .alert(
+            "Kunne ikke starte opplæringen",
+            isPresented: Binding(
+                get: { trainingError != nil },
+                set: { if !$0 { trainingError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { trainingError = nil }
+        } message: {
+            Text(trainingError ?? "Prøv igjen.")
+        }
+    }
+
+    @MainActor
+    private func restartTraining() async {
+        guard !isRestartingTraining else { return }
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else {
+            trainingError = "Velg et kundeprosjekt og prøv igjen."
+            return
+        }
+        isRestartingTraining = true
+        defer { isRestartingTraining = false }
+        do {
+            _ = try await api.restartOnboarding(projectId: projectId)
+            LeadgridTrainingNotification.reload(projectId: projectId)
+            dismissPopover()
+        } catch {
+            trainingError = error.localizedDescription
         }
     }
 
