@@ -319,3 +319,81 @@ fn negasjon_frase_og_and_gjoer_det_de_skal() {
     // Bare negasjon kan ikke besvares, og skal ikke gi hele arkivet.
     assert!(stier("-ko").is_empty());
 }
+
+/// Utdraget rammer treffordet inn med styretegn, ikke med `**`. Et notat med
+/// sin egen fete skrift forskjøv pariteten hos den som skulle markere, slik
+/// at markeringen la seg på ord som ikke traff og treffordet sto umarkert.
+#[test]
+fn utdraget_markerer_treffordet_og_ikke_brukerens_egen_fete_skrift() {
+    let dir = tempdir().unwrap();
+    let repo = init_repo(dir.path());
+    write(
+        &repo,
+        "notes/fet.md",
+        "# Avtalen\n\nVi ble **helt** enige om depositum for **hele** oppdraget.\n",
+    );
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-qm", "first"]);
+
+    let conn = db::open(&dir.path().join("index.db")).unwrap();
+    index::run_no_embed(&conn, &repo).unwrap();
+
+    let hits = search::text(&conn, "depositum", 5).unwrap();
+    assert_eq!(hits.len(), 1);
+    let utdrag = &hits[0].text;
+    assert!(
+        utdrag.contains(&format!(
+            "{}depositum{}",
+            search::MERKE_START,
+            search::MERKE_SLUTT
+        )),
+        "treffordet skal vaere rammet inn: {utdrag:?}"
+    );
+    // Brukerens egne stjerner staar uroert, og de er ikke merker.
+    assert!(utdrag.contains("**helt**"), "fikk {utdrag:?}");
+    assert_eq!(
+        utdrag.matches(search::MERKE_START).count(),
+        utdrag.matches(search::MERKE_SLUTT).count(),
+        "like mange start- som sluttmerker"
+    );
+}
+
+/// En base bygget av en eldre utgave beholdt de gamle bitene til fila selv
+/// endret seg — filnavn og toppfelt ble liggende i indeksen for alltid.
+/// Versjonsnoekkelen glemmer hashene, en gang.
+#[test]
+fn en_base_fra_en_eldre_oppdeling_deles_paa_nytt_en_gang() {
+    let dir = tempdir().unwrap();
+    let repo = init_repo(dir.path());
+    write(&repo, "notes/uten-tittel.md", "---\nid: 2026-01-01\ntype:\n---\n\nEt notat.\n");
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-qm", "first"]);
+
+    let conn = db::open(&dir.path().join("index.db")).unwrap();
+    index::run_no_embed(&conn, &repo).unwrap();
+
+    // Slik en base fra den gamle oppdelingen ser ut: hashen er notert, men
+    // biten baerer filstien og toppfeltet.
+    conn.execute(
+        "update chunks set text = '// notes/uten-tittel.md' || char(10) || \
+         '---' || char(10) || 'id: 2026-01-01' || char(10) || 'type:' || char(10) || \
+         '---' || char(10) || 'Et notat.'",
+        [],
+    )
+    .unwrap();
+    // `chunk_fts` er en ekstern-innhold-tabell: en `update` paa `chunks` naar
+    // den ikke av seg selv.
+    conn.execute("insert into chunk_fts(chunk_fts) values('rebuild')", []).unwrap();
+    db::set_meta(&conn, "bit_versjon", "1").unwrap();
+    assert_eq!(search::text(&conn, "tittel", 5).unwrap().len(), 1, "slik var det");
+
+    let report = index::run_no_embed(&conn, &repo).unwrap();
+    assert_eq!(report.skipped, 0, "hashene skal vaere glemt");
+    assert!(search::text(&conn, "tittel", 5).unwrap().is_empty(), "filnavnet er ute");
+    assert!(search::text(&conn, "2026", 5).unwrap().is_empty(), "toppfeltet er ute");
+    assert_eq!(search::text(&conn, "notat", 5).unwrap().len(), 1, "teksten staar");
+
+    // Og bare en gang: neste kjoering hopper over fila igjen.
+    let report = index::run_no_embed(&conn, &repo).unwrap();
+    assert_eq!(report.skipped, 1);
+}

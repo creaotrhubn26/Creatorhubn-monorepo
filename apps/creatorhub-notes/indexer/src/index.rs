@@ -18,6 +18,21 @@ pub const USD_PER_MILLION_TOKENS: f64 = 0.18;
 /// kjempetransaksjon.
 const NO_EMBED_FILES_PER_PACK: usize = 200;
 
+/// Hvordan `chunk::split` deler akkurat nå.
+///
+/// Indekseringen hopper over filer med uendret blob-hash, og det er riktig —
+/// men da hjelper det ikke å endre oppdelingen: en base bygget av en eldre
+/// utgave beholder de gamle bitene til fila selv endrer seg. Versjon 2 er
+/// den som ikke lenger legger `// <sti>` på hver bit og som hopper over
+/// toppfeltet; en base fra versjon 1 gir fortsatt filnavntreff på «tittel»
+/// og «2026», og `start_line` peker foran toppfeltet.
+///
+/// Endres tallet, glemmes hashene én gang og alt deles på nytt. Det koster én
+/// full reindeksering av notatmappen — sekunder — og skjer aldri igjen før
+/// noen endrer oppdelingen på nytt.
+const BIT_VERSJON: &str = "2";
+const BIT_VERSJON_NØKKEL: &str = "bit_versjon";
+
 #[derive(Debug)]
 pub struct IndexReport {
     /// Filer som ble lest, delt og embeddet i denne kjøringen.
@@ -175,6 +190,13 @@ fn run_inner(
     embedder: Option<&dyn Embedder>,
 ) -> Result<IndexReport> {
     let current = gitsrc::list_files_with_sha(repo)?;
+    // Deles bitene annerledes nå enn da basen ble bygget, er hashene i
+    // `path_state` løfter om noe annet enn det som står i `chunks`. Da glemmes
+    // de, én gang, og alt deles på nytt.
+    if crate::db::get_meta(conn, BIT_VERSJON_NØKKEL)?.as_deref() != Some(BIT_VERSJON) {
+        conn.execute("delete from path_state", [])?;
+        crate::db::set_meta(conn, BIT_VERSJON_NØKKEL, BIT_VERSJON)?;
+    }
     let state = read_path_state(conn)?;
 
     let work: Vec<(String, String)> = current

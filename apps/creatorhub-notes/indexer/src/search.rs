@@ -231,13 +231,23 @@ fn quote_fts_query(q: &str, bøy: Bøyning, prefiks: bool) -> Option<String> {
     })
 }
 
+/// Tegnene `snippet()` rammer treffordene inn med.
+///
+/// Det sto `**` her, og det er markdown: et notat med sin egen fete skrift i
+/// utdraget forskjøv pariteten hos den som skulle markere, slik at
+/// markeringen la seg på ord som ikke traff og treffordet sto umarkert. STX
+/// og ETX er styretegn — de kan ikke stå i et notat, og de kan ikke forveksles
+/// med noe brukeren har skrevet.
+pub const MERKE_START: char = '\u{2}';
+pub const MERKE_SLUTT: char = '\u{3}';
+
 /// Én FTS5-spørring mot `chunk_fts`, rangert med `bm25()`.
 fn kjør(conn: &Connection, fts: &str, limit: usize) -> Result<Vec<Hit>> {
     let hits = conn
         .prepare(
             "select c.path, c.start_line, c.end_line, k.rank, k.snippet \
              from (select rowid, bm25(chunk_fts) as rank, \
-                          snippet(chunk_fts, 0, '**', '**', ' … ', 12) as snippet \
+                          snippet(chunk_fts, 0, char(2), char(3), ' … ', 12) as snippet \
                    from chunk_fts \
                    where chunk_fts match ?1 order by rank limit ?2) k \
              join chunks c on c.id = k.rowid \
@@ -275,7 +285,8 @@ fn kjør(conn: &Connection, fts: &str, limit: usize) -> Result<Vec<Hit>> {
 ///
 /// Rangert med SQLites innebygde `bm25()` (se `Hit::distance`). `Hit.text`
 /// bærer her ikke hele biten, men et `snippet()`-utdrag med treffordene
-/// markert med `**...**` — det er utdraget en leser trenger for å se
+/// rammet inn av [`MERKE_START`] og [`MERKE_SLUTT`] — det er utdraget en
+/// leser trenger for å se
 /// *hvorfor* notatet traff, ikke bm25-tallet.
 pub fn text(conn: &Connection, q: &str, limit: usize) -> Result<Vec<Hit>> {
     let total: i64 = conn.query_row("select count(*) from chunks", [], |r| r.get(0))?;
