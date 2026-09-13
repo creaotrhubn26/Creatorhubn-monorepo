@@ -49,12 +49,14 @@ test("accepts only trusted HTTPS object-storage upload tickets", () => {
     uploadUrl: "https://bucket.s3.eu-north-1.amazonaws.com/key?signature=opaque",
     requiredHeaders: {
       "content-type": "video/mp4",
+      "x-amz-sdk-checksum-algorithm": "SHA256",
       "x-amz-checksum-sha256": "opaque",
     },
     expiresAt: "2099-01-01T00:00:00.000Z",
   });
   assert.equal(ticket.protocol, "s3");
   assert.equal(ticket.objectId, "object-1");
+  assert.equal(ticket.requiredHeaders["x-amz-sdk-checksum-algorithm"], "SHA256");
   for (const uploadUrl of [
     "http://bucket.s3.eu-north-1.amazonaws.com/key",
     "https://amazonaws.com.attacker.example/key",
@@ -66,6 +68,10 @@ test("accepts only trusted HTTPS object-storage upload tickets", () => {
     ...ticket,
     requiredHeaders: { Authorization: "must-not-be-forwarded" },
   }), /ukjent opplastingshode/);
+  assert.throws(() => validateUploadTicket({
+    ...ticket,
+    requiredHeaders: { "x-amz-sdk-checksum-algorithm": "CRC32" },
+  }), /checksum-algoritme/);
 });
 
 test("reserves a bounded Stream duration close to the actual sequence", () => {

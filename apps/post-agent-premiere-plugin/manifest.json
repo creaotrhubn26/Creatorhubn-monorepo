@@ -2,7 +2,7 @@
   "manifestVersion": 5,
   "id": "no.creatorhubn.video-room-premiere",
   "name": "CreatorHub Video Room",
-  "version": "0.3.3",
+  "version": "0.3.5",
   "main": "index.html",
   "host": {
     "app": "premierepro",

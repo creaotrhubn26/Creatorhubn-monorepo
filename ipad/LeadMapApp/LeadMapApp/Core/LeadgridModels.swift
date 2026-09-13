@@ -786,7 +786,47 @@ struct LeadgridOnboardingStateResponse: Codable, Hashable {
 struct LeadgridOnboardingAdvanceResponse: Codable, Hashable {
     let ok: Bool
     let nextStep: String
+    let advanced: Bool?
     let state: LeadgridOnboardingState
+}
+
+/// Faktiske brukerhandlinger som kan fullføre arbeidssteg i produktguiden.
+/// Råverdiene er den delte API-kontrakten med backend.
+enum LeadgridTrainingEvent: String, Codable, Hashable, Sendable {
+    case discoveryRunStarted = "discovery_run_started"
+    case candidateApproved = "candidate_approved"
+    case leadOpened = "lead_opened"
+    case followUpScheduled = "follow_up_scheduled"
+}
+
+extension Notification.Name {
+    static let leadgridTrainingEvent = Notification.Name(
+        "LeadMapApp.leadgridTrainingEvent"
+    )
+    static let leadgridTrainingReload = Notification.Name(
+        "LeadMapApp.leadgridTrainingReload"
+    )
+}
+
+enum LeadgridTrainingNotification {
+    static let eventKey = "event"
+    static let projectIdKey = "projectId"
+
+    static func post(_ event: LeadgridTrainingEvent, projectId: String) {
+        NotificationCenter.default.post(
+            name: .leadgridTrainingEvent,
+            object: nil,
+            userInfo: [eventKey: event.rawValue, projectIdKey: projectId]
+        )
+    }
+
+    static func reload(projectId: String) {
+        NotificationCenter.default.post(
+            name: .leadgridTrainingReload,
+            object: nil,
+            userInfo: [projectIdKey: projectId]
+        )
+    }
 }
 
 // ============================================================

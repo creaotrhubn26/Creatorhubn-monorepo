@@ -31,6 +31,10 @@ final class QASweepTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         #endif
         let app = XCUIApplication()
+        // Each test owns its launch environment. Wait for a previous QA launch
+        // to stop so values from the preceding test cannot leak into this one.
+        app.terminate()
+        _ = app.wait(for: .notRunning, timeout: 3)
         app.launchEnvironment["QA_BEARER_TOKEN"] =
             ProcessInfo.processInfo.environment["QA_BEARER_TOKEN"] ?? ""
         app.launchEnvironment["QA_TAB"] = "\(tab)"
@@ -172,6 +176,51 @@ final class QASweepTests: XCTestCase {
         return row?["used_total"] as? Int ?? 0
     }
 
+    private func firstPublishedPondusTemplateID(
+        baseURL: URL,
+        token: String,
+        organizationID: String,
+        projectID: String
+    ) async throws -> String {
+        var templatesURL = baseURL.appendingPathComponent("api/leadgrid/pondus/templates")
+        templatesURL.append(queryItems: [
+            URLQueryItem(name: "organization_id", value: organizationID),
+            URLQueryItem(name: "project_id", value: projectID),
+        ])
+        var request = URLRequest(url: templatesURL)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(organizationID, forHTTPHeaderField: "X-Organization-Id")
+        request.setValue(organizationID, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let templates = payload?["templates"] as? [[String: Any]] ?? []
+        return try XCTUnwrap(
+            templates.first?["id"] as? String,
+            "Staging må ha minst én publisert Pondus-mal"
+        ).lowercased()
+    }
+
+    private func stagingLeadCount(
+        named name: String,
+        baseURL: URL,
+        token: String,
+        organizationID: String,
+        projectID: String
+    ) async throws -> Int {
+        var leadsURL = baseURL.appendingPathComponent("api/admin-room/lead-map/leads")
+        leadsURL.append(queryItems: [URLQueryItem(name: "project_id", value: projectID)])
+        var request = URLRequest(url: leadsURL)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(organizationID, forHTTPHeaderField: "X-Organization-Id")
+        request.setValue(organizationID, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let leads = payload?["leads"] as? [[String: Any]] ?? []
+        return leads.filter { ($0["name"] as? String) == name }.count
+    }
+
     // MARK: - Fane-sveip m/ statistikk-modal
 
     /// iPhone-fanene: 0=Oversikt 1=Kart 2=Leads 3=Møter 4=Mer,
@@ -273,6 +322,77 @@ final class QASweepTests: XCTestCase {
 
         snap(app, "ipad-mini-forenklet-navigasjon-og-prosjektguide")
         app.terminate()
+    }
+
+    func testIPadMiniProductTrainingCompletesAllSixSteps() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip("Denne kontrollen gjelder iPad-opplæringen.")
+        }
+        let app = launchApp(
+            tab: 0,
+            environment: [
+                "QA_TOUR": "dentum-outreach",
+                "QA_DEMO": "1",
+                "QA_PRODUCT_ONBOARDING": "1",
+                "QA_PRODUCT_ONBOARDING_AUTOMATION": "1",
+            ]
+        )
+
+        let guide = app.otherElements["product-onboarding.card"]
+        let primary = app.buttons["product-onboarding.primary"]
+        XCTAssertTrue(guide.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Bli trygg i Leadgrid"].exists)
+
+        primary.tap()
+        XCTAssertTrue(app.staticTexts["Sjekk kundeprosjektet"].waitForExistence(timeout: 3))
+        primary.tap()
+        XCTAssertTrue(app.staticTexts["Finn bedrifter"].waitForExistence(timeout: 3))
+
+        primary.tap()
+        closeDiscoveryWorkspace(in: app)
+        XCTAssertEqual(app.staticTexts["leadgrid-screen-title"].label, "Kart")
+        XCTAssertTrue(app.staticTexts["Godkjenn før noe lagres"].waitForExistence(timeout: 5))
+
+        primary.tap()
+        closeDiscoveryWorkspace(in: app)
+        XCTAssertTrue(app.staticTexts["Arbeid med godkjente leads"].waitForExistence(timeout: 5))
+
+        primary.tap()
+        XCTAssertEqual(app.staticTexts["leadgrid-screen-title"].label, "Leads")
+        XCTAssertTrue(app.staticTexts["Avtal neste steg"].waitForExistence(timeout: 5))
+        primary.tap()
+        XCTAssertFalse(guide.waitForExistence(timeout: 2))
+
+        snap(app, "ipad-mini-produktopplæring-fullført")
+        app.terminate()
+    }
+
+    func testProductTrainingRecoversAfterLoadFailure() throws {
+        let app = launchApp(
+            tab: 0,
+            environment: [
+                "QA_TOUR": "dentum-outreach",
+                "QA_DEMO": "1",
+                "QA_PRODUCT_ONBOARDING": "1",
+                "QA_PRODUCT_ONBOARDING_LOAD_FAILURE_ONCE": "1",
+            ]
+        )
+
+        XCTAssertTrue(app.staticTexts["Opplæringen kunne ikke lastes"].waitForExistence(timeout: 8))
+        let retry = button(in: app, containing: "Prøv igjen")
+        XCTAssertTrue(retry.waitForExistence(timeout: 3))
+        retry.tap()
+        XCTAssertTrue(
+            app.otherElements["product-onboarding.card"].waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.staticTexts["Bli trygg i Leadgrid"].exists)
+        snap(app, "produktopplæring-gjenopprettet")
+        app.terminate()
+    }
+
+    private func closeDiscoveryWorkspace(in app: XCUIApplication) {
+        let close = app.buttons["Lukk"].firstMatch
+        if close.waitForExistence(timeout: 2), close.isHittable { close.tap() }
     }
 
     // MARK: - Leads: rad-tap → detalj-sheet
@@ -1264,6 +1384,79 @@ final class QASweepTests: XCTestCase {
         app.terminate()
     }
 
+    func testSuperAdminCreatorHubOnboardingCreatesFourNationalProfilesAndOpensDiscovery() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_TOUR"] = "domain-onboarding"
+        app.launchEnvironment["QA_TAB"] = "0"
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Nytt kundeprosjekt"].waitForExistence(timeout: 12))
+        let domain = app.textFields["project-onboarding.domain"]
+        XCTAssertTrue(domain.waitForExistence(timeout: 3))
+        domain.tap()
+        domain.typeText("creatorhubn.com")
+        dismissKeyboard(in: app)
+        app.buttons["project-onboarding.analyze"].tap()
+
+        let category = app.descendants(matching: .any)["project-onboarding.category"]
+        XCTAssertTrue(category.waitForExistence(timeout: 5))
+        XCTAssertTrue(displayedText(of: category).contains("Plattform for kreativt arbeid"))
+        let projectName = app.descendants(matching: .any)["project-onboarding.project-name"]
+        XCTAssertTrue(projectName.waitForExistence(timeout: 3))
+        XCTAssertTrue(displayedText(of: projectName).contains("Creatorhub"))
+
+        let expectedProfiles = [
+            "Profesjonelle fotografer – Norge",
+            "Video- og innholdsprodusenter – Norge",
+            "Musikk- og lydprodusenter – Norge",
+            "Kreative byråer og designstudioer – Norge",
+        ]
+        for (profileIndex, profileName) in expectedProfiles.enumerated() {
+            let profileTitle = app.staticTexts[
+                "project-onboarding.profile.\(profileIndex).title"
+            ]
+            for _ in 0..<12 where !profileTitle.exists {
+                app.swipeUp()
+            }
+            XCTAssertTrue(profileTitle.exists, "Mangler Discovery-profilen \(profileName)")
+            XCTAssertEqual(profileTitle.label, profileName)
+        }
+
+        let commit = app.buttons["project-onboarding.commit"]
+        for _ in 0..<12 where !commit.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(commit.isHittable)
+        commit.tap()
+
+        XCTAssertTrue(
+            app.buttons["discovery.close"].waitForExistence(timeout: 8),
+            "Et bekreftet Creatorhub-prosjekt skal åpnes direkte i Discovery"
+        )
+        let profilesWorkspace = app.buttons["discovery.workspace.profiles"]
+        XCTAssertTrue(profilesWorkspace.waitForExistence(timeout: 5))
+        profilesWorkspace.tap()
+        XCTAssertTrue(app.scrollViews["discovery.profiles.workspace"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["discovery.profile.count"].waitForExistence(timeout: 5))
+        let candidatesWorkspace = app.buttons["discovery.workspace.candidates"]
+        XCTAssertTrue(candidatesWorkspace.waitForExistence(timeout: 3))
+        candidatesWorkspace.tap()
+        let customerType = app.textFields["discovery.simple.customer-type"]
+        XCTAssertTrue(customerType.waitForExistence(timeout: 5))
+        XCTAssertTrue((customerType.value as? String)?.contains("74.200") == true)
+        let nationwide = app.buttons["discovery.simple.area.nationwide"]
+        let customerNext = app.buttons["discovery.simple.next.customer-type"]
+        for _ in 0..<4 where !customerNext.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(customerNext.isHittable)
+        customerNext.tap()
+        XCTAssertTrue(nationwide.waitForExistence(timeout: 5))
+        XCTAssertTrue(nationwide.isSelected)
+        snap(app, "creatorhub-discovery-profiler-ipad-mini")
+        app.terminate()
+    }
+
     func testSuperAdminTidumOnboardingCreatesFourNationalProfilesAndOpensDiscovery() throws {
         let app = XCUIApplication()
         app.launchEnvironment["QA_TOUR"] = "domain-onboarding"
@@ -1563,35 +1756,41 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(submit.waitForExistence(timeout: 3))
         submit.tap()
 
-        // Den korte toasten er bevisst flyktig og kan ligge bak sheetets
-        // dismiss-animasjon. Den globale synkstatusen er den autoritative,
-        // stabile kvitteringen på at handlingen faktisk er skrevet til kø.
+        // Vent til sheetet er borte og den globale offline-statusen er synlig.
+        // Deretter beviser staging-API-et at leadet ikke ble sendt direkte
+        // mens klienten var offline.
         let syncStatus = app.buttons["global-sync-status"]
         XCTAssertTrue(syncStatus.waitForExistence(timeout: 8))
-        XCTAssertTrue(syncStatus.label.localizedCaseInsensitiveContains("lagret lokalt"))
+        for _ in 0..<3 {
+            let offlineLeadCount = try await stagingLeadCount(
+                named: uniqueName,
+                baseURL: baseURL,
+                token: token,
+                organizationID: organizationID,
+                projectID: projectID
+            )
+            XCTAssertEqual(
+                offlineLeadCount,
+                0,
+                "Et offline-lead skal ikke finnes på serveren før reconnect"
+            )
+            try await Task.sleep(for: .seconds(1))
+        }
 
         app.buttons["qa-network-online"].tap()
-        let pendingGone = NSPredicate(format: "exists == false")
-        let drainExpectation = expectation(
-            for: pendingGone,
-            evaluatedWith: syncStatus
-        )
-        await fulfillment(of: [drainExpectation], timeout: 20)
-
-        var components = URLComponents(
-            url: baseURL.appendingPathComponent("api/admin-room/lead-map/leads"),
-            resolvingAgainstBaseURL: false
-        )
-        components?.queryItems = [URLQueryItem(name: "project_id", value: projectID)]
-        let scopedLeadsURL = try XCTUnwrap(components?.url)
-        var request = URLRequest(url: scopedLeadsURL)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue(organizationID, forHTTPHeaderField: "X-Organization-Id")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
-        let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let leads = payload?["leads"] as? [[String: Any]] ?? []
-        XCTAssertEqual(leads.filter { ($0["name"] as? String) == uniqueName }.count, 1)
+        var persistedLeadCount = 0
+        for _ in 0..<20 {
+            persistedLeadCount = try await stagingLeadCount(
+                named: uniqueName,
+                baseURL: baseURL,
+                token: token,
+                organizationID: organizationID,
+                projectID: projectID
+            )
+            if persistedLeadCount == 1 { break }
+            try await Task.sleep(for: .seconds(1))
+        }
+        XCTAssertEqual(persistedLeadCount, 1, "Reconnect skal persistere nøyaktig ett lead")
         app.terminate()
     }
 
@@ -1741,12 +1940,14 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
         app.launch()
 
-        let useTemplate = app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "pondus-use-")
-        ).firstMatch
+        let templateID = try await firstPublishedPondusTemplateID(
+            baseURL: baseURL,
+            token: token,
+            organizationID: organizationID,
+            projectID: projectID
+        )
+        let useTemplate = app.buttons["pondus-use-\(templateID)"]
         XCTAssertTrue(useTemplate.waitForExistence(timeout: 45), "Staging må ha minst én publisert Pondus-mal")
-        let templateID = String(useTemplate.identifier.dropFirst("pondus-use-".count))
-        XCTAssertFalse(templateID.isEmpty)
         let usageBefore = try await pondusUsageCount(
             baseURL: baseURL,
             token: token,
@@ -1774,23 +1975,32 @@ final class QASweepTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["pondus-active-coach"].waitForExistence(timeout: 3))
         let syncStatus = app.buttons["global-sync-status"]
         XCTAssertTrue(syncStatus.waitForExistence(timeout: 5))
-        XCTAssertTrue(syncStatus.label.localizedCaseInsensitiveContains("lagret lokalt"))
-        app.buttons["qa-network-online"].tap()
-
-        let pendingGone = NSPredicate(format: "exists == false")
-        let drained = expectation(
-            for: pendingGone,
-            evaluatedWith: syncStatus
-        )
-        await fulfillment(of: [drained], timeout: 20)
-
-        let usageAfter = try await pondusUsageCount(
+        let usageWhileOffline = try await pondusUsageCount(
             baseURL: baseURL,
             token: token,
             organizationID: organizationID,
             projectID: projectID,
             templateID: templateID
         )
+        XCTAssertEqual(
+            usageWhileOffline,
+            usageBefore,
+            "Offline-bruk skal ikke nå serveren før reconnect"
+        )
+        app.buttons["qa-network-online"].tap()
+
+        var usageAfter = usageBefore
+        for _ in 0..<20 {
+            usageAfter = try await pondusUsageCount(
+                baseURL: baseURL,
+                token: token,
+                organizationID: organizationID,
+                projectID: projectID,
+                templateID: templateID
+            )
+            if usageAfter == usageBefore + 1 { break }
+            try await Task.sleep(for: .seconds(1))
+        }
         XCTAssertEqual(usageAfter, usageBefore + 1, "Reconnect skal persistere nøyaktig én Pondus-økt")
         app.terminate()
     }

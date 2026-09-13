@@ -4211,7 +4211,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
                   version.id,version.storage_object_id,version.status,version.stream_ready
              FROM projects project
              JOIN project_video_versions version
-               ON version.project_id=project.id AND version.id=$2
+               ON version.project_id::text=project.id::text AND version.id=$2
         LEFT JOIN role_room_storage_objects stored ON stored.id=version.storage_object_id
         LEFT JOIN role_room_storage_accounts storage_account ON storage_account.id=stored.storage_account_id
             WHERE project.id=$1 LIMIT 1`
@@ -4732,7 +4732,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         `SELECT version.b2_key,version.stream_uid,version.storage_object_id,
                 COALESCE(storage_account.user_id, project.user_id) AS storage_owner_user_id
            FROM project_video_versions version
-           JOIN projects project ON project.id=version.project_id
+           JOIN projects project ON project.id::text=version.project_id::text
       LEFT JOIN role_room_storage_objects stored ON stored.id=version.storage_object_id
       LEFT JOIN role_room_storage_accounts storage_account ON storage_account.id=stored.storage_account_id
           WHERE version.id=$1 AND version.project_id=$2`,

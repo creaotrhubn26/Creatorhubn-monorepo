@@ -97,37 +97,47 @@ export function OnboardingTour({ projectId }: { projectId: string | null }) {
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [snack, setSnack] = useState<string | null>(null);
+  const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "failed">("loading");
+  const [eligible, setEligible] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     setState(null);
     setVisible(false);
+    setEligible(false);
+    setLoadStatus("loading");
     if (!projectId) return;
     const controller = new AbortController();
     fetch(
       `/api/leadgrid/onboarding/state?projectId=${encodeURIComponent(projectId)}`,
       { credentials: "include", headers: authHeaders(), signal: controller.signal },
     )
-      .then(async (response) => response.ok
-        ? response.json() as Promise<StateResponse>
-        : { state: null, eligible: false })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("onboarding_load_failed");
+        return response.json() as Promise<StateResponse>;
+      })
       .then((data) => {
+        setEligible(data.eligible);
+        setState(data.state);
+        setLoadStatus("ready");
         if (data.eligible && data.state
             && data.state.current_step !== "completed"
             && data.state.current_step !== "skipped") {
-          setState(data.state);
           setVisible(true);
         }
       })
-      .catch(() => {});
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setLoadStatus("failed");
+      });
     return () => controller.abort();
-  }, [projectId]);
+  }, [projectId, reloadKey]);
 
-  if (!projectId || !state || !visible) return null;
-  const current = STEP_CONTENT[state.current_step];
-  if (!current) return null;
-  const index = Math.max(0, STEPS.indexOf(state.current_step));
+  const current = state ? STEP_CONTENT[state.current_step] : undefined;
+  const index = state ? Math.max(0, STEPS.indexOf(state.current_step)) : 0;
 
   const advance = async () => {
+    if (!state || !current) return;
     setBusy(true);
     try {
       const response = await fetch("/api/leadgrid/onboarding/advance", {
@@ -169,6 +179,59 @@ export function OnboardingTour({ projectId }: { projectId: string | null }) {
       setBusy(false);
     }
   };
+
+  const restart = async () => {
+    if (!projectId) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/leadgrid/onboarding/restart", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ projectId }),
+      });
+      if (!response.ok) throw new Error("restart_failed");
+      const data = await response.json() as AdvanceResponse;
+      setState(data.state);
+      setEligible(true);
+      setLoadStatus("ready");
+      setVisible(true);
+      setSnack("Opplæringen er startet på nytt");
+    } catch {
+      setSnack("Kunne ikke starte opplæringen. Prøv igjen.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!projectId || loadStatus === "loading") return null;
+
+  if (!visible || !state || !current) {
+    if (!eligible && loadStatus !== "failed") return null;
+    return (
+      <>
+        <Box sx={{ position: "fixed", right: { xs: 12, md: 24 }, bottom: { xs: 12, md: 24 }, zIndex: 1300 }}>
+          <Button
+            variant="contained"
+            disabled={busy}
+            onClick={() => {
+              if (loadStatus === "failed") setReloadKey((value) => value + 1);
+              else void restart();
+            }}
+            sx={{ bgcolor: "#a78bfa", color: "#10081c", fontWeight: 750, minHeight: 44 }}
+          >
+            {loadStatus === "failed" ? "Prøv guiden igjen" : "Bli trygg i Leadgrid"}
+          </Button>
+        </Box>
+        <Snackbar
+          open={Boolean(snack)}
+          autoHideDuration={3500}
+          onClose={() => setSnack(null)}
+          message={snack}
+        />
+      </>
+    );
+  }
 
   return (
     <>

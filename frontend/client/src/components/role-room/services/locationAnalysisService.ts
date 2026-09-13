@@ -3,16 +3,15 @@
  * Henter Kartverket-geocode + filming-permit-info per kommune.
  */
 
+import { roleRoomAgentDefaultHeaders } from './roleRoomAgentService';
+
 const BASE = '/api/role-room/locations/analysis';
 
 function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('role_room_auth_token')
-    || sessionStorage.getItem('role_room_auth_token')
-    || localStorage.getItem('authToken')
-    || '';
-  const h: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) h.Authorization = `Bearer ${token}`;
-  return h;
+  return {
+    'Content-Type': 'application/json',
+    ...roleRoomAgentDefaultHeaders(),
+  };
 }
 
 async function readJson<T>(res: Response): Promise<T> {
@@ -54,6 +53,9 @@ export interface LocationAnalysis {
   permitInfo: KommunePermitInfo | null;
   recommendations: string[];
   source: 'kartverket' | 'fallback';
+  confidence: 'verified_address' | 'unverified';
+  permitDataSource: 'curated_directory' | 'generic_guidance' | 'none';
+  analyzedAt: string;
   warnings: string[];
 }
 
