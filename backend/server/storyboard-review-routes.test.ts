@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildStoryboardReviewSnapshot,
+  buildStoryboardReviewChangePreview,
   diffStoryboardReviewSnapshots,
   mergeStoryboardSnapshotIntoCurrentScenes,
   storyboardReviewHash,
@@ -52,6 +53,7 @@ describe('storyboard review snapshots', () => {
     const sql = readFileSync(new URL('../migrations/0592_storyboard_review_rounds.sql', import.meta.url), 'utf8');
     const queueSql = readFileSync(new URL('../migrations/0595_storyboard_review_resolution_queue.sql', import.meta.url), 'utf8');
     const annotationSql = readFileSync(new URL('../migrations/0596_storyboard_review_annotations.sql', import.meta.url), 'utf8');
+    const changeSql = readFileSync(new URL('../migrations/0601_storyboard_review_comment_changes.sql', import.meta.url), 'utf8');
     expect(sql).toContain('FOREIGN KEY (manuscript_id, project_id)');
     expect(sql).toContain('token_hash CHAR(64) NOT NULL UNIQUE');
     expect(sql).toContain('storyboard review snapshots are immutable');
@@ -68,6 +70,10 @@ describe('storyboard review snapshots', () => {
     expect(annotationSql).toContain("ADD COLUMN IF NOT EXISTS annotations JSONB NOT NULL DEFAULT '[]'::jsonb");
     expect(annotationSql).toContain('jsonb_array_length(annotations) <= 12');
     expect(annotationSql).toContain('pg_column_size(annotations) <= 65536');
+    expect(changeSql).toContain('FOREIGN KEY (review_round_id, project_id, manuscript_id)');
+    expect(changeSql).toContain('FOREIGN KEY (comment_id, review_round_id)');
+    expect(changeSql).toContain('storyboard review comment changes are append-only');
+    expect(changeSql).toContain('storyboard_review_comment_changes_single_undo_idx');
   });
 
   it('is canonical and detached from mutable manuscript state', () => {
@@ -130,6 +136,22 @@ describe('storyboard review snapshots', () => {
     expect(restored.scenes[0].storyboardFrames[0].id).toBe('frame-a');
     expect(restored.restoredSceneIds).toEqual(['scene-1']);
     expect(restored.skippedSceneIds).toEqual(['scene-deleted']);
+  });
+
+  it('builds a scoped preview without mutating the working frame', () => {
+    const frame = source().scenes[0].storyboardFrames[0];
+    const preview = buildStoryboardReviewChangePreview({
+      projectId: 'project-1', manuscriptId: 'manuscript-1', roundId: 'round-1',
+      commentId: 'comment-1', frameId: 'frame-a', sceneId: 'scene-1', frame,
+      field: 'duration', value: 3.5,
+    });
+    expect(preview).toMatchObject({
+      fieldLabel: 'Varighet', beforeDisplayValue: '2.0 sek',
+      afterDisplayValue: '3.5 sek', forwardPatch: { duration: 3.5 },
+      inversePatch: { duration: 2 },
+    });
+    expect(preview.previewHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(frame.duration).toBe(2);
   });
 });
 
@@ -313,6 +335,268 @@ describe('storyboard review share security', () => {
     expect(res.body).toEqual({ error: 'resolved_revision_not_in_manuscript' });
     expect(query).toHaveBeenCalledTimes(2);
     expect(query.mock.calls.some(([sql]) => String(sql).includes('UPDATE storyboard_review_comments'))).toBe(false);
+  });
+
+  it('requires an applied review change to be undone instead of silently reopening its comment', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: 'round-1', version: 2 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'change-1' }] });
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { query } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: unusedManuscripts,
+    });
+    const handler = routeHandler(router, 'patch',
+      '/projects/:projectId/manuscripts/:manuscriptId/storyboard-review-rounds/:roundId/comments/:commentId');
+    const res = response();
+    await handler({ params: {
+      projectId: 'project-1', manuscriptId: 'manuscript-1', roundId: 'round-1', commentId: 'comment-1',
+    }, body: { status: 'open' }, userId: 'owner-1' }, res,
+    (error: unknown) => { throw error; });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({ error: 'review_change_must_be_undone' });
+    expect(query.mock.calls[1][0]).toContain("undone.reverts_change_id = applied.id");
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('UPDATE storyboard_review_comments'))).toBe(false);
+  });
+
+  it('previews a whitelisted comment change against the live working frame', async () => {
+    const current = source();
+    const comment = {
+      id: 'comment-1', review_round_id: 'round-1', frame_id: 'frame-a',
+      status: 'open', review_round_status: 'in_review', review_round_version: 2,
+    };
+    const query = vi.fn().mockResolvedValue({ rows: [comment] });
+    const manuscriptsService = {
+      getManuscript: vi.fn().mockResolvedValue(current.manuscript),
+      getScenes: vi.fn().mockResolvedValue(current.scenes),
+      getDialogue: vi.fn().mockResolvedValue(current.dialogue),
+    };
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { query } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: manuscriptsService as any,
+    });
+    const handler = routeHandler(router, 'post',
+      '/projects/:projectId/manuscripts/:manuscriptId/storyboard-review-rounds/:roundId/comments/:commentId/change-preview');
+    const res = response();
+    await handler({ params: {
+      projectId: 'project-1', manuscriptId: 'manuscript-1', roundId: 'round-1', commentId: 'comment-1',
+    }, body: { field: 'duration', value: 3.5 }, userId: 'owner-1' }, res,
+    (error: unknown) => { throw error; });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data).toMatchObject({
+      sceneId: 'scene-1', frameId: 'frame-a', field: 'duration',
+      beforeDisplayValue: '2.0 sek', afterDisplayValue: '3.5 sek',
+    });
+    expect(manuscriptsService.getScenes).toHaveBeenCalledOnce();
+    expect(current.scenes[0].storyboardFrames[0].duration).toBe(2);
+  });
+
+  it('applies an exact preview once, journals the inverse and resolves the comment', async () => {
+    const current = source();
+    const preview = buildStoryboardReviewChangePreview({
+      projectId: 'project-1', manuscriptId: 'manuscript-1', roundId: 'round-1',
+      commentId: 'comment-1', frameId: 'frame-a', sceneId: 'scene-1',
+      frame: current.scenes[0].storyboardFrames[0], field: 'duration', value: 3.5,
+    });
+    const now = new Date('2026-09-12T12:10:00Z');
+    const comment = {
+      id: 'comment-1', review_round_id: 'round-1', frame_id: 'frame-a', parent_id: null,
+      author_display_name: 'Kari', body: 'Hold bildet lenger.', visibility: 'client',
+      anchor_x: null, anchor_y: null, annotations: [], status: 'open', assigned_to: null,
+      due_at: null, resolution_note: null, resolved_by: null, resolved_at: null,
+      resolved_in_round_id: null, carried_from_comment_id: null, created_at: now,
+      updated_at: now, review_round_status: 'in_review', review_round_version: 2,
+    };
+    const appliedComment = { ...comment, status: 'resolved', resolved_by: 'owner-1',
+      resolved_at: now, resolution_note: 'Godkjent endring: Varighet – 2.0 sek → 3.5 sek' };
+    const change = {
+      id: 'change-1', review_round_id: 'round-1', comment_id: 'comment-1',
+      project_id: 'project-1', manuscript_id: 'manuscript-1', scene_id: 'scene-1',
+      frame_id: 'frame-a', operation: 'apply', forward_patch: { duration: 3.5 },
+      inverse_patch: { duration: 2 }, before_hash: preview.beforeHash,
+      after_hash: preview.afterHash, reverts_change_id: null, created_by: 'owner-1', created_at: now,
+    };
+    const client = {
+      release: vi.fn(),
+      query: vi.fn(async (sql: string, values?: unknown[]) => {
+        if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] };
+        if (sql.includes('pg_advisory_xact_lock')) return { rows: [] };
+        if (sql.includes('FROM storyboard_review_comments AS comment')) return { rows: [comment] };
+        if (sql.includes('INSERT INTO storyboard_review_comment_changes')) {
+          expect(JSON.parse(String(values?.[6]))).toEqual({ duration: 3.5 });
+          expect(JSON.parse(String(values?.[7]))).toEqual({ duration: 2 });
+          return { rows: [change] };
+        }
+        if (sql.includes('UPDATE storyboard_review_comments')) return { rows: [appliedComment] };
+        throw new Error(`unexpected client query: ${sql}`);
+      }),
+    };
+    const manuscriptsService = {
+      getManuscript: vi.fn().mockResolvedValue(current.manuscript),
+      getScenes: vi.fn().mockResolvedValue(current.scenes),
+      getDialogue: vi.fn().mockResolvedValue(current.dialogue),
+      patchFrame: vi.fn().mockResolvedValue({ updatedAt: now.toISOString() }),
+    };
+    const upsertNotification = vi.fn().mockResolvedValue(undefined);
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { connect: async () => client } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: manuscriptsService as any,
+      upsertNotification,
+    });
+    const handler = routeHandler(router, 'post',
+      '/projects/:projectId/manuscripts/:manuscriptId/storyboard-review-rounds/:roundId/comments/:commentId/change-applications');
+    const res = response();
+    await handler({ params: {
+      projectId: 'project-1', manuscriptId: 'manuscript-1', roundId: 'round-1', commentId: 'comment-1',
+    }, body: { field: 'duration', value: 3.5, expectedPreviewHash: preview.previewHash },
+    userId: 'owner-1', userEmail: 'owner@example.com' }, res,
+    (error: unknown) => { throw error; });
+
+    expect(res.statusCode).toBe(201);
+    expect(manuscriptsService.patchFrame).toHaveBeenCalledWith(
+      'manuscript-1', 'scene-1', 'frame-a', { duration: 3.5 });
+    expect(res.body.data).toMatchObject({
+      comment: { id: 'comment-1', status: 'resolved' },
+      change: { id: 'change-1', operation: 'apply', beforeDisplayValue: '2.0 sek', afterDisplayValue: '3.5 sek' },
+    });
+    expect(upsertNotification).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'project-1', linkedEntityId: 'change-1',
+      eventType: 'storyboard_review_comment_resolved',
+    }));
+  });
+
+  it('refuses undo when the reviewed field changed after the approved patch', async () => {
+    const current = source();
+    current.scenes[0].storyboardFrames[0].duration = 4;
+    const expectedBeforeHash = storyboardReviewHash({ duration: 2 });
+    const expectedAfterHash = storyboardReviewHash({ duration: 3.5 });
+    const now = new Date('2026-09-12T12:10:00Z');
+    const client = {
+      release: vi.fn(),
+      query: vi.fn(async (sql: string) => {
+        if (sql === 'BEGIN' || sql === 'ROLLBACK') return { rows: [] };
+        if (sql.includes('pg_advisory_xact_lock')) return { rows: [] };
+        if (sql.includes('FROM storyboard_review_comments AS comment')) return { rows: [{
+          id: 'comment-1', review_round_id: 'round-1', frame_id: 'frame-a', status: 'resolved',
+          review_round_status: 'changes_requested', review_round_version: 2,
+        }] };
+        if (sql.includes('FROM storyboard_review_comment_changes AS change')) return { rows: [{
+          id: 'change-1', review_round_id: 'round-1', comment_id: 'comment-1',
+          project_id: 'project-1', manuscript_id: 'manuscript-1', scene_id: 'scene-1',
+          frame_id: 'frame-a', operation: 'apply', forward_patch: { duration: 3.5 },
+          inverse_patch: { duration: 2 }, before_hash: expectedBeforeHash,
+          after_hash: expectedAfterHash, created_by: 'owner-1', created_at: now,
+        }] };
+        if (sql.includes('WHERE reverts_change_id')) return { rows: [] };
+        throw new Error(`unexpected client query: ${sql}`);
+      }),
+    };
+    const manuscriptsService = {
+      getManuscript: vi.fn().mockResolvedValue(current.manuscript),
+      getScenes: vi.fn().mockResolvedValue(current.scenes),
+      getDialogue: vi.fn().mockResolvedValue(current.dialogue),
+      patchFrame: vi.fn(),
+    };
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { connect: async () => client } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: manuscriptsService as any,
+    });
+    const handler = routeHandler(router, 'post',
+      '/projects/:projectId/manuscripts/:manuscriptId/storyboard-review-rounds/:roundId/comments/:commentId/change-applications/:changeId/undo');
+    const res = response();
+    await handler({ params: {
+      projectId: 'project-1', manuscriptId: 'manuscript-1', roundId: 'round-1',
+      commentId: 'comment-1', changeId: 'change-1',
+    }, body: { expectedAfterHash }, userId: 'owner-1' }, res,
+    (error: any) => { res.status(error.status || 500).json({ error: error.message }); });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({ error: 'review_change_cannot_undo_after_new_edit' });
+    expect(manuscriptsService.patchFrame).not.toHaveBeenCalled();
+    expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+  });
+
+  it('undoes the exact applied field, appends a journal entry and reopens the comment', async () => {
+    const current = source();
+    current.scenes[0].storyboardFrames[0].duration = 3.5;
+    const beforeHash = storyboardReviewHash({ duration: 2 });
+    const afterHash = storyboardReviewHash({ duration: 3.5 });
+    const now = new Date('2026-09-12T12:10:00Z');
+    const baseComment = {
+      id: 'comment-1', review_round_id: 'round-1', frame_id: 'frame-a', parent_id: null,
+      author_display_name: 'Kari', body: 'Hold bildet lenger.', visibility: 'client',
+      anchor_x: null, anchor_y: null, annotations: [], status: 'resolved', assigned_to: null,
+      due_at: null, resolution_note: 'Godkjent endring', resolved_by: 'owner-1',
+      resolved_at: now, resolved_in_round_id: null, carried_from_comment_id: null,
+      created_at: now, updated_at: now, review_round_status: 'changes_requested',
+      review_round_version: 2,
+    };
+    const applyChange = {
+      id: 'change-1', review_round_id: 'round-1', comment_id: 'comment-1',
+      project_id: 'project-1', manuscript_id: 'manuscript-1', scene_id: 'scene-1',
+      frame_id: 'frame-a', operation: 'apply', forward_patch: { duration: 3.5 },
+      inverse_patch: { duration: 2 }, before_hash: beforeHash, after_hash: afterHash,
+      reverts_change_id: null, created_by: 'owner-1', created_at: now,
+    };
+    const undoChange = {
+      ...applyChange, id: 'undo-1', operation: 'undo', forward_patch: { duration: 2 },
+      inverse_patch: { duration: 3.5 }, before_hash: afterHash, after_hash: beforeHash,
+      reverts_change_id: 'change-1', created_by: 'owner-2',
+    };
+    const client = {
+      release: vi.fn(),
+      query: vi.fn(async (sql: string, values?: unknown[]) => {
+        if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] };
+        if (sql.includes('pg_advisory_xact_lock')) return { rows: [] };
+        if (sql.includes('FROM storyboard_review_comments AS comment')) return { rows: [baseComment] };
+        if (sql.includes('WHERE reverts_change_id')) return { rows: [] };
+        if (sql.includes('FROM storyboard_review_comment_changes AS change')) return { rows: [applyChange] };
+        if (sql.includes('INSERT INTO storyboard_review_comment_changes')) {
+          expect(JSON.parse(String(values?.[6]))).toEqual({ duration: 2 });
+          expect(values?.[10]).toBe('change-1');
+          return { rows: [undoChange] };
+        }
+        if (sql.includes('UPDATE storyboard_review_comments')) {
+          return { rows: [{ ...baseComment, status: 'open', resolution_note: null,
+            resolved_by: null, resolved_at: null }] };
+        }
+        throw new Error(`unexpected client query: ${sql}`);
+      }),
+    };
+    const manuscriptsService = {
+      getManuscript: vi.fn().mockResolvedValue(current.manuscript),
+      getScenes: vi.fn().mockResolvedValue(current.scenes),
+      getDialogue: vi.fn().mockResolvedValue(current.dialogue),
+      patchFrame: vi.fn().mockResolvedValue({ updatedAt: now.toISOString() }),
+    };
+    const upsertNotification = vi.fn().mockResolvedValue(undefined);
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { connect: async () => client } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: manuscriptsService as any,
+      upsertNotification,
+    });
+    const handler = routeHandler(router, 'post',
+      '/projects/:projectId/manuscripts/:manuscriptId/storyboard-review-rounds/:roundId/comments/:commentId/change-applications/:changeId/undo');
+    const res = response();
+    await handler({ params: {
+      projectId: 'project-1', manuscriptId: 'manuscript-1', roundId: 'round-1',
+      commentId: 'comment-1', changeId: 'change-1',
+    }, body: { expectedAfterHash: afterHash }, userId: 'owner-2' }, res,
+    (error: unknown) => { throw error; });
+
+    expect(res.statusCode).toBe(201);
+    expect(manuscriptsService.patchFrame).toHaveBeenCalledWith(
+      'manuscript-1', 'scene-1', 'frame-a', { duration: 2 });
+    expect(res.body.data).toMatchObject({
+      comment: { id: 'comment-1', status: 'open' },
+      change: { id: 'undo-1', operation: 'undo', revertsChangeId: 'change-1',
+        beforeDisplayValue: '3.5 sek', afterDisplayValue: '2.0 sek' },
+    });
+    expect(client.query).toHaveBeenCalledWith('COMMIT');
+    expect(upsertNotification).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'storyboard_review_comment_reopened', linkedEntityId: 'undo-1',
+    }));
   });
 
   it('rate-limits unauthenticated review traffic before repeated database lookups', async () => {

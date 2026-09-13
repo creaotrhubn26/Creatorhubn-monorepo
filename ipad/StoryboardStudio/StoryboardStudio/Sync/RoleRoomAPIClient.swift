@@ -640,6 +640,15 @@ struct FrameSummary: Identifiable, Sendable {
     var aiVideoVersions: [AIVideoVersion] = []
     var cameraAngle: String? = nil
     var lighting: String? = nil
+    // Assistant-editable production fields are retained in summaries so an
+    // accepted suggestion can create a complete, local inverse patch.
+    var productionLocation: String? = nil
+    var screenDirection: String? = nil
+    var continuityNotes: String? = nil
+    var productionNotes: String? = nil
+    var vfxNotes: String? = nil
+    var revisionStatus: String? = nil
+    var revisionReason: String? = nil
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -2056,6 +2065,58 @@ actor RoleRoomAPIClient {
         return try decodeStoryboardSkillPayload(data, as: StoryboardReviewCommentDTO.self)
     }
 
+    func previewStoryboardReviewCommentChange(
+        projectId: String, manuscriptId: String, roundId: String,
+        commentId: String, field: String, value: StoryboardReviewChangeValue
+    ) async throws -> StoryboardReviewChangePreviewDTO {
+        let payload = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/manuscripts/\(manuscriptId)/storyboard-review-rounds/\(roundId)/comments/\(commentId)/change-preview",
+            method: "POST", body: ["field": field, "value": reviewChangeJSONValue(value)])
+        guard let data = payload["data"] else {
+            throw SyncError.malformed("storyboard review change preview")
+        }
+        return try decodeStoryboardSkillPayload(data, as: StoryboardReviewChangePreviewDTO.self)
+    }
+
+    func applyStoryboardReviewCommentChange(
+        projectId: String, manuscriptId: String, roundId: String,
+        commentId: String, field: String, value: StoryboardReviewChangeValue,
+        expectedPreviewHash: String
+    ) async throws -> StoryboardReviewChangeApplicationDTO {
+        let payload = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/manuscripts/\(manuscriptId)/storyboard-review-rounds/\(roundId)/comments/\(commentId)/change-applications",
+            method: "POST", body: [
+                "field": field,
+                "value": reviewChangeJSONValue(value),
+                "expectedPreviewHash": expectedPreviewHash,
+            ])
+        guard let data = payload["data"] else {
+            throw SyncError.malformed("storyboard review change application")
+        }
+        return try decodeStoryboardSkillPayload(data, as: StoryboardReviewChangeApplicationDTO.self)
+    }
+
+    func undoStoryboardReviewCommentChange(
+        projectId: String, manuscriptId: String, roundId: String,
+        commentId: String, changeId: String, expectedAfterHash: String
+    ) async throws -> StoryboardReviewChangeApplicationDTO {
+        let payload = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/manuscripts/\(manuscriptId)/storyboard-review-rounds/\(roundId)/comments/\(commentId)/change-applications/\(changeId)/undo",
+            method: "POST", body: ["expectedAfterHash": expectedAfterHash])
+        guard let data = payload["data"] else {
+            throw SyncError.malformed("storyboard review change undo")
+        }
+        return try decodeStoryboardSkillPayload(data, as: StoryboardReviewChangeApplicationDTO.self)
+    }
+
+    private func reviewChangeJSONValue(_ value: StoryboardReviewChangeValue) -> Any {
+        switch value {
+        case .text(let text): return text ?? NSNull()
+        case .number(let number): return number ?? NSNull()
+        case .tags(let tags): return tags ?? NSNull()
+        }
+    }
+
     func createStoryboardReviewShareLink(
         projectId: String, manuscriptId: String, roundId: String,
         accessMode: String, requireIdentity: Bool
@@ -2273,6 +2334,20 @@ actor RoleRoomAPIClient {
             }
             if let code = payload["error"] as? String,
                !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                switch code {
+                case "review_change_preview_stale":
+                    return .remote("Shotet er endret etter forhåndsvisningen. Lag en ny forhåndsvisning før du godkjenner.")
+                case "review_change_cannot_undo_after_new_edit":
+                    return .remote("Endringen kan ikke angres fordi feltet er redigert senere. Åpne shotet og sammenlign verdiene.")
+                case "review_change_already_undone":
+                    return .remote("Denne endringen er allerede angret.")
+                case "review_change_must_be_undone":
+                    return .remote("Bruk «Angre endring» for å gjenåpne dette review-punktet uten å miste sporbarheten.")
+                case "review_round_locked":
+                    return .remote("Den låste revisjonen er allerede godkjent eller erstattet.")
+                default:
+                    break
+                }
                 return .remote("Serveren avviste forespørselen (\(code)).")
             }
         }
@@ -2361,6 +2436,13 @@ actor RoleRoomAPIClient {
                 .compactMap(AIVideoVersion.init(dictionary:))
             summary.cameraAngle = frame["cameraAngle"] as? String
             summary.lighting = frame["lighting"] as? String
+            summary.productionLocation = frame["location"] as? String
+            summary.screenDirection = frame["screenDirection"] as? String
+            summary.continuityNotes = frame["continuityNotes"] as? String
+            summary.productionNotes = frame["productionNotes"] as? String
+            summary.vfxNotes = frame["vfxNotes"] as? String
+            summary.revisionStatus = frame["revisionStatus"] as? String
+            summary.revisionReason = frame["revisionReason"] as? String
             return summary
         }
         return SceneSummary(

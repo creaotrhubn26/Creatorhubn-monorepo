@@ -2,6 +2,39 @@ import XCTest
 @testable import StoryboardStudio
 
 final class StoryboardReviewRoundsTests: XCTestCase {
+    func testReviewWorkspaceKeepsRevisionsInsideOneDestination() {
+        XCTAssertEqual(StoryboardReviewWorkspaceSection.allCases, [.shots, .revisions])
+        XCTAssertEqual(StoryboardReviewWorkspaceSection.shots.title, "Arbeidskopi")
+        XCTAssertEqual(StoryboardReviewWorkspaceSection.revisions.title, "Låste revisjoner")
+    }
+
+    func testSnapshotFramePreservesDrawingFallbackAndImageAliases() throws {
+        let data = Data(#"""
+        {
+          "id":"frame-drawing","shotNumber":"4A","description":"Nora ser opp",
+          "duration":3.5,"shotType":"Nær","movement":"Dolly inn","lensMm":50,
+          "transition":"Klipp","continuityNotes":"Blikk mot venstre",
+          "productionNotes":"Skinne langs vinduet",
+          "imageURL":"/api/storage/frame.png",
+          "thumbnailDataURL":"data:image/jpeg;base64,cHJldmlldw==",
+          "drawingData":{"strokes":"[]","width":2048,"height":1152}
+        }
+        """#.utf8)
+
+        let frame = try JSONDecoder().decode(StoryboardReviewSnapshotFrameDTO.self, from: data)
+
+        XCTAssertEqual(frame.imageUrl, "/api/storage/frame.png")
+        XCTAssertEqual(frame.thumbnailUrl, "data:image/jpeg;base64,cHJldmlldw==")
+        XCTAssertEqual(frame.drawingData?.strokes, "[]")
+        XCTAssertEqual(frame.drawingData?.width, 2048)
+        XCTAssertEqual(frame.drawingData?.height, 1152)
+        XCTAssertEqual(frame.duration, 3.5)
+        XCTAssertEqual(frame.shotType, "Nær")
+        XCTAssertEqual(frame.movement, "Dolly inn")
+        XCTAssertEqual(frame.lensMm, 50)
+        XCTAssertEqual(frame.continuityNotes, "Blikk mot venstre")
+    }
+
     func testReviewRoundAndDiffContractsDecodeWithoutDroppingIntegrityFields() throws {
         let roundData = Data(#"""
         {
@@ -76,6 +109,16 @@ final class StoryboardReviewRoundsTests: XCTestCase {
           "assignedTo":"Mina","dueAt":"2026-09-14T10:00:00Z",
           "resolutionNote":"Forlenget to frames","resolvedBy":"owner-1",
           "resolvedAt":"2026-09-12T12:05:00Z","resolvedInRoundId":"round-3",
+          "changes":[{
+            "id":"change-1","reviewRoundId":"round-2","commentId":"comment-2",
+            "sceneId":"scene-1","frameId":"frame-a","operation":"apply",
+            "field":"duration","fieldLabel":"Varighet",
+            "beforeDisplayValue":"2.0 sek","afterDisplayValue":"3.5 sek",
+            "beforeHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "afterHash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "revertsChangeId":null,"createdBy":"owner-1",
+            "createdAt":"2026-09-12T12:05:00Z"
+          }],
           "carriedFromCommentId":"comment-1","createdAt":"2026-09-12T12:01:00Z",
           "updatedAt":"2026-09-12T12:05:00Z"
         }
@@ -88,5 +131,27 @@ final class StoryboardReviewRoundsTests: XCTestCase {
         XCTAssertEqual(comment.annotations?.first?.points.count, 2)
         XCTAssertEqual(comment.resolvedInRoundId, "round-3")
         XCTAssertEqual(comment.carriedFromCommentId, "comment-1")
+        XCTAssertEqual(comment.changes?.first?.field, "duration")
+        XCTAssertEqual(comment.changes?.first?.afterDisplayValue, "3.5 sek")
+    }
+
+    func testReviewChangeInputAcceptsNorwegianDecimalAndSuggestsSafeTiming() throws {
+        XCTAssertEqual(
+            try StoryboardReviewEditableField.duration.parsedValue("3,5"),
+            .number(3.5))
+        XCTAssertEqual(
+            try StoryboardReviewEditableField.lensMm.parsedValue("50"),
+            .number(50))
+        XCTAssertThrowsError(try StoryboardReviewEditableField.duration.parsedValue("0,1"))
+        XCTAssertThrowsError(try StoryboardReviewEditableField.lensMm.parsedValue("35,5"))
+        XCTAssertThrowsError(try StoryboardReviewEditableField.description.parsedValue("  "))
+
+        let frame = StoryboardReviewSnapshotFrameDTO(
+            id: "frame-a", shotNumber: "3A", description: "Trollet ser inn",
+            duration: 2, imageUrl: nil, thumbnailUrl: nil)
+        XCTAssertEqual(
+            StoryboardReviewEditableField.duration.initialValue(
+                frame: frame, comment: "Hold totalbildet litt lenger."),
+            "3")
     }
 }

@@ -14,12 +14,82 @@ struct StoryboardReviewAnnotationDTO: Decodable, Identifiable, Sendable {
     let points: [StoryboardReviewAnnotationPointDTO]
 }
 
+struct StoryboardReviewDrawingDataDTO: Decodable, Sendable {
+    let strokes: String?
+    let width: Double?
+    let height: Double?
+}
+
 struct StoryboardReviewSnapshotFrameDTO: Decodable, Identifiable, Sendable {
     let id: String
     let shotNumber: String?
     let description: String?
+    let duration: Double?
+    let shotType: String?
+    let movement: String?
+    let lensMm: Int?
+    let transition: String?
+    let continuityNotes: String?
+    let productionNotes: String?
     let imageUrl: String?
     let thumbnailUrl: String?
+    let drawingData: StoryboardReviewDrawingDataDTO?
+
+    init(
+        id: String,
+        shotNumber: String?,
+        description: String?,
+        duration: Double? = nil,
+        shotType: String? = nil,
+        movement: String? = nil,
+        lensMm: Int? = nil,
+        transition: String? = nil,
+        continuityNotes: String? = nil,
+        productionNotes: String? = nil,
+        imageUrl: String?,
+        thumbnailUrl: String?,
+        drawingData: StoryboardReviewDrawingDataDTO? = nil
+    ) {
+        self.id = id
+        self.shotNumber = shotNumber
+        self.description = description
+        self.duration = duration
+        self.shotType = shotType
+        self.movement = movement
+        self.lensMm = lensMm
+        self.transition = transition
+        self.continuityNotes = continuityNotes
+        self.productionNotes = productionNotes
+        self.imageUrl = imageUrl
+        self.thumbnailUrl = thumbnailUrl
+        self.drawingData = drawingData
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, shotNumber, description, duration, shotType, movement, lensMm, transition
+        case continuityNotes, productionNotes, imageUrl, imageURL
+        case thumbnailUrl, thumbnailDataURL, drawingData
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        shotNumber = try values.decodeIfPresent(String.self, forKey: .shotNumber)
+        description = try values.decodeIfPresent(String.self, forKey: .description)
+        duration = try values.decodeIfPresent(Double.self, forKey: .duration)
+        shotType = try values.decodeIfPresent(String.self, forKey: .shotType)
+        movement = try values.decodeIfPresent(String.self, forKey: .movement)
+        lensMm = try values.decodeIfPresent(Int.self, forKey: .lensMm)
+        transition = try values.decodeIfPresent(String.self, forKey: .transition)
+        continuityNotes = try values.decodeIfPresent(String.self, forKey: .continuityNotes)
+        productionNotes = try values.decodeIfPresent(String.self, forKey: .productionNotes)
+        imageUrl = try values.decodeIfPresent(String.self, forKey: .imageUrl)
+            ?? values.decodeIfPresent(String.self, forKey: .imageURL)
+        thumbnailUrl = try values.decodeIfPresent(String.self, forKey: .thumbnailUrl)
+            ?? values.decodeIfPresent(String.self, forKey: .thumbnailDataURL)
+        drawingData = try values.decodeIfPresent(
+            StoryboardReviewDrawingDataDTO.self, forKey: .drawingData)
+    }
 }
 
 struct StoryboardReviewSnapshotSceneDTO: Decodable, Identifiable, Sendable {
@@ -59,16 +129,175 @@ struct StoryboardReviewCommentDTO: Decodable, Identifiable, Sendable {
     var anchorX: Double? = nil
     var anchorY: Double? = nil
     var annotations: [StoryboardReviewAnnotationDTO]? = nil
-    let status: String
+    var status: String
     let assignedTo: String?
     let dueAt: String?
-    let resolutionNote: String?
-    let resolvedBy: String?
-    let resolvedAt: String?
+    var resolutionNote: String?
+    var resolvedBy: String?
+    var resolvedAt: String?
     let resolvedInRoundId: String?
     let carriedFromCommentId: String?
     let createdAt: String
     let updatedAt: String?
+    var changes: [StoryboardReviewCommentChangeDTO]? = nil
+}
+
+struct StoryboardReviewCommentChangeDTO: Decodable, Identifiable, Sendable {
+    let id: String
+    let reviewRoundId: String
+    let commentId: String
+    let sceneId: String
+    let frameId: String
+    let operation: String
+    let field: String
+    let fieldLabel: String
+    let beforeDisplayValue: String
+    let afterDisplayValue: String
+    let beforeHash: String
+    let afterHash: String
+    let revertsChangeId: String?
+    let createdBy: String
+    let createdAt: String
+}
+
+struct StoryboardReviewChangePreviewDTO: Decodable, Sendable {
+    let previewHash: String
+    let beforeHash: String
+    let afterHash: String
+    let commentId: String
+    let roundId: String
+    let sceneId: String
+    let frameId: String
+    let field: String
+    let fieldLabel: String
+    let beforeDisplayValue: String
+    let afterDisplayValue: String
+    let currentFrameUpdatedAt: String?
+}
+
+struct StoryboardReviewChangeApplicationDTO: Decodable, Sendable {
+    let comment: StoryboardReviewCommentDTO
+    let change: StoryboardReviewCommentChangeDTO
+    let frameUpdatedAt: String?
+}
+
+enum StoryboardReviewChangeValue: Sendable, Equatable {
+    case text(String?)
+    case number(Double?)
+    case tags([String]?)
+}
+
+enum StoryboardReviewEditableField: String, CaseIterable, Identifiable, Sendable {
+    case duration
+    case description
+    case shotType
+    case movement
+    case lensMm
+    case transition
+    case continuityNotes
+    case productionNotes
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .duration: return "Varighet"
+        case .description: return "Shotbeskrivelse"
+        case .shotType: return "Bildestørrelse"
+        case .movement: return "Kamerabevegelse"
+        case .lensMm: return "Brennvidde"
+        case .transition: return "Overgang"
+        case .continuityNotes: return "Kontinuitetsnotat"
+        case .productionNotes: return "Produksjonsnotat"
+        }
+    }
+
+    var prompt: String {
+        switch self {
+        case .duration: return "Sekunder, for eksempel 3,5"
+        case .lensMm: return "Millimeter, for eksempel 50"
+        case .description: return "Beskriv handlingen i bildet"
+        case .shotType: return "For eksempel total, halvtotal eller nær"
+        case .movement: return "For eksempel statisk, dolly eller panorering"
+        case .transition: return "For eksempel klipp eller dissolve"
+        case .continuityNotes: return "Hva må videreføres mellom shots?"
+        case .productionNotes: return "Hva må produksjonen vite?"
+        }
+    }
+
+    func initialValue(frame: StoryboardReviewSnapshotFrameDTO, comment: String) -> String {
+        switch self {
+        case .duration:
+            let current = frame.duration ?? 2
+            let normalized = comment.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            let suggested: Double
+            if normalized.contains("lenger") || normalized.contains("hold") {
+                suggested = min(current + 1, 600)
+            } else if normalized.contains("kortere") || normalized.contains("raskere") {
+                suggested = max(current - 0.5, 0.25)
+            } else {
+                suggested = current
+            }
+            return Self.decimalString(suggested)
+        case .description: return frame.description ?? ""
+        case .shotType: return frame.shotType ?? ""
+        case .movement: return frame.movement ?? ""
+        case .lensMm: return frame.lensMm.map(String.init) ?? ""
+        case .transition: return frame.transition ?? ""
+        case .continuityNotes: return frame.continuityNotes ?? ""
+        case .productionNotes: return frame.productionNotes ?? ""
+        }
+    }
+
+    func parsedValue(_ rawValue: String) throws -> StoryboardReviewChangeValue {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch self {
+        case .duration:
+            guard let value = Self.number(trimmed), (0.25...600).contains(value) else {
+                throw StoryboardReviewChangeInputError.invalidDuration
+            }
+            return .number(value)
+        case .lensMm:
+            guard let value = Self.number(trimmed), value.rounded() == value,
+                  (1...2_000).contains(value) else {
+                throw StoryboardReviewChangeInputError.invalidLens
+            }
+            return .number(value)
+        case .description:
+            guard !trimmed.isEmpty else { throw StoryboardReviewChangeInputError.emptyDescription }
+            return .text(trimmed)
+        default:
+            return .text(trimmed.isEmpty ? nil : trimmed)
+        }
+    }
+
+    private static func number(_ value: String) -> Double? {
+        Double(value.replacingOccurrences(of: ",", with: "."))
+    }
+
+    private static func decimalString(_ value: Double) -> String {
+        value.rounded() == value ? String(Int(value)) : String(format: "%.2f", value)
+    }
+}
+
+enum StoryboardReviewChangeInputError: LocalizedError {
+    case invalidDuration
+    case invalidLens
+    case emptyDescription
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidDuration: return "Varighet må være mellom 0,25 og 600 sekunder."
+        case .invalidLens: return "Brennvidde må være et helt tall mellom 1 og 2000 mm."
+        case .emptyDescription: return "Shotbeskrivelsen kan ikke være tom."
+        }
+    }
+}
+
+private struct StoryboardReviewChangeDraft: Identifiable {
+    let comment: StoryboardReviewCommentDTO
+    let frame: StoryboardReviewSnapshotFrameDTO
+    var id: String { comment.id }
 }
 
 enum StoryboardReviewFieldUpdate: Sendable {
@@ -133,6 +362,8 @@ struct StoryboardReviewRoundsView: View {
     let projectId: String
     let manuscriptId: String
     let onRestored: () async -> Void
+    var embedded = false
+    var presentationRole: StoryboardProductionRole = .producer
 
     @State private var rounds: [StoryboardReviewRoundDTO] = []
     @State private var inbox: [StoryboardReviewInboxItemDTO] = []
@@ -150,6 +381,10 @@ struct StoryboardReviewRoundsView: View {
     @State private var busy = false
     @State private var errorMessage: String?
     @State private var successMessage: String?
+    @State private var showCreateRevision = false
+    @State private var showShareOptions = false
+    @State private var showRestoreOptions = false
+    @State private var changeDraft: StoryboardReviewChangeDraft?
     @Environment(\.dismiss) private var dismiss
 
     private var selected: StoryboardReviewRoundDTO? {
@@ -175,43 +410,32 @@ struct StoryboardReviewRoundsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            GeometryReader { proxy in
-                if proxy.size.width >= 820 {
-                    HStack(spacing: 0) {
-                        reviewRail
-                            .frame(width: min(320, max(270, proxy.size.width * 0.25)))
-                        Rectangle().fill(BoardBrand.border).frame(width: 1)
-                        detailSurface
-                    }
-                } else {
-                    VStack(spacing: 0) {
-                        compactRoundStrip
-                        Rectangle().fill(BoardBrand.border).frame(height: 1)
-                        detailSurface
-                    }
-                }
-            }
-            .background(BoardBrand.chrome)
-            .foregroundStyle(.white)
-            .navigationTitle("Review-runder")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbarBackground(BoardBrand.panel, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    if busy {
-                        HStack(spacing: 7) {
-                            ProgressView().controlSize(.small).tint(BoardBrand.accent)
-                            Text("Synkroniserer")
-                                .font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
+        Group {
+            if embedded {
+                reviewContent
+            } else {
+                NavigationStack {
+                    reviewContent
+                        .navigationTitle("Review-runder")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbarColorScheme(.dark, for: .navigationBar)
+                        .toolbarBackground(BoardBrand.panel, for: .navigationBar)
+                        .toolbarBackground(.visible, for: .navigationBar)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                if busy {
+                                    HStack(spacing: 7) {
+                                        ProgressView().controlSize(.small).tint(BoardBrand.accent)
+                                        Text("Synkroniserer")
+                                            .font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
+                                    }
+                                }
+                            }
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Board") { dismiss() }
+                                    .foregroundStyle(BoardBrand.accent)
+                            }
                         }
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Board") { dismiss() }
-                        .foregroundStyle(BoardBrand.accent)
                 }
             }
         }
@@ -231,7 +455,9 @@ struct StoryboardReviewRoundsView: View {
                             storyboardFrames: [StoryboardReviewSnapshotFrameDTO(
                                 id: "frame-3", shotNumber: "3A",
                                 description: "Trollet utenfor togvinduet",
-                                imageUrl: nil, thumbnailUrl: nil)])
+                                duration: 2,
+                                imageUrl: StoryboardReviewDemoArtwork.dataURL(variant: 0),
+                                thumbnailUrl: StoryboardReviewDemoArtwork.dataURL(variant: 0))])
                     ]))
                 rounds = [demo]
                 selectedDetail = demo
@@ -272,6 +498,12 @@ struct StoryboardReviewRoundsView: View {
                     addedFrameIds: ["frame-new"], removedFrameIds: [],
                     changedFrameIds: ["frame-3"], movedFrameIds: [],
                     impactedScriptLineRanges: [[10, 12]])
+                if ProcessInfo.processInfo.environment["SB_REVIEW_CHANGE_DEMO"] == "1",
+                   let demoComment = comments.first,
+                   let demoFrame = demo.snapshot?.scenes.first?.storyboardFrames.first {
+                    changeDraft = StoryboardReviewChangeDraft(
+                        comment: demoComment, frame: demoFrame)
+                }
             } else {
                 await reload()
             }
@@ -293,6 +525,69 @@ struct StoryboardReviewRoundsView: View {
             }
             shareURL = nil
             restoreCode = ""
+        }
+        .sheet(isPresented: $showCreateRevision) {
+            NavigationStack {
+                createRevisionPanel
+                    .padding(20)
+                    .background(BoardBrand.chrome)
+                    .navigationTitle("Lås ny revisjon")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Ferdig") { showCreateRevision = false }
+                        }
+                    }
+            }
+            .presentationDetents([.medium])
+            .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showShareOptions) {
+            NavigationStack {
+                Group {
+                    if let selected { sharePanel(for: selected) }
+                }
+                .padding(20)
+                .background(BoardBrand.chrome)
+                .navigationTitle("Del låst revisjon")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Ferdig") { showShareOptions = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+            .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showRestoreOptions) {
+            NavigationStack {
+                Group {
+                    if let selected { restorePanel(for: selected) }
+                }
+                .padding(20)
+                .background(BoardBrand.chrome)
+                .navigationTitle("Gjenopprett revisjon")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Avbryt") { showRestoreOptions = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+            .preferredColorScheme(.dark)
+        }
+        .sheet(item: $changeDraft) { draft in
+            StoryboardReviewChangeSheet(
+                projectId: projectId,
+                manuscriptId: manuscriptId,
+                draft: draft,
+                demoMode: ProcessInfo.processInfo.environment["SB_REVIEW_ROUNDS_DEMO"] == "1",
+                onApplied: { result in acceptAppliedChange(result, original: draft.comment) })
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .preferredColorScheme(.dark)
         }
     }
 
@@ -437,6 +732,37 @@ struct StoryboardReviewRoundsView: View {
         }
     }
 
+    private var reviewContent: some View {
+        GeometryReader { proxy in
+            if proxy.size.width >= 820 {
+                HStack(spacing: 0) {
+                    reviewRail
+                        .frame(width: min(320, max(270, proxy.size.width * 0.25)))
+                    Rectangle().fill(BoardBrand.border).frame(width: 1)
+                    detailSurface
+                }
+            } else {
+                VStack(spacing: 0) {
+                    compactRoundStrip
+                    Rectangle().fill(BoardBrand.border).frame(height: 1)
+                    detailSurface
+                }
+            }
+        }
+        .background(BoardBrand.chrome)
+        .foregroundStyle(.white)
+        .overlay(alignment: .topTrailing) {
+            if embedded && busy {
+                Label("Synkroniserer", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .background(BoardBrand.panel.opacity(0.96), in: Capsule())
+                    .padding(10)
+            }
+        }
+    }
+
     private var roundsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             reviewSectionLabel("Låste revisjoner")
@@ -487,10 +813,10 @@ struct StoryboardReviewRoundsView: View {
 
                 if let selected {
                     revisionHeader(selected)
-                    createRevisionPanel
+                    revisionActions(selected)
+                    lockedRevisionStage(selected)
                     if let diff { diffBanner(diff) }
                     resolutionQueue
-                    secondaryActions(for: selected)
                 } else {
                     VStack(spacing: 12) {
                         Image(systemName: "rectangle.stack.badge.play")
@@ -537,6 +863,79 @@ struct StoryboardReviewRoundsView: View {
         }
     }
 
+    private func revisionActions(_ round: StoryboardReviewRoundDTO) -> some View {
+        HStack(spacing: 10) {
+            if presentationRole.canManageLockedRevisions {
+                Button {
+                    showCreateRevision = true
+                } label: {
+                    Label("Lås ny revisjon", systemImage: "lock.badge.plus")
+                        .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+                }
+                .buttonStyle(.borderedProminent).tint(BoardBrand.accent)
+                .accessibilityIdentifier("storyboard.review.create.open")
+
+                Button {
+                    showShareOptions = true
+                } label: {
+                    Label("Del", systemImage: "square.and.arrow.up")
+                        .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+                }
+                .buttonStyle(.bordered).tint(BoardBrand.accent)
+                .disabled(round.status == "superseded")
+                .accessibilityIdentifier("storyboard.review.share.open")
+            }
+            Spacer()
+            if presentationRole.canRestoreLockedRevisions {
+                Menu {
+                    Button(role: .destructive) { showRestoreOptions = true } label: {
+                        Label("Gjenopprett storyboardfelter", systemImage: "arrow.uturn.backward.circle")
+                    }
+                } label: {
+                    Label("Flere", systemImage: "ellipsis.circle")
+                        .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+                }
+                .accessibilityLabel("Flere revisjonshandlinger")
+                .accessibilityIdentifier("storyboard.review.more")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func lockedRevisionStage(_ round: StoryboardReviewRoundDTO) -> some View {
+        let frames = selectedDetail?.snapshot?.scenes.flatMap(\.storyboardFrames) ?? []
+        if let frame = frames.first {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label("Låst bilde", systemImage: "lock.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(BoardBrand.accent)
+                    Text(frame.shotNumber.map { "SHOT \($0)" } ?? "SHOT")
+                        .font(.caption.monospaced().weight(.bold))
+                        .foregroundStyle(BoardBrand.dim)
+                    Spacer()
+                    Text("v\(round.version)")
+                        .font(.subheadline.monospaced().weight(.bold))
+                        .foregroundStyle(.white)
+                }
+                StoryboardLockedFramePreview(frame: frame)
+                    .frame(maxWidth: .infinity)
+                if let description = frame.description, !description.isEmpty {
+                    Text(description)
+                        .font(.body)
+                        .foregroundStyle(BoardBrand.dim)
+                }
+            }
+            .padding(14)
+            .background(Color.black.opacity(0.34),
+                        in: RoundedRectangle(cornerRadius: StoryboardExperienceMetrics.cornerRadius))
+            .overlay(RoundedRectangle(cornerRadius: StoryboardExperienceMetrics.cornerRadius)
+                .stroke(BoardBrand.border))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("storyboard.review.lockedStage")
+        }
+    }
+
     private var createRevisionPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
             reviewSectionLabel("Ny låst revisjon")
@@ -562,7 +961,7 @@ struct StoryboardReviewRoundsView: View {
         Button { createRound() } label: {
             Label("Send til review", systemImage: "paperplane.fill")
                 .font(.system(size: 12, weight: .semibold))
-                .frame(minHeight: 24)
+                .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
         }
         .buttonStyle(.borderedProminent).tint(BoardBrand.accent)
         .disabled(busy || label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -623,7 +1022,13 @@ struct StoryboardReviewRoundsView: View {
                 ForEach(visibleComments) { comment in
                     StoryboardReviewResolutionRow(
                         comment: comment, frame: frame(for: comment), rounds: rounds, busy: busy,
-                        onUpdate: { changes in updateComment(comment, changes: changes) })
+                        canCreateChange: presentationRole.canManageLockedRevisions,
+                        onUpdate: { changes in updateComment(comment, changes: changes) },
+                        onCreateChange: {
+                            guard let frame = frame(for: comment) else { return }
+                            changeDraft = StoryboardReviewChangeDraft(comment: comment, frame: frame)
+                        },
+                        onUndo: { change in undoChange(comment, change: change) })
                     .id(comment.updatedAt ?? comment.id)
                 }
             }
@@ -889,6 +1294,491 @@ struct StoryboardReviewRoundsView: View {
             busy = false
         }
     }
+
+    @MainActor
+    private func acceptAppliedChange(
+        _ result: StoryboardReviewChangeApplicationDTO,
+        original: StoryboardReviewCommentDTO
+    ) {
+        var updated = result.comment
+        updated.changes = (original.changes ?? []) + [result.change]
+        if let index = comments.firstIndex(where: { $0.id == updated.id }) {
+            comments[index] = updated
+        }
+        showOpenCommentsOnly = false
+        successMessage = "Endringen er godkjent, anvendt og kan angres fra review-punktet."
+        errorMessage = nil
+        guard ProcessInfo.processInfo.environment["SB_REVIEW_ROUNDS_DEMO"] != "1" else { return }
+        Task { await reload(prefer: selectedID) }
+    }
+
+    private func undoChange(
+        _ comment: StoryboardReviewCommentDTO,
+        change: StoryboardReviewCommentChangeDTO
+    ) {
+        busy = true; errorMessage = nil; successMessage = nil
+        Task {
+            do {
+                let result: StoryboardReviewChangeApplicationDTO
+                if ProcessInfo.processInfo.environment["SB_REVIEW_ROUNDS_DEMO"] == "1" {
+                    var reopened = comment
+                    reopened.status = "open"
+                    reopened.resolutionNote = nil
+                    reopened.resolvedBy = nil
+                    reopened.resolvedAt = nil
+                    let undo = StoryboardReviewCommentChangeDTO(
+                        id: "undo-\(change.id)", reviewRoundId: change.reviewRoundId,
+                        commentId: change.commentId, sceneId: change.sceneId,
+                        frameId: change.frameId, operation: "undo", field: change.field,
+                        fieldLabel: change.fieldLabel,
+                        beforeDisplayValue: change.afterDisplayValue,
+                        afterDisplayValue: change.beforeDisplayValue,
+                        beforeHash: change.afterHash, afterHash: change.beforeHash,
+                        revertsChangeId: change.id, createdBy: "demo-director",
+                        createdAt: ISO8601DateFormatter().string(from: Date()))
+                    reopened.changes = (comment.changes ?? []) + [undo]
+                    result = StoryboardReviewChangeApplicationDTO(
+                        comment: reopened, change: undo, frameUpdatedAt: nil)
+                } else {
+                    result = try await RoleRoomAPIClient.shared.undoStoryboardReviewCommentChange(
+                        projectId: projectId, manuscriptId: manuscriptId,
+                        roundId: comment.reviewRoundId, commentId: comment.id,
+                        changeId: change.id, expectedAfterHash: change.afterHash)
+                }
+                var reopened = result.comment
+                reopened.changes = (comment.changes ?? []) + [result.change]
+                if let index = comments.firstIndex(where: { $0.id == reopened.id }) {
+                    comments[index] = reopened
+                }
+                successMessage = "Endringen er angret. Review-punktet er åpnet igjen."
+                if ProcessInfo.processInfo.environment["SB_REVIEW_ROUNDS_DEMO"] != "1" {
+                    await reload(prefer: selectedID)
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            busy = false
+        }
+    }
+}
+
+private struct StoryboardReviewChangeSheet: View {
+    let projectId: String
+    let manuscriptId: String
+    let draft: StoryboardReviewChangeDraft
+    let demoMode: Bool
+    let onApplied: (StoryboardReviewChangeApplicationDTO) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var field: StoryboardReviewEditableField
+    @State private var input: String
+    @State private var preview: StoryboardReviewChangePreviewDTO?
+    @State private var previewValue: StoryboardReviewChangeValue?
+    @State private var busy = false
+    @State private var errorMessage: String?
+
+    init(
+        projectId: String,
+        manuscriptId: String,
+        draft: StoryboardReviewChangeDraft,
+        demoMode: Bool,
+        onApplied: @escaping (StoryboardReviewChangeApplicationDTO) -> Void
+    ) {
+        self.projectId = projectId
+        self.manuscriptId = manuscriptId
+        self.draft = draft
+        self.demoMode = demoMode
+        self.onApplied = onApplied
+        let suggestedField = Self.suggestedField(for: draft.comment.body)
+        _field = State(initialValue: suggestedField)
+        _input = State(initialValue: suggestedField.initialValue(
+            frame: draft.frame, comment: draft.comment.body))
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    sourceCard
+                    editorCard
+                    if let preview { previewCard(preview) }
+                }
+                .frame(maxWidth: 820)
+                .padding(20)
+                .frame(maxWidth: .infinity)
+            }
+            .background(BoardBrand.chrome)
+            .navigationTitle("Forhåndsvis endring")
+            .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if preview != nil {
+                    Button { applyPreview() } label: {
+                        Label("Godkjenn og bruk", systemImage: "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .frame(maxWidth: 780,
+                                   minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .disabled(busy)
+                    .accessibilityIdentifier("storyboard.review.change.apply")
+                    .padding(.horizontal, 20).padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
+                    .background(.ultraThinMaterial)
+                    .overlay(alignment: .top) {
+                        Rectangle().fill(BoardBrand.border).frame(height: 1)
+                    }
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Avbryt") { dismiss() }
+                        .disabled(busy)
+                }
+            }
+        }
+        .onChange(of: field) { _, nextField in
+            input = nextField.initialValue(frame: draft.frame, comment: draft.comment.body)
+            invalidatePreview()
+        }
+        .onChange(of: input) { _, _ in invalidatePreview() }
+    }
+
+    private var sourceCard: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Label("HVORFOR", systemImage: "text.bubble.fill")
+                .font(.system(size: 9, weight: .bold)).kerning(1)
+                .foregroundStyle(BoardBrand.accent)
+            Text(draft.comment.body)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Text(draft.comment.authorDisplayName)
+                Text("·")
+                Text(draft.frame.shotNumber.map { "SHOT \($0)" } ?? "VALGT SHOT")
+                    .fontDesign(.monospaced)
+            }
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(BoardBrand.dim)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .storyboardReviewPanel()
+    }
+
+    private var editorCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("FORESLÅ KONKRET ENDRING")
+                .font(.system(size: 9, weight: .bold)).kerning(1)
+                .foregroundStyle(BoardBrand.label)
+            Picker("Shotfelt", selection: $field) {
+                ForEach(StoryboardReviewEditableField.allCases) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(BoardBrand.accent)
+            .accessibilityIdentifier("storyboard.review.change.field")
+
+            TextField(field.prompt, text: $input, axis: .vertical)
+                .lineLimit(field == .description || field == .continuityNotes
+                           || field == .productionNotes ? 2...6 : 1...2)
+                .keyboardType(field == .duration || field == .lensMm ? .decimalPad : .default)
+                .storyboardReviewField()
+                .accessibilityIdentifier("storyboard.review.change.value")
+
+            if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("storyboard.review.change.error")
+            }
+
+            Button { requestPreview() } label: {
+                Label("Forhåndsvis før godkjenning", systemImage: "rectangle.on.rectangle")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(maxWidth: .infinity, minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(BoardBrand.accent)
+            .disabled(busy)
+            .accessibilityIdentifier("storyboard.review.change.preview")
+        }
+        .storyboardReviewPanel()
+    }
+
+    private func previewCard(_ preview: StoryboardReviewChangePreviewDTO) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("KLAR TIL GODKJENNING", systemImage: "checkmark.shield")
+                    .font(.system(size: 9, weight: .bold)).kerning(0.8)
+                    .foregroundStyle(.green)
+                Spacer()
+                Text(preview.fieldLabel.uppercased())
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(BoardBrand.label)
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    valueCard("FØR", preview.beforeDisplayValue, color: BoardBrand.dim)
+                    Image(systemName: "arrow.right").foregroundStyle(BoardBrand.accent)
+                    valueCard("ETTER", preview.afterDisplayValue, color: .white)
+                }
+                VStack(spacing: 8) {
+                    valueCard("FØR", preview.beforeDisplayValue, color: BoardBrand.dim)
+                    Image(systemName: "arrow.down").foregroundStyle(BoardBrand.accent)
+                    valueCard("ETTER", preview.afterDisplayValue, color: .white)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                impactLine("Konsekvens", "Endrer bare \(preview.fieldLabel.lowercased()) på dette shotet.")
+                impactLine("Sporbarhet", "Kommentaren løses og endringen føres i revisjonsjournalen.")
+                impactLine("Angre", "Kan reverseres så lenge feltet ikke endres av noen andre etterpå.")
+            }
+
+            Label("Ingen produksjonsdata er endret ennå.", systemImage: "lock.shield")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(BoardBrand.dim)
+
+        }
+        .storyboardReviewPanel()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("storyboard.review.change.previewResult")
+    }
+
+    private func valueCard(_ label: String, _ value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.system(size: 8, weight: .bold)).kerning(0.8)
+                .foregroundStyle(BoardBrand.label)
+            Text(value)
+                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                .foregroundStyle(color)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
+        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(BoardBrand.border))
+    }
+
+    private func impactLine(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(label.uppercased())
+                .font(.system(size: 8, weight: .bold)).kerning(0.7)
+                .foregroundStyle(BoardBrand.label)
+                .frame(width: 70, alignment: .leading)
+            Text(value).font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
+        }
+    }
+
+    private func invalidatePreview() {
+        preview = nil
+        previewValue = nil
+        errorMessage = nil
+    }
+
+    private func requestPreview() {
+        busy = true; errorMessage = nil
+        Task {
+            do {
+                let value = try field.parsedValue(input)
+                let loaded: StoryboardReviewChangePreviewDTO
+                if demoMode {
+                    loaded = demoPreview(value)
+                } else {
+                    loaded = try await RoleRoomAPIClient.shared.previewStoryboardReviewCommentChange(
+                        projectId: projectId, manuscriptId: manuscriptId,
+                        roundId: draft.comment.reviewRoundId, commentId: draft.comment.id,
+                        field: field.rawValue, value: value)
+                }
+                previewValue = value
+                preview = loaded
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            busy = false
+        }
+    }
+
+    private func applyPreview() {
+        guard let preview, let previewValue else { return }
+        busy = true; errorMessage = nil
+        Task {
+            do {
+                let result: StoryboardReviewChangeApplicationDTO
+                if demoMode {
+                    var resolved = draft.comment
+                    resolved.status = "resolved"
+                    resolved.resolutionNote = "Godkjent endring: \(preview.fieldLabel) – \(preview.beforeDisplayValue) → \(preview.afterDisplayValue)"
+                    resolved.resolvedBy = "demo-director"
+                    resolved.resolvedAt = ISO8601DateFormatter().string(from: Date())
+                    let change = StoryboardReviewCommentChangeDTO(
+                        id: "change-demo", reviewRoundId: draft.comment.reviewRoundId,
+                        commentId: draft.comment.id, sceneId: preview.sceneId,
+                        frameId: preview.frameId, operation: "apply", field: preview.field,
+                        fieldLabel: preview.fieldLabel,
+                        beforeDisplayValue: preview.beforeDisplayValue,
+                        afterDisplayValue: preview.afterDisplayValue,
+                        beforeHash: preview.beforeHash, afterHash: preview.afterHash,
+                        revertsChangeId: nil, createdBy: "demo-director",
+                        createdAt: ISO8601DateFormatter().string(from: Date()))
+                    result = StoryboardReviewChangeApplicationDTO(
+                        comment: resolved, change: change, frameUpdatedAt: nil)
+                } else {
+                    result = try await RoleRoomAPIClient.shared.applyStoryboardReviewCommentChange(
+                        projectId: projectId, manuscriptId: manuscriptId,
+                        roundId: draft.comment.reviewRoundId, commentId: draft.comment.id,
+                        field: field.rawValue, value: previewValue,
+                        expectedPreviewHash: preview.previewHash)
+                }
+                onApplied(result)
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+                self.preview = nil
+                self.previewValue = nil
+            }
+            busy = false
+        }
+    }
+
+    private func demoPreview(_ value: StoryboardReviewChangeValue) -> StoryboardReviewChangePreviewDTO {
+        StoryboardReviewChangePreviewDTO(
+            previewHash: String(repeating: "f", count: 64),
+            beforeHash: String(repeating: "d", count: 64),
+            afterHash: String(repeating: "e", count: 64),
+            commentId: draft.comment.id, roundId: draft.comment.reviewRoundId,
+            sceneId: "scene-demo", frameId: draft.frame.id,
+            field: field.rawValue, fieldLabel: field.title,
+            beforeDisplayValue: displayValue(field.currentValue(from: draft.frame), field: field),
+            afterDisplayValue: displayValue(value, field: field), currentFrameUpdatedAt: nil)
+    }
+
+    private func displayValue(
+        _ value: StoryboardReviewChangeValue,
+        field: StoryboardReviewEditableField
+    ) -> String {
+        switch value {
+        case .text(let text): return text?.isEmpty == false ? text! : "Ikke angitt"
+        case .number(let number):
+            guard let number else { return "Ikke angitt" }
+            if field == .duration { return String(format: "%.1f sek", number) }
+            return "\(Int(number)) mm"
+        case .tags(let tags): return tags?.joined(separator: ", ") ?? "Ikke angitt"
+        }
+    }
+
+    private static func suggestedField(for comment: String) -> StoryboardReviewEditableField {
+        let value = comment.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        if value.contains("lenger") || value.contains("kortere")
+            || value.contains("hold") || value.contains("timing") {
+            return .duration
+        }
+        if value.contains("linse") || value.contains("mm") { return .lensMm }
+        if value.contains("kamera") || value.contains("dolly") || value.contains("panorer") {
+            return .movement
+        }
+        if value.contains("kontinuitet") { return .continuityNotes }
+        return .description
+    }
+}
+
+private extension StoryboardReviewEditableField {
+    func currentValue(from frame: StoryboardReviewSnapshotFrameDTO) -> StoryboardReviewChangeValue {
+        switch self {
+        case .duration: return .number(frame.duration)
+        case .description: return .text(frame.description)
+        case .shotType: return .text(frame.shotType)
+        case .movement: return .text(frame.movement)
+        case .lensMm: return .number(frame.lensMm.map(Double.init))
+        case .transition: return .text(frame.transition)
+        case .continuityNotes: return .text(frame.continuityNotes)
+        case .productionNotes: return .text(frame.productionNotes)
+        }
+    }
+}
+
+private struct StoryboardLockedFramePreview: View {
+    let frame: StoryboardReviewSnapshotFrameDTO
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(Color.black.opacity(0.78))
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit()
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "photo.on.rectangle.angled").font(.title2)
+                    Text("Forhåndsvisning lastes")
+                        .font(.subheadline)
+                }
+                .foregroundStyle(BoardBrand.dim)
+            }
+        }
+        .aspectRatio(16 / 9, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.16)))
+        .task(id: imagePath) { await loadImage() }
+    }
+
+    private var imagePath: String? { frame.thumbnailUrl ?? frame.imageUrl }
+
+    @MainActor
+    private func loadImage() async {
+        if let imagePath {
+            if let cached = FrameImageCache.image(for: imagePath) {
+                image = cached
+                return
+            }
+            if let embedded = decodeDataURL(imagePath) {
+                FrameImageCache.images[imagePath] = embedded
+                image = embedded
+                return
+            }
+            let data: Data?
+            if let remoteURL = URL(string: imagePath), remoteURL.scheme == "https" {
+                if let (downloaded, response) = try? await URLSession.shared.data(from: remoteURL),
+                   (response as? HTTPURLResponse)?.statusCode == 200 {
+                    data = downloaded
+                } else {
+                    data = nil
+                }
+            } else {
+                data = await RoleRoomAPIClient.shared.fetchRemoteImageData(path: imagePath)
+            }
+            if let data, let downloaded = UIImage(data: data) {
+                FrameImageCache.images[imagePath] = downloaded
+                image = downloaded
+                return
+            }
+        }
+        image = renderDrawing()
+    }
+
+    @MainActor
+    private func renderDrawing() -> UIImage? {
+        guard let strokes = frame.drawingData?.strokes,
+              !strokes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let renderable = FrameSummary(
+            id: frame.id, shotNumber: frame.shotNumber ?? "?", detail: "",
+            strokesJSON: strokes, description: frame.description ?? "", notes: nil,
+            shotType: nil, lensMm: nil, movement: nil, durationSec: 0,
+            transition: nil, focusDepth: nil, timeOfDay: nil, weather: nil,
+            beatTag: nil, tags: [], thumbnailDataURL: frame.thumbnailUrl,
+            drawingWidth: frame.drawingData?.width ?? 1920,
+            drawingHeight: frame.drawingData?.height ?? 1080,
+            frameStatus: nil, comments: [], updatedAt: nil,
+            underlayDataURL: nil, underlayOpacity: nil, perspectiveMode: nil,
+            vanishingPoints: nil, voiceoverDataURL: nil, imageUrl: frame.imageUrl,
+            reviewPriority: nil, reviewDueAt: nil, reviewApprovedBy: nil,
+            reviewApprovedAt: nil, reviewStarred: nil, reviewAssignee: nil,
+            reviewColorLabel: nil, reviewSnoozedUntil: nil)
+        return FrameRenderService.image(for: renderable, maxWidth: 1200, includeReviewLayer: true)
+    }
 }
 
 private struct StoryboardReviewPanelModifier: ViewModifier {
@@ -927,7 +1817,10 @@ private struct StoryboardReviewResolutionRow: View {
     let frame: StoryboardReviewSnapshotFrameDTO?
     let rounds: [StoryboardReviewRoundDTO]
     let busy: Bool
+    let canCreateChange: Bool
     let onUpdate: (StoryboardReviewCommentChanges) -> Void
+    let onCreateChange: () -> Void
+    let onUndo: (StoryboardReviewCommentChangeDTO) -> Void
 
     @State private var assignedTo: String
     @State private var hasDueDate: Bool
@@ -940,13 +1833,19 @@ private struct StoryboardReviewResolutionRow: View {
         frame: StoryboardReviewSnapshotFrameDTO?,
         rounds: [StoryboardReviewRoundDTO],
         busy: Bool,
-        onUpdate: @escaping (StoryboardReviewCommentChanges) -> Void
+        canCreateChange: Bool,
+        onUpdate: @escaping (StoryboardReviewCommentChanges) -> Void,
+        onCreateChange: @escaping () -> Void,
+        onUndo: @escaping (StoryboardReviewCommentChangeDTO) -> Void
     ) {
         self.comment = comment
         self.frame = frame
         self.rounds = rounds
         self.busy = busy
+        self.canCreateChange = canCreateChange
         self.onUpdate = onUpdate
+        self.onCreateChange = onCreateChange
+        self.onUndo = onUndo
         _assignedTo = State(initialValue: comment.assignedTo ?? "")
         _hasDueDate = State(initialValue: comment.dueAt != nil)
         _dueDate = State(initialValue: comment.dueAt.flatMap(Self.parseDate) ?? Date())
@@ -1051,6 +1950,17 @@ private struct StoryboardReviewResolutionRow: View {
                 Text("LØSNING")
                     .font(.system(size: 8, weight: .bold)).kerning(0.9)
                     .foregroundStyle(BoardBrand.label)
+                if canCreateChange, frame != nil {
+                    Button(action: onCreateChange) {
+                        Label("Gjør om til endring", systemImage: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 11, weight: .semibold))
+                            .frame(maxWidth: .infinity, minHeight: 32)
+                    }
+                    .buttonStyle(.borderedProminent).tint(BoardBrand.accent)
+                    .disabled(busy)
+                    .accessibilityHint("Viser før og etter før endringen kan godkjennes")
+                    .accessibilityIdentifier("storyboard.review.comment.createChange.\(comment.id)")
+                }
                 TextField("Hva ble endret?", text: $resolutionNote, axis: .vertical)
                     .lineLimit(2...4)
                     .storyboardReviewField()
@@ -1075,20 +1985,56 @@ private struct StoryboardReviewResolutionRow: View {
                 .disabled(busy)
                 .accessibilityIdentifier("storyboard.review.comment.resolve.\(comment.id)")
             } else {
+                if let change = activeAppliedChange {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Label("ANVENDT ENDRING", systemImage: "checkmark.shield.fill")
+                            .font(.system(size: 8, weight: .bold)).kerning(0.8)
+                            .foregroundStyle(.green)
+                        Text(change.fieldLabel)
+                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+                        Text("\(change.beforeDisplayValue)  →  \(change.afterDisplayValue)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(BoardBrand.dim)
+                        if canCreateChange {
+                            Button { onUndo(change) } label: {
+                                Label("Angre endring", systemImage: "arrow.uturn.backward")
+                            }
+                            .font(.system(size: 11, weight: .semibold))
+                            .buttonStyle(.bordered).tint(.orange)
+                            .disabled(busy)
+                            .accessibilityHint("Angrer bare hvis shotfeltet ikke er endret etter godkjenning")
+                            .accessibilityIdentifier("storyboard.review.comment.undoChange.\(comment.id)")
+                        }
+                    }
+                    .padding(10)
+                    .background(Color.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.green.opacity(0.2)))
+                }
                 if let note = comment.resolutionNote, !note.isEmpty {
                     Text("Løsning: \(note)")
                         .font(.system(size: 11)).foregroundStyle(.green)
                 }
-                Button {
-                    onUpdate(StoryboardReviewCommentChanges(status: "open"))
-                } label: {
-                    Label("Gjenåpne", systemImage: "arrow.uturn.backward.circle")
+                if activeAppliedChange == nil {
+                    Button {
+                        onUpdate(StoryboardReviewCommentChanges(status: "open"))
+                    } label: {
+                        Label("Gjenåpne", systemImage: "arrow.uturn.backward.circle")
+                    }
+                    .font(.system(size: 11, weight: .semibold))
+                    .buttonStyle(.bordered).tint(.orange)
+                    .disabled(busy)
+                    .accessibilityIdentifier("storyboard.review.comment.reopen.\(comment.id)")
                 }
-                .font(.system(size: 11, weight: .semibold))
-                .buttonStyle(.bordered).tint(.orange)
-                .disabled(busy)
-                .accessibilityIdentifier("storyboard.review.comment.reopen.\(comment.id)")
             }
+        }
+    }
+
+    private var activeAppliedChange: StoryboardReviewCommentChangeDTO? {
+        let revertedIDs = Set((comment.changes ?? []).compactMap { change in
+            change.operation == "undo" ? change.revertsChangeId : nil
+        })
+        return (comment.changes ?? []).last { change in
+            change.operation == "apply" && !revertedIDs.contains(change.id)
         }
     }
 
@@ -1199,24 +2145,56 @@ private struct StoryboardReviewAnnotationPreview: View {
 
     @MainActor
     private func loadImage() async {
-        guard let imagePath else { image = nil; return }
-        if let cached = FrameImageCache.image(for: imagePath) {
-            image = cached
-            return
-        }
-        let data: Data?
-        if let remoteURL = URL(string: imagePath), remoteURL.scheme == "https" {
-            if let (downloaded, response) = try? await URLSession.shared.data(from: remoteURL),
-               (response as? HTTPURLResponse)?.statusCode == 200 {
-                data = downloaded
-            } else {
-                data = nil
+        if let imagePath {
+            if let cached = FrameImageCache.image(for: imagePath) {
+                image = cached
+                return
             }
-        } else {
-            data = await RoleRoomAPIClient.shared.fetchRemoteImageData(path: imagePath)
+            if let embeddedImage = decodeDataURL(imagePath) {
+                FrameImageCache.images[imagePath] = embeddedImage
+                image = embeddedImage
+                return
+            }
+            let data: Data?
+            if let remoteURL = URL(string: imagePath), remoteURL.scheme == "https" {
+                if let (downloaded, response) = try? await URLSession.shared.data(from: remoteURL),
+                   (response as? HTTPURLResponse)?.statusCode == 200 {
+                    data = downloaded
+                } else {
+                    data = nil
+                }
+            } else {
+                data = await RoleRoomAPIClient.shared.fetchRemoteImageData(path: imagePath)
+            }
+            if let data, let downloaded = UIImage(data: data) {
+                FrameImageCache.images[imagePath] = downloaded
+                image = downloaded
+                return
+            }
         }
-        guard let data, let downloaded = UIImage(data: data) else { return }
-        FrameImageCache.images[imagePath] = downloaded
-        image = downloaded
+        image = renderSnapshotDrawing()
+    }
+
+    @MainActor
+    private func renderSnapshotDrawing() -> UIImage? {
+        guard let strokes = frame.drawingData?.strokes,
+              !strokes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let drawingWidth = frame.drawingData?.width ?? 1920
+        let drawingHeight = frame.drawingData?.height ?? 1080
+        let renderable = FrameSummary(
+            id: frame.id, shotNumber: frame.shotNumber ?? "?", detail: "",
+            strokesJSON: strokes, description: frame.description ?? "", notes: nil,
+            shotType: nil, lensMm: nil, movement: nil, durationSec: 0,
+            transition: nil, focusDepth: nil, timeOfDay: nil, weather: nil,
+            beatTag: nil, tags: [], thumbnailDataURL: frame.thumbnailUrl,
+            drawingWidth: drawingWidth, drawingHeight: drawingHeight,
+            frameStatus: nil, comments: [], updatedAt: nil,
+            underlayDataURL: nil, underlayOpacity: nil, perspectiveMode: nil,
+            vanishingPoints: nil, voiceoverDataURL: nil, imageUrl: frame.imageUrl,
+            reviewPriority: nil, reviewDueAt: nil, reviewApprovedBy: nil,
+            reviewApprovedAt: nil, reviewStarred: nil, reviewAssignee: nil,
+            reviewColorLabel: nil, reviewSnoozedUntil: nil)
+        return FrameRenderService.image(
+            for: renderable, maxWidth: 900, includeReviewLayer: true)
     }
 }
