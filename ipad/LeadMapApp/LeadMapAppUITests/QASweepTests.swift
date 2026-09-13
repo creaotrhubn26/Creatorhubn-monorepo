@@ -172,6 +172,51 @@ final class QASweepTests: XCTestCase {
         return row?["used_total"] as? Int ?? 0
     }
 
+    private func firstPublishedPondusTemplateID(
+        baseURL: URL,
+        token: String,
+        organizationID: String,
+        projectID: String
+    ) async throws -> String {
+        var templatesURL = baseURL.appendingPathComponent("api/leadgrid/pondus/templates")
+        templatesURL.append(queryItems: [
+            URLQueryItem(name: "organization_id", value: organizationID),
+            URLQueryItem(name: "project_id", value: projectID),
+        ])
+        var request = URLRequest(url: templatesURL)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(organizationID, forHTTPHeaderField: "X-Organization-Id")
+        request.setValue(organizationID, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let templates = payload?["templates"] as? [[String: Any]] ?? []
+        return try XCTUnwrap(
+            templates.first?["id"] as? String,
+            "Staging må ha minst én publisert Pondus-mal"
+        ).lowercased()
+    }
+
+    private func stagingLeadCount(
+        named name: String,
+        baseURL: URL,
+        token: String,
+        organizationID: String,
+        projectID: String
+    ) async throws -> Int {
+        var leadsURL = baseURL.appendingPathComponent("api/admin-room/lead-map/leads")
+        leadsURL.append(queryItems: [URLQueryItem(name: "project_id", value: projectID)])
+        var request = URLRequest(url: leadsURL)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(organizationID, forHTTPHeaderField: "X-Organization-Id")
+        request.setValue(organizationID, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let leads = payload?["leads"] as? [[String: Any]] ?? []
+        return leads.filter { ($0["name"] as? String) == name }.count
+    }
+
     // MARK: - Fane-sveip m/ statistikk-modal
 
     /// iPhone-fanene: 0=Oversikt 1=Kart 2=Leads 3=Møter 4=Mer,
@@ -1563,35 +1608,41 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(submit.waitForExistence(timeout: 3))
         submit.tap()
 
-        // Den korte toasten er bevisst flyktig og kan ligge bak sheetets
-        // dismiss-animasjon. Den globale synkstatusen er den autoritative,
-        // stabile kvitteringen på at handlingen faktisk er skrevet til kø.
+        // Vent til sheetet er borte og den globale offline-statusen er synlig.
+        // Deretter beviser staging-API-et at leadet ikke ble sendt direkte
+        // mens klienten var offline.
         let syncStatus = app.buttons["global-sync-status"]
         XCTAssertTrue(syncStatus.waitForExistence(timeout: 8))
-        XCTAssertTrue(syncStatus.label.localizedCaseInsensitiveContains("lagret lokalt"))
+        for _ in 0..<3 {
+            let offlineLeadCount = try await stagingLeadCount(
+                named: uniqueName,
+                baseURL: baseURL,
+                token: token,
+                organizationID: organizationID,
+                projectID: projectID
+            )
+            XCTAssertEqual(
+                offlineLeadCount,
+                0,
+                "Et offline-lead skal ikke finnes på serveren før reconnect"
+            )
+            try await Task.sleep(for: .seconds(1))
+        }
 
         app.buttons["qa-network-online"].tap()
-        let pendingGone = NSPredicate(format: "exists == false")
-        let drainExpectation = expectation(
-            for: pendingGone,
-            evaluatedWith: syncStatus
-        )
-        await fulfillment(of: [drainExpectation], timeout: 20)
-
-        var components = URLComponents(
-            url: baseURL.appendingPathComponent("api/admin-room/lead-map/leads"),
-            resolvingAgainstBaseURL: false
-        )
-        components?.queryItems = [URLQueryItem(name: "project_id", value: projectID)]
-        let scopedLeadsURL = try XCTUnwrap(components?.url)
-        var request = URLRequest(url: scopedLeadsURL)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue(organizationID, forHTTPHeaderField: "X-Organization-Id")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
-        let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let leads = payload?["leads"] as? [[String: Any]] ?? []
-        XCTAssertEqual(leads.filter { ($0["name"] as? String) == uniqueName }.count, 1)
+        var persistedLeadCount = 0
+        for _ in 0..<20 {
+            persistedLeadCount = try await stagingLeadCount(
+                named: uniqueName,
+                baseURL: baseURL,
+                token: token,
+                organizationID: organizationID,
+                projectID: projectID
+            )
+            if persistedLeadCount == 1 { break }
+            try await Task.sleep(for: .seconds(1))
+        }
+        XCTAssertEqual(persistedLeadCount, 1, "Reconnect skal persistere nøyaktig ett lead")
         app.terminate()
     }
 
@@ -1741,12 +1792,14 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
         app.launch()
 
-        let useTemplate = app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "pondus-use-")
-        ).firstMatch
+        let templateID = try await firstPublishedPondusTemplateID(
+            baseURL: baseURL,
+            token: token,
+            organizationID: organizationID,
+            projectID: projectID
+        )
+        let useTemplate = app.buttons["pondus-use-\(templateID)"]
         XCTAssertTrue(useTemplate.waitForExistence(timeout: 45), "Staging må ha minst én publisert Pondus-mal")
-        let templateID = String(useTemplate.identifier.dropFirst("pondus-use-".count))
-        XCTAssertFalse(templateID.isEmpty)
         let usageBefore = try await pondusUsageCount(
             baseURL: baseURL,
             token: token,
@@ -1774,23 +1827,32 @@ final class QASweepTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["pondus-active-coach"].waitForExistence(timeout: 3))
         let syncStatus = app.buttons["global-sync-status"]
         XCTAssertTrue(syncStatus.waitForExistence(timeout: 5))
-        XCTAssertTrue(syncStatus.label.localizedCaseInsensitiveContains("lagret lokalt"))
-        app.buttons["qa-network-online"].tap()
-
-        let pendingGone = NSPredicate(format: "exists == false")
-        let drained = expectation(
-            for: pendingGone,
-            evaluatedWith: syncStatus
-        )
-        await fulfillment(of: [drained], timeout: 20)
-
-        let usageAfter = try await pondusUsageCount(
+        let usageWhileOffline = try await pondusUsageCount(
             baseURL: baseURL,
             token: token,
             organizationID: organizationID,
             projectID: projectID,
             templateID: templateID
         )
+        XCTAssertEqual(
+            usageWhileOffline,
+            usageBefore,
+            "Offline-bruk skal ikke nå serveren før reconnect"
+        )
+        app.buttons["qa-network-online"].tap()
+
+        var usageAfter = usageBefore
+        for _ in 0..<20 {
+            usageAfter = try await pondusUsageCount(
+                baseURL: baseURL,
+                token: token,
+                organizationID: organizationID,
+                projectID: projectID,
+                templateID: templateID
+            )
+            if usageAfter == usageBefore + 1 { break }
+            try await Task.sleep(for: .seconds(1))
+        }
         XCTAssertEqual(usageAfter, usageBefore + 1, "Reconnect skal persistere nøyaktig én Pondus-økt")
         app.terminate()
     }
