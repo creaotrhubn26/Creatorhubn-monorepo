@@ -2488,6 +2488,28 @@ actor APIClient {
         )
     }
 
+    /// Registrer en gjennomført produktopplæringshandling. Backend flytter
+    /// bare guiden når hendelsen svarer til det autoritative aktive steget.
+    func recordOnboardingEvent(
+        _ event: LeadgridTrainingEvent,
+        projectId: String
+    ) async throws -> LeadgridOnboardingAdvanceResponse {
+        try await post(
+            "/api/leadgrid/onboarding/event",
+            body: ["event": event.rawValue, "projectId": projectId]
+        )
+    }
+
+    /// Starter produktguiden på nytt i nøyaktig aktiv prosjekt-/rollekontekst.
+    func restartOnboarding(
+        projectId: String
+    ) async throws -> LeadgridOnboardingAdvanceResponse {
+        try await post(
+            "/api/leadgrid/onboarding/restart",
+            body: ["projectId": projectId]
+        )
+    }
+
     /// Avslutt guiden bare i aktivt kundeprosjekt og aktiv rolle.
     func skipOnboarding(projectId: String) async throws {
         try await post(

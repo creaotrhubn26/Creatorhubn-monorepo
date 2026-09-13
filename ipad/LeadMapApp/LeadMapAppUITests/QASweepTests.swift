@@ -31,6 +31,10 @@ final class QASweepTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         #endif
         let app = XCUIApplication()
+        // Each test owns its launch environment. Wait for a previous QA launch
+        // to stop so values from the preceding test cannot leak into this one.
+        app.terminate()
+        _ = app.wait(for: .notRunning, timeout: 3)
         app.launchEnvironment["QA_BEARER_TOKEN"] =
             ProcessInfo.processInfo.environment["QA_BEARER_TOKEN"] ?? ""
         app.launchEnvironment["QA_TAB"] = "\(tab)"
@@ -318,6 +322,77 @@ final class QASweepTests: XCTestCase {
 
         snap(app, "ipad-mini-forenklet-navigasjon-og-prosjektguide")
         app.terminate()
+    }
+
+    func testIPadMiniProductTrainingCompletesAllSixSteps() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip("Denne kontrollen gjelder iPad-opplæringen.")
+        }
+        let app = launchApp(
+            tab: 0,
+            environment: [
+                "QA_TOUR": "dentum-outreach",
+                "QA_DEMO": "1",
+                "QA_PRODUCT_ONBOARDING": "1",
+                "QA_PRODUCT_ONBOARDING_AUTOMATION": "1",
+            ]
+        )
+
+        let guide = app.otherElements["product-onboarding.card"]
+        let primary = app.buttons["product-onboarding.primary"]
+        XCTAssertTrue(guide.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Bli trygg i Leadgrid"].exists)
+
+        primary.tap()
+        XCTAssertTrue(app.staticTexts["Sjekk kundeprosjektet"].waitForExistence(timeout: 3))
+        primary.tap()
+        XCTAssertTrue(app.staticTexts["Finn bedrifter"].waitForExistence(timeout: 3))
+
+        primary.tap()
+        closeDiscoveryWorkspace(in: app)
+        XCTAssertEqual(app.staticTexts["leadgrid-screen-title"].label, "Kart")
+        XCTAssertTrue(app.staticTexts["Godkjenn før noe lagres"].waitForExistence(timeout: 5))
+
+        primary.tap()
+        closeDiscoveryWorkspace(in: app)
+        XCTAssertTrue(app.staticTexts["Arbeid med godkjente leads"].waitForExistence(timeout: 5))
+
+        primary.tap()
+        XCTAssertEqual(app.staticTexts["leadgrid-screen-title"].label, "Leads")
+        XCTAssertTrue(app.staticTexts["Avtal neste steg"].waitForExistence(timeout: 5))
+        primary.tap()
+        XCTAssertFalse(guide.waitForExistence(timeout: 2))
+
+        snap(app, "ipad-mini-produktopplæring-fullført")
+        app.terminate()
+    }
+
+    func testProductTrainingRecoversAfterLoadFailure() throws {
+        let app = launchApp(
+            tab: 0,
+            environment: [
+                "QA_TOUR": "dentum-outreach",
+                "QA_DEMO": "1",
+                "QA_PRODUCT_ONBOARDING": "1",
+                "QA_PRODUCT_ONBOARDING_LOAD_FAILURE_ONCE": "1",
+            ]
+        )
+
+        XCTAssertTrue(app.staticTexts["Opplæringen kunne ikke lastes"].waitForExistence(timeout: 8))
+        let retry = button(in: app, containing: "Prøv igjen")
+        XCTAssertTrue(retry.waitForExistence(timeout: 3))
+        retry.tap()
+        XCTAssertTrue(
+            app.otherElements["product-onboarding.card"].waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.staticTexts["Bli trygg i Leadgrid"].exists)
+        snap(app, "produktopplæring-gjenopprettet")
+        app.terminate()
+    }
+
+    private func closeDiscoveryWorkspace(in app: XCUIApplication) {
+        let close = app.buttons["Lukk"].firstMatch
+        if close.waitForExistence(timeout: 2), close.isHittable { close.tap() }
     }
 
     // MARK: - Leads: rad-tap → detalj-sheet

@@ -29,7 +29,15 @@ export const LEADGRID_PRODUCT_ONBOARDING_STEPS = [
   "completed",
 ] as const;
 
+export const LEADGRID_PRODUCT_ONBOARDING_EVENTS = {
+  discovery_run_started: "find_candidates",
+  candidate_approved: "approve_candidates",
+  lead_opened: "work_leads",
+  follow_up_scheduled: "follow_up",
+} as const;
+
 type OnboardingStep = (typeof LEADGRID_PRODUCT_ONBOARDING_STEPS)[number];
+type OnboardingEvent = keyof typeof LEADGRID_PRODUCT_ONBOARDING_EVENTS;
 
 interface OnboardingScope {
   userId: string;
@@ -158,6 +166,57 @@ function statePayload(row: OnboardingRow) {
   };
 }
 
+async function advanceFromStep(
+  pool: Pool,
+  scope: OnboardingScope,
+  fromStep: Exclude<OnboardingStep, "completed">,
+): Promise<{ row: OnboardingRow; nextStep: OnboardingStep; advanced: boolean } | null> {
+  const currentIndex = LEADGRID_PRODUCT_ONBOARDING_STEPS.indexOf(fromStep);
+  const nextStep = LEADGRID_PRODUCT_ONBOARDING_STEPS[currentIndex + 1] ?? "completed";
+  await ensureState(pool, scope);
+
+  const updated = await pool.query<OnboardingRow>(
+    `UPDATE leadgrid_product_onboarding_state
+        SET current_step = $1,
+            steps_completed = CASE
+              WHEN $2 = ANY(steps_completed) THEN steps_completed
+              ELSE array_append(steps_completed, $2)
+            END,
+            last_activity_at = NOW(),
+            completed_at = CASE
+              WHEN $1 = 'completed' THEN COALESCE(completed_at, NOW())
+              ELSE completed_at
+            END
+      WHERE user_id = $3
+        AND organization_id = $4::uuid
+        AND project_id = $5
+        AND role_track = $6
+        AND onboarding_version = $7
+        AND current_step = $2
+    RETURNING current_step, steps_completed, started_at::text,
+              last_activity_at::text, completed_at::text, skipped_at::text,
+              organization_id::text, project_id, role_track,
+              onboarding_version`,
+    [
+      nextStep,
+      fromStep,
+      scope.userId,
+      scope.organizationId,
+      scope.projectId,
+      scope.roleTrack,
+      LEADGRID_PRODUCT_ONBOARDING_VERSION,
+    ],
+  );
+  if (updated.rows[0]) return { row: updated.rows[0], nextStep, advanced: true };
+
+  const existing = await selectState(pool, scope);
+  const row = existing.rows[0];
+  if (row?.steps_completed.includes(fromStep)) {
+    return { row, nextStep: row.current_step as OnboardingStep, advanced: false };
+  }
+  return null;
+}
+
 export function registerLeadgridOnboardingRoutes({ app, pool, activeSessions }: Deps): void {
   app.get("/api/leadgrid/onboarding/state", async (req, res) => {
     const scope = await resolveScope(req, res, pool, activeSessions);
@@ -180,34 +239,92 @@ export function registerLeadgridOnboardingRoutes({ app, pool, activeSessions }: 
     if (currentIndex < 0 || fromStep === "completed") {
       return res.status(400).json({ error: "Ugyldig step" });
     }
-    const nextStep = LEADGRID_PRODUCT_ONBOARDING_STEPS[currentIndex + 1] ?? "completed";
-    await ensureState(pool, scope);
+    const result = await advanceFromStep(
+      pool,
+      scope,
+      fromStep as Exclude<OnboardingStep, "completed">,
+    );
+    if (result) {
+      return res.json({
+        ok: true,
+        next_step: result.nextStep,
+        advanced: result.advanced,
+        state: statePayload(result.row),
+      });
+    }
+    const existing = await selectState(pool, scope);
+    return res.status(409).json({
+      error: "onboarding_step_conflict",
+      current_step: existing.rows[0]?.current_step ?? null,
+    });
+  });
 
-    const updated = await pool.query<OnboardingRow>(
+  app.post("/api/leadgrid/onboarding/event", async (req, res) => {
+    const scope = await resolveScope(req, res, pool, activeSessions);
+    if (!scope) return;
+    const event = req.body?.event as OnboardingEvent | undefined;
+    if (!event || !Object.prototype.hasOwnProperty.call(
+      LEADGRID_PRODUCT_ONBOARDING_EVENTS,
+      event,
+    )) {
+      return res.status(400).json({ error: "Ugyldig onboarding-hendelse" });
+    }
+
+    const expectedStep = LEADGRID_PRODUCT_ONBOARDING_EVENTS[event];
+    const ensured = await ensureState(pool, scope);
+    if (ensured.row.current_step !== expectedStep) {
+      return res.json({
+        ok: true,
+        event,
+        advanced: false,
+        next_step: ensured.row.current_step,
+        state: statePayload(ensured.row),
+      });
+    }
+
+    const result = await advanceFromStep(pool, scope, expectedStep);
+    if (!result) {
+      const latest = await selectState(pool, scope);
+      if (!latest.rows[0]) throw new Error("Onboarding state disappeared while recording event");
+      return res.json({
+        ok: true,
+        event,
+        advanced: false,
+        next_step: latest.rows[0].current_step,
+        state: statePayload(latest.rows[0]),
+      });
+    }
+    return res.json({
+      ok: true,
+      event,
+      advanced: result.advanced,
+      next_step: result.nextStep,
+      state: statePayload(result.row),
+    });
+  });
+
+  app.post("/api/leadgrid/onboarding/restart", async (req, res) => {
+    const scope = await resolveScope(req, res, pool, activeSessions);
+    if (!scope) return;
+    await ensureState(pool, scope);
+    const restarted = await pool.query<OnboardingRow>(
       `UPDATE leadgrid_product_onboarding_state
-          SET current_step = $1,
-              steps_completed = CASE
-                WHEN $2 = ANY(steps_completed) THEN steps_completed
-                ELSE array_append(steps_completed, $2)
-              END,
+          SET current_step = 'welcome',
+              steps_completed = ARRAY[]::text[],
+              started_at = NOW(),
               last_activity_at = NOW(),
-              completed_at = CASE
-                WHEN $1 = 'completed' THEN COALESCE(completed_at, NOW())
-                ELSE completed_at
-              END
-        WHERE user_id = $3
-          AND organization_id = $4::uuid
-          AND project_id = $5
-          AND role_track = $6
-          AND onboarding_version = $7
-          AND current_step = $2
+              completed_at = NULL,
+              skipped_at = NULL
+        WHERE user_id = $1
+          AND organization_id = $2::uuid
+          AND project_id = $3
+          AND role_track = $4
+          AND onboarding_version = $5
       RETURNING current_step, steps_completed, started_at::text,
                 last_activity_at::text, completed_at::text, skipped_at::text,
                 organization_id::text, project_id, role_track,
                 onboarding_version`,
       [
-        nextStep,
-        fromStep,
         scope.userId,
         scope.organizationId,
         scope.projectId,
@@ -215,20 +332,12 @@ export function registerLeadgridOnboardingRoutes({ app, pool, activeSessions }: 
         LEADGRID_PRODUCT_ONBOARDING_VERSION,
       ],
     );
-    if (updated.rows[0]) {
-      return res.json({ ok: true, next_step: nextStep, state: statePayload(updated.rows[0]) });
-    }
-
-    const existing = await selectState(pool, scope);
-    const row = existing.rows[0];
-    if (row?.steps_completed.includes(fromStep)) {
-      // Safe retry after a lost response: advancing the same completed step is
-      // idempotent and returns the state already committed by the first call.
-      return res.json({ ok: true, next_step: row.current_step, state: statePayload(row) });
-    }
-    return res.status(409).json({
-      error: "onboarding_step_conflict",
-      current_step: row?.current_step ?? null,
+    if (!restarted.rows[0]) throw new Error("Onboarding state could not be restarted");
+    return res.json({
+      ok: true,
+      next_step: "welcome",
+      advanced: false,
+      state: statePayload(restarted.rows[0]),
     });
   });
 

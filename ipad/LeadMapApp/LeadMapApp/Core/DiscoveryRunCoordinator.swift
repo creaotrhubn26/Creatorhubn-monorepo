@@ -465,6 +465,7 @@ final class DiscoveryRunCoordinator {
             await persist()
             guard isCurrent(binding),
                   isCurrentRunSelection(selectionGeneration, expectedRunId: created.id) else { return }
+            LeadgridTrainingNotification.post(.discoveryRunStarted, projectId: projectId)
             startPollingIfNeeded()
         } catch {
             guard isCurrent(binding), runSelectionGeneration == selectionGeneration else { return }
@@ -503,6 +504,7 @@ final class DiscoveryRunCoordinator {
                 errorMessage = nil
                 await persist()
                 guard isCurrent(binding) else { return }
+                LeadgridTrainingNotification.post(.discoveryRunStarted, projectId: projectId)
                 startPollingIfNeeded()
             } catch {
                 guard isCurrent(binding) else { return }
@@ -743,6 +745,9 @@ final class DiscoveryRunCoordinator {
             await persist()
             guard isCurrent(binding),
                   isCurrentRunSelection(selectionGeneration, expectedRunId: expectedRunId) else { return false }
+            if decision == .approve {
+                LeadgridTrainingNotification.post(.candidateApproved, projectId: projectId)
+            }
             return decision == .approve
         } catch let error as DiscoveryV2ServiceError
             where error.code == "place_confirmation_required" {
@@ -1080,6 +1085,7 @@ final class DiscoveryRunCoordinator {
             isOfflinePaused = false
             await persist(binding: binding)
             guard isCurrent(binding) else { return }
+            LeadgridTrainingNotification.post(.discoveryRunStarted, projectId: projectId)
             startCampaignPollingIfNeeded()
         } catch let error as DiscoveryV2ServiceError {
             guard isCurrent(binding), requestGeneration == campaignRequestGeneration else { return }
