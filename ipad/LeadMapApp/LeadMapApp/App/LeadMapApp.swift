@@ -330,9 +330,9 @@ extension Notification.Name {
 /// bottom tabs. Dermed avmonteres ikke en åpen Canvas-editor ved resize.
 struct RootView: View {
     @Environment(AppState.self) private var appState
-    @State private var qaBootstrapComplete = false
     #if DEBUG
     @State private var qaFeedback = false
+    @State private var qaOfflineQueueReady = false
     #endif
 
     var body: some View {
@@ -377,11 +377,7 @@ struct RootView: View {
                     .padding(.vertical, 4)
                     .background(.yellow, in: Capsule())
                     .padding(.top, 6)
-                    .accessibilityIdentifier(
-                        qaBootstrapComplete
-                            ? "staging-session-ready"
-                            : "staging-environment-badge"
-                    )
+                    .accessibilityIdentifier("staging-environment-badge")
                     .allowsHitTesting(false)
             }
         }
@@ -394,7 +390,8 @@ struct RootView: View {
         }
         #if DEBUG
         .overlay(alignment: .bottomTrailing) {
-            if ProcessInfo.processInfo.environment["QA_NETWORK_CONTROLS"] == "1" {
+            if ProcessInfo.processInfo.environment["QA_NETWORK_CONTROLS"] == "1",
+               qaOfflineQueueReady {
                 HStack(spacing: 6) {
                     Button("QA Offline") {
                         NetworkMonitor.shared.setConnectivityForTesting(online: false)
@@ -436,16 +433,18 @@ struct RootView: View {
         .onAppear {
             if ProcessInfo.processInfo.environment["QA_FEEDBACK"] == "1" { qaFeedback = true }
         }
-        #endif
+        // Nullstill staging-køen uavhengig av den fullstendige bootstrapen.
+        // Nettverkskontrollene rendres først når dette er ferdig, slik at
+        // offline-testene aldri kan løpe mot gammel eller halvryddet tilstand.
         .task {
-            await appState.bootstrap()
-            #if DEBUG
-            // Staging-UI-testene skal være hermetiske selv når samme simulator
-            // tidligere har blitt avbrutt med ventende eller feilede handlinger.
             if ProcessInfo.processInfo.environment["QA_RESET_OFFLINE_QUEUE"] == "1" {
                 await OfflineActionQueue.shared.clearAll()
             }
-            #endif
+            qaOfflineQueueReady = true
+        }
+        #endif
+        .task {
+            await appState.bootstrap()
             // Start Leadgrid-polling så snart auth er på plass.
             if appState.api != nil {
                 appState.startLeadgridPolling()
@@ -503,11 +502,6 @@ struct RootView: View {
                     api: api
                 )
             }
-            #if DEBUG
-            // Staging-UI-testene skal ikke begynne mens bootstrap fremdeles
-            // validerer tenant/prosjekt eller nullstiller en gammel offline-kø.
-            qaBootstrapComplete = true
-            #endif
         }
         .onChange(of: appState.authToken) { _, newValue in
             if newValue != nil {
