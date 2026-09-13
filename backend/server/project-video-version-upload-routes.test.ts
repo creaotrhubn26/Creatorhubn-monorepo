@@ -275,7 +275,7 @@ describe("Video Room direct upload lifecycle", () => {
     vi.mocked(initiateVideoRoomUpload).mockResolvedValue({
       objectId: "object-1",
       strategy: "single",
-      uploadUrl: "https://role-room.s3.eu-north-1.amazonaws.com/video?signature=opaque",
+      uploadUrl: "https://creatorhub.s3.eu-north-1.amazonaws.com/video?signature=opaque",
       requiredHeaders: { "content-type": "video/mp4", "x-amz-checksum-sha256": "opaque" },
       expiresInSeconds: 3600,
     });
@@ -330,7 +330,7 @@ describe("Video Room direct upload lifecycle", () => {
     });
     vi.mocked(signVideoRoomUploadParts).mockResolvedValue([{
       partNumber: 2,
-      uploadUrl: "https://role-room.s3.eu-north-1.amazonaws.com/video?partNumber=2",
+      uploadUrl: "https://creatorhub.s3.eu-north-1.amazonaws.com/video?partNumber=2",
       requiredHeaders: { "x-amz-checksum-sha256": "opaque" },
     }]);
     vi.mocked(resumeVideoRoomUpload).mockResolvedValue({
@@ -368,6 +368,9 @@ describe("Video Room direct upload lifecycle", () => {
     expect(status.body.uploadedParts).toHaveLength(1);
     expect(parts.body.parts[0]).toMatchObject({ partNumber: 2 });
     expect(resumed.body).toMatchObject({ protocol: "s3-multipart", versionId: created.body.versionId });
+    expect(state.queries.some(({ sql }) =>
+      sql.includes("version.project_id::text=project.id::text"),
+    )).toBe(true);
   });
 
   it("keeps the active review cut intact while a new TUS upload is pending", async () => {
