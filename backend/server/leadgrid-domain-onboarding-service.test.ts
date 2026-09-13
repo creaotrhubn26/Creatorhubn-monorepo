@@ -5,6 +5,7 @@ import {
   LEADGRID_ONBOARDING_SKILLS,
   buildProjectOnboardingPlan,
   commitProjectOnboarding,
+  isUpgradeableCreatorHubGenericProfileV1,
   isUpgradeableTidumMunicipalServicesV1,
   normalizeProjectOnboardingWebsite,
 } from "./leadgrid-domain-onboarding-service.js";
@@ -95,7 +96,7 @@ describe("Leadgrid domain onboarding classification", () => {
     );
   });
 
-  it("derives a complete editable profile for creatorhubn.com", () => {
+  it("repairs Creatorhub metadata and creates four precise national profiles", () => {
     const plan = buildProjectOnboardingPlan(
       "https://creatorhubn.com",
       "creatorhubn.com",
@@ -104,16 +105,124 @@ describe("Leadgrid domain onboarding classification", () => {
         tagline: "Plattform for skapere, team og Academy",
       }),
     );
-    expect(plan.category).toBe("Kreative tjenester");
-    expect(plan.recommended_profiles[0].brief.industry_queries).toEqual([
-      "fotograf",
-      "videoproduksjon",
-      "produksjonsselskap",
+    expect(plan).toMatchObject({
+      project_name: "Creatorhub",
+      category: "Plattform for kreativt arbeid",
+      category_confidence: "high",
+      brand_profile: {
+        businessName: "Creatorhub",
+        tagline: "Plattformen for kreativt arbeid",
+        primaryCTA: "Se planer og priser",
+        industry: "creative_work_management_platform",
+        logoUrl: "https://creatorhubn.com/creatorhub-wordmark-light.png",
+        faviconUrl: "https://creatorhubn.com/creatorhub-icon.png",
+        hasShop: false,
+      },
+    });
+    expect(plan.recommended_profiles).toHaveLength(4);
+    expect(plan.recommended_profiles.map((item) => item.template_key)).toEqual([
+      "creatorhub.photographers",
+      "creatorhub.video_content",
+      "creatorhub.music_audio",
+      "creatorhub.creative_agencies",
     ]);
-    expect(plan.recommended_profiles[0].brief.ideal_customer).toBeTruthy();
-    expect(plan.recommended_profiles[0].brief.goal).toBeTruthy();
-    expect(plan.recommended_profiles[0].brief.city).toBeTruthy();
-    expect(plan.recommended_profiles[0].approval_mode).toBe("manual");
+    expect(plan.recommended_profiles.map((item) => item.name)).toEqual([
+      "Profesjonelle fotografer – Norge",
+      "Video- og innholdsprodusenter – Norge",
+      "Musikk- og lydprodusenter – Norge",
+      "Kreative byråer og designstudioer – Norge",
+    ]);
+    expect(
+      plan.recommended_profiles.filter((item) => item.is_default),
+    ).toHaveLength(1);
+    expect(
+      plan.recommended_profiles.every(
+        (item) =>
+          item.template_version === 1 &&
+          item.brief.country_code === "NO" &&
+          item.brief.city == null &&
+          item.brief.subject_kind === "organization" &&
+          item.approval_mode === "manual" &&
+          item.auto_discover_enabled === false,
+      ),
+    ).toBe(true);
+    expect(plan.recommended_profiles[0].brief).toMatchObject({
+      industry_queries: ["74.200"],
+      organization_forms: ["ANS", "AS", "DA", "ENK"],
+      target_count: 60,
+      minimum_fit_score: 70,
+      qualification_requirement: "preferred",
+    });
+    expect(plan.recommended_profiles[1].brief.industry_queries).toEqual([
+      "59.110",
+      "59.120",
+    ]);
+    expect(plan.recommended_profiles[2].brief.industry_queries).toEqual([
+      "59.200",
+    ]);
+    expect(plan.recommended_profiles[3].brief).toMatchObject({
+      industry_queries: ["73.110", "73.120", "74.120"],
+      target_count: 50,
+      qualification_requirement: "required",
+      website_requirement: "present",
+      website_quality: { minimum_score: 40 },
+    });
+    expect(plan.skills.map((skill) => skill.key)).toEqual(
+      LEADGRID_ONBOARDING_SKILLS.map((skill) => skill.key),
+    );
+  });
+
+  it("only upgrades the untouched generated Creatorhub profile", () => {
+    const untouchedBrief = {
+      industry_queries: ["fotograf", "videoproduksjon", "produksjonsselskap"],
+      organization_name_queries: [],
+      exclusion_terms: ["hobbyklubb", "fotobutikk"],
+      country_code: null,
+      city: "Oslo",
+      geo: null,
+      territory_code: null,
+      municipality_numbers: [],
+      municipality_names: [],
+      target_count: 30,
+      enrichment_count: 15,
+      minimum_fit_score: 60,
+      ideal_customer:
+        "Profesjonell fotograf, videoprodusent eller kreativt produksjonsteam som leverer kundeprosjekter og trenger en samlet arbeidsflyt for salg, produksjon og levering.",
+      goal: "Finne kreative virksomheter som kan samle kunde-, prosjekt- og leveranseflyten i én plattform.",
+      organization_forms: [],
+      employee_count: null,
+      organization_structure: "any",
+      website_requirement: "any",
+      website_quality: { minimum_score: null },
+      commercial_signals: {
+        registered_in_vat_register: null,
+        registered_in_business_register: true,
+      },
+    };
+    expect(
+      isUpgradeableCreatorHubGenericProfileV1({
+        name: "Kreative tjenester – Oslo",
+        template_key: null,
+        template_version: null,
+        brief: untouchedBrief,
+      }),
+    ).toBe(true);
+    expect(
+      isUpgradeableCreatorHubGenericProfileV1({
+        name: "Kreative tjenester – Oslo",
+        template_key: null,
+        template_version: null,
+        brief: { ...untouchedBrief, target_count: 17 },
+      }),
+    ).toBe(false);
+    expect(
+      isUpgradeableCreatorHubGenericProfileV1({
+        name: "Min egen Creatorhub-profil",
+        template_key: null,
+        template_version: null,
+        brief: untouchedBrief,
+      }),
+    ).toBe(false);
   });
 
   it("repairs analyzer fallback data and creates four precise national profiles for Tidum", () => {
@@ -878,6 +987,163 @@ describe("Leadgrid domain onboarding transaction", () => {
         String(sql).includes("INSERT INTO leadgrid_discovery_profiles"),
       ),
     ).toHaveLength(5);
+  });
+
+  it("upgrades an untouched broad Creatorhub profile and adds the remaining templates", async () => {
+    const plan = buildProjectOnboardingPlan(
+      "https://creatorhubn.com",
+      "creatorhubn.com",
+      profile({ businessName: "CreatorHub Norge" }),
+    );
+    const projectId = "creatorhub-existing";
+    const legacyBrief = {
+      industry_queries: ["fotograf", "videoproduksjon", "produksjonsselskap"],
+      organization_name_queries: [],
+      exclusion_terms: ["hobbyklubb", "fotobutikk"],
+      country_code: null,
+      city: "Oslo",
+      geo: null,
+      territory_code: null,
+      municipality_numbers: [],
+      municipality_names: [],
+      target_count: 30,
+      enrichment_count: 15,
+      minimum_fit_score: 60,
+      ideal_customer:
+        "Profesjonell fotograf, videoprodusent eller kreativt produksjonsteam som leverer kundeprosjekter og trenger en samlet arbeidsflyt for salg, produksjon og levering.",
+      goal: "Finne kreative virksomheter som kan samle kunde-, prosjekt- og leveranseflyten i én plattform.",
+      organization_forms: [],
+      employee_count: null,
+      organization_structure: "any",
+      website_requirement: "any",
+      website_quality: { minimum_score: null },
+      commercial_signals: {
+        registered_in_vat_register: null,
+        registered_in_business_register: true,
+      },
+    };
+    const profiles: Array<Record<string, unknown>> = [
+      {
+        id: "33333333-3333-4333-8333-333333333333",
+        name: "Kreative tjenester – Oslo",
+        is_default: true,
+        version: 1,
+        brief: legacyBrief,
+        status: "active",
+        source_config: { google_places: { enabled: false } },
+        template_key: null,
+        template_version: null,
+      },
+    ];
+    const query = vi.fn(async (sqlValue: string, params: unknown[] = []) => {
+      const sql = String(sqlValue);
+      if (sql.includes("FROM leadgrid_project_onboarding_previews")) {
+        return {
+          rows: [
+            {
+              id: previewId,
+              plan,
+              expires_at: "2099-01-01T00:00:00.000Z",
+              committed_at: null,
+              committed_organization_id: null,
+              committed_project_id: null,
+            },
+          ],
+        };
+      }
+      if (sql.includes("FROM organizations WHERE id")) {
+        return { rows: [{ id: organizationId, name: "Creatorhub AS" }] };
+      }
+      if (sql.includes("LEFT JOIN brand_kits bk")) {
+        return { rows: [{ id: projectId }] };
+      }
+      if (sql.includes("SELECT overrides FROM brand_kits")) return { rows: [] };
+      if (
+        sql.includes("UPDATE leadgrid_discovery_profiles") &&
+        sql.includes("SET template_key = $4,")
+      ) {
+        profiles[0] = {
+          ...profiles[0],
+          name: params[5],
+          version: 2,
+          brief: JSON.parse(String(params[18])),
+          source_config: JSON.parse(String(params[21])),
+          template_key: params[3],
+          template_version: params[4],
+        };
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("INSERT INTO leadgrid_discovery_profiles")) {
+        profiles.push({
+          id: `creatorhub-profile-${profiles.length + 1}`,
+          name: params[4],
+          is_default: params[5],
+          version: 1,
+          brief: JSON.parse(String(params[13])),
+          status: "active",
+          source_config: JSON.parse(String(params[16])),
+          template_key: params[2],
+          template_version: params[3],
+        });
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("FROM leadgrid_discovery_profiles")) {
+        return { rows: profiles };
+      }
+      if (sql.includes("SELECT p.id::text") && sql.includes("crm_customers")) {
+        return {
+          rows: [
+            {
+              id: projectId,
+              organization_id: organizationId,
+              name: "Creatorhub",
+              description: plan.project_description,
+              status: "active",
+              lead_count: 0,
+              competitor_count: 0,
+            },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const release = vi.fn();
+    const pool = {
+      connect: vi.fn(async () => ({ query, release })),
+    } as unknown as Pool;
+
+    const result = await commitProjectOnboarding(pool, {
+      previewId,
+      organizationId,
+      userId,
+    });
+
+    expect(result.reused_project).toBe(true);
+    expect(result.profiles).toHaveLength(4);
+    expect(result.profiles.map((item) => item.template_key)).toEqual(
+      plan.recommended_profiles.map((item) => item.template_key),
+    );
+    expect(result.profiles[0]).toMatchObject({
+      name: "Profesjonelle fotografer – Norge",
+      is_default: true,
+      template_key: "creatorhub.photographers",
+      template_version: 1,
+      brief: {
+        industry_queries: ["74.200"],
+        country_code: "NO",
+        city: null,
+      },
+    });
+    expect(
+      query.mock.calls.filter(([sql]) =>
+        String(sql).includes("INSERT INTO leadgrid_discovery_profiles"),
+      ),
+    ).toHaveLength(3);
+    expect(
+      query.mock.calls.filter(([sql]) =>
+        String(sql).includes("SET template_key = $4,"),
+      ),
+    ).toHaveLength(1);
   });
 
   it("upgrades the untouched Tidum municipal template without replacing user-managed profile settings", async () => {
