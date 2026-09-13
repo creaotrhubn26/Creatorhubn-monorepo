@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Editor } from "./Editor";
 import { linjetekst, Panel } from "./Panel";
 import {
@@ -433,6 +434,29 @@ export default function App() {
     }, 160);
     return () => window.clearTimeout(t);
   }, [query, lagre]);
+
+  /** Siste setning skal ikke koste et ⌘Q. Debouncen er 900 ms; alt som kan
+   *  bety at hun er ferdig med å skrive nå — vinduet mister fokus, vinduet
+   *  lukkes — skriver bufferet med en gang.
+   *
+   *  Tauris `onCloseRequested` venter på handleren før vinduet lukkes, så
+   *  lagringen rekker å bli ferdig. Går den likevel galt, står bufferet, og
+   *  vinduet lukkes ikke: da er feilbanneret det siste hun ser, og teksten er
+   *  fortsatt i appen. */
+  useEffect(() => {
+    const tøm = () => void lagre();
+    window.addEventListener("blur", tøm);
+    const vindu = getCurrentWindow();
+    const av = vindu.onCloseRequested(async (e) => {
+      if (!buffer.venter()) return;
+      await lagre();
+      if (buffer.venter()) e.preventDefault();
+    });
+    return () => {
+      window.removeEventListener("blur", tøm);
+      void av.then((stopp) => stopp()).catch(() => undefined);
+    };
+  }, [buffer, lagre]);
 
   useEffect(() => {
     const tast = (e: KeyboardEvent) => {

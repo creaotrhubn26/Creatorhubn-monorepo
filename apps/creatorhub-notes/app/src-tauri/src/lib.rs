@@ -216,7 +216,7 @@ fn create_note_in(dir: &Path, title: &str, date: &str, selv: Option<&Selvskrift>
         if let Some(selv) = selv {
             selv.merk(&full);
         }
-        std::fs::write(&full, body).map_err(|e| format!("kunne ikke skrive {name}: {e}"))?;
+        skriv_atomisk(&full, &body).map_err(|e| format!("kunne ikke skrive {name}: {e}"))?;
     }
     Ok(name)
 }
@@ -305,6 +305,36 @@ fn read_note(path: String) -> Result<String, String> {
     std::fs::read_to_string(&full).map_err(|e| format!("kunne ikke lese {path}: {e}"))
 }
 
+/// Skriver notatet uten at det kan bli halvveis skrevet: innholdet går til en
+/// midlertidig fil i samme mappe, tvinges til disk, og får så navnet til
+/// notatet. `rename` innenfor ett filsystem er atomisk, så en strømstans eller
+/// et krasj midt i skrivet gir enten den gamle fila eller den nye — aldri en
+/// avkortet. `std::fs::write` avkorter fila først og fyller den etterpå, og
+/// det vinduet er nøyaktig der et notat kan bli borte.
+///
+/// Den midlertidige fila heter `.<navn>.<pid>.tmp`. Den er ikke en `.md`-fil,
+/// så verken vokteren i [`overvaking`] eller notatlista ser den.
+fn skriv_atomisk(full: &Path, innhold: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mappe = full.parent().unwrap_or_else(|| Path::new("."));
+    let navn = full.file_name().and_then(|n| n.to_str()).unwrap_or("notat");
+    let temp = mappe.join(format!(".{navn}.{}.tmp", std::process::id()));
+
+    let skriv = || -> std::io::Result<()> {
+        let mut f = std::fs::File::create(&temp)?;
+        f.write_all(innhold.as_bytes())?;
+        // Navnebyttet er atomisk, men det lover ingenting om data som
+        // fortsatt bare står i sidebufferet.
+        f.sync_all()?;
+        Ok(())
+    };
+    if let Err(e) = skriv().and_then(|()| std::fs::rename(&temp, full)) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(e);
+    }
+    Ok(())
+}
+
 /// Merket settes *før* skrivet, aldri etter — det er dette som gjør at
 /// vokteren i [`overvaking`] aldri kan rekke å se hendelsen før merket er
 /// satt. Uten den rekkefølgen ville dette bare vært usannsynlig, ikke umulig.
@@ -313,7 +343,7 @@ fn write_note(selv: tauri::State<Arc<Selvskrift>>, path: String, content: String
     let dir = notes_dir()?;
     let full = resolve_in(&dir, &path)?;
     selv.merk(&full);
-    std::fs::write(&full, content).map_err(|e| format!("kunne ikke lagre {path}: {e}"))
+    skriv_atomisk(&full, &content).map_err(|e| format!("kunne ikke lagre {path}: {e}"))
 }
 
 #[tauri::command]
@@ -663,6 +693,58 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Et krasj midt i skrivet skal gi enten den gamle fila eller den nye.
+    /// `std::fs::write` avkorter først og fyller etterpå, og en leser som
+    /// treffer det vinduet ser et halvt notat. Her leses fila i en stram
+    /// løkke mens den skrives om, og hver eneste lesning må være hel.
+    #[test]
+    fn krasj_midt_i_skrivet_gir_enten_gammel_eller_ny_fil() {
+        let tmp = tempfile::tempdir().unwrap();
+        let full = tmp.path().join("notat.md");
+        let gammel = "# Gammelt\n".to_string();
+        let ny: String = std::iter::repeat("En setning som fyller fila.\n").take(80_000).collect();
+        std::fs::write(&full, &gammel).unwrap();
+
+        let stopp = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let leser = {
+            let (full, stopp) = (full.clone(), stopp.clone());
+            std::thread::spawn(move || {
+                let mut sett = Vec::new();
+                while !stopp.load(std::sync::atomic::Ordering::Relaxed) {
+                    if let Ok(t) = std::fs::read_to_string(&full) {
+                        sett.push(t.len());
+                    }
+                }
+                sett
+            })
+        };
+
+        for _ in 0..5 {
+            skriv_atomisk(&full, &ny).unwrap();
+            skriv_atomisk(&full, &gammel).unwrap();
+        }
+        stopp.store(true, std::sync::atomic::Ordering::Relaxed);
+
+        let sett = leser.join().unwrap();
+        assert!(!sett.is_empty(), "leseren må ha rukket å se fila");
+        for lengde in sett {
+            assert!(
+                lengde == gammel.len() || lengde == ny.len(),
+                "leste {lengde} bytes — verken den gamle ({}) eller den nye ({})",
+                gammel.len(),
+                ny.len()
+            );
+        }
+        // Ingen temp-fil skal ligge igjen.
+        let rester: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.ends_with(".tmp"))
+            .collect();
+        assert!(rester.is_empty(), "temp-filer ble liggende: {rester:?}");
+    }
 
     #[test]
     fn tittel_hentes_fra_forste_overskrift() {
