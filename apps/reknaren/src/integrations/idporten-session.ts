@@ -7,11 +7,30 @@
 import type { Db } from '../db/pool.js';
 import type { IdPortenClient, IdPortenTokens } from './idporten.js';
 
+/**
+ * Scopene MVA-melding krever. ID-porten kan utstede et SUBSET av det klienten ber om
+ * (dropper scopes klienten ikke er tildelt hos scope-eier) uten å feile login — da
+ * lykkes innloggingen, men innsendingen feiler senere ved Altinn-token-veksling.
+ * Vi sammenligner utstedt scope mot dette og varsler tidlig.
+ */
+export const REQUIRED_MVA_SCOPES = [
+  'skatteetaten:mvameldingvalidering',
+  'altinn:instances.read',
+  'altinn:instances.write',
+] as const;
+
+export function missingMvaScopes(grantedScope: string | null): string[] {
+  const granted = new Set((grantedScope ?? '').split(/\s+/).filter(Boolean));
+  return REQUIRED_MVA_SCOPES.filter((s) => !granted.has(s));
+}
+
 export interface IdPortenStatus {
   loggedIn: boolean;
   expiresAt: string | null;
   scope: string | null;
   subject: string | null;
+  /** Påkrevde MVA-scopes som IKKE kom med i tokenet (må tildeles i klientregistreringen). */
+  missingScopes: string[];
 }
 
 export async function saveLoginState(db: Db, params: { state: string; organizationId: string; codeVerifier: string; nonce: string; userId: string }): Promise<void> {
@@ -49,8 +68,11 @@ export async function getStatus(db: Db, organizationId: string): Promise<IdPorte
     `SELECT scope, subject, expires_at, expires_at > now() AS live FROM idporten_sessions WHERE organization_id=$1`,
     [organizationId],
   )).rows[0];
-  if (!row) return { loggedIn: false, expiresAt: null, scope: null, subject: null };
-  return { loggedIn: Boolean(row.live), expiresAt: new Date(row.expires_at).toISOString(), scope: row.scope, subject: row.subject };
+  if (!row) return { loggedIn: false, expiresAt: null, scope: null, subject: null, missingScopes: [...REQUIRED_MVA_SCOPES] };
+  return {
+    loggedIn: Boolean(row.live), expiresAt: new Date(row.expires_at).toISOString(),
+    scope: row.scope, subject: row.subject, missingScopes: missingMvaScopes(row.scope),
+  };
 }
 
 /**

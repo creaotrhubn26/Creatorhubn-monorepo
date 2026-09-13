@@ -1953,6 +1953,14 @@ export function createApiServer(deps: ApiDeps): express.Express {
           res.status(401).json({ error: { code: 'IDPORTEN_LOGIN_REQUIRED', message: 'Logg inn hos Skatteetaten (BankID) med en person som har MVA-fullmakt for virksomheten først.' } });
           return;
         }
+        // Innsending via Altinn krever altinn:instances.*-scopene i tokenet. ID-porten kan
+        // utstede et subset uten å feile login → sjekk her, ellers feiler Altinn kryptisk.
+        const st = await idportenStatus(deps.db, req.params.orgId!);
+        const missingAltinn = st.missingScopes.filter((s) => s.startsWith('altinn:'));
+        if (missingAltinn.length) {
+          res.status(409).json({ error: { code: 'SCOPE_MISSING', message: `Tokenet mangler scope: ${missingAltinn.join(', ')}. Disse må tildeles ID-porten-klienten (Samarbeidsportalen + tildeling fra scope-eier), og du må logge inn på nytt etterpå. Last ned XML og last opp i Altinn manuelt i mellomtiden.` } });
+          return;
+        }
         const body = z
           .object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
           .parse(req.body);

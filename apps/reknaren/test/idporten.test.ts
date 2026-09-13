@@ -5,6 +5,18 @@
 import { describe, expect, it } from 'vitest';
 import { createHash, generateKeyPairSync } from 'node:crypto';
 import { IdPortenClient, generatePkce } from '../src/integrations/idporten.js';
+import { missingMvaScopes } from '../src/integrations/idporten-session.js';
+
+describe('missingMvaScopes', () => {
+  it('rapporterer manglende MVA-scopes fra utstedt token', () => {
+    const full = 'openid skatteetaten:mvameldingvalidering altinn:instances.read altinn:instances.write';
+    expect(missingMvaScopes(full)).toEqual([]);
+    // Kun validering tildelt → begge Altinn-scopene mangler (innsending vil feile).
+    expect(missingMvaScopes('openid skatteetaten:mvameldingvalidering'))
+      .toEqual(['altinn:instances.read', 'altinn:instances.write']);
+    expect(missingMvaScopes(null)).toHaveLength(3);
+  });
+});
 
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
