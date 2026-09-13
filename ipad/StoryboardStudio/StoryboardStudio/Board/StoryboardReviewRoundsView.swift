@@ -311,6 +311,9 @@ struct StoryboardReviewCommentChanges: Sendable {
     var dueAt: StoryboardReviewFieldUpdate = .unchanged
     var resolutionNote: StoryboardReviewFieldUpdate = .unchanged
     var resolvedInRoundId: StoryboardReviewFieldUpdate = .unchanged
+    var anchorX: Double? = nil
+    var anchorY: Double? = nil
+    var updatesAnchor = false
 }
 
 struct StoryboardReviewDiffDTO: Decodable, Sendable {
@@ -1022,7 +1025,8 @@ struct StoryboardReviewRoundsView: View {
                 ForEach(visibleComments) { comment in
                     StoryboardReviewResolutionRow(
                         comment: comment, frame: frame(for: comment), rounds: rounds, busy: busy,
-                        canCreateChange: presentationRole.canManageLockedRevisions,
+                        canCreateChange: presentationRole.canManageLockedRevisions
+                            && !["approved", "superseded"].contains(selected?.status ?? ""),
                         onUpdate: { changes in updateComment(comment, changes: changes) },
                         onCreateChange: {
                             guard let frame = frame(for: comment) else { return }
@@ -1278,15 +1282,37 @@ struct StoryboardReviewRoundsView: View {
         busy = true; errorMessage = nil; successMessage = nil
         Task {
             do {
+                if ProcessInfo.processInfo.environment["SB_REVIEW_ROUNDS_DEMO"] == "1" {
+                    var updated = comment
+                    if changes.updatesAnchor {
+                        updated.anchorX = changes.anchorX
+                        updated.anchorY = changes.anchorY
+                    }
+                    if let status = changes.status {
+                        updated.status = status
+                    }
+                    if let index = comments.firstIndex(where: { $0.id == updated.id }) {
+                        comments[index] = updated
+                    }
+                    successMessage = changes.updatesAnchor
+                        ? (changes.anchorX == nil ? "Pinnen er fjernet. Kommentaren er beholdt." : "Pinplasseringen er lagret.")
+                        : (updated.status == "resolved"
+                            ? "Review-punktet er markert som løst."
+                            : "Review-punktet er oppdatert.")
+                    busy = false
+                    return
+                }
                 let updated = try await RoleRoomAPIClient.shared.updateStoryboardReviewComment(
                     projectId: projectId, manuscriptId: manuscriptId,
                     roundId: comment.reviewRoundId, commentId: comment.id, changes: changes)
                 if let index = comments.firstIndex(where: { $0.id == updated.id }) {
                     comments[index] = updated
                 }
-                successMessage = updated.status == "resolved"
-                    ? "Review-punktet er markert som løst."
-                    : "Review-punktet er oppdatert."
+                successMessage = changes.updatesAnchor
+                    ? (changes.anchorX == nil ? "Pinnen er fjernet. Kommentaren er beholdt." : "Pinplasseringen er lagret.")
+                    : (updated.status == "resolved"
+                        ? "Review-punktet er markert som løst."
+                        : "Review-punktet er oppdatert.")
                 await reload(prefer: selectedID)
             } catch {
                 errorMessage = error.localizedDescription
@@ -1864,12 +1890,18 @@ private struct StoryboardReviewResolutionRow: View {
             if let frame, hasVisualFeedback {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 16) {
-                        StoryboardReviewAnnotationPreview(frame: frame, comment: comment)
+                        StoryboardReviewAnnotationPreview(
+                            frame: frame, comment: comment,
+                            isPinEditable: canCreateChange && !busy,
+                            onPinMove: updatePin)
                             .frame(minWidth: 300, maxWidth: 520)
                         workflowControls.frame(minWidth: 260, maxWidth: 340)
                     }
                     VStack(alignment: .leading, spacing: 14) {
-                        StoryboardReviewAnnotationPreview(frame: frame, comment: comment)
+                        StoryboardReviewAnnotationPreview(
+                            frame: frame, comment: comment,
+                            isPinEditable: canCreateChange && !busy,
+                            onPinMove: updatePin)
                             .frame(maxWidth: 520)
                         workflowControls
                     }
@@ -1885,6 +1917,14 @@ private struct StoryboardReviewResolutionRow: View {
 
     private var hasVisualFeedback: Bool {
         comment.anchorX != nil || comment.anchorY != nil || !(comment.annotations ?? []).isEmpty
+    }
+
+    private func updatePin(_ point: CGPoint?) {
+        onUpdate(StoryboardReviewCommentChanges(
+            status: nil,
+            anchorX: point.map { Double($0.x) },
+            anchorY: point.map { Double($0.y) },
+            updatesAnchor: true))
     }
 
     private var commentHeader: some View {
@@ -2047,7 +2087,10 @@ private struct StoryboardReviewResolutionRow: View {
 private struct StoryboardReviewAnnotationPreview: View {
     let frame: StoryboardReviewSnapshotFrameDTO
     let comment: StoryboardReviewCommentDTO
+    let isPinEditable: Bool
+    let onPinMove: (CGPoint?) -> Void
     @State private var image: UIImage?
+    @State private var draggedAnchor: CGPoint?
 
     var body: some View {
         ZStack {
@@ -2071,24 +2114,58 @@ private struct StoryboardReviewAnnotationPreview: View {
             }
             if let anchorX = comment.anchorX, let anchorY = comment.anchorY {
                 GeometryReader { proxy in
+                    let anchor = draggedAnchor ?? CGPoint(x: anchorX, y: anchorY)
                     ZStack {
                         Circle().fill(comment.status == "resolved" ? Color.green : Color.yellow)
+                            .frame(width: 30, height: 30)
                         Circle().stroke(Color.black.opacity(0.85), lineWidth: 2)
+                            .frame(width: 30, height: 30)
                         Image(systemName: "pin.fill")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.black)
+                            .font(.caption2.bold()).foregroundStyle(.black)
                     }
-                    .frame(width: 30, height: 30)
+                    .frame(width: 48, height: 48)
+                    .contentShape(Rectangle())
                     .position(
-                        x: min(max(anchorX, 0), 1) * proxy.size.width,
-                        y: min(max(anchorY, 0), 1) * proxy.size.height)
+                        x: anchor.x * proxy.size.width,
+                        y: anchor.y * proxy.size.height)
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 4, coordinateSpace: .named("locked-review-pin-\(comment.id)"))
+                            .onChanged { value in
+                                guard isPinEditable else { return }
+                                draggedAnchor = ReviewPinGeometry.normalized(
+                                    value.location, in: proxy.size, visualInset: 16)
+                            }
+                            .onEnded { value in
+                                guard isPinEditable else { return }
+                                let next = ReviewPinGeometry.normalized(
+                                    value.location, in: proxy.size, visualInset: 16)
+                                draggedAnchor = next
+                                onPinMove(next)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            },
+                        including: isPinEditable ? .all : .none)
+                    .contextMenu {
+                        if isPinEditable {
+                            Button(role: .destructive) {
+                                draggedAnchor = nil
+                                onPinMove(nil)
+                            } label: {
+                                Label("Fjern pin – behold kommentar", systemImage: "mappin.slash")
+                            }
+                        }
+                    }
+                    .accessibilityLabel("Kommentar-pin fra \(comment.authorDisplayName)")
+                    .accessibilityHint(isPinEditable ? "Dra for å flytte pinnen" : "Pinnen er skrivebeskyttet")
+                    .accessibilityValue(String(format: "%.2f, %.2f", anchor.x, anchor.y))
+                    .accessibilityIdentifier("storyboard.review.lockedPin.\(comment.id)")
                 }
             }
         }
+        .coordinateSpace(name: "locked-review-pin-\(comment.id)")
         .aspectRatio(16 / 9, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.16)))
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("Visuell markering for \(frame.shotNumber ?? "shot")")
         .accessibilityIdentifier("storyboard.review.comment.markup.\(comment.id)")
         .task(id: imagePath) { await loadImage() }

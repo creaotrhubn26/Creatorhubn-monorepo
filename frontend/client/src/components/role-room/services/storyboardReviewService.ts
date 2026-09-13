@@ -101,6 +101,8 @@ export async function updateStoryboardReviewComment(
     dueAt?: string | null;
     resolutionNote?: string | null;
     resolvedInRoundId?: string | null;
+    anchorX?: number | null;
+    anchorY?: number | null;
   },
 ) {
   const response = await fetch(
@@ -198,6 +200,19 @@ export async function addSharedStoryboardComment(
   const response = await fetch(`${publicBase(token)}/comments`, {
     method: 'POST', headers: reviewerHeaders(reviewerToken), body: JSON.stringify(input),
   });
+  return (await readJson<{ data: StoryboardReviewComment }>(response)).data;
+}
+
+export async function updateSharedStoryboardCommentMarkup(
+  token: string,
+  reviewerToken: string,
+  commentId: string,
+  input: { anchorX: number | null; anchorY: number | null },
+) {
+  const response = await fetch(
+    `${publicBase(token)}/comments/${encodeURIComponent(commentId)}/markup`,
+    { method: 'PATCH', headers: reviewerHeaders(reviewerToken), body: JSON.stringify(input) },
+  );
   return (await readJson<{ data: StoryboardReviewComment }>(response)).data;
 }
 

@@ -30,6 +30,7 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { useRoute } from 'wouter';
 import type {
   StoryboardReviewAnnotationColor,
+  StoryboardReviewComment,
   StoryboardReviewSnapshotFrame,
 } from '@shared/storyboard-review';
 import {
@@ -37,6 +38,7 @@ import {
   createStoryboardReviewerSession,
   decideSharedStoryboardReview,
   getSharedStoryboardReview,
+  updateSharedStoryboardCommentMarkup,
   type StoryboardSharedReviewEnvelope,
 } from '@/components/role-room/services/storyboardReviewService';
 import {
@@ -75,6 +77,12 @@ export default function StoryboardReviewPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [movingCommentId, setMovingCommentId] = useState<string | null>(null);
+  const [pinUndo, setPinUndo] = useState<{
+    commentId: string;
+    anchorX: number | null;
+    anchorY: number | null;
+  } | null>(null);
 
   const load = useCallback(async (identity = reviewerToken) => {
     if (!token) return;
@@ -151,6 +159,55 @@ export default function StoryboardReviewPage() {
     } catch (submitError) { setError(submitError instanceof Error ? submitError.message : 'Kommentaren kunne ikke lagres.'); }
     finally { setBusy(false); }
   };
+
+  const replaceCommentLocally = useCallback((updated: StoryboardReviewComment) => {
+    setData((current) => {
+      if (!current || current.requiresIdentity) return current;
+      return {
+        ...current,
+        round: {
+          ...current.round,
+          comments: (current.round.comments ?? []).map((entry) => (
+            entry.id === updated.id ? updated : entry
+          )),
+        },
+      };
+    });
+  }, []);
+
+  const moveCommentPin = useCallback(async (
+    commentId: string,
+    anchor: { x: number; y: number } | null,
+    rememberForUndo = true,
+  ) => {
+    if (!reviewerToken) return;
+    const existing = selectedFrameComments.find((entry) => entry.id === commentId);
+    if (!existing?.canEdit) return;
+    const optimistic = {
+      ...existing,
+      anchorX: anchor?.x ?? null,
+      anchorY: anchor?.y ?? null,
+    };
+    if (rememberForUndo) {
+      setPinUndo({ commentId, anchorX: existing.anchorX ?? null, anchorY: existing.anchorY ?? null });
+    }
+    replaceCommentLocally(optimistic);
+    setMovingCommentId(commentId);
+    setError(null);
+    try {
+      const updated = await updateSharedStoryboardCommentMarkup(token, reviewerToken, commentId, {
+        anchorX: optimistic.anchorX,
+        anchorY: optimistic.anchorY,
+      });
+      replaceCommentLocally(updated);
+      setMessage(anchor ? 'Pinplasseringen er lagret.' : 'Pinnen er fjernet; kommentaren er beholdt.');
+    } catch (moveError) {
+      replaceCommentLocally(existing);
+      setError(moveError instanceof Error ? moveError.message : 'Pinplasseringen kunne ikke lagres.');
+    } finally {
+      setMovingCommentId((current) => current === commentId ? null : current);
+    }
+  }, [replaceCommentLocally, reviewerToken, selectedFrameComments, token]);
 
   const decide = async (decision: 'approved' | 'changes_requested') => {
     if (!interactiveData || !reviewerToken) return;
@@ -266,6 +323,7 @@ export default function StoryboardReviewPage() {
                           interactive={!isLocked && interactiveData.share.accessMode !== 'view' && Boolean(reviewerToken)}
                           onDraftChange={setMarkupDraft}
                           onCommentSelect={setActiveCommentId}
+                          onCommentAnchorChange={moveCommentPin}
                         />
                         {!isLocked && interactiveData.share.accessMode !== 'view' && reviewerToken && (
                           <Stack spacing={1.25} mt={1.5}>
@@ -326,7 +384,9 @@ export default function StoryboardReviewPage() {
                               </Tooltip>
                             </Stack>
                             <Typography variant="caption" color="rgba(255,255,255,.62)">
-                              {markupTool === 'pin' ? 'Klikk på detaljen kommentaren gjelder.' : 'Dra over bildet for å tegne. Originalbildet endres ikke.'}
+                              {markupTool === 'pin'
+                                ? 'Trykk for å plassere en ny pin. Dine lagrede pins kan dras eller finjusteres med piltastene.'
+                                : 'Dra over bildet for å tegne. Originalbildet endres ikke.'}
                             </Typography>
                           </Stack>
                         )}
@@ -342,6 +402,7 @@ export default function StoryboardReviewPage() {
                         .map((entry) => (
                           <Box
                             key={entry.id}
+                            id={`storyboard-review-comment-${entry.id}`}
                             onClick={() => setActiveCommentId(entry.id)}
                             data-testid={`storyboard-review-comment-${entry.id}`}
                             sx={{
@@ -364,6 +425,47 @@ export default function StoryboardReviewPage() {
                               <Typography variant="caption" color="rgba(167,243,208,.9)" display="block">
                                 Løsning: {entry.resolutionNote}
                               </Typography>
+                            )}
+                            {entry.canEdit && !isLocked && activeCommentId === entry.id && (
+                              <Stack direction="row" spacing={1} mt={1} flexWrap="wrap" useFlexGap>
+                                {entry.anchorX != null && entry.anchorY != null && (
+                                  <Button
+                                    size="small"
+                                    variant="text"
+                                    disabled={movingCommentId === entry.id}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void moveCommentPin(entry.id, null);
+                                    }}
+                                    data-testid={`storyboard-review-remove-pin-${entry.id}`}
+                                  >Fjern pin</Button>
+                                )}
+                                {pinUndo?.commentId === entry.id && (
+                                  <Button
+                                    size="small"
+                                    variant="text"
+                                    disabled={movingCommentId === entry.id}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      const previous = pinUndo;
+                                      setPinUndo(null);
+                                      void moveCommentPin(
+                                        entry.id,
+                                        previous.anchorX == null || previous.anchorY == null
+                                          ? null
+                                          : { x: previous.anchorX, y: previous.anchorY },
+                                        false,
+                                      );
+                                    }}
+                                    data-testid={`storyboard-review-undo-pin-${entry.id}`}
+                                  >Angre pinflytting</Button>
+                                )}
+                                {movingCommentId === entry.id && (
+                                  <Typography variant="caption" color="rgba(255,255,255,.62)">
+                                    Lagrer pin …
+                                  </Typography>
+                                )}
+                              </Stack>
                             )}
                           </Box>
                         ))}

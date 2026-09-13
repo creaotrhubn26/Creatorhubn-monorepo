@@ -263,7 +263,7 @@ describe('storyboard review share security', () => {
     const now = new Date('2026-09-12T12:05:00Z');
     const fixedRoundId = '00000000-0000-4000-8000-000000000002';
     const query = vi.fn(async (sql: string, values: unknown[]) => {
-      if (sql.includes('SELECT id, version FROM storyboard_review_rounds')) {
+      if (sql.includes('SELECT id, version, status FROM storyboard_review_rounds')) {
         return { rows: [{ id: 'round-1', version: 2 }] };
       }
       if (sql.includes('SELECT id FROM storyboard_review_rounds')) {
@@ -335,6 +335,70 @@ describe('storyboard review share security', () => {
     expect(res.body).toEqual({ error: 'resolved_revision_not_in_manuscript' });
     expect(query).toHaveBeenCalledTimes(2);
     expect(query.mock.calls.some(([sql]) => String(sql).includes('UPDATE storyboard_review_comments'))).toBe(false);
+  });
+
+  it('moves or removes a scoped comment pin without changing the comment body', async () => {
+    const now = new Date('2026-09-12T12:05:00Z');
+    const query = vi.fn(async (sql: string, values?: unknown[]) => {
+      if (sql.includes('SELECT id, version, status FROM storyboard_review_rounds')) {
+        return { rows: [{ id: 'round-1', version: 2 }] };
+      }
+      if (sql.includes('SELECT comment.frame_id')) {
+        expect(values).toEqual(['comment-1', 'round-1', 'project-1', 'manuscript-1']);
+        return { rows: [{ frame_id: 'frame-a' }] };
+      }
+      if (sql.includes('UPDATE storyboard_review_comments AS comment')) {
+        expect(sql).toContain('anchor_x = CASE WHEN $15 THEN $16::real');
+        expect(values?.slice(14, 17)).toEqual([true, 0.82, 0.24]);
+        return { rows: [{
+          id: 'comment-1', review_round_id: 'round-1', frame_id: 'frame-a',
+          parent_id: null, author_display_name: 'Kari', body: 'Hold bildet.',
+          visibility: 'client', anchor_x: values?.[15], anchor_y: values?.[16],
+          annotations: [], status: 'open', assigned_to: null, due_at: null,
+          resolution_note: null, resolved_by: null, resolved_at: null,
+          resolved_in_round_id: null, carried_from_comment_id: null,
+          created_at: now, updated_at: now,
+        }] };
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    });
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { query } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: unusedManuscripts,
+    });
+    const handler = routeHandler(router, 'patch',
+      '/projects/:projectId/manuscripts/:manuscriptId/storyboard-review-rounds/:roundId/comments/:commentId');
+    const res = response();
+    await handler({ params: {
+      projectId: 'project-1', manuscriptId: 'manuscript-1', roundId: 'round-1', commentId: 'comment-1',
+    }, body: { anchorX: 0.82, anchorY: 0.24 }, userId: 'owner-1' }, res,
+    (error: unknown) => { throw error; });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data).toMatchObject({
+      id: 'comment-1', body: 'Hold bildet.', anchorX: 0.82, anchorY: 0.24,
+    });
+  });
+
+  it('does not let a manager move pins after a revision is approved', async () => {
+    const query = vi.fn().mockResolvedValueOnce({
+      rows: [{ id: 'round-1', version: 2, status: 'approved' }],
+    });
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { query } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: unusedManuscripts,
+    });
+    const handler = routeHandler(router, 'patch',
+      '/projects/:projectId/manuscripts/:manuscriptId/storyboard-review-rounds/:roundId/comments/:commentId');
+    const res = response();
+    await handler({ params: {
+      projectId: 'project-1', manuscriptId: 'manuscript-1', roundId: 'round-1', commentId: 'comment-1',
+    }, body: { anchorX: 0.25, anchorY: 0.75 }, userId: 'owner-1' }, res,
+    (error: unknown) => { throw error; });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({ error: 'review_round_locked' });
+    expect(query).toHaveBeenCalledTimes(1);
   });
 
   it('requires an applied review change to be undone instead of silently reopening its comment', async () => {
@@ -736,6 +800,92 @@ describe('storyboard review share security', () => {
     }, missingFrame, (error: unknown) => { throw error; });
     expect(missingFrame.statusCode).toBe(400);
     expect(query).not.toHaveBeenCalled();
+  });
+
+  it('lets a reviewer move only their own pin and preserves the comment text', async () => {
+    const now = new Date('2026-09-12T12:01:00Z');
+    const share = {
+      id: 'round-1', project_id: 'project-1', manuscript_id: 'manuscript-1',
+      version: 2, status: 'in_review', snapshot: buildStoryboardReviewSnapshot(source()),
+      share_link_id: 'share-1', share_access_mode: 'comment', share_require_identity: true,
+    };
+    const query = vi.fn(async (sql: string, values?: unknown[]) => {
+      if (sql.includes('JOIN storyboard_review_rounds')) return { rows: [share] };
+      if (sql.includes('UPDATE storyboard_review_sessions')) {
+        return { rows: [{ id: 'reviewer-1', display_name: 'Kari Klient', email: null }] };
+      }
+      if (sql.includes('UPDATE storyboard_review_comments')) {
+        expect(sql).toContain('reviewer_session_id = $3');
+        if (values?.[0] === 'comment-other') return { rows: [] };
+        expect(values).toEqual(['comment-own', 'round-1', 'reviewer-1', 0.78, 0.31]);
+        return { rows: [{
+          id: 'comment-own', review_round_id: 'round-1', frame_id: 'frame-a', parent_id: null,
+          author_display_name: 'Kari Klient', body: 'Flytt markeringen hit.', visibility: 'client',
+          anchor_x: 0.78, anchor_y: 0.31, annotations: [], status: 'open',
+          assigned_to: null, due_at: null, resolution_note: null, resolved_by: null,
+          resolved_at: null, resolved_in_round_id: null, carried_from_comment_id: null,
+          created_at: now, updated_at: now,
+        }] };
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    });
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { query } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: unusedManuscripts,
+    });
+    const handler = routeHandler(router, 'patch',
+      '/storyboard-review/:token/comments/:commentId/markup');
+    const res = response();
+    await handler({
+      params: { token: 'raw-share-token', commentId: 'comment-own' },
+      body: { anchorX: 0.78, anchorY: 0.31 },
+      header: () => 'raw-reviewer-token',
+    }, res, (error: unknown) => { throw error; });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data).toMatchObject({
+      id: 'comment-own', body: 'Flytt markeringen hit.', anchorX: 0.78, anchorY: 0.31,
+      canEdit: true,
+    });
+
+    const other = response();
+    await handler({
+      params: { token: 'raw-share-token', commentId: 'comment-other' },
+      body: { anchorX: 0.1, anchorY: 0.9 },
+      header: () => 'raw-reviewer-token',
+    }, other, (error: unknown) => { throw error; });
+    expect(other.statusCode).toBe(404);
+    expect(other.body).toEqual({ error: 'review_comment_not_found' });
+  });
+
+  it('rejects incomplete pin movement and keeps approved revisions immutable', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{
+      id: 'round-1', status: 'approved', share_link_id: 'share-1',
+      share_access_mode: 'comment',
+    }] });
+    const router = Router();
+    registerStoryboardReviewRoutes(router, { query } as any, {
+      auth: pass, canView: pass, canManage: pass, manuscriptsService: unusedManuscripts,
+    });
+    const handler = routeHandler(router, 'patch',
+      '/storyboard-review/:token/comments/:commentId/markup');
+
+    const incomplete = response();
+    await handler({
+      params: { token: 'raw-share-token', commentId: 'comment-own' },
+      body: { anchorX: 0.5 }, header: () => 'raw-reviewer-token',
+    }, incomplete, (error: unknown) => { throw error; });
+    expect(incomplete.statusCode).toBe(400);
+    expect(query).not.toHaveBeenCalled();
+
+    const locked = response();
+    await handler({
+      params: { token: 'raw-share-token', commentId: 'comment-own' },
+      body: { anchorX: 0.5, anchorY: 0.5 }, header: () => 'raw-reviewer-token',
+    }, locked, (error: unknown) => { throw error; });
+    expect(locked.statusCode).toBe(409);
+    expect(locked.body).toEqual({ error: 'review_round_locked' });
+    expect(query).toHaveBeenCalledTimes(1);
   });
 
   it('binds sign-off to the exact hash and locks all later decisions', async () => {

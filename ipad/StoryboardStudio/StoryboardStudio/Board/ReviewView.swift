@@ -1,10 +1,43 @@
 import SwiftUI
+import UIKit
 
 // Review-flaten (mockup-paritet): kø gruppert på status, stor forhånds-
 // visning med versjonsvelger (drawingHistory) og sammenligning, nummererte
 // kommentar-pins på bildet, inspector med shot-info og review-status
 // (prioritet/frist/godkjenning). Frittstående mot API-et — åpnes direkte
 // fra hubben uten boardet.
+
+struct ReviewPinPlacement: Equatable {
+    var anchor: CGPoint?
+    var target: CGPoint?
+}
+
+enum ReviewPinGeometry {
+    static func clamped(_ point: CGPoint) -> CGPoint {
+        CGPoint(x: min(max(point.x, 0), 1), y: min(max(point.y, 0), 1))
+    }
+
+    static func normalized(_ location: CGPoint, in size: CGSize,
+                           visualInset: CGFloat = 0) -> CGPoint {
+        guard size.width > 0, size.height > 0 else { return CGPoint(x: 0.5, y: 0.5) }
+        let insetX = min(0.49, max(0, visualInset / size.width))
+        let insetY = min(0.49, max(0, visualInset / size.height))
+        return CGPoint(
+            x: min(max(location.x / size.width, insetX), 1 - insetX),
+            y: min(max(location.y / size.height, insetY), 1 - insetY))
+    }
+}
+
+private enum ReviewPinDragKind {
+    case anchor
+    case target
+}
+
+private struct ReviewPinDrag {
+    let commentId: String
+    let kind: ReviewPinDragKind
+    var normalizedPosition: CGPoint
+}
 
 @MainActor
 final class ReviewState: ObservableObject {
@@ -13,13 +46,20 @@ final class ReviewState: ObservableObject {
     @Published var scenes: [SceneSummary] = []
     @Published var selected: (sceneId: String, frameId: String)? {
         didSet {
-            if oldValue?.frameId != selected?.frameId { redlineRedoStack = [] }
+            if oldValue?.frameId != selected?.frameId {
+                redlineRedoStack = []
+                lastPinMove = nil
+                canUndoPinMove = false
+            }
         }
     }
     @Published var statusFilter: String?
     @Published var roleFilter: String?
     @Published var sortMode = "Sekvens"     // Sekvens / Frist / Prioritet
     @Published var status: String?
+    @Published private(set) var canUndoPinMove = false
+    private var lastPinMove: (commentId: String, placement: ReviewPinPlacement)?
+    private var commentSaveTask: Task<Void, Never>?
 
     init(project: ProjectSummary, manuscript: ManuscriptSummary) {
         self.project = project
@@ -180,6 +220,109 @@ final class ReviewState: ObservableObject {
             if let targetY = comment.targetY { dict["targetY"] = targetY }
             return dict
         }
+    }
+
+    func moveCommentPin(_ commentId: String, to anchor: CGPoint) {
+        guard let placement = placement(for: commentId) else { return }
+        updateCommentPlacement(
+            commentId, placement: ReviewPinPlacement(
+                anchor: ReviewPinGeometry.clamped(anchor), target: placement.target),
+            success: "Pin flyttet ✓")
+    }
+
+    func moveCommentTarget(_ commentId: String, to target: CGPoint?) {
+        guard let placement = placement(for: commentId), placement.anchor != nil else { return }
+        updateCommentPlacement(
+            commentId, placement: ReviewPinPlacement(
+                anchor: placement.anchor, target: target.map(ReviewPinGeometry.clamped)),
+            success: target == nil ? "Lederlinje fjernet ✓" : "Målpunkt lagret ✓")
+    }
+
+    func removeCommentPin(_ commentId: String) {
+        guard placement(for: commentId)?.anchor != nil else { return }
+        updateCommentPlacement(
+            commentId, placement: ReviewPinPlacement(anchor: nil, target: nil),
+            success: "Pin fjernet – kommentaren er beholdt ✓")
+    }
+
+    func undoLastPinMove() {
+        guard let undo = lastPinMove else { return }
+        lastPinMove = nil
+        canUndoPinMove = false
+        updateCommentPlacement(
+            undo.commentId, placement: undo.placement,
+            recordUndo: false, success: "Pinflytting angret ✓")
+    }
+
+    private func placement(for commentId: String) -> ReviewPinPlacement? {
+        guard let comment = selectedPair?.frame.comments.first(where: { $0.id == commentId }) else {
+            return nil
+        }
+        let anchor = comment.x.flatMap { x in comment.y.map { CGPoint(x: x, y: $0) } }
+        let target = comment.targetX.flatMap { x in comment.targetY.map { CGPoint(x: x, y: $0) } }
+        return ReviewPinPlacement(anchor: anchor, target: target)
+    }
+
+    private func updateCommentPlacement(
+        _ commentId: String,
+        placement: ReviewPinPlacement,
+        recordUndo: Bool = true,
+        success: String
+    ) {
+        guard let selected, let pair = selectedPair,
+              let commentIndex = pair.frame.comments.firstIndex(where: { $0.id == commentId }),
+              let before = self.placement(for: commentId), before != placement else { return }
+        var comments = pair.frame.comments
+        let current = comments[commentIndex]
+        comments[commentIndex] = ReviewComment(
+            id: current.id, role: current.role, author: current.author,
+            text: current.text, at: current.at,
+            x: placement.anchor.map { Double($0.x) },
+            y: placement.anchor.map { Double($0.y) },
+            parentId: current.parentId, likes: current.likes,
+            targetX: placement.target.map { Double($0.x) },
+            targetY: placement.target.map { Double($0.y) })
+        if recordUndo {
+            lastPinMove = (commentId, before)
+            canUndoPinMove = true
+        }
+        applyCommentsLocally(
+            sceneId: selected.sceneId, frameId: selected.frameId, comments: comments)
+        status = "Lagrer pin …"
+
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["SB_REVIEW_WORKSPACE_DEMO"] == "1" {
+            status = success
+            return
+        }
+        #endif
+
+        let manuscriptId = manuscript.id
+        let fields: [String: any Sendable] = ["frameComments": Self.commentDicts(comments)]
+        let previousSave = commentSaveTask
+        commentSaveTask = Task { [weak self] in
+            await previousSave?.value
+            guard let self else { return }
+            do {
+                try await RoleRoomAPIClient.shared.saveFramePatch(
+                    manuscriptId: manuscriptId, sceneId: selected.sceneId,
+                    frameId: selected.frameId, fields: fields)
+                await self.load()
+                self.status = success
+            } catch {
+                await self.load()
+                self.status = "Pinplasseringen kunne ikke lagres: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func applyCommentsLocally(
+        sceneId: String, frameId: String, comments: [ReviewComment]
+    ) {
+        guard let sceneIndex = scenes.firstIndex(where: { $0.id == sceneId }),
+              let frameIndex = scenes[sceneIndex].frames.firstIndex(where: { $0.id == frameId })
+        else { return }
+        scenes[sceneIndex].frames[frameIndex].comments = comments
     }
 
     /// Redline: reviewer-strøk på lag «Review» — synlig i review og board,
@@ -395,6 +538,9 @@ struct ReviewView: View {
     @State private var redlineMode: String?        // nil / "arrow" / "draw"
     @State private var redlinePoints: [CGPoint] = []   // view-rom under drag
     @State private var pendingPinTarget: CGPoint?
+    @State private var selectedPinID: String?
+    @State private var pinDrag: ReviewPinDrag?
+    @State private var targetPlacementCommentID: String?
     @State private var fullscreenPreview = false
     @State private var exportShareURL: URL?
     @State private var showTeamEditor = false
@@ -496,6 +642,10 @@ struct ReviewView: View {
             selectedVersion = 0
             compareMode = false
             pendingPin = nil
+            pendingPinTarget = nil
+            selectedPinID = nil
+            pinDrag = nil
+            targetPlacementCommentID = nil
             historyVersions = []
             loadHistory()
         }
@@ -1130,19 +1280,27 @@ struct ReviewView: View {
                     pinMode.toggle()
                     pendingPin = nil
                     pendingPinTarget = nil
+                    selectedPinID = nil
+                    targetPlacementCommentID = nil
                     redlineMode = nil
                 }
                 toolButton("arrow.up.right", "Pil", active: redlineMode == "arrow") {
                     redlineMode = redlineMode == "arrow" ? nil : "arrow"
                     pinMode = false
+                    selectedPinID = nil
+                    targetPlacementCommentID = nil
                 }
                 toolButton("scribble", "Tegn", active: redlineMode == "draw") {
                     redlineMode = redlineMode == "draw" ? nil : "draw"
                     pinMode = false
+                    selectedPinID = nil
+                    targetPlacementCommentID = nil
                 }
                 toolButton("eraser", "Visk", active: redlineMode == "erase") {
                     redlineMode = redlineMode == "erase" ? nil : "erase"
                     pinMode = false
+                    selectedPinID = nil
+                    targetPlacementCommentID = nil
                 }
                 if hasRedlines(pair) {
                     toolButton("arrow.uturn.backward", "Angre", active: false) {
@@ -1216,63 +1374,87 @@ struct ReviewView: View {
                 GeometryReader { geo in
                     ZStack(alignment: .topLeading) {
                         Image(uiImage: image).resizable().scaledToFit()
-                        // Kommentar-pins (kun på gjeldende, ikke i compare)
+                        // Redline-preview under drag
+                        if redlineMode != nil && redlinePoints.count > 1 {
+                            Path { path in
+                                path.move(to: redlinePoints[0])
+                                if redlineMode == "arrow", let last = redlinePoints.last {
+                                    path.addLine(to: last)
+                                } else {
+                                    for point in redlinePoints.dropFirst() { path.addLine(to: point) }
+                                }
+                            }
+                            .stroke(Color(red: 0.25, green: 0.5, blue: 1),
+                                    style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        }
+
                         if version == 0 && !compareMode {
+                            // Lederlinjer ligger under håndtakene og følger live-draget.
+                            Canvas { context, size in
+                                for comment in pinnedComments(pair) {
+                                    let placement = pinPlacement(for: comment)
+                                    guard let anchor = placement.anchor,
+                                          let target = placement.target else { continue }
+                                    drawLeaderLine(
+                                        from: CGPoint(x: anchor.x * size.width,
+                                                      y: anchor.y * size.height),
+                                        to: CGPoint(x: target.x * size.width,
+                                                    y: target.y * size.height),
+                                        in: &context)
+                                }
+                                if let pendingPin, let pendingPinTarget {
+                                    drawLeaderLine(
+                                        from: CGPoint(x: pendingPin.x * size.width,
+                                                      y: pendingPin.y * size.height),
+                                        to: CGPoint(x: pendingPinTarget.x * size.width,
+                                                    y: pendingPinTarget.y * size.height),
+                                        in: &context)
+                                }
+                            }
+                            .allowsHitTesting(false)
+
                             ForEach(Array(pinnedComments(pair).enumerated()),
                                     id: \.element.id) { index, comment in
-                                pinBadge(number: index + 1)
-                                    .position(x: CGFloat(comment.x ?? 0) * geo.size.width,
-                                              y: CGFloat(comment.y ?? 0) * geo.size.height)
+                                interactivePin(comment, number: index + 1, canvasSize: geo.size)
                             }
                             if let pendingPin {
                                 pinBadge(number: pinnedComments(pair).count + 1, pending: true)
+                                    .frame(width: StoryboardExperienceMetrics.minimumTouchTarget,
+                                           height: StoryboardExperienceMetrics.minimumTouchTarget)
                                     .position(x: pendingPin.x * geo.size.width,
                                               y: pendingPin.y * geo.size.height)
+                                    .accessibilityLabel("Ny, ikke lagret kommentar-pin")
+                            }
+                            if let selectedPinID,
+                               let selected = pinnedComments(pair).first(where: { $0.id == selectedPinID }),
+                               pinPlacement(for: selected).target != nil {
+                                targetHandle(for: selected, canvasSize: geo.size)
+                            }
+                            if targetPlacementCommentID != nil {
+                                Text("Trykk i bildet for å plassere lederlinjens mål")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 10).padding(.vertical, 7)
+                                    .background(.black.opacity(0.72), in: Capsule())
+                                    .padding(10)
+                                    .allowsHitTesting(false)
                             }
                         }
-                    // Redline-preview under drag
-                    if redlineMode != nil && redlinePoints.count > 1 {
-                        Path { path in
-                            path.move(to: redlinePoints[0])
-                            if redlineMode == "arrow", let last = redlinePoints.last {
-                                path.addLine(to: last)
-                            } else {
-                                for point in redlinePoints.dropFirst() { path.addLine(to: point) }
-                            }
-                        }
-                        .stroke(Color(red: 0.25, green: 0.5, blue: 1),
-                                style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     }
-                    // Pin-lederlinjer (badge → målpunkt)
-                    if version == 0 && !compareMode {
-                        Canvas { context, size in
-                            for comment in pinnedComments(pair) {
-                                guard let targetX = comment.targetX,
-                                      let targetY = comment.targetY,
-                                      let x = comment.x, let y = comment.y else { continue }
-                                let from = CGPoint(x: x * size.width, y: y * size.height)
-                                let to = CGPoint(x: targetX * size.width, y: targetY * size.height)
-                                var path = Path()
-                                path.move(to: from)
-                                path.addQuadCurve(to: to, control: CGPoint(
-                                    x: (from.x + to.x) / 2,
-                                    y: min(from.y, to.y) - 20))
-                                context.stroke(path, with: .color(Color(red: 0.25, green: 0.5, blue: 1)),
-                                               lineWidth: 2)
-                                context.fill(Path(ellipseIn: CGRect(x: to.x - 3, y: to.y - 3,
-                                                                    width: 6, height: 6)),
-                                             with: .color(Color(red: 0.25, green: 0.5, blue: 1)))
-                            }
-                        }
-                        .allowsHitTesting(false)
-                    }
-                    }
+                    .coordinateSpace(name: "storyboard-review-preview")
                     .contentShape(Rectangle())
                     .onTapGesture { location in
                         guard version == 0, !compareMode,
                               geo.size.width > 0, geo.size.height > 0 else { return }
-                        let normalized = CGPoint(x: location.x / geo.size.width,
-                                                 y: location.y / geo.size.height)
+                        let normalized = ReviewPinGeometry.normalized(
+                            location, in: geo.size, visualInset: 16)
+                        if let commentId = targetPlacementCommentID {
+                            state.moveCommentTarget(commentId, to: normalized)
+                            targetPlacementCommentID = nil
+                            selectedPinID = commentId
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            return
+                        }
                         if pinMode {
                             if pendingPin == nil {
                                 pendingPin = normalized
@@ -1294,6 +1476,14 @@ struct ReviewView: View {
                                 redlinePoints = []
                             }
                     )
+                    .overlay(alignment: .bottomLeading) {
+                        if version == 0, !compareMode,
+                           let selectedPinID,
+                           let selected = pinnedComments(pair).first(where: { $0.id == selectedPinID }) {
+                            selectedPinBar(selected, pair: pair)
+                                .padding(10)
+                        }
+                    }
                 }
                 .aspectRatio(CGFloat(pair.frame.drawingWidth / max(1, pair.frame.drawingHeight)),
                              contentMode: .fit)
@@ -1414,14 +1604,216 @@ struct ReviewView: View {
         pair.frame.comments.filter { $0.x != nil && $0.y != nil }
     }
 
-    private func pinBadge(number: Int, pending: Bool = false) -> some View {
+    private func pinPlacement(for comment: ReviewComment) -> ReviewPinPlacement {
+        var placement = ReviewPinPlacement(
+            anchor: comment.x.flatMap { x in comment.y.map { CGPoint(x: x, y: $0) } },
+            target: comment.targetX.flatMap { x in comment.targetY.map { CGPoint(x: x, y: $0) } })
+        if let pinDrag, pinDrag.commentId == comment.id {
+            switch pinDrag.kind {
+            case .anchor: placement.anchor = pinDrag.normalizedPosition
+            case .target: placement.target = pinDrag.normalizedPosition
+            }
+        }
+        return placement
+    }
+
+    private func drawLeaderLine(
+        from: CGPoint, to: CGPoint, in context: inout GraphicsContext
+    ) {
+        var path = Path()
+        path.move(to: from)
+        path.addQuadCurve(to: to, control: CGPoint(
+            x: (from.x + to.x) / 2, y: min(from.y, to.y) - 20))
+        context.stroke(path, with: .color(Color(red: 0.25, green: 0.5, blue: 1)),
+                       lineWidth: 2)
+        context.fill(Path(ellipseIn: CGRect(x: to.x - 4, y: to.y - 4, width: 8, height: 8)),
+                     with: .color(Color(red: 0.25, green: 0.5, blue: 1)))
+    }
+
+    @ViewBuilder
+    private func interactivePin(
+        _ comment: ReviewComment, number: Int, canvasSize: CGSize
+    ) -> some View {
+        if let anchor = pinPlacement(for: comment).anchor {
+            pinBadge(number: number, selected: selectedPinID == comment.id)
+                .frame(width: 48, height: 48)
+                .contentShape(Rectangle())
+                .position(x: anchor.x * canvasSize.width, y: anchor.y * canvasSize.height)
+                .onTapGesture {
+                    selectedPinID = comment.id
+                    commentTab = "Kommentarer"
+                    UISelectionFeedbackGenerator().selectionChanged()
+                }
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 4, coordinateSpace: .named("storyboard-review-preview"))
+                        .onChanged { value in
+                            guard presentationRole.canDrawReviewMarks else { return }
+                            let position = ReviewPinGeometry.normalized(
+                                value.location, in: canvasSize, visualInset: 16)
+                            pinDrag = ReviewPinDrag(
+                                commentId: comment.id, kind: .anchor,
+                                normalizedPosition: position)
+                            selectedPinID = comment.id
+                        }
+                        .onEnded { value in
+                            guard presentationRole.canDrawReviewMarks else { return }
+                            let position = ReviewPinGeometry.normalized(
+                                value.location, in: canvasSize, visualInset: 16)
+                            pinDrag = nil
+                            state.moveCommentPin(comment.id, to: position)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        },
+                    including: presentationRole.canDrawReviewMarks ? .all : .none)
+                .contextMenu {
+                    if presentationRole.canDrawReviewMarks {
+                        Button {
+                            selectedPinID = comment.id
+                            targetPlacementCommentID = comment.id
+                        } label: {
+                            Label(comment.targetX == nil ? "Legg til lederlinje" : "Flytt målpunkt",
+                                  systemImage: "scope")
+                        }
+                        if comment.targetX != nil {
+                            Button {
+                                state.moveCommentTarget(comment.id, to: nil)
+                            } label: {
+                                Label("Fjern lederlinje", systemImage: "line.diagonal")
+                            }
+                        }
+                        Button(role: .destructive) {
+                            state.removeCommentPin(comment.id)
+                            selectedPinID = nil
+                        } label: {
+                            Label("Fjern pin – behold kommentar", systemImage: "mappin.slash")
+                        }
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Pin \(number), kommentar fra \(comment.author)")
+                .accessibilityHint(presentationRole.canDrawReviewMarks
+                    ? "Trykk for å velge. Dra for å flytte."
+                    : "Trykk for å velge kommentaren.")
+                .accessibilityIdentifier("storyboard.review.pin.\(comment.id)")
+        }
+    }
+
+    @ViewBuilder
+    private func targetHandle(for comment: ReviewComment, canvasSize: CGSize) -> some View {
+        if let target = pinPlacement(for: comment).target {
+            Circle()
+                .fill(Color.white)
+                .frame(width: 12, height: 12)
+                .overlay(Circle().stroke(Color(red: 0.25, green: 0.5, blue: 1), lineWidth: 3))
+                .frame(width: 48, height: 48)
+                .contentShape(Rectangle())
+                .position(x: target.x * canvasSize.width, y: target.y * canvasSize.height)
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 2, coordinateSpace: .named("storyboard-review-preview"))
+                        .onChanged { value in
+                            guard presentationRole.canDrawReviewMarks else { return }
+                            pinDrag = ReviewPinDrag(
+                                commentId: comment.id, kind: .target,
+                                normalizedPosition: ReviewPinGeometry.normalized(
+                                    value.location, in: canvasSize, visualInset: 8))
+                        }
+                        .onEnded { value in
+                            guard presentationRole.canDrawReviewMarks else { return }
+                            let position = ReviewPinGeometry.normalized(
+                                value.location, in: canvasSize, visualInset: 8)
+                            pinDrag = nil
+                            state.moveCommentTarget(comment.id, to: position)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        },
+                    including: presentationRole.canDrawReviewMarks ? .all : .none)
+                .accessibilityLabel("Målpunkt for pin")
+                .accessibilityHint("Dra for å flytte lederlinjens mål")
+                .accessibilityIdentifier("storyboard.review.pinTarget.\(comment.id)")
+        }
+    }
+
+    private func selectedPinBar(
+        _ comment: ReviewComment,
+        pair: (scene: SceneSummary, frame: FrameSummary)
+    ) -> some View {
+        let number = (pinnedComments(pair).firstIndex(where: { $0.id == comment.id }) ?? 0) + 1
+        return HStack(spacing: 8) {
+            pinBadge(number: number, selected: true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(comment.author)
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                Text(comment.text)
+                    .font(.system(size: 10)).foregroundStyle(BoardBrand.dim)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            if presentationRole.canDrawReviewMarks {
+                Button {
+                    targetPlacementCommentID = comment.id
+                } label: {
+                    Label(comment.targetX == nil ? "Peker" : "Flytt mål", systemImage: "scope")
+                        .labelStyle(.iconOnly)
+                        .frame(width: StoryboardExperienceMetrics.minimumTouchTarget,
+                               height: StoryboardExperienceMetrics.minimumTouchTarget)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(comment.targetX == nil ? "Legg til lederlinje" : "Flytt målpunkt")
+                if state.canUndoPinMove {
+                    Button {
+                        state.undoLastPinMove()
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                            .frame(width: StoryboardExperienceMetrics.minimumTouchTarget,
+                                   height: StoryboardExperienceMetrics.minimumTouchTarget)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Angre siste pinflytting")
+                    .accessibilityIdentifier("storyboard.review.pin.undo")
+                }
+                Menu {
+                    if comment.targetX != nil {
+                        Button {
+                            state.moveCommentTarget(comment.id, to: nil)
+                        } label: {
+                            Label("Fjern lederlinje", systemImage: "line.diagonal")
+                        }
+                    }
+                    Button(role: .destructive) {
+                        state.removeCommentPin(comment.id)
+                        selectedPinID = nil
+                    } label: {
+                        Label("Fjern pin – behold kommentar", systemImage: "mappin.slash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(width: StoryboardExperienceMetrics.minimumTouchTarget,
+                               height: StoryboardExperienceMetrics.minimumTouchTarget)
+                }
+                .accessibilityLabel("Flere pinhandlinger")
+            }
+        }
+        .padding(.leading, 10).padding(.trailing, 4).padding(.vertical, 4)
+        .frame(maxWidth: 430, minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+        .background(.black.opacity(0.78), in: Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.16)))
+        .accessibilityElement(children: .contain)
+        .overlay(alignment: .topLeading) {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Valgt kommentar-pin")
+                .accessibilityIdentifier("storyboard.review.pin.selection")
+        }
+    }
+
+    private func pinBadge(number: Int, pending: Bool = false, selected: Bool = false) -> some View {
         Text("\(number)")
             .font(.system(size: 11, weight: .bold))
             .foregroundStyle(.white)
-            .frame(width: 22, height: 22)
+            .frame(width: selected ? 28 : 24, height: selected ? 28 : 24)
             .background(pending ? Color.orange : Color(red: 0.25, green: 0.5, blue: 1),
                         in: Circle())
-            .overlay(Circle().stroke(.white, lineWidth: 1.5))
+            .overlay(Circle().stroke(.white, lineWidth: selected ? 2.5 : 1.5))
+            .shadow(color: .black.opacity(0.45), radius: selected ? 8 : 4, y: 3)
     }
 
     private func commentsSection(_ pair: (scene: SceneSummary, frame: FrameSummary)) -> some View {
@@ -1593,6 +1985,16 @@ struct ReviewView: View {
             }
             Spacer(minLength: 0)
         }
+        .padding(6)
+        .background(selectedPinID == comment.id ? BoardBrand.accent.opacity(0.12) : .clear,
+                    in: RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard pinned.contains(where: { $0.id == comment.id }) else { return }
+            selectedPinID = comment.id
+            UISelectionFeedbackGenerator().selectionChanged()
+        }
+        .accessibilityIdentifier("storyboard.review.comment.\(comment.id)")
     }
 
     /// Followers (mockup): avatar-stabel + Administrer-meny. Lagres på framen.

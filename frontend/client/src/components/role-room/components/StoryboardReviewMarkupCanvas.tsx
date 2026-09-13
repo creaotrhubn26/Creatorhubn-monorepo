@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Box, Typography } from '@mui/material';
 import type {
   StoryboardReviewAnnotation,
@@ -38,6 +38,10 @@ interface StoryboardReviewMarkupCanvasProps {
   height?: number;
   onDraftChange?: (draft: StoryboardReviewMarkupDraft) => void;
   onCommentSelect?: (commentId: string) => void;
+  onCommentAnchorChange?: (
+    commentId: string,
+    anchor: StoryboardReviewAnnotationPoint | null,
+  ) => void | Promise<void>;
 }
 
 function scaled(point: StoryboardReviewAnnotationPoint) {
@@ -117,23 +121,136 @@ export function StoryboardReviewMarkupCanvas({
   height,
   onDraftChange,
   onCommentSelect,
+  onCommentAnchorChange,
 }: StoryboardReviewMarkupCanvasProps) {
   const [activeAnnotation, setActiveAnnotation] = useState<StoryboardReviewAnnotation | null>(null);
+  const [draggedPins, setDraggedPins] = useState<Record<string, StoryboardReviewAnnotationPoint>>({});
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const pinDragRef = useRef<{
+    commentId: string;
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    point: StoryboardReviewAnnotationPoint;
+    moved: boolean;
+  } | null>(null);
+  const pinPlacementRef = useRef<{
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    moved: boolean;
+  } | null>(null);
   const imageUrl = frame.thumbnailUrl || frame.imageUrl;
 
-  const pointFromEvent = (event: React.PointerEvent<SVGSVGElement>): StoryboardReviewAnnotationPoint => {
-    const bounds = event.currentTarget.getBoundingClientRect();
+  const pointFromClient = (clientX: number, clientY: number): StoryboardReviewAnnotationPoint => {
+    const bounds = stageRef.current?.getBoundingClientRect();
+    if (!bounds) return { x: 0.5, y: 0.5 };
     return {
-      x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / Math.max(1, bounds.width))),
-      y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / Math.max(1, bounds.height))),
+      x: Math.max(0, Math.min(1, (clientX - bounds.left) / Math.max(1, bounds.width))),
+      y: Math.max(0, Math.min(1, (clientY - bounds.top) / Math.max(1, bounds.height))),
     };
+  };
+
+  const pointFromEvent = (event: React.PointerEvent<SVGSVGElement>) => (
+    pointFromClient(event.clientX, event.clientY)
+  );
+
+  const selectComment = (commentId: string) => {
+    onCommentSelect?.(commentId);
+    document.getElementById(`storyboard-review-comment-${commentId}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+
+  const beginPinDrag = (
+    comment: StoryboardReviewComment,
+    event: React.PointerEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    // Velg med en gang, men ikke scroll tråden mens en finger kan være i ferd
+    // med å dra. Et vanlig klikk kaller selectComment etter pointer-sekvensen.
+    onCommentSelect?.(comment.id);
+    if (!interactive || !comment.canEdit || !onCommentAnchorChange
+        || comment.anchorX == null || comment.anchorY == null) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pinDragRef.current = {
+      commentId: comment.id,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      point: { x: comment.anchorX, y: comment.anchorY },
+      moved: false,
+    };
+  };
+
+  const movePin = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = pinDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const point = pointFromClient(event.clientX, event.clientY);
+    drag.point = point;
+    drag.moved = drag.moved
+      || Math.hypot(event.clientX - drag.startClientX, event.clientY - drag.startClientY) >= 4;
+    setDraggedPins((current) => ({ ...current, [drag.commentId]: point }));
+  };
+
+  const finishPinDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = pinDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    pinDragRef.current = null;
+    setDraggedPins((current) => {
+      const next = { ...current };
+      delete next[drag.commentId];
+      return next;
+    });
+    if (drag.moved) void onCommentAnchorChange?.(drag.commentId, drag.point);
+  };
+
+  const cancelPinDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = pinDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    pinDragRef.current = null;
+    setDraggedPins((current) => {
+      const next = { ...current };
+      delete next[drag.commentId];
+      return next;
+    });
+  };
+
+  const nudgePin = (
+    comment: StoryboardReviewComment,
+    event: React.KeyboardEvent<HTMLButtonElement>,
+  ) => {
+    const directions: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+    };
+    const direction = directions[event.key];
+    if (!direction || !interactive || !comment.canEdit || !onCommentAnchorChange
+        || comment.anchorX == null || comment.anchorY == null) return;
+    event.preventDefault();
+    const step = event.shiftKey ? 0.05 : 0.01;
+    void onCommentAnchorChange(comment.id, {
+      x: Math.max(0, Math.min(1, comment.anchorX + direction[0] * step)),
+      y: Math.max(0, Math.min(1, comment.anchorY + direction[1] * step)),
+    });
   };
 
   const beginMarkup = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!interactive || !draft || !onDraftChange) return;
     const point = pointFromEvent(event);
     if (tool === 'pin') {
-      onDraftChange({ ...draft, anchorX: point.x, anchorY: point.y });
+      event.currentTarget.setPointerCapture(event.pointerId);
+      pinPlacementRef.current = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        moved: false,
+      };
       return;
     }
     if (draft.annotations.length >= 12) return;
@@ -148,6 +265,15 @@ export function StoryboardReviewMarkupCanvas({
   };
 
   const continueMarkup = (event: React.PointerEvent<SVGSVGElement>) => {
+    const pendingPinPlacement = pinPlacementRef.current;
+    if (pendingPinPlacement?.pointerId === event.pointerId) {
+      pendingPinPlacement.moved = pendingPinPlacement.moved
+        || Math.hypot(
+          event.clientX - pendingPinPlacement.startClientX,
+          event.clientY - pendingPinPlacement.startClientY,
+        ) >= 6;
+      return;
+    }
     if (!activeAnnotation || !interactive) return;
     const point = pointFromEvent(event);
     setActiveAnnotation((current) => {
@@ -162,6 +288,18 @@ export function StoryboardReviewMarkupCanvas({
   };
 
   const finishMarkup = (event: React.PointerEvent<SVGSVGElement>) => {
+    const pendingPinPlacement = pinPlacementRef.current;
+    if (pendingPinPlacement?.pointerId === event.pointerId) {
+      pinPlacementRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      if (!pendingPinPlacement.moved && draft && onDraftChange) {
+        const point = pointFromEvent(event);
+        onDraftChange({ ...draft, anchorX: point.x, anchorY: point.y });
+      }
+      return;
+    }
     if (!activeAnnotation || !draft || !onDraftChange) return;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -186,6 +324,9 @@ export function StoryboardReviewMarkupCanvas({
   };
 
   const cancelMarkup = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (pinPlacementRef.current?.pointerId === event.pointerId) {
+      pinPlacementRef.current = null;
+    }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -201,6 +342,7 @@ export function StoryboardReviewMarkupCanvas({
 
   return (
     <Box
+      ref={stageRef}
       data-testid={`storyboard-review-markup-canvas-${frame.id}`}
       sx={{
         position: 'relative', width: '100%', aspectRatio: '16 / 9', height,
@@ -236,10 +378,10 @@ export function StoryboardReviewMarkupCanvas({
         style={{
           position: 'absolute', inset: 0, width: '100%', height: '100%',
           cursor: interactive ? (tool === 'pin' ? 'crosshair' : 'cell') : 'default',
-          touchAction: interactive ? 'none' : 'auto',
+          touchAction: interactive ? (tool === 'pin' ? 'pan-y' : 'none') : 'auto',
         }}
       >
-        {showMarkup && comments.map((comment, commentIndex) => {
+        {showMarkup && comments.map((comment) => {
           const active = activeCommentId === comment.id;
           return (
             <g
@@ -249,14 +391,6 @@ export function StoryboardReviewMarkupCanvas({
               style={{ cursor: onCommentSelect ? 'pointer' : 'default', opacity: comment.status === 'resolved' ? 0.58 : 1 }}
             >
               {(comment.annotations ?? []).map((entry) => annotationElement(entry, entry.id, active))}
-              {comment.anchorX != null && comment.anchorY != null && (
-                <g transform={`translate(${comment.anchorX * VIEWBOX_WIDTH} ${comment.anchorY * VIEWBOX_HEIGHT})`}>
-                  <circle r={active ? 17 : 14} fill={comment.status === 'resolved' ? '#34d399' : '#fbbf24'} stroke="#111827" strokeWidth="3" vectorEffect="non-scaling-stroke" />
-                  <text textAnchor="middle" dominantBaseline="central" fill="#111827" fontSize="15" fontWeight="800">
-                    {commentIndex + 1}
-                  </text>
-                </g>
-              )}
             </g>
           );
         })}
@@ -273,6 +407,43 @@ export function StoryboardReviewMarkupCanvas({
           </g>
         )}
       </svg>
+      {showMarkup && comments
+        .filter((entry) => entry.anchorX != null && entry.anchorY != null)
+        .map((entry, pinIndex) => {
+          const position = draggedPins[entry.id] ?? { x: entry.anchorX ?? 0, y: entry.anchorY ?? 0 };
+          const active = activeCommentId === entry.id;
+          const movable = interactive && Boolean(entry.canEdit) && Boolean(onCommentAnchorChange);
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              data-testid={`storyboard-review-pin-${entry.id}`}
+              aria-label={`Kommentar ${pinIndex + 1} fra ${entry.authorDisplayName}${movable ? '. Dra eller bruk piltastene for å flytte pinnen.' : ''}`}
+              onPointerDown={(event) => beginPinDrag(entry, event)}
+              onPointerMove={movePin}
+              onPointerUp={finishPinDrag}
+              onPointerCancel={cancelPinDrag}
+              onKeyDown={(event) => nudgePin(entry, event)}
+              onClick={(event) => { event.stopPropagation(); selectComment(entry.id); }}
+              style={{
+                position: 'absolute', left: `${position.x * 100}%`, top: `${position.y * 100}%`,
+                width: 48, height: 48, padding: 0, border: 0, borderRadius: '50%',
+                transform: 'translate(-50%, -50%)', background: 'transparent', zIndex: 3,
+                display: 'grid', placeItems: 'center', touchAction: movable ? 'none' : 'manipulation',
+                cursor: movable ? (draggedPins[entry.id] ? 'grabbing' : 'grab') : 'pointer',
+              }}
+            >
+              <span style={{
+                width: active ? 36 : 30, height: active ? 36 : 30, borderRadius: '50%',
+                display: 'grid', placeItems: 'center', color: '#111827', fontSize: 14,
+                fontWeight: 800, background: entry.status === 'resolved' ? '#34d399' : '#fbbf24',
+                border: '3px solid #111827', boxShadow: active
+                  ? '0 0 0 3px rgba(255,255,255,.9), 0 6px 18px rgba(0,0,0,.45)'
+                  : '0 4px 12px rgba(0,0,0,.4)',
+              }}>{pinIndex + 1}</span>
+            </button>
+          );
+        })}
     </Box>
   );
 }
