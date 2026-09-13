@@ -399,6 +399,9 @@ kbd {
 /* Registeret: én linje per notat, dagen som eneste inndeling. Rekkefølgen er
    informasjonen, så ingen nummerering og ingen ikoner. */
 .liste {
+  /* `min-height: 0` er ikke pynt: uten den nekter rutenettraden å krympe under
+     innholdet, og lista ruller ikke — den dytter ordbanklinja ut av vinduet. */
+  min-height: 0;
   overflow-y: auto;
   padding: 6px 0 32px;
 }

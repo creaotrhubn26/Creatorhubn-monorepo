@@ -42,8 +42,9 @@ export type Ordbankstatus = { tekst: string; mangler: boolean };
 
 export const ordbankStatus = () => invoke<Ordbankstatus>("ordbank_status");
 
-/** Henter ordlista (98 MB) og leser den inn. Tar noen minutter, og sier fra
- *  underveis gjennom [`påOrdbank`]. */
+/** Henter ordlista og leser den inn. Arkivet er 15 MB og blir til rundt 100 MB
+ *  i `ordbank.db`; nedlastingen er det som tar tid. Sier fra underveis gjennom
+ *  [`påOrdbank`]. */
 export const lastNedOrdbank = () => invoke<Ordbankstatus>("last_ned_ordbank");
 
 export const påOrdbank = (f: (tekst: string) => void) =>

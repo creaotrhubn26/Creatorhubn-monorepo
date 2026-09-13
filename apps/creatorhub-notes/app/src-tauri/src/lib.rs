@@ -949,7 +949,11 @@ pub struct Ordbankstatus {
     mangler: bool,
 }
 
-/// Ordlista fra Språkbanken ved Nasjonalbiblioteket, CC BY 4.0. Rundt 98 MB.
+/// Ordlista fra Språkbanken ved Nasjonalbiblioteket, CC BY 4.0.
+///
+/// Målt: arkivet er 15 MB, fullformslista i det 98 MB, og `ordbank.db` etter
+/// innlasting 102 MB. Nedlastingen er det som tar tid; innlastingen tar litt
+/// over ett sekund.
 const ORDBANK_URL: &str =
     "https://www.nb.no/sbfil/leksikalske_databaser/ordbank/20220201_norsk_ordbank_nob_2005.tar.gz";
 
@@ -994,7 +998,7 @@ fn last_ned_ordbank(app: tauri::AppHandle) -> Result<Ordbankstatus, String> {
         let _ = std::fs::remove_dir_all(&mappe);
     };
 
-    meld("Laster ned ordlista fra Nasjonalbiblioteket. Den er på 98 MB, så det tar noen minutter.");
+    meld("Laster ned ordlista fra Nasjonalbiblioteket. Den er på 15 MB.");
     let arkiv = mappe.join("ordbank.tar.gz");
     let hentet = Command::new("curl")
         .args(["-fsSL", "--retry", "2", "-o"])
@@ -1011,7 +1015,7 @@ fn last_ned_ordbank(app: tauri::AppHandle) -> Result<Ordbankstatus, String> {
         }
     }
 
-    meld("Pakker ut ordlista.");
+    meld("Pakker ut ordlista. Den blir til rundt 100 MB på disken.");
     let pakket = Command::new("tar")
         .arg("xzf")
         .arg(&arkiv)

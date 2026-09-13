@@ -1112,7 +1112,7 @@ export default function App() {
               <p role={ordbankArbeid ? "status" : undefined}>{ordbankArbeid ?? ordbank.tekst}</p>
               {ordbank.mangler && (
                 <button onClick={() => void hentOrdlista()} disabled={ordbankArbeid !== null}>
-                  {ordbankArbeid ? "Henter ordlista …" : "Last ned ordlista (98 MB)"}
+                  {ordbankArbeid ? "Henter ordlista …" : "Last ned ordlista (15 MB)"}
                 </button>
               )}
             </div>
