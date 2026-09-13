@@ -4,7 +4,7 @@ import XCTest
 final class StoryboardReviewRoundsTests: XCTestCase {
     func testReviewWorkspaceKeepsRevisionsInsideOneDestination() {
         XCTAssertEqual(StoryboardReviewWorkspaceSection.allCases, [.shots, .revisions])
-        XCTAssertEqual(StoryboardReviewWorkspaceSection.shots.title, "Shots")
+        XCTAssertEqual(StoryboardReviewWorkspaceSection.shots.title, "Arbeidskopi")
         XCTAssertEqual(StoryboardReviewWorkspaceSection.revisions.title, "Låste revisjoner")
     }
 

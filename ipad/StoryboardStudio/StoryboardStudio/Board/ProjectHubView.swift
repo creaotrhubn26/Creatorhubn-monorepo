@@ -23,15 +23,6 @@ struct HubSidebar: View {
     @AppStorage("hubSidebarCollapsed") private var collapsed = false
     @AppStorage("sbMentionCount") private var mentionCount = 0
 
-    private static let items: [(HubDestination, String, String)] = [
-        (.board, "rectangle.grid.2x2", "Board"),
-        (.script, "doc.text", "Script"),
-        (.shotList, "list.bullet", "Shot List"),
-        (.animatic, "play.rectangle", "Animatic"),
-        (.review, "checkmark.bubble", "Review"),
-        (.assets, "folder", "Assets"),
-    ]
-
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -51,27 +42,33 @@ struct HubSidebar: View {
                 .buttonStyle(.plain)
             }
             .padding(.bottom, 10)
-            ForEach(Self.items, id: \.0) { destination, icon, title in
-                let isActive = active == destination
+            if !collapsed {
+                Text("ARBEIDSFLYT")
+                    .font(.system(size: 11, weight: .bold)).kerning(1)
+                    .foregroundStyle(BoardBrand.label)
+                    .padding(.horizontal, 10).padding(.bottom, 4)
+            }
+            ForEach(StoryboardWorkspaceMode.allCases) { mode in
+                let isActive = mode.contains(active)
                 Button {
-                    guard !isActive else { return }
-                    onSelect(destination)
+                    guard !isActive || active == nil else { return }
+                    onSelect(mode.primaryDestination)
                 } label: {
                     HStack(spacing: 9) {
-                        Image(systemName: icon).font(.system(size: 12))
+                        Image(systemName: mode.icon).font(.system(size: 14))
                             .frame(width: 16)
                             .overlay(alignment: .topTrailing) {
-                                if destination == .review && mentionCount > 0 && collapsed {
+                                if mode == .decide && mentionCount > 0 && collapsed {
                                     Circle().fill(.red).frame(width: 7, height: 7)
                                         .offset(x: 4, y: -3)
                                 }
                             }
                         if !collapsed {
-                            Text(title).font(.system(size: 13, weight: .medium))
+                            Text(mode.title).font(.system(size: 14, weight: .semibold))
                             Spacer()
-                            if destination == .review && mentionCount > 0 {
+                            if mode == .decide && mentionCount > 0 {
                                 Text("@\(mentionCount)")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(.system(size: 11, weight: .bold))
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 5).padding(.vertical, 2)
                                     .background(.red, in: Capsule())
@@ -79,13 +76,34 @@ struct HubSidebar: View {
                         }
                     }
                     .foregroundStyle(isActive ? .white : BoardBrand.dim)
-                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
                     .background(isActive ? BoardBrand.accent.opacity(0.35)
                                 : Color.white.opacity(0.03),
                                 in: RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(title)
+                .accessibilityLabel(mode.title)
+            }
+            if !collapsed {
+                Menu {
+                    Section("Lag") {
+                        Button("Manus", systemImage: "doc.text") { onSelect(.script) }
+                        Button("Assets", systemImage: "folder") { onSelect(.assets) }
+                    }
+                    Section("Produser") {
+                        Button("Shot-liste", systemImage: "list.bullet") { onSelect(.shotList) }
+                        Button("Animatic", systemImage: "play.rectangle") { onSelect(.animatic) }
+                    }
+                } label: {
+                    Label("Verktøy", systemImage: "ellipsis.circle")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(BoardBrand.dim)
+                        .padding(.horizontal, 10)
+                        .frame(maxWidth: .infinity, minHeight: StoryboardExperienceMetrics.minimumTouchTarget,
+                               alignment: .leading)
+                }
+                .accessibilityLabel("Kontekstuelle verktøy")
             }
             Spacer()
             if !collapsed {

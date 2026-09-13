@@ -175,6 +175,7 @@ struct StoryboardReviewRoundsView: View {
     let manuscriptId: String
     let onRestored: () async -> Void
     var embedded = false
+    var presentationRole: StoryboardProductionRole = .producer
 
     @State private var rounds: [StoryboardReviewRoundDTO] = []
     @State private var inbox: [StoryboardReviewInboxItemDTO] = []
@@ -192,6 +193,9 @@ struct StoryboardReviewRoundsView: View {
     @State private var busy = false
     @State private var errorMessage: String?
     @State private var successMessage: String?
+    @State private var showCreateRevision = false
+    @State private var showShareOptions = false
+    @State private var showRestoreOptions = false
     @Environment(\.dismiss) private var dismiss
 
     private var selected: StoryboardReviewRoundDTO? {
@@ -262,7 +266,8 @@ struct StoryboardReviewRoundsView: View {
                             storyboardFrames: [StoryboardReviewSnapshotFrameDTO(
                                 id: "frame-3", shotNumber: "3A",
                                 description: "Trollet utenfor togvinduet",
-                                imageUrl: nil, thumbnailUrl: nil)])
+                                imageUrl: StoryboardReviewDemoArtwork.dataURL(variant: 0),
+                                thumbnailUrl: StoryboardReviewDemoArtwork.dataURL(variant: 0))])
                     ]))
                 rounds = [demo]
                 selectedDetail = demo
@@ -324,6 +329,58 @@ struct StoryboardReviewRoundsView: View {
             }
             shareURL = nil
             restoreCode = ""
+        }
+        .sheet(isPresented: $showCreateRevision) {
+            NavigationStack {
+                createRevisionPanel
+                    .padding(20)
+                    .background(BoardBrand.chrome)
+                    .navigationTitle("Lås ny revisjon")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Ferdig") { showCreateRevision = false }
+                        }
+                    }
+            }
+            .presentationDetents([.medium])
+            .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showShareOptions) {
+            NavigationStack {
+                Group {
+                    if let selected { sharePanel(for: selected) }
+                }
+                .padding(20)
+                .background(BoardBrand.chrome)
+                .navigationTitle("Del låst revisjon")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Ferdig") { showShareOptions = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+            .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showRestoreOptions) {
+            NavigationStack {
+                Group {
+                    if let selected { restorePanel(for: selected) }
+                }
+                .padding(20)
+                .background(BoardBrand.chrome)
+                .navigationTitle("Gjenopprett revisjon")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Avbryt") { showRestoreOptions = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+            .preferredColorScheme(.dark)
         }
     }
 
@@ -549,10 +606,10 @@ struct StoryboardReviewRoundsView: View {
 
                 if let selected {
                     revisionHeader(selected)
-                    createRevisionPanel
+                    revisionActions(selected)
+                    lockedRevisionStage(selected)
                     if let diff { diffBanner(diff) }
                     resolutionQueue
-                    secondaryActions(for: selected)
                 } else {
                     VStack(spacing: 12) {
                         Image(systemName: "rectangle.stack.badge.play")
@@ -599,6 +656,79 @@ struct StoryboardReviewRoundsView: View {
         }
     }
 
+    private func revisionActions(_ round: StoryboardReviewRoundDTO) -> some View {
+        HStack(spacing: 10) {
+            if presentationRole.canManageLockedRevisions {
+                Button {
+                    showCreateRevision = true
+                } label: {
+                    Label("Lås ny revisjon", systemImage: "lock.badge.plus")
+                        .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+                }
+                .buttonStyle(.borderedProminent).tint(BoardBrand.accent)
+                .accessibilityIdentifier("storyboard.review.create.open")
+
+                Button {
+                    showShareOptions = true
+                } label: {
+                    Label("Del", systemImage: "square.and.arrow.up")
+                        .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+                }
+                .buttonStyle(.bordered).tint(BoardBrand.accent)
+                .disabled(round.status == "superseded")
+                .accessibilityIdentifier("storyboard.review.share.open")
+            }
+            Spacer()
+            if presentationRole.canRestoreLockedRevisions {
+                Menu {
+                    Button(role: .destructive) { showRestoreOptions = true } label: {
+                        Label("Gjenopprett storyboardfelter", systemImage: "arrow.uturn.backward.circle")
+                    }
+                } label: {
+                    Label("Flere", systemImage: "ellipsis.circle")
+                        .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+                }
+                .accessibilityLabel("Flere revisjonshandlinger")
+                .accessibilityIdentifier("storyboard.review.more")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func lockedRevisionStage(_ round: StoryboardReviewRoundDTO) -> some View {
+        let frames = selectedDetail?.snapshot?.scenes.flatMap(\.storyboardFrames) ?? []
+        if let frame = frames.first {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label("Låst bilde", systemImage: "lock.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(BoardBrand.accent)
+                    Text(frame.shotNumber.map { "SHOT \($0)" } ?? "SHOT")
+                        .font(.caption.monospaced().weight(.bold))
+                        .foregroundStyle(BoardBrand.dim)
+                    Spacer()
+                    Text("v\(round.version)")
+                        .font(.subheadline.monospaced().weight(.bold))
+                        .foregroundStyle(.white)
+                }
+                StoryboardLockedFramePreview(frame: frame)
+                    .frame(maxWidth: .infinity)
+                if let description = frame.description, !description.isEmpty {
+                    Text(description)
+                        .font(.body)
+                        .foregroundStyle(BoardBrand.dim)
+                }
+            }
+            .padding(14)
+            .background(Color.black.opacity(0.34),
+                        in: RoundedRectangle(cornerRadius: StoryboardExperienceMetrics.cornerRadius))
+            .overlay(RoundedRectangle(cornerRadius: StoryboardExperienceMetrics.cornerRadius)
+                .stroke(BoardBrand.border))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("storyboard.review.lockedStage")
+        }
+    }
+
     private var createRevisionPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
             reviewSectionLabel("Ny låst revisjon")
@@ -624,7 +754,7 @@ struct StoryboardReviewRoundsView: View {
         Button { createRound() } label: {
             Label("Send til review", systemImage: "paperplane.fill")
                 .font(.system(size: 12, weight: .semibold))
-                .frame(minHeight: 24)
+                .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
         }
         .buttonStyle(.borderedProminent).tint(BoardBrand.accent)
         .disabled(busy || label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -950,6 +1080,86 @@ struct StoryboardReviewRoundsView: View {
             }
             busy = false
         }
+    }
+}
+
+private struct StoryboardLockedFramePreview: View {
+    let frame: StoryboardReviewSnapshotFrameDTO
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(Color.black.opacity(0.78))
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit()
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "photo.on.rectangle.angled").font(.title2)
+                    Text("Forhåndsvisning lastes")
+                        .font(.subheadline)
+                }
+                .foregroundStyle(BoardBrand.dim)
+            }
+        }
+        .aspectRatio(16 / 9, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.16)))
+        .task(id: imagePath) { await loadImage() }
+    }
+
+    private var imagePath: String? { frame.thumbnailUrl ?? frame.imageUrl }
+
+    @MainActor
+    private func loadImage() async {
+        if let imagePath {
+            if let cached = FrameImageCache.image(for: imagePath) {
+                image = cached
+                return
+            }
+            if let embedded = decodeDataURL(imagePath) {
+                FrameImageCache.images[imagePath] = embedded
+                image = embedded
+                return
+            }
+            let data: Data?
+            if let remoteURL = URL(string: imagePath), remoteURL.scheme == "https" {
+                if let (downloaded, response) = try? await URLSession.shared.data(from: remoteURL),
+                   (response as? HTTPURLResponse)?.statusCode == 200 {
+                    data = downloaded
+                } else {
+                    data = nil
+                }
+            } else {
+                data = await RoleRoomAPIClient.shared.fetchRemoteImageData(path: imagePath)
+            }
+            if let data, let downloaded = UIImage(data: data) {
+                FrameImageCache.images[imagePath] = downloaded
+                image = downloaded
+                return
+            }
+        }
+        image = renderDrawing()
+    }
+
+    @MainActor
+    private func renderDrawing() -> UIImage? {
+        guard let strokes = frame.drawingData?.strokes,
+              !strokes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let renderable = FrameSummary(
+            id: frame.id, shotNumber: frame.shotNumber ?? "?", detail: "",
+            strokesJSON: strokes, description: frame.description ?? "", notes: nil,
+            shotType: nil, lensMm: nil, movement: nil, durationSec: 0,
+            transition: nil, focusDepth: nil, timeOfDay: nil, weather: nil,
+            beatTag: nil, tags: [], thumbnailDataURL: frame.thumbnailUrl,
+            drawingWidth: frame.drawingData?.width ?? 1920,
+            drawingHeight: frame.drawingData?.height ?? 1080,
+            frameStatus: nil, comments: [], updatedAt: nil,
+            underlayDataURL: nil, underlayOpacity: nil, perspectiveMode: nil,
+            vanishingPoints: nil, voiceoverDataURL: nil, imageUrl: frame.imageUrl,
+            reviewPriority: nil, reviewDueAt: nil, reviewApprovedBy: nil,
+            reviewApprovedAt: nil, reviewStarred: nil, reviewAssignee: nil,
+            reviewColorLabel: nil, reviewSnoozedUntil: nil)
+        return FrameRenderService.image(for: renderable, maxWidth: 1200, includeReviewLayer: true)
     }
 }
 

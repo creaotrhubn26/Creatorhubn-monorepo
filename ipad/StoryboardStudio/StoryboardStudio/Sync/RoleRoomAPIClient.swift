@@ -640,6 +640,15 @@ struct FrameSummary: Identifiable, Sendable {
     var aiVideoVersions: [AIVideoVersion] = []
     var cameraAngle: String? = nil
     var lighting: String? = nil
+    // Assistant-editable production fields are retained in summaries so an
+    // accepted suggestion can create a complete, local inverse patch.
+    var productionLocation: String? = nil
+    var screenDirection: String? = nil
+    var continuityNotes: String? = nil
+    var productionNotes: String? = nil
+    var vfxNotes: String? = nil
+    var revisionStatus: String? = nil
+    var revisionReason: String? = nil
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -2361,6 +2370,13 @@ actor RoleRoomAPIClient {
                 .compactMap(AIVideoVersion.init(dictionary:))
             summary.cameraAngle = frame["cameraAngle"] as? String
             summary.lighting = frame["lighting"] as? String
+            summary.productionLocation = frame["location"] as? String
+            summary.screenDirection = frame["screenDirection"] as? String
+            summary.continuityNotes = frame["continuityNotes"] as? String
+            summary.productionNotes = frame["productionNotes"] as? String
+            summary.vfxNotes = frame["vfxNotes"] as? String
+            summary.revisionStatus = frame["revisionStatus"] as? String
+            summary.revisionReason = frame["revisionReason"] as? String
             return summary
         }
         return SceneSummary(

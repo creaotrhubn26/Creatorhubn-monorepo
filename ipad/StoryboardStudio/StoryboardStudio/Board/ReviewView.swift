@@ -85,6 +85,16 @@ final class ReviewState: ObservableObject {
     }
 
     func load() async {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["SB_REVIEW_WORKSPACE_DEMO"] == "1" {
+            scenes = Self.demoScenes()
+            if selected == nil, let first = allFrames.first {
+                selected = (first.scene.id, first.frame.id)
+            }
+            presentNames = ["Kari"]
+            return
+        }
+        #endif
         if let fetched = try? await RoleRoomAPIClient.shared
             .fetchScenes(manuscriptId: manuscript.id) {
             scenes = fetched
@@ -105,6 +115,55 @@ final class ReviewState: ObservableObject {
         await FrameImageCache.prefetch(frames: Array(allFrames.map(\.frame).prefix(24)))
         presentNames = await RoleRoomAPIClient.shared.reportPresence(manuscriptId: manuscript.id)
     }
+
+    #if DEBUG
+    private static func demoScenes() -> [SceneSummary] {
+        let team = #"[{"id":"director","name":"Kari","role":"Director"},{"id":"dp","name":"Mina","role":"DP"},{"id":"producer","name":"Jon","role":"Producer"}]"#
+        func frame(_ id: String, _ shot: String, _ description: String,
+                   _ status: String, _ variant: Int, _ comments: [ReviewComment]) -> FrameSummary {
+            FrameSummary(
+                id: id, shotNumber: shot, detail: description, strokesJSON: "[]",
+                description: description, notes: "Behold blikkretningen mot vinduet.",
+                shotType: variant == 0 ? "WS" : "CU", lensMm: variant == 0 ? 35 : 85,
+                movement: "Static", durationSec: variant == 0 ? 4.5 : 2.2,
+                transition: "Cut", focusDepth: "Shallow", timeOfDay: "Night",
+                weather: "Rain", beatTag: "Reveal", tags: ["TROLL", "TOG"],
+                thumbnailDataURL: StoryboardReviewDemoArtwork.dataURL(variant: variant),
+                drawingWidth: 1280, drawingHeight: 720, frameStatus: status,
+                comments: comments, updatedAt: "2026-09-13T07:30:00Z",
+                underlayDataURL: nil, underlayOpacity: nil, perspectiveMode: nil,
+                vanishingPoints: nil, voiceoverDataURL: nil,
+                imageUrl: StoryboardReviewDemoArtwork.dataURL(variant: variant),
+                reviewPriority: status == "needs_work" ? "Høy" : "Normal",
+                reviewDueAt: "2026-09-14T10:00:00Z", reviewApprovedBy: nil,
+                reviewApprovedAt: nil, reviewStarred: variant == 0,
+                reviewAssignee: variant == 0 ? "Mina" : "Kari",
+                reviewColorLabel: variant == 0 ? "#8b5cf6" : "#3bb8c4",
+                reviewSnoozedUntil: nil, setLocation: "Togvogn A", stageUnit: "Stage 2",
+                reviewFollowers: ["Kari", "Mina"])
+        }
+        let pinned = ReviewComment(
+            id: "comment-demo", role: "Director", author: "Kari",
+            text: "Hold totalbildet litt lenger før vi går til reaksjonen.",
+            at: "2026-09-13T07:35:00Z", x: 0.68, y: 0.31,
+            parentId: nil, likes: 2, targetX: 0.56, targetY: 0.44)
+        let firstScene = SceneSummary(
+            id: "scene-train", heading: "INT. TOG — NATT",
+            frames: [
+                frame("frame-3", "3A", "Trollet trer frem utenfor vinduet",
+                      "in_review", 0, [pinned]),
+                frame("frame-4", "3B", "Nora oppdager silhuetten",
+                      "needs_work", 1, []),
+            ],
+            presentationConcept: nil, presentationFooter: nil, hubTasks: nil,
+            hubNotes: nil, hubQuote: nil, hubMoodboard: nil, hubMapPositions: nil,
+            hubMapNotes: nil, hubTeam: team, hubInfo: nil, hubAssetFolders: nil,
+            hubAssetColors: nil, sceneNumber: 3, intExt: "INT", location: "TOG",
+            timeOfDay: "NATT", descriptionText: "Regn slår mot vinduet.",
+            characters: ["NORA", "TROLLET"])
+        return [firstScene]
+    }
+    #endif
 
     /// Serialiser kommentarliste (bevarer pins/likes/tråder/lederlinjer).
     static func commentDicts(_ comments: [ReviewComment]) -> [[String: any Sendable]] {
@@ -310,7 +369,7 @@ enum StoryboardReviewWorkspaceSection: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .shots: return "Shots"
+        case .shots: return "Arbeidskopi"
         case .revisions: return "Låste revisjoner"
         }
     }
@@ -340,6 +399,12 @@ struct ReviewView: View {
     @State private var exportShareURL: URL?
     @State private var showTeamEditor = false
     @State private var workspaceSection: StoryboardReviewWorkspaceSection = .shots
+    @State private var showShotRail = true
+    @State private var showContextRail = false
+    @State private var contextTab = "Kommentarer"
+    @AppStorage("storyboard.review.presentationRole")
+    private var presentationRoleRaw = StoryboardProductionRole.director.rawValue
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let roles = ["Director", "DP", "Producer", "Editor", "Artist"]
 
@@ -352,6 +417,11 @@ struct ReviewView: View {
         self.onNavigate = onNavigate
     }
 
+    private var presentationRole: StoryboardProductionRole {
+        get { StoryboardProductionRole(rawValue: presentationRoleRaw) ?? .director }
+        nonmutating set { presentationRoleRaw = newValue.rawValue }
+    }
+
     var body: some View {
         NavigationStack {
             reviewWorkspace
@@ -360,20 +430,30 @@ struct ReviewView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    if workspaceSection == .shots, let status = state.status {
-                        Text(status).font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
+                    if workspaceSection == .shots, let status = state.status, !status.isEmpty {
+                        Text(status).font(.subheadline).foregroundStyle(BoardBrand.dim)
                     }
                 }
-                ToolbarItem(placement: .principal) {
-                    Picker("Review-område", selection: $workspaceSection) {
-                        ForEach(StoryboardReviewWorkspaceSection.allCases) { section in
-                            Text(section.title).tag(section)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        ForEach(StoryboardProductionRole.allCases) { role in
+                            Button {
+                                presentationRole = role
+                                if role == .client { contextTab = "Kommentarer" }
+                            } label: {
+                                if presentationRole == role {
+                                    Label(role.title, systemImage: "checkmark")
+                                } else {
+                                    Label(role.title, systemImage: role.icon)
+                                }
+                            }
                         }
+                    } label: {
+                        Label(presentationRole.title, systemImage: presentationRole.icon)
+                            .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: 360)
-                    .frame(minHeight: 44)
-                    .accessibilityIdentifier("storyboard.review.workspacePicker")
+                    .accessibilityLabel("Visning for \(presentationRole.title)")
+                    .accessibilityIdentifier("storyboard.review.rolePicker")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Lukk") { dismiss() }
@@ -432,36 +512,194 @@ struct ReviewView: View {
                 Divider().overlay(BoardBrand.border)
             }
             reviewWorkspaceContent
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(BoardBrand.chrome)
     }
 
     @ViewBuilder
     private var reviewWorkspaceContent: some View {
-        switch workspaceSection {
-        case .shots:
+        VStack(spacing: 0) {
+            reviewModeBar
+            Divider().overlay(BoardBrand.border)
+            switch workspaceSection {
+            case .shots:
+                GeometryReader { proxy in
+                    shotsWorkspace(width: proxy.size.width)
+                }
+            case .revisions:
+                if state.project.id.isEmpty {
+                    ContentUnavailableView(
+                        "Prosjekt mangler",
+                        systemImage: "rectangle.badge.xmark",
+                        description: Text("Koble storyboardet til et Role Room-prosjekt før du oppretter en revisjon."))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .foregroundStyle(.white)
+                } else {
+                    StoryboardReviewRoundsView(
+                        projectId: state.project.id,
+                        manuscriptId: state.manuscript.id,
+                        onRestored: { await state.load() },
+                        embedded: true,
+                        presentationRole: presentationRole)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func shotsWorkspace(width: CGFloat) -> some View {
+        let layout = StoryboardReviewLayout(width: width)
+        if layout == .wide {
+            let leadingWidth = showShotRail ? StoryboardExperienceMetrics.railWidth + 1 : 0
+            let trailingWidth = showContextRail ? StoryboardExperienceMetrics.inspectorWidth + 1 : 0
+            let canvasWidth = max(0, width - leadingWidth - trailingWidth)
             HStack(spacing: 0) {
-                queue
-                Divider().overlay(BoardBrand.border)
+                if showShotRail {
+                    queue
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    Divider().overlay(BoardBrand.border)
+                }
                 centerPane
-                Divider().overlay(BoardBrand.border)
-                inspector
+                    .frame(width: canvasWidth)
+                if showContextRail {
+                    Divider().overlay(BoardBrand.border)
+                    contextualRail
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
-        case .revisions:
-            if state.project.id.isEmpty {
-                ContentUnavailableView(
-                    "Prosjekt mangler",
-                    systemImage: "rectangle.badge.xmark",
-                    description: Text("Koble storyboardet til et Role Room-prosjekt før du oppretter en revisjon."))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .foregroundStyle(.white)
-            } else {
-                StoryboardReviewRoundsView(
-                    projectId: state.project.id,
-                    manuscriptId: state.manuscript.id,
-                    onRestored: { await state.load() },
-                    embedded: true)
+            .frame(width: width, alignment: .leading)
+            .clipped()
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showShotRail)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showContextRail)
+        } else {
+            VStack(spacing: 0) {
+                if showShotRail {
+                    compactShotStrip
+                        .frame(width: width, alignment: .leading)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    Divider().overlay(BoardBrand.border)
+                }
+                if layout == .compact {
+                    let trailingWidth = showContextRail
+                        ? StoryboardExperienceMetrics.inspectorWidth + 1 : 0
+                    let canvasWidth = max(0, width - trailingWidth)
+                    HStack(spacing: 0) {
+                        centerPane
+                            .frame(width: canvasWidth)
+                        if showContextRail {
+                            Divider().overlay(BoardBrand.border)
+                            contextualRail
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
+                    }
+                    .frame(width: width, alignment: .leading)
+                    .clipped()
+                } else {
+                    ZStack(alignment: .trailing) {
+                        centerPane
+                            .frame(width: width)
+                        if showContextRail {
+                            contextualRail
+                                .frame(width: min(StoryboardExperienceMetrics.inspectorWidth,
+                                                  width * 0.82))
+                                .shadow(color: .black.opacity(0.5), radius: 18, x: -8)
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
+                    }
+                }
             }
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showShotRail)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showContextRail)
+        }
+    }
+
+    private var reviewModeBar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                shotRailToggle
+                workspacePicker
+                Text(workspaceSection == .shots
+                     ? presentationRole.reviewSidebarTitle
+                     : "Låsing, review og gjenoppretting i samme arbeidsflate")
+                    .font(.subheadline)
+                    .foregroundStyle(BoardBrand.dim)
+                    .lineLimit(1)
+                Spacer()
+                contextRailToggle
+            }
+            HStack(spacing: 6) {
+                shotRailToggle
+                Menu {
+                    Button("Arbeidskopi", systemImage: "square.stack.3d.up") {
+                        workspaceSection = .shots
+                    }
+                    Button("Låste revisjoner", systemImage: "lock.rectangle.stack") {
+                        workspaceSection = .revisions
+                    }
+                } label: {
+                    Label(workspaceSection == .shots ? "Arbeidskopi" : "Låste revisjoner",
+                          systemImage: workspaceSection == .shots
+                          ? "square.stack.3d.up" : "lock.rectangle.stack")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+                        .background(Color.white.opacity(0.08),
+                                    in: RoundedRectangle(cornerRadius: 9))
+                }
+                Spacer()
+                contextRailToggle
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 52)
+        .frame(maxWidth: .infinity)
+        .background(BoardBrand.panel)
+    }
+
+    private var shotRailToggle: some View {
+        Button {
+            showShotRail.toggle()
+        } label: {
+            Image(systemName: showShotRail ? "sidebar.left" : "sidebar.leading")
+                .frame(width: StoryboardExperienceMetrics.minimumTouchTarget,
+                       height: StoryboardExperienceMetrics.minimumTouchTarget)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(showShotRail ? .white : BoardBrand.dim)
+        .disabled(workspaceSection == .revisions)
+        .accessibilityLabel(showShotRail ? "Skjul shot-kø" : "Vis shot-kø")
+    }
+
+    private var workspacePicker: some View {
+        Picker("Review-kilde", selection: $workspaceSection) {
+            Label("Arbeidskopi", systemImage: "square.stack.3d.up")
+                .tag(StoryboardReviewWorkspaceSection.shots)
+            Label("Låste revisjoner", systemImage: "lock.rectangle.stack")
+                .tag(StoryboardReviewWorkspaceSection.revisions)
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 330)
+        .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+        .accessibilityIdentifier("storyboard.review.workspacePicker")
+    }
+
+    @ViewBuilder
+    private var contextRailToggle: some View {
+        if workspaceSection == .shots {
+            Button {
+                showContextRail.toggle()
+            } label: {
+                Image(systemName: showContextRail ? "sidebar.right" : "sidebar.trailing")
+                    .frame(width: StoryboardExperienceMetrics.minimumTouchTarget,
+                           height: StoryboardExperienceMetrics.minimumTouchTarget)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(showContextRail ? .white : BoardBrand.dim)
+            .accessibilityLabel(showContextRail ? "Skjul review-panel" : "Vis review-panel")
+            .accessibilityIdentifier("storyboard.review.contextRail.toggle")
         }
     }
 
@@ -533,8 +771,63 @@ struct ReviewView: View {
             }
             .padding(12)
         }
-        .frame(width: 300)
+        .frame(width: StoryboardExperienceMetrics.railWidth)
         .background(BoardBrand.panel)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("storyboard.review.verticalShotRail")
+    }
+
+    private var compactShotStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            FlowStatusChips(state: state)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 9) {
+                    ForEach(state.allFrames, id: \.frame.id) { pair in
+                        compactShotButton(pair)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(height: 142)
+        .background(BoardBrand.panel)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("storyboard.review.compactShotStrip")
+    }
+
+    private func compactShotButton(_ pair: (scene: SceneSummary, frame: FrameSummary)) -> some View {
+        let isSelected = state.selected?.frameId == pair.frame.id
+        return Button {
+            state.selected = (pair.scene.id, pair.frame.id)
+        } label: {
+            HStack(spacing: 9) {
+                Group {
+                    if let image = decodeDataURL(pair.frame.thumbnailDataURL)
+                        ?? FrameImageCache.image(for: pair.frame.imageUrl) {
+                        Image(uiImage: image).resizable().scaledToFill()
+                    } else {
+                        Rectangle().fill(Color.white.opacity(0.06))
+                    }
+                }
+                .frame(width: 112, height: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(pair.frame.shotNumber)
+                        .font(.subheadline.monospaced().weight(.bold)).foregroundStyle(.white)
+                    Text(pair.frame.description)
+                        .font(.caption).foregroundStyle(BoardBrand.dim).lineLimit(2)
+                }
+            }
+            .padding(7)
+            .frame(width: 252, alignment: .leading)
+            .frame(minHeight: 78, alignment: .leading)
+            .background(isSelected ? BoardBrand.accent.opacity(0.22)
+                        : Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10)
+                .stroke(isSelected ? BoardBrand.accent : BoardBrand.border, lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Shot \(pair.frame.shotNumber), \(pair.frame.description)")
     }
 
     private func queueRow(_ pair: (scene: SceneSummary, frame: FrameSummary)) -> some View {
@@ -610,57 +903,133 @@ struct ReviewView: View {
     // MARK: Midtfelt
 
     private var centerPane: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                if let pair = state.selectedPair {
-                    headerRow(pair)
-                    previewArea(pair)
-                    sceneContext(pair)
-                    commentsSection(pair)
-                } else {
-                    Text("Velg et shot i køen").foregroundStyle(BoardBrand.dim).padding(40)
-                }
+        VStack(alignment: .leading, spacing: 12) {
+            if let pair = state.selectedPair {
+                headerRow(pair)
+                previewArea(pair)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            } else {
+                ContentUnavailableView("Velg et shot", systemImage: "rectangle.on.rectangle",
+                                       description: Text("Åpne shot-køen og velg bildet du vil avgjøre."))
+                    .foregroundStyle(.white)
             }
-            .padding(16)
         }
-        .frame(maxWidth: .infinity)
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(colors: [BoardBrand.chrome, Color.black.opacity(0.94)],
+                           startPoint: .top, endPoint: .bottom))
+    }
+
+    private var contextualRail: some View {
+        VStack(spacing: 0) {
+            if presentationRole != .client {
+                Picker("Panel", selection: $contextTab) {
+                    Text("Kommentarer").tag("Kommentarer")
+                    Text(contextualDetailsTitle).tag("Detaljer")
+                }
+                .pickerStyle(.segmented)
+                .padding(12)
+                .frame(minHeight: 56)
+            }
+            Divider().overlay(BoardBrand.border)
+            if presentationRole == .client, let pair = state.selectedPair {
+                HStack(spacing: 8) {
+                    Button {
+                        state.setStatus("done")
+                    } label: {
+                        Label("Godkjenn", systemImage: "checkmark.circle.fill")
+                            .frame(maxWidth: .infinity,
+                                   minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+                    }
+                    .buttonStyle(.borderedProminent).tint(.green)
+                    Button {
+                        state.setStatus("needs_work")
+                    } label: {
+                        Label("Be om endring", systemImage: "arrow.uturn.backward.circle")
+                            .frame(maxWidth: .infinity,
+                                   minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
+                    }
+                    .buttonStyle(.bordered).tint(.orange)
+                }
+                .padding(12)
+                .accessibilityLabel("Avgjørelse for shot \(pair.frame.shotNumber)")
+                Divider().overlay(BoardBrand.border)
+            }
+            if contextTab == "Kommentarer" || presentationRole == .client {
+                ScrollView {
+                    if let pair = state.selectedPair {
+                        commentsSection(pair)
+                            .padding(14)
+                    }
+                }
+            } else {
+                inspector
+            }
+        }
+        .frame(width: StoryboardExperienceMetrics.inspectorWidth)
+        .background(BoardBrand.panel)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("storyboard.review.contextRail")
+    }
+
+    private var contextualDetailsTitle: String {
+        switch presentationRole {
+        case .cinematographer: return "Kamera"
+        case .producer: return "Produksjon"
+        case .storyboardArtist: return "Shot"
+        case .director: return "Avgjørelse"
+        case .client: return "Detaljer"
+        }
     }
 
     private func headerRow(_ pair: (scene: SceneSummary, frame: FrameSummary)) -> some View {
-        HStack(spacing: 10) {
-            Text(pair.frame.shotNumber)
-                .font(.system(size: 18, weight: .bold, design: .monospaced))
-                .foregroundStyle(.white)
-            Text(pair.scene.heading.uppercased())
-                .font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
-            Text(pair.frame.description)
-                .font(.system(size: 13)).foregroundStyle(.white).lineLimit(1)
-            statusBadge(pair.frame)
-            Button {
-                state.patch(["reviewStarred": !(pair.frame.reviewStarred ?? false)])
-            } label: {
-                Image(systemName: (pair.frame.reviewStarred ?? false) ? "star.fill" : "star")
-                    .font(.system(size: 14))
-                    .foregroundStyle((pair.frame.reviewStarred ?? false) ? .yellow : BoardBrand.dim)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 9) {
+                Text(pair.frame.shotNumber)
+                    .font(.title3.monospaced().bold()).foregroundStyle(.white)
+                Text(pair.scene.heading.uppercased())
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(BoardBrand.dim)
+                    .lineLimit(1)
+                statusBadge(pair.frame)
+                Spacer(minLength: 8)
+                Button {
+                    state.patch(["reviewStarred": !(pair.frame.reviewStarred ?? false)])
+                } label: {
+                    Image(systemName: (pair.frame.reviewStarred ?? false) ? "star.fill" : "star")
+                        .font(.system(size: 16))
+                        .foregroundStyle((pair.frame.reviewStarred ?? false) ? .yellow : BoardBrand.dim)
+                        .frame(width: StoryboardExperienceMetrics.minimumTouchTarget,
+                               height: StoryboardExperienceMetrics.minimumTouchTarget)
+                }
+                .buttonStyle(.plain)
+                reviewActionsMenu(pair)
             }
-            .buttonStyle(.plain)
-            if let assignee = pair.frame.reviewAssignee {
-                Label(assignee, systemImage: "person.crop.circle")
-                    .font(.system(size: 11)).foregroundStyle(BoardBrand.accent)
+            HStack(spacing: 12) {
+                Text(pair.frame.description)
+                    .font(.body.weight(.medium)).foregroundStyle(.white).lineLimit(2)
+                Spacer(minLength: 8)
+                if let assignee = pair.frame.reviewAssignee {
+                    Label(assignee, systemImage: "person.crop.circle")
+                        .font(.caption.weight(.semibold)).foregroundStyle(BoardBrand.accent)
+                }
+                if let due = dueLabel(pair.frame) {
+                    Text(due.text)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(due.urgent ? .red : BoardBrand.dim)
+                }
+                if compareMode || selectedVersion != 0 {
+                    Label(selectedVersion == 0 ? "Gjeldende" : "Versjon −\(selectedVersion)",
+                          systemImage: "clock.arrow.circlepath")
+                        .font(.caption).foregroundStyle(BoardBrand.accent)
+                }
             }
-            if let due = dueLabel(pair.frame) {
-                Text(due.text)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(due.urgent ? .red : BoardBrand.dim)
-            }
-            if compareMode || selectedVersion != 0 {
-                Label(selectedVersion == 0 ? "Gjeldende" : "Versjon −\(selectedVersion)",
-                      systemImage: "clock.arrow.circlepath")
-                    .font(.system(size: 11)).foregroundStyle(BoardBrand.accent)
-            }
-            Spacer()
-            // Sjeldne handlinger samlet i «…» (mockup/board-mønster)
-            Menu {
+        }
+    }
+
+    private func reviewActionsMenu(_ pair: (scene: SceneSummary, frame: FrameSummary)) -> some View {
+        Menu {
+            if presentationRole.canEditShotMetadata {
                 Menu {
                     ForEach(Array(state.reviewers.enumerated()), id: \.offset) { _, reviewer in
                         Button(reviewer.name) {
@@ -675,6 +1044,7 @@ struct ReviewView: View {
                 } label: {
                     Label(pair.frame.reviewAssignee ?? "Tildel", systemImage: "person.crop.circle")
                 }
+            }
                 if !historyVersions.isEmpty {
                     Menu {
                         Button("Gjeldende versjon") { selectedVersion = 0 }
@@ -700,11 +1070,11 @@ struct ReviewView: View {
                 } label: {
                     Label("Eksporter PNG", systemImage: "photo")
                 }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 15)).foregroundStyle(BoardBrand.dim)
-                    .frame(width: 30, height: 30)
-            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 17)).foregroundStyle(BoardBrand.dim)
+                .frame(width: StoryboardExperienceMetrics.minimumTouchTarget,
+                       height: StoryboardExperienceMetrics.minimumTouchTarget)
         }
     }
 
@@ -755,42 +1125,44 @@ struct ReviewView: View {
 
     private func previewToolbar(_ pair: (scene: SceneSummary, frame: FrameSummary)) -> some View {
         HStack(spacing: 2) {
-            toolButton("mappin.circle", "Pin", active: pinMode) {
-                pinMode.toggle()
-                pendingPin = nil
-                pendingPinTarget = nil
-                redlineMode = nil
-            }
-            toolButton("arrow.up.right", "Pil", active: redlineMode == "arrow") {
-                redlineMode = redlineMode == "arrow" ? nil : "arrow"
-                pinMode = false
-            }
-            toolButton("scribble", "Tegn", active: redlineMode == "draw") {
-                redlineMode = redlineMode == "draw" ? nil : "draw"
-                pinMode = false
-            }
-            toolButton("eraser", "Visk", active: redlineMode == "erase") {
-                redlineMode = redlineMode == "erase" ? nil : "erase"
-                pinMode = false
-            }
-            if hasRedlines(pair) {
-                toolButton("arrow.uturn.backward", "Angre", active: false) {
-                    state.undoRedline()
+            if presentationRole.canDrawReviewMarks {
+                toolButton("mappin.circle", "Pin", active: pinMode) {
+                    pinMode.toggle()
+                    pendingPin = nil
+                    pendingPinTarget = nil
+                    redlineMode = nil
                 }
-                .contextMenu {
-                    Button(role: .destructive) {
-                        state.undoRedline(removeAll: true)
-                    } label: {
-                        Label("Fjern alle markeringer", systemImage: "trash")
+                toolButton("arrow.up.right", "Pil", active: redlineMode == "arrow") {
+                    redlineMode = redlineMode == "arrow" ? nil : "arrow"
+                    pinMode = false
+                }
+                toolButton("scribble", "Tegn", active: redlineMode == "draw") {
+                    redlineMode = redlineMode == "draw" ? nil : "draw"
+                    pinMode = false
+                }
+                toolButton("eraser", "Visk", active: redlineMode == "erase") {
+                    redlineMode = redlineMode == "erase" ? nil : "erase"
+                    pinMode = false
+                }
+                if hasRedlines(pair) {
+                    toolButton("arrow.uturn.backward", "Angre", active: false) {
+                        state.undoRedline()
+                    }
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            state.undoRedline(removeAll: true)
+                        } label: {
+                            Label("Fjern alle markeringer", systemImage: "trash")
+                        }
                     }
                 }
-            }
-            if !state.redlineRedoStack.isEmpty {
-                toolButton("arrow.uturn.forward", "Gjør om", active: false) {
-                    state.redoRedline()
+                if !state.redlineRedoStack.isEmpty {
+                    toolButton("arrow.uturn.forward", "Gjør om", active: false) {
+                        state.redoRedline()
+                    }
                 }
+                Divider().frame(height: 20).overlay(Color.white.opacity(0.15))
             }
-            Divider().frame(height: 16).overlay(Color.white.opacity(0.15))
             toolButton("arrow.up.left.and.arrow.down.right", "Fullskjerm", active: false) {
                 fullscreenPreview = true
             }
@@ -803,9 +1175,10 @@ struct ReviewView: View {
                             action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: icon)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(active ? .white : BoardBrand.dim)
-                .padding(.horizontal, 9).padding(.vertical, 5)
+                .padding(.horizontal, 10)
+                .frame(minHeight: StoryboardExperienceMetrics.minimumTouchTarget)
                 .background(active ? BoardBrand.accent.opacity(0.55) : .clear,
                             in: Capsule())
         }
@@ -1053,25 +1426,20 @@ struct ReviewView: View {
 
     private func commentsSection(_ pair: (scene: SceneSummary, frame: FrameSummary)) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 14) {
-                ForEach(["Kommentarer", "Notater"], id: \.self) { tab in
-                    Button {
-                        commentTab = tab
-                        if tab == "Notater" { notesDraft = pair.frame.notes ?? "" }
-                    } label: {
-                        Text(tab == "Kommentarer"
-                             ? "KOMMENTARER · \(pair.frame.comments.count)"
-                             : ((pair.frame.notes?.isEmpty == false) ? "NOTATER •" : "NOTATER"))
-                            .font(.system(size: 10, weight: .bold)).kerning(1)
-                            .foregroundStyle(commentTab == tab ? .white : BoardBrand.label)
-                    }
-                    .buttonStyle(.plain)
+            HStack(spacing: 8) {
+                Picker("Samtale", selection: $commentTab) {
+                    Text("Kommentarer · \(pair.frame.comments.count)").tag("Kommentarer")
+                    Text((pair.frame.notes?.isEmpty == false) ? "Notater •" : "Notater")
+                        .tag("Notater")
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: commentTab) {
+                    if commentTab == "Notater" { notesDraft = pair.frame.notes ?? "" }
                 }
                 Spacer()
-                // Reviewere (hubTeam): avatarer m/ presence-dot + Rediger
                 if !state.reviewers.isEmpty {
-                    HStack(spacing: 5) {
-                        ForEach(Array(state.reviewers.enumerated()), id: \.offset) { _, reviewer in
+                    HStack(spacing: -5) {
+                        ForEach(Array(state.reviewers.prefix(3).enumerated()), id: \.offset) { _, reviewer in
                             avatar(reviewer.name, role: reviewer.role, size: 20)
                                 .overlay(alignment: .bottomTrailing) {
                                     Circle()
@@ -1082,12 +1450,15 @@ struct ReviewView: View {
                         }
                     }
                 }
-                Button("Rediger") { showTeamEditor = true }
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(BoardBrand.accent)
-                    .buttonStyle(.plain)
-                followersView(pair)
+                Button { showTeamEditor = true } label: {
+                    Image(systemName: "person.2")
+                        .frame(width: StoryboardExperienceMetrics.minimumTouchTarget,
+                               height: StoryboardExperienceMetrics.minimumTouchTarget)
+                }
+                .buttonStyle(.plain).foregroundStyle(BoardBrand.accent)
+                .accessibilityLabel("Administrer reviewere")
             }
+            followersView(pair)
             if commentTab == "Notater" {
                 TextField("Notater til shotet …", text: $notesDraft, axis: .vertical)
                     .lineLimit(4...10)
@@ -1335,7 +1706,10 @@ struct ReviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 if let pair = state.selectedPair {
-                    inspectorSection("SHOT-INFO") {
+                    if presentationRole == .storyboardArtist
+                        || presentationRole == .director
+                        || presentationRole == .cinematographer {
+                        inspectorSection(presentationRole == .cinematographer ? "KAMERA" : "SHOT-INFO") {
                         inspectorRow("Scene / shot", pair.frame.shotNumber)
                         InspectorTextRow(label: "Scene-navn",
                                          initial: pair.scene.heading) { value in
@@ -1367,8 +1741,12 @@ struct ReviewView: View {
                         editRow("Overgang", value: pair.frame.transition,
                                 options: ["Cut", "Dissolve", "Match Cut", "Smash Cut", "Wipe", "Fade"],
                                 key: "transition")
+                        }
                     }
-                    inspectorSection("PRODUKSJON") {
+                    if presentationRole == .director
+                        || presentationRole == .cinematographer
+                        || presentationRole == .producer {
+                        inspectorSection("PRODUKSJON") {
                         editRow("Tid på døgnet", value: pair.frame.timeOfDay,
                                 options: ["Day", "Night", "Dawn", "Dusk"], key: "timeOfDay")
                         editRow("Vær", value: pair.frame.weather,
@@ -1417,8 +1795,10 @@ struct ReviewView: View {
                                 .buttonStyle(.plain)
                             }
                         }
+                        }
                     }
-                    inspectorSection("SHOTSTATUS") {
+                    if presentationRole == .director || presentationRole == .producer {
+                        inspectorSection("SHOTSTATUS") {
                         HStack {
                             Text("Status").font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
                             Spacer()
@@ -1468,8 +1848,10 @@ struct ReviewView: View {
                         inspectorRow("Godkjent av", pair.frame.reviewApprovedBy ?? "—")
                         inspectorRow("Godkjent dato",
                                      pair.frame.reviewApprovedAt.map(shortDate) ?? "—")
+                        }
                     }
-                    VStack(spacing: 8) {
+                    if presentationRole == .director || presentationRole == .producer {
+                        VStack(spacing: 8) {
                         Button {
                             state.setStatus("done")
                         } label: {
@@ -1506,12 +1888,13 @@ struct ReviewView: View {
                                 .foregroundStyle(BoardBrand.dim)
                         }
                         .buttonStyle(.plain)
+                        }
                     }
                 }
             }
             .padding(14)
         }
-        .frame(width: 300)
+        .frame(maxWidth: .infinity)
         .background(BoardBrand.panel)
     }
 
