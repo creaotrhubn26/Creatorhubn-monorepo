@@ -53,10 +53,30 @@ final class AnbudProfileTests: XCTestCase {
         }
         """#.utf8)
 
-        let profile = try JSONDecoder().decode(DoffinProjectProfileDTO.self, from: data)
+        // Bruk samme snake_case-strategi som den ekte API-klienten. En vanlig
+        // JSONDecoder skjulte tidligere at eksplisitte snake_case-CodingKeys
+        // ble konvertert en gang til og derfor feilet mot staging-responsen.
+        let profile = try APIClient._sharedDecoder.decode(
+            DoffinProjectProfileDTO.self,
+            from: data
+        )
         XCTAssertEqual(profile.templateKey, "tidum.procurement")
         XCTAssertFalse(profile.isActive)
         XCTAssertTrue(profile.canManage)
         XCTAssertEqual(profile.suggestedWatches.first?.query.cpv, "48450000,72212450")
+    }
+
+    func testDoffinRequestEncoderUsesSnakeCaseOnce() throws {
+        struct Payload: Encodable { let watchKeys: [String] }
+
+        let data = try APIClient._sharedEncoder.encode(
+            Payload(watchKeys: ["tidum.scheduling"])
+        )
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+
+        XCTAssertEqual(json["watch_keys"] as? [String], ["tidum.scheduling"])
+        XCTAssertNil(json["watchKeys"])
     }
 }

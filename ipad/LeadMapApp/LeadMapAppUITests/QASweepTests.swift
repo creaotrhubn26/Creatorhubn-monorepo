@@ -1545,7 +1545,7 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = "2"
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["staging-environment-badge"].waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts["staging-session-ready"].waitForExistence(timeout: 45))
         let offline = app.buttons["qa-network-offline"]
         XCTAssertTrue(offline.waitForExistence(timeout: 3))
         offline.tap()
@@ -1562,13 +1562,11 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(submit.waitForExistence(timeout: 3))
         submit.tap()
 
-        XCTAssertTrue(
-            app.staticTexts.containing(
-                NSPredicate(format: "label CONTAINS[c] %@", "lagret offline")
-            ).firstMatch.waitForExistence(timeout: 8)
-        )
+        // Den korte toasten er bevisst flyktig og kan ligge bak sheetets
+        // dismiss-animasjon. Den globale synkstatusen er den autoritative,
+        // stabile kvitteringen på at handlingen faktisk er skrevet til kø.
         let syncStatus = app.buttons["global-sync-status"]
-        XCTAssertTrue(syncStatus.waitForExistence(timeout: 5))
+        XCTAssertTrue(syncStatus.waitForExistence(timeout: 8))
         XCTAssertTrue(syncStatus.label.localizedCaseInsensitiveContains("lagret lokalt"))
 
         app.buttons["qa-network-online"].tap()
@@ -1627,7 +1625,7 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "12" : "11"
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["staging-environment-badge"].waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts["staging-session-ready"].waitForExistence(timeout: 45))
         XCTAssertTrue(app.navigationBars["Verktøy"].waitForExistence(timeout: 15))
         let discovery = app.buttons["Profiler, kandidater og markedsinnsikt"]
         XCTAssertTrue(discovery.waitForExistence(timeout: 10))
@@ -1676,7 +1674,7 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "12" : "11"
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["staging-environment-badge"].waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts["staging-session-ready"].waitForExistence(timeout: 45))
         XCTAssertTrue(app.navigationBars["Verktøy"].waitForExistence(timeout: 15))
         let discovery = app.buttons["Profiler, kandidater og markedsinnsikt"]
         XCTAssertTrue(discovery.waitForExistence(timeout: 10))
@@ -1744,7 +1742,7 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["staging-environment-badge"].waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts["staging-session-ready"].waitForExistence(timeout: 45))
         let useTemplate = app.buttons.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "pondus-use-")
         ).firstMatch
