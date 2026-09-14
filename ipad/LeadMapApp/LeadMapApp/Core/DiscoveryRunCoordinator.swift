@@ -297,6 +297,14 @@ final class DiscoveryRunCoordinator {
         let bindingChanged = self.actorUserId != verifiedActorUserId
             || self.organizationId != organizationId
             || self.projectId != projectId
+        // Project/bootstrap refreshes can finish immediately after the user
+        // opens Discovery. Keep that explicit presentation intent while the
+        // valid tenant binding is replaced; clearInMemory still removes every
+        // project-bound value before the new project is restored.
+        let shouldKeepWorkspacePresented = isPresented
+            && verifiedActorUserId != nil
+            && organizationId != nil
+            && projectId != nil
         if bindingChanged {
             configurationGeneration &+= 1
         }
@@ -314,6 +322,7 @@ final class DiscoveryRunCoordinator {
         if bindingChanged {
             stopPolling()
             clearInMemory(keepBrief: false)
+            isPresented = shouldKeepWorkspacePresented
         }
         let binding = ConfigurationBinding(
             generation: configurationGeneration,

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import path from 'node:path';
 import { openCastingPlanner, selectFirstProject } from './helpers/role-room';
 
 const projectId = 'e2e-troll-production';
@@ -152,7 +153,9 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
     await selectFirstProject(page);
 
     await expect(page.getByTestId('location-manager-workspace')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('location-decision-room')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Troll', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Location Decision Room' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Klareringsporter' })).toBeVisible();
     await expect(page.getByText('Myndighetstillatelser er blokkert')).toBeVisible();
     await expect(page.getByText('Hold < 72 t')).toBeVisible();
@@ -184,11 +187,21 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
       await page.getByTestId('scout-media-panel').screenshot({ path: '/tmp/scout-capture-wide.png' });
     }
 
+    await page.getByLabel('Kreativ og dramaturgisk match beslutningsstatus').click();
+    await page.getByRole('option', { name: 'Godkjent', exact: true }).click();
+    await page.getByLabel('Evidens / kilde').first().fill('Regissørens godkjente moodboard, referanse SC-12.');
+    await expect(page.getByText('13% dokumentert pass').first()).toBeVisible();
+    if (process.env.LOCATION_DECISION_VISUAL_EVIDENCE) {
+      await page.getByTestId('location-decision-room').screenshot({ path: '/tmp/location-decision-wide.png' });
+    }
     await page.getByLabel('Neste kritiske handling').fill('Ring kommunen og send revidert trafikkplan kl. 09:00.');
-    await page.getByRole('button', { name: 'Lagre beredskap' }).click();
-    await expect(page.getByText('Lokasjonsberedskapen er lagret som versjon 1.')).toBeVisible();
+    await page.getByRole('button', { name: 'Lagre feltgrunnlag' }).click();
+    await expect(page.getByText('Feltgrunnlaget er lagret som versjon 1.')).toBeVisible();
     expect(api.savedVersions).toEqual([1]);
     expect(api.operation.operations.nextAction).toBe('Ring kommunen og send revidert trafikkplan kl. 09:00.');
+    expect(api.operation.operations.decisionReview.criteria).toContainEqual(expect.objectContaining({
+      id: 'creative_fit', status: 'pass', evidence: 'Regissørens godkjente moodboard, referanse SC-12.',
+    }));
     expect(api.operation.operations.scoutCapture.pins).toEqual([
       expect.objectContaining({ label: 'Smal nødutgang', status: 'verified', x: expect.any(Number), y: expect.any(Number) }),
     ]);
@@ -196,6 +209,7 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
 
     await page.reload();
     await expect(page.getByTestId('location-manager-workspace')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('13% dokumentert pass').first()).toBeVisible();
     await expect(page.getByLabel('Neste kritiske handling')).toHaveValue('Ring kommunen og send revidert trafikkplan kl. 09:00.');
     expect(api.authenticatedRequests.length).toBeGreaterThan(0);
     expect(api.authenticatedRequests.every((header) => header === 'Bearer dev-admin-local-session')).toBe(true);
@@ -217,6 +231,16 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
     await expect(page.getByRole('heading', { name: 'Troll', exact: true })).toBeVisible();
     await expect(page.getByText('Myndighetstillatelser er blokkert')).toBeVisible();
 
+    const criterionSection = page.getByRole('button', { name: 'Åpne Kreativ og dramaturgisk match' });
+    await expect(criterionSection).toHaveAttribute('aria-expanded', 'false');
+    const criterionTouchTarget = await criterionSection.boundingBox();
+    expect(criterionTouchTarget?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await criterionSection.tap();
+    await expect(page.getByLabel('Kreativ og dramaturgisk match beslutningsstatus')).toBeVisible();
+    if (process.env.LOCATION_DECISION_VISUAL_EVIDENCE) {
+      await page.getByTestId('location-decision-room').screenshot({ path: '/tmp/location-decision-mobile.png' });
+    }
+
     const clearanceSection = page.getByRole('button', { name: /Klareringsporter/ });
     await expect(clearanceSection).toHaveAttribute('aria-expanded', 'false');
     const sectionTouchTarget = await clearanceSection.boundingBox();
@@ -234,7 +258,7 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
     await nextAction.tap();
     await nextAction.fill('Mobil: avklar kommunal sperring før holdet utløper.');
     await expect(page.getByText('Ulagrede endringer')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Lagre beredskap' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Lagre feltgrunnlag' })).toBeEnabled();
 
     await page.setViewportSize({ width: 852, height: 393 });
     await expect(page.getByText('Scout Capture', { exact: true }).first()).toBeVisible();
@@ -245,7 +269,7 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
     }
   });
 
-  test('@mobile synkroniserer ti offline-opptak én gang hver', async ({ page, context }) => {
+  test('@mobile synkroniserer ti offline-opptak én gang hver', async ({ page }) => {
     const api = await installAuthenticatedLocationManagerApi(page);
     await openCastingPlanner(page, {
       urlFlags: { seed: 'production-manager-troll', session: 'location-manager', lens: 'location-management' },
@@ -254,15 +278,21 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
     const workspace = page.getByTestId('location-manager-workspace');
     await expect(workspace).toBeVisible({ timeout: 20_000 });
 
-    await context.setOffline(true);
+    // WebKit cannot read Playwright's synthetic local-file fixture while its
+    // entire browser process is forced offline. Drive the same app-level
+    // navigator transition so the queue path is exercised with readable files.
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+      window.dispatchEvent(new Event('offline'));
+    });
     await expect(page.getByText('Frakoblet')).toBeVisible();
     const photoInput = workspace.locator('input[type="file"]').first();
+    const durablePhotoFixture = path.resolve('public/assets/academy/placeholders/placeholder-directing.png');
     for (let index = 1; index <= 10; index += 1) {
-      await photoInput.setInputFiles({
-        name: `offline-${index}.png`,
-        mimeType: 'image/png',
-        buffer: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(25, index)]),
-      });
+      await photoInput.setInputFiles(durablePhotoFixture);
+      // The capture control is intentionally locked until Safari has copied the
+      // temporary camera file into the durable queue.
+      await expect(page.getByText(`${index} lagret offline`)).toBeVisible();
     }
     await expect(page.getByText('10 lagret offline')).toBeVisible();
     expect(api.scoutMedia).toHaveLength(0);
@@ -270,8 +300,12 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
     await page.getByTestId('scout-pin-canvas').tap({ position: { x: 95, y: 80 } });
     await expect(page.getByText('1. Offline portnotat')).toBeVisible();
     await page.getByRole('button', { name: 'Lagre lokalt' }).click();
+    await expect(page.getByText('Lagret lokalt. Endringen synkroniseres automatisk når forbindelsen er tilbake.')).toBeVisible();
 
-    await context.setOffline(false);
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+      window.dispatchEvent(new Event('online'));
+    });
     await expect.poll(() => api.scoutMedia.length, { timeout: 20_000 }).toBe(10);
     await expect(page.getByText('10 lagret offline')).toBeHidden();
     expect(new Set(api.scoutMedia.map((item) => item.id)).size).toBe(10);

@@ -2,6 +2,8 @@ import type {
   CastingProject,
   Location,
   LocationClearanceGate,
+  LocationDecisionCriterion,
+  LocationDecisionSignoff,
   LocationManagerOperations,
 } from '../../models/casting';
 
@@ -28,6 +30,39 @@ const DEFAULT_SCOUT_CHECKS: LocationManagerOperations['scoutCapture']['checks'] 
   { id: 'safety', title: 'Sikkerhet og nødadkomst', status: 'unchecked' },
   { id: 'light', title: 'Solretning og dagslys', status: 'unchecked' },
 ];
+
+export const DEFAULT_DECISION_CRITERIA: ReadonlyArray<Omit<LocationDecisionCriterion, 'mediaIds'>> = [
+  { id: 'creative_fit', label: 'Kreativ og dramaturgisk match', required: true, status: 'unknown' },
+  { id: 'camera_light', label: 'Kamera og lys', required: true, status: 'unknown' },
+  { id: 'sound', label: 'Lydforhold', required: true, status: 'unknown' },
+  { id: 'access_logistics', label: 'Adkomst og logistikk', required: true, status: 'unknown' },
+  { id: 'owner_permits', label: 'Eier og tillatelser', required: true, status: 'unknown' },
+  { id: 'safety', label: 'Sikkerhet', required: true, status: 'unknown' },
+  { id: 'schedule', label: 'Dato og opptaksplan', required: true, status: 'unknown' },
+  { id: 'budget', label: 'Budsjett', required: true, status: 'unknown' },
+];
+
+export const DEFAULT_DECISION_SIGNOFFS: ReadonlyArray<LocationDecisionSignoff> = [
+  { role: 'director', status: 'pending' },
+  { role: 'cinematographer', status: 'pending' },
+  { role: 'producer', status: 'pending' },
+];
+
+function buildDecisionCriteria(existing?: LocationDecisionCriterion[]): LocationDecisionCriterion[] {
+  const existingById = new Map((existing ?? []).map((criterion) => [criterion.id, criterion]));
+  return DEFAULT_DECISION_CRITERIA.map((criterion) => ({
+    ...criterion,
+    ...existingById.get(criterion.id),
+    label: criterion.label,
+    required: criterion.required,
+    mediaIds: existingById.get(criterion.id)?.mediaIds ?? [],
+  }));
+}
+
+function buildDecisionSignoffs(existing?: LocationDecisionSignoff[]): LocationDecisionSignoff[] {
+  const existingByRole = new Map((existing ?? []).map((signoff) => [signoff.role, signoff]));
+  return DEFAULT_DECISION_SIGNOFFS.map((signoff) => ({ ...signoff, ...existingByRole.get(signoff.role) }));
+}
 
 function initialGateStatus(location: Location, gateId: string): LocationClearanceGate['status'] {
   if (gateId === 'owner-permission' && location.contactInfo?.name) return 'requested';
@@ -84,6 +119,10 @@ export function buildLocationManagerOperations(
       observations: [],
       pins: [],
     },
+    decisionReview: {
+      criteria: buildDecisionCriteria(),
+      signoffs: buildDecisionSignoffs(),
+    },
     nextAction: location.contactInfo?.name
       ? 'Følg opp eier og avklar tilgjengelige opptaksdatoer.'
       : 'Finn eier eller rettighetshaver og start dialogen.',
@@ -110,6 +149,12 @@ export function buildLocationManagerOperations(
         : initial.scoutCapture.checks,
       observations: existing.scoutCapture?.observations ?? initial.scoutCapture.observations,
       pins: existing.scoutCapture?.pins ?? initial.scoutCapture.pins,
+    },
+    decisionReview: {
+      ...initial.decisionReview,
+      ...existing.decisionReview,
+      criteria: buildDecisionCriteria(existing.decisionReview?.criteria),
+      signoffs: buildDecisionSignoffs(existing.decisionReview?.signoffs),
     },
   };
 }
@@ -167,23 +212,23 @@ export function locationReadiness(operations: LocationManagerOperations): Locati
     .filter((risk) => risk.status !== 'resolved' && risk.severity === 'high')
     .forEach((risk) => warnings.push(risk.title));
 
-  const ownerScore = operations.ownerCommunication.status === 'agreed' ? 15
-    : ['contacted', 'awaiting_reply', 'negotiating'].includes(operations.ownerCommunication.status) ? 7 : 0;
-  const dateScore = operations.dateAvailability.status === 'verified' ? 15
-    : ['requested', 'in_progress'].includes(operations.dateAvailability.status) ? 7 : 0;
-  const recceScore = operations.recce.status === 'completed' ? 20
-    : ['scheduled', 'in_progress'].includes(operations.recce.status) ? 10 : 0;
-  const gateScore = mandatory.length > 0 ? Math.round((verified.length / mandatory.length) * 30) : 30;
-  const logisticsFields = Object.values(operations.logistics).filter((value) => typeof value === 'string' && value.trim()).length;
-  const logisticsScore = Math.min(10, logisticsFields * 2);
-  const unresolvedHighRisk = operations.risks.filter((risk) => risk.status !== 'resolved' && ['high', 'critical'].includes(risk.severity)).length;
-  const riskScore = Math.max(0, 10 - unresolvedHighRisk * 5);
-  const score = Math.max(0, Math.min(100, ownerScore + dateScore + recceScore + gateScore + logisticsScore + riskScore));
+  // This is workflow completion, not a prediction of whether the location is
+  // suitable. Only explicitly verified terminal states count; entered text,
+  // scheduled work and an empty risk register never create positive points.
+  const completionChecks = [
+    operations.ownerCommunication.status === 'agreed',
+    operations.dateAvailability.status === 'verified',
+    operations.recce.status === 'completed',
+    ...mandatory.map((gate) => gate.status === 'verified'),
+  ];
+  const score = completionChecks.length > 0
+    ? Math.round((completionChecks.filter(Boolean).length / completionChecks.length) * 100)
+    : 0;
 
   const nextAction = operations.nextAction?.trim()
     || blockers[0]
     || warnings[0]
-    || (score === 100 ? 'Lokasjonen er klar for opptak.' : 'Kontroller neste uferdige klareringspunkt.');
+    || (score === 100 ? 'Alle registrerte arbeidssteg er eksplisitt verifisert.' : 'Kontroller neste uferdige klareringspunkt.');
   return {
     score,
     blockers,
@@ -209,5 +254,88 @@ export function portfolioReadiness(locations: Location[]) {
     averageScore: states.length > 0
       ? Math.round(states.reduce((sum, state) => sum + state.score, 0) / states.length)
       : 0,
+  };
+}
+
+export interface LocationDecisionSummary {
+  evidenceScore: number;
+  verifiedCriteria: number;
+  totalRequiredCriteria: number;
+  blockers: string[];
+  lockReasons: string[];
+  approvals: number;
+  requiredApprovals: number;
+  explicitCost: number;
+  locked: boolean;
+  canLock: boolean;
+}
+
+const hasDecisionEvidence = (criterion: LocationDecisionCriterion): boolean =>
+  Boolean(criterion.evidence?.trim()) || criterion.mediaIds.length > 0;
+
+/**
+ * Conservative decision state. It never infers a pass from free text, uploaded media,
+ * address analysis or a partly completed workflow; only an explicit result with an
+ * attached evidence reference counts.
+ */
+export function locationDecisionSummary(operations: LocationManagerOperations): LocationDecisionSummary {
+  const requiredCriteria = operations.decisionReview.criteria.filter((criterion) => criterion.required);
+  const verifiedCriteria = requiredCriteria.filter((criterion) => (
+    criterion.status !== 'unknown'
+    && criterion.status !== 'not_applicable'
+    && hasDecisionEvidence(criterion)
+  ));
+  const passedCriteria = requiredCriteria.filter((criterion) => criterion.status === 'pass' && hasDecisionEvidence(criterion));
+  const evidenceScore = requiredCriteria.length > 0
+    ? Math.round((passedCriteria.length / requiredCriteria.length) * 100)
+    : 0;
+
+  const blockers: string[] = [];
+  requiredCriteria
+    .filter((criterion) => criterion.status === 'blocker')
+    .forEach((criterion) => blockers.push(`${criterion.label} er blokkert`));
+  operations.clearanceGates
+    .filter((gate) => gate.mandatory && gate.status === 'blocked')
+    .forEach((gate) => blockers.push(`${gate.title} er blokkert`));
+  if (operations.ownerCommunication.status === 'declined') blockers.push('Eier har avslått forespørselen');
+  if (operations.dateAvailability.status === 'blocked') blockers.push('Opptaksdatoene er blokkert');
+  operations.risks
+    .filter((risk) => risk.status !== 'resolved' && risk.severity === 'critical')
+    .forEach((risk) => blockers.push(risk.title));
+
+  const lockReasons: string[] = [];
+  requiredCriteria.forEach((criterion) => {
+    if (criterion.status !== 'pass') lockReasons.push(`${criterion.label} er ikke godkjent`);
+    else if (!hasDecisionEvidence(criterion)) lockReasons.push(`${criterion.label} mangler evidens`);
+  });
+  operations.clearanceGates
+    .filter((gate) => gate.mandatory && gate.status !== 'verified')
+    .forEach((gate) => lockReasons.push(`${gate.title} er ikke verifisert`));
+  if (operations.ownerCommunication.status !== 'agreed') lockReasons.push('Eieravtalen er ikke bekreftet');
+  if (operations.dateAvailability.status !== 'verified' || operations.dateAvailability.confirmedDates.length === 0) {
+    lockReasons.push('Opptaksdato er ikke verifisert');
+  }
+  if (operations.recce.status !== 'completed') lockReasons.push('Teknisk recce er ikke godkjent');
+  if (!['approved', 'settled'].includes(operations.finance.status)) lockReasons.push('Lokasjonskostnaden er ikke godkjent');
+  if (!operations.backupLocationId) lockReasons.push('Backup-lokasjon er ikke valgt');
+  const requiredApprovals = operations.decisionReview.signoffs.length;
+  const approvals = operations.decisionReview.signoffs.filter((signoff) => signoff.status === 'approved').length;
+  operations.decisionReview.signoffs
+    .filter((signoff) => signoff.status !== 'approved')
+    .forEach((signoff) => lockReasons.push(`${signoff.role} har ikke godkjent`));
+  blockers.forEach((blocker) => lockReasons.push(blocker));
+
+  const uniqueLockReasons = [...new Set(lockReasons)];
+  return {
+    evidenceScore,
+    verifiedCriteria: verifiedCriteria.length,
+    totalRequiredCriteria: requiredCriteria.length,
+    blockers: [...new Set(blockers)],
+    lockReasons: uniqueLockReasons,
+    approvals,
+    requiredApprovals,
+    explicitCost: operations.finance.locationFee + operations.finance.permitFees + operations.finance.restorationReserve,
+    locked: Boolean(operations.decisionReview.lockedAt),
+    canLock: uniqueLockReasons.length === 0 && !operations.decisionReview.lockedAt,
   };
 }

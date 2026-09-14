@@ -21,9 +21,38 @@ const locationOperationsPayload = () => ({
   logistics: { unitBase: 'P1', emergencyAccess: 'Nordport' },
   finance: { currency: 'NOK', locationFee: 10000, permitFees: 1200, restorationReserve: 3000, status: 'quoted' },
   risks: [{ id: 'weather', title: 'Vind', severity: 'high', status: 'mitigating', mitigation: 'Vindmåling' }],
-  backupLocationId: 'location-backup',
   weatherPlan: 'Flytt eksteriør til dag 2.',
   nextAction: 'Følg opp kommunen.',
+});
+
+const readyLocationDecisionPayload = () => ({
+  ...locationOperationsPayload(),
+  stage: 'hold',
+  ownerCommunication: { status: 'agreed', contactName: 'Kari Grunneier' },
+  dateAvailability: { status: 'verified', confirmedDates: ['2026-09-20'] },
+  recce: { status: 'completed', completedAt: '2026-09-14T12:00:00Z', attendees: ['DoP', '1st AD'] },
+  clearanceGates: [{ id: 'owner', category: 'owner', title: 'Eieravtale', status: 'verified', mandatory: true }],
+  finance: { currency: 'NOK', locationFee: 10000, permitFees: 1200, restorationReserve: 3000, status: 'approved' },
+  risks: [],
+  backupLocationId: 'location-backup',
+  decisionReview: {
+    criteria: [
+      ['creative_fit', 'Kreativ og dramaturgisk match'],
+      ['camera_light', 'Kamera og lys'],
+      ['sound', 'Lydforhold'],
+      ['access_logistics', 'Adkomst og logistikk'],
+      ['owner_permits', 'Eier og tillatelser'],
+      ['safety', 'Sikkerhet'],
+      ['schedule', 'Dato og opptaksplan'],
+      ['budget', 'Budsjett'],
+    ].map(([id, label]) => ({ id, label, required: true, status: 'pass', evidence: `Dokumentert: ${label}`, mediaIds: [] })),
+    signoffs: [
+      { role: 'director', status: 'approved', userId: 'director-1', decidedAt: '2026-09-14T10:00:00Z' },
+      { role: 'cinematographer', status: 'approved', userId: 'dop-1', decidedAt: '2026-09-14T10:05:00Z' },
+      { role: 'producer', status: 'approved', userId: 'producer-1', decidedAt: '2026-09-14T10:10:00Z' },
+    ],
+  },
+  activity: [],
 });
 
 function createApp(
@@ -153,6 +182,12 @@ describe('casting production-day access', () => {
           decisionStatus: 'shortlisted',
           nextAction: 'Følg opp kommunen.',
         }));
+        expect(saved.decisionReview.signoffs).toEqual([
+          { role: 'director', status: 'pending' },
+          { role: 'cinematographer', status: 'pending' },
+          { role: 'producer', status: 'pending' },
+        ]);
+        expect(saved.decisionReview.lockedAt).toBeUndefined();
         expect(saved.activity).toEqual([
           expect.objectContaining({ type: 'workspace_saved', actorUserId: 'first-ad-1' }),
         ]);
@@ -170,7 +205,18 @@ describe('casting production-day access', () => {
     const response = await request(createApp(query))
       .patch(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/operations`)
       .set('authorization', `Bearer ${SESSION_TOKEN}`)
-      .send({ expectedVersion: 0, operations: locationOperationsPayload() });
+      .send({
+        expectedVersion: 0,
+        operations: {
+          ...locationOperationsPayload(),
+          decisionReview: {
+            criteria: [],
+            signoffs: [{ role: 'director', status: 'approved', userId: 'spoofed-user', decidedAt: '2026-09-13T10:00:00Z' }],
+            lockedAt: '2026-09-13T10:00:00Z',
+            lockedBy: 'spoofed-user',
+          },
+        },
+      });
 
     expect(response.status).toBe(200);
     expect(response.body.locationOperation).toEqual(expect.objectContaining({
@@ -208,6 +254,53 @@ describe('casting production-day access', () => {
       operations: expect.objectContaining({ stage: 'cleared' }),
     }));
     expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO role_room_location_operations'))).toBe(false);
+  });
+
+  it('invalidates all role approvals when the signed decision basis changes', async () => {
+    const current = readyLocationDecisionPayload();
+    const incoming = {
+      ...current,
+      decisionReview: {
+        ...current.decisionReview,
+        recommendationNote: 'Ny produksjonskonsekvens etter siste recce.',
+      },
+    };
+    const query = vi.fn(async (text: string, values?: unknown[]) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('AS can_manage_locations')) {
+        return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      }
+      if (text.includes('FROM casting_locations')) return { rows: [{ '?column?': 1 }], rowCount: 1 };
+      if (text.includes('FROM role_room_location_operations') && text.includes('location_id = $2')) {
+        return { rows: [{ location_id: 'location-1', operations: current, version: 4, updated_by: 'producer-1' }], rowCount: 1 };
+      }
+      if (text.includes('INSERT INTO role_room_location_operations')) {
+        const saved = JSON.parse(String(values?.[3] ?? '{}'));
+        expect(saved.decisionReview.signoffs).toEqual([
+          { role: 'director', status: 'pending' },
+          { role: 'cinematographer', status: 'pending' },
+          { role: 'producer', status: 'pending' },
+        ]);
+        expect(saved.activity).toContainEqual(expect.objectContaining({
+          type: 'workspace_saved',
+          message: 'Oppdaterte beslutningsgrunnlaget. Tidligere rollegodkjenninger ble nullstilt.',
+        }));
+        return { rows: [{ location_id: 'location-1', operations: saved, version: 5, updated_by: 'first-ad-1' }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .patch(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/operations`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 4, operations: incoming });
+
+    expect(response.status).toBe(200);
+    expect(response.body.locationOperation.operations.decisionReview.signoffs).toEqual([
+      { role: 'director', status: 'pending' },
+      { role: 'cinematographer', status: 'pending' },
+      { role: 'producer', status: 'pending' },
+    ]);
   });
 
   it('rejects incomplete location readiness payloads before writing', async () => {
@@ -264,6 +357,135 @@ describe('casting production-day access', () => {
     expect(response.status).toBe(404);
     expect(response.body).toEqual({ error: 'not_found' });
     expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO role_room_location_operations'))).toBe(false);
+  });
+
+  it('derives the signer role on the server and records immutable approval provenance', async () => {
+    const current = {
+      ...locationOperationsPayload(),
+      decisionReview: {
+        criteria: [],
+        signoffs: [
+          { role: 'director', status: 'pending' },
+          { role: 'cinematographer', status: 'pending' },
+          { role: 'producer', status: 'pending' },
+        ],
+      },
+      activity: [],
+    };
+    const query = vi.fn(async (text: string, values?: unknown[]) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('cp.created_by = $2 AS is_owner')) {
+        return { rows: [{ is_owner: false, role: 'director', permissions: {} }], rowCount: 1 };
+      }
+      if (text.includes('FROM role_room_location_operations operations')) {
+        return { rows: [{ location_id: 'location-1', operations: current, version: 1, updated_by: 'location-manager-1' }], rowCount: 1 };
+      }
+      if (text.includes('UPDATE role_room_location_operations')) {
+        const saved = JSON.parse(String(values?.[3] ?? '{}'));
+        expect(saved.decisionReview.signoffs).toContainEqual(expect.objectContaining({
+          role: 'director', status: 'approved', userId: 'first-ad-1', decidedAt: expect.any(String),
+        }));
+        expect(saved.activity).toContainEqual(expect.objectContaining({
+          type: 'decision_approved', actorRole: 'director', actorUserId: 'first-ad-1',
+        }));
+        return { rows: [{ location_id: 'location-1', operations: saved, version: 2, updated_by: 'first-ad-1' }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .post(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/decision`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 1, action: 'approve', role: 'producer', userId: 'spoofed-user' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.locationOperation).toEqual(expect.objectContaining({ locationId: 'location-1', version: 2 }));
+  });
+
+  it('hides decision actions from project roles without review authority', async () => {
+    const query = vi.fn(async (text: string) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('cp.created_by = $2 AS is_owner')) {
+        return { rows: [{ is_owner: false, role: 'first_ad', permissions: {} }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .post(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/decision`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 1, action: 'approve' });
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: 'not_found' });
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('role_room_location_operations operations'))).toBe(false);
+  });
+
+  it('returns exact unmet requirements instead of locking an incomplete decision', async () => {
+    const current = {
+      ...locationOperationsPayload(),
+      decisionReview: { criteria: [], signoffs: [] },
+      activity: [],
+    };
+    const query = vi.fn(async (text: string) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('cp.created_by = $2 AS is_owner')) {
+        return { rows: [{ is_owner: false, role: 'producer', permissions: {} }], rowCount: 1 };
+      }
+      if (text.includes('FROM role_room_location_operations operations')) {
+        return { rows: [{ location_id: 'location-1', operations: current, version: 1, updated_by: 'location-manager-1' }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .post(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/decision`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 1, action: 'lock' });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('decision_not_ready');
+    expect(response.body.reasons).toEqual(expect.arrayContaining([
+      'Kreativ og dramaturgisk match er ikke godkjent',
+      'Eieravtalen er ikke bekreftet',
+      'Backup-lokasjon er ikke valgt',
+      'director har ikke godkjent',
+    ]));
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('UPDATE role_room_location_operations'))).toBe(false);
+  });
+
+  it('locks a fully evidenced and approved primary location with optimistic concurrency', async () => {
+    const current = readyLocationDecisionPayload();
+    const query = vi.fn(async (text: string, values?: unknown[]) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('cp.created_by = $2 AS is_owner')) {
+        return { rows: [{ is_owner: false, role: 'producer', permissions: {} }], rowCount: 1 };
+      }
+      if (text.includes('FROM role_room_location_operations operations')) {
+        return { rows: [{ location_id: 'location-1', operations: current, version: 4, updated_by: 'location-manager-1' }], rowCount: 1 };
+      }
+      if (text.includes('FROM casting_locations') && text.includes('id <> $3')) {
+        return { rows: [{ '?column?': 1 }], rowCount: 1 };
+      }
+      if (text.includes('UPDATE role_room_location_operations')) {
+        const saved = JSON.parse(String(values?.[3] ?? '{}'));
+        expect(saved).toEqual(expect.objectContaining({ stage: 'cleared', decisionStatus: 'primary' }));
+        expect(saved.decisionReview).toEqual(expect.objectContaining({
+          lockedAt: expect.any(String), lockedBy: 'first-ad-1', lockedVersion: 5,
+        }));
+        return { rows: [{ location_id: 'location-1', operations: saved, version: 5, updated_by: 'first-ad-1' }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .post(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/decision`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 4, action: 'lock' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.locationOperation).toEqual(expect.objectContaining({ version: 5 }));
+    expect(response.body.locationOperation.operations.activity).toContainEqual(expect.objectContaining({ type: 'decision_locked' }));
   });
 
   it('allows an active project member to read production days', async () => {
