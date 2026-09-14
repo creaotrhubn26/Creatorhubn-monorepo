@@ -451,45 +451,66 @@ export async function seedTrollDemo(
       {
         id: "loc-dovre",
         name: "Dovrefjell",
-        address: "Dovre, Innlandet",
+        // Public scout base by Viewpoint Snøhetta. Exact address and
+        // coordinates are verified against Kartverket's address register.
+        address: "Hjerkinnhusvegen 33, 2661 Hjerkinn",
+        coordinates: { lat: 62.221369748446335, lng: 9.545710818134248 },
         type: "exterior",
-        notes: "Hovedlokasjon for fjellscener og troll-emergence.",
+        notes: "Scout-base for fjellscener og troll-emergence. Selve opptaksområdet må koordinatfestes etter recce.",
       },
       {
         id: "loc-tunnel",
         name: "Lærdalstunnelen",
-        address: "Lærdal, Vestland",
+        // Håbakken is the public production-base candidate immediately by
+        // the western tunnel mouth; the road tunnel itself has no street
+        // address in the national address register.
+        address: "Håbakken 1, 6887 Lærdal",
+        coordinates: { lat: 61.064242216726036, lng: 7.5091786081532 },
         type: "interior",
-        notes: "Åpningsscener — tunnelarbeider-eksplosjon.",
+        notes: "Produksjonsbase ved vestre tunnelmunning for åpningsscenene. Eksakt tunnelposisjon må koordinatfestes og klareres med vegeier.",
       },
       {
         id: "loc-oslo-stat",
         name: "Statsministerens kontor (Oslo)",
-        address: "Akershus festning, Oslo",
+        address: "Einar Gerhardsens plass 2, 0179 Oslo",
+        coordinates: { lat: 59.915476919195164, lng: 10.747079786878066 },
         type: "interior",
-        notes: "Krise-møter mellom statsminister, Andreas og general.",
+        notes: "Referanseadresse for krisemøter mellom statsminister, Andreas og general. Tilgang og faktisk opptaksrom må godkjennes separat.",
       },
       {
         id: "loc-osterdalen",
         name: "Østerdalen gård",
-        address: "Tynset, Innlandet",
+        // Vollan gård is a public heritage-location candidate in Tynset.
+        address: "Vollanveien 221, 2512 Kvikne",
+        coordinates: { lat: 62.5697007013055, lng: 10.303484139189125 },
         type: "exterior",
-        notes: "Bondens scene + skog-sekvens.",
+        notes: "Scout-kandidat for bondens scene og skogsekvens. Endelig gård og avtale må bekreftes etter recce.",
       },
       {
         id: "loc-tobias-hytte",
         name: "Tobias hytte",
-        address: "Synnfjell, Oppland",
+        // Public hospitality base in Synnfjell, avoiding a private cabin
+        // address in demo data.
+        address: "Synnfjellvegen 1879, 2880 Nord-Torpa",
+        coordinates: { lat: 61.12914119732402, lng: 9.871904330537753 },
         type: "interior",
-        notes: "Tobias avslører hemmelighet om trollene.",
+        notes: "Offentlig scout-base for Tobias-scenen. Endelig hytte må velges, koordinatfestes og klareres separat.",
       },
     ];
     for (const l of locations) {
       await client.query(
         `INSERT INTO casting_locations
-           (id, project_id, name, address, type, access_notes, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
-        [eid(l.id), TROLL_PROJECT_ID, l.name, l.address, l.type, l.notes],
+           (id, project_id, name, address, coordinates, type, access_notes, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, NOW(), NOW())`,
+        [
+          eid(l.id),
+          TROLL_PROJECT_ID,
+          l.name,
+          l.address,
+          JSON.stringify(l.coordinates),
+          l.type,
+          l.notes,
+        ],
       );
     }
 

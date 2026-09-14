@@ -79,13 +79,12 @@ export async function exchangeGoogleIdToken(
     return { ok: false, status: 400, error: "idToken_required" };
   }
 
-  // Accept tokens issued for any of the configured CreatorHub OAuth
-  // clients. Each platform registers its own client ID in Google Cloud
-  // (web client for the dashboard, iOS client for the iPad CaptureApp,
-  // shared Role Room client where applicable), and tokens carry the
-  // issuing client's ID in their `aud` claim. We need ALL active
-  // platform IDs in the audience list — otherwise the iPad's id-token
-  // (audience = iOS client) gets rejected against just the web one.
+  // Accept tokens issued only for configured CreatorHub OAuth clients.
+  // Each platform registers its own client ID in Google Cloud (web client
+  // for the dashboard and iOS client for the iPad CaptureApp), and tokens
+  // carry the issuing client's ID in their `aud` claim. Role Room has its
+  // own authentication surface and must never be an audience fallback for
+  // this CreatorHub session endpoint.
   //
   // Multi-value support via comma-separated env var is intentional: a
   // single `CAPTUREAPP_GOOGLE_CLIENT_ID="A,B"` is easier for ops to
@@ -94,11 +93,10 @@ export async function exchangeGoogleIdToken(
   const audiences = (
     input.clientIdOverride
       ? [input.clientIdOverride]
-      : [
-          ...splitClientIds(process.env.CREATORHUB_GOOGLE_CLIENT_ID),
-          ...splitClientIds(process.env.ROLE_ROOM_GOOGLE_CLIENT_ID),
-          ...splitClientIds(process.env.CAPTUREAPP_GOOGLE_CLIENT_ID),
-        ]
+      : resolveCreatorHubGoogleClientIds({
+          CREATORHUB_GOOGLE_CLIENT_ID: process.env.CREATORHUB_GOOGLE_CLIENT_ID,
+          CAPTUREAPP_GOOGLE_CLIENT_ID: process.env.CAPTUREAPP_GOOGLE_CLIENT_ID,
+        })
   ).filter((v): v is string => typeof v === "string" && v.length > 0);
 
   if (audiences.length === 0) {
@@ -209,6 +207,23 @@ export function splitClientIds(raw: string | undefined): string[] {
     .split(",")
     .map((id) => id.trim())
     .filter((id) => id.length > 0);
+}
+
+/**
+ * Resolve the complete allow-list for CreatorHub-native sign-in. Kept as a
+ * pure helper so brand isolation is directly testable: Role Room client IDs
+ * are intentionally not part of this contract.
+ */
+export function resolveCreatorHubGoogleClientIds(
+  env: {
+    CREATORHUB_GOOGLE_CLIENT_ID?: string;
+    CAPTUREAPP_GOOGLE_CLIENT_ID?: string;
+  },
+): string[] {
+  return [
+    ...splitClientIds(env.CREATORHUB_GOOGLE_CLIENT_ID),
+    ...splitClientIds(env.CAPTUREAPP_GOOGLE_CLIENT_ID),
+  ];
 }
 
 async function defaultVerify(
