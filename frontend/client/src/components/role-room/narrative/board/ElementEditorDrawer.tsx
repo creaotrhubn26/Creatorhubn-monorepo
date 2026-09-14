@@ -159,6 +159,9 @@ export function ElementEditorDrawer({ open, element, graph, store, onClose, onDe
       onClose={onClose}
       variant="persistent"
       PaperProps={{
+        // testid på Paper (ikke Drawer-roten): docked-roten har null bredde og
+        // regnes som skjult av Playwright selv når skuffen er åpen.
+        'data-testid': 'narrative-element-drawer',
         sx: {
           width: { xs: '100%', sm: 420 },
           bgcolor: narrativeColors.bgPanel,
@@ -168,7 +171,6 @@ export function ElementEditorDrawer({ open, element, graph, store, onClose, onDe
           height: '100%',
         },
       }}
-      data-testid="narrative-element-drawer"
     >
       {element ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
