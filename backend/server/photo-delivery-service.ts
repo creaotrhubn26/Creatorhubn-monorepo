@@ -12,21 +12,18 @@
  * at the **original** tethered-upload bytes — never the edited
  * version. Running the bridge after retouch would deliver originals,
  * silently wasting the photographer's edit work. This service is the
- * other path: upload the edited blobs fresh to R2 + register them.
+ * other path: upload the edited blobs to CreatorHub S3 + register them.
  */
 
 import crypto from 'crypto';
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
   clientGalleryImages,
   photographerClientGalleries,
 } from '../migrations/schema.js';
-import {
-  buildCaptureR2Config,
-  signAssetReadUrlForDelivery,
-  type CaptureR2Config,
-} from './capture-upload-service.js';
+import { signAssetReadUrlForDelivery } from './capture-upload-service.js';
+import { putCreatorHubObject } from './creatorhub-object-storage.js';
+import { buildPhotoRoomDeliveryKey } from './photo-room-storage-contract.js';
 
 type Db = NodePgDatabase<Record<string, unknown>>;
 
@@ -34,9 +31,9 @@ export interface DeliveryImageInput {
   /// Display title on the gallery card. Typically the source filename
   /// minus extension — caller's responsibility to make this sensible.
   title: string;
-  /// File name used in the R2 key. Sanitised server-side.
+  /// File name used in the private CreatorHub S3 key. Sanitised server-side.
   filename: string;
-  /// Mime type for the R2 PutObject + the gallery row.
+  /// Mime type for the S3 PutObject + the gallery row.
   mimeType: string;
   /// Image bytes. We upload these directly; size is bounded by the
   /// multer ceiling in the route handler, not here.
@@ -49,6 +46,7 @@ export interface DeliveryImageInput {
 export interface DeliveryInput {
   db: Db;
   photographerId: string;
+  projectId?: string | null;
   clientName: string;
   clientEmail: string;
   projectTitle: string;
@@ -62,8 +60,6 @@ export interface DeliveryInput {
   /// gir cross-system sporbarhet i analytics_events.
   enhancerJobId?: string;
   images: DeliveryImageInput[];
-  /// Dependency seams for tests. Default to real R2 + real crypto.
-  r2Config?: CaptureR2Config;
   tokenFactory?: () => string;
   upload?: (key: string, body: Buffer, mime: string) => Promise<void>;
   sign?: (key: string) => Promise<string | null>;
@@ -83,7 +79,7 @@ export type DeliveryResult =
       ok: false;
       error:
         | 'no_images'
-        | 'r2_not_configured'
+        | 'creatorhub_storage_not_configured'
         | 'upload_failed'
         | 'persist_failed'
         | 'sign_failed'
@@ -97,58 +93,10 @@ function generateAccessToken(): string {
   return crypto.randomBytes(24).toString('base64url');
 }
 
-function sanitiseFilename(input: string, fallback: string): string {
-  const cleaned = input
-    .replace(/[^a-zA-Z0-9._-]/g, '_')
-    .replace(/^[._]+/, '')
-    .slice(0, 160);
-  return cleaned || fallback;
-}
-
-function buildDeliveryKey(params: {
-  prefix: string;
-  photographerId: string;
-  galleryId: string;
-  filename: string;
-}): string {
-  const name = sanitiseFilename(params.filename, 'image.bin');
-  // Collision guard — two images in one batch can share a source name
-  // (e.g. fixture.png variants), so every key carries a short random
-  // suffix. Cheap, bounded, and preserves the original filename for
-  // debuggability in the bucket.
-  const suffix = crypto.randomBytes(4).toString('hex');
-  return `${params.prefix}deliveries/${params.photographerId}/${params.galleryId}/${suffix}-${name}`;
-}
-
-/**
- * Default uploader — straight S3 PutObject. Tests override via
- * `input.upload` so they don't need real R2 credentials.
- */
-async function defaultUpload(
-  cfg: CaptureR2Config,
-  key: string,
-  body: Buffer,
-  mime: string,
-): Promise<void> {
-  if (!cfg.enabled || !cfg.endpoint || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) {
-    throw new Error('r2_not_configured');
+async function defaultUpload(key: string, body: Buffer, mime: string): Promise<void> {
+  if (!await putCreatorHubObject(key, body, mime, { product: 'photo-room' })) {
+    throw new Error('creatorhub_storage_not_configured');
   }
-  const client = new S3Client({
-    region: 'auto',
-    endpoint: cfg.endpoint,
-    credentials: {
-      accessKeyId: cfg.accessKeyId,
-      secretAccessKey: cfg.secretAccessKey,
-    },
-  });
-  await client.send(
-    new PutObjectCommand({
-      Bucket: cfg.bucket,
-      Key: key,
-      Body: body,
-      ContentType: mime,
-    }),
-  );
 }
 
 export async function createClientGalleryFromBlobs(
@@ -158,8 +106,7 @@ export async function createClientGalleryFromBlobs(
     return { ok: false, error: 'no_images' };
   }
 
-  const cfg = input.r2Config ?? buildCaptureR2Config();
-  const upload = input.upload ?? ((key, body, mime) => defaultUpload(cfg, key, body, mime));
+  const upload = input.upload ?? defaultUpload;
   const sign = input.sign ?? signAssetReadUrlForDelivery;
   const tokenFactory = input.tokenFactory ?? generateAccessToken;
 
@@ -179,7 +126,8 @@ export async function createClientGalleryFromBlobs(
       .where(eq(photographerClientGalleries.id, input.existingGalleryId))
       .limit(1);
     const row = rows[0];
-    if (!row || row.photographerId !== input.photographerId) {
+    if (!row || row.photographerId !== input.photographerId
+      || (input.projectId && row.projectId !== input.projectId)) {
       return { ok: false, error: 'existing_gallery_not_found' };
     }
     galleryId = row.id;
@@ -192,6 +140,7 @@ export async function createClientGalleryFromBlobs(
         .insert(photographerClientGalleries)
         .values({
           photographerId: input.photographerId,
+          projectId: input.projectId || null,
           clientName: input.clientName,
           clientEmail: input.clientEmail.toLowerCase().trim(),
           projectTitle: input.projectTitle,
@@ -199,6 +148,7 @@ export async function createClientGalleryFromBlobs(
           gallerySettings: {
             source: 'enhancer_delivery',
             createdVia: 'web_export',
+            ...(input.projectId ? { projectId: input.projectId } : {}),
           },
           status: 'active',
         })
@@ -224,15 +174,19 @@ export async function createClientGalleryFromBlobs(
   let inserted = 0;
   let sortOrder = 0;
   for (const img of input.images) {
-    const key = buildDeliveryKey({
-      prefix: cfg.prefix,
-      photographerId: input.photographerId,
+    const key = buildPhotoRoomDeliveryKey({
+      userId: input.photographerId,
+      projectId: input.projectId,
       galleryId,
-      filename: img.filename,
+      objectId: crypto.randomBytes(4).toString('hex'),
+      fileName: img.filename,
     });
     try {
       await upload(key, img.bytes, img.mimeType);
     } catch (err) {
+      if (String((err as Error)?.message ?? err).includes('creatorhub_storage_not_configured')) {
+        return { ok: false, error: 'creatorhub_storage_not_configured' };
+      }
       return {
         ok: false,
         error: 'upload_failed',

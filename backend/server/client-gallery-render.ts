@@ -104,7 +104,8 @@ export async function fetchClientGalleryByAccessToken(
     captureSessionId:
       typeof settings.captureSessionId === 'string' ? settings.captureSessionId : null,
     projectId:
-      typeof settings.projectId === 'string' ? settings.projectId : null,
+      typeof row.projectId === 'string' ? row.projectId
+        : typeof settings.projectId === 'string' ? settings.projectId : null,
   };
 }
 

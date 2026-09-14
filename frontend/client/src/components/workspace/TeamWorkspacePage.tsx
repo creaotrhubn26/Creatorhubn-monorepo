@@ -352,12 +352,12 @@ const TeamWorkspacePage: React.FC = () => {
       case 'medvirkende':     return <WorkspaceParticipantsTab projectId={projectId} accessState={participantAccessState} />;
       case 'sound-room':      return <SoundRoomTab projectId={projectId} />;
       case 'video-room':      return <VideoRoomTab projectId={projectId} />;
-      case 'photo-room':      return <PhotoRoomTab projectId={projectId} />;
+      case 'photo-room':      return <PhotoRoomTab projectId={projectId} readOnly={!workspaceAccess.canEdit} />;
       case 'chat':            return <Box sx={{ height: 'calc(100dvh - 160px)', maxWidth: 760, mx: 'auto' }}><WorkspaceChatPanel projectId={projectId} category={workspaceCategory} /></Box>;
       default:                return <ComingTab label={navItem?.label || tab} />;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, projectId, user?.id, user?.email, user?.profession, user?.firstName, projectProfession, workspaceCategory, (project as any)?.title, (project as any)?.name, (realProject as any)?.updatedAt, navItem?.label, participantAccessState]);
+  }, [tab, projectId, user?.id, user?.email, user?.profession, user?.firstName, projectProfession, workspaceCategory, (project as any)?.title, (project as any)?.name, (realProject as any)?.updatedAt, navItem?.label, participantAccessState, workspaceAccess.canEdit]);
 
   return (
     <WorkspaceProvider

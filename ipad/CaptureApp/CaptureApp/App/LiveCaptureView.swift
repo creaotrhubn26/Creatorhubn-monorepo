@@ -7044,7 +7044,7 @@ final class LiveCaptureModel {
         }
 
         // Ekte backup-signal: andel av kortets bilder som er lastet opp til
-        // skyen (B2/sync) — driver «Sikret»-statusen. Bruk pre-await-snapshotet.
+        // CreatorHub S3 — driver «Sikret»-statusen. Bruk pre-await-snapshotet.
         let ids = idsSnapshot
         let relevant = assets.filter { ids.contains($0.id) }
         let backedUp = relevant.filter { $0.state.isBackedUp }.count
@@ -7298,7 +7298,7 @@ final class LiveCaptureModel {
     /// Phase 5.1 — voice-memo reply. Same fire-and-forget split as
     /// the text reply: local insert immediately so the side rail
     /// updates on send, then a detached upload-and-POST task that
-    /// pushes the m4a to backend R2 + records the review with
+    /// pushes the m4a to CreatorHub S3 + records the review with
     /// `audioKey` set. Backend POST is best-effort; if it fails the
     /// local bubble stays so the photographer can retry by sending
     /// again. Echo-dedup in `recordClientReview` matches incoming
@@ -8569,7 +8569,7 @@ private struct DeliverSheet: View {
                 .controlSize(.large)
             Text("Uploading picks to CreatorHub…")
                 .font(.headline)
-            Text("Mirroring session, uploading previews to R2, creating UniversalShowcase gallery. Keep the iPad on this screen.")
+            Text("Mirroring session, uploading previews to CreatorHub S3, creating UniversalShowcase gallery. Keep the iPad on this screen.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

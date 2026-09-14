@@ -124,9 +124,20 @@ interface GalleryImage {
     location?: string;
     dateTaken?: string;
 };
+  metadata?: {
+    creatorReviewStatus?: 'approved' | 'needs_edit' | 'rejected' | 'flagged' | null;
+    [key: string]: unknown;
+  } | null;
   tags: string[];
   sortOrder: number;
 }
+
+const creatorReviewLabels: Record<string, string> = {
+  approved: 'Godkjent av fotograf',
+  needs_edit: 'Endringer pågår',
+  rejected: 'Ikke valgt av fotograf',
+  flagged: 'Fotografens utvalg',
+};
 
 interface Gallery {
   id: string;
@@ -321,7 +332,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
   }, []);
 
   // Fetch gallery images (linked to project)
-  const { data: images = [], isLoading: imagesLoading } = useQuery({
+  const { data: imagesResponse, isLoading: imagesLoading } = useQuery({
     queryKey: ['/api/client/gallery', accessToken, 'images', galleryPassword],
     queryFn: () => apiRequest(`/api/client/gallery/${accessToken}/images`, {
       headers: galleryHeaders,
@@ -333,6 +344,19 @@ export default function ClientGallery({}: ClientGalleryProps) {
       && !!gallery
       && (!gallery.requiresPassword || !!galleryPassword),
 });
+  // Canonical API shape is { galleryId, images, anySigningFailed }. Keep the
+  // former bare-array response compatible while older deployments roll over.
+  const images: GalleryImage[] = useMemo(() => {
+    const rows = Array.isArray(imagesResponse)
+      ? imagesResponse
+      : Array.isArray((imagesResponse as any)?.images)
+        ? (imagesResponse as any).images
+        : [];
+    return rows.map((image: GalleryImage) => ({
+      ...image,
+      imageMetadata: image.imageMetadata || (image.metadata as GalleryImage['imageMetadata']),
+    }));
+  }, [imagesResponse]);
 
   // Fetch existing selections (linked to project and client). Backend
   // returns { galleryId, selections: [...] } for the whole gallery;
@@ -1834,6 +1858,23 @@ export default function ClientGallery({}: ClientGalleryProps) {
                     }}
                       onClick={() => handleImageView(image)}
                     />
+
+                    {image.metadata?.creatorReviewStatus && (
+                      <Chip
+                        label={creatorReviewLabels[image.metadata.creatorReviewStatus] || image.metadata.creatorReviewStatus}
+                        size="small"
+                        sx={{
+                          position: 'absolute',
+                          left: 12,
+                          bottom: 12,
+                          bgcolor: 'rgba(5,10,16,.82)',
+                          color: '#fff',
+                          border: '1px solid rgba(255,255,255,.24)',
+                          backdropFilter: 'blur(8px)',
+                          fontWeight: 700,
+                        }}
+                      />
+                    )}
 
                     {/* Selection overlay */}
                     <Box

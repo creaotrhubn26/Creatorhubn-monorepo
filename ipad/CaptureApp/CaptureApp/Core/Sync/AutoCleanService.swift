@@ -47,11 +47,11 @@ protocol AutoCleanBackend: Sendable {
         intensity: Double,
     ) async throws -> BackendInpaintResponse
 
-    /// Slice 6 — push the cleaned JPEG up to the capture R2 bucket so
+    /// Slice 6 — push the cleaned JPEG to the CreatorHub S3 bucket so
     /// the Showcase bridge can later surface it to the client gallery.
     /// Best-effort from the service's perspective — a failure here
     /// just means the cleaned variant stays iPad-local, the gallery
-    /// shows the original. The server records the deterministic R2
+    /// shows the original. The server records the deterministic S3
     /// key on the captureAssets row.
     func uploadCleanedVariant(
         sessionId: UUID,
@@ -261,7 +261,7 @@ struct AutoCleanService: Sendable {
             id: asset.id, key: dest.path, detectionCount: detectionCount,
         )
 
-        // Slice 6 — push the cleaned bytes up to R2 so it's available
+        // Slice 6 — push the cleaned bytes to CreatorHub S3 so it's available
         // when the photographer hits Deliver. Fire-and-forget at this
         // layer: we already have the local copy attached, and the
         // bridge's pickAssetsFromCaptureSession defaults to "skip
