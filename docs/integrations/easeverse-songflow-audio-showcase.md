@@ -284,8 +284,10 @@ Før produksjonsrelease skal følgende passere:
 - Repository variables: `AZURE_ARTIFACT_SIGNING_ENDPOINT`,
   `AZURE_ARTIFACT_SIGNING_RESOURCE_GROUP`, `AZURE_ARTIFACT_SIGNING_ACCOUNT`,
   `AZURE_ARTIFACT_SIGNING_PROFILE`.
-- Release-pipelinen signerer app-EXE-en før bundling, signerer deretter EXE/MSI og
-  avviser releasen dersom Authenticode eller RFC3161-tidsstempelet ikke er gyldig.
+- Release-pipelinen bruker en pinnet Microsoft Sign CLI gjennom Tauri
+  `bundle.windows.signCommand`. Hver bundle-spesifikke, patchede app-EXE signeres
+  før den bygges inn i MSI/NSIS, og installasjonsfilene signeres i samme fase.
+  Releasen avvises dersom Authenticode eller RFC3161-tidsstempelet ikke er gyldig.
 - Azure-profilen kontrolleres etter OIDC-innlogging og før native Windows-bygg,
   slik at manglende/ikke-aktiv profil feiler tidlig.
 - Releasejobben publiserer `protools-companion-latest.json` først etter at begge
