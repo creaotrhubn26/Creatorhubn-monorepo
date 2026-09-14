@@ -637,13 +637,22 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $bundleRoot = 'src-tauri/target/release/bundle'
-          $app = Resolve-Path 'src-tauri/target/release/creatorhub-protools-companion.exe'
           $msi = @(Get-ChildItem -Path $bundleRoot -Recurse -File -Filter '*.msi')
           $exe = @(Get-ChildItem -Path $bundleRoot -Recurse -File -Filter '*-setup.exe')
           if ($msi.Count -ne 1 -or $exe.Count -ne 1) {
             throw "Expected exactly one MSI and one NSIS setup EXE; found $($msi.Count) and $($exe.Count)"
           }
-          $signedFiles = @((Get-Item $app), $msi[0], $exe[0])
+
+          # `tauri bundle` copies and patches the no-bundle application once per
+          # package, then invokes signCommand for the patched copy. The original
+          # target/release executable therefore remains the verified unsigned
+          # input. Verify the application users actually receive from the MSI.
+          $msiExtract = Join-Path $env:RUNNER_TEMP 'companion-msi-extract'
+          $embeddedApps = @(Get-ChildItem -Path $msiExtract -Recurse -File -Filter 'creatorhub-protools-companion.exe')
+          if ($embeddedApps.Count -ne 1) {
+            throw "Expected one Companion executable in the extracted MSI; found $($embeddedApps.Count)"
+          }
+          $signedFiles = @($embeddedApps[0], $msi[0], $exe[0])
           $subjects = @()
           foreach ($file in $signedFiles) {
             if ($file.Length -le 0) { throw "Empty signed file: $($file.FullName)" }
