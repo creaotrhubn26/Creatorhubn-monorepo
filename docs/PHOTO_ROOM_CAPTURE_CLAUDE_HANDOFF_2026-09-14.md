@@ -12,7 +12,8 @@ Dette er arbeidsgrunnlaget for å fortsette Photo Room/Capture-sporet i Claude. 
 - Cloudflare R2 er kun en lesbar legacy-kilde mens gamle objekter kopieres og verifiseres. Migreringsjobben sletter aldri kilden.
 - Photo Room og klientgalleriet bruker fortsatt to kommentartabeller, men backend presenterer dem som ett delt reviewrom og kobler dem med `captureAssetId`.
 - Canonisk review-status ligger i `project_photo_review`; `capture_assets.rejected` og `flagged_for_client` er kompatibilitetsspeil via databasetriggere.
-- Capture Google-innlogging er rettet på grenen `fix/capture-google-sdk-oauth-404`, commit `45d419f4729cfc999034737a4e3bee3e7eecc724`. Den bruker GoogleSignIn iOS SDK 10.0.0 og er ikke merget i `main` ennå.
+- Capture Google-innlogging er rettet på grenen `fix/capture-google-sdk-oauth-404`, commit `45d419f4729cfc999034737a4e3bee3e7eecc724`. Den bruker GoogleSignIn iOS SDK 10.0.0 og ligger i PR #2324, ikke merget i `main` ennå.
+- Migrasjon `0605` er verifisert komplett i produksjonsdatabasen: 43 av 43 objekter, ingen drift. Capture-/Photo Room-tabellene i produksjon er tomme.
 - Neste leveranse er runtime-verifikasjon av Google-innlogging og en ekte Capture -> CreatorHub S3 -> Photo Room -> klientgalleri-flyt. Ikke bygg flere funksjoner før denne kjeden er bevist.
 
 ## Gren- og commitstatus
@@ -186,7 +187,7 @@ Disse skal ikke beskrives som ferdige før de er bevist:
 1. **OAuth-fiksen er ikke merget eller distribuert.** Committen er bare pushet på feature-grenen.
 2. **Ekte Google-login er ikke fullført i runtime.** Native build og tester passerer, men en bruker må godkjenne sin egen Google-konto i appen.
 3. **Capture -> CreatorHub S3 er ikke bevist ende-til-ende i produksjon etter ny login.** Det må verifiseres med en reell upload og DB-/bucketkontroll.
-4. **Produksjonsstatus for migrasjon `0605` må dokumenteres.** At filen ligger i `main` beviser ikke alene at alle constraints/triggere finnes i produksjonsdatabasen.
+4. ~~**Produksjonsstatus for migrasjon `0605` må dokumenteres.**~~ Verifisert 14. september 2026: alle 43 objekter finnes i produksjon uten drift, se `docs/PHOTO_ROOM_P1_DB_EVIDENCE_2026-09-14.md`. Nytt funn fra samme kontroll: alle Capture-/Photo Room-tabeller i produksjon har 0 rader, så kjeden har aldri produsert ekte data.
 5. **Legacy R2-objekter må inventeres og migreres kontrollert.** Script finnes, men produksjonskjøring er ikke dokumentert.
 6. **Team-/organisasjonsnamespace er ikke ferdig bevist.** Lagringskontrakten støtter `organizationId`, men Capture-opplastingen sender i dag bruker/prosjekt og faller derfor tilbake til `personal-<user>`. Avklar prosjekteier/organisasjon før teamlansering.
 7. **Oppgavene er ikke virkelig tildelt editor.** «Må redigeres» oppretter en oppgave med `crew_role='fotograf'`, uten eksplisitt assignee. Produktmålet er tildelte editoroppgaver med eier, status og retur til kommentaren/asseten.
@@ -215,12 +216,7 @@ P0 er ferdig først når en skjerm-/logg-/DB-evidenspakke viser hele kjeden.
 
 ### P1 — database og legacy-migrering
 
-1. Verifiser migrasjon `0605` mot produksjonsdatabasen via read-only katalogspørringer:
-   - tabeller
-   - FK-er
-   - check constraints
-   - indekser
-   - begge status-triggerne
+1. ~~Verifiser migrasjon `0605` mot produksjonsdatabasen via read-only katalogspørringer.~~ Ferdig 14. september 2026, se `docs/PHOTO_ROOM_P1_DB_EVIDENCE_2026-09-14.md`. Produksjon er Neon-prosjekt `restless-wind-41713954` (Creatorhub EU), identifisert via rollene i `render.yaml`. Legacy-prosjektet `wispy-bar-06530976` mangler hele 0605 og skal ikke brukes.
 2. Ta backup/recovery checkpoint før objektmigrering.
 3. Kjør migreringsscriptet uten `--execute` og lagre JSON-output.
 4. Kjør en liten canary-batch med `--execute --limit=<lite antall>`.
