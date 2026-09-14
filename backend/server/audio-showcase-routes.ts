@@ -24,6 +24,7 @@ import { broadcastSoundRoomUpdated, type SoundRoomUpdateReason } from "./sound-r
 import { recordSoundRoomActivity } from "./sound-room-operating-system";
 import { enqueueApprovedReferenceSync } from "./music-integration-outbox.js";
 import { latestParentArtifactId, upsertMusicArtifact } from "./music-artifact-lineage.js";
+import { createSoundRoomObjectDownloadUrl } from "./sound-room-storage-service.js";
 
 // Innebygd TrueType-font (DejaVu Sans, libre) — sikrer at avtale-PDF rendres
 // identisk i alle visere (pdfkit-standardfonter rendres ikke i alle renderere).
@@ -322,6 +323,8 @@ export interface AudioShowcaseDeps {
   getGoogleCalendar?: (userId: string, req: any) => Promise<{ calendar: any; scopes?: string[]; email?: string | null } | null>;
   // Valgfri: multer (memoryStorage) for opplasting av eget Canvas-klipp.
   uploadClip?: { single: (field: string) => any };
+  // Test seam for the private Sound Room object signer. Production uses S3.
+  signSoundRoomDownloadUrl?: (objectKey: string, expiresInSeconds: number) => Promise<string>;
 }
 
 const isMissingTable = (e: unknown) =>
@@ -468,6 +471,19 @@ const PT_SECTION_COLOR: Record<string, string> = {
 export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   const { app, pool, requireUserSession, sendInviteEmail, sendEmail, getBrandingForUser, getYoutubeClient, getGoogleCalendar, uploadClip } = deps;
   const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
+  const signSoundRoomDownloadUrl = deps.signSoundRoomDownloadUrl ?? createSoundRoomObjectDownloadUrl;
+
+  const publicAudioUrl = (value: unknown): string | null => {
+    const direct = secureAudioUrl(value);
+    if (direct) return direct;
+    const path = String(value || "").trim();
+    if (!path.startsWith("/")) return null;
+    try {
+      return secureAudioUrl(new URL(path, `${APP_URL}/`).toString());
+    } catch {
+      return null;
+    }
+  };
 
   // Companion-bounces ligger i privat R2. API-et eksponerer derfor en
   // same-origin, tilgangskontrollert stream i stedet for den rå objekt-URL-en.
@@ -900,7 +916,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
           [versionId, s.userId],
         ).catch(() => ({ rows: [], rowCount: 0 }));
         const linked = reference.rows[0];
-        if (linked?.external_track_id && linked?.file_url) {
+        const referenceUrl = publicAudioUrl(linked?.file_url);
+        if (linked?.external_track_id && referenceUrl) {
           easeverseReferenceSync = await enqueueApprovedReferenceSync({
             pool,
             userId: s.userId,
@@ -908,7 +925,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
             eventId: `reference:${versionId}:${String(a.rows[0].id)}`,
             payload: {
               ownerUserId: String(linked.owner_user_id), externalTrackId: String(linked.external_track_id),
-              url: String(linked.file_url), name: linked.file_name ? String(linked.file_name) : null,
+              url: referenceUrl, name: linked.file_name ? String(linked.file_name) : null,
               durationSec: linked.duration == null ? null : Number(linked.duration),
             },
           });
@@ -2019,6 +2036,54 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       return res.status(503).json({ error: "keeper_import_failed" });
     } finally {
       if (client !== pool && typeof (client as any).release === "function") (client as any).release();
+    }
+  });
+
+  app.post("/api/integrations/easeverse/reference-playback", async (req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    if (!easeVerseServiceAuthorized(req)) return res.status(401).json({ error: "unauthorized" });
+    const ownerUserId = str(req.body?.ownerUserId, 64);
+    const audioReviewProjectId = str(req.body?.audioReviewProjectId, 64);
+    if (!ownerUserId || !isUuid(audioReviewProjectId)) {
+      return res.status(400).json({ error: "owner_and_audio_review_project_required" });
+    }
+    try {
+      const result = await pool.query(
+        `SELECT version.id::text AS version_id,version.file_name,version.duration,
+                COALESCE(stored.content_type,version.content_type,'application/octet-stream') AS content_type,
+                stored.object_key
+           FROM audio_review_projects project
+           JOIN audio_review_versions version ON version.project_id=project.id
+           LEFT JOIN LATERAL (
+             SELECT bounce.storage_object_id
+               FROM protools_companion_bounces bounce
+              WHERE bounce.review_version_id=version.id AND bounce.storage_object_id IS NOT NULL
+              ORDER BY bounce.completed_at DESC,bounce.created_at DESC LIMIT 1
+           ) companion ON TRUE
+           JOIN role_room_storage_objects stored
+             ON stored.id=COALESCE(version.storage_object_id,companion.storage_object_id)
+            AND stored.status='active' AND stored.deleted_at IS NULL
+          WHERE project.id=$1::uuid AND project.owner_user_id=$2
+            AND project.status<>'archived' AND version.status='approved'
+          ORDER BY version.version_number DESC,version.created_at DESC LIMIT 1`,
+        [audioReviewProjectId, ownerUserId],
+      );
+      const reference = result.rows[0];
+      if (!reference?.object_key) return res.status(404).json({ error: "approved_reference_not_found" });
+      const expiresInSeconds = 60 * 60;
+      const url = await signSoundRoomDownloadUrl(String(reference.object_key), expiresInSeconds);
+      if (!secureAudioUrl(url)) throw new Error("invalid_signed_url");
+      return res.status(200).json({
+        url,
+        expiresInSeconds,
+        versionId: String(reference.version_id),
+        fileName: reference.file_name ? String(reference.file_name) : null,
+        contentType: String(reference.content_type || "application/octet-stream"),
+        durationSec: reference.duration == null ? null : Number(reference.duration),
+      });
+    } catch (error) {
+      console.error("[audio-showcase] EaseVerse reference playback failed:", error);
+      return res.status(503).json({ error: "reference_playback_unavailable" });
     }
   });
 
