@@ -2891,7 +2891,10 @@ export function createCommunicationRouter(
         // Hent de NYESTE `limit` meldingene (desc), og snu til stigende for
         // visning. Tidligere hentet asc+limit de ELDSTE, så nye meldinger
         // aldri kom med når en kanal passerte limit-taket.
-        .orderBy(desc(schema.communicationMessages.createdAt))
+        // `id` som sekundærnøkkel: to meldinger som lander på samme tidsstempel
+        // sorteres ellers vilkårlig av Postgres, så to lesere kan se dem i hver
+        // sin rekkefølge. Med tie-breakeren er rekkefølgen den samme for alle.
+        .orderBy(desc(schema.communicationMessages.createdAt), desc(schema.communicationMessages.id))
         .limit(limit);
       messages.reverse();
 
@@ -2962,6 +2965,11 @@ export function createCommunicationRouter(
             }
           : rawMetadata,
       });
+
+      // Samme live-kringkasting som /api/chat/messages. Uten den ble en melding
+      // sendt fra denne ruten (eldre widgets, integrasjoner) usynlig for de
+      // andre til neste henting — chatten så ut som den hadde mistet meldinger.
+      void notifyChatUpdated(conversationId, gate.user?.userId || null, persistedContent, gate.access?.displayName);
 
       res.json({
         success: true,

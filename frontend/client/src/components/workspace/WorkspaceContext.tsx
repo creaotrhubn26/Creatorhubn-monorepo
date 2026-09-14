@@ -139,6 +139,15 @@ export function useWorkspace(): WorkspaceContextValue {
   return value;
 }
 
+/**
+ * Som `useWorkspace`, men kaster ikke utenfor provideren. Brukes av paneler som
+ * bare vil vite om sanntidsstrømmen er oppe (og ellers må falle tilbake til å
+ * hente selv) uten å kreve at de alltid rendres inne i et workspace.
+ */
+export function useWorkspaceOptional(): WorkspaceContextValue | null {
+  return useContext(WorkspaceContext);
+}
+
 export function useWorkspaceUpdate(
   projectId: string,
   scopes: string | string[],

@@ -7,7 +7,14 @@
  *   - GET  /api/communication/messages/project-<id>  → { messages: [{ id, senderId, senderName, content, timestamp, attachments, tag }] }
  *   - POST /api/chat/messages { conversationId, content, senderId, senderName, metadata:{senderName,tag}, attachments }
  * senderName + tag lagres i metadata (kolonnen har ikke egne felter) og eksponeres av GET.
- * Vedlegg lastes opp via /api/upload/image (same-origin B2). Lett poll (15s, pauset når skjult).
+ * Vedlegg lastes opp via /api/upload/image (same-origin B2).
+ *
+ * LEVERING: meldinger kommer via `chat.message` på bruker-event-strømmen
+ * (realtime-user-events, én socket per fane). Hendelsen bærer ikke selve
+ * meldingen — den sier bare «kanalen er endret», og panelet henter lista på
+ * nytt. Det er med vilje: serveren eier rekkefølgen, og en full erstatning
+ * kan per definisjon ikke gi dubletter av en melding avsenderen alt ser.
+ * Faller strømmen ned, tar en sjelden fallback-henting over (se under).
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Stack, Typography, Avatar, IconButton, TextField, CircularProgress, Chip, Popover, Menu, MenuItem, Tooltip, InputAdornment } from '@mui/material';
@@ -57,7 +64,9 @@ import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
 import { ws } from './workspaceTheme';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from './wsLocale';
-import { useWorkspaceUpdate } from './WorkspaceContext';
+import { useWorkspaceUpdate, useWorkspaceOptional } from './WorkspaceContext';
+import { useChatFallbackRefresh } from './useChatFallbackRefresh';
+import type { PresenceMember } from './workspacePresence';
 
 // Lokal no/en-ordbok for panelet (samme mønster som OppdragTab).
 const T: WsDict = {
@@ -102,6 +111,10 @@ const T: WsDict = {
   clearSearch: { no: 'Tøm søket', en: 'Clear search' },
   you: { no: 'Deg', en: 'You' },
   title: { no: 'Team Chat', en: 'Team Chat' },
+  liveOn: { no: 'Sanntid på — nye meldinger kommer av seg selv', en: 'Live — new messages arrive on their own' },
+  liveOff: { no: 'Sanntid nede — henter periodisk i stedet', en: 'Live connection down — fetching periodically instead' },
+  onlineNow: { no: 'på nå', en: 'here now' },
+  onlineWho: { no: 'I prosjektet nå', en: 'In the project right now' },
   attachmentFallback: { no: 'vedlegg', en: 'attachment' },
   emojiPrefix: { no: 'Emoji', en: 'Emoji' },
   messagesRegion: { no: 'Meldinger', en: 'Messages' },
@@ -195,7 +208,18 @@ const TAG_META = {
   important: { icon: <PriorityHigh sx={{ fontSize: 14 }} />, dictKey: 'chipImportant', color: ws.red, soft: ws.redSoft, border: 'rgba(248,113,113,0.42)' },
 };
 
-const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = ({ projectId, category = 'music' }) => {
+const WorkspaceChatPanel: React.FC<{
+  projectId: string;
+  category?: string;
+  /**
+   * Tilstedeværelse fra workspacets eksisterende presence-kilde (heartbeat +
+   * `GET /api/projects/:id/team/presence`, gated av `canAccessProject`). Den er
+   * allerede hentet av TeamWorkspacePage, så panelet låner den i stedet for å
+   * be om den en gang til — og vi slipper å finne opp kanal-tilstedeværelse på
+   * serversiden.
+   */
+  presence?: PresenceMember[];
+}> = ({ projectId, category = 'music', presence = [] }) => {
   const { user } = useAuth();
   // Utenlandske partner-vendors får engelsk UI — locale fra WsLocaleProvider.
   const locale = useWsLocale();
@@ -270,6 +294,11 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   // Er brukeren allerede nederst? Da (og bare da) auto-scroller vi ved nye
   // meldinger — ellers stjeler pollet leseposisjonen når man leser historikk.
   const atBottom = () => { const el = listRef.current; return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80; };
+
+  // Er bruker-event-strømmen oppe? WorkspaceProvider eier socketen; panelet
+  // trenger bare å vite om den leverer. Utenfor provideren (ingen strøm i det
+  // hele tatt) svarer den false, og fallback-hentingen tar over.
+  const realtimeConnected = useWorkspaceOptional()?.realtimeConnected ?? false;
 
   const load = async (initial = false) => {
     try {
@@ -381,10 +410,15 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
 
   useEffect(() => {
     load(true); loadActivity();
-    const iv = setInterval(() => { if (!document.hidden) { load(false); loadActivity(); } }, 15000);
-    return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId]);
+
+  // Fallback — KUN mens sanntidsstrømmen er nede (se useChatFallbackRefresh).
+  useChatFallbackRefresh(realtimeConnected, () => { load(false); void loadActivity(); });
+
+  // Aktivitetsstripa hang på 15s-pollen. Nå oppdateres den av de samme
+  // hendelsene som skriver den (varsler, board, milepæler).
+  useWorkspaceUpdate(projectId, ['project.notification', 'board.updated', 'milestones.updated'], () => { void loadActivity(); });
 
   // Deltakere utledes fra avsenderne i kanalen (ingen egen tabell nødvendig).
   // Profilbilder: e-post/navn → avatar-URL fra team/members (lettvekts-rute;
@@ -403,6 +437,22 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   }, [projectId]);
   const avatarFor = (senderId?: string | null, senderName?: string | null) =>
     avatarMap[String(senderId || '').toLowerCase()] || avatarMap[String(senderName || '').toLowerCase()] || undefined;
+
+  // «Hvem er her nå» — presence-radene nøkler på userId/e-post, meldingene på
+  // e-post. Slå opp på begge, i små bokstaver.
+  const onlineKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const m of presence) {
+      if (!m?.online) continue;
+      if (m.userId) keys.add(String(m.userId).toLowerCase());
+      if (m.email) keys.add(String(m.email).toLowerCase());
+      if (m.name) keys.add(String(m.name).toLowerCase());
+    }
+    return keys;
+  }, [presence]);
+  const isOnline = (id?: string | null, name?: string | null) =>
+    onlineKeys.has(String(id || '').toLowerCase()) || onlineKeys.has(String(name || '').toLowerCase());
+  const onlineCount = useMemo(() => presence.filter((m) => m?.online).length, [presence]);
 
   const participants = useMemo(() => {
     const seen = new Map();
@@ -827,8 +877,15 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
       {/* Header */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.75, py: 1.5, borderBottom: `1px solid ${ws.border}` }}>
         <Stack direction="row" spacing={1} alignItems="center">
-          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ws.green }} />
+          <Tooltip title={realtimeConnected ? t('liveOn') : t('liveOff')}>
+            <Box aria-label={realtimeConnected ? t('liveOn') : t('liveOff')} sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: realtimeConnected ? ws.green : ws.textFaint }} />
+          </Tooltip>
           <Typography component="h2" sx={{ fontSize: 14, fontWeight: 700 }}>{t('title')}</Typography>
+          {onlineCount > 0 && (
+            <Tooltip title={t('onlineWho')}>
+              <Chip size="small" label={`${onlineCount} ${t('onlineNow')}`} sx={{ height: 20, fontSize: 10.5, fontWeight: 700, color: ws.green, bgcolor: ws.greenSoft }} />
+            </Tooltip>
+          )}
         </Stack>
         <Stack direction="row" spacing={0.25}>
           <Tooltip title={t('search')}><IconButton size="small" aria-label={t('search')} aria-pressed={searchOpen} onClick={() => { setSearchOpen((v) => { if (v) setQuery(''); return !v; }); }} sx={{ color: searchOpen ? ws.accent : ws.textDim }}><Search fontSize="small" /></IconButton></Tooltip>
@@ -1068,6 +1125,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
         {participants.map((p) => (
           <MenuItem key={p.id} role="menuitem" onClick={() => { if (mentionMode) insertAtCursor(`@${p.name} `); setMembersAnchor(null); }} sx={{ gap: 1, fontSize: 13 }}>
             <Avatar src={avatarFor(p.id, p.name)} sx={{ width: 24, height: 24, fontSize: 11, bgcolor: p.mine ? ws.accent : 'rgba(255,255,255,0.12)', color: p.mine ? ws.accentContrast : ws.text }}>{initials(p.name)}</Avatar>
+            <Box component="span" aria-hidden sx={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, bgcolor: isOnline(p.id, p.name) ? ws.green : ws.borderSoft }} />
             {p.name}{p.mine ? ` (${t('you')})` : ''}
           </MenuItem>
         ))}
