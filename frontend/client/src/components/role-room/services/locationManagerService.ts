@@ -61,6 +61,20 @@ export class LocationOperationsNetworkError extends Error {
   }
 }
 
+export type LocationDecisionAction = 'approve' | 'request_changes' | 'lock' | 'reopen';
+
+export class LocationDecisionActionError extends Error {
+  readonly reasons: string[];
+  readonly locationOperation?: LocationOperationsRecord;
+
+  constructor(message: string, reasons: string[] = [], locationOperation?: LocationOperationsRecord) {
+    super(message);
+    this.name = 'LocationDecisionActionError';
+    this.reasons = reasons;
+    this.locationOperation = locationOperation;
+  }
+}
+
 async function request(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   try {
     return await fetch(input, init);
@@ -114,6 +128,38 @@ export const locationManagerService = {
     }
     if (!response.ok || !payload.locationOperation) {
       throw new Error(payload.message || payload.error || 'Kunne ikke lagre lokasjonsberedskap.');
+    }
+    return payload.locationOperation;
+  },
+
+  async actOnDecision(
+    projectId: string,
+    locationId: string,
+    expectedVersion: number,
+    action: LocationDecisionAction,
+    note?: string,
+  ): Promise<LocationOperationsRecord> {
+    const response = await request(
+      `/api/role-room/projects/${encodeURIComponent(projectId)}/locations/${encodeURIComponent(locationId)}/decision`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
+        body: JSON.stringify({ expectedVersion, action, note }),
+      },
+    );
+    const payload = await response.json().catch(() => ({})) as {
+      error?: string;
+      message?: string;
+      reasons?: string[];
+      locationOperation?: LocationOperationsRecord;
+    };
+    if (!response.ok || !payload.locationOperation) {
+      throw new LocationDecisionActionError(
+        payload.message || payload.error || 'Kunne ikke oppdatere lokasjonsbeslutningen.',
+        Array.isArray(payload.reasons) ? payload.reasons : [],
+        payload.locationOperation,
+      );
     }
     return payload.locationOperation;
   },

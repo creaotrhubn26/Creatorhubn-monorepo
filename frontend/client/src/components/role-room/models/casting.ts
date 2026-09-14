@@ -795,6 +795,48 @@ export type LocationWorkflowStage =
 
 export type LocationDecisionStatus = 'undecided' | 'shortlisted' | 'primary' | 'backup' | 'released';
 export type LocationGateStatus = 'missing' | 'requested' | 'in_progress' | 'verified' | 'blocked' | 'not_required';
+export type LocationDecisionCriterionId =
+  | 'creative_fit'
+  | 'camera_light'
+  | 'sound'
+  | 'access_logistics'
+  | 'owner_permits'
+  | 'safety'
+  | 'schedule'
+  | 'budget';
+export type LocationDecisionCriterionStatus = 'unknown' | 'pass' | 'concern' | 'blocker' | 'not_applicable';
+export type LocationDecisionApprovalRole = 'director' | 'cinematographer' | 'producer';
+export type LocationDecisionApprovalStatus = 'pending' | 'approved' | 'changes_requested';
+
+export interface LocationDecisionCriterion {
+  id: LocationDecisionCriterionId;
+  label: string;
+  required: boolean;
+  status: LocationDecisionCriterionStatus;
+  /** A human-verifiable source or observation. Required before a result counts as verified. */
+  evidence?: string;
+  mediaIds: string[];
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface LocationDecisionSignoff {
+  role: LocationDecisionApprovalRole;
+  status: LocationDecisionApprovalStatus;
+  note?: string;
+  /** Server-owned provenance. Clients cannot assign these fields through the workspace save route. */
+  userId?: string;
+  decidedAt?: string;
+}
+
+export interface LocationDecisionReview {
+  criteria: LocationDecisionCriterion[];
+  signoffs: LocationDecisionSignoff[];
+  recommendationNote?: string;
+  lockedAt?: string;
+  lockedBy?: string;
+  lockedVersion?: number;
+}
 
 export interface LocationClearanceGate {
   id: string;
@@ -925,14 +967,21 @@ export interface LocationManagerOperations {
   };
   risks: LocationRisk[];
   scoutCapture: LocationScoutCapture;
+  decisionReview: LocationDecisionReview;
   backupLocationId?: string;
   weatherPlan?: string;
   nextAction?: string;
   activity: Array<{
     id: string;
-    type: 'workspace_saved';
+    type:
+      | 'workspace_saved'
+      | 'decision_approved'
+      | 'decision_changes_requested'
+      | 'decision_locked'
+      | 'decision_reopened';
     message: string;
     actorUserId?: string;
+    actorRole?: LocationDecisionApprovalRole | 'location_manager';
     createdAt: string;
   }>;
 }
