@@ -7,7 +7,7 @@ Status: Kode og backend er i produksjon på `theroleroom.com`. Dette dokumentet 
 
 Den pågående leveransen er fullført. Troll-prosjektets fem grunnlokasjoner har gyldige, kartbare adresser og koordinater, lokasjonsanalysen godtar et eksakt Kartverket-treff selv om treffet mangler matrikkel-/property-ID, og den tidligere produksjonskrasjen fra blandede MUI-versjoner er fjernet. Endringene er merget til `main`, promotert til den dedikerte `live/roleroom`-grenen og bekreftet på `https://theroleroom.com`.
 
-Rollearkitekturen har samtidig fått et tydelig fundament: én produksjon, én delt prosjektgraf og rollebaserte arbeidslinser over de samme dataene. Kodebasen har nå et kanonisk kataloglag med 79 produksjonsroller i 31 avdelinger og dedikerte arbeidsflater for regissør, filmfotograf, regiassistenter, produksjonsleder, produksjonskoordinator, location-avdelingen og script supervisor. Det viktigste som står igjen er å gjøre tildeling, tilgang, arbeidsflater og operasjonelle datalinjer helt registerstyrte før flere avdelingsflater bygges.
+Rollearkitekturen har samtidig fått et tydelig fundament: én produksjon, én delt prosjektgraf og rollebaserte arbeidslinser over de samme dataene. Kodebasen har nå et kanonisk kataloglag med 80 produksjonsroller i 31 avdelinger og dedikerte arbeidsflater for regissør, filmfotograf, regiassistenter, produksjonsleder, produksjonskoordinator, location-avdelingen og script supervisor. Det viktigste som står igjen er å gjøre tildeling, tilgang, arbeidsflater og operasjonelle datalinjer helt registerstyrte før flere avdelingsflater bygges.
 
 ## Levert i den avsluttede lokasjonsrunden
 
@@ -116,7 +116,7 @@ En workspace-linse er en rolletilpasset komposisjon, ikke et datasilo. Regissør
 
 Start alltid med disse før arkitekturen endres:
 
-- `frontend/client/src/components/role-room/config/productionRoleCatalog.ts`: 79 roller, 31 avdelinger, aliaser, rapporteringslinjer og rolle-til-workspace-mapping.
+- `frontend/client/src/components/role-room/config/productionRoleCatalog.ts`: 80 roller, 31 avdelinger, aliaser, rapporteringslinjer og rolle-til-workspace-mapping.
 - `frontend/client/src/components/role-room/components/production/productionWorkspaceLens.ts`: tillatte workspace-linser.
 - `frontend/client/src/components/role-room/components/CastingPlannerPanel.tsx`: dagens ruting, lens/surface/scene-dyplenker og komposisjon. Dette er foreløpig orkestratoren, men er for stor.
 - `backend/migrations/role-room-schema.ts`: kanonisk Drizzle-skjema.
@@ -246,6 +246,142 @@ Disse er dokumentert og skal ikke tolkes som ferdige:
 - Production Graph og automatisk, forhåndsvisbar change impact er ikke ferdig.
 
 Det finnes ingen kjent blokkering igjen for Troll-adressenes gyldighet eller for å åpne og lagre en konservativ lokasjonsanalyse uten property-ID.
+
+## Hierarkivedlegg: alle rollene i organisasjonskartet
+
+Dette vedlegget speiler rollehierarkiet i referansebildet mot faktisk kode. Det skiller mellom at en rolle finnes i katalogen og at den har en reell, autorisert arbeidsflyt.
+
+Status betyr:
+
+- **Levert:** rollen rutes til en dedikert arbeidsflate med testet arbeidsflyt.
+- **Delvis:** relevante verktøy eller en delt fagflate finnes, men rollen mangler full auto-ruting, egen operasjonskontrakt eller komplett E2E.
+- **Katalog:** rolle, avdeling og rapporteringslinje finnes, men brukeren får foreløpig bare generisk/full workspace.
+- **Modellgap:** noden i organisasjonskartet er bevisst modellert et annet sted eller mangler som prosjektassignment; dette må avgjøres eksplisitt.
+
+### Above the line og fagledelse
+
+| Avdeling | Rolle i hierarkiet | Status nå | Det som er tenkt og det som står igjen |
+| --- | --- | --- | --- |
+| Produsenter | Ansvarlig produsent (`executive_producer`) | Delvis | Overordnet finansiering, grønt lys, klient-/eiergodkjenning og milepæler. Koble eksisterende økonomi, review og leveranser til en eksplisitt producer-lens og servergrants. |
+| Produsenter | Produsent (`producer`) | Delvis | Prosjektpuls, beslutninger, budsjett, casting, location sign-off, risiko og leveranse. Eksisterende plannerflater må registreres i samme workspace-register som de nye linsene. |
+| Produsenter | Linjeprodusent (`line_producer`) | Delvis | Dagskost, bemanning, lokasjoner, avtaler og produksjonsberedskap. Trenger egen komposisjon over production management, coordination og location uten parallelle data. |
+| Regi | Regissør (`director`) | Levert | Seks flater og scenehub finnes. Videre arbeid er å koble alle sign-offs til Production Graph og erstatte håndkodet ruting med registeret. |
+| Kamera | Filmfotograf/DoP (`cinematographer`) | Levert | Dedikert lens finnes for scener, shotplan, lys/utstyr, kamerateam og on-set. Videre arbeid er avdelingsdelegasjon til kamera, lys og grip. |
+| Manus | Manusforfatter (`writer`) | Delvis | Manus, kommentarer, analyse og strukturverktøy finnes. Rollen mangler eksplisitt production-lens, serveroppløst tilgang og ryddig overlevering fra låst manusrevisjon til avdelingene. |
+| Cast | Hovedcast/skuespiller-noden i bildet | Modellgap | Hovedroller og skuespillere lever i `casting_roles` og kandidat/cast-domenet, ikke i `PRODUCTION_ROLES`. Avklar om booket cast også skal få prosjektassignment og en avgrenset cast-portal uten å duplisere castingdata. |
+
+### Location, produksjonsledelse, regiassistenter, casting og continuity
+
+| Avdeling | Rolle i hierarkiet | Status nå | Det som er tenkt og det som står igjen |
+| --- | --- | --- | --- |
+| Location | Location manager (`location_manager`) | Levert | Eier operativ sannhet, readiness, hold, tillatelser, kost, backup og beslutningsgrunnlag. Neste er komplett permit intelligence og Production Graph-change impact. |
+| Location | Location scout (`location_scout`) | Levert | Samme location-lens med scout capture, offline kø og privat S3-media. Neste er sterkere mobil/touch, 360, feltmaler og dublettdeteksjon. |
+| Location | Location security (`location_security`) | Levert | Samme lens med lesetilgang som standard; mutasjon krever eksplisitt grant. Neste er vaktplan, perimeter, publikumsflyt, hendelser og nødadkomst. |
+| Produksjonsledelse | Produksjonsleder/UPM (`production_manager`) | Levert | Egen management-lane for godkjenning, kost, avvik og audit. Neste er portefølje på tvers av dager og konsekvensvisning før planendring. |
+| Produksjonsledelse | Produksjonskoordinator (`production_coordinator`) | Levert | Egen coordination-lane for dokumenter, oppfølging og dagsforberedelse. Neste er maler, frister, leverandørdialog og tydelig handoff til 1st AD. |
+| Produksjonsledelse | Produksjonssekretær (`production_secretary`) | Delvis | Skal dele coordinator-shell med dokumentregister, versjoner, distribusjon og møte-/dagslogg. Rollebasert auto-ruting og avgrensede grants mangler. |
+| Produksjonsledelse | Produksjonsregnskapsfører (`production_accountant`) | Delvis | Skal dele management-data, men få kostrapporter, PO, petty cash, avvik og eksport uten tilgang til kreative mutasjoner. Egen modul og permission bundle mangler. |
+| Produksjonsledelse | Kontor-PA (`office_production_assistant`) | Delvis | Skal få en oppgave-/dokument-/løperflate under coordinator. Katalogmapping finnes, men auto-ruting, begrenset skriveflate og E2E mangler. |
+| Produksjonsledelse | Produksjonsmedarbeider (`collaborator`) | Katalog | Generisk produksjonsrolle. Skal få department-shell med tildelte oppgaver, filer, kommentarer og minst mulig prosjektinnsyn. |
+| Innspillingsledelse | 1. regiassistent (`first_assistant_director`) | Levert | Dagsbrief, stripboard, opptaksplan, call sheet, cast/crew og on-set finnes. Neste er full schedule-change impact og låst distribusjon. |
+| Innspillingsledelse | 2. regiassistent (`second_assistant_director`) | Levert | Rolleavhengig AD-flate finnes. Neste er cast movement, bakgrunn, transport/status og kommunikasjon koblet til samme produksjonsdag. |
+| Innspillingsledelse | 2nd 2nd AD (`second_second_assistant_director`) | Delvis | Katalogen peker mot AD-workspace, men dagens effektive lens-resolver kjenner ikke rollen eksplisitt. Legg til registerruting, avgrenset cast-/bakgrunnsflyt og E2E. |
+| Innspillingsledelse | Set-PA (`set_production_assistant`) | Delvis | Katalogen peker mot AD-workspace. Trenger mobil «mine oppgaver», lockup, talentbevegelse, kvittering og svært begrensede rettigheter. |
+| Casting | Castingansvarlig (`casting_director`) | Delvis | Roller, kandidater, auditions og utvelgelse finnes som modne faner. Samle dem i en eksplisitt casting-lens med rollegrants og produksjonshandoff. |
+| Casting | Lokal castingansvarlig (`local_casting_director`) | Delvis | Skal bruke casting-lens med geografisk/rollebasert scope, lokale lister og dokumenterte forslag. Scope og egen E2E mangler. |
+| Casting | Statistansvarlig (`extras_casting_director`) | Delvis | Skal bruke casting-lens med bakgrunnsgrupper, availability, fitting, transport og dagsinnsjekk. Produksjonskobling og avgrenset portal mangler. |
+| Kontinuitet | Script supervisor (`script_supervisor`) | Levert | Egen versioned lane, take-logg, lined-script-avvik, kommentarer, revisjoner og privat S3-media finnes. Neste er tettere live-set/post-handoff og mobilpolering. |
+
+### Kamera, lys og grip
+
+| Avdeling | Rolle i hierarkiet | Status nå | Det som er tenkt og det som står igjen |
+| --- | --- | --- | --- |
+| Kamera | Kameraoperatør (`camera_operator`) | Delvis | Katalogen peker mot cinematography. Trenger egne shots, kameraassignment, blokkeringer og take-status uten tilgang til DoP-beslutninger. |
+| Kamera | 1. kameraassistent (`first_assistant_camera`) | Delvis | Katalogen peker mot cinematography. Planlagt modul for kamera-/linsepakke, fokusnotater, byggestatus, test og feilrapport. |
+| Kamera | 2. kameraassistent (`second_assistant_camera`) | Delvis | Katalogen peker mot cinematography. Planlagt slate, media-ID, kamerarapport, kort/logg og utstyrsbevegelse koblet til take. |
+| Kamera | DIT (`digital_imaging_technician`) | Delvis | Katalogen peker mot cinematography. Trenger checksum, offload-kø, kopier, rapport, LUT-/lookmetadata og verifisert post-handoff. |
+| Kamera | Droneoperatør (`drone_pilot`) | Delvis | Katalogen peker mot cinematography. Trenger vær, sone, operatørbevis, tillatelse, flight plan og go/no-go koblet til location. |
+| Lys | Gaffer (`gaffer`) | Delvis | Katalogen peker mot cinematography. Trenger lysplan, kraftbehov, crew/utstyr, prelight, sikkerhet og avvik per scene/location. |
+| Lys | Best boy electric (`best_boy_electric`) | Katalog | Planlagt department-shell for kraftdistribusjon, bemanning, last, dagsoppgaver og avvik under gaffer. |
+| Lys | Generatoroperatør (`generator_operator`) | Katalog | Planlagt mobilflate for generator, drivstoff, kabling, kapasitet, driftstid, støy og sikkerhet. |
+| Lys | Lystekniker (`lighting_technician`) | Katalog | Planlagt «mine oppgaver», riggpunkt, utstyrsstatus og sikker kvittering uten budsjett-/designrettigheter. |
+| Grip | Key grip (`key_grip`) | Delvis | Katalogen peker mot cinematography. Trenger riggplan, bevegelse, sikkerhet, mannskap, utstyr og godkjenning med DoP/1st AD. |
+| Grip | Best boy grip (`best_boy_grip`) | Katalog | Planlagt department-shell for crew, utstyr, last, oppgaver og avvik under key grip. |
+| Grip | Dolly grip (`dolly_grip`) | Katalog | Planlagt shot-koblet skinne/dolly/riggplan, mål, underlag, bemanning og sikkerhet. |
+| Grip | Grip (`grip`) | Katalog | Planlagt mobil oppgave- og utstyrsflate med riggstatus, bilder, avvik og kvittering. |
+
+### Cast, SFX, art, opptakslyd og stunt
+
+| Avdeling | Rolle i hierarkiet | Status nå | Det som er tenkt og det som står igjen |
+| --- | --- | --- | --- |
+| Medvirkende | Stand-in (`stand_in`) | Katalog | Planlagt avgrenset cast-portal for call time, scene, blokkering, garderobe/HMU, meldinger og bekreftelse. |
+| Medvirkende | Statist (`background_performer`) | Katalog | Planlagt gruppebasert portal for call, transport, fitting, samtykke, innsjekk og wrap; ingen bred prosjektlesing. |
+| Spesialeffekter | SFX supervisor (`sfx_supervisor`) | Katalog | Planlagt scene-/shotbehov, metode, materialer, risikovurdering, tillatelser, test, reset og sign-off. |
+| Art | Produksjonsdesigner (`production_designer`) | Katalog, neste hovedrolle | Neste vertikale leveranse. Skal samle designintensjon, sets, props, kostyme, HMU, konstruksjon, konsept og storyboard per scene. |
+| Art | Settdesigner (`set_designer`) | Katalog | Planlagt modul under Production Designer for tegninger, mål, revisjoner, materialer, godkjenning og construction-handoff. |
+| Art | Konseptillustratør (`concept_illustrator`) | Katalog | Planlagt versjonert referanse-/konseptflate med brief, kilde/proveniens, review, valg og lock. |
+| Art | Storyboardartist (`storyboard_artist`) | Delvis | Storyboard Room har sterke tegne-, review- og animatic-kapabiliteter. Rollen mangler normalisert Role Room-assignment, department-ruting og produksjonshandoff. |
+| Opptakslyd | Produksjonslydmikser (`production_sound_mixer`) | Katalog | Planlagt fagflate for location-/scenelyd, kanal-/radioplan, sound report, take, avvik, filmanifest og post-handoff. |
+| Opptakslyd | Boomoperatør (`boom_operator`) | Katalog | Planlagt mobil shot-/takeflate for mikrofon, kanal, radio, problem, room tone og kvittering til mixer. |
+| Stunt | Stuntkoordinator (`stunt_coordinator`) | Katalog | Planlagt scene-risiko, performer, rehearsal, medisinsk/sikkerhetsplan, utstyr, tillatelser og go/no-go. |
+| Stunt | Stuntdouble (`stunt_double`) | Katalog | Planlagt avgrenset portal for call, rehearsal, kost/HMU, sikkerhetsbrief, samtykke og take-status. |
+
+### Transport, service, publicity og fysisk kontinuitet
+
+| Avdeling | Rolle i hierarkiet | Status nå | Det som er tenkt og det som står igjen |
+| --- | --- | --- | --- |
+| Transport | Transportansvarlig (`transportation_captain`) | Katalog | Planlagt kjøretøy, sjåfør, rute, last, passasjer, base, drivstoff og avvik koblet til location og production day. |
+| Transport | Sjåfør (`driver`) | Katalog | Planlagt mobil rute-/oppdragsflate med tid, kontakt, kjøretøy, kvittering og begrenset persondata. |
+| Craft service | Craft services (`craft_services`) | Katalog | Planlagt crew count, tidsvinduer, allergi-/behovssummering, locationpunkt, lager og dagsavvik. |
+| Catering | Kokk (`chef`) | Katalog | Planlagt måltidsplan, antall, allergiaggregat, tider, leveransepunkt og bekreftelse uten unødvendige personopplysninger. |
+| PR og stills | Presseansvarlig (`unit_publicist`) | Katalog | Planlagt godkjent story-/assetplan, embargo, releases, shot access, klientreview og publiseringshandoff. |
+| PR og stills | Stillfotograf (`still_photographer`) | Katalog | Planlagt shot-/sceneoppdrag, tilgang, releases, utvalg, metadata og privat media-handoff. |
+| Kostyme | Kostymedesigner (`costume_designer`) | Katalog | Planlagt character/scene-look, continuity, fittings, sourcing, kost, godkjenning og dagsbehov. |
+| Kostyme | Kostymeansvarlig (`wardrobe_supervisor`) | Katalog | Planlagt item-/look-tracking, fitting, vask/reparasjon, on-set-status, bilder og continuity per take. |
+| Set decoration | Set decorator (`set_decorator`) | Katalog | Planlagt set dressing-plan, eierskap/leie, sceneplassering, kost, installasjon og strike. |
+| Set decoration | On-set dresser (`on_set_dresser`) | Katalog | Planlagt mobil reset-/continuity-flate med bilder, plassering, endringer og avvik per take. |
+| Set decoration | Greensperson (`greensperson`) | Katalog | Planlagt behov, sourcing, plassering, vedlikehold, vann/sikkerhet, continuity og wrap. |
+| Rekvisitt | Rekvisittansvarlig (`property_master`) | Katalog | Planlagt prop-register koblet til karakter, scene, shot og take med eierskap, versjon, tilstand og handoff. |
+| Rekvisitt | Rekvisittassistent (`assistant_property_master`) | Katalog | Planlagt mobil uttak/retur, preset/reset, bilde, skade og oppgave under property master. |
+| Hår og sminke | Håransvarlig (`key_hair_stylist`) | Katalog | Planlagt character-look, fitting, scene-/dagrekkefølge, continuity-bilder, produkter, tid og avvik. |
+| Hår og sminke | Sminkeansvarlig (`key_makeup_artist`) | Katalog | Planlagt character-look, prosthetics/SFX-makeup, allergi-/samtykkescope, continuity og reset per take. |
+| Konstruksjon | Konstruksjonskoordinator (`construction_coordinator`) | Katalog | Planlagt tegning/revisjon, materialer, crew, HMS, milepæler, inspeksjon, kost og handoff til art/set. |
+| Andre | Studio teacher (`studio_teacher`) | Katalog | Planlagt barnets avgrensede dagsplan, arbeid/skole/hvile, guardian-status og compliance uten bredt prosjektinnsyn. |
+
+### Postproduksjon
+
+| Avdeling | Rolle i hierarkiet | Status nå | Det som er tenkt og det som står igjen |
+| --- | --- | --- | --- |
+| Etterarbeidsledelse | Post supervisor (`post_supervisor`) | Katalog | Planlagt postplan, leveransemanifest, vendor, budsjett, review, approvals, dependencies og final delivery. |
+| Etterarbeidsledelse | Postkoordinator (`post_coordinator`) | Katalog | Planlagt ingest-/leveransekø, frister, metadata, versjoner, notater og status under post supervisor. |
+| Musikk | Musikkansvarlig (`music_supervisor`) | Katalog | Planlagt cue-/rights-register, brief, kilde, lisens, kost, review og leveranse mot scene/timecode. |
+| Musikk | Komponist (`composer`) | Katalog | Planlagt cue-brief, versjon, stems, timecode, review, godkjenning og levering uten tilgang til øvrig økonomi. |
+| Musikk | Musiker (`musician`) | Katalog | Planlagt avgrenset session-, materiale-, call-, rettighets- og filoverleveringsflate. |
+| Lydetterarbeid | Lyddesigner (`sound_designer`) | Katalog | Planlagt cue-/sceneplan, assets, layers, version, review, stems og mix-handoff. |
+| Lydetterarbeid | Lydklipper (`sound_editor`) | Katalog | Planlagt oppgave-/cueflate med timecode, kilde, versjon, status og review. |
+| Lydetterarbeid | Foleyartist (`foley_artist`) | Katalog | Planlagt cue sheet, prop, surface, performance, take, fil og levering per timecode. |
+| Lydetterarbeid | ADR-tekniker (`adr_engineer`) | Katalog | Planlagt ADR-cue, talent, studio, take, sync, valg, filmanifest og godkjenning. |
+| Klipp og farge | Klippeansvarlig (`supervising_editor`) | Katalog | Planlagt editorial status, cut lineage, turnovers, review decisions og låsepunkter. |
+| Klipp og farge | Klipper (`video_editor`) | Katalog | Planlagt cut-versjoner, timeline/timecode-notater, review, approvals og leveransemanifest. |
+| Klipp og farge | Klippeassistent (`assistant_editor`) | Katalog | Planlagt ingest, sync, bins, proxies, turnovers, QC og oppgavekvittering. |
+| Klipp og farge | Colorist (`colorist`) | Katalog | Planlagt color brief, reference stills, version, review, QC og masterleveranse. |
+| Visuelle effekter | VFX supervisor (`vfx_supervisor`) | Katalog | Planlagt shot-register, plate/elementer, vendor, bid, version, review, status og final. |
+| Visuelle effekter | VFX-artist (`vfx_artist`) | Katalog | Planlagt avgrenset shot-task, input, version, notes, QC og levering. |
+| Visuelle effekter | Motion designer (`motion_graphics_artist`) | Katalog | Planlagt grafikk-/title-shot, brand/brief, version, review, font/rettigheter og final delivery. |
+
+### Slik skal hierarkiet bli funksjonelt, ikke bare visuelt
+
+`reportsTo` i katalogen beskriver organisasjonslinjen, men skal ikke alene gi tilgang. For hver rad over må den videre arkitekturen definere:
+
+1. **Assignment:** hvilken konto som faktisk har rollen i prosjektet, eventuelt flere roller.
+2. **Scope:** hvilke prosjekt-, scene-, dag-, location- eller asset-ID-er rollen kan se.
+3. **Capabilities:** lese, foreslå, kommentere, endre, godkjenne, låse og eksportere som separate grants.
+4. **Workspace composition:** hvilke felles moduler rollen ser og hvilke fagmoduler som legges til.
+5. **Operational lane:** hvor fagdata lagres, versjoneres og konfliktsikres.
+6. **Handoff:** hvilket dokumentert resultat neste rolle mottar, og hva som skjer ved endring.
+7. **Accountability:** navngitt eier, frist, evidens, godkjenning, aktivitet og historikk.
+
+Målet er at organisasjonskartet fungerer som konfigurasjon for navigasjon, ansvar og tilgang, mens all produksjonsdata fortsatt lever i den samme prosjektgrafen.
 
 ## Konkret startpunkt for neste Claude-økt
 
