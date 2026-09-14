@@ -17,7 +17,7 @@ import CoreGraphics
 ///
 /// Why a PNG of "just the ink" + manifest — rather than a flattened
 /// composite of (photo + ink):
-///   * The photo is already on R2; re-storing it locally for every
+///   * The photo is already on CreatorHub S3; re-storing it locally for every
 ///     marked-up frame wastes disk.
 ///   * The web retouch pass wants the ink alone so it can re-apply
 ///     at full resolution against the untouched RAW.

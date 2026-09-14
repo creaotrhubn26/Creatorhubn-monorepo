@@ -2,7 +2,7 @@ import Foundation
 
 /// Drives the "import from memory card" flow:
 ///   pick files → review → import locally (copy + checksum + dedup) → pick a
-///   project → back up originals to B2 → hand off to cull / Redigering.
+///   project → back up originals to CreatorHub S3 → hand off to cull / Redigering.
 @MainActor
 @Observable
 final class CardImportModel {
@@ -123,7 +123,7 @@ final class CardImportModel {
             return
         }
 
-        // 2. Link to project + back up ORIGINALS to B2.
+        // 2. Link to project + back up ORIGINALS to CreatorHub S3.
         phase = .backingUp
         progressTotal = backupItems.count
         progressDone = 0

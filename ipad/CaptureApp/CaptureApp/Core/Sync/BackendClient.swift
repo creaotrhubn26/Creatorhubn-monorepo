@@ -163,7 +163,7 @@ actor BackendClient {
 
     /// Phase 5.1 — voice-memo reply upload. Multipart body so audio
     /// bytes don't have to base64-encode (≈33% bloat). Server stores
-    /// to R2, persists the key on the review row, and broadcasts the
+    /// to CreatorHub S3, persists the key on the review row, and broadcasts the
     /// `client_review` WebSocket event with `audioKey` so other iPads
     /// + the web client gallery can stream the playback.
     func submitAssetVoiceReview(
@@ -275,11 +275,11 @@ actor BackendClient {
     }
 
     /// Slice 6 — upload the auto-cleaned JPEG for an asset to the
-    /// capture R2 bucket. Backend records the key + detection count
+    /// CreatorHub S3 bucket. Backend records the key + detection count
     /// on the captureAssets row so the Showcase bridge can later
     /// surface the cleaned variant to the client gallery without a
     /// second upload at deliver time. Idempotent — re-upload of the
-    /// same asset overwrites the R2 object in place at a deterministic
+    /// same asset overwrites the S3 object in place at a deterministic
     /// key. Best-effort caller: AutoCleanService swallows errors so a
     /// failed upload doesn't break the surrounding shoot flow.
     func uploadCleanedVariant(
@@ -493,7 +493,7 @@ actor BackendClient {
 
     /// Bygg STABILE thumbnail-URL-er for shot-oppdaterings-kortet: de siste
     /// `limit` opplastede bildene i økta, som `…/assets/<id>/preview`-
-    /// redirecter (aldri utløper — backend re-signerer R2 pr kall). Kun
+    /// redirecter (aldri utløper — backend re-signerer S3 pr kall). Kun
     /// bilder som faktisk har en preview i skyen tas med.
     func shotThumbURLs(sessionId: UUID, limit: Int) async -> [String] {
         guard let assets = try? await listSessionAssets(sessionId: sessionId, limit: 500, offset: 0)
@@ -549,8 +549,8 @@ actor BackendClient {
         )
     }
 
-    /// PUT a single part's bytes to a presigned R2 URL and return the ETag
-    /// that S3/R2 sends back — required when calling completeUpload.
+    /// PUT a single part's bytes to a presigned CreatorHub S3 URL and return
+    /// the ETag required when calling completeUpload.
     func putPart(url: URL, bytes: Data) async throws -> String {
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
@@ -564,7 +564,7 @@ actor BackendClient {
         }
         guard let etag = http.value(forHTTPHeaderField: "ETag")
                          ?? http.value(forHTTPHeaderField: "Etag") else {
-            throw BackendError.decode("missing ETag on R2 part response")
+            throw BackendError.decode("missing ETag on S3 part response")
         }
         return etag
     }

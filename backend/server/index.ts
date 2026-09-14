@@ -2957,7 +2957,10 @@ app.use(
 );
 app.use("/api/youtube", createYouTubeRouter(pool));
 app.use("/api/google-workspace", createGoogleWorkspaceExtraRouter(pool));
-app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool));
+app.use("/api/photo-enhancer", createPhotoEnhancerRouter(pool, {
+  getActiveSessionFromRequest,
+  requireUserSession,
+}));
 app.use("/api/photo-enhancement", createPhotoEnhancementCompatRouter());
 app.use(
   "/api/integrations/v1/role-room",

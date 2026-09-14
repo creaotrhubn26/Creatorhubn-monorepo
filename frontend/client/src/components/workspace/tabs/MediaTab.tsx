@@ -595,7 +595,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     }
   };
   const loadCredits = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits`).then((r: any) => setCredits(r || null)).catch(() => {}); };
-  const buyPack = async (id: string) => { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId: id } }); if (r?.url) window.location.href = r.url; } catch (e: any) { wsAlert(e?.message || t('error')); } };
+  const buyPack = async (id: string) => { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId: id, returnPath: `/workspace/${projectId}/media` } }); if (r?.url) window.location.href = r.url; } catch (e: any) { wsAlert(e?.message || t('error')); } };
   useEffect(() => {
     if (!isReal) return;
     loadCredits();

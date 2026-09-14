@@ -27,12 +27,14 @@ import { addReview, listReviews } from './capture-reviews-service.js';
 import {
   abortMultipartUpload,
   completeMultipartUpload,
+  getCaptureObject,
   signAssetReadUrl,
   signPartUrls,
   startMultipartUpload,
   uploadCaptureObject,
   type UploadError,
 } from './capture-upload-service.js';
+import { buildPhotoRoomCaptureKey } from './photo-room-storage-contract.js';
 import { broadcastCaptureEvent } from './capture-websocket.js';
 import { sendTransactionalEmail } from './transactional-email-service.js';
 import {
@@ -796,10 +798,10 @@ export function createCaptureRouter(
   });
 
   // Stabil thumbnail-URL for shot-oppdaterings-kortet i team-chatten. 302 →
-  // fersk-signert R2-preview hver gang (aldri utløper), så en varig chat-
+  // fersk-signert privat preview hver gang (aldri utløper), så en varig chat-
   // melding kan peke hit. INGEN auth: må lastes av <img>/AsyncImage uten
   // headere, og team-medlemmer (ikke bare økt-eier) må se den. Asset-id er en
-  // ugjettbar UUID; den underliggende R2-URL-en er fortsatt kortlevd signert.
+  // ugjettbar UUID; den underliggende S3/R2-URL-en er fortsatt kortlevd signert.
   router.get('/assets/:id/preview', async (req, res) => {
     try {
       const key = await fetchAssetPreviewKey(db, req.params.id);
@@ -938,7 +940,7 @@ export function createCaptureRouter(
     res.json({ analysis: result.analysis, usage: result.usage });
   });
 
-  // ── Uploads (R2 multipart) ──────────────────────────────────
+  // ── Uploads (CreatorHub S3 multipart; legacy R2 uploads remain resumable) ──
 
   router.post('/assets/:id/upload/start', auth, async (req, res) => {
     const parsed = uploadStartBody.safeParse(req.body);
@@ -1133,7 +1135,7 @@ export function createCaptureRouter(
 
   // Phase 5.1 — voice-memo reply attachment.
   // Multipart body: `audio` file part + `duration` text field. Bytes
-  // land in capture R2 under `reviews/<reviewId>/audio.m4a` (key
+  // land in CreatorHub S3 under the Photo Room tenant prefix (key
   // computed with the inserted review row's id so we never have to
   // rename objects after the fact). Body cap 10 MB — generous for a
   // 60s mono AAC m4a (~2 MB at 256 kbps); larger uploads are
@@ -1172,22 +1174,39 @@ export function createCaptureRouter(
         res.status(400).json({ error: 'duration_invalid' });
         return;
       }
-      // Pre-allocate the review id so the R2 key path is stable
+      const ownedAsset = await fetchAsset(db, userId, req.params.id);
+      if (!ownedAsset) {
+        res.status(404).json({ error: 'asset_not_found' });
+        return;
+      }
+      const ownedSession = await fetchSession(db, ownedAsset.sessionId, userId);
+      if (!ownedSession) {
+        res.status(404).json({ error: 'session_not_found' });
+        return;
+      }
+      // Pre-allocate the review id so the object key is stable
       // before INSERT — keeps the FS-key the only source of truth
-      // even if a race fails the INSERT (we'll just orphan the blob
-      // on R2; cleanup is Phase 6).
+      // even if a race fails the INSERT (the orphan remains private and can
+      // be reclaimed by a later cleanup job).
       const reviewId = randomUUID();
-      const r2Key = `reviews/${reviewId}/audio.m4a`;
+      const objectKey = buildPhotoRoomCaptureKey({
+        userId,
+        projectId: ownedSession.projectId,
+        sessionId: ownedAsset.sessionId,
+        assetId: ownedAsset.id,
+        kind: 'review-audio',
+        fileName: `${reviewId}.m4a`,
+      });
       const stored = await uploadCaptureObject({
-        key: r2Key,
+        key: objectKey,
         buffer: audioFile.buffer,
         contentType: mime,
       });
       if (!stored) {
-        res.status(503).json({ error: 'r2_not_configured' });
+        res.status(503).json({ error: 'creatorhub_storage_not_configured' });
         return;
       }
-      // INSERT with the explicit id so the row's id matches the R2
+      // INSERT with the explicit id so the row's id matches the object
       // key prefix. Drizzle's `returning()` gives us the canonical
       // row regardless of any defaults that fired.
       try {
@@ -1222,7 +1241,7 @@ export function createCaptureRouter(
 
   // Slice 6 — auto-clean variant upload. The iPad has the cleaned JPG
   // sitting locally after AutoCleanService ran; this route ingests it
-  // into the capture R2 bucket and stamps the resulting key + detection
+  // into CreatorHub S3 and stamps the resulting key + detection
   // count onto the asset row, so the gallery render later re-signs it
   // alongside the camera-original (same machinery preview_key uses).
   //
@@ -1233,8 +1252,7 @@ export function createCaptureRouter(
   // Path: /sessions/:sessionId/assets/:assetId/upload-cleaned-variant
   // Auth: auth middleware + ownership-checked asset fetch.
   // Idempotent: re-uploading replaces in place at the deterministic
-  // key `capture-cleaned/<sessionId>/<assetId>.jpg`. The R2 key is the
-  // same for every re-upload of the same asset.
+  // Canonical Photo Room-keyen er den samme for hver ny opplasting av asseten.
   const captureCleanedUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 30 * 1024 * 1024 },
@@ -1271,7 +1289,7 @@ export function createCaptureRouter(
       // Ownership-checked fetch: fails 404 if user doesn't own the
       // session that contains this asset, OR if the asset is in a
       // different session than the URL claims. The latter check
-      // matters because the R2 key is derived from sessionId — without
+      // matters because the S3 key is derived from sessionId — without
       // it, an attacker who guessed an assetId could overwrite a
       // cleaned variant under a session they DO own.
       const owned = await fetchAsset(db, userId, assetId);
@@ -1284,15 +1302,28 @@ export function createCaptureRouter(
         return;
       }
 
+      const ownedSession = await fetchSession(db, sessionId, userId);
+      if (!ownedSession) {
+        res.status(404).json({ error: 'session_not_found' });
+        return;
+      }
+
       // Deterministic key — same asset re-uploaded overwrites in place.
-      const r2Key = `capture-cleaned/${sessionId}/${assetId}.jpg`;
+      const objectKey = buildPhotoRoomCaptureKey({
+        userId,
+        projectId: ownedSession.projectId,
+        sessionId,
+        assetId,
+        kind: 'cleaned',
+        fileName: mime === 'image/png' ? 'cleaned.png' : 'cleaned.jpg',
+      });
       const stored = await uploadCaptureObject({
-        key: r2Key,
+        key: objectKey,
         buffer: cleanedFile.buffer,
         contentType: mime,
       });
       if (!stored) {
-        res.status(503).json({ error: 'r2_not_configured' });
+        res.status(503).json({ error: 'creatorhub_storage_not_configured' });
         return;
       }
 
@@ -1323,10 +1354,10 @@ export function createCaptureRouter(
           autoCleanedDetectionCount: row.autoCleanedDetectionCount ?? 0,
         });
       } catch (err) {
-        // Failure here means R2 has the blob but DB doesn't reference it
+        // Failure here means S3 has the blob but DB doesn't reference it
         // — orphaned blob is acceptable (deterministic key means the
         // next attempt overwrites). Surface the error so the iPad can
-        // retry, but don't try to delete the R2 object (deletion errors
+        // retry, but don't try to delete the S3 object (deletion errors
         // would just compound the problem).
         res.status(500).json({
           error: 'attach_failed',
@@ -1347,6 +1378,7 @@ export function createCaptureRouter(
       settings: parsed.data.settings,
       filter: parsed.data.filter as HandoffFilter,
       preferredSource: parsed.data.preferredSource,
+      authorization: req.headers.authorization,
     });
     if (!result) {
       res.status(404).json({ error: 'session_not_found' });
@@ -1658,11 +1690,11 @@ export function createCaptureRouter(
   //
   // The iPad's `LiveCaptureModel.kickEnhancementForLastDelivery` posts
   // here after `deliver()` succeeds. Each pick's bytes already live in
-  // capture R2 (the upload step of deliver wrote them). We:
+  // private Capture storage (CreatorHub S3, with legacy R2 read support). We:
   //   1. Look up each asset row to get previewKey/fullKey
-  //   2. Fetch bytes from capture R2 via `signAssetReadUrl` + fetch()
+  //   2. Fetch bytes directly from the owning private storage provider
   //   3. Hand the buffer to `enqueuePhotoEnhancerJobFromBuffer` which
-  //      re-uploads to PE R2 + creates the job + schedules the queue
+  //      stores its source in CreatorHub S3 + creates and schedules the job
   //   4. Track sessionId → assetId → jobId so the status route can
   //      answer "where's job for asset X" without scanning all jobs
   //
@@ -1690,7 +1722,11 @@ export function createCaptureRouter(
     // Verify session ownership so a different user's bearer can't
     // queue enhancement on someone else's shoot.
     const sessionRows = await db
-      .select({ id: captureSessions.id, ownerUserId: captureSessions.ownerUserId })
+      .select({
+        id: captureSessions.id,
+        ownerUserId: captureSessions.ownerUserId,
+        projectId: captureSessions.projectId,
+      })
       .from(captureSessions)
       .where(eq(captureSessions.id, sessionId))
       .limit(1);
@@ -1703,7 +1739,7 @@ export function createCaptureRouter(
       return;
     }
 
-    // Load asset rows for the session — gives us R2 keys + filenames.
+    // Load asset rows for the session — gives us private object keys + filenames.
     // Filter to only the requested assetIds AND only ones in this
     // session (so an iPad bug can't accidentally enhance assets from
     // a different session).
@@ -1751,20 +1787,14 @@ export function createCaptureRouter(
       }
       let buffer: Buffer;
       try {
-        const presignedUrl = await signAssetReadUrl(sourceKey);
-        if (!presignedUrl) {
-          failures.push({ assetId, reason: 'sign_url_failed' });
+        const source = await getCaptureObject(sourceKey);
+        if (!source?.body) {
+          failures.push({ assetId, reason: 'source_unavailable' });
           continue;
         }
-        const response = await fetch(presignedUrl);
-        if (!response.ok) {
-          failures.push({ assetId, reason: `r2_fetch_${response.status}` });
-          continue;
-        }
-        const arrayBuffer = await response.arrayBuffer();
-        buffer = Buffer.from(arrayBuffer);
+        buffer = source.body;
       } catch (err) {
-        failures.push({ assetId, reason: 'r2_fetch_threw' });
+        failures.push({ assetId, reason: 'source_fetch_failed' });
         continue;
       }
 
@@ -1772,7 +1802,7 @@ export function createCaptureRouter(
         buffer,
         fileName: row.originalFilename || `${assetId}.jpg`,
         mimeType: row.mime || 'image/jpeg',
-        projectId: `capture-${sessionId}`,
+        projectId: sessionRows[0].projectId || 'unassigned',
         owner: userId,
         userId,
         preset,

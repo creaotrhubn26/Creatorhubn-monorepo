@@ -65,6 +65,13 @@ import {
   normalizePhotoEnhancerExif,
   parsePhotoEnhancerXmpSidecar,
 } from "./photo-enhancer-profiles.js";
+import { getCreatorHubObjectStorage, putCreatorHubObject } from "./creatorhub-object-storage.js";
+import {
+  buildPhotoRoomEnhancerSourceKey,
+  buildPhotoRoomProjectPrefix,
+  isCreatorHubPhotoRoomKey,
+} from "./photo-room-storage-contract.js";
+import { canAccessProject, canEditProject } from "./project-team-routes.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -188,14 +195,9 @@ type PhotoEnhancerR2Source = {
   size: number;
   uploadId?: string | null;
   originalHash?: string | null;
-  // Where the source object lives. "r2" = the photo-enhancer Cloudflare R2
-  // upload bucket (legacy). "b2" = the Backblaze B2 staging bucket that the
-  // rest of the photographer pipeline (capture, gallery, editing handoff) uses
-  // — keeps the photographer-facing path on one provider, no cross-provider
-  // egress. The backend already holds B2 creds; the GFPGAN runner never sees
-  // the source (the backend downloads + forwards it), so B2 support is
-  // backend-only.
-  storage?: "r2" | "b2";
+  // Capture/Photo Room sources use CreatorHub's dedicated AWS S3 bucket.
+  // R2 remains available to the standalone Photo Enhancer surface only.
+  storage?: "creatorhub_s3" | "r2";
 };
 
 type LensCorrection = {
@@ -816,6 +818,7 @@ function publicPhotoEnhancerJob(job: PhotoEnhancerQueuedJob) {
     source: {
       bucket: job.source.bucket,
       key: job.source.key,
+      storage: job.source.storage || "r2",
       fileName: job.source.fileName,
       mimeType: job.source.mimeType,
       size: job.source.size,
@@ -999,7 +1002,7 @@ async function runPhotoEnhancerQueuedJob(job: PhotoEnhancerQueuedJob) {
     });
     job.source.originalHash = downloaded.originalHash;
     job.progress = 25;
-    addPhotoEnhancerJobEvent(job, "progress", "Source downloaded from R2.", {
+    addPhotoEnhancerJobEvent(job, "progress", "Source downloaded from private storage.", {
       bytes: downloaded.size,
       originalHash: downloaded.originalHash,
     });
@@ -1592,58 +1595,19 @@ function isAllowedPhotoEnhancerR2Object(bucket: string | null | undefined, key: 
   );
 }
 
-// ── Backblaze B2 source support (same staging bucket as capture/editing) ──
-// B2 is S3-compatible; reuse the Role Room staging creds the editing handoff
-// already uses. Sources live under PHOTO_ENHANCER_B2_STAGING_PREFIX.
-const PHOTO_ENHANCER_B2_STAGING_PREFIX = "photo-enhancer-staging";
-
-let photoEnhancerB2Client: S3Client | null = null;
-
-function buildPhotoEnhancerB2Config(): { enabled: boolean; endpoint: string; bucket: string; region: string } {
-  const region = process.env.B2_REGION || "eu-central-003";
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME || "";
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID || "";
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY || "";
-  return {
-    enabled: Boolean(bucket && keyId && appKey),
-    endpoint: `https://s3.${region}.backblazeb2.com`,
-    bucket,
-    region,
-  };
-}
-
-function getPhotoEnhancerB2Client(): S3Client | null {
-  const cfg = buildPhotoEnhancerB2Config();
-  if (!cfg.enabled) return null;
-  if (photoEnhancerB2Client) return photoEnhancerB2Client;
-  photoEnhancerB2Client = new S3Client({
-    region: cfg.region,
-    endpoint: cfg.endpoint,
-    credentials: {
-      accessKeyId: process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID || "",
-      secretAccessKey: process.env.B2_ROLE_ROOM_APPLICATION_KEY || "",
-    },
-    forcePathStyle: true,
-  });
-  return photoEnhancerB2Client;
-}
-
-function isAllowedPhotoEnhancerB2Object(bucket: string | null | undefined, key: string | null | undefined) {
-  const cfg = buildPhotoEnhancerB2Config();
-  return Boolean(
-    cfg.enabled &&
-      bucket === cfg.bucket &&
-      typeof key === "string" &&
-      key.startsWith(`${PHOTO_ENHANCER_B2_STAGING_PREFIX}/`) &&
-      !key.includes(".."),
-  );
-}
-
-function buildPhotoEnhancerB2UploadKey(params: { fileName: string; projectId?: string | null }): string {
-  const datePrefix = new Date().toISOString().slice(0, 10);
-  const projectSegment = sanitizeR2KeySegment(params.projectId || "unassigned", "unassigned");
-  const baseName = sanitizeR2KeySegment(path.basename(params.fileName || "source.raw"), "source.raw");
-  return [PHOTO_ENHANCER_B2_STAGING_PREFIX, projectSegment, datePrefix, crypto.randomUUID(), baseName].join("/");
+function isAllowedCreatorHubPhotoRoomObject(params: {
+  bucket: string | null | undefined;
+  key: string | null | undefined;
+  userId?: string | null;
+  projectId?: string | null;
+}): boolean {
+  const storage = getCreatorHubObjectStorage();
+  if (!storage || params.bucket !== storage.bucket || !isCreatorHubPhotoRoomKey(params.key)) return false;
+  if (!params.userId || typeof params.key !== "string") return false;
+  return params.key.startsWith(buildPhotoRoomProjectPrefix({
+    userId: params.userId,
+    projectId: params.projectId,
+  }));
 }
 
 function readPhotoEnhancerR2Source(value: unknown, fallback: Record<string, unknown> = {}): PhotoEnhancerR2Source | null {
@@ -1660,6 +1624,7 @@ function readPhotoEnhancerR2Source(value: unknown, fallback: Record<string, unkn
   const size = readNumber(sourceRecord.size) || readNumber(fallback.size) || 0;
   if (!bucket || !key || !size) return null;
   const storageRaw = (readString(sourceRecord.storage) || readString(fallback.storage) || "r2").toLowerCase();
+  if (storageRaw !== "creatorhub_s3" && storageRaw !== "r2") return null;
   return {
     bucket,
     key,
@@ -1668,7 +1633,7 @@ function readPhotoEnhancerR2Source(value: unknown, fallback: Record<string, unkn
     size,
     uploadId: readString(sourceRecord.uploadId) || null,
     originalHash: readString(sourceRecord.originalHash) || null,
-    storage: storageRaw === "b2" ? "b2" : "r2",
+    storage: storageRaw === "creatorhub_s3" ? "creatorhub_s3" : "r2",
   };
 }
 
@@ -1705,17 +1670,18 @@ async function downloadPhotoEnhancerR2ObjectToTemp(params: {
   fileName: string;
   expectedSize?: number | null;
   expectedMimeType?: string | null;
-  storage?: "r2" | "b2";
+  storage?: "creatorhub_s3" | "r2";
 }) {
-  // B2 sources fetch from the Backblaze staging bucket (S3-compatible); the
-  // default R2 path is unchanged.
+  // Capture sources stay in CreatorHub S3. The standalone enhancer's own R2
+  // contract remains separate and never uses Role Room credentials.
   let client: S3Client | null;
-  if (params.storage === "b2") {
-    client = getPhotoEnhancerB2Client();
-    if (!client) throw new Error("photo_enhancer_b2_not_configured");
-    if (!isAllowedPhotoEnhancerB2Object(params.bucket, params.key)) {
-      throw new Error("photo_enhancer_b2_object_not_allowed");
+  if (params.storage === "creatorhub_s3") {
+    const storage = getCreatorHubObjectStorage();
+    if (!storage) throw new Error("creatorhub_storage_not_configured");
+    if (params.bucket !== storage.bucket || !isCreatorHubPhotoRoomKey(params.key)) {
+      throw new Error("creatorhub_photo_room_object_not_allowed");
     }
+    client = storage.client;
   } else {
     const config = buildPhotoEnhancerUploadR2Config();
     client = getPhotoEnhancerUploadR2Client(config);
@@ -4547,16 +4513,11 @@ async function fetchUserLutTable(
   };
 }
 
-/// Phase 5.4 — capture-side bridge. The iPad's deliver flow uploads
-/// picks to capture R2; this enqueues a photo-enhancer job from
-/// already-fetched bytes (rather than from an existing PE-R2 source).
-/// The capture route fetches via `signAssetReadUrl` and hands the
-/// buffer here. We re-upload to PE R2 (so the runner reads from its
-/// expected bucket prefix) and construct a job in the same shape
-/// `POST /jobs` produces, then schedule the queue.
+/// Capture-side bridge. The iPad's deliver flow already stores picks in
+/// CreatorHub S3; this creates a private, project-scoped enhancer source from
+/// the fetched bytes and schedules the same queue used by `POST /jobs`.
 ///
-/// Returns the job id on success or null when the PE R2 upload
-/// client isn't configured (caller should treat as 503).
+/// Returns the job id on success or null when CreatorHub S3 is unavailable.
 export async function enqueuePhotoEnhancerJobFromBuffer(opts: {
   buffer: Buffer;
   fileName: string;
@@ -4569,33 +4530,28 @@ export async function enqueuePhotoEnhancerJobFromBuffer(opts: {
   if (!isSupportedPhotoUpload({ originalname: opts.fileName, mimetype: opts.mimeType })) {
     return null;
   }
-  const config = buildPhotoEnhancerUploadR2Config();
-  const client = getPhotoEnhancerUploadR2Client(config);
-  if (!config.enabled || !config.bucket || !client) {
-    return null;
-  }
+  const storage = getCreatorHubObjectStorage();
+  if (!storage) return null;
   const sha = createHash("sha256").update(opts.buffer).digest("hex");
-  const key = buildPhotoEnhancerUploadKey({
+  const projectId = opts.projectId || "unassigned";
+  const key = buildPhotoRoomEnhancerSourceKey({
+    userId: opts.userId,
+    projectId,
+    objectId: sha,
     fileName: opts.fileName,
-    projectId: opts.projectId || "capture-deliver",
-    contentHash: sha,
   });
   try {
-    await client.send(
-      new PutObjectCommand({
-        Bucket: config.bucket,
-        Key: key,
-        Body: opts.buffer,
-        ContentType: opts.mimeType,
-        Metadata: { sha256: sha, size: String(opts.buffer.length) },
-      }),
-    );
+    if (!await putCreatorHubObject(key, opts.buffer, opts.mimeType, {
+      sha256: sha,
+      size: String(opts.buffer.length),
+      projectId,
+      product: "photo-room",
+    })) return null;
   } catch {
     return null;
   }
 
   const preset = opts.preset || "auto";
-  const projectId = opts.projectId || "capture-deliver";
   const now = new Date();
   const job: PhotoEnhancerQueuedJob = {
     id: crypto.randomUUID(),
@@ -4606,8 +4562,9 @@ export async function enqueuePhotoEnhancerJobFromBuffer(opts: {
     projectId,
     folderId: null,
     source: {
-      bucket: config.bucket,
+      bucket: storage.bucket,
       key,
+      storage: "creatorhub_s3",
       fileName: opts.fileName,
       mimeType: opts.mimeType,
       size: opts.buffer.length,
@@ -4724,8 +4681,41 @@ export function listPhotoEnhancerJobsByProjectId(projectId: string): Array<{
   return out;
 }
 
-export function createPhotoEnhancerRouter(pool?: Pool) {
+interface PhotoEnhancerRouterOptions {
+  getActiveSessionFromRequest?: (req: express.Request) => { userId: string } | null;
+  requireUserSession?: (
+    req: express.Request,
+    res: express.Response,
+  ) => { userId: string } | null;
+}
+
+export function createPhotoEnhancerRouter(pool?: Pool, options: PhotoEnhancerRouterOptions = {}) {
   const router = express.Router();
+
+  const requirePhotoEnhancerSession = (
+    req: express.Request,
+    res: express.Response,
+  ): { userId: string } | null => {
+    const session = options.requireUserSession?.(req, res)
+      || options.getActiveSessionFromRequest?.(req)
+      || null;
+    if (!session && !res.headersSent) {
+      res.status(401).json({ success: false, error: "auth_required" });
+    }
+    return session;
+  };
+
+  const canReadPhotoEnhancerJob = async (userId: string, job: PhotoEnhancerQueuedJob) => {
+    if (job.userId === userId || job.owner === userId) return true;
+    if (!pool || job.projectId === "unassigned") return false;
+    return canAccessProject(pool, userId, job.projectId);
+  };
+
+  const canManagePhotoEnhancerJob = async (userId: string, job: PhotoEnhancerQueuedJob) => {
+    if (job.userId === userId || job.owner === userId) return true;
+    if (!pool || job.projectId === "unassigned") return false;
+    return canEditProject(pool, userId, job.projectId);
+  };
 
   router.get("/status", async (_req, res) => {
     const [modelStatuses, gfpgan, faceApiStatus, runtimeSupport] = await Promise.all([
@@ -5400,6 +5390,7 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
       const clientName = readString(req.body?.clientName);
       const clientEmail = readString(req.body?.clientEmail);
       const projectTitle = readString(req.body?.projectTitle);
+      const projectId = readString(req.body?.projectId);
       const existingGalleryId = readString(req.body?.existingGalleryId);
       // Slice 9X.14 — frontend genererer enhancerJobId per export-batch.
       // Optional; om mangler genererer vi server-side så vi alltid har
@@ -5435,6 +5426,7 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
       const result = await createClientGalleryFromBlobs({
         db,
         photographerId: ownerUserId,
+        projectId,
         clientName,
         clientEmail,
         projectTitle,
@@ -5453,7 +5445,7 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
 
       if (!result.ok) {
         const status =
-          result.error === "r2_not_configured"
+          result.error === "creatorhub_storage_not_configured"
             ? 503
             : result.error === "existing_gallery_not_found"
             ? 404
@@ -5715,19 +5707,26 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     });
   });
 
-  router.get("/jobs", (req, res) => {
+  router.get("/jobs", async (req, res) => {
+    const session = requirePhotoEnhancerSession(req, res);
+    if (!session) return;
     prunePhotoEnhancerJobs();
     const projectId = readString(req.query.projectId);
     const status = readString(req.query.status);
     const owner = readString(req.query.owner);
     const limit = clampNumber(readNumber(req.query.limit) || 50, 1, 200);
-    const jobs = [...photoEnhancerJobs.values()]
+    const candidates = [...photoEnhancerJobs.values()]
       .filter((job) => !projectId || job.projectId === projectId)
       .filter((job) => !status || job.status === status)
       .filter((job) => !owner || job.owner === owner || job.userId === owner)
-      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+    const readable = await Promise.all(
+      candidates.map(async (job) => ({ job, allowed: await canReadPhotoEnhancerJob(session.userId, job) })),
+    );
+    const jobs = readable
+      .filter(({ allowed }) => allowed)
       .slice(0, limit)
-      .map(publicPhotoEnhancerJob);
+      .map(({ job }) => publicPhotoEnhancerJob(job));
     res.json({
       success: true,
       queue: getPhotoEnhancerQueueRuntime(),
@@ -5741,8 +5740,23 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     if (!source) {
       return res.status(400).json({ success: false, error: "r2_source_required" });
     }
-    const sourceAllowed = source.storage === "b2"
-      ? isAllowedPhotoEnhancerB2Object(source.bucket, source.key)
+    const authenticated = requirePhotoEnhancerSession(req, res);
+    if (!authenticated) return;
+    const requesterId = authenticated.userId;
+    const projectId = readString(body.projectId) || "unassigned";
+    if (projectId !== "unassigned") {
+      if (!pool) return res.status(503).json({ success: false, error: "database_not_configured" });
+      if (!await canEditProject(pool, requesterId, projectId)) {
+        return res.status(403).json({ success: false, error: "project_edit_required" });
+      }
+    }
+    const sourceAllowed = source.storage === "creatorhub_s3"
+      ? isAllowedCreatorHubPhotoRoomObject({
+          bucket: source.bucket,
+          key: source.key,
+          userId: requesterId,
+          projectId,
+        })
       : isAllowedPhotoEnhancerR2Object(source.bucket, source.key);
     if (!sourceAllowed) {
       return res.status(403).json({ success: false, error: "photo_enhancer_source_object_not_allowed" });
@@ -5752,22 +5766,14 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     }
 
     const preset = readString(body.preset) || "auto";
-    const projectId = readString(body.projectId) || "photo-enhancer";
     const now = new Date();
     const job: PhotoEnhancerQueuedJob = {
       id: crypto.randomUUID(),
       status: "queued",
       priority: clampNumber(readNumber(body.priority) || 0, 0, 100),
       owner:
-        readString(body.owner) ||
-        readString(req.headers["x-user-email"]) ||
-        readString(req.headers["x-user-id"]) ||
-        "unknown",
-      userId:
-        readString(body.userId) ||
-        readString(req.headers["x-user-id"]) ||
-        readString(req.headers["x-user-email"]) ||
-        "anonymous",
+        requesterId,
+      userId: requesterId,
       projectId,
       folderId: readString(body.folderId),
       source,
@@ -5819,10 +5825,15 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     });
   });
 
-  router.get("/jobs/:jobId", (req, res) => {
+  router.get("/jobs/:jobId", async (req, res) => {
+    const session = requirePhotoEnhancerSession(req, res);
+    if (!session) return;
     const job = photoEnhancerJobs.get(req.params.jobId);
     if (!job) {
       return res.status(404).json({ success: false, error: "photo_enhancer_job_not_found" });
+    }
+    if (!await canReadPhotoEnhancerJob(session.userId, job)) {
+      return res.status(403).json({ success: false, error: "photo_enhancer_job_forbidden" });
     }
     res.json({
       success: true,
@@ -5831,10 +5842,15 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     });
   });
 
-  router.post("/jobs/:jobId/cancel", (req, res) => {
+  router.post("/jobs/:jobId/cancel", async (req, res) => {
+    const session = requirePhotoEnhancerSession(req, res);
+    if (!session) return;
     const job = photoEnhancerJobs.get(req.params.jobId);
     if (!job) {
       return res.status(404).json({ success: false, error: "photo_enhancer_job_not_found" });
+    }
+    if (!await canManagePhotoEnhancerJob(session.userId, job)) {
+      return res.status(403).json({ success: false, error: "photo_enhancer_job_forbidden" });
     }
     const previousStatus = job.status;
     job.cancelled = true;
@@ -5853,10 +5869,15 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     });
   });
 
-  router.post("/jobs/:jobId/pause", (req, res) => {
+  router.post("/jobs/:jobId/pause", async (req, res) => {
+    const session = requirePhotoEnhancerSession(req, res);
+    if (!session) return;
     const job = photoEnhancerJobs.get(req.params.jobId);
     if (!job) {
       return res.status(404).json({ success: false, error: "photo_enhancer_job_not_found" });
+    }
+    if (!await canManagePhotoEnhancerJob(session.userId, job)) {
+      return res.status(403).json({ success: false, error: "photo_enhancer_job_forbidden" });
     }
     if (job.status === "queued") {
       job.status = "paused";
@@ -5869,10 +5890,15 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     });
   });
 
-  router.post("/jobs/:jobId/resume", (req, res) => {
+  router.post("/jobs/:jobId/resume", async (req, res) => {
+    const session = requirePhotoEnhancerSession(req, res);
+    if (!session) return;
     const job = photoEnhancerJobs.get(req.params.jobId);
     if (!job) {
       return res.status(404).json({ success: false, error: "photo_enhancer_job_not_found" });
+    }
+    if (!await canManagePhotoEnhancerJob(session.userId, job)) {
+      return res.status(403).json({ success: false, error: "photo_enhancer_job_forbidden" });
     }
     if (job.status === "paused") {
       job.status = "queued";
@@ -5886,10 +5912,15 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     });
   });
 
-  router.post("/jobs/:jobId/retry", (req, res) => {
+  router.post("/jobs/:jobId/retry", async (req, res) => {
+    const session = requirePhotoEnhancerSession(req, res);
+    if (!session) return;
     const job = photoEnhancerJobs.get(req.params.jobId);
     if (!job) {
       return res.status(404).json({ success: false, error: "photo_enhancer_job_not_found" });
+    }
+    if (!await canManagePhotoEnhancerJob(session.userId, job)) {
+      return res.status(403).json({ success: false, error: "photo_enhancer_job_forbidden" });
     }
     if (job.status !== "failed" && job.status !== "cancelled") {
       return res.status(409).json({ success: false, error: "photo_enhancer_job_not_retryable" });
@@ -5912,7 +5943,9 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     });
   });
 
-  router.post("/queue/pause", (_req, res) => {
+  router.post("/queue/pause", (req, res) => {
+    const session = requirePhotoEnhancerSession(req, res);
+    if (!session) return;
     photoEnhancerQueuePaused = true;
     for (const job of photoEnhancerJobs.values()) {
       if (job.status === "queued") {
@@ -5922,7 +5955,9 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     res.json({ success: true, queue: getPhotoEnhancerQueueRuntime() });
   });
 
-  router.post("/queue/resume", (_req, res) => {
+  router.post("/queue/resume", (req, res) => {
+    const session = requirePhotoEnhancerSession(req, res);
+    if (!session) return;
     photoEnhancerQueuePaused = false;
     for (const job of photoEnhancerJobs.values()) {
       if (job.status === "queued") {
@@ -5933,39 +5968,72 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
     res.json({ success: true, queue: getPhotoEnhancerQueueRuntime() });
   });
 
-  // Presigned single PUT to the Backblaze B2 staging bucket — the
-  // photographer pipeline's storage. The client uploads the source here, then
-  // POSTs /jobs with { source: { bucket, key, storage: "b2", size, fileName,
-  // mimeType } } for async enhancement. Keeps the photo path on B2 (no R2).
-  router.post("/uploads/b2-presign", async (req, res) => {
+  // Capture App uploads queued-enhancer inputs directly to CreatorHub's
+  // private AWS bucket. The authenticated user and optional project are both
+  // bound into the object key; no Role Room credentials are involved.
+  router.post("/uploads/creatorhub-presign", async (req, res) => {
+    const session = options.requireUserSession?.(req, res);
+    if (!session) {
+      if (!options.requireUserSession) res.status(503).json({ success: false, error: "auth_not_configured" });
+      return;
+    }
     const body = parseJsonObject(req.body);
     const fileName = readString(body.fileName) || "source.raw";
     const contentType = readString(body.contentType) || "application/octet-stream";
-    const projectId = readString(body.projectId);
-    const cfg = buildPhotoEnhancerB2Config();
-    const client = getPhotoEnhancerB2Client();
-    if (!cfg.enabled || !client) {
-      return res.status(503).json({ success: false, error: "photo_enhancer_b2_not_configured" });
+    const projectId = readString(body.projectId) || null;
+    if (projectId) {
+      if (!pool) return res.status(503).json({ success: false, error: "database_not_configured" });
+      if (!await canEditProject(pool, session.userId, projectId)) {
+        return res.status(403).json({ success: false, error: "project_edit_required" });
+      }
+    }
+    const storage = getCreatorHubObjectStorage();
+    if (!storage) {
+      return res.status(503).json({ success: false, error: "creatorhub_storage_not_configured" });
     }
     try {
-      const key = buildPhotoEnhancerB2UploadKey({ fileName, projectId });
-      const url = await getSignedUrl(
-        client,
-        new PutObjectCommand({ Bucket: cfg.bucket, Key: key, ContentType: contentType }),
+      const key = buildPhotoRoomEnhancerSourceKey({
+        userId: session.userId,
+        projectId,
+        objectId: crypto.randomUUID(),
+        fileName,
+      });
+      const uploadUrl = await getSignedUrl(
+        storage.client,
+        new PutObjectCommand({
+          Bucket: storage.bucket,
+          Key: key,
+          ContentType: contentType,
+          Metadata: {
+            ownerUserId: session.userId,
+            projectId: projectId || "unassigned",
+            product: "photo-room",
+          },
+        }),
         { expiresIn: 3600 },
       );
-      res.json({
+      return res.json({
         success: true,
-        storage: "b2",
-        bucket: cfg.bucket,
+        storage: "creatorhub_s3",
+        bucket: storage.bucket,
         key,
-        uploadUrl: url,
+        uploadUrl,
         expiresInSeconds: 3600,
       });
     } catch (error) {
-      console.error("[photo-enhancer] b2-presign failed:", error);
-      res.status(500).json({ success: false, error: "b2_presign_failed" });
+      console.error("[photo-enhancer] creatorhub-presign failed:", error);
+      return res.status(500).json({ success: false, error: "creatorhub_presign_failed" });
     }
+  });
+
+  // Explicit retirement response for old Capture builds. No Role Room/B2
+  // client or credentials are loaded; current builds use creatorhub-presign.
+  router.post("/uploads/b2-presign", (_req, res) => {
+    res.status(410).json({
+      success: false,
+      error: "legacy_photo_storage_retired",
+      replacement: "/api/photo-enhancer/uploads/creatorhub-presign",
+    });
   });
 
   router.post("/uploads/multipart", async (req, res) => {

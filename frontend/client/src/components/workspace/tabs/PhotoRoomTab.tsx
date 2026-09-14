@@ -1,516 +1,432 @@
-// @ts-nocheck
-/**
- * PhotoRoomTab — produsent-side bilde-review-cockpit (Photo Review).
- *
- * Gjenbruker capture_assets (rating/flagged/rejected/exif fra iPad-culling) +
- * Før/Etter fra AI-forbedring (/enhance-status). Net-nytt: per-bilde review-
- * status (godkjent/trenger-redigering/avvist) + interne/klient foto-kommentarer.
- * Statkort, bildeviser m/ EXIF + Før/Etter, filmstrip m/ status, utvalgs-stadier,
- * kommentar-skinne (Alle/Interne/Klient), bunn-actions. Dark CreatorHub.
- */
-import React, { useEffect, useMemo, useState } from 'react';
-import { Box, Stack, Typography, Button, Chip, TextField, CircularProgress, IconButton } from '@mui/material';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  Alert, Box, Button, Checkbox, Chip, CircularProgress, Divider, FormControl,
+  IconButton, InputLabel, MenuItem, Select, Stack, TextField, Tooltip, Typography,
+} from '@mui/material';
+import AutoFixHigh from '@mui/icons-material/AutoFixHigh';
+import Block from '@mui/icons-material/Block';
+import Brush from '@mui/icons-material/Brush';
+import CheckCircle from '@mui/icons-material/CheckCircle';
+import Close from '@mui/icons-material/Close';
+import Compare from '@mui/icons-material/Compare';
+import DeleteOutline from '@mui/icons-material/DeleteOutline';
+import Download from '@mui/icons-material/Download';
+import EditOutlined from '@mui/icons-material/EditOutlined';
+import GridView from '@mui/icons-material/GridView';
+import Movie from '@mui/icons-material/Movie';
+import Refresh from '@mui/icons-material/Refresh';
+import Reply from '@mui/icons-material/Reply';
+import Search from '@mui/icons-material/Search';
+import Send from '@mui/icons-material/Send';
 import Star from '@mui/icons-material/Star';
 import StarBorder from '@mui/icons-material/StarBorder';
-import WarningAmber from '@mui/icons-material/WarningAmber';
-import CheckCircle from '@mui/icons-material/CheckCircle';
-import Brush from '@mui/icons-material/Brush';
-import Block from '@mui/icons-material/Block';
-import Send from '@mui/icons-material/Send';
-import { apiRequest } from '@/lib/queryClient';
-import { ws } from '../workspaceTheme';
-import AutoFixHigh from '@mui/icons-material/AutoFixHigh';
-import Movie from '@mui/icons-material/Movie';
-import { WsCard, WsTag, WsModal, wsAlert, wsConfirm } from '../ui';
-import { wsIcon } from '../crewIcons';
-import AiBuyCreditsModal from '../AiBuyCreditsModal';
+import ViewCarousel from '@mui/icons-material/ViewCarousel';
 
-const STATUS_META: any = {
-  approved: { label: 'Godkjent', tone: 'green', dot: ws.green, icon: 'Check' },
-  needs_edit: { label: 'Trenger redigering', tone: 'amber', dot: ws.amber, icon: 'EditOutlined' },
-  rejected: { label: 'Avvist', tone: 'red', dot: ws.red, icon: 'Close' },
-  flagged: { label: 'Flagget', tone: 'accent', dot: ws.accent, icon: 'Star' },
+import { apiRequest } from '@/lib/queryClient';
+import AiBuyCreditsModal from '../AiBuyCreditsModal';
+import { makeT, type WsDict, useWsLocale } from '../wsLocale';
+import { WsCard, WsErrorState, WsModal, wsAlert, wsConfirm } from '../ui';
+import { ws } from '../workspaceTheme';
+
+type ReviewStatus = 'approved' | 'needs_edit' | 'rejected' | 'flagged' | null;
+type CommentScope = 'internal' | 'client';
+type ViewMode = 'filmstrip' | 'grid';
+
+interface PhotoAsset {
+  id: string; filename: string; mime?: string; rating: number; flagged: boolean;
+  rejected: boolean; colorLabel?: string | null; reviewStatus: ReviewStatus;
+  folderId?: string | null; folderName?: string | null; galleryImageId?: string | null;
+  galleryId?: string | null; clientSelection?: string | null; clientCommentCount: number;
+  thumbUrl?: string | null; fullUrl?: string | null;
+  exif?: Record<string, string | number | null>; createdAt?: string;
+}
+
+interface PhotoComment {
+  id: string; source: 'project' | 'client_gallery' | 'client_gallery_response';
+  assetId: string; scope: CommentScope; authorName: string;
+  authorKind: 'creator' | 'client' | 'system'; comment: string;
+  status: 'open' | 'resolved'; tag?: string | null; pinned: boolean;
+  parentId?: string | null; canEdit: boolean; createdAt?: string; updatedAt?: string;
+}
+
+interface AiJob {
+  id: string; model?: string; kind: string; status: string; sourceAssetId?: string | null;
+  prompt?: string | null; afterUrl?: string | null; createdAt?: string;
+}
+
+interface PhotoRoomData {
+  hasSession: boolean; stats: Record<string, number>; commentScopes: Record<string, number>;
+  folders: Array<{ id: string; name: string }>;
+  gallery: { id: string; shareUrl: string; clientName: string; clientEmail: string; proofingRound: number } | null;
+  pageInfo: { offset: number; limit: number; total: number; hasMore: boolean };
+  assets: PhotoAsset[];
+}
+
+const COPY: WsDict = {
+  title: { no: 'Photo Room', en: 'Photo Room' },
+  subtitle: { no: 'Ett felles reviewrom for fotograf, team og klientgalleri.', en: 'One shared review room for photographer, team and client gallery.' },
+  readOnly: { no: 'Du har lesetilgang. Endringer og AI-jobber er låst.', en: 'You have read access. Changes and AI jobs are locked.' },
+  search: { no: 'Søk etter filnavn', en: 'Search filenames' },
+  allStatuses: { no: 'Alle statuser', en: 'All statuses' },
+  pending: { no: 'Venter', en: 'Pending' },
+  approved: { no: 'Godkjent', en: 'Approved' },
+  needsEdit: { no: 'Må redigeres', en: 'Needs editing' },
+  rejected: { no: 'Avvist', en: 'Rejected' },
+  flagged: { no: 'Flagget', en: 'Flagged' },
+  allFolders: { no: 'Alle mapper', en: 'All folders' },
+  filmstrip: { no: 'Filmstripe', en: 'Filmstrip' }, grid: { no: 'Rutenett', en: 'Grid' },
+  newest: { no: 'Nyeste først', en: 'Newest first' },
+  oldest: { no: 'Eldste først', en: 'Oldest first' },
+  nameAsc: { no: 'Filnavn A–Å', en: 'Filename A–Z' },
+  nameDesc: { no: 'Filnavn Å–A', en: 'Filename Z–A' },
+  rating: { no: 'Høyest vurdert', en: 'Highest rated' },
+  refresh: { no: 'Oppdater', en: 'Refresh' },
+  selected: { no: 'valgt', en: 'selected' },
+  selectAll: { no: 'Velg alle viste', en: 'Select all shown' },
+  clear: { no: 'Tøm utvalg', en: 'Clear selection' },
+  approve: { no: 'Godkjenn', en: 'Approve' },
+  requestChanges: { no: 'Be om endringer', en: 'Request changes' },
+  sendClient: { no: 'Send til kunde', en: 'Send to client' },
+  compare: { no: 'Sammenlign', en: 'Compare' },
+  compareHint: { no: 'Velg nøyaktig to bilder for sammenligning.', en: 'Select exactly two images to compare.' },
+  loadMore: { no: 'Last inn flere', en: 'Load more' },
+  showing: { no: 'Viser', en: 'Showing' },
+  of: { no: 'av', en: 'of' },
+  noPhotos: { no: 'Ingen bilder matcher filtrene.', en: 'No photos match the filters.' },
+  noSession: { no: 'Ingen Capture-bilder er koblet til prosjektet ennå.', en: 'No Capture photos are linked to this project yet.' },
+  comments: { no: 'Kommentarer', en: 'Comments' },
+  internal: { no: 'Internt', en: 'Internal' },
+  client: { no: 'Klient', en: 'Client' },
+  all: { no: 'Alle', en: 'All' },
+  noComments: { no: 'Ingen kommentarer på dette bildet.', en: 'No comments on this photo.' },
+  writeComment: { no: 'Skriv en kommentar til valgt bilde', en: 'Write a comment on the selected photo' },
+  reply: { no: 'Svar', en: 'Reply' }, edit: { no: 'Rediger', en: 'Edit' },
+  remove: { no: 'Slett', en: 'Delete' }, save: { no: 'Lagre', en: 'Save' },
+  cancel: { no: 'Avbryt', en: 'Cancel' }, resolve: { no: 'Løs', en: 'Resolve' },
+  reopen: { no: 'Gjenåpne', en: 'Reopen' }, send: { no: 'Send', en: 'Send' },
+  replyTo: { no: 'Svarer', en: 'Replying to' }, clientGallery: { no: 'Klientgalleri', en: 'Client gallery' },
+  sharedRoom: { no: 'Klientkommentarer, favoritter og godkjenninger vises her.', en: 'Client comments, favourites and approvals appear here.' },
+  aiHistory: { no: 'AI-jobber', en: 'AI jobs' }, aiEdit: { no: 'AI-rediger', en: 'AI edit' },
+  animate: { no: 'Animer', en: 'Animate' }, download: { no: 'Last ned', en: 'Download' },
+  noAiJobs: { no: 'Ingen AI-jobber i dette prosjektet.', en: 'No AI jobs in this project.' },
+  aiPrompt: { no: 'Beskriv resultatet du ønsker', en: 'Describe the result you want' },
+  suggestions: { no: 'Foreslå', en: 'Suggest' }, consentTitle: { no: 'AI-samtykke', en: 'AI consent' },
+  consentText: { no: 'Kundebilder sendes til valgt AI-leverandør. Resultatet arkiveres i CreatorHub sin private AWS S3-bøtte.', en: 'Client photos are sent to the selected AI provider. Results are archived in CreatorHub’s private AWS S3 bucket.' },
+  consent: { no: 'Jeg samtykker', en: 'I consent' }, start: { no: 'Start', en: 'Start' },
+  queued: { no: 'I kø', en: 'Queued' }, running: { no: 'Behandles', en: 'Processing' },
+  completed: { no: 'Ferdig', en: 'Completed' }, failed: { no: 'Feilet', en: 'Failed' },
+  deliveryTitle: { no: 'Send utvalg til klient', en: 'Send selection to client' },
+  clientName: { no: 'Klientnavn', en: 'Client name' }, clientEmail: { no: 'E-post', en: 'Email' },
+  newRound: { no: 'Start ny revisjonsrunde', en: 'Start a new review round' },
+  round: { no: 'runde', en: 'round' },
+  sendEmail: { no: 'Send e-postvarsel', en: 'Send email notification' },
+  deliver: { no: 'Oppdater galleri og send', en: 'Update gallery and send' },
+  openGallery: { no: 'Åpne klientgalleri', en: 'Open client gallery' },
+  totalPhotos: { no: 'Bilder', en: 'Photos' }, totalComments: { no: 'Kommentarer', en: 'Comments' },
+  retry: { no: 'Prøv igjen', en: 'Try again' },
+  loadFailed: { no: 'Photo Room kunne ikke lastes.', en: 'Photo Room could not be loaded.' },
+  unknownError: { no: 'Noe gikk galt.', en: 'Something went wrong.' },
+  storageNote: { no: 'Originaler og AI-resultater lagres privat i CreatorHub AWS S3.', en: 'Originals and AI results are stored privately in CreatorHub AWS S3.' },
 };
 
-const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
-  const isReal = projectId && projectId !== 'sample';
-  const [data, setData] = useState<any | null>(null);
+const STATUS_COLOR: Record<Exclude<ReviewStatus, null>, string> = {
+  approved: ws.green, needs_edit: ws.amber, rejected: ws.red, flagged: ws.accent,
+};
+
+const uniqueIds = (values: string[]) => [...new Set(values)];
+
+const PhotoRoomTab: React.FC<{ projectId: string; readOnly?: boolean }> = ({ projectId, readOnly = false }) => {
+  const t = makeT(COPY, useWsLocale());
+  const isReal = Boolean(projectId && projectId !== 'sample');
+  const [data, setData] = useState<PhotoRoomData | null>(null);
+  const [assets, setAssets] = useState<PhotoAsset[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selId, setSelId] = useState<string | null>(null);
-  const [comments, setComments] = useState<any[]>([]);
-  const [cFilter, setCFilter] = useState('all');
-  const [cText, setCText] = useState('');
-  const [cScope, setCScope] = useState('internal');
-  const [enhanceMap, setEnhanceMap] = useState<Record<string, any>>({});
-  const [baPos, setBaPos] = useState(50);
-  // Generativ AI (Nano Banana 2-redigering)
-  const [aiCfg, setAiCfg] = useState<any | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [folderFilter, setFolderFilter] = useState('all');
+  const [sort, setSort] = useState('newest');
+  const [viewMode, setViewMode] = useState<ViewMode>('filmstrip');
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [comments, setComments] = useState<PhotoComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentFilter, setCommentFilter] = useState<'all' | CommentScope>('all');
+  const [commentScope, setCommentScope] = useState<CommentScope>('internal');
+  const [commentText, setCommentText] = useState('');
+  const [replyTo, setReplyTo] = useState<PhotoComment | null>(null);
+  const [editing, setEditing] = useState<PhotoComment | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [clientName, setClientName] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
+  const [newRound, setNewRound] = useState(false);
+  const [notifyClient, setNotifyClient] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [aiConfig, setAiConfig] = useState<Record<string, any> | null>(null);
+  const [credits, setCredits] = useState<Record<string, any> | null>(null);
+  const [aiJobs, setAiJobs] = useState<AiJob[]>([]);
   const [aiOpen, setAiOpen] = useState(false);
+  const [aiMode, setAiMode] = useState<'edit' | 'motion'>('edit');
   const [aiPrompt, setAiPrompt] = useState('');
-  const [aiJob, setAiJob] = useState<any | null>(null); // {status, beforeUrl, afterUrl}
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
-  const loadAiCfg = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/config`).then((r: any) => setAiCfg(r || null)).catch(() => {}); };
-  // Kreditt-lommebok (selvbetjent)
-  const [credits, setCredits] = useState<any | null>(null);
   const [buyOpen, setBuyOpen] = useState(false);
-  const loadCredits = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits`).then((r: any) => setCredits(r || null)).catch(() => {}); };
-  const buyPack = async (packId: string) => {
-    try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId } }); if (r?.url) window.location.href = r.url; }
-    catch (e: any) { wsAlert(e?.message || 'Kunne ikke starte kjøp'); }
-  };
-  // Confirm-ved-retur fra Stripe (?ai_credits=ok&cs=<session>)
+
   useEffect(() => {
+    const timeout = window.setTimeout(() => setSearch(searchInput.trim()), 250);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
+
+  const queryString = useCallback((offset: number) => {
+    const params = new URLSearchParams({ limit: '80', offset: String(offset), sort });
+    if (search) params.set('search', search);
+    if (statusFilter !== 'all') params.set('status', statusFilter);
+    if (folderFilter !== 'all') params.set('folderId', folderFilter);
+    return params.toString();
+  }, [folderFilter, search, sort, statusFilter]);
+
+  const loadAi = useCallback(async () => {
     if (!isReal) return;
+    const results = await Promise.allSettled([
+      apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/config`),
+      apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits`),
+      apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/jobs?room=photo`),
+    ]);
+    if (results[0].status === 'fulfilled') setAiConfig(results[0].value as Record<string, any>);
+    if (results[1].status === 'fulfilled') setCredits(results[1].value as Record<string, any>);
+    if (results[2].status === 'fulfilled') setAiJobs(((results[2].value as { jobs?: AiJob[] })?.jobs || []));
+  }, [isReal, projectId]);
+
+  const loadPhotos = useCallback(async (offset = 0) => {
+    if (!isReal) { setLoading(false); return; }
+    offset === 0 ? setLoading(true) : setLoadingMore(true);
+    setError(null);
     try {
-      const p = new URLSearchParams(window.location.search);
-      if (p.get('ai_credits') === 'ok' && p.get('cs')) {
-        apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/confirm`, { method: 'POST', body: { sessionId: p.get('cs') } })
-          .then(() => { loadCredits(); wsAlert('Kreditter lagt til ✓'); }).catch(() => {})
-          .finally(() => { const u = new URL(window.location.href); u.searchParams.delete('ai_credits'); u.searchParams.delete('cs'); window.history.replaceState({}, '', u.toString()); });
+      const response = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-review?${queryString(offset)}`) as PhotoRoomData;
+      setData(response);
+      setAssets((current) => offset === 0 ? response.assets : [...current, ...response.assets.filter((asset) => !current.some((item) => item.id === asset.id))]);
+      if (offset === 0) {
+        setSelectedIds([]);
+        setSelectedAssetId((current) => response.assets.some((asset) => asset.id === current) ? current : response.assets[0]?.id || null);
+        setClientName(response.gallery?.clientName || '');
+        setClientEmail(response.gallery?.clientEmail || '');
       }
-    } catch { /* */ }
-    loadCredits();
-    // eslint-disable-next-line
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'photo_room_load_failed'); }
+    finally { setLoading(false); setLoadingMore(false); }
+  }, [isReal, projectId, queryString]);
+
+  useEffect(() => { void loadPhotos(0); }, [loadPhotos]);
+  useEffect(() => { void loadAi(); }, [loadAi]);
+  useEffect(() => {
+    const active = aiJobs.filter((job) => job.status === 'queued' || job.status === 'running');
+    if (!active.length) return;
+    const timer = window.setInterval(() => {
+      void Promise.allSettled(active.map((job) => apiRequest(
+        `/api/projects/${encodeURIComponent(projectId)}/ai/jobs/${job.id}`,
+      ))).then(() => loadAi());
+    }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [aiJobs, loadAi, projectId]);
+
+  const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) || assets[0] || null;
+  const selectedForAction = selectedIds.length ? selectedIds : selectedAsset ? [selectedAsset.id] : [];
+
+  const loadComments = useCallback(async (assetId: string) => {
+    setCommentsLoading(true);
+    try {
+      const response = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments?assetId=${encodeURIComponent(assetId)}`) as { comments?: PhotoComment[] };
+      setComments(response.comments || []);
+    } catch { setComments([]); }
+    finally { setCommentsLoading(false); }
   }, [projectId]);
 
-  const load = () => {
-    if (!isReal) { setLoading(false); return; }
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-review`)
-      .then((r: any) => { setData(r || null); if (!selId && r?.assets?.length) setSelId(r.assets[0].id); })
-      .catch(() => {}).finally(() => setLoading(false));
-    loadAiCfg();
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments`).then((r: any) => setComments(r?.comments || [])).catch(() => {});
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/enhance-status`).then((r: any) => {
-      const m: Record<string, any> = {};
-      (r?.jobs || []).forEach((j: any) => { if (j.photoId) m[String(j.photoId).replace(/\.[^.]+$/, '')] = j; });
-      setEnhanceMap(m);
-    }).catch(() => {});
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
+  useEffect(() => {
+    setReplyTo(null); setEditing(null); setCommentText('');
+    if (selectedAsset?.id) void loadComments(selectedAsset.id); else setComments([]);
+  }, [loadComments, selectedAsset?.id]);
 
-  const assets = data?.assets || [];
-  const stats = data?.stats || {};
-  const stages = data?.stages || [];
-  const scopes = data?.commentScopes || {};
-  const sel = assets.find((a: any) => a.id === selId) || assets[0] || null;
-  const ba = sel ? enhanceMap[String(sel.filename || '').replace(/\.[^.]+$/, '')] : null;
-  const hasBA = ba && ba.originalUrl && ba.enhancedUrl;
-
-  const shownComments = comments.filter((c: any) => {
-    if (cFilter === 'internal') return c.scope === 'internal';
-    if (cFilter === 'client') return c.scope === 'client';
-    return true;
-  }).filter((c: any) => !c.parentId);
-
-  const setStatus = async (assetId: string, status: string | null) => {
+  useEffect(() => {
     if (!isReal) return;
-    setData((d: any) => ({ ...d, assets: d.assets.map((a: any) => a.id === assetId ? { ...a, reviewStatus: status } : a) }));
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-review/${assetId}`, { method: 'PATCH', body: { reviewStatus: status } }).then(load).catch(load);
-  };
-  const addComment = async () => {
-    if (!cText.trim() || !isReal) return;
-    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments`, { method: 'POST', body: { comment: cText.trim(), scope: cScope, assetId: sel?.id, authorKind: 'creator' } }); setCText(''); apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments`).then((r: any) => setComments(r?.comments || [])); }
-    catch (e: any) { wsAlert(e?.message || 'Kunne ikke kommentere'); }
-  };
-  const approveSelection = async () => {
-    if (!isReal) return;
-    if (!await wsConfirm('Godkjenn alle flaggede bilder?')) return;
-    try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-review/approve`, { method: 'POST', body: {} }); wsAlert(`${r?.approved || 0} bilder godkjent.`); load(); }
-    catch (e: any) { wsAlert(e?.message || 'Kunne ikke godkjenne'); }
-  };
-
-  const setConsent = async (consented: boolean) => {
-    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/consent`, { method: 'PUT', body: { consented } }); loadAiCfg(); }
-    catch (e: any) { wsAlert(e?.message || 'Kunne ikke lagre samtykke'); }
-  };
-  const QUICK_PROMPTS = ['Fjern bakgrunnen, behold personen', 'Demp sterke reflekser i bakgrunnen', 'Fjern uønskede objekter i bakgrunnen', 'Gjør lyset varmere og mykere'];
-  const openAi = () => { setAiPrompt(''); setAiJob(null); setBaPos(50); setSuggestions([]); setAiOpen(true); };
-  const startEdit = async () => {
-    if (!sel?.id || !aiPrompt.trim() || aiBusy) return;
-    setAiBusy(true); setAiJob({ status: 'queued' });
-    try {
-      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/image-edit`, { method: 'POST', body: { assetId: sel.id, prompt: aiPrompt.trim() } });
-      if (!r?.jobId) throw new Error('Kunne ikke starte');
-      // Poll til ferdig (maks ~60s).
-      for (let i = 0; i < 30; i++) {
-        await new Promise((res) => setTimeout(res, 2500));
-        const s: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/jobs/${r.jobId}`);
-        setAiJob(s);
-        if (s.status === 'completed' || s.status === 'failed') break;
-      }
-      loadAiCfg();
-    } catch (e: any) {
-      const msg = String(e?.message || '').toLowerCase();
-      if (msg.includes('kreditt') || msg.includes('insufficient')) { setAiOpen(false); setBuyOpen(true); }
-      else wsAlert(e?.message || 'AI-redigering feilet');
-      setAiJob({ status: 'failed' });
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('ai_credits') === 'ok' && params.get('cs')) {
+      void apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/confirm`, {
+        method: 'POST', body: { sessionId: params.get('cs') },
+      }).then(() => loadAi()).finally(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('ai_credits'); url.searchParams.delete('cs');
+        window.history.replaceState({}, '', url.toString());
+      });
     }
+  }, [isReal, loadAi, projectId]);
+
+  const statusLabel = (status: ReviewStatus) => status === 'approved' ? t('approved')
+    : status === 'needs_edit' ? t('needsEdit') : status === 'rejected' ? t('rejected')
+      : status === 'flagged' ? t('flagged') : t('pending');
+
+  const setStatus = async (ids: string[], status: Exclude<ReviewStatus, null>) => {
+    if (readOnly || !ids.length) return;
+    setBusy(true);
+    try {
+      if (ids.length === 1) await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-review/${ids[0]}`, { method: 'PATCH', body: { reviewStatus: status } });
+      else await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-review/bulk`, { method: 'POST', body: { assetIds: ids, reviewStatus: status, createTasks: status === 'needs_edit' } });
+      setSelectedIds([]); await loadPhotos(0);
+    } catch (reason) { await wsAlert(reason instanceof Error ? reason.message : t('unknownError')); }
+    finally { setBusy(false); }
+  };
+
+  const toggleSelected = (id: string) => setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : uniqueIds([...current, id]));
+
+  const submitComment = async () => {
+    if (readOnly || !selectedAsset || !commentText.trim()) return;
+    setBusy(true);
+    try {
+      await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments`, {
+        method: 'POST', body: { assetId: selectedAsset.id, scope: replyTo?.scope || commentScope,
+          comment: commentText.trim(), parentId: replyTo?.id || null,
+          parentSource: replyTo?.source === 'client_gallery' ? 'client_gallery' : 'project' },
+      });
+      setCommentText(''); setReplyTo(null); await loadComments(selectedAsset.id); await loadPhotos(0);
+    } catch (reason) { await wsAlert(reason instanceof Error ? reason.message : t('unknownError')); }
+    finally { setBusy(false); }
+  };
+
+  const updateComment = async (comment: PhotoComment, body: Record<string, unknown>) => {
+    if (readOnly || comment.source !== 'project') return;
+    try {
+      await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments/${comment.id}`, { method: 'PATCH', body });
+      if (selectedAsset) await loadComments(selectedAsset.id); setEditing(null);
+    } catch (reason) { await wsAlert(reason instanceof Error ? reason.message : t('unknownError')); }
+  };
+
+  const deleteComment = async (comment: PhotoComment) => {
+    if (readOnly || comment.source !== 'project' || !await wsConfirm(`${t('remove')}?`)) return;
+    try {
+      await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments/${comment.id}`, { method: 'DELETE' });
+      if (selectedAsset) await loadComments(selectedAsset.id);
+    } catch (reason) { await wsAlert(reason instanceof Error ? reason.message : t('unknownError')); }
+  };
+
+  const deliver = async () => {
+    if (readOnly || !selectedForAction.length) return;
+    setBusy(true);
+    try {
+      const result = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-deliveries`, {
+        method: 'POST', body: { assetIds: selectedForAction, clientName, clientEmail, startNewRound: newRound, notifyClient },
+      }) as { delivered?: number; emailSent?: boolean };
+      setDeliveryOpen(false); setNewRound(false); setSelectedIds([]); await loadPhotos(0);
+      await wsAlert(`${result.delivered || 0} ${t('totalPhotos').toLowerCase()}. ${result.emailSent ? t('sendClient') : ''}`.trim());
+    } catch (reason) { await wsAlert(reason instanceof Error ? reason.message : t('unknownError')); }
+    finally { setBusy(false); }
+  };
+
+  const buyPack = async (packId: string) => {
+    try {
+      const result = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, {
+        method: 'POST', body: { packId, returnPath: `/workspace/${projectId}/photo-room` },
+      }) as { url?: string };
+      if (result.url) window.location.assign(result.url);
+    } catch (reason) { await wsAlert(reason instanceof Error ? reason.message : t('unknownError')); }
+  };
+
+  const suggestAi = async () => {
+    if (!selectedAsset || aiBusy) return;
+    setAiBusy(true);
+    try {
+      const result = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/suggest`, { method: 'POST', body: { assetId: selectedAsset.id, mode: aiMode } }) as { suggestions?: string[] };
+      setAiSuggestions(result.suggestions || []);
+    } catch (reason) { await wsAlert(reason instanceof Error ? reason.message : t('unknownError')); }
     finally { setAiBusy(false); }
   };
-  // AI-video (animer stillbilde → Seedance 2.0)
-  const [animOpen, setAnimOpen] = useState(false);
-  const [animPrompt, setAnimPrompt] = useState('');
-  const [animDuration, setAnimDuration] = useState(5);
-  const [animJob, setAnimJob] = useState<any | null>(null);
-  const [animBusy, setAnimBusy] = useState(false);
-  // Video-leverandør: Seedance 2.0 (fal, standard) vs Higgsfield DoP (kinematisk).
-  const [videoModel, setVideoModel] = useState<'seedance' | 'higgsfield'>('seedance');
-  const openAnim = () => { setAnimPrompt(''); setAnimJob(null); setAnimDuration(5); setVideoModel('seedance'); setSuggestions([]); setAnimOpen(true); };
-  const startAnimate = async () => {
-    if (!sel?.id || !animPrompt.trim() || animBusy) return;
-    setAnimBusy(true); setAnimJob({ status: 'queued' });
+
+  const runAi = async () => {
+    if (readOnly || !selectedAsset || !aiPrompt.trim() || aiBusy) return;
+    setAiBusy(true);
     try {
-      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/image-to-video`, { method: 'POST', body: { assetId: sel.id, prompt: animPrompt.trim(), duration: animDuration, model: videoModel === 'higgsfield' ? 'higgsfield' : 'seedance-2-i2v' } });
-      if (!r?.jobId) throw new Error('Kunne ikke starte');
-      // Video tar minutter — poll tålmodig (~4 min), ellers fortsetter i bakgrunnen.
-      for (let i = 0; i < 48; i++) {
-        await new Promise((res) => setTimeout(res, 5000));
-        const s: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/jobs/${r.jobId}`);
-        setAnimJob(s);
-        if (s.status === 'completed' || s.status === 'failed') break;
-      }
-      loadAiCfg();
-    } catch (e: any) {
-      const msg = String(e?.message || '').toLowerCase();
-      if (msg.includes('kreditt') || msg.includes('insufficient')) { setAnimOpen(false); setBuyOpen(true); }
-      else wsAlert(e?.message || 'AI-video feilet');
-      setAnimJob({ status: 'failed' });
-    }
-    finally { setAnimBusy(false); }
+      const endpoint = aiMode === 'edit' ? 'image-edit' : 'image-to-video';
+      const result = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/${endpoint}`, { method: 'POST', body: { assetId: selectedAsset.id, prompt: aiPrompt.trim(), duration: 5 } }) as { jobId?: string };
+      if (!result.jobId) throw new Error(t('unknownError'));
+      setAiOpen(false); setAiPrompt(''); setAiSuggestions([]); await loadAi();
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : t('unknownError');
+      if (/credit|kreditt|402/i.test(message)) { setAiOpen(false); setBuyOpen(true); } else await wsAlert(message);
+    } finally { setAiBusy(false); }
   };
-  // «Foreslå» (Claude vision → kontekst-tilpassede prompts)
-  const [suggesting, setSuggesting] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const suggest = async (mode: 'motion' | 'edit') => {
-    if (!sel?.id || suggesting) return;
-    setSuggesting(true); setSuggestions([]);
-    try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/suggest`, { method: 'POST', body: { assetId: sel.id, mode } }); setSuggestions(Array.isArray(r?.suggestions) ? r.suggestions : []); }
-    catch (e: any) { wsAlert(e?.message || 'Kunne ikke foreslå'); }
-    finally { setSuggesting(false); }
+
+  const visibleComments = comments.filter((comment) => commentFilter === 'all' || comment.scope === commentFilter);
+  const rootComments = visibleComments.filter((comment) => !comment.parentId);
+  const repliesFor = (id: string) => visibleComments.filter((comment) => comment.parentId === id);
+  const compareAssets = selectedIds.map((id) => assets.find((asset) => asset.id === id)).filter(Boolean) as PhotoAsset[];
+  const stats = data?.stats || {};
+
+  if (loading && !data) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress sx={{ color: ws.accent }} /></Box>;
+  if (error && !data) return <WsErrorState message={t('loadFailed')} retryLabel={t('retry')} onRetry={() => void loadPhotos(0)} />;
+  if (isReal && data && !data.hasSession) return <WsCard><Typography sx={{ fontWeight: 800, mb: 1 }}>{t('title')}</Typography><Typography sx={{ color: ws.textDim }}>{t('noSession')}</Typography></WsCard>;
+
+  const renderTile = (asset: PhotoAsset, compact: boolean) => {
+    const active = asset.id === selectedAsset?.id;
+    const checked = selectedIds.includes(asset.id);
+    return <Box key={asset.id} sx={{ position: 'relative', flex: compact ? '0 0 112px' : undefined, minWidth: 0 }}>
+      <Box component="button" type="button" aria-label={`${asset.filename}, ${statusLabel(asset.reviewStatus)}`}
+        aria-current={active ? 'true' : undefined} onClick={() => setSelectedAssetId(asset.id)}
+        sx={{ display: 'block', width: '100%', p: 0, overflow: 'hidden', cursor: 'pointer', textAlign: 'left',
+          borderRadius: `${ws.radiusSm}px`, border: `2px solid ${active ? ws.accent : checked ? ws.blue : ws.border}`,
+          bgcolor: ws.panelAlt, color: ws.text, '&:focus-visible': { outline: `3px solid ${ws.accentBorder}`, outlineOffset: 2 } }}>
+        <Box component="img" src={asset.thumbUrl || undefined} alt="" sx={{ display: 'block', width: '100%', aspectRatio: compact ? '4 / 3' : '3 / 2', objectFit: 'cover', bgcolor: '#090b0e' }} />
+        {!compact && <Box sx={{ p: 1 }}><Typography noWrap sx={{ fontSize: 12, fontWeight: 700 }}>{asset.filename}</Typography><Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{asset.folderName || t('allFolders')}</Typography></Box>}
+      </Box>
+      <Checkbox size="small" checked={checked} onChange={() => toggleSelected(asset.id)}
+        inputProps={{ 'aria-label': `${t('selected')}: ${asset.filename}` }}
+        sx={{ position: 'absolute', top: 2, left: 2, p: 0.35, bgcolor: 'rgba(8,10,13,.72)', borderRadius: 1, color: '#fff', '&.Mui-checked': { color: ws.accent } }} />
+      {asset.reviewStatus && <Box aria-hidden sx={{ position: 'absolute', top: 6, right: 6, width: 10, height: 10, borderRadius: '50%', bgcolor: STATUS_COLOR[asset.reviewStatus], boxShadow: '0 0 0 2px rgba(0,0,0,.7)' }} />}
+      {asset.clientSelection && <Chip label={asset.clientSelection === 'favorite' ? '♥' : asset.clientSelection} size="small" sx={{ position: 'absolute', bottom: compact ? 5 : 42, right: 5, height: 20, fontSize: 10, bgcolor: 'rgba(8,10,13,.78)', color: ws.text }} />}
+    </Box>;
   };
-  const aiAvailable = aiCfg?.enabled && aiCfg?.whitelisted;
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress sx={{ color: ws.accent }} /></Box>;
-  if (isReal && !data?.hasSession) return (
-    <Box sx={{ maxWidth: 1100 }}>
-      <Typography sx={{ fontSize: 20, fontWeight: 800, mb: 1 }}>Photo Review</Typography>
-      <WsCard sx={{ bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>
-        <Typography sx={{ fontSize: 13.5, color: ws.text }}>Ingen capture-session ennå. Når fotografen skyter på iPad-en (eller importerer kort), dukker bildene opp her for review — godkjenning, klient-kommentarer og Før/Etter.</Typography>
-      </WsCard>
+  const renderComment = (comment: PhotoComment, nested = false) => <Box key={comment.id} sx={{ ml: nested ? 2 : 0, pl: nested ? 1.25 : 0, borderLeft: nested ? `2px solid ${ws.border}` : 0, py: 1 }}>
+    <Stack direction="row" alignItems="center" spacing={0.75}><Typography sx={{ fontSize: 11.5, fontWeight: 800 }}>{comment.authorName}</Typography><Chip size="small" label={comment.authorKind === 'client' ? t('client') : t('internal')} sx={{ height: 18, fontSize: 9.5 }} /><Box sx={{ flex: 1 }} />{comment.status === 'resolved' && <Typography sx={{ fontSize: 10, color: ws.green }}>{t('resolve')}</Typography>}</Stack>
+    {editing?.id === comment.id ? <Stack spacing={0.75} sx={{ mt: 0.75 }}><TextField size="small" multiline value={editingText} onChange={(event) => setEditingText(event.target.value)} /><Stack direction="row" spacing={0.5}><Button size="small" onClick={() => void updateComment(comment, { comment: editingText })}>{t('save')}</Button><Button size="small" onClick={() => setEditing(null)}>{t('cancel')}</Button></Stack></Stack> : <Typography sx={{ mt: 0.5, fontSize: 12.5, color: ws.textDim, whiteSpace: 'pre-wrap' }}>{comment.comment}</Typography>}
+    {!readOnly && !editing && comment.source !== 'client_gallery_response' && <Stack direction="row" spacing={0.25} sx={{ mt: 0.5 }}><Button size="small" startIcon={<Reply />} onClick={() => { setReplyTo(comment); setCommentScope(comment.scope); }}>{t('reply')}</Button>{comment.source === 'project' && <Button size="small" onClick={() => void updateComment(comment, { status: comment.status === 'open' ? 'resolved' : 'open' })}>{comment.status === 'open' ? t('resolve') : t('reopen')}</Button>}{comment.canEdit && <Tooltip title={t('edit')}><IconButton size="small" onClick={() => { setEditing(comment); setEditingText(comment.comment); }}><EditOutlined fontSize="small" /></IconButton></Tooltip>}{comment.canEdit && <Tooltip title={t('remove')}><IconButton size="small" onClick={() => void deleteComment(comment)}><DeleteOutline fontSize="small" /></IconButton></Tooltip>}</Stack>}
+  </Box>;
+
+  return <Box sx={{ minWidth: 0 }}>
+    <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1.5} sx={{ mb: 2 }}><Box><Typography component="h1" sx={{ fontSize: 22, fontWeight: 850 }}>{t('title')}</Typography><Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subtitle')}</Typography><Typography sx={{ mt: 0.5, fontSize: 10.5, color: ws.textFaint }}>{t('storageNote')}</Typography></Box><Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">{data?.gallery && <Button component="a" href={data.gallery.shareUrl} target="_blank" rel="noreferrer" variant="outlined">{t('openGallery')}</Button>}<Tooltip title={t('refresh')}><IconButton aria-label={t('refresh')} onClick={() => { void loadPhotos(0); void loadAi(); }}><Refresh /></IconButton></Tooltip></Stack></Stack>
+    {readOnly && <Alert severity="info" sx={{ mb: 2 }}>{t('readOnly')}</Alert>}
+
+    <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2 }}>{[[t('totalPhotos'), stats.total || 0, ws.text], [t('pending'), stats.pending || 0, ws.amber], [t('approved'), stats.approved || 0, ws.green], [t('needsEdit'), stats.needsEdit || 0, ws.red], [t('totalComments'), stats.comments || 0, ws.blue]].map(([label, value, color]) => <WsCard key={String(label)} pad={1.25} sx={{ minWidth: 125, flex: '1 1 125px' }}><Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{label}</Typography><Typography sx={{ fontSize: 20, fontWeight: 850, color }}>{value}</Typography></WsCard>)}</Stack>
+
+    <WsCard pad={1.25} sx={{ mb: 2 }}><Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} alignItems={{ lg: 'center' }}>
+      <TextField size="small" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={t('search')} InputProps={{ startAdornment: <Search sx={{ mr: 1, color: ws.textFaint }} /> }} sx={{ minWidth: 220, flex: 1 }} />
+      <FormControl size="small" sx={{ minWidth: 150 }}><InputLabel>{t('allStatuses')}</InputLabel><Select value={statusFilter} label={t('allStatuses')} onChange={(event) => setStatusFilter(event.target.value)}><MenuItem value="all">{t('allStatuses')}</MenuItem><MenuItem value="pending">{t('pending')}</MenuItem><MenuItem value="approved">{t('approved')}</MenuItem><MenuItem value="needs_edit">{t('needsEdit')}</MenuItem><MenuItem value="rejected">{t('rejected')}</MenuItem><MenuItem value="flagged">{t('flagged')}</MenuItem></Select></FormControl>
+      <FormControl size="small" sx={{ minWidth: 150 }}><InputLabel>{t('allFolders')}</InputLabel><Select value={folderFilter} label={t('allFolders')} onChange={(event) => setFolderFilter(event.target.value)}><MenuItem value="all">{t('allFolders')}</MenuItem>{(data?.folders || []).map((folder) => <MenuItem key={folder.id} value={folder.id}>{folder.name}</MenuItem>)}</Select></FormControl>
+      <FormControl size="small" sx={{ minWidth: 150 }}><Select value={sort} onChange={(event) => setSort(event.target.value)}><MenuItem value="newest">{t('newest')}</MenuItem><MenuItem value="oldest">{t('oldest')}</MenuItem><MenuItem value="name_asc">{t('nameAsc')}</MenuItem><MenuItem value="name_desc">{t('nameDesc')}</MenuItem><MenuItem value="rating">{t('rating')}</MenuItem></Select></FormControl>
+      <Tooltip title={t('filmstrip')}><IconButton aria-label={t('filmstrip')} color={viewMode === 'filmstrip' ? 'primary' : 'default'} onClick={() => setViewMode('filmstrip')}><ViewCarousel /></IconButton></Tooltip><Tooltip title={t('grid')}><IconButton aria-label={t('grid')} color={viewMode === 'grid' ? 'primary' : 'default'} onClick={() => setViewMode('grid')}><GridView /></IconButton></Tooltip>
+    </Stack></WsCard>
+
+    <WsCard pad={1.25} sx={{ mb: 2 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }}><Typography sx={{ fontSize: 12.5, fontWeight: 750 }}>{selectedIds.length} {t('selected')}</Typography><Button size="small" onClick={() => setSelectedIds(assets.map((asset) => asset.id))} disabled={!assets.length}>{t('selectAll')}</Button><Button size="small" onClick={() => setSelectedIds([])} disabled={!selectedIds.length}>{t('clear')}</Button><Box sx={{ flex: 1 }} /><Button size="small" startIcon={<Compare />} onClick={() => setCompareOpen(true)} disabled={selectedIds.length !== 2}>{t('compare')}</Button><Button size="small" startIcon={<Brush />} color="warning" onClick={() => void setStatus(selectedForAction, 'needs_edit')} disabled={readOnly || busy || !selectedForAction.length}>{t('requestChanges')}</Button><Button size="small" startIcon={<CheckCircle />} color="success" onClick={() => void setStatus(selectedForAction, 'approved')} disabled={readOnly || busy || !selectedForAction.length}>{t('approve')}</Button><Button size="small" variant="contained" startIcon={<Send />} onClick={() => setDeliveryOpen(true)} disabled={readOnly || busy || !selectedForAction.length} sx={{ bgcolor: ws.accent, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}>{t('sendClient')}</Button></Stack></WsCard>
+
+    {viewMode === 'grid' && <WsCard sx={{ mb: 2 }}><Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 1 }}>{assets.map((asset) => renderTile(asset, false))}</Box></WsCard>}
+
+    <Stack direction={{ xs: 'column', xl: 'row' }} spacing={2} alignItems="flex-start"><Box sx={{ minWidth: 0, flex: 1, width: '100%' }}>
+      {selectedAsset ? <WsCard pad={1.25} sx={{ mb: 2 }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}><Box sx={{ minWidth: 0 }}><Typography noWrap sx={{ fontWeight: 800 }}>{selectedAsset.filename}</Typography><Typography sx={{ fontSize: 11, color: selectedAsset.reviewStatus ? STATUS_COLOR[selectedAsset.reviewStatus] : ws.textFaint }}>{statusLabel(selectedAsset.reviewStatus)}</Typography></Box><Stack direction="row">{[1, 2, 3, 4, 5].map((rating) => rating <= selectedAsset.rating ? <Star key={rating} sx={{ fontSize: 17, color: ws.amber }} /> : <StarBorder key={rating} sx={{ fontSize: 17, color: ws.textFaint }} />)}</Stack></Stack><Box component="img" src={selectedAsset.fullUrl || selectedAsset.thumbUrl || undefined} alt={selectedAsset.filename} sx={{ display: 'block', width: '100%', maxHeight: '68vh', minHeight: 260, objectFit: 'contain', bgcolor: '#07090c', borderRadius: `${ws.radiusSm}px` }} /><Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>{Object.entries(selectedAsset.exif || {}).filter(([, value]) => value != null).slice(0, 6).map(([key, value]) => <Typography key={key} sx={{ fontSize: 10.5, color: ws.textFaint }}>{key}: {String(value)}</Typography>)}</Stack>{!readOnly && <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mt: 1.25 }}><Button size="small" startIcon={<CheckCircle />} onClick={() => void setStatus([selectedAsset.id], 'approved')}>{t('approve')}</Button><Button size="small" startIcon={<Brush />} onClick={() => void setStatus([selectedAsset.id], 'needs_edit')}>{t('needsEdit')}</Button><Button size="small" startIcon={<Block />} onClick={() => void setStatus([selectedAsset.id], 'rejected')}>{t('rejected')}</Button>{aiConfig?.enabled && aiConfig?.whitelisted && <><Button size="small" startIcon={<AutoFixHigh />} onClick={() => { setAiMode('edit'); setAiOpen(true); }}>{t('aiEdit')}</Button><Button size="small" startIcon={<Movie />} onClick={() => { setAiMode('motion'); setAiOpen(true); }}>{t('animate')}</Button></>}</Stack>}</WsCard> : <WsCard><Typography sx={{ color: ws.textDim }}>{t('noPhotos')}</Typography></WsCard>}
+      {viewMode === 'filmstrip' && <WsCard pad={1.1} sx={{ mb: 2 }}><Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.5 }}>{assets.map((asset) => renderTile(asset, true))}</Stack></WsCard>}
+      <Stack alignItems="center" spacing={1} sx={{ mb: 2 }}><Typography sx={{ fontSize: 11, color: ws.textFaint }}>{t('showing')} {assets.length} {t('of')} {data?.pageInfo?.total || assets.length}</Typography>{data?.pageInfo?.hasMore && <Button disabled={loadingMore} onClick={() => void loadPhotos(assets.length)}>{loadingMore ? <CircularProgress size={18} /> : t('loadMore')}</Button>}</Stack>
     </Box>
-  );
 
-  const STAT_CARDS = [
-    { icon: 'Image', label: 'Totalt bilder', value: stats.total || 0, sub: '100%' },
-    { icon: 'HourglassEmpty', label: 'Til godkjenning', value: stats.pending || 0, sub: stats.total ? `${Math.round((stats.pending || 0) / stats.total * 100)}%` : '', tone: ws.amber },
-    { icon: 'CheckCircleOutline', label: 'Godkjent', value: stats.approved || 0, sub: stats.total ? `${Math.round((stats.approved || 0) / stats.total * 100)}%` : '', tone: ws.green },
-    { icon: 'EditOutlined', label: 'Trenger redigering', value: stats.needsEdit || 0, sub: stats.total ? `${Math.round((stats.needsEdit || 0) / stats.total * 100)}%` : '', tone: ws.red },
-    { icon: 'ChatBubbleOutline', label: 'Kommentarer', value: stats.comments || 0, sub: 'Totalt', tone: ws.blue },
-  ];
+    <WsCard sx={{ width: { xs: '100%', xl: 380 }, flexShrink: 0 }}><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography sx={{ fontSize: 15, fontWeight: 850 }}>{t('comments')}</Typography><Stack direction="row" spacing={0.5}>{(['all', 'internal', 'client'] as const).map((scope) => <Chip key={scope} clickable label={t(scope)} color={commentFilter === scope ? 'primary' : 'default'} onClick={() => setCommentFilter(scope)} />)}</Stack></Stack><Typography sx={{ mt: 0.5, fontSize: 10.5, color: ws.textFaint }}>{t('sharedRoom')}</Typography><Divider sx={{ my: 1.25 }} /><Box sx={{ maxHeight: 480, overflowY: 'auto' }}>{commentsLoading ? <CircularProgress size={22} /> : rootComments.length ? rootComments.map((comment) => <React.Fragment key={comment.id}>{renderComment(comment)}{repliesFor(comment.id).map((reply) => renderComment(reply, true))}</React.Fragment>) : <Typography sx={{ py: 3, textAlign: 'center', fontSize: 12, color: ws.textFaint }}>{t('noComments')}</Typography>}</Box>{!readOnly && selectedAsset && <><Divider sx={{ my: 1.25 }} />{replyTo && <Stack direction="row" alignItems="center"><Typography sx={{ flex: 1, fontSize: 10.5, color: ws.textFaint }}>{t('replyTo')} {replyTo.authorName}</Typography><IconButton size="small" onClick={() => setReplyTo(null)}><Close fontSize="small" /></IconButton></Stack>}{!replyTo && <Stack direction="row" spacing={0.5} sx={{ mb: 0.75 }}>{(['internal', 'client'] as const).map((scope) => <Chip key={scope} clickable label={t(scope)} color={commentScope === scope ? 'primary' : 'default'} onClick={() => setCommentScope(scope)} />)}</Stack>}<TextField fullWidth multiline minRows={2} value={commentText} onChange={(event) => setCommentText(event.target.value)} placeholder={t('writeComment')} inputProps={{ maxLength: 4000 }} /><Button fullWidth variant="contained" onClick={() => void submitComment()} disabled={busy || !commentText.trim()} sx={{ mt: 1, bgcolor: ws.accent, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}>{t('send')}</Button></>}</WsCard></Stack>
 
-  return (
-    <Box>
-      {/* Header */}
-      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 2 }}>
-        <Box>
-          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Photo Review</Typography>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Produsent-side bilde-review — godkjenning, Før/Etter, klient-kommentarer og utvalg. Samme rom klienten ser.</Typography>
-        </Box>
-        {sel?.id && <Button variant="contained" startIcon={<Send sx={{ fontSize: 17 }} />} onClick={approveSelection} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Godkjenn utvalg</Button>}
-      </Stack>
+    <WsCard sx={{ mt: 2 }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}><Typography sx={{ fontWeight: 850 }}>{t('aiHistory')}</Typography><Button size="small" startIcon={<Refresh />} onClick={() => void loadAi()}>{t('refresh')}</Button></Stack>{aiJobs.length ? <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))', gap: 1 }}>{aiJobs.map((job) => <Box key={job.id} sx={{ p: 1.25, border: `1px solid ${ws.border}`, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt }}><Stack direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 11.5, fontWeight: 800 }}>{job.kind === 'image-to-video' ? t('animate') : t('aiEdit')}</Typography><Chip size="small" label={t(job.status)} /></Stack>{job.afterUrl && <Box component={job.kind === 'image-to-video' ? 'video' : 'img'} src={job.afterUrl} controls={job.kind === 'image-to-video'} alt="" sx={{ display: 'block', width: '100%', aspectRatio: '3 / 2', objectFit: 'cover', mt: 1, borderRadius: 1 }} />}<Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 0.75 }} noWrap>{job.prompt || job.model}</Typography>{job.status === 'completed' && <Button component="a" href={`/api/projects/${encodeURIComponent(projectId)}/ai/jobs/${job.id}/download`} size="small" startIcon={<Download />} sx={{ mt: 0.5 }}>{t('download')}</Button>}</Box>)}</Box> : <Typography sx={{ color: ws.textFaint, fontSize: 12 }}>{t('noAiJobs')}</Typography>}</WsCard>
 
-      {/* Statkort */}
-      <Stack direction="row" spacing={1.5} sx={{ mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
-        {STAT_CARDS.map((c) => (
-          <WsCard key={c.label} sx={{ flex: 1, minWidth: 150 }} pad={1.5}>
-            <Stack direction="row" spacing={1.25} alignItems="center">
-              {wsIcon(c.icon, { fontSize: 20, color: c.tone || ws.textDim })}
-              <Box>
-                <Typography sx={{ fontSize: 11, color: ws.textDim }}>{c.label}</Typography>
-                <Stack direction="row" spacing={0.75} alignItems="baseline">
-                  <Typography sx={{ fontSize: 20, fontWeight: 800, color: c.tone || ws.text }}>{c.value}</Typography>
-                  {c.sub && <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{c.sub}</Typography>}
-                </Stack>
-              </Box>
-            </Stack>
-          </WsCard>
-        ))}
-      </Stack>
+    <WsModal open={compareOpen} onClose={() => setCompareOpen(false)} title={t('compare')} maxWidth="lg">{compareAssets.length === 2 ? <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>{compareAssets.map((asset) => <Box key={asset.id} sx={{ flex: 1, minWidth: 0 }}><Typography noWrap sx={{ mb: 0.75, fontWeight: 750 }}>{asset.filename}</Typography><Box component="img" src={asset.fullUrl || asset.thumbUrl || undefined} alt={asset.filename} sx={{ width: '100%', maxHeight: '70vh', objectFit: 'contain', bgcolor: '#07090c' }} /></Box>)}</Stack> : <Alert severity="info">{t('compareHint')}</Alert>}</WsModal>
 
-      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
-        {/* Venstre: viser + filmstrip + stadier */}
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          {/* Bildeviser */}
-          {sel && (
-            <WsCard sx={{ mb: 2 }} pad={1.5}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{(assets.indexOf(sel) + 1)} / {assets.length}</Typography>
-                <Stack direction="row" spacing={0.25}>
-                  {[1, 2, 3, 4, 5].map((n) => (n <= (sel.rating || 0) ? <Star key={n} sx={{ fontSize: 17, color: ws.amber }} /> : <StarBorder key={n} sx={{ fontSize: 17, color: ws.textFaint }} />))}
-                </Stack>
-              </Stack>
-              {hasBA ? (
-                <Box>
-                  <Box sx={{ position: 'relative', width: '100%', aspectRatio: '3 / 2', borderRadius: `${ws.radiusSm}px`, overflow: 'hidden', bgcolor: '#000' }}>
-                    <Box component="img" src={ba.enhancedUrl} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />
-                    <Box sx={{ position: 'absolute', inset: 0, clipPath: `inset(0 ${100 - baPos}% 0 0)` }}><Box component="img" src={ba.originalUrl} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} /></Box>
-                    <Box sx={{ position: 'absolute', top: 0, bottom: 0, left: `${baPos}%`, width: '2px', bgcolor: ws.accent }} />
-                    <Box sx={{ position: 'absolute', top: 8, left: 8, px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 700, color: '#fff' }}>FØR</Box>
-                    <Box sx={{ position: 'absolute', top: 8, right: 8, px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(255,140,0,0.85)', fontSize: 10.5, fontWeight: 700, color: ws.accentContrast }}>ETTER</Box>
-                  </Box>
-                  <input type="range" min={0} max={100} value={baPos} onChange={(e) => setBaPos(Number(e.target.value))} style={{ width: '100%', accentColor: ws.accent, marginTop: 8 }} />
-                </Box>
-              ) : (
-                sel.thumbUrl
-                  ? <Box sx={{ width: '100%', aspectRatio: '3 / 2', borderRadius: `${ws.radiusSm}px`, background: `center/contain no-repeat #000 url(${sel.thumbUrl})` }} />
-                  : <Box sx={{ width: '100%', aspectRatio: '3 / 2', borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, display: 'flex', alignItems: 'center', justifyContent: 'center', color: ws.textFaint }}>Ingen forhåndsvisning</Box>
-              )}
-              {/* EXIF-strip */}
-              <Stack direction="row" spacing={1.5} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.5 }}>
-                {[sel.exif?.iso && `ISO ${sel.exif.iso}`, sel.exif?.focalLength && `${sel.exif.focalLength}`, sel.exif?.aperture && `f/${sel.exif.aperture}`, sel.exif?.shutter && `${sel.exif.shutter}`, sel.exif?.camera].filter(Boolean).map((x: any, i: number) => (
-                  <Typography key={i} sx={{ fontSize: 11, color: ws.textDim }}>{x}</Typography>
-                ))}
-              </Stack>
-              {/* Review-actions */}
-              <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
-                {[['approved', 'Godkjenn', CheckCircle, ws.green], ['needs_edit', 'Trenger redigering', Brush, ws.amber], ['rejected', 'Avvis', Block, ws.red]].map(([st, label, Icon, col]: any) => (
-                  <Button key={st} size="small" startIcon={<Icon sx={{ fontSize: 16 }} />} onClick={() => setStatus(sel.id, sel.reviewStatus === st ? null : st)}
-                    variant={sel.reviewStatus === st ? 'contained' : 'outlined'}
-                    sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12, color: sel.reviewStatus === st ? '#06281c' : col, borderColor: col, bgcolor: sel.reviewStatus === st ? col : 'transparent', '&:hover': { borderColor: col, bgcolor: sel.reviewStatus === st ? col : `${col}22` } }}>{label}</Button>
-                ))}
-                <Box sx={{ flex: 1 }} />
-                {aiAvailable && <Button size="small" startIcon={<Movie sx={{ fontSize: 16 }} />} onClick={openAnim} sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12, color: ws.accent, borderColor: ws.accentBorder }} variant="outlined">Animer</Button>}
-                {aiAvailable && <Button size="small" startIcon={<AutoFixHigh sx={{ fontSize: 16 }} />} onClick={openAi} sx={{ textTransform: 'none', fontWeight: 700, fontSize: 12, color: ws.accentContrast, bgcolor: ws.accent, '&:hover': { bgcolor: ws.accentHover } }}>AI-rediger</Button>}
-              </Stack>
-            </WsCard>
-          )}
+    <WsModal open={deliveryOpen} onClose={() => setDeliveryOpen(false)} title={t('deliveryTitle')} maxWidth="sm"><Stack spacing={2}><Typography sx={{ color: ws.textDim }}>{selectedForAction.length} {t('selected')} · {t('clientGallery')}</Typography><TextField label={t('clientName')} value={clientName} onChange={(event) => setClientName(event.target.value)} required /><TextField label={t('clientEmail')} type="email" value={clientEmail} onChange={(event) => setClientEmail(event.target.value)} required />{data?.gallery && <><Chip clickable color={newRound ? 'primary' : 'default'} label={t('newRound')} onClick={() => setNewRound((value) => !value)} /><Typography sx={{ fontSize: 11, color: ws.textFaint }}>{t('clientGallery')} · {t('round')} {data.gallery.proofingRound}</Typography></>}<Chip clickable color={notifyClient ? 'primary' : 'default'} label={t('sendEmail')} onClick={() => setNotifyClient((value) => !value)} /><Stack direction="row" justifyContent="flex-end" spacing={1}><Button onClick={() => setDeliveryOpen(false)}>{t('cancel')}</Button><Button variant="contained" disabled={busy || !clientName.trim() || !clientEmail.trim()} onClick={() => void deliver()} sx={{ bgcolor: ws.accent, color: ws.accentContrast }}>{t('deliver')}</Button></Stack></Stack></WsModal>
 
-          {/* Filmstrip */}
-          <WsCard sx={{ mb: 2 }} pad={1.25}>
-            <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.5 }}>
-              {assets.slice(0, 40).map((a: any) => {
-                const sm = STATUS_META[a.reviewStatus] || null;
-                return (
-                  <Box key={a.id} onClick={() => { setSelId(a.id); setBaPos(50); }} sx={{ position: 'relative', width: 96, height: 72, flexShrink: 0, borderRadius: 1.5, overflow: 'hidden', cursor: 'pointer', border: `2px solid ${a.id === sel?.id ? ws.accent : 'transparent'}`, background: a.thumbUrl ? `center/cover no-repeat url(${a.thumbUrl})` : ws.panelAlt }}>
-                    {sm && <Box sx={{ position: 'absolute', top: 3, right: 3, width: 16, height: 16, borderRadius: '50%', bgcolor: sm.dot, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>{wsIcon(sm.icon, { fontSize: 11, color: '#fff' })}</Box>}
-                    {a.rating > 0 && <Box sx={{ position: 'absolute', bottom: 2, left: 4, display: 'inline-flex', color: ws.amber }}>{Array.from({ length: a.rating }).map((_, si) => <Star key={si} sx={{ fontSize: 10 }} />)}</Box>}
-                  </Box>
-                );
-              })}
-            </Stack>
-            {stats.pending > 0 && <Typography sx={{ fontSize: 11, color: ws.amber, mt: 0.75 }}>● {stats.pending} bilder til godkjenning</Typography>}
-          </WsCard>
-
-          {/* Utvalg & versjoner */}
-          <WsCard pad={1.5}>
-            <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.textFaint, mb: 1 }}>UTVALG & VERSJONER</Typography>
-            <Stack direction="row" spacing={1} alignItems="center">
-              {stages.map((s: any, i: number) => (
-                <React.Fragment key={s.key}>
-                  <Box sx={{ flex: 1, p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${i === stages.length - 1 ? ws.accentBorder : ws.borderSoft}` }}>
-                    <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{s.label}</Typography>
-                    <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{s.count} filer</Typography>
-                  </Box>
-                  {i < stages.length - 1 && <Typography sx={{ color: ws.textFaint }}>→</Typography>}
-                </React.Fragment>
-              ))}
-            </Stack>
-          </WsCard>
-        </Box>
-
-        {/* Høyre: kommentarer + bildeinfo */}
-        <Box sx={{ width: { xs: '100%', lg: 340 }, flexShrink: 0 }}>
-          <WsCard sx={{ mb: 2, p: 0, overflow: 'hidden' }}>
-            <Box sx={{ p: 1.5, borderBottom: `1px solid ${ws.borderSoft}` }}>
-              <Typography sx={{ fontSize: 13.5, fontWeight: 700, mb: 1 }}>Kommentarer</Typography>
-              <Stack direction="row" spacing={0.5}>
-                {[['all', `Alle ${scopes.all || 0}`], ['internal', `Interne ${scopes.internal || 0}`], ['client', `Klient ${scopes.client || 0}`]].map(([k, label]: any) => (
-                  <Box key={k} onClick={() => setCFilter(k)} sx={{ px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11.5, fontWeight: cFilter === k ? 700 : 500, color: cFilter === k ? ws.accent : ws.textDim, bgcolor: cFilter === k ? ws.accentSoft : 'rgba(255,255,255,0.04)', border: `1px solid ${cFilter === k ? ws.accentBorder : 'transparent'}` }}>{label}</Box>
-                ))}
-              </Stack>
-            </Box>
-            <Stack sx={{ maxHeight: 360, overflowY: 'auto' }}>
-              {shownComments.length === 0 && <Typography sx={{ fontSize: 12.5, color: ws.textDim, p: 2, textAlign: 'center' }}>Ingen kommentarer ennå.</Typography>}
-              {shownComments.map((c: any) => (
-                <Box key={c.id} sx={{ p: 1.5, borderBottom: `1px solid ${ws.borderSoft}`, bgcolor: c.pinned ? ws.accentSoft : 'transparent' }}>
-                  <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.5 }}>
-                    <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{c.authorName}</Typography>
-                    <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>({c.scope === 'client' ? 'Klient' : 'Intern'})</Typography>
-                    {c.pinned && <WsTag label="Festet" tone="accent" />}
-                    {c.tag === 'needs_edit' && <WsTag label="Trenger redigering" tone="amber" />}
-                  </Stack>
-                  <Typography sx={{ fontSize: 12.5, color: ws.text }}>{c.comment}</Typography>
-                </Box>
-              ))}
-            </Stack>
-            <Box sx={{ p: 1.25, borderTop: `1px solid ${ws.borderSoft}` }}>
-              <Stack direction="row" spacing={0.5} sx={{ mb: 0.75 }}>
-                {[['internal', 'Intern'], ['client', 'Til klient']].map(([k, label]: any) => (
-                  <Box key={k} onClick={() => setCScope(k)} sx={{ px: 1, py: 0.3, borderRadius: 1.5, cursor: 'pointer', fontSize: 10.5, fontWeight: 700, color: cScope === k ? ws.accentContrast : ws.textDim, bgcolor: cScope === k ? ws.accent : 'rgba(255,255,255,0.05)' }}>{label}</Box>
-                ))}
-              </Stack>
-              <Stack direction="row" spacing={0.75}>
-                <TextField value={cText} onChange={(e) => setCText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addComment(); }} placeholder="Legg til kommentar…" size="small" fullWidth />
-                <IconButton onClick={addComment} sx={{ bgcolor: ws.accent, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}><Send sx={{ fontSize: 18 }} /></IconButton>
-              </Stack>
-            </Box>
-          </WsCard>
-
-          {/* Bildeinformasjon (EXIF) */}
-          {sel && (
-            <WsCard pad={1.5}>
-              <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.textFaint, mb: 1 }}>BILDEINFORMASJON</Typography>
-              <Stack spacing={0.5}>
-                {[['Filnavn', sel.filename], ['Kamera', sel.exif?.camera], ['Objektiv', sel.exif?.lens], ['Lukker', sel.exif?.shutter], ['Blender', sel.exif?.aperture ? `f/${sel.exif.aperture}` : null], ['ISO', sel.exif?.iso], ['Oppløsning', sel.exif?.width && sel.exif?.height ? `${sel.exif.width} x ${sel.exif.height}` : null]].filter(([, v]) => v).map(([k, v]: any) => (
-                  <Stack key={k} direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{k}</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 600 }} noWrap>{v}</Typography></Stack>
-                ))}
-              </Stack>
-            </WsCard>
-          )}
-        </Box>
-      </Stack>
-
-      {/* Bunn-actions */}
-      {sel && (
-        <Stack direction="row" spacing={1.5} justifyContent="center" sx={{ mt: 2.5 }}>
-          <Button variant="outlined" disabled sx={{ color: ws.textDim, borderColor: ws.border, textTransform: 'none', fontWeight: 600 }}>Be om endringer</Button>
-          <Button variant="outlined" disabled sx={{ color: ws.text, borderColor: ws.border, textTransform: 'none', fontWeight: 600 }}>Send til kunde</Button>
-          <Button variant="contained" startIcon={<CheckCircle />} onClick={approveSelection} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Godkjenn utvalg</Button>
-        </Stack>
-      )}
-
-      {/* AI-rediger (Nano Banana 2) */}
-      <WsModal open={aiOpen} onClose={() => { if (!aiBusy) setAiOpen(false); }} title={`AI-rediger — ${sel?.filename || 'bilde'}`} maxWidth="sm">
-        {!aiCfg?.consent?.consented ? (
-          <Stack spacing={2}>
-            <Box sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.amberSoft, border: `1px solid ${ws.amber}55` }}>
-              <Typography sx={{ fontSize: 13, fontWeight: 700, color: ws.amber, mb: 0.5, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}><WarningAmber sx={{ fontSize: 15 }} /> Samtykke kreves</Typography>
-              <Typography sx={{ fontSize: 12.5, color: ws.text }}>AI-redigering sender kundens bilde til en tredjeparts AI-modell (Google Nano Banana 2) som kan behandle data utenfor EØS. Bekreft at du har grunnlag for dette per prosjekt før du fortsetter.</Typography>
-            </Box>
-            <Stack direction="row" justifyContent="flex-end" spacing={1}>
-              <Button onClick={() => setAiOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
-              <Button variant="contained" onClick={() => setConsent(true)} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Samtykk og fortsett</Button>
-            </Stack>
-          </Stack>
-        ) : aiJob && (aiJob.status === 'completed' || aiJob.afterUrl) ? (
-          <Stack spacing={2}>
-            <Box sx={{ position: 'relative', width: '100%', aspectRatio: '3 / 2', borderRadius: `${ws.radiusSm}px`, overflow: 'hidden', bgcolor: '#000' }}>
-              <Box component="img" src={aiJob.afterUrl} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />
-              {aiJob.beforeUrl && <Box sx={{ position: 'absolute', inset: 0, clipPath: `inset(0 ${100 - baPos}% 0 0)` }}><Box component="img" src={aiJob.beforeUrl} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} /></Box>}
-              <Box sx={{ position: 'absolute', top: 0, bottom: 0, left: `${baPos}%`, width: '2px', bgcolor: ws.accent }} />
-              <Box sx={{ position: 'absolute', top: 8, left: 8, px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 700, color: '#fff' }}>FØR</Box>
-              <Box sx={{ position: 'absolute', top: 8, right: 8, px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(255,140,0,0.85)', fontSize: 10.5, fontWeight: 700, color: ws.accentContrast }}>ETTER (AI)</Box>
-            </Box>
-            <input type="range" min={0} max={100} value={baPos} onChange={(e) => setBaPos(Number(e.target.value))} style={{ width: '100%', accentColor: ws.accent }} />
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>«{aiJob.prompt}»</Typography>
-              <Stack direction="row" spacing={1}>
-                <Button size="small" onClick={() => { setAiJob(null); }} sx={{ color: ws.textDim, textTransform: 'none' }}>Ny redigering</Button>
-                <Button size="small" variant="contained" onClick={() => window.open(aiJob.afterUrl, '_blank')} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne / last ned</Button>
-              </Stack>
-            </Stack>
-          </Stack>
-        ) : aiBusy || (aiJob && aiJob.status !== 'failed') ? (
-          <Stack spacing={2} alignItems="center" sx={{ py: 3 }}>
-            <CircularProgress sx={{ color: ws.accent }} />
-            <Typography sx={{ fontSize: 13, color: ws.textDim }}>AI redigerer bildet… ({aiJob?.status === 'running' ? 'kjører' : 'i kø'})</Typography>
-          </Stack>
-        ) : (
-          <Stack spacing={2}>
-            {aiJob?.status === 'failed' && <Typography sx={{ fontSize: 12.5, color: ws.red }}>Redigeringen feilet. Prøv en annen instruksjon.</Typography>}
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Beskriv hva AI-en skal gjøre med bildet (Nano Banana 2):</Typography>
-              <Button size="small" startIcon={<AutoFixHigh sx={{ fontSize: 14 }} />} onClick={() => suggest('edit')} disabled={suggesting} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 600, fontSize: 11 }}>{suggesting ? 'Ser på bildet…' : 'Foreslå'}</Button>
-            </Stack>
-            <TextField value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} fullWidth multiline minRows={2} size="small" placeholder="f.eks. Fjern søppelbøtta i bakgrunnen" />
-            <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-              {(suggestions.length ? suggestions : QUICK_PROMPTS).map((q) => <Box key={q} onClick={() => setAiPrompt(q)} sx={{ px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11, color: ws.accent, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>{q}</Box>)}
-            </Stack>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              {credits?.billingMode === 'credits'
-                ? <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>Saldo: <b style={{ color: ws.green }}>${(credits?.balanceUsd ?? 0).toFixed(2)}</b> · <Box component="span" onClick={() => setBuyOpen(true)} sx={{ color: ws.accent, cursor: 'pointer', fontWeight: 700 }}>Kjøp kreditter</Box></Typography>
-                : <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>
-                    {(() => {
-                      const u = aiCfg?.myUsage; const gens = u?.generationsThisMonth ?? 0;
-                      if (aiCfg?.billingMode === 'metered') { const rem = u?.includedRemaining; return `Du: ${gens} redigeringer denne mnd${rem != null ? ` · ${rem} inkludert igjen` : ''} · ~$${(u?.unitPriceUsd ?? 0).toFixed(2)}/bilde`; }
-                      return `Du: ${gens} redigeringer denne mnd · gratis i pilot`;
-                    })()}
-                  </Typography>}
-              <Stack direction="row" spacing={1}>
-                <Button onClick={() => setAiOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
-                <Button variant="contained" disabled={!aiPrompt.trim() || aiBusy} onClick={startEdit} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Rediger med AI</Button>
-              </Stack>
-            </Stack>
-          </Stack>
-        )}
-      </WsModal>
-
-      <AiBuyCreditsModal open={buyOpen} onClose={() => setBuyOpen(false)} credits={credits} onBuy={buyPack} />
-
-      {/* Animer (AI-video, Seedance 2.0) */}
-      <WsModal open={animOpen} onClose={() => { if (!animBusy) setAnimOpen(false); }} title={`Animer — ${sel?.filename || 'bilde'}`} maxWidth="sm">
-        {!aiCfg?.consent?.consented ? (
-          <Stack spacing={2}>
-            <Box sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.amberSoft, border: `1px solid ${ws.amber}55` }}>
-              <Typography sx={{ fontSize: 13, fontWeight: 700, color: ws.amber, mb: 0.5, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}><WarningAmber sx={{ fontSize: 15 }} /> Samtykke kreves</Typography>
-              <Typography sx={{ fontSize: 12.5, color: ws.text }}>AI-video sender bildet til en tredjeparts AI-modell (Seedance 2.0 / ByteDance) som kan behandle data utenfor EØS.</Typography>
-            </Box>
-            <Stack direction="row" justifyContent="flex-end" spacing={1}>
-              <Button onClick={() => setAnimOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
-              <Button variant="contained" onClick={() => setConsent(true)} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Samtykk og fortsett</Button>
-            </Stack>
-          </Stack>
-        ) : animJob && animJob.status === 'completed' && animJob.afterUrl ? (
-          <Stack spacing={2}>
-            <Box component="video" src={animJob.afterUrl} controls autoPlay loop sx={{ width: '100%', borderRadius: `${ws.radiusSm}px`, bgcolor: '#000', aspectRatio: '16 / 9' }} />
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>«{animJob.prompt}»</Typography>
-              <Stack direction="row" spacing={1}>
-                <Button size="small" onClick={() => setAnimJob(null)} sx={{ color: ws.textDim, textTransform: 'none' }}>Ny</Button>
-                <Button size="small" variant="contained" onClick={() => window.open(animJob.afterUrl, '_blank')} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Last ned</Button>
-              </Stack>
-            </Stack>
-          </Stack>
-        ) : animBusy || (animJob && animJob.status !== 'failed') ? (
-          <Stack spacing={2} alignItems="center" sx={{ py: 3 }}>
-            <CircularProgress sx={{ color: ws.accent }} />
-            <Typography sx={{ fontSize: 13, color: ws.textDim, textAlign: 'center' }}>AI lager video… dette tar gjerne 1–3 minutter.<br /><Typography component="span" sx={{ fontSize: 11.5, color: ws.textFaint }}>Du kan lukke — jobben fortsetter i bakgrunnen.</Typography></Typography>
-          </Stack>
-        ) : (
-          <Stack spacing={2}>
-            {animJob?.status === 'failed' && <Typography sx={{ fontSize: 12.5, color: ws.red }}>Video-genereringen feilet. Prøv en annen beskrivelse.</Typography>}
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Beskriv bevegelsen AI-en skal lage fra stillbildet (Seedance 2.0):</Typography>
-              <Button size="small" startIcon={<AutoFixHigh sx={{ fontSize: 14 }} />} onClick={() => suggest('motion')} disabled={suggesting} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 600, fontSize: 11 }}>{suggesting ? 'Ser på bildet…' : 'Foreslå'}</Button>
-            </Stack>
-            <TextField value={animPrompt} onChange={(e) => setAnimPrompt(e.target.value)} fullWidth multiline minRows={2} size="small" placeholder="f.eks. rolig kamera-innzoom, mykt vindpust i håret" />
-            {suggestions.length > 0 && <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-              {suggestions.map((q) => <Box key={q} onClick={() => setAnimPrompt(q)} sx={{ px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11, color: ws.accent, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>{q}</Box>)}
-            </Stack>}
-            {aiCfg?.higgsfieldConfigured && (
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Typography sx={{ fontSize: 12, color: ws.textDim }}>Motor:</Typography>
-                {([['seedance', 'Seedance 2.0'], ['higgsfield', 'Higgsfield DoP']] as const).map(([v, lbl]) => (
-                  <Box key={v} onClick={() => setVideoModel(v)} sx={{ px: 1.25, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 12, fontWeight: videoModel === v ? 700 : 500, color: videoModel === v ? ws.accentContrast : ws.textDim, bgcolor: videoModel === v ? ws.accent : 'rgba(255,255,255,0.05)' }}>{lbl}</Box>
-                ))}
-              </Stack>
-            )}
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Typography sx={{ fontSize: 12, color: ws.textDim }}>Lengde:</Typography>
-              {[4, 5, 8, 10].map((d) => <Box key={d} onClick={() => setAnimDuration(d)} sx={{ px: 1.25, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 12, fontWeight: animDuration === d ? 700 : 500, color: animDuration === d ? ws.accentContrast : ws.textDim, bgcolor: animDuration === d ? ws.accent : 'rgba(255,255,255,0.05)' }}>{d}s</Box>)}
-            </Stack>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>~${(animDuration * 0.1).toFixed(2)} ({animDuration}s){credits?.billingMode === 'credits' ? <> · saldo ${(credits?.balanceUsd ?? 0).toFixed(2)} · <Box component="span" onClick={() => { setAnimOpen(false); setBuyOpen(true); }} sx={{ color: ws.accent, cursor: 'pointer', fontWeight: 700 }}>Kjøp</Box></> : null}</Typography>
-              <Stack direction="row" spacing={1}>
-                <Button onClick={() => setAnimOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
-                <Button variant="contained" disabled={!animPrompt.trim() || animBusy} onClick={startAnimate} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Lag video</Button>
-              </Stack>
-            </Stack>
-          </Stack>
-        )}
-      </WsModal>
-    </Box>
-  );
+    <WsModal open={aiOpen} onClose={() => setAiOpen(false)} title={aiMode === 'edit' ? t('aiEdit') : t('animate')} maxWidth="sm"><Stack spacing={1.5}>{!aiConfig?.consent?.consented ? <><Alert severity="warning"><Typography sx={{ fontWeight: 800 }}>{t('consentTitle')}</Typography>{t('consentText')}</Alert><Button disabled={readOnly} onClick={() => void apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/consent`, { method: 'PUT', body: { consented: true } }).then(loadAi)}>{t('consent')}</Button></> : <><TextField autoFocus multiline minRows={3} label={t('aiPrompt')} value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} inputProps={{ maxLength: 1000 }} /><Button size="small" startIcon={<AutoFixHigh />} disabled={aiBusy} onClick={() => void suggestAi()}>{t('suggestions')}</Button><Stack spacing={0.5}>{aiSuggestions.map((suggestion) => <Button key={suggestion} variant="outlined" onClick={() => setAiPrompt(suggestion)} sx={{ justifyContent: 'flex-start', textAlign: 'left' }}>{suggestion}</Button>)}</Stack><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography sx={{ fontSize: 11, color: ws.textFaint }}>${Number(credits?.balanceUsd || 0).toFixed(2)}</Typography><Button variant="contained" disabled={readOnly || aiBusy || !aiPrompt.trim()} onClick={() => void runAi()} sx={{ bgcolor: ws.accent, color: ws.accentContrast }}>{aiBusy ? <CircularProgress size={18} /> : t('start')}</Button></Stack></>}</Stack></WsModal>
+    <AiBuyCreditsModal open={buyOpen} onClose={() => setBuyOpen(false)} credits={credits} onBuy={(packId) => void buyPack(packId)} />
+  </Box>;
 };
 
 export default PhotoRoomTab;

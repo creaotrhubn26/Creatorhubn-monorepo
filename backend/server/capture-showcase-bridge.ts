@@ -107,7 +107,7 @@ export async function bridgeCaptureSessionToGallery(
   // being bridged. Without this someone with a session id could trick
   // us into making a gallery against their account.
   const owned = await input.db
-    .select({ id: captureSessions.id, name: captureSessions.name })
+    .select({ id: captureSessions.id, name: captureSessions.name, projectId: captureSessions.projectId })
     .from(captureSessions)
     .where(
       and(
@@ -149,12 +149,14 @@ export async function bridgeCaptureSessionToGallery(
         .insert(photographerClientGalleries)
         .values({
           photographerId: input.ownerUserId,
+          projectId: session.projectId || null,
           clientName: input.clientName,
           clientEmail: input.clientEmail.toLowerCase().trim(),
           projectTitle,
           accessToken,
           gallerySettings: {
             captureSessionId: input.captureSessionId,
+            ...(session.projectId ? { projectId: session.projectId } : {}),
             source: 'capture',
             createdVia: 'ipad_deliver',
           },
