@@ -7,53 +7,66 @@
 # Do not hand-edit version numbers — they come from the pinned Tier 1/2
 # sources named per entry. Update `checked_at` only via the agent run.
 
-bootstrap: true
-bootstrap_note: >
-  First run of this tracker (2026-08-09). No prior state existed, so no
-  impact assessment was performed this run — see 2026-08-09-impact.md.
-  Future runs diff against this file.
-
 vendors:
   blackmagic-resolve:
     product: DaVinci Resolve
-    version: "21.0.4"
+    version: "21.1"
+    previous_version: "21.0.4"
     source: "https://www.blackmagicdesign.com/api/support/latest-stable-version/davinci-resolve/mac"
     source_note: >
-      Primary source blocked by this session's network egress policy
-      (www.blackmagicdesign.com) at run time; version corroborated via
-      WebSearch (toolfarm.com, newsshooter.com, 2026-08-05 release coverage)
-      and matches the version already on record in
-      docs/evidence/2026-08-resolve-21-impact.yaml. Confidence: strong_evidence,
-      not Verified, per Freshness Rule (no live Tier 1 fetch this run).
-    checked_at: "2026-08-09"
+      Primary source blocked again this run (403 on CONNECT to
+      www.blackmagicdesign.com — same domain block as 2026-08-09).
+      Version corroborated via WebSearch (sportsvideo.org, newsshooter.com,
+      provideocoalition.com, cined.com — release coverage 2026-09-07/09,
+      IBC 2026). Confidence: strong_evidence, not Verified — no live Tier 1
+      fetch this run either.
+    checked_at: "2026-09-14"
+    impact_report: docs/impact-reports/2026-09-14-impact.md
+    note: >
+      Code in apps/resolve-script-manager already targets 21.1 (merged
+      2026-09-12, 2 days before this run detected the release formally) —
+      see evidence/2026-09-resolve-21-1-adoption.yaml.
 
   xcode-apple-sdk:
     product: Xcode / Apple SDK
     channel: stable
     version: "Xcode 26.6 (17F113)"
     source: "https://developer.apple.com/news/releases/rss/releases.rss (first Stable/GA title matching /Xcode \\d/, excluding beta/RC per release-monitor/SKILL.md Stable-vs-Preview rule)"
-    checked_at: "2026-08-09"
+    checked_at: "2026-09-14"
+    unchanged: true
     preview_channel_note: >
-      Xcode 27 beta 4 (27A5228h) is the current preview build (same feed).
-      Tracked here for awareness only, NOT as the diff-triggering baseline —
-      docs/evidence/2026-07-ios27-fm-symbols.yaml pins the project to the
-      iOS 26 / Xcode 26 FM surface until Xcode 27 ships stable. Promote to
-      the primary `version` field once Xcode 27 leaves beta.
+      Xcode 27 has progressed beta → RC since 2026-08-09 (now "Xcode 27 RC
+      (27A266a)", same feed, 2026-09-09) — closer to GA but still not
+      Stable. Tracked for awareness only, NOT the diff-triggering baseline —
+      docs/evidence/2026-07-ios27-fm-symbols.yaml still pins the project to
+      the iOS 26 / Xcode 26 FM surface until Xcode 27 ships stable. Re-check
+      promptly next run; RC usually precedes GA by weeks, not months.
 
   moodle:
     product: Moodle LMS
-    version: "v5.2.2"
+    version: "v5.2.3"
+    previous_version: "v5.2.2"
     source: "https://api.github.com/repos/moodle/moodle/tags (git ls-remote --tags, filtered to ^v\\d+\\.\\d+(\\.\\d+)?$)"
-    checked_at: "2026-08-09"
+    checked_at: "2026-09-14"
+    impact_report: docs/impact-reports/2026-09-14-impact.md
 
   blender:
     product: Blender
-    version: "v5.2.0"
+    version: "v5.2.1"
+    previous_version: "v5.2.0"
     source: "https://api.github.com/repos/blender/blender/tags (git ls-remote --tags, filtered to ^v\\d+\\.\\d+(\\.\\d+)?$)"
-    checked_at: "2026-08-09"
+    checked_at: "2026-09-14"
+    impact_report: docs/impact-reports/2026-09-14-impact.md
 
   stripe-node:
     product: Stripe Node SDK
-    version: "v22.4.0"
+    version: "v22.6.2"
+    previous_version: "v22.4.0"
     source: "https://api.github.com/repos/stripe/stripe-node/releases/latest"
-    checked_at: "2026-08-09"
+    checked_at: "2026-09-14"
+    impact_report: docs/impact-reports/2026-09-14-impact.md
+    note: >
+      This is the SDK's own "latest" line, tracked for release-monitor
+      purposes. backend/package.json actually pins "stripe": "^19.3.0" — a
+      3-major-version gap from this tracked latest. See
+      evidence/2026-09-stripe-node-version-gap.yaml.

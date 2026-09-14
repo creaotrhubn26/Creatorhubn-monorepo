@@ -1,0 +1,67 @@
+claim: >
+  backend/package.json pins "stripe": "^19.3.0", three major versions
+  behind the SDK's tracked-latest v22.6.2. stripe-node v20-v22 carry real
+  breaking changes (v20: indexed array param serialization; v21: decimal
+  fields become Stripe.Decimal, Node 16 dropped; v22: ES6-class
+  constructor, callback support removed, per-request host/key overrides
+  removed). Separately, Stripe's legacy usage-record metering API (which
+  backend/server/storage-quota-service.ts depends on via
+  `stripe_storage_meter_item_id`) was removed at API version
+  2025-03-31.basil; our hardcoded apiVersion pins
+  (2025-01-27.acacia in lead-map-routes.ts, 2024-12-18.acacia in two
+  backend/scripts/*.mjs) all predate that removal, which is currently what
+  keeps legacy metering working.
+source_type: official_changelog
+source: >
+  github.com/stripe/stripe-node/blob/master/CHANGELOG.md (Verified — direct
+  fetch), github.com/stripe/stripe-node/wiki/Migration-guide-for-v22
+  (Verified — direct fetch); docs.stripe.com/api/billing/meter and Stripe
+  blog coverage of the Meters API (strong_evidence — WebSearch, docs.stripe.com
+  blocked by this session's network egress policy).
+authority_tier: 1
+vendor: Stripe
+product: stripe-node SDK + Billing API
+version_scope: "stripe-node v19.3.0 (installed) vs v20-v22.6.2 (tracked latest)"
+publication_date: "2026-09-14"
+evidence_summary: >
+  This week's release-monitor delta (v22.4.0 → v22.6.2) is itself a minor
+  bump within a major line we don't run, so it carries no direct action.
+  Investigating why triggered discovery of the much larger, previously
+  unrecorded v19→v22 gap: no prior evidence file existed for this vendor.
+  grep confirms real usage-based billing today
+  (backend/server/storage-quota-service.ts: "Pushe metered usage til Stripe
+  når brukeren overskrider grensen", stripe_storage_meter_item_id column) —
+  this is exactly the legacy Meter/usage-record surface Stripe is sunsetting.
+interpretation: >
+  Not urgent — we are not on v22 and our pinned API versions still serve
+  legacy metering. But the gap is a standing risk: any future stripe-node
+  upgrade to v20+ (e.g. to consume a new feature) forces the v20-v22
+  breaking-change gauntlet AND simultaneously risks legacy usage-record
+  metering if the apiVersion pin is bumped past 2025-03-31.basil at the
+  same time — two unrelated changes that would land in the same upgrade PR
+  unless deliberately staged.
+project_impact: >
+  backend/server/storage-quota-service.ts (legacy metering, at risk if
+  apiVersion pin is ever bumped without a parallel Meters API migration);
+  backend/server/role-room-affiliate-payouts.ts, leadgrid-billing-service.ts,
+  editing-payments-service.ts, dance-billing-service.ts (all would need the
+  v22 migration-guide changes — ESM/class constructor, no callbacks — if
+  the SDK is ever bumped).
+confidence: strong_evidence
+decision: >
+  HOLD on upgrading stripe-node for now — no forcing function this run.
+  When storage-quota-service.ts's legacy metering is next touched, migrate
+  it to the Billing Meters API (see 2026-09-14-impact.md Produktmuligheter)
+  BEFORE bumping the apiVersion pin past 2025-03-31.basil, not after.
+affected:
+  - backend/server/storage-quota-service.ts
+  - backend/server/lead-map-routes.ts (apiVersion pin)
+  - backend/scripts/go-live-provision-stripe.mjs
+  - backend/scripts/sync-role-room-stripe-tax-behavior.mjs
+lesson: >
+  vendors.yaml's stripe drift_watch note ("API version bumps... upgrade is
+  an explicit event") was written for the apiVersion string but the SDK
+  package version drifted silently in parallel for over a year with no
+  evidence record. Track the SDK major version explicitly alongside the
+  apiVersion pin going forward — they are two independent axes that can
+  each break the other's assumptions.
