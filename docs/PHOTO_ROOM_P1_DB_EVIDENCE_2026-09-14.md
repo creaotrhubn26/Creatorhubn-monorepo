@@ -15,6 +15,17 @@ Identifisering: `render.yaml` binder backend til rollene `creatorhub_runtime_log
 
 Konsekvens: `wispy-bar-06530976` mangler hele migrasjon 0605 (37 av 43 objekter fraværende: alle constraints, indekser, triggere, funksjoner og nye kolonner; kun de eldre tabellene finnes). Det er uproblematisk så lenge ingen tjeneste peker dit, men en feilkonfigurert `DATABASE_URL` mot den basen ville gi stille tap av review-modellen. Ikke gjenbruk den basen uten å kjøre migrasjonene først.
 
+## Migrasjonsregisteret
+
+`_migrations_applied` i produksjon:
+
+| Fil | Applied |
+|---|---|
+| `0605_project_photo_room_unification.sql` | 2026-09-14 13:30:57Z |
+| `0606_troll_demo_verified_location_addresses.sql` | 2026-09-14 14:35:36Z |
+
+Registeret alene er ikke bevis — `migrate.sh` har historisk markert filer som applied selv når SQL feilet. Katalogkontrollen under er beviset; registeret bekrefter bare når kjøringen skjedde.
+
 ## Resultat i produksjon
 
 **43 av 43 forventede objekter finnes. 0 mangler. Ingen skjemadrift mot `backend/migrations/0605_project_photo_room_unification.sql`.**
