@@ -24,11 +24,25 @@ import type { Pool } from "pg";
  *     try/catch and only log the error.
  */
 
+/**
+ * Hendelsestypene et prosjekt kan logge. Samme streng brukes som
+ * ``event_type`` i ``project_notifications`` og som ``kind`` her, slik at
+ * innboksen, aktivitetsfeeden og iPad-ens ChangeLogView deler ordforråd.
+ * Utvidet fra de fire klient-hendelsene da workspace-varslene kom til.
+ */
 export type ProjectChangeKind =
   | "asset.hearted"
   | "asset.commented"
   | "quote.signed"
-  | "contract.signed";
+  | "contract.signed"
+  | "task.assigned"
+  | "task.completed"
+  | "task.created"
+  | "chat.mention"
+  | "deliverable.created"
+  | "deliverable.file-added"
+  | "deliverable.due-soon"
+  | "deliverable.completed";
 
 export type ProjectChangeActorKind = "client" | "photographer";
 
@@ -169,6 +183,22 @@ export function humanizeChangeLogEntry(entry: {
       return `${actor} signerte tilbudet`;
     case "contract.signed":
       return `${actor} signerte kontrakten`;
+    case "task.created":
+      return `${actor} la til «${text(entry.payload?.title)}»`;
+    case "task.assigned":
+      return `${actor} tildelte «${text(entry.payload?.title)}» til ${text(entry.payload?.assigneeName, "et teammedlem")}`;
+    case "task.completed":
+      return `${actor} fullførte «${text(entry.payload?.title)}»`;
+    case "chat.mention":
+      return `${actor} nevnte deg i chatten`;
+    case "deliverable.created":
+      return `${actor} opprettet leveransen «${text(entry.payload?.title)}»`;
+    case "deliverable.file-added":
+      return `${actor} la en fil på «${text(entry.payload?.title)}»`;
+    case "deliverable.due-soon":
+      return `«${text(entry.payload?.title)}» har frist ${text(entry.payload?.dueLabel, "snart")}`;
+    case "deliverable.completed":
+      return `${actor} leverte «${text(entry.payload?.title)}»`;
     default:
       return `${actor} utførte en handling`;
   }
@@ -176,6 +206,10 @@ export function humanizeChangeLogEntry(entry: {
 
 function fallbackActor(kind: ProjectChangeActorKind): string {
   return kind === "client" ? "Klienten" : "Fotografen";
+}
+
+function text(value: unknown, fallback = "noe"): string {
+  return typeof value === "string" && value.trim() ? truncate(value.trim(), 80) : fallback;
 }
 
 function truncate(s: string, max: number): string {

@@ -4,6 +4,15 @@ export const USER_EVENTS_PROTOCOL_VERSION = 1 as const;
 export type UserEvent =
   | { kind: "milestones.updated"; projectId: string; timestamp: string }
   | { kind: "board.updated"; projectId: string; timestamp: string }
+  | {
+      /** En rad i `project_notifications` er skrevet til denne brukeren. */
+      kind: "project.notification";
+      projectId: string;
+      notificationId: string;
+      eventType: string;
+      title: string;
+      timestamp: string;
+    }
   | { kind: "chat.message"; channelId: string; projectId: string; timestamp: string }
   | { kind: "chat.typing"; channelId: string; name: string; timestamp: string }
   | { kind: "chat.mention"; channelId: string; projectId: string; fromName: string; timestamp: string }

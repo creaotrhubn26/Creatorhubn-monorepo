@@ -7,7 +7,14 @@
  *   - GET  /api/communication/messages/project-<id>  → { messages: [{ id, senderId, senderName, content, timestamp, attachments, tag }] }
  *   - POST /api/chat/messages { conversationId, content, senderId, senderName, metadata:{senderName,tag}, attachments }
  * senderName + tag lagres i metadata (kolonnen har ikke egne felter) og eksponeres av GET.
- * Vedlegg lastes opp via /api/upload/image (same-origin B2). Lett poll (15s, pauset når skjult).
+ * Vedlegg lastes opp via /api/upload/image (same-origin B2).
+ *
+ * LEVERING: meldinger kommer via `chat.message` på bruker-event-strømmen
+ * (realtime-user-events, én socket per fane). Hendelsen bærer ikke selve
+ * meldingen — den sier bare «kanalen er endret», og panelet henter lista på
+ * nytt. Det er med vilje: serveren eier rekkefølgen, og en full erstatning
+ * kan per definisjon ikke gi dubletter av en melding avsenderen alt ser.
+ * Faller strømmen ned, tar en sjelden fallback-henting over (se under).
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Stack, Typography, Avatar, IconButton, TextField, CircularProgress, Chip, Popover, Menu, MenuItem, Tooltip, InputAdornment } from '@mui/material';
@@ -33,6 +40,9 @@ import PriorityHigh from '@mui/icons-material/PriorityHigh';
 import Close from '@mui/icons-material/Close';
 import KeyboardArrowDown from '@mui/icons-material/KeyboardArrowDown';
 import Refresh from '@mui/icons-material/Refresh';
+import Reply from '@mui/icons-material/Reply';
+import ChatBubbleOutline from '@mui/icons-material/ChatBubbleOutline';
+import ArrowBack from '@mui/icons-material/ArrowBack';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
 import PlaylistAddCheck from '@mui/icons-material/PlaylistAddCheck';
@@ -57,7 +67,9 @@ import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
 import { ws } from './workspaceTheme';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from './wsLocale';
-import { useWorkspaceUpdate } from './WorkspaceContext';
+import { useWorkspaceUpdate, useWorkspaceOptional } from './WorkspaceContext';
+import { useChatFallbackRefresh } from './useChatFallbackRefresh';
+import type { PresenceMember } from './workspacePresence';
 
 // Lokal no/en-ordbok for panelet (samme mønster som OppdragTab).
 const T: WsDict = {
@@ -102,6 +114,17 @@ const T: WsDict = {
   clearSearch: { no: 'Tøm søket', en: 'Clear search' },
   you: { no: 'Deg', en: 'You' },
   title: { no: 'Team Chat', en: 'Team Chat' },
+  liveOn: { no: 'Sanntid på — nye meldinger kommer av seg selv', en: 'Live — new messages arrive on their own' },
+  liveOff: { no: 'Sanntid nede — henter periodisk i stedet', en: 'Live connection down — fetching periodically instead' },
+  onlineNow: { no: 'på nå', en: 'here now' },
+  onlineWho: { no: 'I prosjektet nå', en: 'In the project right now' },
+  thread: { no: 'Tråd', en: 'Thread' },
+  reply: { no: 'Svar i tråd', en: 'Reply in thread' },
+  replyOne: { no: '1 svar', en: '1 reply' },
+  replyMany: { no: '{n} svar', en: '{n} replies' },
+  threadPlaceholder: { no: 'Svar i tråden…', en: 'Reply in the thread…' },
+  threadEmpty: { no: 'Ingen svar ennå. Skriv det første.', en: 'No replies yet. Write the first one.' },
+  closeThread: { no: 'Lukk tråden', en: 'Close thread' },
   attachmentFallback: { no: 'vedlegg', en: 'attachment' },
   emojiPrefix: { no: 'Emoji', en: 'Emoji' },
   messagesRegion: { no: 'Meldinger', en: 'Messages' },
@@ -195,7 +218,18 @@ const TAG_META = {
   important: { icon: <PriorityHigh sx={{ fontSize: 14 }} />, dictKey: 'chipImportant', color: ws.red, soft: ws.redSoft, border: 'rgba(248,113,113,0.42)' },
 };
 
-const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = ({ projectId, category = 'music' }) => {
+const WorkspaceChatPanel: React.FC<{
+  projectId: string;
+  category?: string;
+  /**
+   * Tilstedeværelse fra workspacets eksisterende presence-kilde (heartbeat +
+   * `GET /api/projects/:id/team/presence`, gated av `canAccessProject`). Den er
+   * allerede hentet av TeamWorkspacePage, så panelet låner den i stedet for å
+   * be om den en gang til — og vi slipper å finne opp kanal-tilstedeværelse på
+   * serversiden.
+   */
+  presence?: PresenceMember[];
+}> = ({ projectId, category = 'music', presence = [] }) => {
   const { user } = useAuth();
   // Utenlandske partner-vendors får engelsk UI — locale fra WsLocaleProvider.
   const locale = useWsLocale();
@@ -270,6 +304,11 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   // Er brukeren allerede nederst? Da (og bare da) auto-scroller vi ved nye
   // meldinger — ellers stjeler pollet leseposisjonen når man leser historikk.
   const atBottom = () => { const el = listRef.current; return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80; };
+
+  // Er bruker-event-strømmen oppe? WorkspaceProvider eier socketen; panelet
+  // trenger bare å vite om den leverer. Utenfor provideren (ingen strøm i det
+  // hele tatt) svarer den false, og fallback-hentingen tar over.
+  const realtimeConnected = useWorkspaceOptional()?.realtimeConnected ?? false;
 
   const load = async (initial = false) => {
     try {
@@ -351,6 +390,51 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     clearTimeout(typingTimer.current);
   }, [channelId]);
 
+  // ── Tråder ────────────────────────────────────────────────────────────────
+  // Hovedlista viser kun rotmeldinger med svartelling; en tråd hentes for seg
+  // og legger seg over kanalen — du forlater den ikke.
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [thread, setThread] = useState<any>(null);
+  const [threadText, setThreadText] = useState('');
+  const [threadSending, setThreadSending] = useState(false);
+  const threadEndRef = useRef<any>(null);
+
+  const loadThread = React.useCallback(async (id: string | null) => {
+    if (!id) { setThread(null); return; }
+    try {
+      const r = await apiRequest(`/api/communication/messages/${encodeURIComponent(channelId)}/thread/${encodeURIComponent(id)}`);
+      setThread(r);
+    } catch {
+      // Tråden kan ha blitt slettet under føttene på oss — lukk pent.
+      setThreadId(null); setThread(null);
+    }
+  }, [channelId]);
+
+  useEffect(() => { void loadThread(threadId); }, [threadId, loadThread]);
+  useEffect(() => { if (thread) requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ block: 'end' })); }, [thread]);
+  // Samme hendelse som oppdaterer kanalen oppdaterer den åpne tråden.
+  useWorkspaceUpdate(projectId, ['chat.message'], () => { if (threadId) void loadThread(threadId); });
+
+  const sendReply = async () => {
+    const content = threadText.trim();
+    if (!content || threadSending || !threadId) return;
+    setThreadSending(true);
+    try {
+      await apiRequest('/api/chat/messages', {
+        method: 'POST',
+        body: {
+          conversationId: channelId, content, senderId: myId, senderName: myName,
+          parentMessageId: threadId,
+          metadata: { senderName: myName, ...(room === 'shared' ? { visibility: 'shared' } : {}) },
+        },
+      });
+      setThreadText('');
+      await Promise.all([loadThread(threadId), load(false)]);
+    } catch (e) { setToast(humanErr(e)); } finally { setThreadSending(false); }
+  };
+
+  const replyLabel = (n: number) => (n === 1 ? t('replyOne') : t('replyMany').replace('{n}', String(n)));
+
   const reactToMsg = (id: string, emoji: string) => {
     apiRequest(`/api/chat/messages/${encodeURIComponent(id)}/reactions`, { method: 'POST', body: { emoji } })
       .then(() => load(false)).catch(() => {});
@@ -381,10 +465,15 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
 
   useEffect(() => {
     load(true); loadActivity();
-    const iv = setInterval(() => { if (!document.hidden) { load(false); loadActivity(); } }, 15000);
-    return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId]);
+
+  // Fallback — KUN mens sanntidsstrømmen er nede (se useChatFallbackRefresh).
+  useChatFallbackRefresh(realtimeConnected, () => { load(false); void loadActivity(); });
+
+  // Aktivitetsstripa hang på 15s-pollen. Nå oppdateres den av de samme
+  // hendelsene som skriver den (varsler, board, milepæler).
+  useWorkspaceUpdate(projectId, ['project.notification', 'board.updated', 'milestones.updated'], () => { void loadActivity(); });
 
   // Deltakere utledes fra avsenderne i kanalen (ingen egen tabell nødvendig).
   // Profilbilder: e-post/navn → avatar-URL fra team/members (lettvekts-rute;
@@ -403,6 +492,22 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   }, [projectId]);
   const avatarFor = (senderId?: string | null, senderName?: string | null) =>
     avatarMap[String(senderId || '').toLowerCase()] || avatarMap[String(senderName || '').toLowerCase()] || undefined;
+
+  // «Hvem er her nå» — presence-radene nøkler på userId/e-post, meldingene på
+  // e-post. Slå opp på begge, i små bokstaver.
+  const onlineKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const m of presence) {
+      if (!m?.online) continue;
+      if (m.userId) keys.add(String(m.userId).toLowerCase());
+      if (m.email) keys.add(String(m.email).toLowerCase());
+      if (m.name) keys.add(String(m.name).toLowerCase());
+    }
+    return keys;
+  }, [presence]);
+  const isOnline = (id?: string | null, name?: string | null) =>
+    onlineKeys.has(String(id || '').toLowerCase()) || onlineKeys.has(String(name || '').toLowerCase());
+  const onlineCount = useMemo(() => presence.filter((m) => m?.online).length, [presence]);
 
   const participants = useMemo(() => {
     const seen = new Map();
@@ -788,6 +893,34 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
       </Box>
     );
   };
+  // Kompakt melding i tråd-visningen. Tråden er en samtale om ÉN melding, så
+  // den trenger ikke merkelapper, reaksjoner eller handlingskort — bare hvem,
+  // når, hva og eventuelle vedlegg.
+  const renderThreadMessage = (m: any, isParent: boolean) => {
+    if (!m) return null;
+    return (
+      <Stack key={m.id} direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+        <Avatar src={avatarFor(m.senderId, m.senderName)} sx={{ width: isParent ? 30 : 26, height: isParent ? 30 : 26, fontSize: 11, bgcolor: 'rgba(255,255,255,0.12)', color: ws.text }}>
+          {initials(m.senderName || maskId(m.senderId))}
+        </Avatar>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Stack direction="row" spacing={1} alignItems="baseline">
+            <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>
+              {String(m.senderId || '').toLowerCase() === String(myId).toLowerCase() ? t('you') : (m.senderName || maskId(m.senderId))}
+            </Typography>
+            <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>
+              {m.timestamp ? new Date(m.timestamp).toLocaleTimeString(wsDateLocale(locale), { hour: '2-digit', minute: '2-digit' }) : ''}
+            </Typography>
+          </Stack>
+          {m.content && (
+            <Typography sx={{ fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontWeight: isParent ? 600 : 400 }}>{m.content}</Typography>
+          )}
+          {renderAttachments(m.attachments)}
+        </Box>
+      </Stack>
+    );
+  };
+
   // Forespørsel-status (tag=Spørsmål): åpen med «Marker som løst», eller «Løst».
   const renderRequest = (m) => {
     if (m.tag !== 'question') return null;
@@ -821,14 +954,58 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
 
   return (
     <Box sx={{
-      height: '100%', display: 'flex', flexDirection: 'column',
+      height: '100%', display: 'flex', flexDirection: 'column', position: 'relative',
       bgcolor: ws.panel, border: `1px solid ${ws.border}`, borderRadius: `${ws.radius}px`, overflow: 'hidden',
     }}>
+      {/* Tråd — legger seg OVER kanalen i stedet for å navigere bort fra den. */}
+      {threadId && (
+        <Box sx={{ position: 'absolute', inset: 0, zIndex: 6, bgcolor: ws.panelSolid, display: 'flex', flexDirection: 'column' }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.5, py: 1.25, borderBottom: `1px solid ${ws.border}` }}>
+            <IconButton size="small" aria-label={t('closeThread')} onClick={() => setThreadId(null)} sx={{ color: ws.textDim }}><ArrowBack fontSize="small" /></IconButton>
+            <Typography component="h3" sx={{ fontSize: 13.5, fontWeight: 700 }}>{t('thread')}</Typography>
+            {thread?.replyCount > 0 && (
+              <Typography sx={{ fontSize: 11, color: ws.textDim }}>· {replyLabel(thread.replyCount)}</Typography>
+            )}
+          </Stack>
+          <Box role="log" aria-live="polite" aria-label={t('thread')} sx={{ flex: 1, overflowY: 'auto', px: 1.5, py: 1.25, display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+            {!thread ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={20} /></Box>
+            ) : (<>
+              {renderThreadMessage(thread.parent, true)}
+              <Box sx={{ height: 1, bgcolor: ws.borderSoft, my: 0.25 }} />
+              {thread.replies.length === 0
+                ? <Typography sx={{ fontSize: 12.5, color: ws.textDim, textAlign: 'center', py: 2 }}>{t('threadEmpty')}</Typography>
+                : thread.replies.map((r: any) => renderThreadMessage(r, false))}
+            </>)}
+            <div ref={threadEndRef} />
+          </Box>
+          <Box sx={{ px: 1.5, py: 1.25, borderTop: `1px solid ${ws.border}` }}>
+            <Stack direction="row" spacing={1} alignItems="flex-end">
+              <TextField fullWidth multiline maxRows={4} size="small" placeholder={t('threadPlaceholder')}
+                value={threadText} onChange={(e) => setThreadText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendReply(); } }}
+                inputProps={{ 'aria-label': t('threadPlaceholder') }}
+                sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
+              <IconButton aria-label={t('reply')} disabled={!threadText.trim() || threadSending} onClick={() => void sendReply()}
+                sx={{ bgcolor: ws.accent, color: ws.accentContrast, '&:hover': { bgcolor: ws.accent }, '&.Mui-disabled': { bgcolor: ws.borderSoft, color: ws.textFaint } }}>
+                {threadSending ? <CircularProgress size={16} sx={{ color: ws.accentContrast }} /> : <Send sx={{ fontSize: 17 }} />}
+              </IconButton>
+            </Stack>
+          </Box>
+        </Box>
+      )}
       {/* Header */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.75, py: 1.5, borderBottom: `1px solid ${ws.border}` }}>
         <Stack direction="row" spacing={1} alignItems="center">
-          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ws.green }} />
+          <Tooltip title={realtimeConnected ? t('liveOn') : t('liveOff')}>
+            <Box aria-label={realtimeConnected ? t('liveOn') : t('liveOff')} sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: realtimeConnected ? ws.green : ws.textFaint }} />
+          </Tooltip>
           <Typography component="h2" sx={{ fontSize: 14, fontWeight: 700 }}>{t('title')}</Typography>
+          {onlineCount > 0 && (
+            <Tooltip title={t('onlineWho')}>
+              <Chip size="small" label={`${onlineCount} ${t('onlineNow')}`} sx={{ height: 20, fontSize: 10.5, fontWeight: 700, color: ws.green, bgcolor: ws.greenSoft }} />
+            </Tooltip>
+          )}
         </Stack>
         <Stack direction="row" spacing={0.25}>
           <Tooltip title={t('search')}><IconButton size="small" aria-label={t('search')} aria-pressed={searchOpen} onClick={() => { setSearchOpen((v) => { if (v) setQuery(''); return !v; }); }} sx={{ color: searchOpen ? ws.accent : ws.textDim }}><Search fontSize="small" /></IconButton></Tooltip>
@@ -956,10 +1133,16 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
                     ))}
                   </Stack>
                 )}
+                {m.replyCount > 0 && (
+                  <Chip size="small" icon={<ChatBubbleOutline sx={{ fontSize: 13, color: `${ws.accent} !important` }} />} label={replyLabel(m.replyCount)}
+                    onClick={() => setThreadId(m.id)}
+                    sx={{ mt: 0.4, height: 20, fontSize: 10.5, fontWeight: 700, cursor: 'pointer', color: ws.accent, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }} />
+                )}
                 <Stack direction="row" spacing={0.25} className="ws-msg-actions" sx={{ mt: 0.25, opacity: 0, transition: 'opacity .15s' }}>
                   {['👍', '❤️', '✅'].map((emo) => (
                     <IconButton key={emo} size="small" onClick={() => reactToMsg(m.id, emo)} sx={{ p: 0.25, fontSize: 13 }}>{emo}</IconButton>
                   ))}
+                  <Tooltip title={t('reply')}><IconButton size="small" aria-label={t('reply')} onClick={() => setThreadId(m.id)} sx={{ p: 0.25, color: ws.textDim }}><Reply sx={{ fontSize: 15 }} /></IconButton></Tooltip>
                   {mine && (
                     <>
                       <Tooltip title={t('editMsg')}><IconButton size="small" onClick={() => editMsg(m)} sx={{ p: 0.25, color: ws.textDim }}><Edit sx={{ fontSize: 14 }} /></IconButton></Tooltip>
@@ -1068,6 +1251,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
         {participants.map((p) => (
           <MenuItem key={p.id} role="menuitem" onClick={() => { if (mentionMode) insertAtCursor(`@${p.name} `); setMembersAnchor(null); }} sx={{ gap: 1, fontSize: 13 }}>
             <Avatar src={avatarFor(p.id, p.name)} sx={{ width: 24, height: 24, fontSize: 11, bgcolor: p.mine ? ws.accent : 'rgba(255,255,255,0.12)', color: p.mine ? ws.accentContrast : ws.text }}>{initials(p.name)}</Avatar>
+            <Box component="span" aria-hidden sx={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, bgcolor: isOnline(p.id, p.name) ? ws.green : ws.borderSoft }} />
             {p.name}{p.mine ? ` (${t('you')})` : ''}
           </MenuItem>
         ))}

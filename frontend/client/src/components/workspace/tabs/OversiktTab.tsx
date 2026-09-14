@@ -25,6 +25,7 @@ import { useWorkspaceCategory } from '../useWorkspaceCategory';
 import { WsCard, WsSectionTitle, WsRing, WsBar, WsImageGrid, WsPromptDialog } from '../ui';
 import { crewIcon, wsIcon } from '../crewIcons';
 import WorkspaceChatPanel from '../WorkspaceChatPanel';
+import ProjectActivityPanel from '../ProjectActivityPanel';
 import GettingStartedChecklist from '../../onboarding/GettingStartedChecklist';
 import { useProjectImages } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
@@ -844,6 +845,12 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                 );
               })}
             </Stack>
+          </WsCard>
+        )}
+        {/* Nylig aktivitet — prosjektets varselrader, ikke en egen logg. */}
+        {isReal && (
+          <WsCard sx={{ mb: 2 }}>
+            <ProjectActivityPanel projectId={projectId} />
           </WsCard>
         )}
         <WsPromptDialog

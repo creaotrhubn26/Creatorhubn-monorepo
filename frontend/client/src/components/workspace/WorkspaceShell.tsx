@@ -54,6 +54,7 @@ import WorkOutline from '@mui/icons-material/WorkOutline';
 import EventAvailable from '@mui/icons-material/EventAvailable';
 import { ws, workspaceDarkTheme, WS_NAV, type WsNavItem } from './workspaceTheme';
 import { useWsLocale, makeT } from './wsLocale';
+import NotificationBell from './NotificationBell';
 
 // Shell-chrome no/en (utenlandske partner-vendors får engelsk via WsLocaleProvider).
 const SHELL_T = {
@@ -380,6 +381,9 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
                 <Typography sx={{ fontSize: 12, color: ws.textDim }}>{online} {t('online')}</Typography>
               </Stack>
             )}
+            {/* Hendelsesinnboks — samme rader som «Nylig aktivitet» i prosjektet. */}
+            <NotificationBell />
+
             <AvatarGroup max={5} sx={{ '& .MuiAvatar-root': { width: 30, height: 30, fontSize: 12, border: `2px solid ${ws.bg}` } }}>
               {(project.members || []).map((m) => (
                 <Avatar key={m.id} src={m.avatarUrl || undefined}>{m.name?.[0]}</Avatar>
