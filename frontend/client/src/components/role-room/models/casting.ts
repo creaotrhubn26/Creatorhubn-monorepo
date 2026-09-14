@@ -528,7 +528,7 @@ export interface Candidate {
   role_id?: string;
   assignedRoles?: string[];
   assigned_roles?: string[];
-  consent?: Array<Record<string, unknown>>;
+  consent?: Consent[];
   modelUrl?: string;
   personality?: string;
   reminderPrefs?: CandidateReminderPrefs;
@@ -2404,10 +2404,12 @@ export interface CastingProject {
   createdBy?: string;
   createdByEmail?: string;
   createdByLabel?: string;
-  archivedAt?: string;
-  archivedBy?: string;
-  archivedByLabel?: string;
-  previousStatus?: string;
+  // Restoring a project clears these explicitly, so null is a real value
+  // here, not merely an absent field.
+  archivedAt?: string | null;
+  archivedBy?: string | null;
+  archivedByLabel?: string | null;
+  previousStatus?: string | null;
   genre?: string;
   projectType?: string;
   /**
@@ -2454,6 +2456,14 @@ export interface CastingProject {
   roles: Role[];
   candidates: Candidate[];
   crew: CrewMember[];
+  /**
+   * Row counts the project list endpoint returns instead of the entities
+   * themselves, so a caller can tell a genuinely empty project from one whose
+   * collections were simply not expanded.
+   */
+  rolesCount?: number;
+  candidatesCount?: number;
+  crewCount?: number;
   schedules: Schedule[];
   locations: Location[];
   props: Prop[];
