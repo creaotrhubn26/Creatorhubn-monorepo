@@ -107,13 +107,11 @@ Eller sett manuelt i project.pbxproj: søk `CURRENT_PROJECT_VERSION`,
 
 Ingen av disse stopper TestFlight — bare full App Store-release:
 
-1. **Native Google Sign-In SDK** — Phase 2B bruker paste-Google-ID-token
-   som MVP. For release bør vi integrere [GoogleSignIn-Swift](https://github.com/google/GoogleSignIn-iOS).
-2. **Screenshots + beskrivelse** — App Store Connect krever iPad-screenshots
+1. **Screenshots + beskrivelse** — App Store Connect krever iPad-screenshots
    (12.9", 11") + salgstekst før release-submit. TestFlight trenger ikke dette.
-3. **Demo-video** — ikke påkrevd for TestFlight, påkrevd for App Review
+2. **Demo-video** — ikke påkrevd for TestFlight, påkrevd for App Review
    ved første release.
-4. **App Privacy Policy URL** — bruk CreatorHubs felles erklæring på
+3. **App Privacy Policy URL** — bruk CreatorHubs felles erklæring på
    `https://creatorhubn.com/privacy-policy`. Den har en egen seksjon for
    Google Sign-In og CreatorHub Capture.
 
