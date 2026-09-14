@@ -209,6 +209,42 @@ final class DiscoveryV2Tests: XCTestCase {
         XCTAssertNil(DiscoveryRunCoordinator.openingProfile(from: []))
     }
 
+    func testAutomaticPauseIsDistinguishedFromAUserPause() throws {
+        func decode(_ extra: String) throws -> DiscoveryV2Profile {
+            try JSONDecoder().decode(DiscoveryV2Profile.self, from: Data("""
+            {
+              "id": "1",
+              "name": "Legekontor (Enhetsregisteret) – Norge",
+              "is_default": false,
+              "version": 1,
+              "status": "paused",
+              \(extra)
+              "brief": {
+                "registry_source": "brreg_open_data",
+                "industry_queries": ["86.210"],
+                "country_code": "NO",
+                "target_count": 60,
+                "enrichment_count": 30,
+                "minimum_fit_score": 70
+              }
+            }
+            """.utf8))
+        }
+
+        let automatic = try decode("\"paused_reason\": \"superseded_by_flr\",")
+        XCTAssertEqual(automatic.pausedReason, "superseded_by_flr")
+        XCTAssertEqual(
+            automatic.pausedExplanation,
+            "Pauset automatisk — Fastlegeregisteret dekker disse nå.")
+        // A pause the user chose stays silent about a reason it does not know.
+        let manual = try decode("")
+        XCTAssertNil(manual.pausedReason)
+        XCTAssertNil(manual.pausedExplanation)
+        // An automatic pause is still just a pause: reactivatable, not blocked.
+        XCTAssertTrue(automatic.isRunnable)
+        XCTAssertFalse(automatic.isActive)
+    }
+
     func testBriefRequestPreservesZeroCoordinatesAndSnakeCase() throws {
         let brief = DiscoveryV2Brief(
             industryQueries: ["hotell"],

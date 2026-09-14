@@ -18,6 +18,10 @@ struct DiscoveryProfileManagerView: View {
     @State private var showingRegionPreset = false
     @State private var showingCampaignStartConfirmation = false
     @State private var pendingCampaignCancellation: DiscoveryV2CampaignRun?
+    /// Profile cards carry names that must stay distinguishable. A fixed width
+    /// collapses every one of them to "Fas…", "Leg…", "Priv…" at accessibility
+    /// text sizes, so the card grows with the text instead.
+    @ScaledMetric(relativeTo: .subheadline) private var profileCardWidth: CGFloat = 230
 
     private var isLockedByOpenRun: Bool {
         coordinator.run != nil
@@ -519,6 +523,12 @@ struct DiscoveryProfileManagerView: View {
                             .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
                     }
                 }
+                if let pausedExplanation = profile.pausedExplanation {
+                    Text(pausedExplanation)
+                        .font(.caption2)
+                        .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                        .lineLimit(2)
+                }
                 Label(profile.brief.areaSummary, systemImage: "mappin.and.ellipse")
                     .font(.caption)
                     .lineLimit(1)
@@ -535,7 +545,7 @@ struct DiscoveryProfileManagerView: View {
                     .lineLimit(2)
             }
             .foregroundStyle(.primary)
-            .frame(width: 230, alignment: .leading)
+            .frame(width: min(profileCardWidth, 460), alignment: .leading)
             .padding(12)
             .background(
                 selected ? LeadgridDiscoveryTheme.accent.opacity(0.14) : Color.white.opacity(0.035),

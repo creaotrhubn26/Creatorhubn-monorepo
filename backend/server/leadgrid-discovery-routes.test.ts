@@ -823,6 +823,66 @@ describe("Leadgrid Discovery HTTP contract", () => {
     }
   });
 
+  it("says the product paused the stand-in, not the user", async () => {
+    const row = (
+      status: "active" | "paused",
+      sourceConfig: Record<string, unknown>,
+    ) => ({
+      id: profileId,
+      organization_id: organizationId,
+      project_id: "project-a",
+      name: "Legekontor (Enhetsregisteret) – Norge",
+      is_default: false,
+      status,
+      template_key: "medside.gp_offices_brreg",
+      template_version: 1,
+      target_customer_types: ["86.210"],
+      city_filters: [],
+      geography_lat: null,
+      geography_lng: null,
+      geography_radius_km: 25,
+      country_code: "NO",
+      brief: {
+        registry_source: "brreg_open_data",
+        industry_queries: ["86.210"],
+      },
+      source_config: sourceConfig,
+      approval_mode: "manual",
+      max_candidates_per_run: 60,
+      enrichment_count: 30,
+      auto_discover_enabled: false,
+      schedule_cron: "0 6 * * *",
+      schedule_timezone: "Europe/Oslo",
+      last_run_at: null,
+      next_run_at: null,
+      version: 1,
+      created_at: "2026-09-14T00:00:00.000Z",
+      updated_at: "2026-09-14T00:00:00.000Z",
+    });
+    const read = async (profileRow: Record<string, unknown>) =>
+      (
+        await makeHarness({
+          query: vi.fn(async () => ({ rows: [profileRow] })),
+        } as unknown as Pool).call("GET", `${base}/profiles`, {
+          params: { projectId: "project-a" },
+        })
+      ).body as { profiles: Record<string, unknown>[] };
+
+    expect(
+      (await read(row("paused", { auto_paused_by: "nhn_flr_public" })))
+        .profiles[0].paused_reason,
+    ).toBe("superseded_by_flr");
+    // A profile the user paused carries no marker and claims no reason.
+    expect(
+      (await read(row("paused", {}))).profiles[0].paused_reason,
+    ).toBeNull();
+    // An active profile is never reported as paused, marker or not.
+    expect(
+      (await read(row("active", { auto_paused_by: "nhn_flr_public" })))
+        .profiles[0].paused_reason,
+    ).toBeNull();
+  });
+
   it("keeps a BRREG profile runnable when Fastlegeregisteret is unconfigured", async () => {
     const response = await makeHarness({
       query: vi.fn(async () => ({

@@ -1645,6 +1645,9 @@ struct DiscoveryV2Profile: Codable, Hashable, Sendable, Identifiable {
     /// Set by the server when the profile's registry is not configured for this
     /// deployment. A profile with a reason cannot start a run.
     var blockedReason: String? = nil
+    /// Set by the server when the product paused the profile on the user's
+    /// behalf. A profile the user paused themselves carries no reason.
+    var pausedReason: String? = nil
 
     /// Cached profiles written by older clients have no status. Treat those
     /// as active locally; the authoritative list is reloaded before start.
@@ -1672,6 +1675,18 @@ struct DiscoveryV2Profile: Codable, Hashable, Sendable, Identifiable {
         }
     }
 
+    /// One short line, so the user knows the pause was not theirs. The profile
+    /// stays reactivatable; this only says why it stopped.
+    var pausedExplanation: String? {
+        switch pausedReason {
+        case nil: return nil
+        case "superseded_by_flr":
+            return "Pauset automatisk — Fastlegeregisteret dekker disse nå."
+        default:
+            return "Pauset automatisk."
+        }
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, name, version, brief, status
         case isDefault = "is_default"
@@ -1679,6 +1694,7 @@ struct DiscoveryV2Profile: Codable, Hashable, Sendable, Identifiable {
         case templateKey = "template_key"
         case templateVersion = "template_version"
         case blockedReason = "blocked_reason"
+        case pausedReason = "paused_reason"
     }
 }
 
