@@ -47,6 +47,47 @@ function lysstyrke(hex: string): number {
   return 0.2126 * kanal(r) + 0.7152 * kanal(g) + 0.0722 * kanal(b);
 }
 
+/** En tone lagt over en flate. `color-mix(in srgb, X p%, transparent)` over
+ *  noe ugjennomsiktig er nettopp dette, og det er den flaten teksten står på —
+ *  ikke variabelen under. */
+function over(farge: string, andel: number, under: string): string {
+  const les = (hex: string) => {
+    const h = hex.replace("#", "");
+    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  };
+  const [f, u] = [les(farge), les(under)];
+  return (
+    "#" +
+    f
+      .map((c, i) => Math.round(c * andel + u[i] * (1 - andel)))
+      .map((c) => c.toString(16).padStart(2, "0"))
+      .join("")
+  );
+}
+
+/** Hvilken variabel en regel bruker til en gitt egenskap, og hvor sterk en
+ *  `color-mix` over flaten er. Testen leser stilarket i stedet for å skrive
+ *  tallene av: bytter noen `--ink-soft` tilbake til `--ink-faint`, eller gjør
+ *  tonen sterkere, feiler den. */
+function egenskap(velger: string, navn: string): string {
+  const m = blokk(velger).match(new RegExp(`${navn}:\\s*([^;]+);`));
+  expect(m, `fant ikke «${navn}» i «${velger}»`).not.toBeNull();
+  return m![1].trim();
+}
+
+function variabelen(verdi: string): string {
+  const m = verdi.match(/var\((--[\w-]+)\)/);
+  expect(m, `«${verdi}» er ingen variabel`).not.toBeNull();
+  return m![1];
+}
+
+/** `color-mix(in srgb, var(--x) 14%, transparent)` → `["--x", 0.14]`. */
+function tonen(verdi: string): [string, number] {
+  const m = verdi.match(/color-mix\(in srgb,\s*var\((--[\w-]+)\)\s*(\d+)%,\s*transparent\)/);
+  expect(m, `«${verdi}» er ingen tone over bakgrunnen`).not.toBeNull();
+  return [m![1], Number(m![2]) / 100];
+}
+
 /** WCAG 2.2 sin kontrastformel. */
 export function kontrast(a: string, b: string): number {
   const [x, y] = [lysstyrke(a), lysstyrke(b)].sort((p, q) => q - p);
@@ -103,6 +144,34 @@ for (const [navn, tema] of [
   });
 }
 
+/** Den ene raden brukeren faktisk ser på.
+ *
+ *  `--ink-faint` holder 4,5:1 mot `--ground` og `--paper`, og testen over målte
+ *  bare mot dem. Men den valgte raden legger en tone over bakgrunnen, og da
+ *  falt klokkeslettet til 3,72:1 (lyst) og 3,85:1 (mørkt) — i renderingen, ikke
+ *  i variabelen. Det samme gjelder raden under musepekeren. En variabel sier
+ *  ikke hva som vises, så her regnes flaten ut slik nettleseren lager den. */
+for (const [navn, tema] of [
+  ["lyst", lyst],
+  ["mørkt", mørkt],
+] as const) {
+  for (const [hva, velger] of [
+    ["valgt", ".rad.valgt {"],
+    ["under musepekeren", ".rad:hover {"],
+  ] as const) {
+    test(`${navn} tema: klokkeslettet på raden ${hva} holder 4,5:1`, () => {
+      const [tone, andel] = tonen(egenskap(velger, "background"));
+      const flate = over(tema[tone], andel, tema["--ground"]);
+      const tekst = tema[variabelen(egenskap(".rad.valgt .tid", "color"))];
+      const målt = kontrast(tekst, flate);
+      expect(
+        målt,
+        `${tekst} mot ${flate} (${tone} ${andel * 100}% over --ground) er ${målt.toFixed(2)}:1`,
+      ).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+}
+
 test("ingen skriftstørrelse er under 15px, og ingen er i px", () => {
   const funn = [...css.matchAll(/font-size:\s*([^;]+);/g)].map((m) => m[1].trim());
   expect(funn.length).toBeGreaterThan(20);
@@ -128,12 +197,43 @@ test("ingen tekst tynnes ut av font-smoothing", () => {
   expect(css).not.toContain("font-smoothing");
 });
 
+/** Bredden der tre spalter slutter å virke.
+ *
+ *  Terskelen sto på 900px. Ett piksel over den sto appen fortsatt i tre
+ *  spalter med en skriveflate på 336px — 43 tegn i serif ved 1rem, under de 45
+ *  som er nedre grense for lesbar brødtekst. Tallet her er målt i renderingen
+ *  (`e2e/qa.spec.ts`), ikke gjettet: skriveflaten er `vindu − 565px`, og
+ *  skriften måler 7,80px per tegn i ekte norsk brødtekst.
+ *
+ *  Testen låser regnestykket: senker noen terskelen igjen, blir den første
+ *  bredden med tre spalter for smal, og dette feiler. */
+// Målt i renderingen: 250px register + 300px panel + kanter og padding, og
+// rullefeltet i skriveflata når notatet er langt. 565 er det største fratrekket
+// målingene ga — regnestykket her skal ikke være snillere enn skjermen.
+const SPALTEBREDDE = 565;
+const PX_PER_TEGN = 7.8;
+const TEGN = 55;
+
+test("terskelen for tre spalter står der skriveflaten fortsatt er lesbar", () => {
+  const m = css.match(/@media \(max-width: (\d+)px\) \{\s*\.skall/);
+  expect(m, "fant ikke terskelen der spaltene stables").not.toBeNull();
+  const terskel = Number(m![1]);
+  const skriveflate = terskel + 1 - SPALTEBREDDE;
+  expect(
+    skriveflate / PX_PER_TEGN,
+    `ved ${terskel + 1}px er skriveflaten ${skriveflate}px = ` +
+      `${Math.round(skriveflate / PX_PER_TEGN)} tegn`,
+  ).toBeGreaterThanOrEqual(TEGN);
+});
+
 test("spaltene stables i et smalt vindu", () => {
   // WCAG 1.4.10: innholdet skal kunne brukes ved 320px bredde, som er det
   // 1280px ved 400 % zoom gir. Tre faste spalter tålte ikke engang 200 %.
-  expect(css).toMatch(/@media \(max-width: 900px\)/);
-  const smalt = blokk("@media (max-width: 900px)");
+  const smalt = blokk("@media (max-width: 1000px)");
   expect(smalt).toContain("display: block");
+  // Og lista ruller for seg selv der, ellers legger alle notatene seg i sin
+  // helhet over notatet: skriveflaten begynte på y=1402.
+  expect(smalt).toMatch(/\.liste \{[^}]*max-height/);
 });
 
 test("systemets høykontrastmodus har sitt eget svar", () => {
