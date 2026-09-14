@@ -291,9 +291,11 @@ services:
       - key: META_LOGIN_CONFIG_ID
         sync: false
       # ── CreatorHub Google OAuth (iPad + web sign-in) ───────────────
-      # The Google OAuth audience CreatorHub's /api/auth/google/token
-      # accepts. Falls back to ROLE_ROOM_GOOGLE_CLIENT_ID when unset.
+      # The Google OAuth audiences CreatorHub's /api/auth/google/token accepts.
+      # Keep web and native clients explicit; Role Room is never a fallback.
       - key: CREATORHUB_GOOGLE_CLIENT_ID
+        sync: false
+      - key: CAPTUREAPP_GOOGLE_CLIENT_ID
         sync: false
       # Public host used for the gallery share URL the photographer
       # hands to the client (app.creatorhubn.com/client/gallery/<token>).
