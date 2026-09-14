@@ -988,22 +988,22 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
   derived_data="${LEADGRID_STAGING_DERIVED_DATA:-/private/tmp/leadgrid-staging-e2e}"
   result_bundle="${LEADGRID_STAGING_RESULT_BUNDLE:-$derived_data/Logs/Test/Leadgrid-Staging-$(date -u +%Y%m%d%H%M%S).xcresult}"
   simulator_tests=(
-    "-only-testing:LeadMapAppUITests/QASweepTests/testStagingLeadCreationOfflineReconnect"
-    "-only-testing:LeadMapAppUITests/QASweepTests/testStagingPondusUsageOfflineReconnect"
+    "LeadMapAppUITests/QASweepTests/testStagingLeadCreationOfflineReconnect"
+    "LeadMapAppUITests/QASweepTests/testStagingPondusUsageOfflineReconnect"
   )
   if [[ "$run_role_room_e2e" == "1" ]]; then
     simulator_tests+=(
-      "-only-testing:LeadMapAppUITests/QASweepTests/testStagingRoleRoomProjectOpensAllDiscoveryProfiles"
+      "LeadMapAppUITests/QASweepTests/testStagingRoleRoomProjectOpensAllDiscoveryProfiles"
     )
   fi
   if [[ "$run_tidum_e2e" == "1" ]]; then
     simulator_tests+=(
-      "-only-testing:LeadMapAppUITests/QASweepTests/testStagingTidumProjectOpensAllDiscoveryProfiles"
+      "LeadMapAppUITests/QASweepTests/testStagingTidumProjectOpensAllDiscoveryProfiles"
     )
   fi
   if [[ "$run_creatorhub_e2e" == "1" ]]; then
     simulator_tests+=(
-      "-only-testing:LeadMapAppUITests/QASweepTests/testStagingCreatorHubProjectOpensAllDiscoveryProfiles"
+      "LeadMapAppUITests/QASweepTests/testStagingCreatorHubProjectOpensAllDiscoveryProfiles"
     )
   fi
   (
@@ -1047,44 +1047,70 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
     plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_TIDUM_PROJECT_ID" -string "$tidum_project_id" "$test_xctestrun"
     plutil -insert "LeadMapAppUITests.EnvironmentVariables.LEADGRID_STAGING_CREATORHUB_PROJECT_ID" -string "$creatorhub_project_id" "$test_xctestrun"
 
-    mkdir -p "$(dirname "$result_bundle")"
-    if [[ -e "$result_bundle" ]]; then
-      echo "Resultatpakken finnes allerede: $result_bundle" >&2
-      exit 9
-    fi
-    if xcodebuild test-without-building -quiet \
-      -xctestrun "$test_xctestrun" \
-      -destination "$simulator_destination" \
-      -parallel-testing-enabled NO \
-      -maximum-concurrent-test-simulator-destinations 1 \
-      -resultBundlePath "$result_bundle" \
-      "${simulator_tests[@]}"; then
-      simulator_test_status=0
-    else
-      simulator_test_status=$?
-    fi
+    result_bundle_base="${result_bundle%.xcresult}"
+    mkdir -p "$(dirname "$result_bundle_base")"
+    passed_tests=0
+    test_index=0
+    for simulator_test in "${simulator_tests[@]}"; do
+      test_index=$((test_index + 1))
+      test_name="${simulator_test##*/}"
+      test_result_bundle="${result_bundle_base}-${test_index}-${test_name}.xcresult"
+      if [[ -e "$test_result_bundle" ]]; then
+        echo "Resultatpakken finnes allerede: $test_result_bundle" >&2
+        exit 9
+      fi
 
-    test_summary="$(xcrun xcresulttool get test-results summary --path "$result_bundle")"
-    if [[ "$simulator_test_status" -ne 0 ]]; then
-      echo "STAGING_E2E_SIMULATOR_SUMMARY=$test_summary" >&2
-      echo "STAGING_E2E_SIMULATOR_FAILURES_BEGIN" >&2
-      xcrun xcresulttool get test-results tests --path "$result_bundle" | jq -r '
-        .. | objects |
-        select(.nodeType? == "Test Case" and .result? == "Failed") |
-        "TEST: \(.name)\n" +
-        ([.children[]? | select(.nodeType? == "Failure Message") | .name] | join("\n"))
-      ' >&2 || true
-      echo "STAGING_E2E_SIMULATOR_FAILURES_END" >&2
-      exit "$simulator_test_status"
-    fi
+      # Xcode may leave the simulator launch service unhealthy after a UI test.
+      # Give every scenario a new xcodebuild process and a clean simulator boot,
+      # while reusing the single build-for-testing output above.
+      xcrun simctl shutdown all >/dev/null 2>&1 || true
+      if xcodebuild test-without-building -quiet \
+        -xctestrun "$test_xctestrun" \
+        -destination "$simulator_destination" \
+        -parallel-testing-enabled NO \
+        -maximum-concurrent-test-simulator-destinations 1 \
+        -resultBundlePath "$test_result_bundle" \
+        "-only-testing:$simulator_test"; then
+        simulator_test_status=0
+      else
+        simulator_test_status=$?
+      fi
+
+      test_summary="$(xcrun xcresulttool get test-results summary --path "$test_result_bundle")"
+      if [[ "$simulator_test_status" -ne 0 ]]; then
+        echo "STAGING_E2E_SIMULATOR_SUMMARY=$test_summary" >&2
+        echo "STAGING_E2E_SIMULATOR_FAILURES_BEGIN" >&2
+        xcrun xcresulttool get test-results tests --path "$test_result_bundle" | jq -r '
+          .. | objects |
+          select(.nodeType? == "Test Case" and .result? == "Failed") |
+          "TEST: \(.name)\n" +
+          ([.children[]? | select(.nodeType? == "Failure Message") | .name] | join("\n"))
+        ' >&2 || true
+        echo "STAGING_E2E_SIMULATOR_FAILURES_END" >&2
+        exit "$simulator_test_status"
+      fi
+      jq -e '
+        .result == "Passed" and
+        .passedTests == 1 and
+        .failedTests == 0 and
+        .skippedTests == 0 and
+        .totalTestCount == 1
+      ' <<<"$test_summary" >/dev/null
+      passed_tests=$((passed_tests + 1))
+      echo "STAGING_E2E_SIMULATOR_TEST=$test_name:PASS"
+    done
     expected_tests="${#simulator_tests[@]}"
-    jq -e --argjson expected "$expected_tests" '
-      .result == "Passed" and
-      .passedTests == $expected and
-      .failedTests == 0 and
-      .skippedTests == 0 and
-      .totalTestCount == $expected
-    ' <<<"$test_summary" >/dev/null
+    if [[ "$passed_tests" -ne "$expected_tests" ]]; then
+      echo "Forventet $expected_tests beståtte simulatortester, fikk $passed_tests." >&2
+      exit 10
+    fi
+    jq -cn --argjson passed "$passed_tests" '{
+      result: "Passed",
+      passedTests: $passed,
+      failedTests: 0,
+      skippedTests: 0,
+      totalTestCount: $passed
+    }' | sed 's/^/STAGING_E2E_SIMULATOR_SUMMARY=/'
     cleanup_xctestrun
     trap - EXIT
   )
