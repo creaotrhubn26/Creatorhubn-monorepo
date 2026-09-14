@@ -1139,10 +1139,12 @@ func configureDiscovery() async {
                     organizationId: orgId,
                     projectId: "pondus-qa-project"
                 )
-                self.setPondusDeepLink(
-                    templateId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-                    stepIndex: 0
-                )
+                if ProcessInfo.processInfo.environment["QA_DISABLE_PONDUS_DEEP_LINK"] != "1" {
+                    self.setPondusDeepLink(
+                        templateId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                        stepIndex: 0
+                    )
+                }
             }
             return
         }

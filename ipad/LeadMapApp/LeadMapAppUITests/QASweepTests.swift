@@ -1982,6 +1982,13 @@ final class QASweepTests: XCTestCase {
             return
         }
 
+        let templateID = try await firstPublishedPondusTemplateID(
+            baseURL: baseURL,
+            token: token,
+            organizationID: organizationID,
+            projectID: projectID
+        )
+
         let app = XCUIApplication()
         app.launchEnvironment["QA_BEARER_TOKEN"] = token
         app.launchEnvironment["LEADGRID_API_BASE_URL"] = stagingURL
@@ -1989,17 +1996,15 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_RESET_OFFLINE_QUEUE"] = "1"
         app.launchEnvironment["QA_ORGANIZATION_ID"] = organizationID
         app.launchEnvironment["QA_PROJECT_ID"] = projectID
+        app.launchEnvironment["QA_PONDUS_TEMPLATE_ID"] = templateID
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
         app.launch()
 
-        let templateID = try await firstPublishedPondusTemplateID(
-            baseURL: baseURL,
-            token: token,
-            organizationID: organizationID,
-            projectID: projectID
+        let startSession = app.buttons["pondus-start-session"]
+        XCTAssertTrue(
+            startSession.waitForExistence(timeout: 60),
+            "Den publiserte staging-malen må åpnes i Pondus-coachen"
         )
-        let useTemplate = app.buttons["pondus-use-\(templateID)"]
-        XCTAssertTrue(useTemplate.waitForExistence(timeout: 45), "Staging må ha minst én publisert Pondus-mal")
         let usageBefore = try await pondusUsageCount(
             baseURL: baseURL,
             token: token,
@@ -2010,10 +2015,8 @@ final class QASweepTests: XCTestCase {
         let offline = app.buttons["qa-network-offline"]
         XCTAssertTrue(offline.waitForExistence(timeout: 10))
         offline.tap()
-        useTemplate.tap()
-        XCTAssertTrue(app.buttons["pondus-start-session"].waitForExistence(timeout: 5))
 
-        app.buttons["pondus-start-session"].tap()
+        startSession.tap()
         XCTAssertTrue(app.staticTexts["pondus-active-coach"].waitForExistence(timeout: 8))
         XCTAssertTrue(
             app.staticTexts.containing(
@@ -2065,6 +2068,7 @@ final class QASweepTests: XCTestCase {
         #endif
         let app = XCUIApplication()
         app.launchEnvironment["QA_TOUR"] = "pondus-coach"
+        app.launchEnvironment["QA_DISABLE_PONDUS_DEEP_LINK"] = "1"
         app.launchEnvironment["QA_NETWORK_CONTROLS"] = "1"
         app.launchEnvironment["QA_RESET_OFFLINE_QUEUE"] = "1"
         app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
@@ -2091,6 +2095,22 @@ final class QASweepTests: XCTestCase {
             app.staticTexts.containing(
                 NSPredicate(format: "label CONTAINS[c] %@", "lagret offline")
             ).firstMatch.waitForExistence(timeout: 5)
+        )
+        app.terminate()
+    }
+
+    /// Verifiserer den DEBUG-only id-rutingen som staging-E2E bruker for å
+    /// åpne en ekte backend-mal uten et dyrt snapshot av hele Leadbook-siden.
+    func testPondusCoachQATemplateDeepLinkSmoke() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_TOUR"] = "pondus-coach"
+        app.launchEnvironment["QA_PONDUS_TEMPLATE_ID"] = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
+        app.launch()
+
+        XCTAssertTrue(
+            app.buttons["pondus-start-session"].waitForExistence(timeout: 12),
+            "QA-mal-ID skal åpne den matchede Pondus-coachen"
         )
         app.terminate()
     }

@@ -442,12 +442,21 @@ struct LeadbookView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear {
+            activatePendingPondusRouteIfAvailable()
+        }
         .task(id: "\(appState.activeOrganizationId ?? "")|\(appState.activeProjectId ?? "")") {
             await pondusStore.load(
                 api: appState.api,
                 organizationId: appState.activeOrganizationId,
                 projectId: appState.activeProjectId
             )
+            // Pondus-ruting avhenger bare av mal-katalogen over. Ikke vent på
+            // den separate Leadbook KPI-/bibliotekslasten før coachen åpnes.
+            // Det gjør både vanlige cold-start-deeplinker og staging-E2E
+            // deterministiske selv om sekundærdata bruker lang tid.
+            activatePendingPondusRouteIfAvailable()
+
             // Uke 2-oppfølger: live-store for fanens mal-liste/KPI-er
             // (Pondus-maler + usage-stats). Idempotent attach.
             if let api = appState.api {
@@ -463,10 +472,6 @@ struct LeadbookView: View {
                     selectedStep = LeadbookLiveStore.shared.templateDTO(for: first)?.orderedSteps.first?.order ?? 1
                 }
             }
-            // Ved cold-start konsumer deep-link satt av App Intent (som kjørte
-            // før view-en var ready). Vi må gjøre det ETTER load() slik at
-            // matching kan skje mot live templates.
-            consumePondusDeepLink()
         }
         // Reagér på deep-link satt av App Intent (Siri) eller Watch. AppState
         // holder deep-linken; vi observerer den slik at BÅDE cold-start
@@ -474,6 +479,9 @@ struct LeadbookView: View {
         // dekkes av samme observer.
         .onChange(of: appState.deepLinkPondusRequestedAt) { _, _ in
             consumePondusDeepLink()
+        }
+        .onChange(of: pondusStore.templates) { _, _ in
+            activatePendingPondusRouteIfAvailable()
         }
         .onChange(of: appState.deepLinkLeadbookRequestedAt) { _, _ in
             if appState.deepLinkLeadbookRequestedAt != nil { subTab = .eksempler }
@@ -516,6 +524,20 @@ struct LeadbookView: View {
 
     // MARK: - Pondus deep-link consumption
 
+    /// QA-ruten og ordinære deeplinker deler samme id-baserte malvalg. Kalles
+    /// både ved første visning og når en asynkron mal-last publiserer data.
+    private func activatePendingPondusRouteIfAvailable() {
+        #if DEBUG
+        if let qaTemplateID = ProcessInfo.processInfo.environment["QA_PONDUS_TEMPLATE_ID"],
+           !qaTemplateID.isEmpty {
+            subTab = .pondus
+            selectPondusTemplate(id: qaTemplateID, name: nil)
+            return
+        }
+        #endif
+        consumePondusDeepLink()
+    }
+
     /// Trekk deep-link fra AppState hvis den finnes + match mot live templates.
     /// Idempotent — trygg å kalle flere ganger.
     private func consumePondusDeepLink() {
@@ -523,17 +545,24 @@ struct LeadbookView: View {
         subTab = .pondus
         let id = appState.deepLinkPondusTemplateId
         let name = appState.deepLinkPondusTemplateName
-        selectPondusTemplate(
+        let hasTarget = !(id ?? "").isEmpty
+            || !(name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
+        let didSelect = selectPondusTemplate(
             id: id,
             name: name,
             initialStep: appState.deepLinkPondusStepIndex ?? 0
         )
-        appState.clearPondusDeepLink()
+        // En generisk «Åpne Pondus»-deeplink trenger ingen mal. En målrettet
+        // deeplink beholdes til den asynkrone katalogen inneholder malen.
+        if !hasTarget || didSelect {
+            appState.clearPondusDeepLink()
+        }
     }
 
     /// Match Pondus-mal på id ELLER navn (localizedCaseInsensitiveContains).
     /// Setter `pondusEditorTarget` som er state-anker for aktiv mal.
-    private func selectPondusTemplate(id: String?, name: String?, initialStep: Int = 0) {
+    @discardableResult
+    private func selectPondusTemplate(id: String?, name: String?, initialStep: Int = 0) -> Bool {
         let q = (id ?? "").lowercased()
         let n = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if let match = pondusStore.templates.first(where: { dto in
@@ -543,7 +572,9 @@ struct LeadbookView: View {
         }) {
             activePondusInitialStep = initialStep
             activePondusCoach = match
+            return true
         }
+        return false
     }
 
     // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
