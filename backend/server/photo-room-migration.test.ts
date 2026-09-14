@@ -38,5 +38,7 @@ describe("Photo Room migration contract", () => {
   it("records CreatorHub S3 as the permanent Photo Room output provider", () => {
     expect(migration).toContain("output_storage_provider");
     expect(migration).toContain("'creatorhub_s3'");
+    expect(migration).toContain("generative_ai_jobs_legacy_billing_due_idx");
+    expect(workspaceRoutes).toContain("Migration 0479 intentionally skips");
   });
 });

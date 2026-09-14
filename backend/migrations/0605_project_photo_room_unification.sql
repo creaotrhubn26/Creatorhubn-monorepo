@@ -253,6 +253,23 @@ END $$;
 CREATE INDEX IF NOT EXISTS generative_ai_jobs_project_photo_history_idx
   ON generative_ai_jobs(project_id, created_at DESC)
   WHERE kind IN ('image-edit', 'image-to-video');
+-- Migration 0479 could not create this index on clean databases where the
+-- optional compatibility table did not exist. Migration 0605 creates the
+-- table first, then replays the index idempotently for both clean and legacy
+-- installations.
+CREATE INDEX IF NOT EXISTS generative_ai_jobs_legacy_billing_due_idx
+  ON generative_ai_jobs (
+    ((input #>> '{legacyBilling,status}')),
+    ((input #>> '{legacyBilling,nextAttemptAt}')),
+    ((input #>> '{legacyBilling,leaseExpiresAt}')),
+    ((input #>> '{legacyBilling,deadlineAt}')),
+    completed_at,
+    id
+  )
+  WHERE status = 'completed'
+    AND (input #>> '{legacyBilling,mode}') IN ('metered','credits')
+    AND (input #>> '{legacyBilling,status}')
+      IN ('pending','retry_wait','delivering');
 
 CREATE TABLE IF NOT EXISTS project_ai_consent (
   project_id varchar PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,

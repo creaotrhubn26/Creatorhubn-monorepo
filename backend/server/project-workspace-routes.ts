@@ -3517,8 +3517,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // ─────────── Generativ AI (fal) — pilot: Nano Banana 2-redigering i Photo ───
   // Gjennomtenkt styring: per-prosjekt SAMTYKKE (persondata→tredjepart utenfor
   // EØS) + WHITELIST (pilot) + global DAGSTAK-kostnadsbrems. Async via fal queue,
-  // Photo-resultater arkiveres i CreatorHub S3. Schema eies av migrasjon 0605;
-  // dette er bare et kompatibilitetskall for eldre handlers i samme modul.
+  // Photo-resultater arkiveres i CreatorHub S3. Schema eies av migrasjon 0605.
+  // Migration 0479 intentionally skips clean databaser uten legacy-tabellen;
+  // 0605 oppretter både tabellen og den replay-sikre billing-indeksen. Dette er
+  // bare et kompatibilitetskall for eldre handlers i samme modul.
   const ensureGenSchema = async () => undefined;
   const userIdentity = async (uid: string) => {
     const r = await pool.query(`SELECT email, role, first_name, last_name FROM users WHERE id = $1 LIMIT 1`, [uid]).catch(() => ({ rows: [] }));
