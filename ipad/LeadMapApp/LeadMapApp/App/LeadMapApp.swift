@@ -354,11 +354,10 @@ struct RootView: View {
         .fullScreenCover(isPresented: Binding(
             get: {
                 appState.isAuthenticated
-                    && appState.leadgridDiscoveryEnabled
                     && appState.discoveryCoordinator.isPresented
             },
             set: { presented in
-                if presented && appState.leadgridDiscoveryEnabled {
+                if presented {
                     appState.discoveryCoordinator.showWorkspace()
                 } else {
                     appState.discoveryCoordinator.dismissWorkspace()

@@ -80,12 +80,28 @@ struct LeadgridHubView: View {
                 }
 
                 Section("Discovery") {
-                    Button {
-                        appState.discoveryCoordinator.showWorkspace()
-                    } label: {
-                        Label("Profiler, kandidater og markedsinnsikt",
-                              systemImage: "scope")
-                            .foregroundStyle(.primary)
+                    if appState.leadgridDiscoveryEnabled {
+                        Button {
+                            appState.discoveryCoordinator.showWorkspace()
+                        } label: {
+                            Label("Profiler, kandidater og markedsinnsikt",
+                                  systemImage: "scope")
+                                .foregroundStyle(.primary)
+                        }
+                    } else if appState.workspacePlanLoadState == .idle
+                                || appState.workspacePlanLoadState == .loading {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Gjør Discovery klar …")
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("leadgrid.discovery.loading")
+                    } else {
+                        Label("Discovery er ikke aktivert",
+                              systemImage: "lock.fill")
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("leadgrid.discovery.unavailable")
                     }
                 }
 
