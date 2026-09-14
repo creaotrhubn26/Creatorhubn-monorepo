@@ -987,6 +987,24 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
   app_dir="$(cd "$script_dir/.." && pwd)"
   derived_data="${LEADGRID_STAGING_DERIVED_DATA:-/private/tmp/leadgrid-staging-e2e}"
   result_bundle="${LEADGRID_STAGING_RESULT_BUNDLE:-$derived_data/Logs/Test/Leadgrid-Staging-$(date -u +%Y%m%d%H%M%S).xcresult}"
+  simulator_name="$(sed -nE 's/(^|.*,)[[:space:]]*name=([^,]+).*/\2/p' <<<"$simulator_destination")"
+  simulator_os="$(sed -nE 's/.*OS=([^,]+).*/\1/p' <<<"$simulator_destination")"
+  if [[ -z "$simulator_name" || -z "$simulator_os" ]]; then
+    echo "Simulator-destinasjonen må inneholde name og OS: $simulator_destination" >&2
+    exit 9
+  fi
+  simulator_runtime_suffix="iOS-${simulator_os//./-}"
+  simulator_udid="$(xcrun simctl list --json devices available | jq -er \
+    --arg name "$simulator_name" \
+    --arg runtime_suffix "$simulator_runtime_suffix" '
+      [.devices | to_entries[] |
+        select(.key | endswith($runtime_suffix)) |
+        .value[] |
+        select(.name == $name and .isAvailable == true)
+      ][0].udid
+    ')"
+  resolved_simulator_destination="platform=iOS Simulator,id=$simulator_udid"
+  echo "STAGING_E2E_SIMULATOR_DEVICE=$simulator_name:$simulator_os:$simulator_udid"
   simulator_tests=(
     "LeadMapAppUITests/QASweepTests/testStagingLeadCreationOfflineReconnect"
     "LeadMapAppUITests/QASweepTests/testStagingPondusUsageOfflineReconnect"
@@ -1012,7 +1030,7 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
     xcodebuild build-for-testing -quiet \
       -project LeadMapApp.xcodeproj \
       -scheme LeadMapApp \
-      -destination "$simulator_destination" \
+      -destination "$resolved_simulator_destination" \
       -derivedDataPath "$derived_data" \
       CODE_SIGNING_ALLOWED=NO
 
@@ -1024,6 +1042,9 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
     fi
     test_xctestrun="$source_xctestrun"
     cleanup_xctestrun() {
+      if [[ -n "${simulator_udid:-}" ]]; then
+        xcrun simctl shutdown "$simulator_udid" >/dev/null 2>&1 || true
+      fi
       [[ -n "${test_xctestrun:-}" && -f "$test_xctestrun" ]] || return 0
       for key in \
         LEADGRID_STAGING_BASE_URL \
@@ -1061,12 +1082,15 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
       fi
 
       # Xcode may leave the simulator launch service unhealthy after a UI test.
-      # Give every scenario a new xcodebuild process and a clean simulator boot,
-      # while reusing the single build-for-testing output above.
-      xcrun simctl shutdown all >/dev/null 2>&1 || true
+      # Give every scenario a new xcodebuild process and an explicitly completed
+      # clean boot, while reusing the single build-for-testing output above.
+      xcrun simctl shutdown "$simulator_udid" >/dev/null 2>&1 || true
+      xcrun simctl erase "$simulator_udid"
+      xcrun simctl boot "$simulator_udid"
+      xcrun simctl bootstatus "$simulator_udid" -b
       if xcodebuild test-without-building -quiet \
         -xctestrun "$test_xctestrun" \
-        -destination "$simulator_destination" \
+        -destination "$resolved_simulator_destination" \
         -parallel-testing-enabled NO \
         -maximum-concurrent-test-simulator-destinations 1 \
         -resultBundlePath "$test_result_bundle" \
