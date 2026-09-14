@@ -83,14 +83,14 @@ final class SkyEnhanceModel {
         runTask = Task { @MainActor in
             defer { busy = false }
             do {
-                // Async: upload to B2 → queue → poll → result. Non-blocking,
-                // progress-reported, cancelable. Source stays on B2 (no R2).
+                // Async: upload to CreatorHub S3 → queue → poll → result.
+                // Non-blocking, progress-reported and cancelable.
                 let r = try await client.enhanceAsync(
                     imageData: src.data, fileName: src.name, mime: src.mime,
-                    preset: preset, settings: settings, projectId: "photo-enhancer",
+                    preset: preset, settings: settings, projectId: nil,
                 ) { [weak self] _, msg in self?.statusMessage = msg }
                 resultImage = r.image; resultJPEG = r.jpegData
-                modelInfo = "Modell: \(r.modelUsed ?? "?") · async (B2-kø)"
+                modelInfo = "Modell: \(r.modelUsed ?? "?") · async (CreatorHub-kø)"
                 statusMessage = "Ferdig."
             } catch is CancellationError {
                 statusMessage = "Avbrutt."

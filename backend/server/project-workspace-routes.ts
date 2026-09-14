@@ -28,11 +28,20 @@ import { hasActiveTeamAccess, requireTeamAccess } from "./team-access";
 import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
 import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
 import { idempotencyMiddleware } from "./_shared-idempotency";
-import { signAssetReadUrl, deleteCaptureObjects } from "./capture-upload-service";
+import { signAssetReadUrl, signAssetReadUrlForDelivery, getCaptureObject, deleteCaptureObjects } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { deleteFromRoleRoomB2 } from "./b2-archive-helper";
 import { createDirectStreamTusUpload, deleteStreamVideo, getStreamVideoStatus, importStreamFromUrl, isStreamEnabled, signStreamPlaybackUrl, signStreamThumbnailUrl, uploadToStream } from "./cloudflare-stream-service";
-import { presignCreatorHubObjectDownload } from "./creatorhub-object-storage";
+import { presignCreatorHubObjectDownload, putCreatorHubObject } from "./creatorhub-object-storage";
+import { buildPhotoRoomAiResultKey } from "./photo-room-storage-contract";
+import {
+  normalizePhotoComment,
+  parsePhotoCommentScope,
+  parsePhotoCommentStatus,
+  parsePhotoReviewStatus,
+  safePhotoReturnPath,
+} from "./project-photo-room-model";
+import { sendTransactionalEmail } from "./transactional-email-service";
 import {
   completeVideoRoomUpload,
   deleteCreatorHubMediaObject,
@@ -51,7 +60,6 @@ import {
   hashVideoShareToken,
   newVideoShareToken,
   normalizeVideoCommentInput,
-  safeVideoReturnPath,
   selectActiveVideoVersion,
   sanitizeVideoAnnotation,
   sanitizeVideoChapters,
@@ -100,6 +108,22 @@ const videoUpload = multer({
 function isUuid(value: unknown): value is string {
   return typeof value === "string"
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+/** Shared ownership lookup for every caller-supplied Photo/AI asset id. */
+export async function findProjectPhotoAsset(pool: any, projectId: string, assetId: string): Promise<any | null> {
+  if (!isUuid(assetId)) return null;
+  const result = await pool.query(
+    `SELECT asset.id, asset.session_id, asset.original_filename, asset.preview_key,
+            asset.full_key, asset.raw_key, asset.mime, session.owner_user_id,
+            session.project_id
+       FROM capture_assets asset
+       JOIN capture_sessions session ON session.id = asset.session_id
+      WHERE asset.id = $1::uuid AND session.project_id = $2
+      LIMIT 1`,
+    [assetId, projectId],
+  );
+  return result.rows[0] || null;
 }
 
 type WorkspaceEaseVerseTrack = {
@@ -252,6 +276,9 @@ async function ensureSchema(pool: any): Promise<void> {
         `CREATE INDEX IF NOT EXISTS idx_pbt_project ON project_board_tasks (project_id, crew_role, order_index)`,
         `ALTER TABLE project_board_tasks ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(64)`,
         `ALTER TABLE project_board_tasks ADD COLUMN IF NOT EXISTS assigned_name VARCHAR(120)`,
+        `ALTER TABLE project_board_tasks ADD COLUMN IF NOT EXISTS source_kind TEXT`,
+        `ALTER TABLE project_board_tasks ADD COLUMN IF NOT EXISTS source_id UUID`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS project_board_tasks_photo_source_unique ON project_board_tasks(project_id, source_kind, source_id) WHERE source_id IS NOT NULL`,
         `CREATE TABLE IF NOT EXISTS project_checklist_items (
           id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           project_id  VARCHAR(64) NOT NULL,
@@ -2105,9 +2132,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET media exif", e); res.json({ exif: null }); }
   });
 
-  // ─────────── Media — capture_assets fra B2 (presigned thumbnails) ───────────
+  // ─────────── Media — Capture-assets from CreatorHub S3 ────────────────────
   // Leser prosjektets capture-session(er) → assets → presigned preview_key-URL.
-  // Dette er det EKTE mediabiblioteket (RAW/originaler skutt på iPad, lagret i B2).
+  // Nye RAW/originaler fra iPad lagres i CreatorHub S3. Leseren beholder
+  // provider-routing for eldre Capture-objekter mens migreringen pågår.
   // Lærer «asset → mappe»-mønstre: tokeniserer filnavn + EXIF-ord og oppdaterer
   // folder_learn (per prosjekt). Vekt -1 brukes ved flytting vekk fra en mappe.
   async function learnFolderMapping(pid: string, filename: string, exif: any, folderId: string | null, weight: number, folderOk: boolean): Promise<void> {
@@ -2174,7 +2202,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("PATCH asset folder", e); res.status(500).json({ error: "failed" }); }
   });
 
-  // AI-nøkkelord: server leser asset-bytes fra B2 → Claude-vision gir keywording →
+  // AI-nøkkelord: server leser asset-bytes fra riktig Capture-provider →
+  // Claude Vision gir keywording →
   // lagres i capture_assets.tags (union). Heuristisk fallback uten API-nøkkel.
   app.post("/api/projects/:projectId/media/assets/:id/keywords", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
@@ -2193,7 +2222,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       let usedAI = false;
       if (process.env.ANTHROPIC_API_KEY && /^image\//i.test(row.mime || "")) {
         try {
-          const obj = await getFromRoleRoomB2(row.preview_key).catch(() => null);
+          const obj = await getCaptureObject(row.preview_key).catch(() => null);
           if (obj?.body) {
             const mod: any = await import("@anthropic-ai/sdk");
             const AnthropicCtor = mod.default ?? mod.Anthropic;
@@ -2574,8 +2603,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
 
   // ─────────── Send til AI-forbedring — utløs enhance på valgte/markerte bilder ─
   // Team-handling: send prosjektets bilder gjennom photo-enhancer-pipelinen
-  // (GFPGAN/Real-ESRGAN) FRA workspacet. canAccessProject-gatet. Henter buffer
-  // fra B2 (full_key ?? preview_key) og køer via enqueuePhotoEnhancerJobFromBuffer.
+  // (GFPGAN/Real-ESRGAN) FRA workspacet. Skrivetilgang kreves av guard().
+  // Henter buffer fra riktig Capture-provider (CreatorHub S3 for nye objekter)
+  // og køer via enqueuePhotoEnhancerJobFromBuffer.
   app.post("/api/projects/:projectId/enhance-picks", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
@@ -2589,11 +2619,19 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const sessions = await pool.query(`SELECT id FROM capture_sessions WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
       const sessionIds = sessions.rows.map((s: any) => s.id);
       if (sessionIds.length === 0) return res.status(404).json({ error: "no_session" });
-      const requested = Array.isArray(body.assetIds) ? body.assetIds.filter((v: any) => typeof v === "string" && v) : [];
+      const requested = Array.isArray(body.assetIds)
+        ? [...new Set(body.assetIds.filter((value: unknown) => isUuid(value)))].slice(0, 500) as string[]
+        : [];
+      if (Array.isArray(body.assetIds) && requested.length !== body.assetIds.length) {
+        return res.status(400).json({ error: "invalid_asset_ids" });
+      }
       // Eksplisitt liste, ellers default til klient-markerte bilder (picks).
       const rows = requested.length
         ? await pool.query(`SELECT id, full_key, preview_key, mime, original_filename FROM capture_assets WHERE session_id = ANY($1::uuid[]) AND id = ANY($2::uuid[]) AND rejected IS NOT TRUE`, [sessionIds, requested]).catch(() => ({ rows: [] }))
         : await pool.query(`SELECT id, full_key, preview_key, mime, original_filename FROM capture_assets WHERE session_id = ANY($1::uuid[]) AND flagged_for_client IS TRUE AND rejected IS NOT TRUE ORDER BY rating DESC NULLS LAST LIMIT 30`, [sessionIds]).catch(() => ({ rows: [] }));
+      if (requested.length && rows.rows.length !== requested.length) {
+        return res.status(404).json({ error: "asset_not_found" });
+      }
       if (rows.rows.length === 0) return res.status(400).json({ error: "no_assets", message: "Ingen bilder å forbedre (marker bilder for klient først, eller send assetIds)." });
       // Gate + dagstak + kreditt-pre-sjekk for HELE batchen (N bilder).
       if (settings.enabled) {
@@ -2609,11 +2647,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         const sourceKey = r.full_key || r.preview_key;
         if (!sourceKey) { failures.push({ assetId: r.id, reason: "no_source_key" }); continue; }
         try {
-          const url = await signAssetReadUrl(sourceKey);
-          if (!url) { failures.push({ assetId: r.id, reason: "source_unavailable" }); continue; }
-          const resp = await fetch(url);
-          if (!resp.ok) { failures.push({ assetId: r.id, reason: `b2_fetch_${resp.status}` }); continue; }
-          const buffer = Buffer.from(await resp.arrayBuffer());
+          const source = await getCaptureObject(sourceKey);
+          if (!source?.body) { failures.push({ assetId: r.id, reason: "source_unavailable" }); continue; }
+          const buffer = source.body;
           // Kreditt trekkes FØR arbeidet køes (atomisk debit). Preflight-en over er
           // kun en LESNING, så parallelle batcher kan alle passere den mot samme
           // saldo (TOCTOU) og køe ubetalt arbeid. Her gater den atomiske debiten
@@ -3037,236 +3073,453 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET recording-sessions", e); res.status(500).json({ error: "failed" }); }
   });
 
-  // ─────────── Photo Room — produsent-side bilde-review-cockpit ───────────────
-  // Gjenbruker capture_assets (rating/flagged/rejected/exif/preview_key fra iPad-
-  // culling). Net-nytt: per-bilde review-status (godkjent/trenger-redigering) +
-  // interne/klient foto-kommentarer. canAccessProject-gatet.
-  const ensurePhotoSchema = async () => {
-    await pool.query(`CREATE TABLE IF NOT EXISTS project_photo_review (
-      asset_id uuid PRIMARY KEY, project_id uuid NOT NULL,
-      review_status text, updated_by varchar, updated_at timestamptz DEFAULT now())`).catch(() => {});
-    await pool.query(`CREATE TABLE IF NOT EXISTS project_photo_comments (
-      id uuid PRIMARY KEY, project_id uuid NOT NULL, asset_id uuid,
-      scope text DEFAULT 'internal', author_name text, author_kind text DEFAULT 'creator',
-      comment text NOT NULL, status text DEFAULT 'open', tag text, pinned boolean DEFAULT false,
-      parent_id uuid, like_count int DEFAULT 0, created_at timestamptz DEFAULT now())`).catch(() => {});
-  };
-  const photoSessionIds = async (pid: string) => {
-    const s = await pool.query(`SELECT id FROM capture_sessions WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
-    return s.rows.map((x: any) => x.id);
-  };
+  // ─────────── Photo Room — one project-scoped review and client surface ─────
+  const photoAsset = (projectId: string, assetId: string) => findProjectPhotoAsset(pool, projectId, assetId);
 
-  // Konsolidert cockpit-state: statistikk + utvalgs-stadier + bilder (m/ exif + status).
   app.get("/api/projects/:projectId/photo-review", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
-      await ensurePhotoSchema();
       const pid = req.params.projectId;
-      const sessionIds = await photoSessionIds(pid);
-      if (sessionIds.length === 0) return res.json({ hasSession: false, stats: {}, stages: [], assets: [] });
-      const limit = Math.min(400, Math.max(1, parseInt(String(req.query.limit || "200"), 10) || 200));
-      const a = await pool.query(
-        `SELECT a.id, a.original_filename, a.mime, a.size_bytes, a.state, a.rating, a.color_label,
-                a.flagged_for_client, a.rejected, a.preview_key, a.exif, a.created_at,
-                r.review_status
-           FROM capture_assets a
-           LEFT JOIN project_photo_review r ON r.asset_id = a.id
-          WHERE a.session_id = ANY($1::uuid[])
-          ORDER BY a.created_at DESC LIMIT $2`,
-        [sessionIds, limit],
-      ).catch(() => ({ rows: [] }));
-      const assets = await Promise.all(a.rows.map(async (r: any) => {
-        const ex = r.exif || {};
+      const limit = Math.min(200, Math.max(1, Number.parseInt(String(req.query.limit || "80"), 10) || 80));
+      const offset = Math.max(0, Number.parseInt(String(req.query.offset || "0"), 10) || 0);
+      const params: unknown[] = [pid];
+      const conditions = [`session.project_id = $1`];
+      const search = String(req.query.search || "").trim().slice(0, 120);
+      if (search) { params.push(`%${search}%`); conditions.push(`asset.original_filename ILIKE $${params.length}`); }
+      const status = String(req.query.status || "all");
+      if (["approved", "needs_edit", "rejected", "flagged"].includes(status)) {
+        params.push(status); conditions.push(`review.review_status = $${params.length}`);
+      } else if (status === "pending") conditions.push(`review.review_status IS NULL`);
+      const folderId = String(req.query.folderId || "");
+      if (isUuid(folderId)) { params.push(folderId); conditions.push(`asset.folder_id = $${params.length}::uuid`); }
+      const sortSql: Record<string, string> = {
+        oldest: "asset.created_at ASC",
+        name_asc: "asset.original_filename ASC",
+        name_desc: "asset.original_filename DESC",
+        rating: "asset.rating DESC, asset.created_at DESC",
+        newest: "asset.created_at DESC",
+      };
+      const orderBy = sortSql[String(req.query.sort || "newest")] || sortSql.newest;
+      params.push(limit, offset);
+      const rows = await pool.query(
+        `SELECT asset.id, asset.original_filename, asset.mime, asset.size_bytes, asset.state,
+                asset.rating, asset.color_label, asset.flagged_for_client, asset.rejected,
+                asset.preview_key, asset.full_key, asset.exif, asset.created_at, asset.folder_id,
+                review.review_status, folder.name AS folder_name,
+                gallery_link.gallery_image_id, gallery_link.gallery_id,
+                gallery_link.client_selection, gallery_link.client_comment_count,
+                count(*) OVER()::int AS filtered_total
+           FROM capture_assets asset
+           JOIN capture_sessions session ON session.id = asset.session_id
+           LEFT JOIN project_photo_review review
+             ON review.asset_id = asset.id AND review.project_id = $1
+           LEFT JOIN project_media_folders folder
+             ON folder.id = asset.folder_id AND folder.project_id = $1
+           LEFT JOIN LATERAL (
+             SELECT image.id AS gallery_image_id, gallery.id AS gallery_id,
+                    (SELECT selection.selection_type
+                       FROM client_image_selections selection
+                      WHERE selection.gallery_id = gallery.id AND selection.image_id = image.id
+                      ORDER BY selection.updated_at DESC LIMIT 1) AS client_selection,
+                    (SELECT count(*)::int FROM client_image_comments comment
+                      WHERE comment.gallery_id = gallery.id AND comment.image_id = image.id) AS client_comment_count
+               FROM photographer_client_galleries gallery
+               JOIN client_gallery_images image ON image.gallery_id = gallery.id
+              WHERE gallery.project_id::text = $1
+                AND image.image_metadata->>'captureAssetId' = asset.id::text
+              ORDER BY gallery.updated_at DESC NULLS LAST LIMIT 1
+           ) gallery_link ON true
+          WHERE ${conditions.join(" AND ")}
+          ORDER BY ${orderBy} LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        params,
+      );
+      const assets = await Promise.all(rows.rows.map(async (row: any) => {
+        const ex = row.exif || {};
         return {
-          id: r.id, filename: r.original_filename, rating: r.rating || 0,
-          flagged: !!r.flagged_for_client, rejected: !!r.rejected, colorLabel: r.color_label,
-          reviewStatus: r.review_status || (r.rejected ? "rejected" : r.flagged_for_client ? "flagged" : null),
-          thumbUrl: r.preview_key ? await signAssetReadUrl(r.preview_key) : null,
+          id: row.id,
+          filename: row.original_filename,
+          mime: row.mime,
+          rating: row.rating || 0,
+          flagged: !!row.flagged_for_client,
+          rejected: !!row.rejected,
+          colorLabel: row.color_label,
+          reviewStatus: row.review_status || null,
+          folderId: row.folder_id || null,
+          folderName: row.folder_name || null,
+          galleryImageId: row.gallery_image_id || null,
+          galleryId: row.gallery_id || null,
+          clientSelection: row.client_selection || null,
+          clientCommentCount: row.client_comment_count || 0,
+          thumbUrl: await signAssetReadUrl(row.preview_key || row.full_key),
+          fullUrl: await signAssetReadUrl(row.full_key || row.preview_key),
           exif: {
-            iso: ex.iso ?? ex.ISO ?? null, lens: ex.lens ?? ex.lensModel ?? ex.LensModel ?? null,
+            iso: ex.iso ?? ex.ISO ?? null,
+            lens: ex.lens ?? ex.lensModel ?? ex.LensModel ?? null,
             aperture: ex.aperture ?? ex.fNumber ?? ex.FNumber ?? null,
             shutter: ex.shutter ?? ex.exposureTime ?? ex.ExposureTime ?? null,
-            camera: ex.camera ?? ex.model ?? ex.Model ?? null, focalLength: ex.focalLength ?? ex.FocalLength ?? null,
-            width: ex.width ?? ex.ImageWidth ?? null, height: ex.height ?? ex.ImageHeight ?? null,
-            capturedAt: ex.capturedAt ?? ex.DateTimeOriginal ?? r.created_at,
+            camera: ex.camera ?? ex.model ?? ex.Model ?? null,
+            focalLength: ex.focalLength ?? ex.FocalLength ?? null,
+            width: ex.width ?? ex.ImageWidth ?? null,
+            height: ex.height ?? ex.ImageHeight ?? null,
+            capturedAt: ex.capturedAt ?? ex.DateTimeOriginal ?? row.created_at,
           },
-          createdAt: r.created_at,
+          createdAt: row.created_at,
         };
       }));
-      // Statistikk
-      const st = await pool.query(
-        `SELECT count(*)::int total,
-                count(*) FILTER (WHERE a.rejected IS TRUE)::int rejected,
-                count(*) FILTER (WHERE a.flagged_for_client IS TRUE)::int flagged,
-                count(*) FILTER (WHERE a.rating >= 4)::int favorites,
-                count(*) FILTER (WHERE r.review_status = 'approved')::int approved,
-                count(*) FILTER (WHERE r.review_status = 'needs_edit')::int needs_edit,
-                count(*) FILTER (WHERE r.review_status IS NOT NULL OR a.rating >= 1)::int reviewed
-           FROM capture_assets a LEFT JOIN project_photo_review r ON r.asset_id = a.id
-          WHERE a.session_id = ANY($1::uuid[])`,
-        [sessionIds],
-      ).catch(() => ({ rows: [{}] }));
-      const s = st.rows[0] || {};
-      const total = s.total || 0;
-      const pending = Math.max(0, total - (s.approved || 0) - (s.needs_edit || 0) - (s.rejected || 0));
-      const cm = await pool.query(`SELECT count(*)::int n, count(*) FILTER (WHERE scope='internal')::int interne, count(*) FILTER (WHERE scope='client')::int klient FROM project_photo_comments WHERE project_id = $1`, [pid]).catch(() => ({ rows: [{}] }));
-      const cc = cm.rows[0] || {};
+      const [statsResult, commentResult, folderResult, galleryResult] = await Promise.all([
+        pool.query(
+          `SELECT count(*)::int total,
+                  count(*) FILTER (WHERE review.review_status = 'approved')::int approved,
+                  count(*) FILTER (WHERE review.review_status = 'needs_edit')::int needs_edit,
+                  count(*) FILTER (WHERE review.review_status = 'rejected')::int rejected,
+                  count(*) FILTER (WHERE review.review_status = 'flagged')::int flagged,
+                  count(*) FILTER (WHERE review.review_status IS NULL)::int pending,
+                  count(*) FILTER (WHERE asset.rating >= 4)::int favorites
+             FROM capture_assets asset
+             JOIN capture_sessions session ON session.id = asset.session_id
+             LEFT JOIN project_photo_review review ON review.asset_id = asset.id AND review.project_id = $1
+            WHERE session.project_id = $1`, [pid]),
+        pool.query(
+          `SELECT
+             (SELECT count(*)::int FROM project_photo_comments WHERE project_id=$1 AND deleted_at IS NULL) AS project_count,
+             (SELECT count(*)::int FROM project_photo_comments WHERE project_id=$1 AND scope='internal' AND deleted_at IS NULL) AS internal_count,
+             (SELECT count(*)::int
+                FROM client_image_comments comment
+                JOIN photographer_client_galleries gallery ON gallery.id=comment.gallery_id
+               WHERE gallery.project_id::text=$1) AS client_count`, [pid]),
+        pool.query(`SELECT id, name FROM project_media_folders WHERE project_id=$1 ORDER BY order_index, name`, [pid]),
+        pool.query(`SELECT id, access_token, client_name, client_email, project_title, gallery_settings
+                      FROM photographer_client_galleries WHERE project_id::text=$1 AND status='active'
+                      ORDER BY updated_at DESC NULLS LAST LIMIT 1`, [pid]),
+      ]);
+      const stats = statsResult.rows[0] || {};
+      const counts = commentResult.rows[0] || {};
+      const totalComments = Number(counts.project_count || 0) + Number(counts.client_count || 0);
+      const filteredTotal = Number(rows.rows[0]?.filtered_total || 0);
       res.json({
-        hasSession: true,
-        stats: { total, pending, approved: s.approved || 0, needsEdit: s.needs_edit || 0, rejected: s.rejected || 0, flagged: s.flagged || 0, comments: cc.n || 0, reviewed: s.reviewed || 0 },
-        commentScopes: { all: cc.n || 0, internal: cc.interne || 0, client: cc.klient || 0 },
-        stages: [
-          { key: "raw", label: "RAW", count: total },
-          { key: "color", label: "Fargekorrigert", count: total },
-          { key: "retouch", label: "Retusjert", count: s.favorites || 0 },
-          { key: "final", label: "Final selects", count: (s.approved || 0) + (s.flagged || 0), locked: false },
-        ],
+        hasSession: Number(stats.total || 0) > 0,
+        stats: { ...stats, needsEdit: stats.needs_edit || 0, comments: totalComments, reviewed: Number(stats.total || 0) - Number(stats.pending || 0) },
+        commentScopes: { all: totalComments, internal: counts.internal_count || 0, client: Number(counts.client_count || 0) + Number(counts.project_count || 0) - Number(counts.internal_count || 0) },
+        folders: folderResult.rows.map((folder: any) => ({ id: folder.id, name: folder.name })),
+        gallery: galleryResult.rows[0] ? {
+          id: galleryResult.rows[0].id,
+          shareUrl: `${(process.env.CREATORHUB_PUBLIC_URL || process.env.PUBLIC_APP_URL || "https://app.creatorhubn.com").replace(/\/$/, "")}/client/gallery/${galleryResult.rows[0].access_token}`,
+          clientName: galleryResult.rows[0].client_name,
+          clientEmail: galleryResult.rows[0].client_email,
+          proofingRound: Number(galleryResult.rows[0].gallery_settings?.proofingRound || 1),
+        } : null,
+        pageInfo: { offset, limit, total: filteredTotal, hasMore: offset + assets.length < filteredTotal },
         assets,
       });
-    } catch (e) { console.error("GET photo-review", e); res.json({ hasSession: false, stats: {}, stages: [], assets: [] }); }
+    } catch (error) {
+      console.error("GET photo-review", error);
+      res.status(500).json({ error: "photo_review_failed" });
+    }
   });
 
-  // Sett review-status på ett bilde (approved/needs_edit/rejected/flagged/null).
+  const writePhotoStatuses = async (projectId: string, userId: string, assetIds: string[], status: string | null, createTasks: boolean) => {
+    if (createTasks && status === "needs_edit") await ensureSchema(pool);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO project_photo_review(asset_id, project_id, review_status, updated_by, updated_at)
+         SELECT asset.id, $1, $3, $4, now()
+           FROM capture_assets asset
+           JOIN capture_sessions session ON session.id=asset.session_id
+          WHERE asset.id=ANY($2::uuid[]) AND session.project_id=$1
+         ON CONFLICT(asset_id) DO UPDATE SET project_id=EXCLUDED.project_id,
+           review_status=EXCLUDED.review_status, updated_by=EXCLUDED.updated_by, updated_at=now()`,
+        [projectId, assetIds, status, userId],
+      );
+      if (createTasks && status === "needs_edit") {
+        await client.query(
+          `INSERT INTO project_board_tasks(project_id, crew_role, title, status, created_by, source_kind, source_id)
+           SELECT $1, 'fotograf', 'Rediger ' || asset.original_filename, 'todo', $3, 'photo_review', asset.id
+             FROM capture_assets asset WHERE asset.id=ANY($2::uuid[])
+           ON CONFLICT(project_id, source_kind, source_id) WHERE source_id IS NOT NULL DO NOTHING`,
+          [projectId, assetIds, userId],
+        );
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally { client.release(); }
+  };
+
   app.patch("/api/projects/:projectId/photo-review/:assetId", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
-      await ensurePhotoSchema();
-      // Eier-scope: guard beviser tilgang til prosjektet, men assetId er
-      // caller-oppgitt. Uten å bekrefte at asset-en hører til DETTE prosjektet
-      // kunne eieren av et vilkårlig prosjekt sette rejected/flagged (og
-      // review_status via upsert, keyet globalt på asset_id) på en ANNEN
-      // fotografs capture_asset (cross-tenant write-IDOR). Samme session_id-
-      // scoping som bulk-approve nedenfor.
-      const sessionIds = await photoSessionIds(req.params.projectId);
-      const owns = await pool.query(
-        `SELECT 1 FROM capture_assets WHERE id = $1 AND session_id = ANY($2::uuid[]) LIMIT 1`,
-        [req.params.assetId, sessionIds],
-      ).catch(() => ({ rowCount: 0 }));
-      if (!owns.rowCount) return res.status(404).json({ error: "asset_not_found" });
-      const status = req.body?.reviewStatus ? String(req.body.reviewStatus).slice(0, 20) : null;
-      await pool.query(
-        `INSERT INTO project_photo_review (asset_id, project_id, review_status, updated_by, updated_at)
-         VALUES ($1,$2,$3,$4,NOW())
-         ON CONFLICT (asset_id) DO UPDATE SET review_status = EXCLUDED.review_status, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
-        [req.params.assetId, req.params.projectId, status, uid],
-      );
-      // Speil rejected/flagged tilbake til capture_assets så iPad/Media er i sync.
-      if (status === "rejected") await pool.query(`UPDATE capture_assets SET rejected = TRUE WHERE id = $1`, [req.params.assetId]).catch(() => {});
-      if (status === "flagged") await pool.query(`UPDATE capture_assets SET flagged_for_client = TRUE WHERE id = $1`, [req.params.assetId]).catch(() => {});
-      res.json({ ok: true });
-    } catch (e) { console.error("PATCH photo-review", e); res.status(500).json({ error: "failed" }); }
+      const status = parsePhotoReviewStatus(req.body?.reviewStatus);
+      if (status === undefined) return res.status(400).json({ error: "invalid_review_status" });
+      const asset = await photoAsset(req.params.projectId, req.params.assetId);
+      if (!asset) return res.status(404).json({ error: "asset_not_found" });
+      await writePhotoStatuses(req.params.projectId, uid, [asset.id], status, status === "needs_edit");
+      res.json({ ok: true, reviewStatus: status });
+    } catch (error) { console.error("PATCH photo-review", error); res.status(500).json({ error: "failed" }); }
   });
 
-  // Bulk-godkjenn (Godkjenn utvalg): alle flaggede, eller eksplisitt assetIds.
+  app.post("/api/projects/:projectId/photo-review/bulk", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const status = parsePhotoReviewStatus(req.body?.reviewStatus);
+      const requested = Array.isArray(req.body?.assetIds)
+        ? [...new Set(req.body.assetIds.filter((id: unknown) => isUuid(id)))].slice(0, 500) as string[]
+        : [];
+      if (status === undefined || requested.length === 0) return res.status(400).json({ error: "invalid_request" });
+      const valid = await pool.query(
+        `SELECT asset.id FROM capture_assets asset JOIN capture_sessions session ON session.id=asset.session_id
+          WHERE session.project_id=$1 AND asset.id=ANY($2::uuid[])`, [req.params.projectId, requested],
+      );
+      const ids = valid.rows.map((row: any) => String(row.id));
+      if (ids.length !== requested.length) return res.status(404).json({ error: "asset_not_found" });
+      await writePhotoStatuses(req.params.projectId, uid, ids, status, req.body?.createTasks !== false);
+      res.json({ ok: true, updated: ids.length, reviewStatus: status });
+    } catch (error) { console.error("POST photo-review/bulk", error); res.status(500).json({ error: "failed" }); }
+  });
+
   app.post("/api/projects/:projectId/photo-review/approve", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
-      await ensurePhotoSchema();
-      const pid = req.params.projectId;
-      const ids = Array.isArray(req.body?.assetIds) ? req.body.assetIds.filter((v: any) => typeof v === "string") : [];
-      let targets = ids;
-      if (targets.length === 0) {
-        const sessionIds = await photoSessionIds(pid);
-        const f = await pool.query(`SELECT id FROM capture_assets WHERE session_id = ANY($1::uuid[]) AND flagged_for_client IS TRUE AND rejected IS NOT TRUE`, [sessionIds]).catch(() => ({ rows: [] }));
-        targets = f.rows.map((r: any) => r.id);
-      }
-      let n = 0;
-      for (const aid of targets) {
-        await pool.query(
-          `INSERT INTO project_photo_review (asset_id, project_id, review_status, updated_by, updated_at)
-           VALUES ($1,$2,'approved',$3,NOW())
-           ON CONFLICT (asset_id) DO UPDATE SET review_status='approved', updated_at=NOW()`,
-          [aid, pid, uid],
-        ).catch(() => {}); n++;
-      }
-      res.json({ ok: true, approved: n });
-    } catch (e) { console.error("POST photo approve", e); res.status(500).json({ error: "failed" }); }
+      const requested = Array.isArray(req.body?.assetIds)
+        ? [...new Set(req.body.assetIds.filter((id: unknown) => isUuid(id)))].slice(0, 500) as string[]
+        : [];
+      const result = await pool.query(
+        `SELECT asset.id FROM capture_assets asset JOIN capture_sessions session ON session.id=asset.session_id
+          WHERE session.project_id=$1
+            AND (${requested.length ? `asset.id=ANY($2::uuid[])` : `asset.flagged_for_client IS TRUE AND asset.rejected IS NOT TRUE`})`,
+        requested.length ? [req.params.projectId, requested] : [req.params.projectId],
+      );
+      const ids = result.rows.map((row: any) => String(row.id));
+      if (requested.length && ids.length !== requested.length) return res.status(404).json({ error: "asset_not_found" });
+      if (ids.length) await writePhotoStatuses(req.params.projectId, uid, ids, "approved", false);
+      res.json({ ok: true, approved: ids.length });
+    } catch (error) { console.error("POST photo approve", error); res.status(500).json({ error: "failed" }); }
   });
 
-  // Foto-kommentarer (interne/klient) — pr bilde eller hele prosjektet.
   app.get("/api/projects/:projectId/photo-comments", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
-      await ensurePhotoSchema();
-      const pid = req.params.projectId;
-      const assetId = req.query.assetId ? String(req.query.assetId) : null;
-      const rows = await pool.query(
-        `SELECT * FROM project_photo_comments WHERE project_id = $1 ${assetId ? "AND asset_id = $2" : ""} ORDER BY pinned DESC, created_at DESC LIMIT 200`,
-        assetId ? [pid, assetId] : [pid],
-      ).catch(() => ({ rows: [] }));
-      res.json({ comments: rows.rows.map((c: any) => ({
-        id: c.id, assetId: c.asset_id, scope: c.scope, authorName: c.author_name || "Team", authorKind: c.author_kind,
-        comment: c.comment, status: c.status, tag: c.tag, pinned: c.pinned, parentId: c.parent_id, likeCount: c.like_count || 0, createdAt: c.created_at,
-      })) });
-    } catch (e) { console.error("GET photo-comments", e); res.json({ comments: [] }); }
+      const assetId = String(req.query.assetId || "");
+      const asset = await photoAsset(req.params.projectId, assetId);
+      if (!asset) return res.status(404).json({ error: "asset_not_found" });
+      const [projectRows, clientRows] = await Promise.all([
+        pool.query(
+          `SELECT id, asset_id, scope, author_name, author_user_id, author_kind, comment,
+                  status, tag, pinned, parent_id, like_count, created_at, updated_at
+             FROM project_photo_comments
+            WHERE project_id=$1 AND asset_id=$2 AND deleted_at IS NULL
+            ORDER BY pinned DESC, created_at ASC LIMIT 500`, [req.params.projectId, assetId]),
+        pool.query(
+          `SELECT comment.id, comment.image_id, comment.client_name, comment.comment,
+                  comment.comment_type, comment.status, comment.photographer_response,
+                  comment.responded_at, comment.created_at, comment.updated_at
+             FROM client_image_comments comment
+             JOIN photographer_client_galleries gallery ON gallery.id=comment.gallery_id
+             JOIN client_gallery_images image ON image.id=comment.image_id AND image.gallery_id=gallery.id
+            WHERE gallery.project_id::text=$1 AND image.image_metadata->>'captureAssetId'=$2
+            ORDER BY comment.created_at ASC LIMIT 500`, [req.params.projectId, assetId]),
+      ]);
+      const comments = projectRows.rows.map((comment: any) => ({
+        id: comment.id, source: "project", assetId: comment.asset_id, scope: comment.scope,
+        authorName: comment.author_name || "Team", authorKind: comment.author_kind,
+        comment: comment.comment, status: comment.status, tag: comment.tag, pinned: comment.pinned,
+        parentId: comment.parent_id, likeCount: comment.like_count || 0,
+        canEdit: comment.author_user_id === uid, createdAt: comment.created_at, updatedAt: comment.updated_at,
+      }));
+      for (const comment of clientRows.rows) {
+        comments.push({
+          id: comment.id, source: "client_gallery", assetId, scope: "client",
+          authorName: comment.client_name || "Klient", authorKind: "client", comment: comment.comment,
+          status: comment.status, tag: comment.comment_type, pinned: false, parentId: null,
+          likeCount: 0, canEdit: false, createdAt: comment.created_at, updatedAt: comment.updated_at,
+        });
+        if (comment.photographer_response) comments.push({
+          id: `${comment.id}:response`, source: "client_gallery_response", assetId, scope: "client",
+          authorName: "Team", authorKind: "creator", comment: comment.photographer_response,
+          status: comment.status, tag: null, pinned: false, parentId: comment.id,
+          likeCount: 0, canEdit: false, createdAt: comment.responded_at, updatedAt: comment.responded_at,
+        });
+      }
+      comments.sort((a: any, b: any) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+      res.json({ assetId, comments });
+    } catch (error) { console.error("GET photo-comments", error); res.status(500).json({ error: "comment_list_failed" }); }
   });
 
   app.post("/api/projects/:projectId/photo-comments", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
-      await ensurePhotoSchema();
-      const b = req.body || {};
-      if (!b.comment) return res.status(400).json({ error: "comment_required" });
+      const body = req.body || {};
+      const comment = normalizePhotoComment(body.comment);
+      const scope = parsePhotoCommentScope(body.scope || "internal");
+      const asset = await photoAsset(req.params.projectId, String(body.assetId || ""));
+      if (!comment || !scope) return res.status(400).json({ error: "invalid_comment" });
+      if (!asset) return res.status(404).json({ error: "asset_not_found" });
+      const identity = await userIdentity(uid);
+      if (body.parentSource === "client_gallery") {
+        if (!isUuid(body.parentId)) return res.status(400).json({ error: "invalid_parent" });
+        const updated = await pool.query(
+          `UPDATE client_image_comments original
+              SET photographer_response=$1, responded_at=now(), updated_at=now()
+             FROM photographer_client_galleries gallery, client_gallery_images image
+            WHERE original.id=$2::uuid AND gallery.id=original.gallery_id
+              AND image.id=original.image_id AND image.gallery_id=gallery.id
+              AND gallery.project_id::text=$3
+              AND image.image_metadata->>'captureAssetId'=$4
+            RETURNING original.id`, [comment, body.parentId, req.params.projectId, asset.id],
+        );
+        if (!updated.rowCount) return res.status(404).json({ error: "parent_not_found" });
+        return res.status(201).json({ id: `${body.parentId}:response`, source: "client_gallery_response" });
+      }
+      let parentId: string | null = null;
+      if (body.parentId) {
+        if (!isUuid(body.parentId)) return res.status(400).json({ error: "invalid_parent" });
+        const parent = await pool.query(
+          `SELECT id FROM project_photo_comments WHERE id=$1 AND project_id=$2 AND asset_id=$3 AND deleted_at IS NULL`,
+          [body.parentId, req.params.projectId, asset.id],
+        );
+        if (!parent.rowCount) return res.status(404).json({ error: "parent_not_found" });
+        parentId = body.parentId;
+      }
       const id = crypto.randomUUID();
       await pool.query(
-        `INSERT INTO project_photo_comments (id, project_id, asset_id, scope, author_name, author_kind, comment, tag, pinned, parent_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [id, req.params.projectId, b.assetId || null, String(b.scope || "internal").slice(0, 20),
-         String(b.authorName || "").slice(0, 200) || null, String(b.authorKind || "creator").slice(0, 20),
-         String(b.comment).slice(0, 4000), b.tag ? String(b.tag).slice(0, 40) : null, !!b.pinned, b.parentId || null],
+        `INSERT INTO project_photo_comments
+          (id, project_id, asset_id, scope, author_name, author_user_id, author_kind, comment, tag, pinned, parent_id)
+         VALUES($1,$2,$3,$4,$5,$6,'creator',$7,$8,$9,$10)`,
+        [id, req.params.projectId, asset.id, scope, identity.name, uid, comment,
+         body.tag ? String(body.tag).slice(0, 40) : null, !!body.pinned, parentId],
       );
-      res.status(201).json({ id });
-    } catch (e) { console.error("POST photo-comments", e); res.status(500).json({ error: "failed" }); }
+      res.status(201).json({ id, source: "project" });
+    } catch (error) { console.error("POST photo-comments", error); res.status(500).json({ error: "comment_create_failed" }); }
   });
 
   app.patch("/api/projects/:projectId/photo-comments/:commentId", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
-      const b = req.body || {};
-      const sets: string[] = []; const vals: any[] = []; let i = 1;
-      if (b.status != null) { sets.push(`status = $${i++}`); vals.push(String(b.status).slice(0, 20)); }
-      if (b.pinned != null) { sets.push(`pinned = $${i++}`); vals.push(!!b.pinned); }
-      if (sets.length === 0) return res.status(400).json({ error: "nothing_to_update" });
-      vals.push(req.params.commentId, req.params.projectId);
-      const upd = await pool.query(`UPDATE project_photo_comments SET ${sets.join(", ")} WHERE id = $${i++} AND project_id = $${i} RETURNING id`, vals).catch(() => ({ rows: [] }));
-      if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      if (!isUuid(req.params.commentId)) return res.status(404).json({ error: "not_found" });
+      const body = req.body || {};
+      const sets: string[] = []; const values: unknown[] = [];
+      if (body.comment !== undefined) {
+        const comment = normalizePhotoComment(body.comment);
+        if (!comment) return res.status(400).json({ error: "invalid_comment" });
+        values.push(comment); sets.push(`comment=$${values.length}`);
+      }
+      if (body.status !== undefined) {
+        const status = parsePhotoCommentStatus(body.status);
+        if (!status) return res.status(400).json({ error: "invalid_status" });
+        values.push(status); sets.push(`status=$${values.length}`);
+      }
+      if (body.pinned !== undefined) { values.push(Boolean(body.pinned)); sets.push(`pinned=$${values.length}`); }
+      if (!sets.length) return res.status(400).json({ error: "nothing_to_update" });
+      values.push(req.params.commentId, req.params.projectId, uid);
+      const authorClause = body.comment !== undefined ? `AND author_user_id=$${values.length}` : "";
+      const updated = await pool.query(
+        `UPDATE project_photo_comments SET ${sets.join(",")}, updated_at=now()
+          WHERE id=$${values.length - 2} AND project_id=$${values.length - 1} AND deleted_at IS NULL ${authorClause}
+          RETURNING id`, values,
+      );
+      if (!updated.rowCount) return res.status(404).json({ error: "not_found" });
       res.json({ ok: true });
-    } catch (e) { console.error("PATCH photo-comments", e); res.status(500).json({ error: "failed" }); }
+    } catch (error) { console.error("PATCH photo-comments", error); res.status(500).json({ error: "comment_update_failed" }); }
+  });
+
+  app.delete("/api/projects/:projectId/photo-comments/:commentId", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      if (!isUuid(req.params.commentId)) return res.status(404).json({ error: "not_found" });
+      const deleted = await pool.query(
+        `UPDATE project_photo_comments SET deleted_at=now(), updated_at=now()
+          WHERE id=$1 AND project_id=$2 AND author_user_id=$3 AND deleted_at IS NULL RETURNING id`,
+        [req.params.commentId, req.params.projectId, uid],
+      );
+      if (!deleted.rowCount) return res.status(404).json({ error: "not_found" });
+      res.json({ ok: true });
+    } catch (error) { console.error("DELETE photo-comments", error); res.status(500).json({ error: "comment_delete_failed" }); }
+  });
+
+  app.post("/api/projects/:projectId/photo-deliveries", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const requested = Array.isArray(req.body?.assetIds)
+        ? [...new Set(req.body.assetIds.filter((id: unknown) => isUuid(id)))].slice(0, 500) as string[]
+        : [];
+      if (!requested.length) return res.status(400).json({ error: "asset_ids_required" });
+      const project = await pool.query(`SELECT id, name, title, client_name, user_id FROM projects WHERE id=$1 LIMIT 1`, [req.params.projectId]);
+      if (!project.rowCount) return res.status(404).json({ error: "project_not_found" });
+      const assets = await pool.query(
+        `SELECT asset.id, asset.original_filename, asset.preview_key, asset.full_key, asset.exif,
+                session.owner_user_id
+           FROM capture_assets asset JOIN capture_sessions session ON session.id=asset.session_id
+          WHERE session.project_id=$1 AND asset.id=ANY($2::uuid[])`, [req.params.projectId, requested],
+      );
+      if (assets.rows.length !== requested.length) return res.status(404).json({ error: "asset_not_found" });
+      const ownerId = String(project.rows[0].user_id || assets.rows[0]?.owner_user_id || uid);
+      let gallery = (await pool.query(
+        `SELECT * FROM photographer_client_galleries WHERE project_id::text=$1 AND photographer_id=$2 AND status='active'
+          ORDER BY updated_at DESC NULLS LAST LIMIT 1`, [req.params.projectId, ownerId],
+      )).rows[0];
+      const clientName = String(req.body?.clientName || gallery?.client_name || project.rows[0].client_name || "").trim().slice(0, 200);
+      const clientEmail = String(req.body?.clientEmail || gallery?.client_email || "").trim().toLowerCase().slice(0, 320);
+      if (!clientName || !/^\S+@\S+\.\S+$/.test(clientEmail)) return res.status(400).json({ error: "client_contact_required" });
+      if (!gallery) {
+        const token = crypto.randomBytes(24).toString("base64url");
+        gallery = (await pool.query(
+          `INSERT INTO photographer_client_galleries
+            (photographer_id, client_name, client_email, project_title, access_token, gallery_settings, status, project_id, created_at, updated_at)
+           VALUES($1,$2,$3,$4,$5,$6::jsonb,'active',$7,now(),now()) RETURNING *`,
+          [ownerId, clientName, clientEmail, project.rows[0].title || project.rows[0].name || "Photo Room",
+           token, JSON.stringify({ source: "photo_room", createdVia: "workspace", proofingRound: 1 }), req.params.projectId],
+        )).rows[0];
+      } else if (req.body?.startNewRound) {
+        gallery = (await pool.query(
+          `UPDATE photographer_client_galleries
+              SET gallery_settings=jsonb_set(COALESCE(gallery_settings,'{}'::jsonb),'{proofingRound}',
+                    to_jsonb(COALESCE((gallery_settings->>'proofingRound')::int,1)+1)), updated_at=now()
+            WHERE id=$1 RETURNING *`, [gallery.id],
+        )).rows[0];
+      }
+      let delivered = 0;
+      for (const asset of assets.rows) {
+        const thumbUrl = await signAssetReadUrlForDelivery(asset.preview_key || asset.full_key);
+        const fullUrl = await signAssetReadUrlForDelivery(asset.full_key || asset.preview_key);
+        if (!thumbUrl || !fullUrl) return res.status(503).json({ error: "source_unavailable" });
+        const inserted = await pool.query(
+          `INSERT INTO client_gallery_images
+            (gallery_id, photographer_id, image_title, thumbnail_url, full_size_url, image_metadata, sort_order, is_visible, created_at, updated_at)
+           SELECT $1,$2,$3,$4,$5,$6::jsonb,
+                  COALESCE((SELECT max(sort_order)+1 FROM client_gallery_images WHERE gallery_id=$1),0),true,now(),now()
+            WHERE NOT EXISTS (SELECT 1 FROM client_gallery_images WHERE gallery_id=$1 AND image_metadata->>'captureAssetId'=$7)
+           RETURNING id`,
+          [gallery.id, ownerId, asset.original_filename, thumbUrl, fullUrl,
+           JSON.stringify({ source: "capture", captureAssetId: asset.id, exif: asset.exif || {} }), asset.id],
+        );
+        delivered += inserted.rowCount || 0;
+      }
+      const host = (process.env.CREATORHUB_PUBLIC_URL || process.env.PUBLIC_APP_URL || "https://app.creatorhubn.com").replace(/\/$/, "");
+      const shareUrl = `${host}/client/gallery/${gallery.access_token}`;
+      let emailSent = false;
+      if (req.body?.notifyClient !== false) {
+        const mail = await sendTransactionalEmail({
+          to: clientEmail,
+          subject: `${gallery.project_title}: bilder klare for gjennomgang`,
+          text: `Bildene dine er klare for gjennomgang: ${shareUrl}`,
+          html: `<p>Hei ${clientName.replace(/[<>&"']/g, "")},</p><p>Bildene er klare for gjennomgang.</p><p><a href="${shareUrl}">Åpne bildegalleriet</a></p>`,
+          fromLabel: "CreatorHub", credentialScope: "creatorhub", kind: "photo_room_delivery",
+          projectId: req.params.projectId, sentByUserId: uid, pool,
+        });
+        emailSent = mail.sent;
+      }
+      res.status(201).json({ ok: true, galleryId: gallery.id, shareUrl, delivered, emailSent, proofingRound: Number(gallery.gallery_settings?.proofingRound || 1) });
+    } catch (error) { console.error("POST photo-deliveries", error); res.status(500).json({ error: "delivery_failed" }); }
   });
 
   // ─────────── Generativ AI (fal) — pilot: Nano Banana 2-redigering i Photo ───
   // Gjennomtenkt styring: per-prosjekt SAMTYKKE (persondata→tredjepart utenfor
   // EØS) + WHITELIST (pilot) + global DAGSTAK-kostnadsbrems. Async via fal queue,
-  // resultat lagres til B2 (permanent), kilde+resultat presignes til Før/Etter.
-  const ensureGenSchema = async () => {
-    await pool.query(`CREATE TABLE IF NOT EXISTS generative_ai_jobs (
-      id uuid PRIMARY KEY, project_id uuid NOT NULL, user_id varchar, user_email varchar,
-      model varchar, kind varchar, status varchar DEFAULT 'queued', provider varchar,
-      fal_request_id varchar, response_url text, input jsonb, source_asset_id uuid,
-      output_b2_key text, output_url_temp text, est_cost_usd numeric DEFAULT 0,
-      error text, created_at timestamptz DEFAULT now(), completed_at timestamptz)`).catch(() => {});
-    // Migration 0479 intentionally skips clean databases where this legacy
-    // compatibility table does not exist yet. Replay its partial due index
-    // immediately after lazy table creation so a recorded migration cannot
-    // leave later sweeps doing a JSON full-table scan.
-    await pool.query(`CREATE INDEX IF NOT EXISTS
-      generative_ai_jobs_legacy_billing_due_idx
-      ON public.generative_ai_jobs (
-        ((input #>> '{legacyBilling,status}')),
-        ((input #>> '{legacyBilling,nextAttemptAt}')),
-        ((input #>> '{legacyBilling,leaseExpiresAt}')),
-        ((input #>> '{legacyBilling,deadlineAt}')),
-        completed_at,
-        id
-      )
-      WHERE status = 'completed'
-        AND (input #>> '{legacyBilling,mode}') IN ('metered','credits')
-        AND (input #>> '{legacyBilling,status}')
-          IN ('pending','retry_wait','delivering')`).catch(() => {});
-    await pool.query(`CREATE TABLE IF NOT EXISTS project_ai_consent (
-      project_id varchar PRIMARY KEY, consented boolean DEFAULT false,
-      consented_by varchar, consented_at timestamptz)`).catch(() => {});
-  };
+  // Photo-resultater arkiveres i CreatorHub S3. Schema eies av migrasjon 0605;
+  // dette er bare et kompatibilitetskall for eldre handlers i samme modul.
+  const ensureGenSchema = async () => undefined;
   const userIdentity = async (uid: string) => {
     const r = await pool.query(`SELECT email, role, first_name, last_name FROM users WHERE id = $1 LIMIT 1`, [uid]).catch(() => ({ rows: [] }));
     const row = r.rows[0] || {};
@@ -3363,9 +3616,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const prompt = String(req.body?.prompt || "").trim().slice(0, 1000);
       const assetId = req.body?.assetId;
       if (!prompt || !assetId) return res.status(400).json({ error: "assetId_and_prompt_required" });
-      // Kilde fra B2 → presignet URL (fal henter den; 1t holder i kø).
-      const a = await pool.query(`SELECT full_key, preview_key, original_filename FROM capture_assets WHERE id = $1`, [assetId]).catch(() => ({ rows: [] }));
-      const srcKey = a.rows[0]?.full_key || a.rows[0]?.preview_key;
+      const asset = await photoAsset(pid, String(assetId));
+      const srcKey = asset?.full_key || asset?.preview_key;
       if (!srcKey) return res.status(404).json({ error: "asset_not_found" });
       const srcUrl = await signAssetReadUrl(srcKey);
       if (!srcUrl) return res.status(503).json({ error: "source_unavailable" });
@@ -3431,10 +3683,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const mode = req.body?.mode === "edit" ? "edit" : "motion";
       const assetId = req.body?.assetId;
       if (!assetId) return res.status(400).json({ error: "assetId_required" });
-      const a = await pool.query(`SELECT preview_key, full_key FROM capture_assets WHERE id = $1`, [assetId]).catch(() => ({ rows: [] }));
-      const srcKey = a.rows[0]?.preview_key || a.rows[0]?.full_key;
+      const asset = await photoAsset(pid, String(assetId));
+      const srcKey = asset?.preview_key || asset?.full_key;
       if (!srcKey) return res.status(404).json({ error: "asset_not_found" });
-      const obj = await getFromRoleRoomB2(srcKey).catch(() => null);
+      const obj = await getCaptureObject(srcKey);
       if (!obj?.body) return res.status(503).json({ error: "source_unavailable" });
       const mime = obj.contentType && /^image\//.test(obj.contentType) ? obj.contentType : "image/jpeg";
       const styleRow = await pool.query(`SELECT style FROM project_moodboard_meta WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
@@ -3487,8 +3739,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const prompt = String(req.body?.prompt || "").trim().slice(0, 1000);
       const assetId = req.body?.assetId;
       if (!prompt || !assetId) return res.status(400).json({ error: "assetId_and_prompt_required" });
-      const a = await pool.query(`SELECT full_key, preview_key FROM capture_assets WHERE id = $1`, [assetId]).catch(() => ({ rows: [] }));
-      const srcKey = a.rows[0]?.preview_key || a.rows[0]?.full_key; // preview (mindre) holder som startbilde
+      const asset = await photoAsset(pid, String(assetId));
+      const srcKey = asset?.preview_key || asset?.full_key; // preview (mindre) holder som startbilde
       if (!srcKey) return res.status(404).json({ error: "asset_not_found" });
       const srcUrl = await signAssetReadUrl(srcKey);
       if (!srcUrl) return res.status(503).json({ error: "source_unavailable" });
@@ -3544,8 +3796,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       // Valgfritt referansebilde (et capture-asset preview).
       let referenceImageUri: string | null = null;
       if (req.body?.referenceAssetId) {
-        const ra = await pool.query(`SELECT preview_key, full_key FROM capture_assets WHERE id = $1`, [req.body.referenceAssetId]).catch(() => ({ rows: [] }));
-        const rk = ra.rows[0]?.preview_key || ra.rows[0]?.full_key;
+        const referenceAsset = await photoAsset(pid, String(req.body.referenceAssetId));
+        if (!referenceAsset) return res.status(404).json({ error: "reference_asset_not_found" });
+        const rk = referenceAsset.preview_key || referenceAsset.full_key;
         if (rk) referenceImageUri = await signAssetReadUrl(rk);
       }
       const sub = await beebleSubmit({ sourceUri, prompt, referenceImageUri, maxResolution });
@@ -3570,13 +3823,21 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const job = j.rows[0];
       if (!job) return res.status(404).json({ error: "not_found" });
       const beforeUrl = job.source_asset_id ? await (async () => {
-        const a = await pool.query(`SELECT preview_key, full_key FROM capture_assets WHERE id = $1`, [job.source_asset_id]).catch(() => ({ rows: [] }));
-        const k = a.rows[0]?.preview_key || a.rows[0]?.full_key; return k ? signAssetReadUrl(k) : null;
+        const asset = await photoAsset(pid, String(job.source_asset_id));
+        const key = asset?.preview_key || asset?.full_key;
+        return key ? signAssetReadUrl(key) : null;
       })() : null;
       const isVideoKind = job.kind === "image-to-video" || job.kind === "video-to-video";
+      const storedOutputUrl = async (downloadName?: string) => {
+        if (job.output_storage_provider === "creatorhub_s3" && job.output_storage_key) {
+          return presignCreatorHubObjectDownload(job.output_storage_key, downloadName, downloadName ? 300 : 3600);
+        }
+        if (job.output_b2_key) return presignRoleRoomB2Download(job.output_b2_key, downloadName, downloadName ? 300 : 3600);
+        return job.output_url_temp || null;
+      };
       // Allerede ferdig?
-      if (job.status === "completed" && job.output_b2_key) {
-        return res.json({ status: "completed", kind: job.kind, isVideo: isVideoKind, beforeUrl, afterUrl: await presignRoleRoomB2Download(job.output_b2_key, undefined, 3600), prompt: job.input?.prompt });
+      if (job.status === "completed") {
+        return res.json({ status: "completed", kind: job.kind, isVideo: isVideoKind, beforeUrl, afterUrl: await storedOutputUrl(), prompt: job.input?.prompt });
       }
       if (job.status === "failed") return res.json({ status: "failed", kind: job.kind, error: job.error, beforeUrl });
       // Poll fal.
@@ -3598,25 +3859,44 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         await pool.query(`UPDATE generative_ai_jobs SET status='running' WHERE id=$1`, [job.id]).catch(() => {});
         return res.json({ status: "running", kind: job.kind, beforeUrl });
       }
-      // Ferdig → hent fal-output (bilde eller video), lagre til B2 (permanent).
+      // Ferdig → hent leverandør-output. Photo-jobber må arkiveres permanent
+      // i CreatorHub S3; de får aldri Role Room B2 eller en temp-URL som lager.
       const out = falOutputUrl(p.result);
       const outUrl = out.url;
       if (!outUrl) { await pool.query(`UPDATE generative_ai_jobs SET status='failed', error='no_output' WHERE id=$1`, [job.id]).catch(() => {}); return res.json({ status: "failed", kind: job.kind, error: "no_output", beforeUrl }); }
       let b2Key: string | null = null;
+      let creatorHubKey: string | null = null;
+      const isPhotoJob = job.kind === "image-edit" || job.kind === "image-to-video";
       try {
         const r = await fetch(outUrl);
         if (r.ok) {
           const buf = Buffer.from(await r.arrayBuffer());
           const ct = r.headers.get("content-type") || (out.isVideo ? "video/mp4" : "image/png");
           const ext = out.isVideo ? "mp4" : ct.includes("jpeg") ? "jpg" : "png";
-          const key = `workspace/${pid}/ai-${out.isVideo ? "video" : "edits"}/${job.id}.${ext}`;
-          const stored = await archiveToRoleRoomB2(key, buf, ct);
-          if (stored) b2Key = key;
+          if (isPhotoJob) {
+            const key = buildPhotoRoomAiResultKey({
+              userId: String(job.user_id || uid), projectId: pid, jobId: job.id,
+              mediaKind: out.isVideo ? "video" : "image", fileName: `result.${ext}`,
+            });
+            if (await putCreatorHubObject(key, buf, ct, { projectId: pid, jobId: job.id, product: "photo-room" })) creatorHubKey = key;
+          } else {
+            const key = `workspace/${pid}/ai-${out.isVideo ? "video" : "edits"}/${job.id}.${ext}`;
+            const stored = await archiveToRoleRoomB2(key, buf, ct);
+            if (stored) b2Key = key;
+          }
         }
-      } catch { /* fallback til temp-url */ }
+      } catch { /* handled below */ }
+      if (isPhotoJob && !creatorHubKey) {
+        await pool.query(`UPDATE generative_ai_jobs SET status='failed', error='creatorhub_storage_failed' WHERE id=$1`, [job.id]).catch(() => {});
+        return res.status(503).json({ status: "failed", kind: job.kind, error: "creatorhub_storage_failed", beforeUrl });
+      }
       await pool.query(
-        `UPDATE generative_ai_jobs SET status='completed', output_b2_key=$1, output_url_temp=$2, completed_at=NOW() WHERE id=$3`,
-        [b2Key, b2Key ? null : outUrl, job.id],
+        `UPDATE generative_ai_jobs
+            SET status='completed', output_storage_provider=$1, output_storage_key=$2,
+                output_b2_key=$3, output_url_temp=$4, completed_at=NOW()
+          WHERE id=$5`,
+        [creatorHubKey ? "creatorhub_s3" : b2Key ? "legacy_role_room_b2" : "temporary",
+         creatorHubKey, b2Key, (creatorHubKey || b2Key) ? null : outUrl, job.id],
       ).catch(() => {});
       // Fakturering ved fullføring (idempotent på job-id):
       const fsettings = await getGenSettings(pool);
@@ -3637,7 +3917,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           );
         } catch { /* */ }
       }
-      res.json({ status: "completed", kind: job.kind, isVideo: out.isVideo, beforeUrl, afterUrl: b2Key ? await presignRoleRoomB2Download(b2Key, undefined, 3600) : outUrl, prompt: job.input?.prompt });
+      const afterUrl = creatorHubKey
+        ? await presignCreatorHubObjectDownload(creatorHubKey, undefined, 3600)
+        : b2Key ? await presignRoleRoomB2Download(b2Key, undefined, 3600) : outUrl;
+      res.json({ status: "completed", kind: job.kind, isVideo: out.isVideo, beforeUrl, afterUrl, prompt: job.input?.prompt });
     } catch (e) { console.error("GET ai/jobs/:id", e); res.status(500).json({ error: "failed" }); }
   });
 
@@ -3646,25 +3929,30 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try {
       await ensureGenSchema();
-      const r = await pool.query(`SELECT id, model, kind, status, source_asset_id, output_b2_key, output_url_temp, input, created_at, completed_at FROM generative_ai_jobs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 30`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      const onlyPhoto = req.query.room === "photo";
+      const r = await pool.query(`SELECT id, model, kind, status, source_asset_id, output_storage_provider, output_storage_key, output_b2_key, output_url_temp, input, created_at, completed_at FROM generative_ai_jobs WHERE project_id = $1 ${onlyPhoto ? "AND kind IN ('image-edit','image-to-video')" : ""} ORDER BY created_at DESC LIMIT 50`, [req.params.projectId]).catch(() => ({ rows: [] }));
       const jobs = await Promise.all(r.rows.map(async (j: any) => ({
         id: j.id, model: j.model, kind: j.kind, status: j.status, sourceAssetId: j.source_asset_id,
         prompt: j.input?.prompt || null, createdAt: j.created_at, completedAt: j.completed_at,
-        afterUrl: j.output_b2_key ? await presignRoleRoomB2Download(j.output_b2_key, undefined, 3600) : (j.output_url_temp || null),
+        afterUrl: j.output_storage_provider === "creatorhub_s3" && j.output_storage_key
+          ? await presignCreatorHubObjectDownload(j.output_storage_key, undefined, 3600)
+          : j.output_b2_key ? await presignRoleRoomB2Download(j.output_b2_key, undefined, 3600) : (j.output_url_temp || null),
       })));
       res.json({ jobs });
     } catch (e) { console.error("GET ai/jobs", e); res.json({ jobs: [] }); }
   });
 
-  // Ekte filnedlasting av et ferdig AI-resultat. Dette setter Content-Disposition
-  // i den signerte B2-URL-en, i stedet for å åpne preview-URL i en ny fane.
+  // Ekte filnedlasting med Content-Disposition fra riktig privat lager.
   app.get("/api/projects/:projectId/ai/jobs/:jobId/download", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
-    const row = await pool.query(`SELECT output_b2_key,output_url_temp,kind FROM generative_ai_jobs WHERE id=$1 AND project_id=$2 AND status='completed'`, [req.params.jobId, req.params.projectId]).catch(() => ({ rows: [] }));
+    const row = await pool.query(`SELECT output_storage_provider,output_storage_key,output_b2_key,output_url_temp,kind FROM generative_ai_jobs WHERE id=$1 AND project_id=$2 AND status='completed'`, [req.params.jobId, req.params.projectId]).catch(() => ({ rows: [] }));
     if (!row.rows.length) return res.status(404).json({ error: "not_found" });
     const job = row.rows[0];
     const ext = (job.kind === "image-to-video" || job.kind === "video-to-video") ? "mp4" : "png";
-    const url = job.output_b2_key ? await presignRoleRoomB2Download(job.output_b2_key, `creatorhub-ai-${req.params.jobId}.${ext}`, 300) : job.output_url_temp;
+    const filename = `creatorhub-ai-${req.params.jobId}.${ext}`;
+    const url = job.output_storage_provider === "creatorhub_s3" && job.output_storage_key
+      ? await presignCreatorHubObjectDownload(job.output_storage_key, filename, 300)
+      : job.output_b2_key ? await presignRoleRoomB2Download(job.output_b2_key, filename, 300) : job.output_url_temp;
     if (!url) return res.status(503).json({ error: "download_unavailable" });
     if (req.query.format === "json") return res.json({ url });
     res.redirect(url);
@@ -3700,7 +3988,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (!secret) return res.status(503).json({ error: "stripe_not_configured" });
       const stripe = new Stripe(secret.trim());
       const base = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/$/, "");
-      const ret = `${base}${safeVideoReturnPath(req.params.projectId, req.body?.returnPath)}`;
+      const ret = `${base}${safePhotoReturnPath(req.params.projectId, req.body?.returnPath)}`;
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
         success_url: `${ret}?ai_credits=ok&cs={CHECKOUT_SESSION_ID}`,
@@ -5042,7 +5330,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // ─────────── Capture & backup-status (iPad CaptureApp + One Desk) ───────────
   // Sømløst: samme konto ser samme prosjekt/session/assets overalt. Dette
   // surfacer LIVE-tilstanden i workspacet: aktiv capture-session (skyter nå?),
-  // antall assets, og B2-backup-status (raw_key satt = original sikret).
+  // antall assets, og CreatorHub S3-status (raw_key/full_key satt = original sikret).
   // project_id-scopet + canAccessProject. Poll fra frontend.
   app.get("/api/projects/:projectId/capture-status", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
@@ -5056,7 +5344,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const ids = sessions.map((x: any) => x.id);
       const stats = await pool.query(
         `SELECT count(*)::int AS total,
-                count(*) FILTER (WHERE raw_key IS NOT NULL OR full_key IS NOT NULL)::int AS secured,
+                count(*) FILTER (WHERE raw_key IS NOT NULL OR full_key IS NOT NULL)::int AS secured_any,
+                count(*) FILTER (WHERE raw_key LIKE 'organizations/%/photo-room/%'
+                                      OR full_key LIKE 'organizations/%/photo-room/%')::int AS secured_creatorhub,
                 count(*) FILTER (WHERE preview_key IS NOT NULL)::int AS with_preview,
                 max(capture_time) AS last_capture,
                 max(created_at) AS last_upload
@@ -5065,7 +5355,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       ).catch(() => ({ rows: [{ total: 0, secured: 0, with_preview: 0, last_capture: null, last_upload: null }] }));
       const st = stats.rows[0] || {};
       const total = st.total || 0;
-      const secured = st.secured || 0;
+      const secured = st.secured_creatorhub || 0;
       // «Skyter nå» = ny asset siste 5 min ELLER session aktiv uten ends_at.
       const lastUpload = st.last_upload ? new Date(st.last_upload).getTime() : 0;
       const shootingNow = (Date.now() - lastUpload) < 5 * 60 * 1000;
@@ -5077,7 +5367,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         shootingNow,
         assets: {
           total,
-          securedToB2: secured,
+          securedToCreatorHubS3: secured,
+          // Midlertidig responsalias for eldre klientkode. Verdien betyr
+          // "original sikret" uavhengig av provider og fjernes etter migrering.
+          securedToB2: st.secured_any || 0,
           securedPct: total > 0 ? Math.round((secured / total) * 100) : 0,
           lastCaptureAt: st.last_capture || null,
           lastUploadAt: st.last_upload || null,

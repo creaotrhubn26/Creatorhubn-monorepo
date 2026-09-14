@@ -408,7 +408,7 @@ struct BackendInpaintResponse: Decodable, Sendable {
 }
 
 /// Slice 6 — POST /api/capture/sessions/:sid/assets/:aid/upload-cleaned-variant.
-/// Returns the deterministic R2 key the backend stamped onto the
+/// Returns the deterministic CreatorHub S3 key the backend stamped onto the
 /// captureAssets row so the iPad can confirm the round-trip succeeded.
 struct BackendCleanedVariantResponse: Decodable, Sendable {
     let assetId: String
@@ -494,7 +494,7 @@ struct BackendListSessionsResponse: Decodable, Sendable {
 // MARK: - Claude Vision analyse
 
 /// Sent to `POST /api/capture/assets/:id/analyze`. The preview JPEG is
-/// shipped inline base64 so the backend doesn't need to wait for an R2
+/// shipped inline base64 so the backend doesn't need to wait for an S3
 /// round-trip — keeps end-to-end latency under ~3s on a good link.
 struct BackendAnalyzeRequest: Encodable, Sendable {
     let imageBase64: String
