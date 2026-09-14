@@ -126,6 +126,48 @@ final class DiscoveryV2Tests: XCTestCase {
         XCTAssertNil(profile.blockedExplanation)
     }
 
+    func testCampaignSkipsProfilesTheServerReportsAsBlocked() throws {
+        func profile(
+            _ id: String,
+            _ name: String,
+            blocked: String? = nil,
+            isDefault: Bool = false
+        ) throws -> DiscoveryV2Profile {
+            let blockedField = blocked.map { "\"blocked_reason\": \"\($0)\"," } ?? ""
+            return try JSONDecoder().decode(
+                DiscoveryV2Profile.self,
+                from: Data("""
+                {
+                  "id": "\(id)",
+                  "name": "\(name)",
+                  "is_default": \(isDefault),
+                  "version": 1,
+                  "status": "active",
+                  \(blockedField)
+                  "brief": {
+                    "registry_source": "brreg_open_data",
+                    "industry_queries": ["86.210"],
+                    "country_code": "NO",
+                    "target_count": 60,
+                    "enrichment_count": 30,
+                    "minimum_fit_score": 70
+                  }
+                }
+                """.utf8))
+        }
+
+        let profiles = [
+            try profile("1", "Fastlegekontor – Norge", blocked: "flr_not_configured"),
+            try profile("2", "Legekontor (Enhetsregisteret) – Norge", isDefault: true),
+            try profile("3", "Psykolog- og psykoterapitjenester – Norge"),
+        ]
+
+        let selected = DiscoveryRunCoordinator.campaignProfiles(from: profiles)
+
+        XCTAssertEqual(selected.map(\.id), ["2", "3"])
+        XCTAssertFalse(selected.contains { $0.blockedReason != nil })
+    }
+
     func testBriefRequestPreservesZeroCoordinatesAndSnakeCase() throws {
         let brief = DiscoveryV2Brief(
             industryQueries: ["hotell"],

@@ -177,8 +177,12 @@ final class DiscoveryRunCoordinator {
         from profiles: [DiscoveryV2Profile]
     ) -> [DiscoveryV2Profile] {
         var observedIds: Set<String> = []
+        // A profile the server reports as blocked cannot run. Including it
+        // would fail that leg of the campaign after the user confirmed it.
         return profiles
-            .filter { $0.isActive && observedIds.insert($0.id).inserted }
+            .filter {
+                $0.isActive && $0.isRunnable && observedIds.insert($0.id).inserted
+            }
             .sorted { left, right in
                 if left.isDefault != right.isDefault { return left.isDefault }
                 return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
@@ -1012,7 +1016,7 @@ final class DiscoveryRunCoordinator {
     ) -> [DiscoveryV2Profile] {
         preset.drafts(copying: baseBrief).compactMap { draft in
             profiles.first(where: {
-                $0.isActive && Self.profile(draft, matches: $0)
+                $0.isActive && $0.isRunnable && Self.profile(draft, matches: $0)
             })
         }
     }
