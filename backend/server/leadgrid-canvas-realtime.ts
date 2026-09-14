@@ -20,6 +20,7 @@ import type { Server } from "http";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { LEADGRID_CANVAS_WS_PATH } from "./ws-upgrade-paths.js";
 
 interface CanvasKlient {
   ws: WebSocket;
@@ -43,7 +44,7 @@ export function createCanvasRealtimeServer(
   server.on("upgrade", (req, socket, head) => {
     try {
       const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
-      if (url.pathname !== "/ws/leadgrid-canvas") return;
+      if (url.pathname !== LEADGRID_CANVAS_WS_PATH) return;
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit("connection", ws, req);
       });
