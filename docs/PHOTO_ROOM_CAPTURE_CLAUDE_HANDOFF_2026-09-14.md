@@ -382,4 +382,3 @@ xcodebuild \
 ```text
 Les docs/PHOTO_ROOM_CAPTURE_CLAUDE_HANDOFF_2026-09-14.md helt. Kontroller deretter git-status, origin/main og origin/fix/capture-google-sdk-oauth-404. Ikke endre kode før du har bekreftet hvilke punkter som er i main, hvilke som bare ligger på OAuth-grenen, og hvilke runtime-bevis som mangler. Fortsett kun P0: få Google SDK-fiksen gjennom review/merge og verifiser én ekte Capture -> CreatorHub S3 -> Photo Room -> klientgalleri-flyt. Bevar CreatorHub-produktgrensen; ikke bruk Role Room-bøtten og ikke skriv nye objekter til R2.
 ```
-
