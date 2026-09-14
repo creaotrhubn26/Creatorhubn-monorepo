@@ -44,6 +44,22 @@ export interface UserRolePermissions {
   canViewEconomy?: boolean;
 }
 
+/**
+ * The caller's access to one project as the server resolved it.
+ *
+ * `role` is the effective project role after deactivated and expired
+ * memberships are filtered out — a filter the client-side role matching never
+ * applied. `grants` carries the operational grants the server enforces.
+ */
+export interface CastingProjectAccess {
+  projectId: string;
+  role: string | null;
+  isOwner: boolean;
+  isMember: boolean;
+  permissions: Record<string, unknown>;
+  grants: Record<string, boolean>;
+}
+
 export interface UserRole {
   id: string;
   projectId?: string;
