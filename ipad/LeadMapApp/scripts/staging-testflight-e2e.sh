@@ -728,6 +728,8 @@ if [[ "$run_creatorhub_e2e" == "1" ]]; then
       exit 12
     fi
 
+    creatorhub_agency_assessed_count=0
+    creatorhub_agency_unknown_count=0
     while IFS=$'\t' read -r creatorhub_profile_id creatorhub_item_name creatorhub_item_run_id; do
       [[ -n "$creatorhub_item_run_id" ]] || {
         echo "Creatorhub-profilen $creatorhub_item_name mangler Discovery-run." >&2
@@ -766,13 +768,36 @@ if [[ "$run_creatorhub_e2e" == "1" ]]; then
         exit 12
       fi
       if [[ "$creatorhub_template_key" == "creatorhub.creative_agencies" ]]; then
+        # Utilgjengelige eller ikke-prioriterte nettsteder skal være eksplisitt
+        # ukjent for manuell vurdering. Bare vurderte nettsteder kan hevde at
+        # kvalitets- og kvalifiseringskravene er bestått.
         if ! jq -e '
           ([.items[].website_url] | all(type == "string" and length > 0)) and
-          ([.items[].website_quality.score] | all(type == "number" and . >= 40))
+          ([.items[].website_quality] | all(
+            type == "object" and
+            (
+              (.status == "assessed" and (.score | type) == "number" and .score >= 40 and
+                (.qualification.requested_terms | length) > 0 and
+                (.qualification.matched_terms | length) > 0) or
+              (.status == "unknown" and .score == null and
+                (.reason as $reason |
+                  (["invalid_url", "unsafe_host", "request_failed", "response_too_large", "unsupported_content_type", "external_request_limit", "not_selected_for_assessment"] | index($reason)) != null))
+            )
+          ))
         ' <<<"$creatorhub_candidates" >/dev/null; then
-          echo "Creatorhub-byråprofilen brøt nettsidekravet." >&2
+          echo "Creatorhub-byråprofilen brøt kontrakten for nettsideevidens. Sikker diagnostikk:" >&2
+          jq -c '{count: (.items | length),
+            missing_website_count: ([.items[] | select((.website_url // "") == "")] | length),
+            assessed_count: ([.items[] | select(.website_quality.status == "assessed")] | length),
+            unknown_count: ([.items[] | select(.website_quality.status == "unknown")] | length),
+            below_minimum_count: ([.items[] | select(.website_quality.status == "assessed" and .website_quality.score < 40)] | length),
+            missing_qualification_count: ([.items[] | select(.website_quality.status == "assessed" and (.website_quality.qualification.matched_terms | length) == 0)] | length),
+            unknown_reasons: ([.items[] | select(.website_quality.status == "unknown") | .website_quality.reason] | unique)}' \
+            <<<"$creatorhub_candidates" >&2
           exit 12
         fi
+        creatorhub_agency_assessed_count="$(jq '[.items[] | select(.website_quality.status == "assessed")] | length' <<<"$creatorhub_candidates")"
+        creatorhub_agency_unknown_count="$(jq '[.items[] | select(.website_quality.status == "unknown")] | length' <<<"$creatorhub_candidates")"
       fi
     done < <(jq -r '.items[] | [.profile_id, .profile_name, .current_run_id] | @tsv' <<<"$creatorhub_campaign")
 
@@ -1109,6 +1134,8 @@ if [[ "$run_creatorhub_campaign_e2e" == "1" ]]; then
   echo "CREATORHUB_CAMPAIGN_STATUS=$(jq -er '.status' <<<"$creatorhub_campaign")"
   echo "CREATORHUB_CAMPAIGN_ID=$creatorhub_campaign_id"
   echo "CREATORHUB_APPROVED_LEAD_ID=$creatorhub_approved_lead_id"
+  echo "CREATORHUB_PROFILE_CANDIDATE_COUNTS=$(jq -c '[.items[] | {profile_name, candidate_count, review_ready_count}]' <<<"$creatorhub_campaign")"
+  echo "CREATORHUB_AGENCY_WEBSITE_EVIDENCE=assessed:$creatorhub_agency_assessed_count,unknown:$creatorhub_agency_unknown_count"
 fi
 echo "PAIR_CODE=$pair_code"
 echo "PAIR_CODE_EXPIRES_SECONDS=300"
