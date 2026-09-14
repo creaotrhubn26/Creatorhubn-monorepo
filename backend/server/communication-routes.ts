@@ -2275,6 +2275,85 @@ export function createCommunicationRouter(
     return linkResult.rows[0] || null;
   };
 
+  // ── Tråder ────────────────────────────────────────────────────────────────
+  // `communication_messages.parent_message_id` har ligget ubrukt siden 0001.
+  // En tråd er flat med vilje: et svar hører til én ROTmelding, og et svar kan
+  // ikke selv bli forelder. Samme valg som `audio_review_comments` i prod —
+  // uten det ender vi med et tre ingen klarer å lese i en chat-kolonne.
+  const THREAD_INVALID_PARENT = Symbol('invalid_parent');
+  const resolveThreadParent = async (
+    channelId: string, rawParentId: unknown,
+  ): Promise<string | null | typeof THREAD_INVALID_PARENT> => {
+    const parentId = toNonEmptyString(rawParentId);
+    if (!parentId) return null;
+    // Kanalen er allerede gated; ved å kreve samme channel_id kan ingen henge
+    // et svar på en melding i en kanal de ikke slipper inn i.
+    const row = await pool.query(
+      `SELECT id FROM communication_messages
+        WHERE id = $1 AND channel_id = $2 AND parent_message_id IS NULL
+        LIMIT 1`,
+      [parentId, channelId],
+    ).catch(() => ({ rows: [] as any[] }));
+    return row.rows[0] ? String(row.rows[0].id) : THREAD_INVALID_PARENT;
+  };
+
+  /** Svartelling per rotmelding for én side av hovedlista. */
+  const loadReplyCounts = async (
+    channelId: string, rootIds: string[],
+  ): Promise<Map<string, { replyCount: number; lastReplyAt: string | null }>> => {
+    const counts = new Map<string, { replyCount: number; lastReplyAt: string | null }>();
+    if (rootIds.length === 0) return counts;
+    try {
+      const rows = await pool.query(
+        `SELECT parent_message_id AS pid, COUNT(*)::int AS reply_count,
+                MAX(created_at) AS last_reply_at
+           FROM communication_messages
+          WHERE channel_id = $1 AND parent_message_id = ANY($2::varchar[])
+          GROUP BY parent_message_id`,
+        [channelId, rootIds],
+      );
+      for (const row of rows.rows) {
+        counts.set(String(row.pid), {
+          replyCount: Number(row.reply_count) || 0,
+          lastReplyAt: toChatTimestamp(row.last_reply_at),
+        });
+      }
+    } catch (e) {
+      // Telleren er pynt; kanalen skal vises uansett.
+      console.error('[communication] reply counts failed:', e);
+    }
+    return counts;
+  };
+
+  const toChatTimestamp = (value: unknown): string | null => {
+    if (!value) return null;
+    if (value instanceof Date) return value.toISOString();
+    return String(value);
+  };
+
+  /** Én mapper for begge radformene (drizzle camelCase og rå pool snake_case). */
+  const mapChatMessage = (row: any) => {
+    const metadata = getMessageMetadataRecord(row.metadata);
+    const attachments = sanitizeChatAttachments(metadata.attachments);
+    const isRead = row.isRead ?? row.is_read;
+    const deliveredAt = row.deliveredAt ?? row.delivered_at;
+    return {
+      id: row.id,
+      senderId: row.senderId ?? row.sender_id,
+      // senderName/tag lagres i metadata (kolonnen har ikke egne felter) —
+      // eksponer dem så klienten viser visningsnavn, ikke e-post, og tagg-chip.
+      senderName: toNonEmptyString(metadata.senderName) || null,
+      content: row.content,
+      timestamp: toChatTimestamp(row.createdAt ?? row.created_at),
+      type: row.messageType ?? row.message_type,
+      status: isRead ? 'read' : deliveredAt ? 'delivered' : 'sent',
+      attachments,
+      tag: toNonEmptyString(metadata.tag) || null,
+      metadata: row.metadata,
+      parentMessageId: row.parentMessageId ?? row.parent_message_id ?? null,
+    };
+  };
+
   const ensureChannelExists = async (channelId: string, channelName?: string, channelType: string = 'chat') => {
     const existing = await db
       .select({ id: schema.communicationChannels.id })
@@ -2303,6 +2382,8 @@ export function createCommunicationRouter(
     messageType: string;
     metadata?: Record<string, unknown>;
     timestamp?: string;
+    /** Satt = meldingen er et svar i tråden til denne rotmeldingen. */
+    parentMessageId?: string | null;
   }) => {
     const messageId = toNonEmptyString(params.id) || crypto.randomUUID();
     const now = new Date().toISOString();
@@ -2319,6 +2400,7 @@ export function createCommunicationRouter(
         isRead: false,
         isPriority: false,
         isSystemGenerated: false,
+        parentMessageId: params.parentMessageId ?? null,
         createdAt,
         updatedAt: now,
       });
@@ -2339,6 +2421,7 @@ export function createCommunicationRouter(
           messageType: params.messageType,
           content: params.content,
           metadata: params.metadata || {},
+          parentMessageId: params.parentMessageId ?? null,
           updatedAt: now,
         })
         .where(eq(schema.communicationMessages.id, messageId));
@@ -2885,9 +2968,15 @@ export function createCommunicationRouter(
           deliveredAt: schema.communicationMessages.deliveredAt,
         })
         .from(schema.communicationMessages)
-        .where(before
-          ? and(eq(schema.communicationMessages.channelId, channelId), lt(schema.communicationMessages.createdAt, before))
-          : eq(schema.communicationMessages.channelId, channelId))
+        // Kun ROTmeldinger. Svar bor i tråden sin og skal ikke skyve samtalen
+        // nedover; de hentes av /thread/:parentId. Ingen rad hadde
+        // parent_message_id satt før tråder fantes, så eldre kanaler ser likt ut.
+        .where(and(
+          isNull(schema.communicationMessages.parentMessageId),
+          before
+            ? and(eq(schema.communicationMessages.channelId, channelId), lt(schema.communicationMessages.createdAt, before))
+            : eq(schema.communicationMessages.channelId, channelId),
+        ))
         // Hent de NYESTE `limit` meldingene (desc), og snu til stigende for
         // visning. Tidligere hentet asc+limit de ELDSTE, så nye meldinger
         // aldri kom med når en kanal passerte limit-taket.
@@ -2898,25 +2987,13 @@ export function createCommunicationRouter(
         .limit(limit);
       messages.reverse();
 
+      const replyCounts = await loadReplyCounts(channelId, messages.map((msg) => String(msg.id)));
       const mappedMessages = messages.map((msg) => {
-        const metadata = getMessageMetadataRecord(msg.metadata);
-        const attachments = sanitizeChatAttachments(metadata.attachments);
-        // senderName/tag lagres i metadata (kolonnen har ikke egne felter) —
-        // eksponer dem så klienten viser visningsnavn, ikke e-post, og tagg-chip.
-        const senderName = toNonEmptyString(metadata.senderName) || null;
-        const tag = toNonEmptyString(metadata.tag) || null;
-
+        const thread = replyCounts.get(String(msg.id));
         return {
-        id: msg.id,
-        senderId: msg.senderId,
-        senderName,
-        content: msg.content,
-        timestamp: msg.createdAt,
-        type: msg.messageType,
-        status: msg.isRead ? 'read' : msg.deliveredAt ? 'delivered' : 'sent',
-        attachments,
-        tag,
-        metadata: msg.metadata,
+          ...mapChatMessage(msg),
+          replyCount: thread?.replyCount ?? 0,
+          lastReplyAt: thread?.lastReplyAt ?? null,
         };
       });
 
@@ -2924,6 +3001,43 @@ export function createCommunicationRouter(
     } catch (error) {
       console.error('Error fetching messages:', error);
       res.status(500).json({ error: 'Failed to fetch messages' });
+    }
+  });
+
+  // ─── GET /api/communication/messages/:channelId/thread/:parentId ──────────
+  // Én tråd: rotmeldingen + alle svar, eldste først. Samme gate som kanalen,
+  // og `channel_id` er med i WHERE så en gjettet meldings-id ikke kan lekke en
+  // tråd fra en annen kanal.
+  router.get('/api/communication/messages/:channelId/thread/:parentId', async (req, res) => {
+    try {
+      const { channelId, parentId } = req.params;
+      const gate = await guardChannelAccess(channelId, req, res);
+      if (!gate.ok) return;
+
+      const rows = await pool.query(
+        `SELECT id, channel_id, sender_id, message_type, content, metadata,
+                is_read, delivered_at, parent_message_id, created_at
+           FROM communication_messages
+          WHERE channel_id = $1 AND (id = $2 OR parent_message_id = $2)
+          ORDER BY created_at ASC, id ASC
+          LIMIT 500`,
+        [channelId, parentId],
+      );
+
+      const parentRow = rows.rows.find((row: any) => String(row.id) === String(parentId));
+      if (!parentRow) return res.status(404).json({ error: 'not_found' });
+      // En tråd henger på en rotmelding. Er forelderen selv et svar, finnes
+      // ikke tråden — da har klienten pekt feil, ikke funnet noe skjult.
+      if (parentRow.parent_message_id) return res.status(404).json({ error: 'not_found' });
+
+      const replies = rows.rows
+        .filter((row: any) => String(row.id) !== String(parentId))
+        .map(mapChatMessage);
+
+      res.json({ parent: mapChatMessage(parentRow), replies, replyCount: replies.length });
+    } catch (error) {
+      console.error('Error fetching thread:', error);
+      res.status(500).json({ error: 'Failed to fetch thread' });
     }
   });
 
@@ -2951,12 +3065,18 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'content is required' });
       }
 
+      const parentMessageId = await resolveThreadParent(conversationId, payload.parentMessageId);
+      if (typeof parentMessageId === 'symbol') {
+        return res.status(400).json({ error: 'invalid_parent' });
+      }
+
       await ensureChannelExists(conversationId, `Chat ${conversationId}`, 'chat');
       const persisted = await persistMessage({
         id: toNonEmptyString(payload.id) || toNonEmptyString(payload.clientMessageId) || undefined,
         channelId: conversationId,
         senderId,
         content: persistedContent,
+        parentMessageId,
         messageType: attachments.length > 0 ? 'file' : 'text',
         metadata: attachments.length > 0
           ? {
@@ -2982,6 +3102,7 @@ export function createCommunicationRouter(
           type: attachments.length > 0 ? 'file' : 'text',
           status: 'sent',
           attachments,
+          parentMessageId,
         },
       });
     } catch (error) {
@@ -3026,11 +3147,17 @@ export function createCommunicationRouter(
         return res.status(400).json({ error: 'Message content is required' });
       }
 
+      const parentMessageId = await resolveThreadParent(channelId, msg.parentMessageId);
+      if (typeof parentMessageId === 'symbol') {
+        return res.status(400).json({ error: 'invalid_parent' });
+      }
+
       await ensureChannelExists(channelId, `Chat ${channelId}`, 'chat');
       const persisted = await persistMessage({
         id: toNonEmptyString(msg.id) || undefined,
         channelId,
         senderId,
+        parentMessageId,
         messageType: attachments.length > 0
           ? 'file'
           : toNonEmptyString(msg.messageType) || 'text',
@@ -3045,7 +3172,7 @@ export function createCommunicationRouter(
       });
 
       void notifyChatUpdated(channelId, gate.user?.userId || null, persistedContent, gate.access?.displayName);
-      res.json({ success: true, id: persisted.id, attachments });
+      res.json({ success: true, id: persisted.id, attachments, parentMessageId });
     } catch (error) {
       console.error('Error saving chat message:', error);
       res.status(500).json({ error: 'Failed to save message' });
