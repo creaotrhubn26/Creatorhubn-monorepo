@@ -18,7 +18,11 @@ export interface PendingLocationMedia {
   displayName: string;
   contentType: string;
   sizeBytes: number;
-  blob: Blob;
+  /**
+   * New queue entries use ArrayBuffer because WebKit may reject Blob/File values
+   * in IndexedDB. Blob remains accepted so existing version-2 queues still sync.
+   */
+  blob: Blob | ArrayBuffer;
   upload: LocationScoutMediaUpload;
   createdAt: string;
   attempts: number;
@@ -29,6 +33,8 @@ const DB_VERSION = 2;
 const OPERATIONS_STORE_NAME = 'pending-operations';
 const MEDIA_STORE_NAME = 'pending-media';
 const FALLBACK_KEY = 'role-room:location-manager:pending:v1';
+
+let databasePromise: Promise<IDBDatabase> | null = null;
 
 const operationId = (projectId: string, locationId: string) => `${projectId}:${locationId}`;
 
@@ -48,13 +54,18 @@ function writeFallback(items: PendingLocationOperation[]): void {
 }
 
 function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (databasePromise) return databasePromise;
+  databasePromise = new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
+      databasePromise = null;
       reject(new Error('IndexedDB er ikke tilgjengelig.'));
       return;
     }
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onerror = () => reject(request.error ?? new Error('Kunne ikke åpne lokal feltlagring.'));
+    request.onerror = () => {
+      databasePromise = null;
+      reject(request.error ?? new Error('Kunne ikke åpne lokal feltlagring.'));
+    };
     request.onupgradeneeded = () => {
       const database = request.result;
       if (!database.objectStoreNames.contains(OPERATIONS_STORE_NAME)) {
@@ -66,8 +77,16 @@ function openDatabase(): Promise<IDBDatabase> {
         store.createIndex('projectId', 'projectId', { unique: false });
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const database = request.result;
+      database.onversionchange = () => {
+        database.close();
+        databasePromise = null;
+      };
+      resolve(database);
+    };
   });
+  return databasePromise;
 }
 
 async function runStore<T>(
@@ -77,13 +96,58 @@ async function runStore<T>(
 ): Promise<T> {
   const database = await openDatabase();
   return new Promise<T>((resolve, reject) => {
-    const transaction = database.transaction(storeName, mode);
-    transaction.oncomplete = () => database.close();
-    transaction.onerror = () => {
-      database.close();
-      reject(transaction.error ?? new Error('Lokal feltlagring feilet.'));
+    let operationCompleted = false;
+    let operationValue: T;
+    let settled = false;
+    const fail = (reason?: unknown) => {
+      if (settled) return;
+      settled = true;
+      reject(reason ?? new Error('Lokal feltlagring feilet.'));
     };
-    operation(transaction.objectStore(storeName), resolve, reject);
+    let transaction: IDBTransaction;
+    try {
+      transaction = database.transaction(storeName, mode);
+    } catch (error) {
+      databasePromise = null;
+      database.close();
+      fail(error);
+      return;
+    }
+    transaction.oncomplete = () => {
+      if (settled) return;
+      if (!operationCompleted) {
+        fail(new Error('Lokal feltlagring ble avsluttet uten et resultat.'));
+        return;
+      }
+      settled = true;
+      resolve(operationValue);
+    };
+    transaction.onerror = () => fail(transaction.error ?? new Error('Lokal feltlagring feilet.'));
+    transaction.onabort = () => fail(transaction.error ?? new Error('Lokal feltlagring ble avbrutt.'));
+    try {
+      operation(
+        transaction.objectStore(storeName),
+        (value) => {
+          operationValue = value;
+          operationCompleted = true;
+        },
+        (reason) => {
+          try {
+            transaction.abort();
+          } catch {
+            // The transaction may already have been aborted by the browser.
+          }
+          fail(reason);
+        },
+      );
+    } catch (error) {
+      try {
+        transaction.abort();
+      } catch {
+        // The transaction may already have been aborted by the browser.
+      }
+      fail(error);
+    }
   });
 }
 

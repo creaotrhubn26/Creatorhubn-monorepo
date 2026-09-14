@@ -46,6 +46,7 @@ import {
 import type {
   CastingProject,
   Location,
+  LocationDecisionApprovalRole,
   LocationDecisionStatus,
   LocationGateStatus,
   LocationManagerOperations,
@@ -55,9 +56,11 @@ import type {
 } from '../../models/casting';
 import { useBeforeUnloadIfDirty } from '../../hooks/useBeforeUnloadIfDirty';
 import {
+  LocationDecisionActionError,
   LocationOperationsConflictError,
   LocationOperationsNetworkError,
   locationManagerService,
+  type LocationDecisionAction,
   type LocationScoutMedia,
   type LocationScoutMediaKind,
   type LocationScoutMediaMetadata,
@@ -72,6 +75,7 @@ import {
   mergeLocationOperations,
   portfolioReadiness,
 } from './locationManagerWorkspaceModel';
+import { LocationDecisionRoom } from './LocationDecisionRoom';
 
 interface Props {
   project: CastingProject;
@@ -80,6 +84,9 @@ interface Props {
   onOpenSchedule: () => void;
   onOpenCrew: () => void;
   onOpenFullWorkspace: () => void;
+  decisionActorRole?: LocationDecisionApprovalRole;
+  canLockDecision?: boolean;
+  canReopenDecision?: boolean;
 }
 
 const STAGE_LABELS: Record<LocationWorkflowStage, string> = {
@@ -251,6 +258,17 @@ function scoreColor(score: number): string {
   return '#fb7185';
 }
 
+const readFileBytes = (file: File): Promise<ArrayBuffer> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (reader.result instanceof ArrayBuffer) resolve(reader.result);
+    else reject(new DOMException('Filinnholdet kunne ikke leses.', 'NotReadableError'));
+  };
+  reader.onerror = () => reject(reader.error ?? new DOMException('Filinnholdet kunne ikke leses.', 'NotReadableError'));
+  reader.onabort = () => reject(new DOMException('Fillesingen ble avbrutt.', 'AbortError'));
+  reader.readAsArrayBuffer(file);
+});
+
 function formatMoney(value: number, currency: string): string {
   try {
     return new Intl.NumberFormat('nb-NO', { style: 'currency', currency, maximumFractionDigits: 0 }).format(value);
@@ -266,6 +284,9 @@ export function LocationManagerWorkspace({
   onOpenSchedule,
   onOpenCrew,
   onOpenFullWorkspace,
+  decisionActorRole,
+  canLockDecision = false,
+  canReopenDecision = false,
 }: Props) {
   const theme = useTheme();
   const compact = useMediaQuery(theme.breakpoints.down('sm'));
@@ -277,6 +298,7 @@ export function LocationManagerWorkspace({
   );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [decisionActionPending, setDecisionActionPending] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
   const [pendingCount, setPendingCount] = useState(0);
@@ -337,7 +359,7 @@ export function LocationManagerWorkspace({
         type: 'warning',
         text: error instanceof Error
           ? `${error.message} Prosjektets lokasjoner vises fortsatt, men endringer bør ikke lagres før forbindelsen er tilbake.`
-          : 'Kunne ikke hente lagret lokasjonsberedskap.',
+          : 'Kunne ikke hente lagret feltgrunnlag.',
       });
     } finally {
       setLoading(false);
@@ -360,10 +382,13 @@ export function LocationManagerWorkspace({
     setSyncing(true);
     for (const item of pendingMedia) {
       try {
+        const queuedBlob = item.blob instanceof Blob
+          ? item.blob
+          : new Blob([item.blob], { type: item.contentType });
         const saved = await locationManagerService.uploadMedia(
           item.projectId,
           item.locationId,
-          item.blob,
+          queuedBlob,
           item.upload,
           item.displayName,
         );
@@ -483,6 +508,10 @@ export function LocationManagerWorkspace({
 
   const updateOperations = (updater: (current: LocationManagerOperations) => LocationManagerOperations) => {
     if (readOnly) return;
+    if (operations?.decisionReview.lockedAt) {
+      setFeedback({ type: 'warning', text: 'Beslutningen er låst. Gjenåpne den før feltgrunnlaget endres.' });
+      return;
+    }
     setOperations((current) => current ? updater(current) : current);
     setDirty(true);
     setFeedback(null);
@@ -528,7 +557,7 @@ export function LocationManagerWorkspace({
         : location));
       setOperations(saved.operations);
       setDirty(false);
-      setFeedback({ type: 'success', text: `Lokasjonsberedskapen er lagret som versjon ${saved.version}.` });
+      setFeedback({ type: 'success', text: `Feltgrunnlaget er lagret som versjon ${saved.version}.` });
     } catch (error) {
       if (error instanceof LocationOperationsConflictError && error.locationOperation) {
         const server = error.locationOperation;
@@ -541,10 +570,62 @@ export function LocationManagerWorkspace({
       } else if (error instanceof LocationOperationsNetworkError) {
         await queueLocally();
       } else {
-        setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Kunne ikke lagre lokasjonsberedskapen.' });
+        setFeedback({ type: 'error', text: error instanceof Error ? error.message : 'Kunne ikke lagre feltgrunnlaget.' });
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const actOnDecision = async (action: LocationDecisionAction, note?: string) => {
+    if (!selectedLocation || !operations || dirty || !online) {
+      setFeedback({
+        type: 'warning',
+        text: dirty
+          ? 'Lagre beslutningsgrunnlaget før sign-off eller låsing.'
+          : 'Beslutningshandlinger krever nettforbindelse. Feltgrunnlaget kan fortsatt lagres lokalt.',
+      });
+      return;
+    }
+    setDecisionActionPending(true);
+    setFeedback(null);
+    try {
+      const saved = await locationManagerService.actOnDecision(
+        project.id,
+        selectedLocation.id,
+        Number(selectedLocation.locationOperationsVersion ?? 0),
+        action,
+        note,
+      );
+      setLocations((items) => items.map((location) => location.id === selectedLocation.id
+        ? mergeLocationOperations(location, saved.operations, saved.version, saved.updatedAt, saved.updatedBy)
+        : location));
+      setOperations(saved.operations);
+      const message = action === 'approve'
+        ? 'Din rollegodkjenning er signert og lagret.'
+        : action === 'request_changes'
+          ? 'Endringsønsket er signert og lagret.'
+          : action === 'lock'
+            ? 'Primærlokasjonen er låst med alle godkjenninger og evidens.'
+            : 'Beslutningen er gjenåpnet. Alle roller må godkjenne på nytt.';
+      setFeedback({ type: 'success', text: message });
+    } catch (error) {
+      if (error instanceof LocationDecisionActionError && error.locationOperation) {
+        const latest = error.locationOperation;
+        setLocations((items) => items.map((location) => location.id === latest.locationId
+          ? mergeLocationOperations(location, latest.operations, latest.version, latest.updatedAt, latest.updatedBy)
+          : location));
+        setOperations(latest.operations);
+      }
+      const reasonText = error instanceof LocationDecisionActionError && error.reasons.length > 0
+        ? ` ${error.reasons.slice(0, 3).join(' · ')}`
+        : '';
+      setFeedback({
+        type: error instanceof LocationOperationsNetworkError ? 'warning' : 'error',
+        text: `${error instanceof Error ? error.message : 'Kunne ikke oppdatere lokasjonsbeslutningen.'}${reasonText}`,
+      });
+    } finally {
+      setDecisionActionPending(false);
     }
   };
 
@@ -606,14 +687,19 @@ export function LocationManagerWorkspace({
       } satisfies LocationScoutMediaMetadata,
     };
     const queue = async () => {
+      setMediaUploading(true);
       try {
+        // Camera/file inputs may revoke their temporary File backing as soon as
+        // the next capture replaces the input value. Materialise the bytes before
+        // handing them to IndexedDB so rapid captures remain durable in WebKit.
+        const durableBytes = await readFileBytes(file);
         const pending = await locationManagerOfflineStore.putMedia({
           projectId: project.id,
           locationId: selectedLocation.id,
           displayName: file.name,
           contentType: file.type,
           sizeBytes: file.size,
-          blob: file,
+          blob: durableBytes,
           upload,
         });
         const view = pendingMediaView(pending);
@@ -622,8 +708,13 @@ export function LocationManagerWorkspace({
         setSelectedMediaUrl(URL.createObjectURL(file));
         setPendingMediaCount((await locationManagerOfflineStore.listMedia(project.id)).length);
         setFeedback({ type: 'warning', text: `${file.name} er trygt lagret på enheten og synkroniseres til privat Role Room S3 når nettet er tilbake.` });
-      } catch {
-        setFeedback({ type: 'error', text: 'Denne enheten kan ikke opprette en sikker offlinekø. Filen er ikke registrert; behold originalen og prøv igjen på nett.' });
+      } catch (error) {
+        const errorCode = error instanceof DOMException
+          ? `${error.name}${error.message ? ` (${error.message})` : ''}`
+          : 'OfflineStoreError';
+        setFeedback({ type: 'error', text: `Denne enheten kan ikke opprette en sikker offlinekø. Filen er ikke registrert; behold originalen og prøv igjen på nett. Feilkode: ${errorCode}.` });
+      } finally {
+        setMediaUploading(false);
       }
     };
     if (!online) {
@@ -653,7 +744,10 @@ export function LocationManagerWorkspace({
       if (item.pendingUpload) {
         const pending = (await locationManagerOfflineStore.listMedia(project.id)).find((entry) => entry.id === item.id);
         if (!pending) throw new Error('Den lokale originalen finnes ikke lenger.');
-        setSelectedMediaUrl(URL.createObjectURL(pending.blob));
+        const queuedBlob = pending.blob instanceof Blob
+          ? pending.blob
+          : new Blob([pending.blob], { type: pending.contentType });
+        setSelectedMediaUrl(URL.createObjectURL(queuedBlob));
         return;
       }
       const url = await locationManagerService.getMediaUrl(project.id, selectedLocation.id, item.id);
@@ -740,6 +834,7 @@ export function LocationManagerWorkspace({
 
   const readiness = useMemo(() => operations ? locationReadiness(operations) : null, [operations]);
   const portfolio = useMemo(() => portfolioReadiness(locations), [locations]);
+  const editingDisabled = readOnly || Boolean(operations?.decisionReview.lockedAt);
   const totalBudget = operations
     ? operations.finance.locationFee + operations.finance.permitFees + operations.finance.restorationReserve
     : 0;
@@ -756,7 +851,7 @@ export function LocationManagerWorkspace({
   if (loading && locations.length === 0) {
     return (
       <Box data-testid="location-manager-workspace" sx={{ minHeight: 420, display: 'grid', placeItems: 'center' }}>
-        <Stack alignItems="center" spacing={1.5}><CircularProgress sx={{ color: '#2dd4bf' }} /><Typography>Laster lokasjonsberedskap …</Typography></Stack>
+        <Stack alignItems="center" spacing={1.5}><CircularProgress sx={{ color: '#2dd4bf' }} /><Typography>Laster lokasjonsarbeidet …</Typography></Stack>
       </Box>
     );
   }
@@ -765,7 +860,7 @@ export function LocationManagerWorkspace({
     return (
       <Card data-testid="location-manager-workspace" variant="outlined" sx={{ ...panelSx, m: { xs: 1, md: 3 }, p: { xs: 2.5, md: 5 }, textAlign: 'center' }}>
         <MapIcon sx={{ fontSize: 54, color: '#2dd4bf', mb: 1 }} />
-        <Typography component="h1" variant="h4" fontWeight={800}>Location readiness</Typography>
+        <Typography component="h1" variant="h4" fontWeight={800}>Location Operations</Typography>
         <Typography sx={{ color: 'rgba(226,232,240,.68)', maxWidth: 620, mx: 'auto', mt: 1, mb: 3 }}>
           Legg inn første kandidat for å starte scout, recce, eierdialog, tillatelser og opptaksberedskap.
         </Typography>
@@ -809,7 +904,7 @@ export function LocationManagerWorkspace({
             ['Opptaksklare', portfolio.shootReady, 'Klarert for opptak'],
             ['Med blokkering', portfolio.blocked, 'Krever handling'],
             ['Hold < 72 t', portfolio.expiringHolds, 'Utløper snart'],
-            ['Snittberedskap', `${portfolio.averageScore}%`, 'Hele porteføljen'],
+            ['Snittframdrift', `${portfolio.averageScore}%`, 'Eksplisitt verifiserte steg'],
           ].map(([label, value, caption]) => (
             <Card key={String(label)} variant="outlined" sx={{ ...panelSx, p: 1.6 }}>
               <Typography sx={{ color: 'rgba(226,232,240,.6)', fontSize: '.73rem', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 750 }}>{label}</Typography>
@@ -820,6 +915,25 @@ export function LocationManagerWorkspace({
         </Box>
 
         {feedback && <Alert severity={feedback.type}>{feedback.text}</Alert>}
+
+        {selectedLocation && operations && (
+          <LocationDecisionRoom
+            project={project}
+            locations={locations}
+            selectedLocationId={selectedLocation.id}
+            operations={operations}
+            readOnly={readOnly}
+            dirty={dirty}
+            actionPending={decisionActionPending}
+            actorRole={decisionActorRole}
+            canLockDecision={canLockDecision}
+            canReopenDecision={canReopenDecision}
+            onSelectLocation={selectLocation}
+            onUpdateOperations={updateOperations}
+            onDecisionAction={actOnDecision}
+            onOpenSchedule={onOpenSchedule}
+          />
+        )}
 
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0,1fr)', lg: '280px minmax(0,1fr)' }, gap: 2, alignItems: 'start' }}>
           <Box
@@ -891,7 +1005,7 @@ export function LocationManagerWorkspace({
                   </Box>
                   <Box sx={{ minWidth: 145 }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="baseline">
-                      <Typography sx={{ color: 'rgba(226,232,240,.6)', fontSize: '.75rem', fontWeight: 750 }}>BEREDSKAP</Typography>
+                      <Typography sx={{ color: 'rgba(226,232,240,.6)', fontSize: '.75rem', fontWeight: 750 }}>VERIFISERT FELTFRAMDRIFT</Typography>
                       <Typography sx={{ color: scoreColor(readiness.score), fontWeight: 900, fontSize: '1.7rem' }}>{readiness.score}%</Typography>
                     </Stack>
                     <LinearProgress variant="determinate" value={readiness.score} sx={{ height: 7, borderRadius: 8, bgcolor: 'rgba(255,255,255,.08)', '& .MuiLinearProgress-bar': { bgcolor: scoreColor(readiness.score) } }} />
@@ -919,6 +1033,12 @@ export function LocationManagerWorkspace({
                 )}
               </Card>
 
+              <Box
+                component="fieldset"
+                disabled={editingDisabled}
+                aria-label={editingDisabled ? 'Lokasjonsgrunnlaget er låst eller skrivebeskyttet' : 'Redigerbart lokasjonsgrunnlag'}
+                sx={{ display: 'contents', border: 0, p: 0, m: 0, minWidth: 0 }}
+              >
               <WorkflowSection
                 compact={compact}
                 title="Scout Capture"
@@ -964,7 +1084,7 @@ export function LocationManagerWorkspace({
                         </Stack>
                         <Typography sx={{ color: 'rgba(226,232,240,.55)', fontSize: '.75rem' }}>Bilde, 360°, video og lyd · privat · sjekksumverifisert · Role Room AWS S3</Typography>
                       </Box>
-                      {mediaUploading && <Stack direction="row" spacing={.7} alignItems="center"><CircularProgress size={16} /><Typography sx={{ fontSize: '.75rem' }}>Laster opp …</Typography></Stack>}
+                      {mediaUploading && <Stack direction="row" spacing={.7} alignItems="center"><CircularProgress size={16} /><Typography sx={{ fontSize: '.75rem' }}>{online ? 'Laster opp …' : 'Sikrer lokalt …'}</Typography></Stack>}
                     </Stack>
 
                     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2,minmax(0,1fr))', lg: 'repeat(3,minmax(0,1fr))' }, gap: .8, mt: 1.2 }}>
@@ -985,7 +1105,18 @@ export function LocationManagerWorkspace({
                       ] as const).map(([kind, label, icon, accept, capture, source]) => (
                         <Button key={kind} component="label" variant="outlined" startIcon={icon} disabled={readOnly || mediaUploading} sx={{ minHeight: 48, color: '#7dd3fc', borderColor: 'rgba(125,211,252,.3)', flex: { xs: '1 1 145px', sm: '0 1 auto' } }}>
                           {label}
-                          <input hidden type="file" accept={accept} capture={capture} onChange={(event) => { void uploadScoutMedia(event.target.files?.[0], kind, source); event.target.value = ''; }} />
+                          <input
+                            hidden
+                            type="file"
+                            accept={accept}
+                            capture={capture}
+                            disabled={readOnly || mediaUploading}
+                            onChange={async (event) => {
+                              const input = event.currentTarget;
+                              await uploadScoutMedia(input.files?.[0], kind, source);
+                              input.value = '';
+                            }}
+                          />
                         </Button>
                       ))}
                     </Stack>
@@ -1155,6 +1286,7 @@ export function LocationManagerWorkspace({
                 </Box>
                 <Typography sx={{ mt: 1.2, color: '#99f6e4', fontWeight: 800 }}>Forventet lokasjonskostnad: {formatMoney(totalBudget, operations.finance.currency)}</Typography>
               </WorkflowSection>
+              </Box>
 
               <Card variant="outlined" sx={{ ...panelSx, position: 'sticky', bottom: 8, zIndex: 4, p: 1.25, backdropFilter: 'blur(18px)' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'stretch', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 1 }}>
@@ -1174,7 +1306,7 @@ export function LocationManagerWorkspace({
                     <Button variant="text" startIcon={<RefreshIcon />} onClick={discard} disabled={!dirty || saving} sx={{ minHeight: 48, color: '#cbd5e1' }}>Forkast</Button>
                     <Button variant="outlined" startIcon={<FullWorkspaceIcon />} onClick={onOpenFullWorkspace} sx={{ minHeight: 48, color: '#ccfbf1', borderColor: 'rgba(94,234,212,.3)' }}>Hele Role Room</Button>
                     {online && pendingCount + pendingMediaCount > 0 && <Button variant="outlined" startIcon={syncing ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />} onClick={() => void syncPending()} disabled={syncing} sx={{ minHeight: 48, color: '#fde68a', borderColor: 'rgba(251,191,36,.35)' }}>Synkroniser</Button>}
-                    <Button variant="contained" startIcon={saving ? <CircularProgress size={17} color="inherit" /> : <SaveIcon />} onClick={() => void save()} disabled={!dirty || saving || readOnly} sx={{ minHeight: 48, bgcolor: '#14b8a6', '&:hover': { bgcolor: '#0f9f92' } }}>{online ? 'Lagre beredskap' : 'Lagre lokalt'}</Button>
+                    <Button variant="contained" startIcon={saving ? <CircularProgress size={17} color="inherit" /> : <SaveIcon />} onClick={() => void save()} disabled={!dirty || saving || readOnly} sx={{ minHeight: 48, bgcolor: '#14b8a6', '&:hover': { bgcolor: '#0f9f92' } }}>{online ? 'Lagre feltgrunnlag' : 'Lagre lokalt'}</Button>
                   </Stack>
                 </Box>
               </Card>

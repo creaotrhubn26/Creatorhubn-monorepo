@@ -20,6 +20,14 @@ const operations = (nextAction: string): LocationManagerOperations => ({
     observations: [],
     pins: [],
   },
+  decisionReview: {
+    criteria: [],
+    signoffs: [
+      { role: 'director', status: 'pending' },
+      { role: 'cinematographer', status: 'pending' },
+      { role: 'producer', status: 'pending' },
+    ],
+  },
   nextAction,
   activity: [],
 });

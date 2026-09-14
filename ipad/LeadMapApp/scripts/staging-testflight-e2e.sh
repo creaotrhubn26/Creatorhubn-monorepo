@@ -1055,6 +1055,8 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
     if xcodebuild test-without-building -quiet \
       -xctestrun "$test_xctestrun" \
       -destination "$simulator_destination" \
+      -parallel-testing-enabled NO \
+      -maximum-concurrent-test-simulator-destinations 1 \
       -resultBundlePath "$result_bundle" \
       "${simulator_tests[@]}"; then
       simulator_test_status=0

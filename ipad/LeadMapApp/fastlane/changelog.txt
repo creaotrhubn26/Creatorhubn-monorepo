@@ -6,11 +6,15 @@ Leadgrid 2.2
 • Opprett eller gjenbruk et kundeprosjekt ved å skrive inn domenet, med forslag til komplett Discovery-profil.
 • Tidum får fire ferdige nasjonale Discovery-profiler for private omsorgsaktører og kommunale tjenester.
 • Tidum får en egen Doffin-produktprofil for arbeidstid, turnus og dokumentasjon, med relevante CPV-koder og adminstyrte overvåkninger.
+• CreatorHub får fire ferdige nasjonale profiler for fotografer, video- og innholdsprodusenter, musikk- og lydprodusenter og kreative byråer/designstudioer.
+• CreatorHub-kandidater bruker dokumentert nettsidekvalitet og relevante NACE-koder, slik at irrelevante bransjer filtreres bort før vurdering.
+• Åtte leadtilpassede CreatorHub-maler gjør første kontakt og oppfølging klar for den valgte kandidaten.
 • Dentum har fått sju e-postmaler for tannklinikker, automatisk tilpasset valgt lead, kontaktperson, område og status.
 • E-post kan finjusteres i Leadgrid før den åpnes i brukerens valgte e-postapp.
 • Ny personvernkontroll for e-post: verifiserte fellesadresser, dokumentert samtykke/kundeforhold og en organisasjonsomfattende «nei takk»-sperre.
 • Strengere prosjektisolasjon holder Dentum og andre kunder adskilt, også for Pondus-maler, økter og statistikk.
 • Leadbook, Møter, Pondus, Kvalitet og Anbud er forbedret for iPad mini og kompakte visninger.
 • Aktivt prosjekt vises nå i alle hovedfaner, og Anbud-headeren er rettet på iPad mini.
+• Discovery forblir åpen når valgt prosjekt bekreftes i bakgrunnen, uten å blande data mellom prosjekter.
 • Bedre navigasjon og støtte for store tekststørrelser på iPhone og iPad.
 • Kandidater må fortsatt godkjennes før de blir leads.

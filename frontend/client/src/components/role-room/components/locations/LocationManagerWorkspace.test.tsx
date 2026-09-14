@@ -6,12 +6,13 @@ import type { CastingProject } from '../../models/casting';
 import { buildLocationManagerOperations } from './locationManagerWorkspaceModel';
 import { LocationManagerWorkspace } from './LocationManagerWorkspace';
 
-const { list, save, listMedia, uploadMedia, uploadPhoto, getMediaUrl } = vi.hoisted(() => ({
-  list: vi.fn(), save: vi.fn(), listMedia: vi.fn(), uploadMedia: vi.fn(), uploadPhoto: vi.fn(), getMediaUrl: vi.fn(),
+const { list, save, actOnDecision, listMedia, uploadMedia, uploadPhoto, getMediaUrl } = vi.hoisted(() => ({
+  list: vi.fn(), save: vi.fn(), actOnDecision: vi.fn(), listMedia: vi.fn(), uploadMedia: vi.fn(), uploadPhoto: vi.fn(), getMediaUrl: vi.fn(),
 }));
 
 vi.mock('../../services/locationManagerService', () => ({
-  locationManagerService: { list, save, listMedia, uploadMedia, uploadPhoto, getMediaUrl },
+  locationManagerService: { list, save, actOnDecision, listMedia, uploadMedia, uploadPhoto, getMediaUrl },
+  LocationDecisionActionError: class LocationDecisionActionError extends Error {},
   LocationOperationsConflictError: class LocationOperationsConflictError extends Error {},
   LocationOperationsNetworkError: class LocationOperationsNetworkError extends Error {},
 }));
@@ -24,13 +25,16 @@ const project: CastingProject = {
   ],
 };
 
-const renderWorkspace = () => render(
+const renderWorkspace = (decisionActorRole?: 'director' | 'cinematographer' | 'producer') => render(
   <LocationManagerWorkspace
     project={project}
     onOpenLocations={() => {}}
     onOpenSchedule={() => {}}
     onOpenCrew={() => {}}
     onOpenFullWorkspace={() => {}}
+    decisionActorRole={decisionActorRole}
+    canLockDecision={decisionActorRole === 'producer'}
+    canReopenDecision={decisionActorRole === 'producer'}
   />,
 );
 
@@ -38,6 +42,7 @@ describe('LocationManagerWorkspace', () => {
   beforeEach(() => {
     list.mockReset().mockResolvedValue([]);
     save.mockReset();
+    actOnDecision.mockReset();
     listMedia.mockReset().mockResolvedValue([]);
     uploadPhoto.mockReset();
     uploadMedia.mockReset();
@@ -55,6 +60,8 @@ describe('LocationManagerWorkspace', () => {
     expect(await screen.findByTestId('location-manager-workspace')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Troll' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Beslutning, eier og dato' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Location Decision Room' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Beslutningsgrunnlag' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Scout Capture' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Teknisk recce' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Klareringsporter' })).toBeInTheDocument();
@@ -93,12 +100,12 @@ describe('LocationManagerWorkspace', () => {
     await screen.findByRole('heading', { name: 'Klareringsporter' });
 
     fireEvent.change(screen.getByLabelText('Neste kritiske handling'), { target: { value: 'Ring kommunen før klokken 12.' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Lagre beredskap' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lagre feltgrunnlag' }));
 
     await waitFor(() => expect(save).toHaveBeenCalledWith(
       'troll', 'dovre', 0, expect.objectContaining({ nextAction: 'Ring kommunen før klokken 12.' }),
     ));
-    expect(await screen.findByText('Lokasjonsberedskapen er lagret som versjon 1.')).toBeInTheDocument();
+    expect(await screen.findByText('Feltgrunnlaget er lagret som versjon 1.')).toBeInTheDocument();
     expect(savedOperations.stage).toBe('need');
   });
 
@@ -114,5 +121,27 @@ describe('LocationManagerWorkspace', () => {
     expect(screen.getByText(/62 dBA ved nordport/)).toBeInTheDocument();
     expect(screen.getAllByText('Verifisert').length).toBeGreaterThan(0);
     expect(screen.getByText('Ulagrede endringer')).toBeInTheDocument();
+  }, 10_000);
+
+  it('submits a signer decision through the role-derived decision endpoint', async () => {
+    const initial = buildLocationManagerOperations(project.locations![0], project);
+    list.mockResolvedValue([{ locationId: 'dovre', operations: initial, version: 1 }]);
+    const approved = {
+      ...initial,
+      decisionReview: {
+        ...initial.decisionReview,
+        signoffs: initial.decisionReview.signoffs.map((signoff) => signoff.role === 'director'
+          ? { ...signoff, status: 'approved' as const, userId: 'director-1', decidedAt: '2026-09-14T12:00:00Z' }
+          : signoff),
+      },
+    };
+    actOnDecision.mockResolvedValue({ locationId: 'dovre', operations: approved, version: 2 });
+
+    renderWorkspace('director');
+    const approve = await screen.findByRole('button', { name: 'Godkjenn', exact: true });
+    fireEvent.click(approve);
+
+    await waitFor(() => expect(actOnDecision).toHaveBeenCalledWith('troll', 'dovre', 1, 'approve', undefined));
+    expect(await screen.findByText('Din rollegodkjenning er signert og lagret.')).toBeInTheDocument();
   });
 });
