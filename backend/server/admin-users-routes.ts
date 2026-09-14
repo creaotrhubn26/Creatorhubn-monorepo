@@ -583,9 +583,8 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
       activeSessions.set(targetSessionToken, targetSession);
       await persistAuthSession(pool, targetSessionToken, targetSession);
       await pool.query(
-        `INSERT INTO org_audit_log (actor_user_id, action, target_user_id, metadata, created_at)
-         VALUES ($1, 'admin_impersonate_start', $2, $3, now())
-         ON CONFLICT DO NOTHING`,
+        `INSERT INTO superadmin_impersonation_audit (super_admin_id, action, target_user_id, details)
+         VALUES ($1, 'admin_impersonate_start', $2, $3::jsonb)`,
         [callingAdmin.userId, targetSession.userId, JSON.stringify({ targetEmail: targetSession.email, targetRole })],
       ).catch(() => { /* audit failure must not block impersonation */ });
 
