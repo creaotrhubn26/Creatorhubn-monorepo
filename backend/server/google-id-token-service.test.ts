@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   exchangeGoogleIdToken,
+  resolveCreatorHubGoogleClientIds,
   splitClientIds,
   type ActiveSessionLike,
   type GoogleTokenPayload,
@@ -61,6 +62,7 @@ describe('exchangeGoogleIdToken', () => {
   it('returns 503 when no Google client id is configured', async () => {
     const { stub } = makePoolStub();
     delete process.env.CREATORHUB_GOOGLE_CLIENT_ID;
+    delete process.env.CAPTUREAPP_GOOGLE_CLIENT_ID;
     const result = await exchangeGoogleIdToken({
       idToken: 'some.token.here',
       pool: stub,
@@ -71,6 +73,40 @@ describe('exchangeGoogleIdToken', () => {
     if (!result.ok) {
       expect(result.status).toBe(503);
       expect(result.error).toBe('google_oauth_not_configured');
+    }
+  });
+
+  it('does not use the Role Room client as a CreatorHub audience fallback', async () => {
+    const previousCreatorHub = process.env.CREATORHUB_GOOGLE_CLIENT_ID;
+    const previousCapture = process.env.CAPTUREAPP_GOOGLE_CLIENT_ID;
+    const previousRoleRoom = process.env.ROLE_ROOM_GOOGLE_CLIENT_ID;
+    delete process.env.CREATORHUB_GOOGLE_CLIENT_ID;
+    delete process.env.CAPTUREAPP_GOOGLE_CLIENT_ID;
+    process.env.ROLE_ROOM_GOOGLE_CLIENT_ID = 'role-room.apps.googleusercontent.com';
+
+    try {
+      const { stub } = makePoolStub();
+      const verifyOverride = vi.fn(async () => goodPayload);
+      const result = await exchangeGoogleIdToken({
+        idToken: 'some.token.here',
+        pool: stub,
+        activeSessions: new Map(),
+        verifyOverride,
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        status: 503,
+        error: 'google_oauth_not_configured',
+      });
+      expect(verifyOverride).not.toHaveBeenCalled();
+    } finally {
+      if (previousCreatorHub === undefined) delete process.env.CREATORHUB_GOOGLE_CLIENT_ID;
+      else process.env.CREATORHUB_GOOGLE_CLIENT_ID = previousCreatorHub;
+      if (previousCapture === undefined) delete process.env.CAPTUREAPP_GOOGLE_CLIENT_ID;
+      else process.env.CAPTUREAPP_GOOGLE_CLIENT_ID = previousCapture;
+      if (previousRoleRoom === undefined) delete process.env.ROLE_ROOM_GOOGLE_CLIENT_ID;
+      else process.env.ROLE_ROOM_GOOGLE_CLIENT_ID = previousRoleRoom;
     }
   });
 
@@ -188,7 +224,7 @@ describe('exchangeGoogleIdToken', () => {
     // The iPad CaptureApp's id-tokens carry the iOS OAuth-client ID
     // in their `aud` claim — different from the web client ID. Without
     // this env var the iPad got 401 invalid_id_token because the
-    // audience mismatched the web/role-room ones.
+    // audience mismatched the web client.
     delete process.env.CREATORHUB_GOOGLE_CLIENT_ID;
     delete process.env.ROLE_ROOM_GOOGLE_CLIENT_ID;
     process.env.CAPTUREAPP_GOOGLE_CLIENT_ID =
@@ -227,5 +263,24 @@ describe('splitClientIds', () => {
       'ios-1.apps.googleusercontent.com',
       'ios-2.apps.googleusercontent.com',
     ]);
+  });
+});
+
+describe('resolveCreatorHubGoogleClientIds', () => {
+  it('includes CreatorHub web and Capture iOS clients only', () => {
+    const audiences = resolveCreatorHubGoogleClientIds({
+      CREATORHUB_GOOGLE_CLIENT_ID: 'creatorhub-web.apps.googleusercontent.com',
+      CAPTUREAPP_GOOGLE_CLIENT_ID: 'creatorhub-capture.apps.googleusercontent.com',
+    });
+
+    expect(audiences).toEqual([
+      'creatorhub-web.apps.googleusercontent.com',
+      'creatorhub-capture.apps.googleusercontent.com',
+    ]);
+    expect(audiences).not.toContain('role-room.apps.googleusercontent.com');
+  });
+
+  it('fails closed instead of falling back to a different brand', () => {
+    expect(resolveCreatorHubGoogleClientIds({})).toEqual([]);
   });
 });
