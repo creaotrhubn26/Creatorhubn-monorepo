@@ -1037,9 +1037,14 @@ export default function App() {
             {søkemelding}
           </p>
           <nav className="liste" aria-label="Notater" onKeyDown={listetast}>
+            {/* Dagsetikettene sto som `h2`, likestilt med «Hva vi har
+                forstått» og «Oppgaver»: den som navigerer på overskrifter
+                fikk 13 datoer før produktet, og registeret hadde ingen
+                overskrift over seg. Nå er datoene `h3` under denne. */}
+            <h2 className="skjult">Notater</h2>
             {spurt && (
               <section className="spurt">
-                <h2 className="dag">{spurt.overskrift}</h2>
+                <h3 className="dag">{spurt.overskrift}</h3>
                 <p className="spurtOm">
                   Fra det du har skrevet før, ikke fra ordene du søkte på.
                   {spurt.filter.length > 0 && ` Snevret inn med «${spurt.filter.join(", ")}».`}
@@ -1082,16 +1087,23 @@ export default function App() {
               treff.treff.length === 0 ? (
                 // Står det strukturerte svar over, er «fant ingen notater»
                 // bare halve sannheten — og de to sto rett under hverandre.
-                <p className="tomt">
-                  {spurt && spurt.treff.length > 0
-                    ? `Ingen notater har ordene «${query.trim()}» i teksten.`
-                    : `Fant ingen notater med «${query.trim()}».`}
-                  <span>Søket leter etter hele ord. Prøv ett ord færre, eller et annet ord.</span>
+                // En <div>, ikke en <p>: `SøkeSyntaks` er en <dl>, og en <dl>
+                // kan ikke stå inne i et avsnitt. React logget to feil ved
+                // hvert tomme søk, og nettleseren lukket avsnittet før lista,
+                // så syntaksen havnet utenfor det den ble skrevet inn i.
+                // `.tomt` bærer margin og skrift selv, så den ser likedan ut.
+                <div className="tomt">
+                  <p>
+                    {spurt && spurt.treff.length > 0
+                      ? `Ingen notater har ordene «${query.trim()}» i teksten.`
+                      : `Fant ingen notater med «${query.trim()}».`}
+                    <span>Søket leter etter hele ord. Prøv ett ord færre, eller et annet ord.</span>
+                  </p>
                   <SøkeSyntaks />
-                </p>
+                </div>
               ) : (
                 <section>
-                  <h2 className="dag">{treffmelding(treff.treff.length, treff.avkortet)}</h2>
+                  <h3 className="dag">{treffmelding(treff.treff.length, treff.avkortet)}</h3>
                   {treff.avkortet && (
                     <p className="spurtOm">
                       Det finnes flere. Skriv ett ord til for å snevre inn.
@@ -1124,7 +1136,7 @@ export default function App() {
             ) : (
               grupper(notes).map(([etikett, rader]) => (
                 <section key={etikett}>
-                  <h2 className="dag">{etikett}</h2>
+                  <h3 className="dag">{etikett}</h3>
                   <ul className="rader">
                     {rader.map((n) => (
                       <Rad
@@ -1324,8 +1336,16 @@ export default function App() {
               onSlåAv={() => void settLesningPå(false)}
             />
           ) : (
-            // Ingen notat åpent: spalten holder plassen sin, og sier ingenting.
-            <aside className="panel" />
+            // Ingen notat åpent. Spalten sto blank — en fjerdedel av vinduet
+            // uten navn og uten et ord om hva den er til for.
+            <aside className="panel" aria-label="Hva vi har forstått">
+              <h2>Hva vi har forstått</h2>
+              <p className="ingenting">
+                Åpne et notat, så står det her hva appen har lest ut av det:
+                hva som er bestemt, hva som er uavklart, hva du har satt deg
+                fore, og hva du har skrevet om det samme før.
+              </p>
+            </aside>
           ))}
       </div>
     </div>

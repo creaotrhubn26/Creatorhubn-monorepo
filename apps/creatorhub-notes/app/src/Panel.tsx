@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AVSLATT, PRIVAT } from "./api";
 import type { Angring, Paragraph, Retting, Tidligere, Understanding } from "./api";
 
@@ -237,7 +237,9 @@ function Tidligere_({
       {linjer.length > FØRST && !alle && (
         <p className="framdrift">
           <button className="mer" onClick={() => setAlle(true)}>
-            Vis de {linjer.length - FØRST} andre
+            {/* «Vis de 1 andre» sto det med seks koblinger. Norsk har
+                entallsform, og det er den siste som er igjen. */}
+            {linjer.length - FØRST === 1 ? "Vis den siste" : `Vis de ${linjer.length - FØRST} andre`}
           </button>
         </p>
       )}
@@ -369,14 +371,19 @@ function Linje({
           {gammel && <span className="merknad">lest {gammel}</span>}
         </span>
       </button>
-      {onFerdig && (
-        <button className="endre" onClick={onFerdig}>
-          Ferdig
+      {/* Knappene er én gruppe, så de brekker ned samlet når kortformen
+          trenger bredden. Sto de som to løse flex-barn, ville «Endre» gått
+          alene ned på neste linje. */}
+      <div className="linjeknapper">
+        {onFerdig && (
+          <button className="endre" onClick={onFerdig}>
+            Ferdig
+          </button>
+        )}
+        <button className="endre" data-endre={nøkkel} onClick={onEndre}>
+          Endre
         </button>
-      )}
-      <button className="endre" data-endre={nøkkel} onClick={onEndre}>
-        Endre
-      </button>
+      </div>
     </div>
   );
 }
@@ -436,14 +443,31 @@ export function Panel({
    *  fokus, og da faller fokus til `<body>`: neste Tab begynner på toppen av
    *  dokumentet. Rettingen har en «Endre»-knapp å gå tilbake til; banneret
    *  har ingen, og da er panelet selv nærmeste sted. */
+  const vil = useRef<string | null | undefined>(undefined);
   const tilbake = (til?: string) => {
-    queueMicrotask(() => {
-      const knapp = til
-        ? flate.current?.querySelector<HTMLElement>(`[data-endre="${CSS.escape(til)}"]`)
-        : null;
-      (knapp ?? flate.current)?.focus();
-    });
+    vil.current = til ?? null;
   };
+
+  /** Her sto `queueMicrotask`, og den kjørte før React hadde committet.
+   *  «Ferdig» flytter linja til «Gjort», og svaret på det kommer først når
+   *  lesningen har svart — så mikrooppgaven fant «Endre»-knappen React var i
+   *  ferd med å rive ut, fokuserte den, og fokus falt til `<body>` et øyeblikk
+   *  senere. Fallbacken slo ikke inn, fordi oppslaget lyktes.
+   *
+   *  En effekt kjører etter hver tegning, også den som kommer når svaret er
+   *  der, så knappen hentes ut av DOM-en slik den faktisk ble. Og den tar bare
+   *  fokus når det står på `<body>` — altså på ingen: enten rett etter
+   *  handlingen, eller fordi React nettopp rev ut det som hadde det. Har hun
+   *  flyttet fokus selv i mellomtiden, rører vi ingenting. */
+  useEffect(() => {
+    if (vil.current === undefined || document.activeElement !== document.body) return;
+    const knapp = vil.current
+      ? flate.current?.querySelector<HTMLElement>(`[data-endre="${CSS.escape(vil.current)}"]`)
+      : null;
+    (knapp ?? flate.current)?.focus();
+    // Panelet står stille; en linje kan flytte seg én gang til.
+    if (!vil.current) vil.current = undefined;
+  });
 
   const lukkSkjema = (nøkkel: string) => {
     setRedigerer(null);

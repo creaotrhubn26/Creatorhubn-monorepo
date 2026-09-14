@@ -168,7 +168,6 @@ kbd {
   width: 1px;
   height: 1px;
   padding: 0;
-  margin: -1px;
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
@@ -353,9 +352,17 @@ kbd {
    tekstbredde — seks tegn per linje. Da stables de i stedet, og siden
    ruller. Dette er også det som gjør at appen kan brukes ved 320px bredde.
 
+   Terskelen er målt, ikke gjettet. I tre spalter er skriveflaten `vindu −
+   565px` (250 + 300 til register og panel, resten padding), og skriften i
+   flata måler 7,80px per tegn i ekte norsk brødtekst. Terskelen sto på 900px,
+   der skriveflaten er 336px — 43 tegn, altså under de 45 som er nedre grense
+   for lesbar brødtekst i det hele tatt. 55 tegn er der linja slutter å være
+   en stripe: 55 × 7,80 = 429px, som er 994px vindu. Rundet opp til 1000, så
+   den første bredden med tre spalter gir 435px og 56 tegn.
+
    `height: auto` på skallet er selve knepet: uten den holder rutenettet seg
    i vinduet og stripene rulles hver for seg. */
-@media (max-width: 900px) {
+@media (max-width: 1000px) {
   .skall {
     height: auto;
     min-height: 100%;
@@ -371,7 +378,17 @@ kbd {
     border-bottom: 1px solid var(--rule);
   }
 
-  .liste,
+  /* Lista ruller for seg selv også her. Uten taket la alle 16 notatene —
+     1 335px — seg i sin helhet over notatet, og skriveflaten begynte på
+     y=1 402 (y=1 666 ved 200 % zoom): halvannen skjerm med rulling før
+     første tegn av teksten. Rekkefølgen står som den er — register, notat,
+     panel, som i spaltene og i tabbrekkefølgen — men lista tar ikke lenger
+     mer enn sin del av skjermen. */
+  .liste {
+    max-height: 45vh;
+    overflow-y: auto;
+  }
+
   .panel {
     overflow-y: visible;
   }
@@ -452,6 +469,16 @@ kbd {
 
 .rad.valgt .tittel {
   font-weight: 600;
+}
+
+/* Klokkeslettet på den raden brukeren faktisk ser på. `--ink-faint` holder
+   4,51:1 mot `--ground`, men ikke mot `--ground` med en tone over: den valgte
+   raden målte 3,72:1 i lyst tema og 3,85:1 i mørkt, og hover 3,85:1. En
+   variabel sier ikke hva som vises. `--ink-soft` måler 4,85 og 6,22 mot de
+   samme flatene. */
+.rad.valgt .tid,
+.rad:hover .tid {
+  color: var(--ink-soft);
 }
 
 /* Titler brytes over flere linjer heller enn å kuttes. En avkortet tittel er
@@ -567,17 +594,25 @@ kbd {
 .notatlinje {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 16px;
+  gap: 6px 16px;
   align-items: center;
   color: var(--ink-soft);
 }
 
 .notatlinje button {
   min-height: 44px;
-  margin-left: auto;
   padding: 0 12px;
   color: var(--ink-soft);
+  border: 1px solid var(--kant);
   border-radius: 8px;
+}
+
+/* `auto` var ment for den første knappen — den som skyver hele knapperaden
+   mot høyre kant. Sto den på hver knapp, dyttet den første knappen på en ny
+   linje seg selv helt til høyre, og raden ble stående med et hull i midten:
+   «Aldri les dette notatet ——————— Vis feltene slik de står i fila». */
+.notatlinje > button:first-of-type {
+  margin-left: auto;
 }
 
 .notatlinje button:hover {
@@ -727,15 +762,31 @@ kbd {
 }
 
 /* «Endre» står alltid der, med ord. Skjult bak hover ville den vært usynlig
-   for den som trenger den mest. */
+   for den som trenger den mest — og uten kant ser den ut som tekst.
+   `--kant` finnes nettopp fordi «knappene så ut som flater uten kant for den
+   som ser dårlig», og den sto bare i toppraden. */
+/* To knapper på én linje tar 185px av et panel på 336, og da får kortformen
+   109px: samme feil som i «Tidligere om dette», bare mindre. `flex: 1 1 60%`
+   gjør at knappene blir stående ved siden av teksten når det er én av dem, og
+   går ned under den når det er to. */
 .linjerad {
   display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
   align-items: center;
+}
+
+.linjeknapper {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
 }
 
 .linje {
   display: grid;
-  flex: 1;
+  flex: 1 1 60%;
   grid-template-columns: 18px 1fr;
   gap: 10px;
   min-width: 0;
@@ -751,6 +802,7 @@ kbd {
   padding: 0 12px;
   font-size: 0.9375rem;
   color: var(--ink-soft);
+  border: 1px solid var(--kant);
   border-radius: 8px;
 }
 
@@ -818,7 +870,6 @@ kbd {
   font-family: var(--sans);
   font-size: 0.9375rem;
   color: var(--ink-soft);
-  white-space: nowrap;
 }
 
 .panel .av,
@@ -841,12 +892,19 @@ kbd {
   margin: 0 20px 10px;
 }
 
+/* «Slå på lesning» er den ene handlingen i den tomtilstanden brukeren møter
+   først, og den sto som ren tekst uten noe som sa at den var en knapp. */
 .panel .av button,
 .panel .lesningsvalg button {
   margin: 2px 20px 0;
   min-height: 44px;
+  padding: 0 14px;
   font-family: var(--sans);
   font-size: 0.9375rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--kant);
+  border-radius: 8px;
 }
 
 .panel .lesningsvalg {
@@ -1007,19 +1065,27 @@ kbd {
 /* Det hun har tenkt om det samme før. Setningen står med ord — «du forkastet
    dette 10. september» — og under den hennes egen kortform, slik at hun kan
    se hva koblingen bygger på før hun klikker seg videre. */
+/* Setningen og avvisningen står over hverandre, ikke ved siden av. Side om
+   side fikk «Henger ikke sammen» hele sin 168px — den er `flex: none` — og
+   setningen satt igjen med 140px i et 336px panel: ett til to ord per linje,
+   305px høyde per kobling, 1 678px for fem. Knappen som bærer linja fikk
+   mindre plass enn knappen som avviser den. */
 .tidligere li {
-  display: flex;
-  align-items: center;
+  display: grid;
+  justify-items: start;
 }
 
 .tidligere li > button:first-child {
   display: block;
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   min-height: 44px;
   padding: 9px 20px;
   text-align: left;
   border-left: 3px solid transparent;
+}
+
+.tidligere li > .endre {
+  margin: 0 0 6px 20px;
 }
 
 .tidligere button:hover {
@@ -1179,7 +1245,11 @@ kbd {
   .angre button,
   .påNytt button,
   .feil button,
-  .ordbank button {
+  .ordbank button,
+  .notatlinje button,
+  .endre,
+  .panel .av button,
+  .panel .lesningsvalg button {
     border: 1px solid ButtonBorder;
   }
 
