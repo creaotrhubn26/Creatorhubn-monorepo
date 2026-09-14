@@ -135,9 +135,20 @@ type Signer = (
   expiresIn: number,
 ) => Promise<string>;
 
+type DownloadSigner = (
+  client: S3Client,
+  command: GetObjectCommand,
+  expiresIn: number,
+) => Promise<string>;
+
 export interface SoundRoomStorageDeps {
   storage?: PrivateObjectStorage | null;
   signer?: Signer;
+}
+
+export interface SoundRoomDownloadDeps {
+  storage?: PrivateObjectStorage | null;
+  signer?: DownloadSigner;
 }
 
 function normalizeContentType(value: string): string {
@@ -755,6 +766,19 @@ export async function getSoundRoomObjectStream(
     Key: objectKey,
     ...(range ? { Range: range } : {}),
   }));
+}
+
+export async function createSoundRoomObjectDownloadUrl(
+  objectKey: string,
+  expiresInSeconds = 15 * 60,
+  deps: SoundRoomDownloadDeps = {},
+): Promise<string> {
+  const storage = deps.storage === undefined ? getCreatorHubObjectStorage() : deps.storage;
+  if (!storage) throw new Error("storage_not_configured");
+  const ttl = Math.max(60, Math.min(60 * 60, Math.floor(expiresInSeconds)));
+  const command = new GetObjectCommand({ Bucket: storage.bucket, Key: objectKey });
+  const signer = deps.signer ?? ((client, request, expiresIn) => getSignedUrl(client, request, { expiresIn }));
+  return signer(storage.client, command, ttl);
 }
 
 export async function putSoundRoomDerivedObject(

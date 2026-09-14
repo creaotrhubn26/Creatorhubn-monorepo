@@ -1,7 +1,7 @@
 # Integrasjon: EaseVerse ⇄ Workspace/Sound Room ⇄ Pro Tools Companion
 
 > Implementert arkitektur og driftsrunbook for den samlede musikkprodusentflyten.
-> Sist oppdatert: 2026-09-12.
+> Sist oppdatert: 2026-09-14.
 
 ## 1. Mål
 
@@ -168,11 +168,20 @@ Server-til-server-kall bruker `x-api-key` og samme produksjonshemmelighet på be
 | CreatorHub → EaseVerse | `POST /api/v1/collab/lyrics` | Lyrics med revision/`updatedAt` |
 | CreatorHub → EaseVerse | `POST /api/v1/collab/reference` | Godkjent referansemiks |
 | EaseVerse → CreatorHub | `POST /api/audio-showcases/easeverse/keeper` | Keeper-take som review-kandidat |
+| EaseVerse → CreatorHub | `POST /api/integrations/easeverse/reference-playback` | Kortlivet avspillings-URL for siste godkjente private Sound Room-objekt |
 | CreatorHub ← EaseVerse | `GET /api/v1/collab/protools/:externalTrackId` | Pull/recovery av DAW-snapshot |
 | CreatorHub ← EaseVerse | `GET /api/v1/collab/lyrics/:externalTrackId` | Pull/recovery av lyrics |
 | CreatorHub ← EaseVerse | `GET /api/v1/collab/takes/:externalTrackId` | Import av takes |
 
 Outbox lagrer payload, `eventType`, `eventId`, forsøk, neste retry, lease, siste feil og leveringstid. Et allerede levert event med samme ID leveres ikke på nytt. CreatorHub-worker kjører hvert 15. sekund; EaseVerse sin keeper-outbox kjøres av Netlify Scheduled Functions hvert andre minutt.
+
+Referanselyd lagres ikke som en varig presignert URL. EaseVerse sitt
+autentiserte prosjekt-API validerer prosjektmedlemskap, bruker den kanoniske
+CreatorHub-koblingen og ber server-til-server om en ny én-times URL. CreatorHub
+matcher både `ownerUserId` og `audioReviewProjectId`, velger bare siste
+godkjente versjon med et aktivt privat objekt og returnerer aldri objektets
+lagringsnøkkel. Hvis oppslag eller signering feiler, returnerer EaseVerse ingen
+legacy-URL.
 
 ## 7. Databaseendringer
 
@@ -293,6 +302,16 @@ Før produksjonsrelease skal følgende passere:
 - Testen fant og rettet to avvik i kildekoden: Sound Room skal lese bitdybde,
   samplerate og varighet fra den faktiske WAV-filen, og midlertidige
   filfingeravtrykk skal ryddes også under runtime, ikke bare etter omstart.
+
+### Verifisert Android-/OAuth-flyt 14. september 2026
+
+- Google-testgruppebrukeren `daniel@creatorhubn.com` fullførte CreatorHub OAuth
+  fra den eksakte Android AAB-en med `versionCode 3`.
+- Prosjekt, Sound Room-kobling, Pro Tools-markører og Companion-status ble
+  lastet med riktig produsenttilgang; sesjonen overlevde tvungen appstopp og
+  omstart.
+- Mikrofontillatelse ble først forespurt ved opptak, 36 sekunder ekte lyd ble
+  tatt opp, spilt av og funnet igjen etter omstart.
 
 Logg aldri verdiene, og eksponer dem ikke gjennom `EXPO_PUBLIC_*` eller frontend-bundlen.
 
