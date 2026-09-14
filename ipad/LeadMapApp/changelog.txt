@@ -7,11 +7,15 @@ Leadgrid 2.2 gjør Discovery og oppfølging enklere på iPhone og iPad:
 • Tidum får fire ferdige nasjonale Discovery-profiler for barnevern og avlastning, bofellesskap og miljøarbeid, BPA og konkrete kommunale tjenestesteder.
 • Tidum får en egen Doffin-produktprofil for arbeidstid, turnus og dokumentasjon, med relevante CPV-koder og tre overvåkninger som aktiveres av prosjekteier eller admin.
 • Discovery har nå alltid synlige valg for kandidater og profiler, og Tidum får sju leadtilpassede oppfølgingsmaler.
+• CreatorHub får fire ferdige nasjonale Discovery-profiler for fotografer, video- og innholdsprodusenter, musikk- og lydprodusenter og kreative byråer/designstudioer.
+• CreatorHub-kandidater må matche relevante NACE-koder. For byråprofilen vises også dokumentert nettsidekvalitet eller en tydelig grunn når vurderingen ikke kunne utføres.
+• Åtte CreatorHub-maler tilpasses automatisk valgt lead og gjør første kontakt, oppfølging og møteinvitasjon klar til bruk.
 • Dentum har fått et komplett oppfølgingsoppsett med sju e-postmaler laget for tannklinikker.
 • Malene tilpasses automatisk valgt klinikk, kontaktperson, område og leadstatus, og kan redigeres før de åpnes i e-postappen.
 • Ny personvernkontroll blokkerer markedsføring til personadresser og uavklarte adresser uten dokumentert grunnlag. «Nei takk» gjelder i hele organisasjonen.
 • Dentum-data holdes strengt adskilt fra andre prosjekter. Også Pondus-maler, økter og resultatstatistikk følger nå det valgte kundeprosjektet.
 • Leadbook, Møter, Pondus, Kvalitet og Anbud er forbedret for iPad mini og kompakte visninger.
 • Aktivt prosjekt vises nå i alle hovedfaner, og Anbud-headeren er rettet på iPad mini.
+• Discovery forblir åpen når prosjektet blir ferdig bekreftet i bakgrunnen, samtidig som data fra forrige prosjekt tømmes før det nye lastes.
 • Navigasjon, toppfelt og prosjektvelger fungerer bedre med store tekststørrelser.
 • Discovery-kandidater må fortsatt godkjennes før de opprettes som leads.
