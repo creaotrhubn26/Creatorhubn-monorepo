@@ -342,7 +342,7 @@ describe("Leadgrid domain onboarding classification", () => {
     );
   });
 
-  it("repairs MedSide metadata and creates five medical Discovery profiles", () => {
+  it("repairs MedSide metadata and creates six medical Discovery profiles", () => {
     const plan = buildProjectOnboardingPlan(
       "https://medside.no",
       "medside.no",
@@ -371,6 +371,7 @@ describe("Leadgrid domain onboarding classification", () => {
     });
     expect(plan.recommended_profiles.map((item) => item.template_key)).toEqual([
       "medside.gp_offices",
+      "medside.gp_offices_brreg",
       "medside.medical_specialists",
       "medside.physiotherapy",
       "medside.chiropractic",
@@ -378,12 +379,13 @@ describe("Leadgrid domain onboarding classification", () => {
     ]);
     expect(plan.recommended_profiles.map((item) => item.name)).toEqual([
       "Fastlegekontor – Norge",
+      "Legekontor (Enhetsregisteret) – Norge",
       "Private spesialistklinikker – Norge",
       "Fysioterapi og ergoterapi – Norge",
       "Kiropraktorer – Norge",
       "Psykolog- og psykoterapitjenester – Norge",
     ]);
-    expect(plan.recommended_profiles).toHaveLength(5);
+    expect(plan.recommended_profiles).toHaveLength(6);
     expect(
       plan.recommended_profiles.filter((item) => item.is_default),
     ).toHaveLength(1);
@@ -404,14 +406,32 @@ describe("Leadgrid domain onboarding classification", () => {
       target_count: 60,
       minimum_fit_score: 70,
     });
-    expect(plan.recommended_profiles[1].brief.industry_queries).toEqual([
+    // Samme målgruppe som fastlegeprofilen, men gjennom Enhetsregisteret og
+    // uten å påstå at fastlegeavtalen er bekreftet.
+    expect(plan.recommended_profiles[1].brief).toMatchObject({
+      registry_source: "brreg_open_data",
+      industry_queries: ["86.210"],
+      qualification_terms: [
+        "legekontor",
+        "legesenter",
+        "legepraksis",
+        "fastlege",
+      ],
+      qualification_requirement: "preferred",
+      target_count: 60,
+      minimum_fit_score: 70,
+    });
+    expect(plan.recommended_profiles[1].brief.exclusion_terms).toEqual(
+      expect.arrayContaining(["legevakt", "bedriftshelsetjeneste"]),
+    );
+    expect(plan.recommended_profiles[2].brief.industry_queries).toEqual([
       "86.221",
       "86.222",
     ]);
-    expect(plan.recommended_profiles[2].brief.industry_queries).toEqual([
+    expect(plan.recommended_profiles[3].brief.industry_queries).toEqual([
       "86.950",
     ]);
-    expect(plan.recommended_profiles[3].brief).toMatchObject({
+    expect(plan.recommended_profiles[4].brief).toMatchObject({
       organization_name_queries: [
         "kiropraktor",
         "kiropraktikk",
@@ -419,7 +439,7 @@ describe("Leadgrid domain onboarding classification", () => {
       ],
       qualification_requirement: "required",
     });
-    expect(plan.recommended_profiles[4].brief.industry_queries).toEqual([
+    expect(plan.recommended_profiles[5].brief.industry_queries).toEqual([
       "86.930",
     ]);
   });
@@ -1764,6 +1784,7 @@ describe("Leadgrid MedSide legacy Discovery migration", () => {
     expect(plan.website_domain).toBe("medside.no");
     expect(plan.recommended_profiles.map((item) => item.template_key)).toEqual([
       "medside.gp_offices",
+      "medside.gp_offices_brreg",
       "medside.medical_specialists",
       "medside.physiotherapy",
       "medside.chiropractic",
@@ -1771,10 +1792,24 @@ describe("Leadgrid MedSide legacy Discovery migration", () => {
     ]);
     expect(
       new Set(plan.recommended_profiles.map((item) => item.template_key)).size,
-    ).toBe(5);
+    ).toBe(6);
     expect(plan.recommended_profiles[0].brief.registry_source).toBe(
       "nhn_flr_public",
     );
+    // Det operative alternativet til FLR treffer samme målgruppe gjennom
+    // Enhetsregisteret, uten å påstå at fastlegeavtalen er bekreftet.
+    expect(plan.recommended_profiles[1]).toMatchObject({
+      template_key: "medside.gp_offices_brreg",
+      is_default: false,
+      brief: {
+        registry_source: "brreg_open_data",
+        industry_queries: ["86.210"],
+        qualification_requirement: "preferred",
+      },
+    });
+    expect(
+      plan.recommended_profiles.filter((item) => item.is_default),
+    ).toHaveLength(1);
   });
 
   it("retires the migrated legekontor profile and hands the default to a runnable BRREG profile", async () => {
@@ -1791,9 +1826,10 @@ describe("Leadgrid MedSide legacy Discovery migration", () => {
     expect(harness.createdProjects()).toBe(0);
 
     const active = harness.profiles.filter((row) => row.status !== "archived");
-    expect(active).toHaveLength(5);
+    expect(active).toHaveLength(6);
     expect(active.map((row) => row.template_key)).toEqual([
       "medside.gp_offices",
+      "medside.gp_offices_brreg",
       "medside.medical_specialists",
       "medside.physiotherapy",
       "medside.chiropractic",
@@ -1806,8 +1842,9 @@ describe("Leadgrid MedSide legacy Discovery migration", () => {
     const defaults = active.filter((row) => row.is_default);
     expect(defaults).toHaveLength(1);
     // The Fastlegeregister profile cannot run without Maskinporten, so it must
-    // not be the entry point the project opens on.
-    expect(defaults[0].template_key).toBe("medside.medical_specialists");
+    // not be the entry point the project opens on. The BRREG variant covers the
+    // same audience and can actually run.
+    expect(defaults[0].template_key).toBe("medside.gp_offices_brreg");
   });
 
   it("creates nothing new when the same commit is replayed", async () => {
@@ -1833,7 +1870,7 @@ describe("Leadgrid MedSide legacy Discovery migration", () => {
     ).toHaveLength(0);
     expect(harness.profiles).toHaveLength(afterFirst.length);
     const active = harness.profiles.filter((row) => row.status !== "archived");
-    expect(active).toHaveLength(5);
+    expect(active).toHaveLength(6);
     expect(active.filter((row) => row.is_default)).toHaveLength(1);
     expect(
       harness.profiles.find((row) => row.id === legacyProfileId),

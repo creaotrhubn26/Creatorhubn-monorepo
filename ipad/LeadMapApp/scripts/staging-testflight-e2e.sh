@@ -870,10 +870,10 @@ if [[ "$run_medside_e2e" == "1" ]]; then
     .preview.project_name == "MedSide" and
     .preview.category == "KI-basert klinisk dokumentasjon" and
     .preview.category_confidence == "high" and
-    (.preview.recommended_profiles | length) == 5 and
+    (.preview.recommended_profiles | length) == 6 and
     ([.preview.recommended_profiles[].template_key] | sort) ==
-      (["medside.chiropractic", "medside.gp_offices", "medside.medical_specialists", "medside.physiotherapy", "medside.psychology"] | sort) and
-    ([.preview.recommended_profiles[].template_key] | unique | length) == 5 and
+      (["medside.chiropractic", "medside.gp_offices", "medside.gp_offices_brreg", "medside.medical_specialists", "medside.physiotherapy", "medside.psychology"] | sort) and
+    ([.preview.recommended_profiles[].template_key] | unique | length) == 6 and
     ([.preview.recommended_profiles[] | select(.is_default == true)] | length) == 1 and
     ([.preview.recommended_profiles[].brief.country_code] | unique) == ["NO"] and
     ([.preview.recommended_profiles[].brief.city] | all(. == null)) and
@@ -881,6 +881,9 @@ if [[ "$run_medside_e2e" == "1" ]]; then
     ([.preview.recommended_profiles[].auto_discover_enabled] | all(. == false)) and
     (.preview.recommended_profiles[] | select(.template_key == "medside.gp_offices") |
       .brief.registry_source == "nhn_flr_public" and .brief.industry_queries == ["86.210"]) and
+    (.preview.recommended_profiles[] | select(.template_key == "medside.gp_offices_brreg") |
+      .brief.registry_source == "brreg_open_data" and .brief.industry_queries == ["86.210"] and
+      .is_default == false and .brief.qualification_requirement == "preferred") and
     (.preview.recommended_profiles[] | select(.template_key == "medside.medical_specialists") |
       .brief.registry_source == "brreg_open_data" and .brief.industry_queries == ["86.221", "86.222"]) and
     (.preview.recommended_profiles[] | select(.template_key == "medside.physiotherapy") |
@@ -921,8 +924,8 @@ if [[ "$run_medside_e2e" == "1" ]]; then
   jq -e --arg project_id "$medside_project_id" '
     .project.id == $project_id and
     .project.name == "MedSide" and
-    ([.profiles[] | select((.template_key // "") | startswith("medside."))] | length) == 5 and
-    ([.profiles[] | select((.template_key // "") | startswith("medside.")) | .template_key] | unique | length) == 5 and
+    ([.profiles[] | select((.template_key // "") | startswith("medside."))] | length) == 6 and
+    ([.profiles[] | select((.template_key // "") | startswith("medside.")) | .template_key] | unique | length) == 6 and
     .access.discovery_access_verified == true
   ' <<<"$medside_commit" >/dev/null
   echo "STAGING_E2E_STAGE=medside_project_committed"
@@ -935,9 +938,9 @@ if [[ "$run_medside_e2e" == "1" ]]; then
   # Fem autoritative profiler, ingen legacy-blindvei, nøyaktig én standard, og
   # standarden må kunne kjøres i dette miljøet.
   if ! jq -e '
-    (.profiles | length) == 5 and
-    ([.profiles[] | select((.template_key // "") | startswith("medside."))] | length) == 5 and
-    ([.profiles[].template_key] | unique | length) == 5 and
+    (.profiles | length) == 6 and
+    ([.profiles[] | select((.template_key // "") | startswith("medside."))] | length) == 6 and
+    ([.profiles[].template_key] | unique | length) == 6 and
     ([.profiles[] | select(.is_default == true)] | length) == 1 and
     ([.profiles[] | select(.is_default == true) | .blocked_reason] | all(. == null)) and
     ([.profiles[].approval_mode] | all(. == "manual")) and
@@ -982,8 +985,8 @@ if [[ "$run_medside_e2e" == "1" ]]; then
   jq -e --arg project_id "$medside_project_id" '
     .project.id == $project_id and
     .reused_project == true and
-    ([.profiles[] | select((.template_key // "") | startswith("medside."))] | length) == 5 and
-    ([.profiles[] | select((.template_key // "") | startswith("medside.")) | .template_key] | unique | length) == 5 and
+    ([.profiles[] | select((.template_key // "") | startswith("medside."))] | length) == 6 and
+    ([.profiles[] | select((.template_key // "") | startswith("medside.")) | .template_key] | unique | length) == 6 and
     ([.profiles[] | select(.is_default == true)] | length) == 1
   ' <<<"$medside_replay" >/dev/null
   echo "STAGING_E2E_STAGE=medside_reuse_without_duplicates_verified"
@@ -993,8 +996,8 @@ if [[ "$run_medside_e2e" == "1" ]]; then
     # gjøre kampanjen rød; den er allerede verifisert som ærlig blokkert over.
     medside_runnable_profiles="$(jq '[.profiles[] | select(.status == "active" and .blocked_reason == null and ((.template_key // "") | startswith("medside.")))]' <<<"$medside_profiles")"
     medside_runnable_count="$(jq 'length' <<<"$medside_runnable_profiles")"
-    if [[ "$medside_runnable_count" -lt 4 ]]; then
-      echo "Forventet minst fire kjørbare BRREG-profiler for MedSide, fant $medside_runnable_count." >&2
+    if [[ "$medside_runnable_count" -lt 5 ]]; then
+      echo "Forventet minst fem kjørbare BRREG-profiler for MedSide, fant $medside_runnable_count." >&2
       exit 14
     fi
     medside_campaign_payload="$(jq -n \

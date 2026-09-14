@@ -1258,7 +1258,7 @@ function buildMedSideOnboardingPlan(
     classification_reasons: [
       "Domenet er verifisert som MedSide.",
       "Nettsiden beskriver KI-basert klinisk dokumentasjon for helsepersonell.",
-      "Målgruppene er delt i fem autoritative, nasjonale Discovery-profiler.",
+      "Målgruppene er delt i seks autoritative, nasjonale Discovery-profiler.",
     ],
     brand_profile: brandProfile,
     recommended_profiles: [
@@ -1277,6 +1277,33 @@ function buildMedSideOnboardingPlan(
           registrySource: "nhn_flr_public",
         }),
         true,
+      ),
+      // Operativt alternativ til Fastlegeregisteret. BRREG kjenner
+      // næringskoden, men ikke fastlegeavtalen, så et treff her er et
+      // legekontor — ikke et bekreftet fastlegekontor. Kvalifiser mot FLR
+      // før kontoret behandles som det.
+      nationalDiscoveryProfilePlan(
+        "medside.gp_offices_brreg",
+        "Legekontor (Enhetsregisteret) – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["86.210"],
+          exclusions: [
+            ...commonExclusions,
+            "legevakt",
+            "bedriftshelsetjeneste",
+          ],
+          idealCustomer:
+            "Aktivt norsk legekontor eller legesenter registrert på allmenn legetjeneste. Fastlegeavtalen er ikke bekreftet av denne kilden og må kvalifiseres manuelt.",
+          goal: "Finne legekontor fra Enhetsregisteret når Fastlegeregisteret ikke er tilgjengelig, uten å påstå at fastlegeavtalen er verifisert.",
+          targetCount: 60,
+          minimumFitScore: 70,
+          qualificationTerms: [
+            "legekontor",
+            "legesenter",
+            "legepraksis",
+            "fastlege",
+          ],
+        }),
       ),
       nationalDiscoveryProfilePlan(
         "medside.medical_specialists",

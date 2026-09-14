@@ -2006,7 +2006,7 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(app.scrollViews["discovery.profiles.workspace"].waitForExistence(timeout: 12))
         let profileCount = app.staticTexts["discovery.profile.count"]
         XCTAssertTrue(profileCount.waitForExistence(timeout: 12))
-        XCTAssertEqual(profileCount.label, "5 profiler")
+        XCTAssertEqual(profileCount.label, "6 profiler")
         // Den migrerte legacyprofilen skal være borte, ikke bare skjøvet ned.
         XCTAssertFalse(app.staticTexts["Standard"].exists)
         XCTAssertTrue(app.buttons["discovery.campaign.start"].exists)
