@@ -74,6 +74,29 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
     persistAuthSession,
   } = deps;
 
+  // Kun en super_admin kan dele ut eller fjerne super_admin. Uten denne kunne
+  // enhver admin-sesjon PATCH-e sin egen bruker til super_admin og dermed
+  // låse opp super_admin-gatede flater (affiliate/utbetalinger m.fl.).
+  const isSuperAdminRole = (role: unknown): boolean =>
+    String(role || "").trim().toLowerCase() === "super_admin";
+
+  const denySuperAdminRoleChange = (
+    session: { role?: string } | null | undefined,
+    nextRole: string | undefined,
+    currentRole: string | undefined,
+    res: express.Response,
+  ): boolean => {
+    const touchesSuperAdmin =
+      isSuperAdminRole(nextRole) ||
+      (nextRole !== undefined &&
+        !isSuperAdminRole(nextRole) &&
+        isSuperAdminRole(currentRole));
+    if (!touchesSuperAdmin) return false;
+    if (isSuperAdminRole(session?.role)) return false;
+    res.status(403).json({ error: "super_admin_tilgang_kreves" });
+    return true;
+  };
+
   app.get("/api/admin/users", async (req, res) => {
     try {
       if (!requireAdminSession(req, res)) {
@@ -96,7 +119,8 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
 
   app.post("/api/admin/users", async (req, res) => {
     try {
-      if (!requireAdminSession(req, res)) {
+      const adminSession = requireAdminSession(req, res);
+      if (!adminSession) {
         return;
       }
       const email = toAdminString(req.body?.email)?.toLowerCase();
@@ -109,6 +133,9 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
       const businessName = toAdminString(req.body?.businessName);
       const organizationNumber = toAdminString(req.body?.organizationNumber);
       const requestedRole = normalizeAdminRoleId(req.body?.role);
+      if (denySuperAdminRoleChange(adminSession, requestedRole, undefined, res)) {
+        return;
+      }
       const profession = resolveAdminProfessionForPersistence({
         profession: req.body?.profession ?? req.body?.userType,
         roleId: requestedRole,
@@ -192,7 +219,8 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
 
   app.patch("/api/admin/users/:id", async (req, res) => {
     try {
-      if (!requireAdminSession(req, res)) {
+      const adminSession = requireAdminSession(req, res);
+      if (!adminSession) {
         return;
       }
       const userView = await resolveAdminUserView(req.params.id);
@@ -225,6 +253,9 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
       const inviteRequestId = toAdminString(userView.inviteRequestId);
       const accountUserId = toAdminString(userView.accountUserId);
       const currentRole = normalizeAdminRoleId(userView.role);
+      if (denySuperAdminRoleChange(adminSession, nextRole, currentRole, res)) {
+        return;
+      }
       const currentProfession = toAdminString(userView.profession);
       const nextProfession =
         req.body?.profession !== undefined
