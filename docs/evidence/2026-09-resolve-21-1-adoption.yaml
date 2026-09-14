@@ -24,7 +24,16 @@ version_scope: "21.1"
 publication_date: "2026-09-14"
 evidence_summary: >
   repo-intelligence found apps/resolve-script-manager already targets 21.1,
-  merged 2026-09-12 (PR #2257) — 2 days before this run's release detection:
+  merged via PR #2213 ("feat(post-agent): Resolve 21.1 MCP workflows
+  (v0.3.97)", commit 80493637, author daniel@creatorhubn.com), opened and
+  merged 2026-09-09T23:33-23:40Z — the same day as (or within ~2 days of)
+  the vendor release itself, and 5 days before this run's formal detection
+  on 2026-09-14. CORRECTION (post-review): the original version of this
+  file cited PR #2257 (2026-09-12, an unrelated Leadgrid Tidum merge) —
+  `git log -- <path>` on this session's clone only surfaced the last merge
+  commit touching main for these files, not the originating PR; the GitHub
+  API (list_commits with path filter) gave the correct PR/commit/author/date.
+  Flagged by chatgpt-codex-connector's review of this PR (2026-09-14).
   - python/bridge.py: version-gated feature detection
     (`is_21_1_or_newer = version_parts >= (21, 1)`), capability flags for
     nativeMulticam/timelineAutoAlign/multicamSmartSwitch/mediaTranscription/

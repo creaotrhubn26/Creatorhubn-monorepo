@@ -4,13 +4,29 @@ claim: >
   breaking changes (v20: indexed array param serialization; v21: decimal
   fields become Stripe.Decimal, Node 16 dropped; v22: ES6-class
   constructor, callback support removed, per-request host/key overrides
-  removed). Separately, Stripe's legacy usage-record metering API (which
-  backend/server/storage-quota-service.ts depends on via
-  `stripe_storage_meter_item_id`) was removed at API version
-  2025-03-31.basil; our hardcoded apiVersion pins
-  (2025-01-27.acacia in lead-map-routes.ts, 2024-12-18.acacia in two
-  backend/scripts/*.mjs) all predate that removal, which is currently what
-  keeps legacy metering working.
+  removed).
+  CORRECTION (post-review, 2026-09-14): the original version of this claim
+  said our apiVersion pins are "currently what keeps legacy metering
+  working" — that is WRONG and was caught by chatgpt-codex-connector's
+  review of this PR. Verified directly against the installed package:
+  `backend/server/storage-quota-service.ts:390` constructs its Stripe
+  client as `new Stripe(stripeKey)` with NO apiVersion at all — the pins
+  elsewhere in the repo do not govern this call site. Worse: fetching and
+  extracting the actual stripe@19.3.0 tarball from the npm registry
+  (registry.npmjs.org/stripe/-/stripe-19.3.0.tgz) shows
+  `cjs/resources/SubscriptionItems.js` exposes only
+  create/retrieve/update/list/del — `createUsageRecord` does NOT exist on
+  this resource in v19.3.0 at all (confirmed by reading the generated
+  resource file directly, not just types). The call at
+  storage-quota-service.ts:397 (`(stripe as any).subscriptionItems
+  .createUsageRecord(...)`, guarded by a `@ts-ignore` that already
+  signals the author suspected a type mismatch) throws a TypeError at
+  runtime on every invocation, which the surrounding try/catch swallows
+  into `{ pushed: false, reason: "stripe_error: ..." }` — logged via
+  console.error but not raised as a hard failure anywhere else found in
+  this pass. This is a PRESENT, CONFIRMED bug: storage-overage billing has
+  not been pushing usage to Stripe, not a hypothetical future risk from an
+  eventual SDK upgrade.
 source_type: official_changelog
 source: >
   github.com/stripe/stripe-node/blob/master/CHANGELOG.md (Verified — direct
@@ -33,26 +49,39 @@ evidence_summary: >
   når brukeren overskrider grensen", stripe_storage_meter_item_id column) —
   this is exactly the legacy Meter/usage-record surface Stripe is sunsetting.
 interpretation: >
-  Not urgent — we are not on v22 and our pinned API versions still serve
-  legacy metering. But the gap is a standing risk: any future stripe-node
-  upgrade to v20+ (e.g. to consume a new feature) forces the v20-v22
-  breaking-change gauntlet AND simultaneously risks legacy usage-record
-  metering if the apiVersion pin is bumped past 2025-03-31.basil at the
-  same time — two unrelated changes that would land in the same upgrade PR
-  unless deliberately staged.
+  URGENT, independent of the SDK-version-gap question: storage overage
+  billing is silently broken right now, on the CURRENT pinned SDK (v19.3.0)
+  — this has nothing to do with whether/when we upgrade stripe-node or bump
+  apiVersion. The SDK-gap analysis (v20-v22 breaking changes, apiVersion
+  interaction) remains valid as a SEPARATE, real concern for any future
+  upgrade, but must not be read as the reason metering is "still working" —
+  it currently is not.
 project_impact: >
-  backend/server/storage-quota-service.ts (legacy metering, at risk if
-  apiVersion pin is ever bumped without a parallel Meters API migration);
-  backend/server/role-room-affiliate-payouts.ts, leadgrid-billing-service.ts,
-  editing-payments-service.ts, dance-billing-service.ts (all would need the
-  v22 migration-guide changes — ESM/class constructor, no callbacks — if
-  the SDK is ever bumped).
-confidence: strong_evidence
+  backend/server/storage-quota-service.ts:390-410 (pushUsageToStripe or
+  equivalent) — every overage-billing sync call for users on metered
+  storage plans fails and is swallowed, meaning affected users' storage
+  overage is not being reported to Stripe and is very likely not being
+  billed. Scope of "how long"/"how many users" NOT established this run —
+  needs a human/finance-visible follow-up, not just a doc-intel note.
+  Separately: backend/server/role-room-affiliate-payouts.ts,
+  leadgrid-billing-service.ts, editing-payments-service.ts,
+  dance-billing-service.ts would all need the v22 migration-guide changes
+  if the SDK is ever bumped — unaffected by the bug above.
+confidence: verified
 decision: >
-  HOLD on upgrading stripe-node for now — no forcing function this run.
-  When storage-quota-service.ts's legacy metering is next touched, migrate
-  it to the Billing Meters API (see 2026-09-14-impact.md Produktmuligheter)
-  BEFORE bumping the apiVersion pin past 2025-03-31.basil, not after.
+  Two separate decisions:
+  (1) The storage-overage billing bug is CONFIRMED and live — this needs a
+  dedicated, tested fix (likely: replace subscriptionItems.createUsageRecord
+  with the current metered-billing call for v19.3.0, or migrate straight to
+  the Billing Meters API) in its own PR, not a speculative fix bundled into
+  this docs-only report. Flagged to the user directly rather than
+  auto-fixed here, given real revenue/billing consequences and the need for
+  someone to check historical impact (how much unbilled overage exists).
+  (2) HOLD on the stripe-node v19→v22 SDK upgrade itself — no forcing
+  function this run, but do the Meters API migration (see
+  2026-09-14-impact.md Produktmuligheter) BEFORE bumping the apiVersion
+  pin past 2025-03-31.basil, once the bug in (1) is fixed on the current
+  SDK first.
 affected:
   - backend/server/storage-quota-service.ts
   - backend/server/lead-map-routes.ts (apiVersion pin)
@@ -65,3 +94,15 @@ lesson: >
   evidence record. Track the SDK major version explicitly alongside the
   apiVersion pin going forward — they are two independent axes that can
   each break the other's assumptions.
+  SECOND lesson (post-review correction): when a `@ts-ignore` sits directly
+  above a call into a pinned dependency, that is itself a signal worth
+  chasing — it usually means a prior author already suspected the type
+  didn't match the runtime and suppressed the check instead of resolving
+  it. This run initially read the surrounding apiVersion pins and reasoned
+  about compatibility without opening the actual installed package; a
+  wrong-but-plausible claim ("pins keep it working") went into a written
+  evidence record and would have stood as fact if a review bot had not
+  caught it. api-validator-style claims about "does method X exist on
+  version Y" must be checked against the real installed/pinned artifact
+  (npm tarball, in this case) before being recorded as fact, not inferred
+  from adjacent version numbers.

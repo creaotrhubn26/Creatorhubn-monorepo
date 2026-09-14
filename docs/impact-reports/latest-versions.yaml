@@ -23,9 +23,9 @@ vendors:
     checked_at: "2026-09-14"
     impact_report: docs/impact-reports/2026-09-14-impact.md
     note: >
-      Code in apps/resolve-script-manager already targets 21.1 (merged
-      2026-09-12, 2 days before this run detected the release formally) —
-      see evidence/2026-09-resolve-21-1-adoption.yaml.
+      Code in apps/resolve-script-manager already targets 21.1 (merged via
+      PR #2213, 2026-09-09 — corrected post-review, was misattributed to
+      PR #2257/2026-09-12) — see evidence/2026-09-resolve-21-1-adoption.yaml.
 
   xcode-apple-sdk:
     product: Xcode / Apple SDK
