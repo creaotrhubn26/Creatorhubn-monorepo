@@ -73,6 +73,12 @@ import {
   USER_EVENTS_WS_PATH,
 } from "./realtime-user-events.js";
 import { USER_EVENTS_PROTOCOL_VERSION } from "../../frontend/shared/realtime-user-events-contract.js";
+import {
+  presignProToolsCompanionArtifact,
+  proToolsCompanionUpdaterManifest,
+  publicProToolsCompanionRelease,
+  resolveProToolsCompanionRelease,
+} from "./protools-companion-release-service.js";
 
 export interface ProToolsCompanionDeps {
   app: express.Application;
@@ -383,58 +389,30 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
 
   // ════════════════════════ NEDLASTING (release-info) ═════════════════════════════
 
-  // Auto-oppdager companion-installerene fra GitHub-release-en `protools-companion-v*`.
-  // Klassifiserer assets på filnavn (mac arm/intel .dmg, Windows .msi/.exe). Nye
-  // plattformer (Windows) dukker opp automatisk når CI har bygget dem. 5 min cache.
-  const REPO_SLUG = "creaotrhubn26/Creatorhubn-monorepo";
-  const MAC_ARM_FALLBACK = "https://github.com/creaotrhubn26/Creatorhubn-monorepo/releases/download/protools-companion-v0.1.0/CreatorHub-ProTools-Companion_0.1.0_aarch64.dmg";
-  let releaseCache: { at: number; data: any } | null = null;
-
-  function classifyAsset(name: string): { os: string; arch: string; format: string; signed: boolean } | null {
-    const n = name.toLowerCase();
-    // `unsigned` inneholder ordet `signed`, så det må eksplisitt utelukkes.
-    // Signaturstatusen kommer fra release-pipelinens kontrollerte asset-navn.
-    const explicitlyUnsigned = /(?:^|[_-])unsigned(?:[_.-]|$)/.test(n);
-    const signed = !explicitlyUnsigned && /(?:^|[_-])signed(?:-notarized)?(?:[_.-]|$)/.test(n);
-    if (n.endsWith(".dmg")) {
-      if (n.includes("aarch64") || n.includes("arm64")) return { os: "macOS", arch: "Apple Silicon", format: "DMG", signed };
-      if (n.includes("x64") || n.includes("x86_64") || n.includes("intel")) return { os: "macOS", arch: "Intel", format: "DMG", signed };
-      return { os: "macOS", arch: "Universal", format: "DMG", signed };
-    }
-    if (n.endsWith(".msi")) return { os: "Windows", arch: "x64", format: "MSI", signed };
-    if (n.endsWith("-setup.exe") || n.endsWith(".exe")) return { os: "Windows", arch: "x64", format: "EXE", signed };
-    return null;
-  }
-
-  async function resolveCompanionRelease(): Promise<any> {
-    if (releaseCache && Date.now() - releaseCache.at < 5 * 60 * 1000) return releaseCache.data;
-    const data: any = { version: "0.1.0", downloads: [] };
-    try {
-      const resp = await fetch(`https://api.github.com/repos/${REPO_SLUG}/releases?per_page=30`, {
-        headers: { "User-Agent": "creatorhub-protools", Accept: "application/vnd.github+json" },
-      });
-      if (resp.ok) {
-        const rels: any[] = await resp.json();
-        const rel = rels.find((r) => String(r.tag_name || "").startsWith("protools-companion-") && !r.draft);
-        if (rel) {
-          data.version = String(rel.tag_name).replace("protools-companion-v", "");
-          for (const a of rel.assets || []) {
-            const c = classifyAsset(String(a.name || ""));
-            if (!c) continue;
-            data.downloads.push({ os: c.os, arch: c.arch, format: c.format, url: a.browser_download_url, sizeBytes: a.size, signed: c.signed });
-          }
-        }
-      }
-    } catch { /* faller til fallback under */ }
-    if (!data.downloads.length) data.downloads.push({ os: "macOS", arch: "Apple Silicon", format: "DMG", url: MAC_ARM_FALLBACK, sizeBytes: 4867544, signed: false });
-    releaseCache = { at: Date.now(), data };
-    return data;
-  }
-
-  // GET /api/protools/companion/release — versjon, ikon, og nedlastinger pr plattform.
+  // Release-metadata og filer leses utelukkende fra CreatorHub sin private S3-
+  // distribusjon. Fil-id-en slås opp i det validerte manifestet før en kort URL
+  // signeres, slik at endepunktet aldri kan brukes til vilkårlige S3-nøkler.
   app.get("/api/protools/companion/release", async (_req, res) => {
-    const r = await resolveCompanionRelease();
-    res.json({ ...r, icon: "/protools-companion-icon.png" });
+    const release = await resolveProToolsCompanionRelease();
+    if (!release) return res.status(503).json({ error: "companion_release_unavailable" });
+    return res.json({ ...publicProToolsCompanionRelease(release), icon: "/protools-companion-icon.png" });
+  });
+
+  app.get("/api/protools/companion/download/:version/:artifactId", async (req, res) => {
+    const release = await resolveProToolsCompanionRelease(String(req.params.version || ""));
+    if (!release) return res.status(503).json({ error: "companion_release_unavailable" });
+    const url = await presignProToolsCompanionArtifact(release, String(req.params.artifactId || ""));
+    if (!url) return res.status(404).json({ error: "companion_artifact_not_found" });
+    res.setHeader("Cache-Control", "private, no-store");
+    return res.redirect(302, url);
+  });
+
+  app.get("/api/protools/companion/updater/latest", async (_req, res) => {
+    const release = await resolveProToolsCompanionRelease();
+    if (!release) return res.status(503).json({ error: "companion_release_unavailable" });
+    const publicBaseUrl = process.env.CREATORHUB_PUBLIC_APP_URL?.trim() || "https://www.creatorhubn.com";
+    res.setHeader("Cache-Control", "public, max-age=60, must-revalidate");
+    return res.json(proToolsCompanionUpdaterManifest(release, publicBaseUrl));
   });
 
   // Readiness target for Render/uptime monitoring. No tenant data is exposed.
