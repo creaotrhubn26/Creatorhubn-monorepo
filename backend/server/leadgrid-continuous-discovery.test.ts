@@ -616,27 +616,28 @@ describe("Fastlegeregister supersedes the BRREG stand-in", () => {
     });
   }
 
-  it("does nothing while Maskinporten is unconfigured", async () => {
-    const query = vi.fn(async () => ({ rows: [], rowCount: 0 }));
-    await withFlrEnvironment(false, () =>
-      __test.pauseProfilesSupersededByFlr({ query } as unknown as Pool),
-    );
-    expect(query).not.toHaveBeenCalled();
-  });
+  function poolWith(rowCount: number) {
+    const query = vi.fn(async () => ({ rows: [], rowCount }));
+    return { query, pool: { query } as unknown as Pool };
+  }
 
-  it("pauses the stand-in and hands the default to the authoritative profile", async () => {
-    const query = vi.fn(async () => ({ rows: [], rowCount: 1 }));
+  it("pauses the stand-in and hands the default over when Maskinporten is configured", async () => {
+    const { query, pool } = poolWith(1);
     await withFlrEnvironment(true, () =>
-      __test.pauseProfilesSupersededByFlr({ query } as unknown as Pool),
+      __test.reconcileFlrSupersededProfiles(pool),
     );
 
     expect(query).toHaveBeenCalledOnce();
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
-    expect(params).toEqual(["medside.gp_offices", "medside.gp_offices_brreg"]);
+    expect(params).toEqual([
+      "medside.gp_offices",
+      "medside.gp_offices_brreg",
+      "nhn_flr_public",
+    ]);
     expect(sql).toContain("SET status = 'paused'");
-    expect(sql).toContain("'auto_paused_by', 'nhn_flr_public'");
-    // The stand-in is paused only where the authoritative profile is actually
-    // present and active, so a project is never left without GP coverage.
+    expect(sql).toContain("'auto_paused_held_default', superseded.is_default");
+    // Paused only where the authoritative profile is present and active, so no
+    // project is left without GP coverage.
     expect(sql).toContain("authoritative.template_key = $1");
     expect(sql).toContain("authoritative.status = 'active'");
     // A user who re-activates it keeps it: the marker blocks a second pause.
@@ -645,13 +646,45 @@ describe("Fastlegeregister supersedes the BRREG stand-in", () => {
     expect(sql).toContain("paused.was_default");
   });
 
+  it("restores the stand-in and takes the default back when Maskinporten goes away", async () => {
+    const { query, pool } = poolWith(1);
+    await withFlrEnvironment(false, () =>
+      __test.reconcileFlrSupersededProfiles(pool),
+    );
+
+    expect(query).toHaveBeenCalledOnce();
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(params).toEqual([
+      "medside.gp_offices",
+      "medside.gp_offices_brreg",
+      "nhn_flr_public",
+    ]);
+    expect(sql).toContain("SET status = 'active'");
+    // Only profiles this reconcile paused are ever restored.
+    expect(sql).toContain(
+      "fallback.source_config->>'auto_paused_by' = $3::text",
+    );
+    expect(sql).toContain("fallback.status = 'paused'");
+    // The marker is cleared, so a later Maskinporten setup can pause it again.
+    expect(sql).toContain("- 'auto_paused_by' - 'auto_paused_held_default'");
+    // The default comes back only if the stand-in held it and the authoritative
+    // profile still has it — or if the project lost its default entirely.
+    expect(sql).toContain("auto_paused_held_default");
+    expect(sql).toContain("sibling.is_default");
+  });
+
   it("never fails the poller tick when the reconcile query errors", async () => {
     const query = vi.fn(async () => {
       throw new Error("connection terminated");
     });
     await expect(
       withFlrEnvironment(true, () =>
-        __test.pauseProfilesSupersededByFlr({ query } as unknown as Pool),
+        __test.reconcileFlrSupersededProfiles({ query } as unknown as Pool),
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      withFlrEnvironment(false, () =>
+        __test.reconcileFlrSupersededProfiles({ query } as unknown as Pool),
       ),
     ).resolves.toBeUndefined();
   });
