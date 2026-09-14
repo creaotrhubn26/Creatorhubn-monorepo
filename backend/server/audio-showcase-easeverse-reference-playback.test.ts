@@ -48,7 +48,8 @@ describe("EaseVerse approved reference playback", () => {
       file_name: "Mix V7.wav",
       content_type: "audio/wav",
       duration: 12,
-      object_key: "organizations/org-1/users/producer-1/sound-room/reference.wav",
+      stored_object_key: "organizations/org-1/users/producer-1/sound-room/reference.wav",
+      legacy_object_key: null,
     }]);
 
     const response = await request(app)
@@ -74,6 +75,46 @@ describe("EaseVerse approved reference playback", () => {
       durationSec: 12,
     });
     expect(JSON.stringify(response.body)).not.toContain("organizations/org-1");
+  });
+
+  it("supports a pre-migration Companion object only when its hierarchy matches the owner and room", async () => {
+    const legacyKey = `organizations/org-1/users/${OWNER_ID}/projects/workspace-1/sound-room/${PROJECT_ID}/protools/sessions/session-1/bounces/reference.wav`;
+    const { app, signer } = harness([{
+      version_id: VERSION_ID,
+      file_name: "Legacy mix.wav",
+      content_type: "audio/wav",
+      duration: 12,
+      stored_object_key: null,
+      legacy_object_key: legacyKey,
+    }]);
+
+    const response = await request(app)
+      .post("/api/integrations/easeverse/reference-playback")
+      .set("x-api-key", "service-key")
+      .send({ ownerUserId: OWNER_ID, audioReviewProjectId: PROJECT_ID });
+
+    expect(response.status).toBe(200);
+    expect(signer).toHaveBeenCalledWith(legacyKey, 3600);
+    expect(JSON.stringify(response.body)).not.toContain(legacyKey);
+  });
+
+  it("rejects a legacy Companion key from another tenant", async () => {
+    const { app, signer } = harness([{
+      version_id: VERSION_ID,
+      file_name: "Wrong tenant.wav",
+      content_type: "audio/wav",
+      duration: 12,
+      stored_object_key: null,
+      legacy_object_key: `organizations/org-2/users/another-user/projects/workspace-1/sound-room/${PROJECT_ID}/protools/sessions/session-1/bounces/reference.wav`,
+    }]);
+
+    const response = await request(app)
+      .post("/api/integrations/easeverse/reference-playback")
+      .set("x-api-key", "service-key")
+      .send({ ownerUserId: OWNER_ID, audioReviewProjectId: PROJECT_ID });
+
+    expect(response.status).toBe(404);
+    expect(signer).not.toHaveBeenCalled();
   });
 
   it("does not sign anything when the owner/project binding has no approved object", async () => {

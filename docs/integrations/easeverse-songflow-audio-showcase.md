@@ -181,7 +181,9 @@ CreatorHub-koblingen og ber server-til-server om en ny én-times URL. CreatorHub
 matcher både `ownerUserId` og `audioReviewProjectId`, velger bare siste
 godkjente versjon med et aktivt privat objekt og returnerer aldri objektets
 lagringsnøkkel. Hvis oppslag eller signering feiler, returnerer EaseVerse ingen
-legacy-URL.
+legacy-URL. Eldre Companion-bounces uten `storage_object_id` kan bare spilles
+når den lagrede nøkkelen matcher hele det kanoniske hierarkiet for samme eier,
+Sound Room-prosjekt og `protools/sessions/.../bounces`.
 
 ## 7. Databaseendringer
 
