@@ -1256,6 +1256,40 @@ export function createCastingProductionRouter(
     updatedAt: row.updated_at ?? undefined,
   });
 
+  // ────────────── PROJECT ACCESS ──────────────
+  /**
+   * The caller's effective role and grants for one project, resolved on the
+   * server. The client used to read the whole role roster and match itself by
+   * user id, which ignored deactivated and expired memberships; this answers
+   * for the authenticated caller only, from the same resolver every guard uses.
+   */
+  router.get('/projects/:projectId/access', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const userId = (req as AuthedRequest).userId;
+      const projectId = typeof req.params.projectId === 'string' ? req.params.projectId.trim() : '';
+      const access = projectId
+        ? await resolveCastingProjectAccess(pool, projectId, userId)
+        : null;
+      if (!access?.canAccess) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      res.json({
+        access: {
+          projectId,
+          role: access.role,
+          isOwner: access.isOwner,
+          isMember: access.isMember,
+          permissions: access.permissions,
+          grants: access.grants,
+        },
+      });
+    } catch {
+      res.status(500).json({ error: 'Kunne ikke hente prosjekttilgang', detail: 'internal_error' });
+    }
+  });
+
   // ────────────── LOCATION OPERATIONS ──────────────
   router.get('/projects/:projectId/location-operations', auth, async (req, res) => {
     try {

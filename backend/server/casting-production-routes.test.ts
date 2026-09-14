@@ -77,6 +77,67 @@ function createApp(
   return app;
 }
 
+describe('project access endpoint', () => {
+  const accessQuery = (row: Record<string, unknown> | null) => vi.fn(async (text: string) => {
+    if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (text.includes('AS member_role')) {
+      return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+    }
+    return { rows: [], rowCount: 0 };
+  });
+
+  it('answers with the effective role and grants for the caller', async () => {
+    const app = createApp(accessQuery({
+      project_exists: true,
+      is_owner: false,
+      member_role: 'location_manager',
+      member_permissions: {},
+    }));
+
+    const response = await request(app)
+      .get(`/api/role-room/projects/${PROJECT_ID}/access`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.access).toEqual(expect.objectContaining({
+      projectId: PROJECT_ID,
+      role: 'location_manager',
+      isOwner: false,
+      isMember: true,
+    }));
+    expect(response.body.access.grants).toEqual(expect.objectContaining({
+      canManageLocations: true,
+      canManageProduction: false,
+      canManageContinuity: false,
+    }));
+  });
+
+  it('hides the project from a user with no active membership', async () => {
+    const app = createApp(accessQuery({
+      project_exists: true,
+      is_owner: false,
+      member_role: null,
+      member_permissions: null,
+    }));
+
+    const response = await request(app)
+      .get(`/api/role-room/projects/${PROJECT_ID}/access`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('requires authentication', async () => {
+    const app = createApp(accessQuery(null));
+
+    const response = await request(app).get(`/api/role-room/projects/${PROJECT_ID}/access`);
+
+    expect(response.status).toBe(401);
+  });
+});
+
 describe('casting production-day access', () => {
   it('uploads a validated scout photo through the project-scoped AWS S3 adapter', async () => {
     const uploadLocationScoutPhoto = vi.fn().mockResolvedValue({

@@ -14,6 +14,7 @@ import type {
   CastingShot,
   SceneBreakdown,
   UserRole,
+  CastingProjectAccess,
   Consent,
 } from '../models/casting';
 import type {
@@ -3265,6 +3266,48 @@ export const castingService = {
   // ============================================================================
   // User Role Management
   // ============================================================================
+
+  /**
+   * The caller's server-resolved access to a project.
+   *
+   * Returns `null` when the server cannot answer — local fallback mode, an
+   * offline client, or a backend without the endpoint. Callers then keep their
+   * previous client-side derivation rather than losing the surface entirely;
+   * the server enforces the same rules on every mutation regardless.
+   */
+  async getProjectAccess(projectId: string): Promise<CastingProjectAccess | null> {
+    projectId = normalizeRequiredProjectId(projectId, 'getProjectAccess');
+    if (shouldUseRoleRoomLocalFallback()) return null;
+    try {
+      const response = await fetch(`/api/role-room/projects/${projectId}/access`, {
+        headers: getRoleRoomAuthHeaders(),
+      });
+      if (response.status === 404) {
+        return {
+          projectId,
+          role: null,
+          isOwner: false,
+          isMember: false,
+          permissions: {},
+          grants: {},
+        };
+      }
+      if (!response.ok) return null;
+      const payload = await response.json();
+      const access = payload?.access;
+      if (!access || typeof access !== 'object') return null;
+      return {
+        projectId,
+        role: typeof access.role === 'string' && access.role ? access.role : null,
+        isOwner: access.isOwner === true,
+        isMember: access.isMember === true,
+        permissions: access.permissions && typeof access.permissions === 'object' ? access.permissions : {},
+        grants: access.grants && typeof access.grants === 'object' ? access.grants : {},
+      };
+    } catch {
+      return null;
+    }
+  },
 
   /**
    * Get user roles for a project
