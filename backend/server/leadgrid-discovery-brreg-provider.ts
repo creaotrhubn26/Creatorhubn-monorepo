@@ -1041,7 +1041,24 @@ function normalizeCandidate(
 function matchesHardCompanyFilters(
   candidate: DiscoveryRegistryCandidate,
   input: NormalizedInput,
+  resolvedNaceCodes: string[],
 ): boolean {
+  if (
+    input.queryMode === "industry" &&
+    resolvedNaceCodes.length > 0 &&
+    (!candidate.naceCode ||
+      !resolvedNaceCodes.some((code) => {
+        const requested = code.replace(/\D/g, "");
+        const actual = candidate.naceCode?.replace(/\D/g, "") ?? "";
+        return requested.length >= 2 && actual.startsWith(requested);
+      }))
+  ) {
+    // BRREG may match a secondary industry code while returning another
+    // primary NACE code in `naeringskode1`. Discovery profiles describe the
+    // candidate's primary business, so never trust the upstream query filter
+    // alone when deciding which rows are safe to expose.
+    return false;
+  }
   if (
     input.queryMode === "organization_name" &&
     !matchesOrganizationNameQuery(candidate.name, input.query)
@@ -2276,7 +2293,7 @@ export function createDiscoveryRegistryProvider(
             advancePastSourceRow(rawIndex);
             continue;
           }
-          if (!matchesHardCompanyFilters(candidate, input)) {
+          if (!matchesHardCompanyFilters(candidate, input, resolvedNaceCodes)) {
             companyFilteredResults += 1;
             advancePastSourceRow(rawIndex);
             continue;
