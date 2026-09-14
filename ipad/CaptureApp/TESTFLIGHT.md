@@ -113,8 +113,9 @@ Ingen av disse stopper TestFlight — bare full App Store-release:
    (12.9", 11") + salgstekst før release-submit. TestFlight trenger ikke dette.
 3. **Demo-video** — ikke påkrevd for TestFlight, påkrevd for App Review
    ved første release.
-4. **App Privacy Policy URL** — pek på `https://theroleroom.com/privacy`
-   eller lag en egen for CaptureApp.
+4. **App Privacy Policy URL** — bruk CreatorHubs felles erklæring på
+   `https://creatorhubn.com/privacy-policy`. Den har en egen seksjon for
+   Google Sign-In og CreatorHub Capture.
 
 ## Hvis Archive-knappen er grået ut
 
