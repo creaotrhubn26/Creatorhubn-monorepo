@@ -11,6 +11,50 @@ import {
 const SESSION_TOKEN = 'test-session';
 const PROJECT_ID = 'project-1';
 
+const locationOperationsPayload = () => ({
+  stage: 'recce',
+  decisionStatus: 'shortlisted',
+  ownerCommunication: { status: 'awaiting_reply', contactName: 'Kari Grunneier' },
+  dateAvailability: { status: 'requested', confirmedDates: [] },
+  recce: { status: 'scheduled', scheduledAt: '2026-09-20T08:00', attendees: ['DoP', '1st AD'] },
+  clearanceGates: [{ id: 'owner', category: 'owner', title: 'Eieravtale', status: 'requested', mandatory: true }],
+  logistics: { unitBase: 'P1', emergencyAccess: 'Nordport' },
+  finance: { currency: 'NOK', locationFee: 10000, permitFees: 1200, restorationReserve: 3000, status: 'quoted' },
+  risks: [{ id: 'weather', title: 'Vind', severity: 'high', status: 'mitigating', mitigation: 'Vindmåling' }],
+  weatherPlan: 'Flytt eksteriør til dag 2.',
+  nextAction: 'Følg opp kommunen.',
+});
+
+const readyLocationDecisionPayload = () => ({
+  ...locationOperationsPayload(),
+  stage: 'hold',
+  ownerCommunication: { status: 'agreed', contactName: 'Kari Grunneier' },
+  dateAvailability: { status: 'verified', confirmedDates: ['2026-09-20'] },
+  recce: { status: 'completed', completedAt: '2026-09-14T12:00:00Z', attendees: ['DoP', '1st AD'] },
+  clearanceGates: [{ id: 'owner', category: 'owner', title: 'Eieravtale', status: 'verified', mandatory: true }],
+  finance: { currency: 'NOK', locationFee: 10000, permitFees: 1200, restorationReserve: 3000, status: 'approved' },
+  risks: [],
+  backupLocationId: 'location-backup',
+  decisionReview: {
+    criteria: [
+      ['creative_fit', 'Kreativ og dramaturgisk match'],
+      ['camera_light', 'Kamera og lys'],
+      ['sound', 'Lydforhold'],
+      ['access_logistics', 'Adkomst og logistikk'],
+      ['owner_permits', 'Eier og tillatelser'],
+      ['safety', 'Sikkerhet'],
+      ['schedule', 'Dato og opptaksplan'],
+      ['budget', 'Budsjett'],
+    ].map(([id, label]) => ({ id, label, required: true, status: 'pass', evidence: `Dokumentert: ${label}`, mediaIds: [] })),
+    signoffs: [
+      { role: 'director', status: 'approved', userId: 'director-1', decidedAt: '2026-09-14T10:00:00Z' },
+      { role: 'cinematographer', status: 'approved', userId: 'dop-1', decidedAt: '2026-09-14T10:05:00Z' },
+      { role: 'producer', status: 'approved', userId: 'producer-1', decidedAt: '2026-09-14T10:10:00Z' },
+    ],
+  },
+  activity: [],
+});
+
 function createApp(
   query: ReturnType<typeof vi.fn>,
   overrides: Omit<CreateCastingProductionRouterDeps, 'activeSessions'> = {},
@@ -34,9 +78,419 @@ function createApp(
 }
 
 describe('casting production-day access', () => {
+  it('uploads a validated scout photo through the project-scoped AWS S3 adapter', async () => {
+    const uploadLocationScoutPhoto = vi.fn().mockResolvedValue({
+      ok: true,
+      media: {
+        id: '3d1357e0-7fe8-4c11-b5f1-0b1fe4c586d2',
+        projectId: PROJECT_ID,
+        locationId: 'location-1',
+        uploadedBy: 'first-ad-1',
+        clientUploadId: '11111111-1111-4111-8111-111111111111',
+        kind: 'photo',
+        captureMetadata: { source: 'camera', sceneIds: ['12A'] },
+        displayName: 'scout.png',
+        contentType: 'image/png',
+        sizeBytes: 33,
+        checksumSha256: 'a'.repeat(64),
+        createdAt: '2026-09-13T12:00:00.000Z',
+      },
+    });
+    const query = vi.fn(async (text: string) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('AS can_manage_locations')) return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      if (text.includes('FROM casting_locations')) return { rows: [{ '?column?': 1 }], rowCount: 1 };
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+    const png = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.alloc(25),
+    ]);
+
+    const response = await request(createApp(query, { uploadLocationScoutPhoto }))
+      .post(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/media`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .field('clientUploadId', '11111111-1111-4111-8111-111111111111')
+      .field('kind', 'photo')
+      .field('metadata', JSON.stringify({ source: 'camera', sceneIds: ['12A'] }))
+      .attach('file', png, { filename: 'scout.png', contentType: 'image/png' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.media).toEqual(expect.objectContaining({ displayName: 'scout.png', contentType: 'image/png' }));
+    expect(uploadLocationScoutPhoto).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      userId: 'first-ad-1', projectId: PROJECT_ID, locationId: 'location-1', contentType: 'image/png',
+      clientUploadId: '11111111-1111-4111-8111-111111111111', kind: 'photo',
+      captureMetadata: expect.objectContaining({ source: 'camera', sceneIds: ['12A'] }),
+    }));
+  });
+
+  it('rejects a declared panorama when the uploaded bytes are audio', async () => {
+    const uploadLocationScoutPhoto = vi.fn();
+    const query = vi.fn(async (text: string) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('AS can_manage_locations')) return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      if (text.includes('FROM casting_locations')) return { rows: [{ '?column?': 1 }], rowCount: 1 };
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+    const wav = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WAVE'), Buffer.alloc(20)]);
+
+    const response = await request(createApp(query, { uploadLocationScoutPhoto }))
+      .post(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/media`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .field('kind', 'panorama')
+      .attach('file', wav, { filename: 'room.wav', contentType: 'audio/wav' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toMatch(/samsvarer ikke/i);
+    expect(uploadLocationScoutPhoto).not.toHaveBeenCalled();
+  });
+
+  it('hides scout media from users without project access', async () => {
+    const listLocationScoutMedia = vi.fn();
+    const query = vi.fn(async (text: string) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('AS can_access')) return { rows: [{ project_exists: true, can_access: false }], rowCount: 1 };
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query, { listLocationScoutMedia }))
+      .get(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/media`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`);
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: 'not_found' });
+    expect(listLocationScoutMedia).not.toHaveBeenCalled();
+  });
+
+  it('atomically creates a validated location readiness version and server audit entry', async () => {
+    const query = vi.fn(async (text: string, values?: unknown[]) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('AS can_manage_locations')) {
+        return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      }
+      if (text.includes('FROM casting_locations')) {
+        expect(values).toEqual([PROJECT_ID, 'location-1']);
+        return { rows: [{ '?column?': 1 }], rowCount: 1 };
+      }
+      if (text.includes('FROM role_room_location_operations') && text.includes('location_id = $2')) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes('INSERT INTO role_room_location_operations')) {
+        const saved = JSON.parse(String(values?.[3] ?? '{}'));
+        expect(saved).toEqual(expect.objectContaining({
+          stage: 'recce',
+          decisionStatus: 'shortlisted',
+          nextAction: 'Følg opp kommunen.',
+        }));
+        expect(saved.decisionReview.signoffs).toEqual([
+          { role: 'director', status: 'pending' },
+          { role: 'cinematographer', status: 'pending' },
+          { role: 'producer', status: 'pending' },
+        ]);
+        expect(saved.decisionReview.lockedAt).toBeUndefined();
+        expect(saved.activity).toEqual([
+          expect.objectContaining({ type: 'workspace_saved', actorUserId: 'first-ad-1' }),
+        ]);
+        return {
+          rows: [{
+            location_id: 'location-1', operations: saved, version: 1,
+            updated_by: 'first-ad-1', updated_at: '2026-09-13T12:00:00Z',
+          }],
+          rowCount: 1,
+        };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .patch(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/operations`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({
+        expectedVersion: 0,
+        operations: {
+          ...locationOperationsPayload(),
+          decisionReview: {
+            criteria: [],
+            signoffs: [{ role: 'director', status: 'approved', userId: 'spoofed-user', decidedAt: '2026-09-13T10:00:00Z' }],
+            lockedAt: '2026-09-13T10:00:00Z',
+            lockedBy: 'spoofed-user',
+          },
+        },
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.locationOperation).toEqual(expect.objectContaining({
+      locationId: 'location-1', version: 1, updatedBy: 'first-ad-1',
+    }));
+  });
+
+  it('returns the latest location readiness state instead of silently overwriting a newer version', async () => {
+    const current = { ...locationOperationsPayload(), stage: 'cleared' };
+    const query = vi.fn(async (text: string) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('AS can_manage_locations')) {
+        return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      }
+      if (text.includes('FROM casting_locations')) {
+        return { rows: [{ '?column?': 1 }], rowCount: 1 };
+      }
+      if (text.includes('FROM role_room_location_operations') && text.includes('location_id = $2')) {
+        return {
+          rows: [{ location_id: 'location-1', operations: current, version: 3, updated_by: 'location-manager-2' }],
+          rowCount: 1,
+        };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .patch(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/operations`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 2, operations: locationOperationsPayload() });
+
+    expect(response.status).toBe(409);
+    expect(response.body.locationOperation).toEqual(expect.objectContaining({
+      locationId: 'location-1', version: 3,
+      operations: expect.objectContaining({ stage: 'cleared' }),
+    }));
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO role_room_location_operations'))).toBe(false);
+  });
+
+  it('invalidates all role approvals when the signed decision basis changes', async () => {
+    const current = readyLocationDecisionPayload();
+    const incoming = {
+      ...current,
+      decisionReview: {
+        ...current.decisionReview,
+        recommendationNote: 'Ny produksjonskonsekvens etter siste recce.',
+      },
+    };
+    const query = vi.fn(async (text: string, values?: unknown[]) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('AS can_manage_locations')) {
+        return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      }
+      if (text.includes('FROM casting_locations')) return { rows: [{ '?column?': 1 }], rowCount: 1 };
+      if (text.includes('FROM role_room_location_operations') && text.includes('location_id = $2')) {
+        return { rows: [{ location_id: 'location-1', operations: current, version: 4, updated_by: 'producer-1' }], rowCount: 1 };
+      }
+      if (text.includes('INSERT INTO role_room_location_operations')) {
+        const saved = JSON.parse(String(values?.[3] ?? '{}'));
+        expect(saved.decisionReview.signoffs).toEqual([
+          { role: 'director', status: 'pending' },
+          { role: 'cinematographer', status: 'pending' },
+          { role: 'producer', status: 'pending' },
+        ]);
+        expect(saved.activity).toContainEqual(expect.objectContaining({
+          type: 'workspace_saved',
+          message: 'Oppdaterte beslutningsgrunnlaget. Tidligere rollegodkjenninger ble nullstilt.',
+        }));
+        return { rows: [{ location_id: 'location-1', operations: saved, version: 5, updated_by: 'first-ad-1' }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .patch(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/operations`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 4, operations: incoming });
+
+    expect(response.status).toBe(200);
+    expect(response.body.locationOperation.operations.decisionReview.signoffs).toEqual([
+      { role: 'director', status: 'pending' },
+      { role: 'cinematographer', status: 'pending' },
+      { role: 'producer', status: 'pending' },
+    ]);
+  });
+
+  it('rejects incomplete location readiness payloads before writing', async () => {
+    const query = vi.fn(async (text: string) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('AS can_manage_locations')) {
+        return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+    const response = await request(createApp(query))
+      .patch(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/operations`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 0, operations: { stage: 'recce' } });
+
+    expect(response.status).toBe(400);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO role_room_location_operations'))).toBe(false);
+  });
+
+  it('hides location readiness writes from project members without location authority', async () => {
+    const query = vi.fn(async (text: string) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('AS can_manage_locations')) {
+        return { rows: [{ project_exists: true, can_manage_locations: false }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .patch(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/operations`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 0, operations: locationOperationsPayload() });
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: 'not_found' });
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('role_room_location_operations'))).toBe(false);
+  });
+
+  it('refuses to attach readiness data to a location outside the requested project', async () => {
+    const query = vi.fn(async (text: string) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('AS can_manage_locations')) {
+        return { rows: [{ project_exists: true, can_manage_locations: true }], rowCount: 1 };
+      }
+      if (text.includes('FROM casting_locations')) return { rows: [], rowCount: 0 };
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .patch(`/api/role-room/projects/${PROJECT_ID}/locations/foreign-location/operations`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 0, operations: locationOperationsPayload() });
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: 'not_found' });
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO role_room_location_operations'))).toBe(false);
+  });
+
+  it('derives the signer role on the server and records immutable approval provenance', async () => {
+    const current = {
+      ...locationOperationsPayload(),
+      decisionReview: {
+        criteria: [],
+        signoffs: [
+          { role: 'director', status: 'pending' },
+          { role: 'cinematographer', status: 'pending' },
+          { role: 'producer', status: 'pending' },
+        ],
+      },
+      activity: [],
+    };
+    const query = vi.fn(async (text: string, values?: unknown[]) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('cp.created_by = $2 AS is_owner')) {
+        return { rows: [{ is_owner: false, role: 'director', permissions: {} }], rowCount: 1 };
+      }
+      if (text.includes('FROM role_room_location_operations operations')) {
+        return { rows: [{ location_id: 'location-1', operations: current, version: 1, updated_by: 'location-manager-1' }], rowCount: 1 };
+      }
+      if (text.includes('UPDATE role_room_location_operations')) {
+        const saved = JSON.parse(String(values?.[3] ?? '{}'));
+        expect(saved.decisionReview.signoffs).toContainEqual(expect.objectContaining({
+          role: 'director', status: 'approved', userId: 'first-ad-1', decidedAt: expect.any(String),
+        }));
+        expect(saved.activity).toContainEqual(expect.objectContaining({
+          type: 'decision_approved', actorRole: 'director', actorUserId: 'first-ad-1',
+        }));
+        return { rows: [{ location_id: 'location-1', operations: saved, version: 2, updated_by: 'first-ad-1' }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .post(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/decision`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 1, action: 'approve', role: 'producer', userId: 'spoofed-user' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.locationOperation).toEqual(expect.objectContaining({ locationId: 'location-1', version: 2 }));
+  });
+
+  it('hides decision actions from project roles without review authority', async () => {
+    const query = vi.fn(async (text: string) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('cp.created_by = $2 AS is_owner')) {
+        return { rows: [{ is_owner: false, role: 'first_ad', permissions: {} }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .post(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/decision`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 1, action: 'approve' });
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: 'not_found' });
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('role_room_location_operations operations'))).toBe(false);
+  });
+
+  it('returns exact unmet requirements instead of locking an incomplete decision', async () => {
+    const current = {
+      ...locationOperationsPayload(),
+      decisionReview: { criteria: [], signoffs: [] },
+      activity: [],
+    };
+    const query = vi.fn(async (text: string) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('cp.created_by = $2 AS is_owner')) {
+        return { rows: [{ is_owner: false, role: 'producer', permissions: {} }], rowCount: 1 };
+      }
+      if (text.includes('FROM role_room_location_operations operations')) {
+        return { rows: [{ location_id: 'location-1', operations: current, version: 1, updated_by: 'location-manager-1' }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .post(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/decision`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 1, action: 'lock' });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('decision_not_ready');
+    expect(response.body.reasons).toEqual(expect.arrayContaining([
+      'Kreativ og dramaturgisk match er ikke godkjent',
+      'Eieravtalen er ikke bekreftet',
+      'Backup-lokasjon er ikke valgt',
+      'director har ikke godkjent',
+    ]));
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('UPDATE role_room_location_operations'))).toBe(false);
+  });
+
+  it('locks a fully evidenced and approved primary location with optimistic concurrency', async () => {
+    const current = readyLocationDecisionPayload();
+    const query = vi.fn(async (text: string, values?: unknown[]) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('cp.created_by = $2 AS is_owner')) {
+        return { rows: [{ is_owner: false, role: 'producer', permissions: {} }], rowCount: 1 };
+      }
+      if (text.includes('FROM role_room_location_operations operations')) {
+        return { rows: [{ location_id: 'location-1', operations: current, version: 4, updated_by: 'location-manager-1' }], rowCount: 1 };
+      }
+      if (text.includes('FROM casting_locations') && text.includes('id <> $3')) {
+        return { rows: [{ '?column?': 1 }], rowCount: 1 };
+      }
+      if (text.includes('UPDATE role_room_location_operations')) {
+        const saved = JSON.parse(String(values?.[3] ?? '{}'));
+        expect(saved).toEqual(expect.objectContaining({ stage: 'cleared', decisionStatus: 'primary' }));
+        expect(saved.decisionReview).toEqual(expect.objectContaining({
+          lockedAt: expect.any(String), lockedBy: 'first-ad-1', lockedVersion: 5,
+        }));
+        return { rows: [{ location_id: 'location-1', operations: saved, version: 5, updated_by: 'first-ad-1' }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .post(`/api/role-room/projects/${PROJECT_ID}/locations/location-1/decision`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 4, action: 'lock' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.locationOperation).toEqual(expect.objectContaining({ version: 5 }));
+    expect(response.body.locationOperation.operations.activity).toContainEqual(expect.objectContaining({ type: 'decision_locked' }));
+  });
+
   it('allows an active project member to read production days', async () => {
     const query = vi.fn(async (text: string) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_access')) {
         return { rows: [{ project_exists: true, can_access: true }], rowCount: 1 };
       }
@@ -69,7 +523,7 @@ describe('casting production-day access', () => {
 
   it('allows a production editor to save a production day', async () => {
     const query = vi.fn(async (text: string) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_edit_production')) {
         return { rows: [{ project_exists: true, can_edit_production: true }], rowCount: 1 };
       }
@@ -112,7 +566,7 @@ describe('casting production-day access', () => {
 
   it('keeps management, coordination and continuity state outside generic production-day writes', async () => {
     const query = vi.fn(async (text: string, values?: unknown[]) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_edit_production')) {
         return { rows: [{ project_exists: true, can_edit_production: true }], rowCount: 1 };
       }
@@ -158,7 +612,7 @@ describe('casting production-day access', () => {
 
   it('atomically saves validated production-management operations and creates server audit data', async () => {
     const query = vi.fn(async (text: string, values?: unknown[]) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_manage_production')) {
         return { rows: [{ project_exists: true, can_manage_production: true }], rowCount: 1 };
       }
@@ -233,7 +687,7 @@ describe('casting production-day access', () => {
       data: { productionManagement: { dayStatus: 'at_risk' } },
     };
     const query = vi.fn(async (text: string) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_manage_production')) {
         return { rows: [{ project_exists: true, can_manage_production: true }], rowCount: 1 };
       }
@@ -263,7 +717,7 @@ describe('casting production-day access', () => {
 
   it('rejects malformed production-management payloads before writing', async () => {
     const query = vi.fn(async (text: string) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_manage_production')) {
         return { rows: [{ project_exists: true, can_manage_production: true }], rowCount: 1 };
       }
@@ -282,7 +736,7 @@ describe('casting production-day access', () => {
 
   it('does not let an unrelated production editor mutate the management lane', async () => {
     const query = vi.fn(async (text: string) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_manage_production')) {
         return { rows: [{ project_exists: true, can_manage_production: false }], rowCount: 1 };
       }
@@ -306,7 +760,7 @@ describe('casting production-day access', () => {
 
   it('atomically saves coordination without exposing management decisions', async () => {
     const query = vi.fn(async (text: string, values?: unknown[]) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_coordinate_production')) {
         return { rows: [{ project_exists: true, can_coordinate_production: true }], rowCount: 1 };
       }
@@ -377,7 +831,7 @@ describe('casting production-day access', () => {
 
   it('rejects coordination crew follow-up for people outside the selected day', async () => {
     const query = vi.fn(async (text: string) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_coordinate_production')) {
         return { rows: [{ project_exists: true, can_coordinate_production: true }], rowCount: 1 };
       }
@@ -405,7 +859,7 @@ describe('casting production-day access', () => {
 
   it('hides the project and refuses writes without production permission', async () => {
     const query = vi.fn(async (text: string) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_edit_production')) {
         return { rows: [{ project_exists: true, can_edit_production: false }], rowCount: 1 };
       }
@@ -425,7 +879,7 @@ describe('casting production-day access', () => {
   it('atomically saves validated continuity without accepting forged comments or audit history', async () => {
     const mediaFileId = 'c8bdfe62-84ab-4b2c-885e-bfba9bbd2d12';
     const query = vi.fn(async (text: string, values?: unknown[]) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_manage_continuity')) {
         return { rows: [{ project_exists: true, can_manage_continuity: true }], rowCount: 1 };
       }
@@ -498,7 +952,7 @@ describe('casting production-day access', () => {
       entries: [], deviations: [], comments: [], revisions: [], activity: [],
     };
     const query = vi.fn(async (text: string, values?: unknown[]) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_comment_continuity')) {
         return { rows: [{ project_exists: true, can_comment_continuity: true }], rowCount: 1 };
       }
@@ -525,7 +979,7 @@ describe('casting production-day access', () => {
 
   it('returns the latest continuity version on an optimistic concurrency conflict', async () => {
     const query = vi.fn(async (text: string) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_manage_continuity')) {
         return { rows: [{ project_exists: true, can_manage_continuity: true }], rowCount: 1 };
       }
@@ -560,7 +1014,7 @@ describe('casting production-day access', () => {
 
   it('hides continuity from project members without continuity permission', async () => {
     const query = vi.fn(async (text: string) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_manage_continuity')) {
         return { rows: [{ project_exists: true, can_manage_continuity: false }], rowCount: 1 };
       }
@@ -582,7 +1036,7 @@ describe('casting production-day access', () => {
 
   it('rejects continuity records for scenes outside the production day', async () => {
     const query = vi.fn(async (text: string) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_manage_continuity')) {
         return { rows: [{ project_exists: true, can_manage_continuity: true }], rowCount: 1 };
       }
@@ -611,7 +1065,7 @@ describe('casting production-day access', () => {
   it('rejects a stored media id that is not bound to the same project and production day', async () => {
     const foreignFileId = 'ec78f0f0-c324-4aed-9e21-0ab6276e0bbb';
     const query = vi.fn(async (text: string) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_manage_continuity')) {
         return { rows: [{ project_exists: true, can_manage_continuity: true }], rowCount: 1 };
       }
@@ -654,7 +1108,7 @@ describe('casting production-day access', () => {
   it('uploads inspected continuity media only after continuity authorization', async () => {
     const fileId = '8b49da36-ff43-4d8f-98dc-20ce0e39218d';
     const query = vi.fn(async (text: string) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_manage_continuity')) {
         return { rows: [{ project_exists: true, can_manage_continuity: true }], rowCount: 1 };
       }
@@ -724,7 +1178,7 @@ describe('casting production-day access', () => {
   it('returns a short-lived S3 URL only after current project access is confirmed', async () => {
     const fileId = '8b49da36-ff43-4d8f-98dc-20ce0e39218d';
     const query = vi.fn(async (text: string) => {
-      if (text.includes('ALTER TABLE')) return { rows: [], rowCount: 0 };
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS can_access')) {
         return { rows: [{ project_exists: true, can_access: true }], rowCount: 1 };
       }

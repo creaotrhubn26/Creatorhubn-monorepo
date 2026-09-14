@@ -484,6 +484,147 @@ private var roleRoomOnboardingQAPreview: LeadgridProjectOnboardingPreview {
     )
 }
 
+private func creatorHubOnboardingQABrief(
+    industryQueries: [String],
+    exclusions: [String],
+    targetCount: Int = 60,
+    qualificationTerms: [String],
+    qualificationRequirement: DiscoveryV2QualificationRequirement = .preferred,
+    websiteRequirement: DiscoveryV2WebsiteRequirement = .any,
+    minimumWebsiteQualityScore: Int? = nil
+) -> DiscoveryV2Brief {
+    DiscoveryV2Brief(
+        industryQueries: industryQueries,
+        exclusionTerms: exclusions,
+        countryCode: "NO",
+        city: nil,
+        geo: nil,
+        targetCount: targetCount,
+        enrichmentCount: min(30, targetCount),
+        minimumFitScore: 70,
+        idealCustomer: "Aktiv norsk kreativ virksomhet med betalende kundeprosjekter.",
+        goal: "Finne presise kandidater for Creatorhub.",
+        organizationForms: ["ANS", "AS", "DA", "ENK"],
+        websiteRequirement: websiteRequirement,
+        websiteQuality: .init(minimumScore: minimumWebsiteQualityScore),
+        qualificationTerms: qualificationTerms,
+        qualificationRequirement: qualificationRequirement,
+        commercialSignals: .init(
+            registeredInVatRegister: nil,
+            registeredInBusinessRegister: true
+        )
+    )
+}
+
+private var creatorHubOnboardingQAWriteProfiles: [DiscoveryV2ProfileWrite] {
+    let commonExclusions = [
+        "holding", "eiendom", "forening", "hobbyklubb", "fotobutikk", "trykkeri",
+    ]
+    return [
+        .init(
+            name: "Profesjonelle fotografer – Norge",
+            isDefault: true,
+            expectedVersion: nil,
+            brief: creatorHubOnboardingQABrief(
+                industryQueries: ["74.200"],
+                exclusions: commonExclusions,
+                qualificationTerms: [
+                    "fotograf", "fotografering", "fotostudio", "bryllup",
+                    "portrett", "bedriftsfoto", "eventfoto",
+                ]
+            ),
+            placesDetailsEnabled: false,
+            status: .active,
+            templateKey: "creatorhub.photographers",
+            templateVersion: 1
+        ),
+        .init(
+            name: "Video- og innholdsprodusenter – Norge",
+            isDefault: false,
+            expectedVersion: nil,
+            brief: creatorHubOnboardingQABrief(
+                industryQueries: ["59.110", "59.120"],
+                exclusions: commonExclusions + [
+                    "kino", "filmklubb", "distribusjon", "kringkasting", "tv-kanal",
+                ],
+                qualificationTerms: [
+                    "videoproduksjon", "innholdsproduksjon", "filmproduksjon",
+                    "postproduksjon", "videograf", "motion graphics",
+                ]
+            ),
+            placesDetailsEnabled: false,
+            status: .active,
+            templateKey: "creatorhub.video_content",
+            templateVersion: 1
+        ),
+        .init(
+            name: "Musikk- og lydprodusenter – Norge",
+            isDefault: false,
+            expectedVersion: nil,
+            brief: creatorHubOnboardingQABrief(
+                industryQueries: ["59.200"],
+                exclusions: commonExclusions + [
+                    "radio", "musikkbutikk", "instrumentbutikk", "kor", "korps",
+                ],
+                qualificationTerms: [
+                    "lydstudio", "musikkproduksjon", "lydproduksjon", "innspilling",
+                    "mixing", "mastering", "produsent",
+                ]
+            ),
+            placesDetailsEnabled: false,
+            status: .active,
+            templateKey: "creatorhub.music_audio",
+            templateVersion: 1
+        ),
+        .init(
+            name: "Kreative byråer og designstudioer – Norge",
+            isDefault: false,
+            expectedVersion: nil,
+            brief: creatorHubOnboardingQABrief(
+                industryQueries: ["73.110", "73.120", "74.120"],
+                exclusions: commonExclusions + [
+                    "invest", "avis", "magasin", "ren medieformidling",
+                ],
+                targetCount: 50,
+                qualificationTerms: [
+                    "kreativt byrå", "designbyrå", "innholdsbyrå", "branding",
+                    "visuell identitet", "kampanjeproduksjon", "kreativt studio",
+                ],
+                qualificationRequirement: .required,
+                websiteRequirement: .present,
+                minimumWebsiteQualityScore: 40
+            ),
+            placesDetailsEnabled: false,
+            status: .active,
+            templateKey: "creatorhub.creative_agencies",
+            templateVersion: 1
+        ),
+    ]
+}
+
+private var creatorHubOnboardingQAPreview: LeadgridProjectOnboardingPreview {
+    LeadgridProjectOnboardingPreview(
+        id: "66666666-6666-4666-8666-666666666666",
+        websiteURL: "https://creatorhubn.com",
+        websiteDomain: "creatorhubn.com",
+        projectName: "Creatorhub",
+        projectDescription: "Plattform for å administrere og skalere kreativt arbeid.",
+        category: "Plattform for kreativt arbeid",
+        categoryConfidence: "high",
+        classificationReasons: [
+            "Domenet er verifisert som Creatorhub.",
+            "Målgruppene er delt i fire presise, nasjonale profiler.",
+        ],
+        recommendedProfiles: creatorHubOnboardingQAWriteProfiles,
+        skills: domainOnboardingQASkills,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        canManageMultipleProfiles: true,
+        brandProfile: .init(
+            targetAudience: "Profesjonelle skapere, studioer, byråer og kreative team i Norge."
+        )
+    )
+}
+
 private func tidumOnboardingQABrief(
     industryQueries: [String] = [],
     organizationNameQueries: [String] = [],
@@ -737,6 +878,56 @@ private func roleRoomOnboardingQAResult(
     )
 }
 
+private func creatorHubOnboardingQAResult(
+    profiles: [DiscoveryV2ProfileWrite]
+) -> LeadgridProjectOnboardingResult {
+    LeadgridProjectOnboardingResult(
+        project: ProjectListItem(
+            id: "qa-creatorhub-project",
+            organizationId: "44444444-4444-4444-8444-444444444444",
+            name: "Creatorhub",
+            description: "Plattform for å administrere og skalere kreativt arbeid.",
+            status: "active",
+            hasBrandKit: true,
+            leadCount: 0,
+            competitorCount: 0
+        ),
+        profiles: profiles.enumerated().map { index, write in
+            DiscoveryV2Profile(
+                id: "qa-creatorhub-profile-\(index + 1)",
+                name: write.name,
+                isDefault: index == 0,
+                version: 1,
+                brief: write.brief,
+                placesDetailsEnabled: write.placesDetailsEnabled,
+                status: .active,
+                templateKey: write.templateKey,
+                templateVersion: write.templateVersion
+            )
+        },
+        skills: domainOnboardingQASkills,
+        reusedProject: false,
+        replayed: false,
+        access: LeadgridProjectOnboardingAccessResult(
+            organization: .init(
+                id: "44444444-4444-4444-8444-444444444444",
+                name: "Creatorhub",
+                reused: false
+            ),
+            team: .init(id: "creatorhub-salg", name: "Creatorhub salg", reused: false),
+            administrator: .init(
+                email: "superadmin@leadgrid.no",
+                status: "active",
+                organizationRole: "admin",
+                projectRole: "owner",
+                emailStatus: "not_required"
+            ),
+            invitations: [],
+            discoveryAccessVerified: true
+        )
+    )
+}
+
 private func tidumOnboardingQAResult(
     profiles: [DiscoveryV2ProfileWrite]
 ) -> LeadgridProjectOnboardingResult {
@@ -890,6 +1081,9 @@ extension APIClient {
         #if DEBUG
         if usesDomainOnboardingQAFixture {
             let domain = websiteURL.lowercased()
+            if domain.contains("creatorhubn.com") {
+                return creatorHubOnboardingQAPreview
+            }
             if domain.contains("theroleroom.com") {
                 return roleRoomOnboardingQAPreview
             }
@@ -932,6 +1126,17 @@ extension APIClient {
     ) async throws -> LeadgridProjectOnboardingResult {
         #if DEBUG
         if usesDomainOnboardingQAFixture {
+            if previewId == creatorHubOnboardingQAPreview.id {
+                guard let profiles,
+                      profiles.map(\.name) == creatorHubOnboardingQAWriteProfiles.map(\.name),
+                      accessSetup?.organization.mode == "create",
+                      accessSetup?.administratorEmail == "superadmin@leadgrid.no",
+                      accessSetup?.team.mode == "create"
+                else {
+                    throw URLError(.badServerResponse)
+                }
+                return creatorHubOnboardingQAResult(profiles: profiles)
+            }
             if previewId == roleRoomOnboardingQAPreview.id {
                 guard let profiles,
                       profiles.map(\.name) == roleRoomOnboardingQAWriteProfiles.map(\.name),

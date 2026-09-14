@@ -48,6 +48,7 @@ let pairingTimer = null;
 let pairingGeneration = 0;
 let syncTimer = null;
 let syncRunning = false;
+let syncReadinessError = "";
 let syncGeneration = 0;
 let connectedKey = "";
 let lastLocalSignature = "";
@@ -55,6 +56,7 @@ let collaboration = emptyCollaboration();
 let reviewTimer = null;
 let reviewGeneration = 0;
 let reviewLoading = false;
+let activeWorkspaceTab = "review";
 let activeReviewTab = "feedback";
 let replyingToId = "";
 let editingCommentId = "";
@@ -65,6 +67,7 @@ let publishCheckpoint = null;
 let publishPresetFile = null;
 let publishOutputFolder = null;
 let publishRunning = false;
+let lastLogEntry = null;
 
 const el = (id) => document.getElementById(id);
 
@@ -164,13 +167,23 @@ function setVisible(id, visible) {
 }
 
 function log(message, kind) {
+  const key = `${kind || ""}:${message}`;
+  if (lastLogEntry && lastLogEntry.key === key && lastLogEntry.row.parentNode === el("log")) {
+    lastLogEntry.count += 1;
+    lastLogEntry.row.textContent = `[${new Date().toLocaleTimeString()}] ${message} · gjentatt ${lastLogEntry.count} ganger`;
+    el("log").scrollTop = el("log").scrollHeight;
+    return;
+  }
   const row = document.createElement("div");
   row.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
   if (kind) row.classList.add(kind);
   el("log").appendChild(row);
+  lastLogEntry = { key, count: 1, row };
   while (el("log").children.length > 80) el("log").removeChild(el("log").firstChild);
   el("log").scrollTop = el("log").scrollHeight;
   setVisible("log-card", true);
+  setVisible("activity-empty", false);
+  if (activeWorkspaceTab !== "activity") el("workspace-tab-activity").classList.add("has-update");
 }
 
 function setConnection(label, tone) {
@@ -197,16 +210,73 @@ function setPublishProgress(percent, label) {
   setVisible("publish-progress-label", Boolean(label));
 }
 
+function setReadiness(id, message, tone) {
+  const node = el(id);
+  node.textContent = message;
+  node.className = `readiness-note ${tone || ""}`.trim();
+}
+
+function renderWorkspaceTabs() {
+  const signedIn = Boolean(token);
+  setVisible("workspace-nav", signedIn);
+  for (const tab of document.querySelectorAll("[data-workspace-tab]")) {
+    const active = signedIn && tab.dataset.workspaceTab === activeWorkspaceTab;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", active ? "true" : "false");
+    tab.tabIndex = active ? 0 : -1;
+  }
+  for (const pane of document.querySelectorAll("[data-workspace-pane]")) {
+    pane.classList.toggle("hidden", !signedIn || pane.dataset.workspacePane !== activeWorkspaceTab);
+  }
+  setVisible("review-unavailable", signedIn && !selectedVersion());
+}
+
+function activateWorkspaceTab(tabName, focusTab) {
+  if (!["review", "sync", "publish", "activity"].includes(tabName)) return;
+  activeWorkspaceTab = tabName;
+  renderWorkspaceTabs();
+  el("app-panel").scrollTop = 0;
+  if (tabName === "activity") el("workspace-tab-activity").classList.remove("has-update");
+  if (focusTab) el(`workspace-tab-${tabName}`).focus();
+}
+
 function renderPublishControls() {
   if (!el("publish-preset-name")) return;
   el("publish-preset-name").textContent = publishPresetFile?.name || publishPrefs.presetName || "Ikke valgt";
   el("publish-folder-name").textContent = publishOutputFolder?.name || publishPrefs.folderName || "Ikke valgt";
   const project = selectedProject();
-  el("send-review-button").disabled = publishRunning || !token || !project || !project.canEdit;
+  const sendButton = el("send-review-button");
+  const resumeButton = el("resume-upload-button");
+  const canEdit = Boolean(token && project && project.canEdit);
+  const setupReady = Boolean(publishPresetFile && publishOutputFolder);
+  sendButton.disabled = publishRunning || !canEdit;
   el("choose-preset-button").disabled = publishRunning;
   el("choose-folder-button").disabled = publishRunning;
-  el("resume-upload-button").disabled = publishRunning;
+  resumeButton.disabled = publishRunning;
   setVisible("resume-upload-button", Boolean(publishCheckpoint));
+  sendButton.classList.toggle("primary", !publishCheckpoint);
+  resumeButton.classList.toggle("primary", Boolean(publishCheckpoint));
+  sendButton.textContent = publishRunning ? "Sender…" : setupReady ? "Eksporter og send" : "Klargjør sending";
+  sendButton.setAttribute("aria-busy", publishRunning ? "true" : "false");
+  resumeButton.setAttribute("aria-busy", publishRunning ? "true" : "false");
+
+  if (!project) {
+    setReadiness("publish-readiness", "Velg et CreatorHub-prosjekt før du sender en versjon.", "warn");
+    sendButton.title = "Velg et prosjekt først";
+  } else if (!project.canEdit) {
+    setReadiness("publish-readiness", "Prosjektet har lesetilgang. Sending krever editor-tilgang.", "bad");
+    sendButton.title = "Editor-tilgang kreves";
+  } else if (!setupReady) {
+    const missing = [!publishPresetFile && "eksportpreset", !publishOutputFolder && "eksportmappe"].filter(Boolean).join(" og ");
+    setReadiness("publish-readiness", `Velg ${missing} i neste steg. CreatorHub spør når du starter.`, "warn");
+    sendButton.title = `Mangler ${missing}`;
+  } else if (publishCheckpoint) {
+    setReadiness("publish-readiness", "En avbrutt sending er lagret. Fortsett den før du starter en ny versjon.", "warn");
+    sendButton.title = "Starter en ny sending";
+  } else {
+    setReadiness("publish-readiness", "Klar til å eksportere den aktive Premiere-sekvensen.", "ok");
+    sendButton.title = "Eksporter aktiv sekvens og send til review";
+  }
 }
 
 function createNode(tag, className, text) {
@@ -242,9 +312,11 @@ function renderAuthState() {
   setVisible("auth-card", !signedIn);
   setVisible("workspace-card", signedIn);
   setVisible("premiere-card", signedIn);
+  setVisible("publish-card", signedIn);
   setVisible("review-card", signedIn && Boolean(selectedVersion()));
   setVisible("disconnect-button", signedIn);
   setConnection(signedIn ? (config && config.enabled ? "Synk aktiv" : "Tilkoblet") : "Frakoblet", signedIn ? "ok" : "muted");
+  renderWorkspaceTabs();
 }
 
 function option(value, label) {
@@ -290,6 +362,7 @@ function renderVersions(preferredVersionId) {
   setVisible("review-card", Boolean(token && selectedVersion()));
   renderButtons();
   renderReview();
+  renderWorkspaceTabs();
 }
 
 function renderProjects() {
@@ -312,14 +385,38 @@ function renderProjects() {
 function renderButtons() {
   const active = Boolean(config && config.enabled);
   const project = selectedProject();
-  el("start-sync-button").disabled = active || !project || !project.canEdit || !selectedVersion();
-  el("sync-now-button").disabled = !active || syncRunning;
+  const version = selectedVersion();
+  const startButton = el("start-sync-button");
+  const syncNowButton = el("sync-now-button");
+  startButton.disabled = active || !project || !project.canEdit || !version;
+  syncNowButton.disabled = !active || syncRunning;
+  syncNowButton.classList.toggle("primary", active);
   el("project-select").disabled = active;
   el("version-select").disabled = active;
   setVisible("start-sync-button", !active);
   setVisible("stop-sync-button", active);
   setConnection(token ? (active ? "Synk aktiv" : "Tilkoblet") : "Frakoblet", token ? "ok" : "muted");
+  if (active && syncReadinessError) {
+    setReadiness("sync-eligibility-note", syncReadinessError, "bad");
+    startButton.title = "Synk krever oppfølging";
+  } else if (active) {
+    setReadiness("sync-eligibility-note", `Toveis synk er bundet til ${config.projectName} · ${config.versionLabel}.`, "ok");
+    startButton.title = "Synk er allerede aktiv";
+  } else if (!project) {
+    setReadiness("sync-eligibility-note", "Velg prosjekt og versjon før du starter synk.", "warn");
+    startButton.title = "Velg et prosjekt først";
+  } else if (!project.canEdit) {
+    setReadiness("sync-eligibility-note", "Prosjektet har lesetilgang. Toveis synk krever editor-tilgang.", "bad");
+    startButton.title = "Editor-tilgang kreves";
+  } else if (!version) {
+    setReadiness("sync-eligibility-note", "Prosjektet har ingen versjon å synkronisere ennå.", "warn");
+    startButton.title = "Velg eller opprett en versjon";
+  } else {
+    setReadiness("sync-eligibility-note", `Klar til å binde aktiv Premiere-sekvens til ${version.label}.`, "ok");
+    startButton.title = "Start toveis synk for valgt versjon";
+  }
   renderPublishControls();
+  renderWorkspaceTabs();
 }
 
 function selectedMember() {
@@ -357,7 +454,10 @@ function renderAssignees() {
 
 function renderReviewTabs() {
   for (const tab of document.querySelectorAll("[data-review-tab]")) {
-    tab.classList.toggle("active", tab.dataset.reviewTab === activeReviewTab);
+    const active = tab.dataset.reviewTab === activeReviewTab;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", active ? "true" : "false");
+    tab.tabIndex = active ? 0 : -1;
   }
   for (const pane of document.querySelectorAll("[data-review-pane]")) {
     pane.classList.toggle("hidden", pane.dataset.reviewPane !== activeReviewTab);
@@ -1166,6 +1266,7 @@ async function finishPublishWorkflow(checkpoint) {
   await savePublishCheckpoint(null);
   await refreshCollaboration(true);
   renderReview();
+  activateWorkspaceTab("review");
   if (warnings.length) {
     setStatus("Versjonen er sendt", `Videoen er klar, men workflow trenger oppfølging: ${warnings.join(" · ")}`, "warn");
   } else if (!sameSequence) {
@@ -1429,6 +1530,7 @@ async function syncOnce() {
       await api.pushMarkers(bearer, config.projectId, config.versionId, finalLocal);
     }
     lastLocalSignature = finalSignature;
+    syncReadinessError = "";
     el("premiere-marker-count").textContent = String(context.markers.length);
     const cloudCount = Array.isArray(cloud.markers) ? cloud.markers.length : 0;
     if (conflictCount) {
@@ -1449,8 +1551,9 @@ async function syncOnce() {
     void refreshCollaboration(true);
   } catch (error) {
     if (!await handleAuthError(error, bearer)) {
-      setStatus("Synkfeil", error.message || String(error), "bad");
-      log(error.message || String(error), "bad");
+      syncReadinessError = error.message || String(error);
+      setStatus("Synkfeil", syncReadinessError, "bad");
+      log(syncReadinessError, "bad");
     }
   } finally {
     syncRunning = false;
@@ -1462,6 +1565,7 @@ function stopSyncTimer() {
   syncGeneration += 1;
   if (syncTimer) clearInterval(syncTimer);
   syncTimer = null;
+  syncReadinessError = "";
   connectedKey = "";
   lastLocalSignature = "";
 }
@@ -1479,6 +1583,7 @@ async function startSync() {
   if (!project || !version || !project.canEdit) return;
   const context = await refreshPremiereContext();
   if (!context) return;
+  syncReadinessError = "";
   config = {
     enabled: true,
     projectId: project.id,
@@ -1498,6 +1603,7 @@ async function startSync() {
 
 function stopSync() {
   if (config) config.enabled = false;
+  syncReadinessError = "";
   saveConfig();
   stopSyncTimer();
   renderButtons();
@@ -1626,10 +1732,33 @@ function bindUi() {
   el("disconnect-button").addEventListener("click", () => void disconnect());
   el("refresh-review-button").addEventListener("click", () => void refreshCollaboration());
   el("open-video-room-button").addEventListener("click", () => void openVideoRoom());
-  for (const tab of document.querySelectorAll("[data-review-tab]")) {
+  const workspaceTabs = Array.from(document.querySelectorAll("[data-workspace-tab]"));
+  for (const tab of workspaceTabs) {
+    tab.addEventListener("click", () => activateWorkspaceTab(tab.dataset.workspaceTab));
+    tab.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+      event.preventDefault();
+      const current = workspaceTabs.indexOf(tab);
+      const direction = event.key === "ArrowRight" ? 1 : -1;
+      const next = workspaceTabs[(current + direction + workspaceTabs.length) % workspaceTabs.length];
+      activateWorkspaceTab(next.dataset.workspaceTab, true);
+    });
+  }
+  const reviewTabs = Array.from(document.querySelectorAll("[data-review-tab]"));
+  for (const tab of reviewTabs) {
     tab.addEventListener("click", () => {
       activeReviewTab = tab.dataset.reviewTab;
       renderReviewTabs();
+    });
+    tab.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+      event.preventDefault();
+      const current = reviewTabs.indexOf(tab);
+      const direction = event.key === "ArrowRight" ? 1 : -1;
+      const next = reviewTabs[(current + direction + reviewTabs.length) % reviewTabs.length];
+      activeReviewTab = next.dataset.reviewTab;
+      renderReviewTabs();
+      next.focus();
     });
   }
   el("cancel-reply-button").addEventListener("click", cancelComposerMode);
@@ -1648,18 +1777,23 @@ function bindUi() {
   el("end-live-button").addEventListener("click", () => void endLiveReview());
   el("clear-log-button").addEventListener("click", () => {
     el("log").textContent = "";
+    lastLogEntry = null;
     setVisible("log-card", false);
+    setVisible("activity-empty", true);
+    el("workspace-tab-activity").classList.remove("has-update");
   });
 }
 
 async function initialize() {
   bindUi();
+  el("app-panel").scrollTop = 0;
   await Promise.all([loadToken(), loadPublishState()]);
   renderAuthState();
   renderButtons();
   if (publishCheckpoint) {
     const stage = publishCheckpoint.stage === "hashing" ? "filverifisering" : publishCheckpoint.stage === "provisioning" ? "klargjøring" : publishCheckpoint.stage === "processing" ? "mediebehandling" : publishCheckpoint.stage === "workflow" ? "review-workflow" : "opplasting";
     setPublishProgress(0, `Avbrutt ${stage} kan fortsettes.`);
+    if (token) activateWorkspaceTab("publish");
   }
   if (!token) return;
   await refreshProjects();

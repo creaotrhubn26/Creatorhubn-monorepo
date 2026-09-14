@@ -1094,6 +1094,9 @@ struct LeadsView: View {
                         compactLayout: isCompact,
                         onTap: {
                             selectedLeadID = lead.id
+                            if let projectId = appState.activeLeadgridProjectId {
+                                LeadgridTrainingNotification.post(.leadOpened, projectId: projectId)
+                            }
                             // Kompakt skjerm: ingen side-stilt sidebar — åpne
                             // detaljene som sheet.
                             if isCompact { phoneDetailOpen = true }

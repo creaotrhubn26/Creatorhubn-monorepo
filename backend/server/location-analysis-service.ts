@@ -8,7 +8,7 @@
  *   https://ws.geonorge.no/adresser/v1/sok?sok={address}&treffPerSide=1
  */
 
-import { lookupKommunePermit, buildGenericKommuneInfo, type KommunePermitInfo } from './data/norway-kommune-permit-info.js';
+import { lookupKommunePermit, type KommunePermitInfo } from './data/norway-kommune-permit-info.js';
 
 export interface GeocodedAddress {
   adressetekst: string;
@@ -26,6 +26,9 @@ export interface LocationAnalysis {
   permitInfo: KommunePermitInfo | null;
   recommendations: string[];
   source: 'kartverket' | 'fallback';
+  confidence: 'verified_address' | 'unverified';
+  permitDataSource: 'curated_directory' | 'generic_guidance' | 'none';
+  analyzedAt: string;
   warnings: string[];
 }
 
@@ -100,15 +103,23 @@ export async function analyzeLocation(address: string): Promise<LocationAnalysis
 
   let permitInfo: KommunePermitInfo | null = null;
   let source: 'kartverket' | 'fallback' = 'kartverket';
+  let permitDataSource: LocationAnalysis['permitDataSource'] = 'none';
 
   if (geocoded) {
     // Match først på kommunenummer (eksakt)
     permitInfo = lookupKommunePermit(geocoded.kommunenummer)
       ?? lookupKommunePermit(geocoded.kommunenavn);
-    if (!permitInfo) {
-      // Bygg generisk fallback
-      permitInfo = buildGenericKommuneInfo(geocoded.kommunenavn, geocoded.kommunenummer);
-      warnings.push(`${geocoded.kommunenavn} er ikke i CreatorHubs film-kommisjon-database. Generisk fallback brukt — verifiser kontakt-info manuelt.`);
+    if (permitInfo) {
+      permitDataSource = 'curated_directory';
+      warnings.push('Kontaktinformasjon, gebyrer og behandlingstid kan endres. Verifiser alltid mot myndighetens offisielle kanal før planen låses.');
+    } else {
+      permitDataSource = 'generic_guidance';
+      permitInfo = {
+        kommune: geocoded.kommunenavn,
+        kommunenummer: geocoded.kommunenummer,
+        notes: 'Ingen verifisert kommunekanal er registrert. Finn riktig servicetorg via en offisiell offentlig katalog.',
+      };
+      warnings.push(`${geocoded.kommunenavn} mangler en registrert kontaktkilde. Ingen nettadresse eller kontaktinformasjon er gjettet.`);
     }
   } else {
     // Geocode feilet — prøv regex-fallback for kommunenavn
@@ -116,6 +127,7 @@ export async function analyzeLocation(address: string): Promise<LocationAnalysis
     const m = address.match(/([A-Za-zÆØÅæøå\-\s]+?)\s+kommune/i);
     if (m && m[1]) {
       permitInfo = lookupKommunePermit(m[1].trim());
+      if (permitInfo) permitDataSource = 'curated_directory';
     }
     warnings.push('Kunne ikke geocode adressen via Kartverket. Sjekk at adressen er fullstendig (gateadresse + nummer + postnummer + sted).');
   }
@@ -149,6 +161,9 @@ export async function analyzeLocation(address: string): Promise<LocationAnalysis
     permitInfo,
     recommendations,
     source,
+    confidence: geocoded ? 'verified_address' : 'unverified',
+    permitDataSource,
+    analyzedAt: new Date().toISOString(),
     warnings,
   };
 }

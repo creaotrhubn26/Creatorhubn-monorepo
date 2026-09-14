@@ -31,6 +31,10 @@ with `npm test` and `npm run check` from this directory.
 Version-scoped data comes from the same `project_video_*` collaboration model
 as the browser Video Room. The panel supports:
 
+- a compact editorial workspace with persistent project/version context and
+  separate Review, Sync, Send, and Activity areas, including keyboard tab
+  navigation and plain-language readiness guidance;
+
 - timecoded comments, replies, editing, resolution and decision comments;
 - automatic assigned editor tasks for new `must-fix` feedback, task status and
   reassignment;
@@ -79,7 +83,7 @@ All `Action` objects are created and consumed synchronously inside nested
 state-consistency requirements.
 
 Premiere 26.5 exposes the documented descriptor methods but currently returns
-`Unimplemented method: open` in the real host. Version 0.3.4 therefore falls
+`Unimplemented method: open` in the real host. Version 0.3.5 therefore falls
 back to the picker-authorized `File.read()` API for review proxies up to 512
 MiB. Larger exports fail before being buffered and remain available locally for
 browser upload; the plugin does not risk loading a camera master into Premiere's

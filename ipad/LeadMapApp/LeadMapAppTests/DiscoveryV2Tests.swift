@@ -1217,6 +1217,41 @@ final class DiscoveryV2Tests: XCTestCase {
         XCTAssertFalse(DiscoveryRunCoordinator.configurationMatches(expectedGeneration: 4, expectedOrganizationId: "org-a", expectedProjectId: "project-a", activeGeneration: 4, activeOrganizationId: "org-b", activeProjectId: "project-a"))
     }
 
+    @MainActor
+    func testValidProjectRebindKeepsAnAlreadyOpenedWorkspacePresented() async {
+        let coordinator = DiscoveryRunCoordinator()
+        coordinator.showWorkspace()
+
+        await coordinator.configure(
+            api: nil,
+            actorUserId: "user-a",
+            organizationId: "org-a",
+            projectId: "project-a",
+            projectName: "Tidum")
+
+        XCTAssertTrue(
+            coordinator.isPresented,
+            "A completed project bind must not dismiss Discovery after the user opened it")
+        XCTAssertEqual(coordinator.projectId, "project-a")
+        XCTAssertTrue(coordinator.candidates.isEmpty)
+    }
+
+    @MainActor
+    func testInvalidProjectRebindDismissesTheWorkspace() async {
+        let coordinator = DiscoveryRunCoordinator()
+        coordinator.showWorkspace()
+
+        await coordinator.configure(
+            api: nil,
+            actorUserId: "user-a",
+            organizationId: "org-a",
+            projectId: nil,
+            projectName: nil)
+
+        XCTAssertFalse(coordinator.isPresented)
+        XCTAssertNil(coordinator.projectId)
+    }
+
     func testProjectListItemDecodesOrganizationScope() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase

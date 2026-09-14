@@ -86,6 +86,17 @@ function scopedPool(role = "admin") {
       }
       return { rows: [] };
     }
+    if (sql.includes("SET current_step = 'welcome'")) {
+      const row = states.get(key(rawParams));
+      if (!row) return { rows: [] };
+      row.current_step = "welcome";
+      row.steps_completed = [];
+      row.started_at = now;
+      row.last_activity_at = now;
+      row.completed_at = null;
+      row.skipped_at = null;
+      return { rows: [{ ...row }] };
+    }
     return { rows: [] };
   });
 
@@ -146,6 +157,14 @@ describe("Leadgrid product onboarding", () => {
       .resolves.toMatchObject({ status: 400 });
     await expect(request("GET", "/api/leadgrid/onboarding/state", { projectId: "forbidden" }))
       .resolves.toMatchObject({ status: 404 });
+    await expect(request("POST", "/api/leadgrid/onboarding/event", {
+      projectId: "dentum",
+      body: { event: "lead_opened" },
+      authenticated: false,
+    })).resolves.toMatchObject({ status: 401 });
+    await expect(request("POST", "/api/leadgrid/onboarding/restart", {
+      projectId: "forbidden",
+    })).resolves.toMatchObject({ status: 404 });
   });
 
   it("creates independent v2 state for each user, organization, project and effective role", async () => {
@@ -211,6 +230,79 @@ describe("Leadgrid product onboarding", () => {
     });
   });
 
+  it("advances from real product events in order and can restart the guide", async () => {
+    const { pool } = scopedPool();
+    const request = harness(pool);
+
+    const invalid = await request("POST", "/api/leadgrid/onboarding/event", {
+      projectId: "dentum",
+      body: { event: "__proto__" },
+    });
+    expect(invalid.status).toBe(400);
+
+    const tooEarly = await request("POST", "/api/leadgrid/onboarding/event", {
+      projectId: "dentum",
+      body: { event: "candidate_approved" },
+    });
+    expect(tooEarly).toMatchObject({
+      status: 200,
+      payload: { advanced: false, next_step: "welcome" },
+    });
+
+    for (const fromStep of ["welcome", "choose_project"]) {
+      await request("POST", "/api/leadgrid/onboarding/advance", {
+        projectId: "dentum",
+        body: { fromStep },
+      });
+    }
+
+    const events = [
+      ["discovery_run_started", "approve_candidates"],
+      ["candidate_approved", "work_leads"],
+      ["lead_opened", "follow_up"],
+      ["follow_up_scheduled", "completed"],
+    ] as const;
+    for (const [event, expectedStep] of events) {
+      const response = await request("POST", "/api/leadgrid/onboarding/event", {
+        projectId: "dentum",
+        body: { event },
+      });
+      expect(response).toMatchObject({
+        status: 200,
+        payload: { event, advanced: true, next_step: expectedStep },
+      });
+    }
+
+    const replay = await request("POST", "/api/leadgrid/onboarding/event", {
+      projectId: "dentum",
+      body: { event: "follow_up_scheduled" },
+    });
+    expect(replay).toMatchObject({
+      status: 200,
+      payload: { advanced: false, next_step: "completed" },
+    });
+
+    const restarted = await request("POST", "/api/leadgrid/onboarding/restart", {
+      projectId: "dentum",
+    });
+    expect(restarted).toMatchObject({
+      status: 200,
+      payload: {
+        next_step: "welcome",
+        state: { current_step: "welcome", steps_completed: [], completed: false },
+      },
+    });
+  });
+
+  it("rejects unknown product events", async () => {
+    const { pool } = scopedPool();
+    const request = harness(pool);
+    await expect(request("POST", "/api/leadgrid/onboarding/event", {
+      projectId: "dentum",
+      body: { event: "clicked_something" },
+    })).resolves.toMatchObject({ status: 400 });
+  });
+
   it("declares the complete composite scope and project foreign key in migration 0586", () => {
     const migration = readFileSync(
       new URL("../migrations/0587_leadgrid_product_onboarding_scope.sql", import.meta.url),
@@ -232,6 +324,8 @@ describe("Leadgrid product onboarding", () => {
     );
     expect(webTour).toContain("JSON.stringify({ fromStep: state.current_step, projectId })");
     expect(webTour).toContain("CRM-lead under Leads");
+    expect(webTour).toContain('fetch("/api/leadgrid/onboarding/restart"');
+    expect(webTour).toContain("Prøv guiden igjen");
     expect(webTour).not.toMatch(/add_first_customer|see_portal|try_playbook|view_apis/);
 
     for (const page of ["leadgrid-import.tsx", "leadgrid-deals.tsx", "leadgrid-workflows.tsx"]) {
@@ -247,6 +341,43 @@ describe("Leadgrid product onboarding", () => {
       "utf8",
     );
     expect(apiClient).toContain('body: ["fromStep": fromStep, "projectId": projectId]');
+    expect(apiClient).toContain('"/api/leadgrid/onboarding/event"');
+    expect(apiClient).toContain('"/api/leadgrid/onboarding/restart"');
+
+    const nativeGuide = readFileSync(
+      new URL("../../ipad/LeadMapApp/LeadMapApp/App/LeadMapApp.swift", import.meta.url),
+      "utf8",
+    );
+    expect(nativeGuide).toContain("Steget fullføres automatisk når handlingen er utført.");
+    expect(nativeGuide).toContain('accessibilityIdentifier("product-onboarding.retry-load")');
+
+    const discoveryCoordinator = readFileSync(
+      new URL(
+        "../../ipad/LeadMapApp/LeadMapApp/Core/DiscoveryRunCoordinator.swift",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    expect(discoveryCoordinator).toContain(".discoveryRunStarted");
+    expect(discoveryCoordinator).toContain(".candidateApproved");
+
+    const profilePopover = readFileSync(
+      new URL(
+        "../../ipad/LeadMapApp/LeadMapApp/Views/Tabs/Oversikt/OversiktView.swift",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    expect(profilePopover).toContain('accessibilityIdentifier("profile.start-product-training")');
+
+    const activitySheet = readFileSync(
+      new URL(
+        "../../ipad/LeadMapApp/LeadMapApp/Views/Tabs/Leads/LogActivitySheet.swift",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    expect(activitySheet).toContain(".followUpScheduled");
 
     const discovery = readFileSync(
       new URL(

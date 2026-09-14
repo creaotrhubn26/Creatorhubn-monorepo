@@ -11,6 +11,9 @@ export type UserRoleType =
   | 'casting_director'
   | 'production_manager'
   | 'production_coordinator'
+  | 'location_manager'
+  | 'location_scout'
+  | 'location_security'
   | 'script_supervisor'
   | 'first_ad'
   | 'second_ad'
@@ -763,6 +766,13 @@ export interface LocationPropertyAnalysis {
   accessAnalysis: LocationAccessAnalysis;
   manualNotes?: string;
   lastManualEditAt?: string;
+  analysisMeta?: {
+    operationalStatus: 'unverified' | 'user_confirmed';
+    propertySource?: 'kartverket' | 'fallback';
+    verifiedAt?: string;
+    verifiedBy?: string;
+    warnings?: string[];
+  };
   permitWorkflow?: {
     shootDate?: string;
     statuses?: Partial<Record<string, string>>;
@@ -772,6 +782,208 @@ export interface LocationPropertyAnalysis {
     [key: string]: unknown;
   };
   [key: string]: unknown;
+}
+
+export type LocationWorkflowStage =
+  | 'need'
+  | 'scouting'
+  | 'recce'
+  | 'hold'
+  | 'cleared'
+  | 'shoot_ready'
+  | 'wrapped';
+
+export type LocationDecisionStatus = 'undecided' | 'shortlisted' | 'primary' | 'backup' | 'released';
+export type LocationGateStatus = 'missing' | 'requested' | 'in_progress' | 'verified' | 'blocked' | 'not_required';
+export type LocationDecisionCriterionId =
+  | 'creative_fit'
+  | 'camera_light'
+  | 'sound'
+  | 'access_logistics'
+  | 'owner_permits'
+  | 'safety'
+  | 'schedule'
+  | 'budget';
+export type LocationDecisionCriterionStatus = 'unknown' | 'pass' | 'concern' | 'blocker' | 'not_applicable';
+export type LocationDecisionApprovalRole = 'director' | 'cinematographer' | 'producer';
+export type LocationDecisionApprovalStatus = 'pending' | 'approved' | 'changes_requested';
+
+export interface LocationDecisionCriterion {
+  id: LocationDecisionCriterionId;
+  label: string;
+  required: boolean;
+  status: LocationDecisionCriterionStatus;
+  /** A human-verifiable source or observation. Required before a result counts as verified. */
+  evidence?: string;
+  mediaIds: string[];
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface LocationDecisionSignoff {
+  role: LocationDecisionApprovalRole;
+  status: LocationDecisionApprovalStatus;
+  note?: string;
+  /** Server-owned provenance. Clients cannot assign these fields through the workspace save route. */
+  userId?: string;
+  decidedAt?: string;
+}
+
+export interface LocationDecisionReview {
+  criteria: LocationDecisionCriterion[];
+  signoffs: LocationDecisionSignoff[];
+  recommendationNote?: string;
+  lockedAt?: string;
+  lockedBy?: string;
+  lockedVersion?: number;
+}
+
+export interface LocationClearanceGate {
+  id: string;
+  category: 'owner' | 'permit' | 'insurance' | 'technical' | 'access' | 'safety' | 'community' | 'restoration';
+  title: string;
+  status: LocationGateStatus;
+  mandatory: boolean;
+  owner?: string;
+  dueAt?: string;
+  evidence?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface LocationRisk {
+  id: string;
+  title: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  status: 'open' | 'mitigating' | 'resolved';
+  mitigation?: string;
+  owner?: string;
+  dueAt?: string;
+  updatedAt?: string;
+}
+
+export type LocationScoutCheckStatus = 'unchecked' | 'pass' | 'concern' | 'not_applicable';
+export type LocationScoutEvidenceStatus = 'unknown' | 'observed' | 'verified';
+export type LocationScoutObservationCategory = 'access' | 'parking' | 'power' | 'signal' | 'noise' | 'light' | 'weather' | 'safety' | 'other';
+
+export interface LocationScoutObservation {
+  id: string;
+  category: LocationScoutObservationCategory;
+  status: LocationScoutEvidenceStatus;
+  value: string;
+  source: 'field_observation' | 'measurement' | 'document' | 'manual';
+  observedAt: string;
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+    accuracyMeters?: number;
+  };
+  mediaIds: string[];
+  sceneIds: string[];
+  checkId?: string;
+}
+
+export interface LocationScoutPin {
+  id: string;
+  mediaId: string;
+  x: number;
+  y: number;
+  label: string;
+  note?: string;
+  status: Exclude<LocationScoutEvidenceStatus, 'unknown'>;
+  sceneIds: string[];
+  checkId?: string;
+  createdAt: string;
+}
+
+export interface LocationScoutCapture {
+  capturedAt?: string;
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+    accuracyMeters?: number;
+  };
+  conditions: {
+    weather?: string;
+    temperatureC?: number;
+    wind?: string;
+    ambientNoise: 'unknown' | 'quiet' | 'moderate' | 'loud' | 'unusable';
+    mobileSignal: 'unknown' | 'none' | 'weak' | 'usable' | 'strong';
+    power: 'unknown' | 'unavailable' | 'limited' | 'production_ready';
+    daylight?: string;
+  };
+  checks: Array<{
+    id: string;
+    title: string;
+    status: LocationScoutCheckStatus;
+    notes?: string;
+    updatedAt?: string;
+  }>;
+  observations: LocationScoutObservation[];
+  pins: LocationScoutPin[];
+  notes?: string;
+}
+
+export interface LocationManagerOperations {
+  stage: LocationWorkflowStage;
+  decisionStatus: LocationDecisionStatus;
+  ownerCommunication: {
+    status: 'not_started' | 'contacted' | 'awaiting_reply' | 'negotiating' | 'agreed' | 'declined';
+    contactName?: string;
+    lastContactAt?: string;
+    nextFollowUpAt?: string;
+    restrictions?: string;
+  };
+  dateAvailability: {
+    status: LocationGateStatus;
+    confirmedDates: string[];
+    holdExpiresAt?: string;
+    notes?: string;
+  };
+  recce: {
+    status: 'not_started' | 'scheduled' | 'in_progress' | 'completed' | 'changes_required';
+    scheduledAt?: string;
+    completedAt?: string;
+    attendees: string[];
+    notes?: string;
+  };
+  clearanceGates: LocationClearanceGate[];
+  logistics: {
+    unitBase?: string;
+    crewParking?: string;
+    loadInRoute?: string;
+    holdingAreas?: string;
+    toiletsCatering?: string;
+    nearestHospital?: string;
+    emergencyAccess?: string;
+    technicalNotes?: string;
+  };
+  finance: {
+    currency: string;
+    locationFee: number;
+    permitFees: number;
+    restorationReserve: number;
+    status: 'estimate' | 'quoted' | 'approved' | 'settled';
+  };
+  risks: LocationRisk[];
+  scoutCapture: LocationScoutCapture;
+  decisionReview: LocationDecisionReview;
+  backupLocationId?: string;
+  weatherPlan?: string;
+  nextAction?: string;
+  activity: Array<{
+    id: string;
+    type:
+      | 'workspace_saved'
+      | 'decision_approved'
+      | 'decision_changes_requested'
+      | 'decision_locked'
+      | 'decision_reopened';
+    message: string;
+    actorUserId?: string;
+    actorRole?: LocationDecisionApprovalRole | 'location_manager';
+    createdAt: string;
+  }>;
 }
 
 export interface Location {
@@ -811,6 +1023,11 @@ export interface Location {
   notesTimestamp?: string;
   assignedScenes?: string[];
   propertyAnalysis?: LocationPropertyAnalysis;
+  locationOperations?: LocationManagerOperations;
+  /** Server-owned optimistic concurrency counter for location operations. */
+  locationOperationsVersion?: number;
+  locationOperationsUpdatedAt?: string;
+  locationOperationsUpdatedBy?: string;
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;

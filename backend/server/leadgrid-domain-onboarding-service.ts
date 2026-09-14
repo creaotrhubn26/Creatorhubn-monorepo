@@ -432,6 +432,8 @@ function nationalDiscoveryBrief(input: {
   qualificationRequirement?: "preferred" | "required";
   organizationForms?: string[];
   employeeCount?: { minimum: number | null; maximum: number | null } | null;
+  websiteRequirement?: "any" | "present" | "missing";
+  minimumWebsiteQualityScore?: number | null;
 }): DiscoveryBrief {
   return discoveryBriefSchema.parse({
     registry_source: input.registrySource ?? "brreg_open_data",
@@ -452,8 +454,10 @@ function nationalDiscoveryBrief(input: {
     organization_forms: input.organizationForms ?? [],
     employee_count: input.employeeCount ?? null,
     organization_structure: "any",
-    website_requirement: "any",
-    website_quality: { minimum_score: null },
+    website_requirement: input.websiteRequirement ?? "any",
+    website_quality: {
+      minimum_score: input.minimumWebsiteQualityScore ?? null,
+    },
     subject_kind: input.subjectKind ?? "organization",
     qualification_terms: input.qualificationTerms ?? [],
     qualification_requirement: input.qualificationRequirement ?? "preferred",
@@ -463,6 +467,35 @@ function nationalDiscoveryBrief(input: {
         input.requireBusinessRegistration === undefined
           ? true
           : input.requireBusinessRegistration,
+    },
+  });
+}
+
+function legacyCreatorHubGenericBrief(): DiscoveryBrief {
+  return discoveryBriefSchema.parse({
+    industry_queries: ["fotograf", "videoproduksjon", "produksjonsselskap"],
+    organization_name_queries: [],
+    exclusion_terms: ["hobbyklubb", "fotobutikk"],
+    country_code: null,
+    city: "Oslo",
+    geo: null,
+    territory_code: null,
+    municipality_numbers: [],
+    municipality_names: [],
+    target_count: 30,
+    enrichment_count: 15,
+    minimum_fit_score: 60,
+    ideal_customer:
+      "Profesjonell fotograf, videoprodusent eller kreativt produksjonsteam som leverer kundeprosjekter og trenger en samlet arbeidsflyt for salg, produksjon og levering.",
+    goal: "Finne kreative virksomheter som kan samle kunde-, prosjekt- og leveranseflyten i én plattform.",
+    organization_forms: [],
+    employee_count: null,
+    organization_structure: "any",
+    website_requirement: "any",
+    website_quality: { minimum_score: null },
+    commercial_signals: {
+      registered_in_vat_register: null,
+      registered_in_business_register: true,
     },
   });
 }
@@ -576,6 +609,214 @@ export function isUpgradeableTidumMunicipalServicesV1(profile: {
   } catch {
     return false;
   }
+}
+
+export function isUpgradeableCreatorHubGenericProfileV1(profile: {
+  name: string;
+  template_key?: string | null;
+  template_version?: number | null;
+  brief: unknown;
+}): boolean {
+  if (profile.template_key != null || profile.template_version != null) {
+    return false;
+  }
+  try {
+    return (
+      profile.name === "Kreative tjenester – Oslo" &&
+      hasSameTemplateBrief(
+        discoveryBriefSchema.parse(profile.brief),
+        legacyCreatorHubGenericBrief(),
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+function buildCreatorHubOnboardingPlan(
+  websiteUrl: string,
+  profile: BrandProfile,
+): ProjectOnboardingPlan {
+  const creatorOrganizationForms = ["AS", "ENK", "DA", "ANS"];
+  const commonExclusions = [
+    "holding",
+    "eiendom",
+    "forening",
+    "hobbyklubb",
+    "fotobutikk",
+    "trykkeri",
+  ];
+  const brandProfile: BrandProfile = {
+    ...profile,
+    url: websiteUrl,
+    businessName: "Creatorhub",
+    tagline: "Plattformen for kreativt arbeid",
+    description:
+      "Creatorhub samler prosjektstyring, kunder, kontrakter, produksjon og levering i én arbeidsflyt for skapere, studioer og kreative team.",
+    toneOfVoice: "professional",
+    usps: [
+      "Prosjektstyring tilpasset kreative arbeidsflyter",
+      "Kunder, kontrakter, team og leveranser samlet i ett system",
+      "Fra solo-kreatør til studio og større kreative team",
+      "Academy og community koblet til den operative plattformen",
+    ],
+    primaryCTA: "Se planer og priser",
+    colors: {
+      primary: "#FFBA6C",
+      secondary: "#DA7831",
+      accent: "#FFF5E8",
+      background: "#05060A",
+      text: "#F6F2EA",
+    },
+    fonts: { heading: "Roboto", body: "Roboto" },
+    logoUrl: "https://creatorhubn.com/creatorhub-wordmark-light.png",
+    faviconUrl: "https://creatorhubn.com/creatorhub-icon.png",
+    productCategories: [
+      "Prosjekt- og kundestyring",
+      "Kontrakter og tilbud",
+      "Produksjon og teamarbeid",
+      "Showcase og leveransegallerier",
+      "Creatorhub Academy og community",
+    ],
+    hasShop: false,
+    industry: "creative_work_management_platform",
+    targetAudience:
+      "Profesjonelle fotografer, video- og innholdsprodusenter, musikk- og lydprodusenter, kreative byråer, designstudioer og tverrfaglige kreative team i Norge.",
+  };
+
+  return {
+    version: 1,
+    website_url: websiteUrl,
+    website_domain: "creatorhubn.com",
+    project_name: "Creatorhub",
+    project_description: brandProfile.description,
+    category: "Plattform for kreativt arbeid",
+    category_confidence: "high",
+    classification_reasons: [
+      "Domenet er verifisert som Creatorhub.",
+      "Nettsiden beskriver prosjektstyring, kundeopplevelse, produksjon og levering for skapere og kreative team.",
+      "Solo-kreatører, produksjonsmiljøer og byråer er delt i egne profiler for presis Discovery.",
+    ],
+    brand_profile: brandProfile,
+    recommended_profiles: [
+      nationalDiscoveryProfilePlan(
+        "creatorhub.photographers",
+        "Profesjonelle fotografer – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["74.200"],
+          exclusions: commonExclusions,
+          idealCustomer:
+            "Aktiv norsk fotograf eller fotostudio som leverer betalte kundeoppdrag og trenger kontroll på kunder, tilbud, kontrakter, prosjekter og gallerileveranser.",
+          goal: "Finne profesjonelle fotografer som kan samle hele kunde- og leveranseflyten i Creatorhub.",
+          targetCount: 60,
+          minimumFitScore: 70,
+          organizationForms: creatorOrganizationForms,
+          qualificationTerms: [
+            "fotograf",
+            "fotografering",
+            "fotostudio",
+            "bryllup",
+            "portrett",
+            "bedriftsfoto",
+            "eventfoto",
+          ],
+        }),
+        true,
+      ),
+      nationalDiscoveryProfilePlan(
+        "creatorhub.video_content",
+        "Video- og innholdsprodusenter – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["59.110", "59.120"],
+          exclusions: [
+            ...commonExclusions,
+            "kino",
+            "filmklubb",
+            "distribusjon",
+            "kringkasting",
+            "tv-kanal",
+          ],
+          idealCustomer:
+            "Aktiv norsk videograf, innholdsprodusent eller mindre produksjonsmiljø som gjennomfører kundeproduksjoner fra brief og plan til godkjenning og levering.",
+          goal: "Finne video- og innholdsprodusenter som trenger en samlet arbeidsflyt for kunder, produksjonsteam og leveranser.",
+          targetCount: 60,
+          minimumFitScore: 70,
+          organizationForms: creatorOrganizationForms,
+          qualificationTerms: [
+            "videoproduksjon",
+            "innholdsproduksjon",
+            "filmproduksjon",
+            "postproduksjon",
+            "videograf",
+            "motion graphics",
+          ],
+        }),
+      ),
+      nationalDiscoveryProfilePlan(
+        "creatorhub.music_audio",
+        "Musikk- og lydprodusenter – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["59.200"],
+          exclusions: [
+            ...commonExclusions,
+            "radio",
+            "musikkbutikk",
+            "instrumentbutikk",
+            "kor",
+            "korps",
+          ],
+          idealCustomer:
+            "Aktiv norsk musikkprodusent, lydprodusent eller lydstudio som håndterer artister, prosjekter, avtaler, filer, revisjoner og ferdige leveranser.",
+          goal: "Finne musikk- og lydprodusenter som kan strukturere kunde-, prosjekt- og leveransearbeidet i Creatorhub.",
+          targetCount: 60,
+          minimumFitScore: 70,
+          organizationForms: creatorOrganizationForms,
+          qualificationTerms: [
+            "lydstudio",
+            "musikkproduksjon",
+            "lydproduksjon",
+            "innspilling",
+            "mixing",
+            "mastering",
+            "produsent",
+          ],
+        }),
+      ),
+      nationalDiscoveryProfilePlan(
+        "creatorhub.creative_agencies",
+        "Kreative byråer og designstudioer – Norge",
+        nationalDiscoveryBrief({
+          industryQueries: ["73.110", "73.120", "74.120"],
+          exclusions: [
+            ...commonExclusions,
+            "invest",
+            "avis",
+            "magasin",
+            "ren medieformidling",
+          ],
+          idealCustomer:
+            "Aktivt norsk kreativt byrå eller designstudio med gjentakende kundeprosjekter, flere fagroller og behov for tydelig ansvar, produksjonsoppfølging og levering.",
+          goal: "Finne kreative byråer og designstudioer som kan samle team, kunder og produksjoner i Creatorhub.",
+          targetCount: 50,
+          minimumFitScore: 70,
+          organizationForms: creatorOrganizationForms,
+          qualificationTerms: [
+            "kreativt byrå",
+            "designbyrå",
+            "innholdsbyrå",
+            "branding",
+            "visuell identitet",
+            "kampanjeproduksjon",
+            "kreativt studio",
+          ],
+          qualificationRequirement: "required",
+          websiteRequirement: "present",
+          minimumWebsiteQualityScore: 40,
+        }),
+      ),
+    ],
+    skills: LEADGRID_ONBOARDING_SKILLS,
+  };
 }
 
 function buildRoleRoomOnboardingPlan(
@@ -1135,6 +1376,9 @@ export function buildProjectOnboardingPlan(
   websiteDomain: string,
   profile: BrandProfile,
 ): ProjectOnboardingPlan {
+  if (websiteDomain === "creatorhubn.com") {
+    return buildCreatorHubOnboardingPlan(websiteUrl, profile);
+  }
   if (websiteDomain === "theroleroom.com") {
     return buildRoleRoomOnboardingPlan(websiteUrl, profile);
   }
@@ -1532,12 +1776,94 @@ async function ensureRecommendedProfiles(
     const brief = discoveryBriefSchema.parse(plan.brief);
     const values = profilePersistenceValues(brief);
     const normalizedName = plan.name.trim().toLocaleLowerCase("nb-NO");
-    const existing = current.find(
+    const existing =
+      current.find(
       (profile) =>
         (plan.template_key && profile.template_key === plan.template_key) ||
         profile.name.trim().toLocaleLowerCase("nb-NO") === normalizedName,
-    );
+      ) ??
+      (plan.template_key === "creatorhub.photographers"
+        ? current.find(isUpgradeableCreatorHubGenericProfileV1)
+        : undefined);
     if (existing) {
+      const canUpgradeCreatorHubGenericProfile =
+        plan.template_key === "creatorhub.photographers" &&
+        plan.template_version === 1 &&
+        isUpgradeableCreatorHubGenericProfileV1(existing);
+      if (canUpgradeCreatorHubGenericProfile) {
+        const upgradedCreatorHubProfile = await client.query(
+          `UPDATE leadgrid_discovery_profiles
+              SET template_key = $4,
+                  template_version = $5,
+                  name = $6,
+                  target_customer_types = $7::text[],
+                  organization_name_queries = $8::text[],
+                  country_code = $9,
+                  subject_kind = $10,
+                  qualification_terms = $11::text[],
+                  qualification_requirement = $12,
+                  city_filters = $13::text[],
+                  geography_lat = $14::numeric,
+                  geography_lng = $15::numeric,
+                  geography_radius_km = $16,
+                  company_size_min = $17,
+                  company_size_max = $18,
+                  brief = $19::jsonb,
+                  desired_signals = $20::jsonb,
+                  exclusion_rules = $21::jsonb,
+                  source_config = $22::jsonb,
+                  max_candidates_per_run = $23,
+                  enrichment_count = $24,
+                  version = version + 1,
+                  updated_by = $25,
+                  updated_at = NOW()
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
+              AND id = $3::uuid
+              AND template_key IS NULL
+              AND template_version IS NULL
+              AND name = $26
+              AND version = $27`,
+          [
+            args.organizationId,
+            args.projectId,
+            existing.id,
+            plan.template_key,
+            plan.template_version,
+            plan.name,
+            values.targetCustomerTypes,
+            values.organizationNameQueries,
+            values.countryCode,
+            values.subjectKind,
+            values.qualificationTerms,
+            values.qualificationRequirement,
+            values.cityFilters,
+            values.latitude,
+            values.longitude,
+            values.radiusKm,
+            values.companySizeMin,
+            values.companySizeMax,
+            JSON.stringify(brief),
+            JSON.stringify(values.desiredSignals),
+            JSON.stringify({ terms: brief.exclusion_terms }),
+            JSON.stringify(
+              profileSourceConfig(
+                plan.places_details_enabled,
+                plan.brief.registry_source,
+              ),
+            ),
+            brief.target_count,
+            brief.enrichment_count,
+            args.userId,
+            existing.name,
+            existing.version,
+          ],
+        );
+        if (upgradedCreatorHubProfile.rowCount !== 1) {
+          throw new Error("project_onboarding_profile_changed");
+        }
+        continue;
+      }
       const canUpgradeTidumMunicipalTemplate =
         plan.template_key === "tidum.municipal_services" &&
         plan.template_version === 2 &&

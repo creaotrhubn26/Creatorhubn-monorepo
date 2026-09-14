@@ -712,6 +712,9 @@ struct LogActivitySheet: View {
                 leadId: leadId, body: body,
                 organizationId: appState.activeOrganizationId
             )
+            if scheduleFollowUp, let projectId = appState.activeLeadgridProjectId {
+                LeadgridTrainingNotification.post(.followUpScheduled, projectId: projectId)
+            }
             await appState.refreshAll()
             if dismissAfter {
                 dismiss()
