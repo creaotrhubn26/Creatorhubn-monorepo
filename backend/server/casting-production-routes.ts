@@ -168,6 +168,18 @@ const locationScoutMediaUploadLimiter = rateLimit({
   }),
 });
 
+const locationDecisionActionLimiter = rateLimit({
+  windowMs: 10 * 60_000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as AuthedRequest).userId || 'unauthenticated',
+  handler: (_req, res) => res.status(429).json({
+    error: 'rate_limited',
+    message: 'For mange beslutningshandlinger på kort tid. Vent litt og prøv igjen.',
+  }),
+});
+
 async function resolveUser(
   pool: Pool,
   activeSessions: Map<string, SessionData> | undefined,
@@ -393,6 +405,27 @@ const LOCATION_SCOUT_EVIDENCE_STATUSES = new Set(['unknown', 'observed', 'verifi
 const LOCATION_SCOUT_PIN_STATUSES = new Set(['observed', 'verified']);
 const LOCATION_SCOUT_OBSERVATION_CATEGORIES = new Set(['access', 'parking', 'power', 'signal', 'noise', 'light', 'weather', 'safety', 'other']);
 const LOCATION_SCOUT_OBSERVATION_SOURCES = new Set(['field_observation', 'measurement', 'document', 'manual']);
+const LOCATION_DECISION_CRITERION_STATUSES = new Set(['unknown', 'pass', 'concern', 'blocker', 'not_applicable']);
+const LOCATION_DECISION_SIGNOFF_STATUSES = new Set(['pending', 'approved', 'changes_requested']);
+const LOCATION_DECISION_ACTIONS = new Set(['approve', 'request_changes', 'lock', 'reopen']);
+const LOCATION_ACTIVITY_TYPES = new Set([
+  'workspace_saved',
+  'decision_approved',
+  'decision_changes_requested',
+  'decision_locked',
+  'decision_reopened',
+]);
+const LOCATION_DECISION_CRITERIA = [
+  { id: 'creative_fit', label: 'Kreativ og dramaturgisk match', required: true },
+  { id: 'camera_light', label: 'Kamera og lys', required: true },
+  { id: 'sound', label: 'Lydforhold', required: true },
+  { id: 'access_logistics', label: 'Adkomst og logistikk', required: true },
+  { id: 'owner_permits', label: 'Eier og tillatelser', required: true },
+  { id: 'safety', label: 'Sikkerhet', required: true },
+  { id: 'schedule', label: 'Dato og opptaksplan', required: true },
+  { id: 'budget', label: 'Budsjett', required: true },
+] as const;
+const LOCATION_DECISION_ROLES = ['director', 'cinematographer', 'producer'] as const;
 
 function asObject(value: unknown): Record<string, any> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -731,6 +764,69 @@ function normalizeLocationManagerOperations(value: unknown) {
     return value;
   };
 
+  const decisionReview = input.decisionReview === undefined ? {} : asObject(input.decisionReview);
+  if (!decisionReview) {
+    throw new ProductionManagementValidationError('decisionReview må være et objekt.');
+  }
+  const rawCriteria = decisionReview.criteria === undefined
+    ? []
+    : limitedArray(decisionReview.criteria, 'decisionReview.criteria', LOCATION_DECISION_CRITERIA.length);
+  const criteriaById = new Map(rawCriteria.map((entry, index) => {
+    const item = asObject(entry);
+    if (!item) throw new ProductionManagementValidationError(`decisionReview.criteria[${index}] er ugyldig.`);
+    const id = requiredString(item.id, `decisionReview.criteria[${index}].id`, 80);
+    if (!LOCATION_DECISION_CRITERIA.some((criterion) => criterion.id === id)) {
+      throw new ProductionManagementValidationError(`decisionReview.criteria[${index}].id er ukjent.`);
+    }
+    return [id, item] as const;
+  }));
+  if (criteriaById.size !== rawCriteria.length) {
+    throw new ProductionManagementValidationError('decisionReview.criteria inneholder duplikater.');
+  }
+  const decisionCriteria = LOCATION_DECISION_CRITERIA.map((criterion) => {
+    const item = criteriaById.get(criterion.id);
+    return {
+      ...criterion,
+      status: item
+        ? enumValue(item.status, LOCATION_DECISION_CRITERION_STATUSES, `decisionReview.criteria.${criterion.id}.status`)
+        : 'unknown',
+      evidence: item ? optionalString(item.evidence, `decisionReview.criteria.${criterion.id}.evidence`, 2_000) : undefined,
+      mediaIds: item
+        ? limitedArray(item.mediaIds ?? [], `decisionReview.criteria.${criterion.id}.mediaIds`, 40)
+            .map((mediaId, mediaIndex) => requiredString(mediaId, `decisionReview.criteria.${criterion.id}.mediaIds[${mediaIndex}]`, 120))
+        : [],
+      updatedAt: item ? isoTimestamp(item.updatedAt, `decisionReview.criteria.${criterion.id}.updatedAt`) : undefined,
+      updatedBy: item ? optionalString(item.updatedBy, `decisionReview.criteria.${criterion.id}.updatedBy`, 255) : undefined,
+    };
+  });
+  const rawSignoffs = decisionReview.signoffs === undefined
+    ? []
+    : limitedArray(decisionReview.signoffs, 'decisionReview.signoffs', LOCATION_DECISION_ROLES.length);
+  const signoffsByRole = new Map(rawSignoffs.map((entry, index) => {
+    const item = asObject(entry);
+    if (!item) throw new ProductionManagementValidationError(`decisionReview.signoffs[${index}] er ugyldig.`);
+    const role = requiredString(item.role, `decisionReview.signoffs[${index}].role`, 40);
+    if (!LOCATION_DECISION_ROLES.includes(role as typeof LOCATION_DECISION_ROLES[number])) {
+      throw new ProductionManagementValidationError(`decisionReview.signoffs[${index}].role er ukjent.`);
+    }
+    return [role, item] as const;
+  }));
+  if (signoffsByRole.size !== rawSignoffs.length) {
+    throw new ProductionManagementValidationError('decisionReview.signoffs inneholder duplikater.');
+  }
+  const decisionSignoffs = LOCATION_DECISION_ROLES.map((role) => {
+    const item = signoffsByRole.get(role);
+    return {
+      role,
+      status: item
+        ? enumValue(item.status, LOCATION_DECISION_SIGNOFF_STATUSES, `decisionReview.signoffs.${role}.status`)
+        : 'pending',
+      note: item ? optionalString(item.note, `decisionReview.signoffs.${role}.note`, 2_000) : undefined,
+      userId: item ? optionalString(item.userId, `decisionReview.signoffs.${role}.userId`, 255) : undefined,
+      decidedAt: item ? isoTimestamp(item.decidedAt, `decisionReview.signoffs.${role}.decidedAt`) : undefined,
+    };
+  });
+
   return {
     stage: enumValue(input.stage, LOCATION_WORKFLOW_STAGES, 'stage'),
     decisionStatus: enumValue(input.decisionStatus, LOCATION_DECISION_STATUSES, 'decisionStatus'),
@@ -793,6 +889,16 @@ function normalizeLocationManagerOperations(value: unknown) {
       observations: scoutObservations,
       pins: scoutPins,
       notes: optionalString(scoutCapture.notes, 'scoutCapture.notes', 5_000),
+    },
+    decisionReview: {
+      criteria: decisionCriteria,
+      signoffs: decisionSignoffs,
+      recommendationNote: optionalString(decisionReview.recommendationNote, 'decisionReview.recommendationNote', 5_000),
+      lockedAt: isoTimestamp(decisionReview.lockedAt, 'decisionReview.lockedAt'),
+      lockedBy: optionalString(decisionReview.lockedBy, 'decisionReview.lockedBy', 255),
+      lockedVersion: decisionReview.lockedVersion === undefined
+        ? undefined
+        : coordinate(decisionReview.lockedVersion, 'decisionReview.lockedVersion', 0, Number.MAX_SAFE_INTEGER),
     },
     backupLocationId: optionalString(input.backupLocationId, 'backupLocationId', 255),
     weatherPlan: optionalString(input.weatherPlan, 'weatherPlan', 3_000),
@@ -947,6 +1053,88 @@ function productionDayDataWithoutProtectedOperations(body: Record<string, any>):
   return data;
 }
 
+type LocationDecisionApprovalRole = typeof LOCATION_DECISION_ROLES[number];
+type NormalizedLocationOperations = ReturnType<typeof normalizeLocationManagerOperations>;
+
+function readLocationActivity(value: unknown): Array<Record<string, unknown>> {
+  const activity = asObject(value)?.activity;
+  if (!Array.isArray(activity)) return [];
+  const normalized: Array<Record<string, unknown>> = [];
+  for (const entry of activity) {
+    const item = asObject(entry);
+    const id = typeof item?.id === 'string' ? item.id.trim().slice(0, 120) : '';
+    const message = typeof item?.message === 'string' ? item.message.trim().slice(0, 300) : '';
+    const createdAt = typeof item?.createdAt === 'string' ? item.createdAt.trim().slice(0, 40) : '';
+    const type = typeof item?.type === 'string' && LOCATION_ACTIVITY_TYPES.has(item.type)
+      ? item.type
+      : 'workspace_saved';
+    const actorRole = typeof item?.actorRole === 'string'
+      && [...LOCATION_DECISION_ROLES, 'location_manager'].includes(item.actorRole as LocationDecisionApprovalRole | 'location_manager')
+      ? item.actorRole
+      : undefined;
+    if (!id || !message || !createdAt) continue;
+    normalized.push({
+      id,
+      type,
+      message,
+      actorUserId: item?.actorUserId ? String(item.actorUserId).slice(0, 255) : undefined,
+      actorRole,
+      createdAt,
+    });
+  }
+  return normalized.slice(-99);
+}
+
+function locationDecisionBasisFingerprint(operations: NormalizedLocationOperations): string {
+  return JSON.stringify({
+    decisionStatus: operations.decisionStatus,
+    ownerCommunication: operations.ownerCommunication,
+    dateAvailability: operations.dateAvailability,
+    recce: operations.recce,
+    clearanceGates: operations.clearanceGates,
+    logistics: operations.logistics,
+    finance: operations.finance,
+    risks: operations.risks,
+    scoutCapture: operations.scoutCapture,
+    backupLocationId: operations.backupLocationId,
+    weatherPlan: operations.weatherPlan,
+    decisionReview: {
+      recommendationNote: operations.decisionReview.recommendationNote,
+      criteria: operations.decisionReview.criteria.map((criterion) => ({
+        id: criterion.id,
+        status: criterion.status,
+        evidence: criterion.evidence,
+        mediaIds: criterion.mediaIds,
+      })),
+    },
+  });
+}
+
+function locationDecisionLockReasons(operations: NormalizedLocationOperations): string[] {
+  const reasons: string[] = [];
+  operations.decisionReview.criteria.filter((criterion) => criterion.required).forEach((criterion) => {
+    if (criterion.status !== 'pass') reasons.push(`${criterion.label} er ikke godkjent`);
+    else if (!criterion.evidence?.trim() && criterion.mediaIds.length === 0) reasons.push(`${criterion.label} mangler evidens`);
+  });
+  operations.clearanceGates
+    .filter((gate) => gate.mandatory && gate.status !== 'verified')
+    .forEach((gate) => reasons.push(`${gate.title} er ikke verifisert`));
+  if (operations.ownerCommunication.status !== 'agreed') reasons.push('Eieravtalen er ikke bekreftet');
+  if (operations.dateAvailability.status !== 'verified' || operations.dateAvailability.confirmedDates.length === 0) {
+    reasons.push('Opptaksdato er ikke verifisert');
+  }
+  if (operations.recce.status !== 'completed') reasons.push('Teknisk recce er ikke godkjent');
+  if (!['approved', 'settled'].includes(operations.finance.status)) reasons.push('Lokasjonskostnaden er ikke godkjent');
+  if (!operations.backupLocationId) reasons.push('Backup-lokasjon er ikke valgt');
+  operations.decisionReview.signoffs
+    .filter((signoff) => signoff.status !== 'approved')
+    .forEach((signoff) => reasons.push(`${signoff.role} har ikke godkjent`));
+  operations.risks
+    .filter((risk) => risk.status !== 'resolved' && risk.severity === 'critical')
+    .forEach((risk) => reasons.push(risk.title));
+  return [...new Set(reasons)];
+}
+
 export interface CreateCastingProductionRouterDeps {
   activeSessions?: Map<string, SessionData>;
   uploadContinuityMedia?: typeof uploadContinuityMediaToS3;
@@ -1077,6 +1265,41 @@ export function createCastingProductionRouter(
     return true;
   }
 
+  async function resolveLocationDecisionAuthority(projectId: string, userId: string) {
+    const result = await pool.query(
+      `SELECT
+         cp.created_by = $2 AS is_owner,
+         cur.role,
+         COALESCE(cur.permissions, '{}'::jsonb) AS permissions
+       FROM casting_projects cp
+       LEFT JOIN casting_user_roles cur
+         ON cur.project_id = cp.id
+        AND cur.user_id = $2
+        AND cur.deactivated_at IS NULL
+        AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
+       WHERE cp.id = $1
+       LIMIT 1`,
+      [projectId, userId],
+    );
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    if (!row) return null;
+    const projectRole = String(row.role ?? '').trim().toLowerCase().replace(/[ -]+/g, '_');
+    const approvalRole: LocationDecisionApprovalRole | null = projectRole === 'director'
+      ? 'director'
+      : ['cinematographer', 'director_of_photography', 'dop', 'dp', 'camera_team'].includes(projectRole)
+        ? 'cinematographer'
+        : projectRole === 'producer'
+          ? 'producer'
+          : row.is_owner === true && !projectRole
+            ? 'producer'
+            : null;
+    return {
+      approvalRole,
+      canLock: row.is_owner === true || projectRole === 'producer',
+      canReopen: row.is_owner === true || ['producer', 'production_manager', 'location_manager'].includes(projectRole),
+    };
+  }
+
   const mapLocationOperationsRow = (row: Record<string, any>) => ({
     locationId: String(row.location_id),
     operations: asObject(row.operations) ?? {},
@@ -1129,6 +1352,20 @@ export function createCastingProductionRouter(
         res.status(404).json({ error: 'not_found' });
         return;
       }
+      if (normalized.backupLocationId) {
+        if (normalized.backupLocationId === locationId) {
+          res.status(400).json({ error: 'invalid_payload', message: 'En lokasjon kan ikke være sin egen backup.' });
+          return;
+        }
+        const backupResult = await pool.query(
+          'SELECT 1 FROM casting_locations WHERE project_id = $1 AND id = $2 LIMIT 1',
+          [projectId, normalized.backupLocationId],
+        );
+        if (backupResult.rowCount === 0) {
+          res.status(400).json({ error: 'invalid_payload', message: 'Backup-lokasjonen tilhører ikke prosjektet.' });
+          return;
+        }
+      }
       const currentResult = await pool.query(
         `SELECT location_id, operations, version, updated_by, updated_at
            FROM role_room_location_operations
@@ -1146,36 +1383,58 @@ export function createCastingProductionRouter(
         return;
       }
 
-      const previousActivity = Array.isArray(asObject(currentRow?.operations)?.activity)
-        ? (asObject(currentRow?.operations)?.activity as unknown[])
-            .map((entry) => {
-              const item = asObject(entry);
-              const id = typeof item?.id === 'string' ? item.id.trim().slice(0, 120) : '';
-              const message = typeof item?.message === 'string' ? item.message.trim().slice(0, 300) : '';
-              const createdAt = typeof item?.createdAt === 'string' ? item.createdAt.trim().slice(0, 40) : '';
-              if (!id || !message || !createdAt) return null;
-              return {
-                id,
-                type: 'workspace_saved',
-                message,
-                actorUserId: item?.actorUserId ? String(item.actorUserId).slice(0, 255) : undefined,
-                createdAt,
-              };
-            })
-            .filter((entry) => entry !== null)
-            .slice(-99)
-        : [];
+      const currentNormalized = currentRow ? normalizeLocationManagerOperations(currentRow.operations) : null;
+      if (currentNormalized?.decisionReview.lockedAt) {
+        res.status(409).json({
+          error: 'decision_locked',
+          message: 'Beslutningen er låst. Gjenåpne den før lokasjonsgrunnlaget endres.',
+          locationOperation: mapLocationOperationsRow(currentRow!),
+        });
+        return;
+      }
+
+      const previousActivity = readLocationActivity(currentRow?.operations);
       const actorUserId = (req as AuthedRequest).userId;
+      const savedAt = new Date().toISOString();
+      const decisionBasisChanged = currentNormalized
+        ? locationDecisionBasisFingerprint(currentNormalized) !== locationDecisionBasisFingerprint(normalized)
+        : true;
+      const approvalsInvalidated = decisionBasisChanged && Boolean(currentNormalized?.decisionReview.signoffs
+        .some((signoff) => signoff.status !== 'pending'));
+      const previousCriteria = new Map((currentNormalized?.decisionReview.criteria ?? []).map((criterion) => [criterion.id, criterion]));
+      const decisionCriteria = normalized.decisionReview.criteria.map((criterion) => {
+        const previous = previousCriteria.get(criterion.id);
+        const changed = !previous
+          || previous.status !== criterion.status
+          || previous.evidence !== criterion.evidence
+          || JSON.stringify(previous.mediaIds) !== JSON.stringify(criterion.mediaIds);
+        return changed
+          ? { ...criterion, updatedAt: savedAt, updatedBy: actorUserId }
+          : { ...criterion, updatedAt: previous.updatedAt, updatedBy: previous.updatedBy };
+      });
       const nextOperations = {
         ...normalized,
+        decisionReview: {
+          ...normalized.decisionReview,
+          criteria: decisionCriteria,
+          signoffs: decisionBasisChanged
+            ? LOCATION_DECISION_ROLES.map((role) => ({ role, status: 'pending' }))
+            : currentNormalized?.decisionReview.signoffs
+              ?? LOCATION_DECISION_ROLES.map((role) => ({ role, status: 'pending' })),
+          lockedAt: currentNormalized?.decisionReview.lockedAt,
+          lockedBy: currentNormalized?.decisionReview.lockedBy,
+          lockedVersion: currentNormalized?.decisionReview.lockedVersion,
+        },
         activity: [
           ...previousActivity,
           {
             id: genId('location-activity'),
             type: 'workspace_saved',
-            message: 'Oppdaterte lokasjonens beredskap og feltplan.',
+            message: approvalsInvalidated
+              ? 'Oppdaterte beslutningsgrunnlaget. Tidligere rollegodkjenninger ble nullstilt.'
+              : 'Oppdaterte lokasjonens operative feltgrunnlag.',
             actorUserId,
-            createdAt: new Date().toISOString(),
+            createdAt: savedAt,
           },
         ].slice(-100),
       };
@@ -1215,6 +1474,210 @@ export function createCastingProductionRouter(
       res.status(500).json({ error: 'Kunne ikke lagre lokasjonsberedskap', detail: 'internal_error' });
     }
   });
+
+  router.post(
+    '/projects/:projectId/locations/:locationId/decision',
+    auth,
+    locationDecisionActionLimiter,
+    async (req, res) => {
+      try {
+        await schemaReady(pool);
+        const { projectId } = req.params;
+        const locationId = requiredString(req.params.locationId, 'locationId', 255);
+        const actorUserId = (req as AuthedRequest).userId;
+        const body = asObject(req.body);
+        if (!body || Buffer.byteLength(JSON.stringify(body), 'utf8') > 16 * 1024) {
+          res.status(400).json({ error: 'invalid_payload', message: 'Beslutningshandlingen er ugyldig eller for stor.' });
+          return;
+        }
+        const expectedVersion = Number(body.expectedVersion);
+        if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+          res.status(400).json({ error: 'invalid_payload', message: 'Lagre beslutningsgrunnlaget før godkjenning.' });
+          return;
+        }
+        const action = enumValue(body.action, LOCATION_DECISION_ACTIONS, 'action');
+        const note = optionalString(body.note, 'note', 2_000);
+        if (action === 'request_changes' && !note) {
+          res.status(400).json({ error: 'invalid_payload', message: 'Beskriv hva som må endres.' });
+          return;
+        }
+
+        const authority = await resolveLocationDecisionAuthority(projectId, actorUserId);
+        const canAct = action === 'lock'
+          ? authority?.canLock
+          : action === 'reopen'
+            ? authority?.canReopen
+            : Boolean(authority?.approvalRole);
+        if (!authority || !canAct) {
+          res.status(404).json({ error: 'not_found' });
+          return;
+        }
+
+        const currentResult = await pool.query(
+          `SELECT operations.location_id, operations.operations, operations.version, operations.updated_by, operations.updated_at
+             FROM role_room_location_operations operations
+             JOIN casting_locations location
+               ON location.id = operations.location_id
+              AND location.project_id = operations.project_id
+            WHERE operations.project_id = $1 AND operations.location_id = $2
+            LIMIT 1`,
+          [projectId, locationId],
+        );
+        const currentRow = currentResult.rows[0] as Record<string, any> | undefined;
+        if (!currentRow) {
+          res.status(409).json({ error: 'decision_not_saved', message: 'Lagre beslutningsgrunnlaget før godkjenning.' });
+          return;
+        }
+        const currentVersion = Number(currentRow.version ?? 0);
+        if (currentVersion !== expectedVersion) {
+          res.status(409).json({
+            error: 'version_conflict',
+            message: 'Beslutningen er endret av en annen bruker.',
+            locationOperation: mapLocationOperationsRow(currentRow),
+          });
+          return;
+        }
+
+        const operations = normalizeLocationManagerOperations(currentRow.operations);
+        const now = new Date().toISOString();
+        const activity = readLocationActivity(currentRow.operations);
+        let nextOperations: NormalizedLocationOperations;
+        let activityType: string;
+        let activityMessage: string;
+        let actorRole: LocationDecisionApprovalRole | 'location_manager' | undefined = authority.approvalRole ?? undefined;
+
+        if (action === 'approve' || action === 'request_changes') {
+          if (operations.decisionReview.lockedAt) {
+            res.status(409).json({ error: 'decision_locked', message: 'Beslutningen er låst og må gjenåpnes før en ny vurdering.' });
+            return;
+          }
+          const role = authority.approvalRole!;
+          const status = action === 'approve' ? 'approved' : 'changes_requested';
+          nextOperations = {
+            ...operations,
+            decisionReview: {
+              ...operations.decisionReview,
+              signoffs: operations.decisionReview.signoffs.map((signoff) => signoff.role === role
+                ? { role, status, note, userId: actorUserId, decidedAt: now }
+                : signoff),
+            },
+          };
+          activityType = action === 'approve' ? 'decision_approved' : 'decision_changes_requested';
+          activityMessage = action === 'approve'
+            ? `${role} godkjente lokasjonsvalget.`
+            : `${role} ba om endringer i lokasjonsvalget.`;
+        } else if (action === 'lock') {
+          if (operations.decisionReview.lockedAt) {
+            res.status(409).json({ error: 'decision_locked', message: 'Beslutningen er allerede låst.' });
+            return;
+          }
+          const reasons = locationDecisionLockReasons(operations);
+          if (operations.backupLocationId) {
+            const backup = await pool.query(
+              'SELECT 1 FROM casting_locations WHERE project_id = $1 AND id = $2 AND id <> $3 LIMIT 1',
+              [projectId, operations.backupLocationId, locationId],
+            );
+            if (backup.rowCount === 0) reasons.push('Backup-lokasjonen finnes ikke i prosjektet');
+          }
+          if (reasons.length > 0) {
+            res.status(409).json({
+              error: 'decision_not_ready',
+              message: 'Lokasjonsvalget kan ikke låses ennå.',
+              reasons: [...new Set(reasons)],
+              locationOperation: mapLocationOperationsRow(currentRow),
+            });
+            return;
+          }
+          const stageOrder = ['need', 'scouting', 'recce', 'hold', 'cleared', 'shoot_ready', 'wrapped'];
+          nextOperations = {
+            ...operations,
+            stage: stageOrder.indexOf(operations.stage) < stageOrder.indexOf('cleared') ? 'cleared' : operations.stage,
+            decisionStatus: 'primary',
+            decisionReview: {
+              ...operations.decisionReview,
+              lockedAt: now,
+              lockedBy: actorUserId,
+              lockedVersion: currentVersion + 1,
+            },
+          };
+          actorRole = 'producer';
+          activityType = 'decision_locked';
+          activityMessage = 'Produsent låste primærlokasjonen for produksjon.';
+        } else {
+          if (!operations.decisionReview.lockedAt) {
+            res.status(409).json({ error: 'decision_not_locked', message: 'Beslutningen er ikke låst.' });
+            return;
+          }
+          nextOperations = {
+            ...operations,
+            decisionStatus: 'shortlisted',
+            decisionReview: {
+              ...operations.decisionReview,
+              signoffs: LOCATION_DECISION_ROLES.map((role) => ({
+                role,
+                status: 'pending',
+                note: undefined,
+                userId: undefined,
+                decidedAt: undefined,
+              })),
+              lockedAt: undefined,
+              lockedBy: undefined,
+              lockedVersion: undefined,
+            },
+          };
+          actorRole = authority.approvalRole ?? 'location_manager';
+          activityType = 'decision_reopened';
+          activityMessage = 'Lokasjonsvalget ble gjenåpnet. Alle roller må godkjenne på nytt.';
+        }
+
+        const auditedOperations = {
+          ...nextOperations,
+          activity: [
+            ...activity,
+            {
+              id: genId('location-activity'),
+              type: activityType,
+              message: activityMessage,
+              actorUserId,
+              actorRole,
+              createdAt: now,
+            },
+          ].slice(-100),
+        };
+        const updateResult = await pool.query(
+          `UPDATE role_room_location_operations
+              SET operations = $4::jsonb,
+                  version = version + 1,
+                  updated_by = $5,
+                  updated_at = NOW()
+            WHERE project_id = $1 AND location_id = $2 AND version = $3
+          RETURNING location_id, operations, version, updated_by, updated_at`,
+          [projectId, locationId, expectedVersion, JSON.stringify(auditedOperations), actorUserId],
+        );
+        if (updateResult.rowCount === 0) {
+          const latest = await pool.query(
+            `SELECT location_id, operations, version, updated_by, updated_at
+               FROM role_room_location_operations
+              WHERE project_id = $1 AND location_id = $2`,
+            [projectId, locationId],
+          );
+          res.status(409).json({
+            error: 'version_conflict',
+            message: 'Beslutningen er endret av en annen bruker.',
+            locationOperation: latest.rows[0] ? mapLocationOperationsRow(latest.rows[0]) : undefined,
+          });
+          return;
+        }
+        res.json({ locationOperation: mapLocationOperationsRow(updateResult.rows[0]) });
+      } catch (error) {
+        if (error instanceof ProductionManagementValidationError) {
+          res.status(400).json({ error: 'invalid_payload', message: error.message });
+          return;
+        }
+        res.status(500).json({ error: 'Kunne ikke oppdatere lokasjonsbeslutningen', detail: 'internal_error' });
+      }
+    },
+  );
 
   router.get('/projects/:projectId/locations/:locationId/media', auth, async (req, res) => {
     try {

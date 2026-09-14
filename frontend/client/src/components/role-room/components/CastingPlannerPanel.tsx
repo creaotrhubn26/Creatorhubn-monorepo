@@ -3311,7 +3311,23 @@ type RoleRoomProjectWorkspaceState = {
   const canUseFirstAssistantDirectorWorkspace = isAssignedFirstAssistantDirectorProjectRole || isRoleRoomAdminSession;
   const canUseAssistantDirectorWorkspace = canUseFirstAssistantDirectorWorkspace || isAssignedSecondAssistantDirectorProjectRole;
   const canUseProductionManagementWorkspace = isAssignedProductionManagerProjectRole || isRoleRoomAdminSession;
-  const canUseLocationManagerWorkspace = isAssignedLocationDepartmentProjectRole || isRoleRoomAdminSession;
+  const isAssignedLocationDecisionReviewer = isAssignedDirectorProjectRole
+    || isAssignedCinematographerProjectRole
+    || normalizedCurrentProjectRole === 'producer';
+  const canUseLocationManagerWorkspace = isAssignedLocationDepartmentProjectRole
+    || isAssignedLocationDecisionReviewer
+    || isRoleRoomAdminSession;
+  const locationDecisionActorRole: 'director' | 'cinematographer' | 'producer' | undefined = isAssignedCinematographerProjectRole
+    ? 'cinematographer'
+    : normalizedCurrentProjectRole === 'director'
+      ? 'director'
+      : normalizedCurrentProjectRole === 'producer'
+        ? 'producer'
+        : undefined;
+  const canLockLocationDecision = normalizedCurrentProjectRole === 'producer' || isRoleRoomAdminSession;
+  const canReopenLocationDecision = canLockLocationDecision
+    || isAssignedLocationDepartmentProjectRole
+    || isAssignedProductionManagerProjectRole;
   const hasProductionCoordinationGrant = currentUserRole
     ? Boolean({
         ...castingAuthService.getDefaultPermissions(currentUserRole.role),
@@ -11183,6 +11199,9 @@ type RoleRoomProjectWorkspaceState = {
               key={`location-management-${currentProject.id}`}
               project={currentProject}
               readOnly={!permissions.canManageLocations}
+              decisionActorRole={locationDecisionActorRole}
+              canLockDecision={canLockLocationDecision}
+              canReopenDecision={canReopenLocationDecision}
               onOpenLocations={() => navigateToTab(LOCATIONS_TAB_INDEX)}
               onOpenSchedule={() => navigateToTab(CALENDAR_TAB_INDEX)}
               onOpenCrew={() => navigateToTab(TEAM_TAB_INDEX)}

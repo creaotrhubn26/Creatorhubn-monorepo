@@ -54,4 +54,22 @@ describe('locationManagerService media', () => {
     expect(form.get('kind')).toBe('video');
     expect(JSON.parse(String(form.get('metadata')))).toEqual(expect.objectContaining({ sceneIds: ['12A'], note: 'Nordport' }));
   });
+
+  it('sends a location decision action without accepting a client-selected signer role', async () => {
+    const locationOperation = { locationId: 'forest', operations: {}, version: 4 };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ locationOperation }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(locationManagerService.actOnDecision('troll', 'forest', 3, 'approve', 'Kameraavdeling er klar.'))
+      .resolves.toEqual(locationOperation);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/role-room/projects/troll/locations/forest/decision',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({ Authorization: 'Bearer test-session', 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ expectedVersion: 3, action: 'approve', note: 'Kameraavdeling er klar.' }),
+      }),
+    );
+  });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CastingProject, LocationManagerOperations } from '../../models/casting';
 import {
   buildLocationManagerOperations,
+  locationDecisionSummary,
   locationReadiness,
   portfolioReadiness,
   verifiedScoutEvidence,
@@ -22,6 +23,8 @@ describe('locationManagerWorkspaceModel', () => {
     expect(operations.dateAvailability.status).toBe('in_progress');
     expect(operations.clearanceGates.find((gate) => gate.id === 'access-plan')?.status).toBe('in_progress');
     expect(operations.finance).toEqual(expect.objectContaining({ currency: 'NOK', locationFee: 0 }));
+    expect(operations.decisionReview.criteria).toHaveLength(8);
+    expect(locationDecisionSummary(operations)).toEqual(expect.objectContaining({ evidenceScore: 0, verifiedCriteria: 0, canLock: false }));
   });
 
   it('derives blockers, warnings and score without treating requested permits as complete', () => {
@@ -35,6 +38,21 @@ describe('locationManagerWorkspaceModel', () => {
     expect(readiness.blockers).not.toContain('Myndighetstillatelser mangler');
     expect(readiness.warnings).toContain('Primærlokasjonen mangler backup');
     expect(readiness.score).toBeLessThan(80);
+  });
+
+  it('does not inflate workflow progress from free text, planned work or an empty risk register', () => {
+    const operations = buildLocationManagerOperations(project.locations![0], project);
+    operations.ownerCommunication.status = 'negotiating';
+    operations.dateAvailability.status = 'requested';
+    operations.recce.status = 'scheduled';
+    operations.logistics = {
+      unitBase: 'Detaljert baseplan', crewParking: 'P2', loadInRoute: 'Nordport',
+      nearestHospital: 'Dombås', emergencyAccess: 'Sørport',
+    };
+    operations.risks = [];
+    operations.clearanceGates = operations.clearanceGates.map((gate) => ({ ...gate, status: 'in_progress' }));
+
+    expect(locationReadiness(operations).score).toBe(0);
   });
 
   it('recognizes a fully cleared location and summarizes the portfolio', () => {
@@ -61,5 +79,17 @@ describe('locationManagerWorkspaceModel', () => {
     expect(verifiedScoutEvidence(operations)).toEqual([
       expect.objectContaining({ id: 'meter', value: '62 dBA' }),
     ]);
+  });
+
+  it('counts only explicit pass results with evidence and explains every missing lock requirement', () => {
+    const operations = buildLocationManagerOperations(project.locations![0], project);
+    operations.decisionReview.criteria = operations.decisionReview.criteria.map((criterion, index) => index === 0
+      ? { ...criterion, status: 'pass', evidence: 'Godkjent moodboard-referanse SC-12.' }
+      : criterion);
+    const summary = locationDecisionSummary(operations);
+    expect(summary.evidenceScore).toBe(13);
+    expect(summary.verifiedCriteria).toBe(1);
+    expect(summary.lockReasons).toContain('Kamera og lys er ikke godkjent');
+    expect(summary.lockReasons).toContain('Backup-lokasjon er ikke valgt');
   });
 });
