@@ -7,7 +7,6 @@ import { createRequire } from "module";
 import * as schema from "../migrations/schema.js";
 import { broadcastUserEvent } from "./realtime-user-events.js";
 import { recordProjectChange } from "./project-change-log.js";
-import { updateAssetLabels } from "./capture-assets-service.js";
 import {
   fetchClientGalleryByAccessToken,
   listClientGalleryImages,
@@ -412,12 +411,31 @@ export function setupClientGalleryRoutes(
       const images = await listClientGalleryImages(db, access.gallery.id, {
         accessToken,
       });
+      const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
+      const captureAssetIds = images
+        .map((image) => image.metadata?.captureAssetId)
+        .filter((id): id is string => typeof id === "string");
+      const reviewByAsset = new Map<string, string>();
+      if (gallery?.projectId && captureAssetIds.length) {
+        const reviewRows = await pool.query(
+          `SELECT asset_id::text, review_status FROM project_photo_review
+            WHERE project_id=$1 AND asset_id=ANY($2::uuid[])`,
+          [gallery.projectId, captureAssetIds],
+        );
+        for (const row of reviewRows.rows) if (row.review_status) reviewByAsset.set(String(row.asset_id), String(row.review_status));
+      }
+      const sharedImages = images.map((image) => {
+        const captureAssetId = typeof image.metadata?.captureAssetId === "string" ? image.metadata.captureAssetId : null;
+        return captureAssetId && reviewByAsset.has(captureAssetId)
+          ? { ...image, metadata: { ...(image.metadata || {}), creatorReviewStatus: reviewByAsset.get(captureAssetId) } }
+          : image;
+      });
       return res.json({
         galleryId: access.gallery.id,
-        images,
+        images: sharedImages,
         // Client can display a banner when any image came back with
         // signingFailed: true (e.g. the captureAssets row was deleted).
-        anySigningFailed: images.some((i) => i.signingFailed),
+        anySigningFailed: sharedImages.some((i) => i.signingFailed),
       });
     } catch (error) {
       console.error("[client-gallery] list images failed", error);
@@ -887,6 +905,14 @@ export function setupClientGalleryRoutes(
       }
       const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
       if (!gallery) return res.status(404).json({ error: "not_found" });
+      const image = await pool.query(
+        `SELECT id, image_metadata FROM client_gallery_images WHERE id=$1 AND gallery_id=$2 LIMIT 1`,
+        [imageId, gallery.id],
+      );
+      if (!image.rowCount) return res.status(404).json({ error: "image_not_found" });
+      const captureAssetId = typeof image.rows[0]?.image_metadata?.captureAssetId === "string"
+        ? image.rows[0].image_metadata.captureAssetId
+        : null;
 
       // Multi-round: hver runde har sin egen selections-rad så Fredrik
       // kan sammenligne runde 1 vs runde 2. Round leses fra gallery_
@@ -896,12 +922,6 @@ export function setupClientGalleryRoutes(
       const currentRound = Number(
         (access.settings as any)?.proofingRound ?? 1,
       ) || 1;
-      try {
-        await pool.query(
-          `ALTER TABLE client_image_selections
-             ADD COLUMN IF NOT EXISTS proofing_round INTEGER DEFAULT 1`,
-        );
-      } catch { /* idempotent */ }
       const effectiveEmail = clientEmail || gallery.clientEmail;
       const existing = await pool.query(
         `SELECT id FROM client_image_selections
@@ -942,7 +962,7 @@ export function setupClientGalleryRoutes(
         try {
           broadcastUserEvent(gallery.photographerId, {
             kind: "asset.hearted",
-            assetId: imageId,
+            assetId: captureAssetId || imageId,
             sessionId: gallery.captureSessionId,
             clientName: gallery.clientName ?? null,
             hearted,
@@ -951,23 +971,9 @@ export function setupClientGalleryRoutes(
         } catch (err) {
           console.warn("[client-gallery] broadcast asset.hearted failed", err);
         }
-        // Klient-samarbeidende culling: et hjerte i galleriet auto-flagger det
-        // koblede capture-asset som keeper (flaggedForClient) — så fotografens
-        // pick-filter + samme-dags levering plukker det opp uten manuelt steg.
-        try {
-          const imgRow = await pool.query(
-            `SELECT image_metadata FROM client_gallery_images WHERE id = $1 LIMIT 1`,
-            [imageId],
-          );
-          const captureAssetId = imgRow.rows[0]?.image_metadata?.captureAssetId;
-          if (captureAssetId) {
-            await updateAssetLabels(db as unknown as Parameters<typeof updateAssetLabels>[0], gallery.photographerId, String(captureAssetId), {
-              flaggedForClient: hearted,
-            });
-          }
-        } catch (err) {
-          console.warn("[client-gallery] flaggedForClient sync failed", err);
-        }
+        // Klientens favoritt er en egen, synlig review-dimensjon. Den må ikke
+        // overskrive capture_assets.flagged_for_client, som nå kun speiler
+        // fotografens autoritative project_photo_review-status.
         if (gallery.projectId) {
           try {
             await recordProjectChange(pool, {
@@ -976,7 +982,7 @@ export function setupClientGalleryRoutes(
               actorKind: "client",
               actorLabel: gallery.clientName ?? null,
               payload: {
-                assetId: imageId,
+                assetId: captureAssetId || imageId,
                 sessionId: gallery.captureSessionId,
                 hearted,
               },
@@ -1491,6 +1497,11 @@ export function setupClientGalleryRoutes(
       }
       const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
       if (!gallery) return res.status(404).json({ error: "not_found" });
+      const image = await pool.query(
+        `SELECT id FROM client_gallery_images WHERE id=$1 AND gallery_id=$2 LIMIT 1`,
+        [imageId, gallery.id],
+      );
+      if (!image.rowCount) return res.status(404).json({ error: "image_not_found" });
       const result = await pool.query(
         `INSERT INTO client_image_comments (
            gallery_id, image_id, client_name, client_email, comment, comment_type, status, created_at, updated_at
@@ -1569,9 +1580,28 @@ export function setupClientGalleryRoutes(
       }
       query += ` ORDER BY created_at DESC LIMIT 500`;
       const result = await pool.query(query, params);
+      let creatorRows: any[] = [];
+      if (gallery.projectId) {
+        const creatorParams: unknown[] = [String(gallery.projectId), gallery.id];
+        let creatorQuery = `SELECT comment.id, image.id AS image_id, comment.author_name,
+                                   comment.comment, comment.status, comment.parent_id,
+                                   comment.created_at, comment.updated_at
+                              FROM project_photo_comments comment
+                              JOIN client_gallery_images image
+                                ON image.gallery_id=$2
+                               AND image.image_metadata->>'captureAssetId'=comment.asset_id::text
+                             WHERE comment.project_id=$1 AND comment.scope='client'
+                               AND comment.deleted_at IS NULL`;
+        if (imageId) {
+          creatorParams.push(imageId);
+          creatorQuery += ` AND image.id=$${creatorParams.length}`;
+        }
+        creatorQuery += ` ORDER BY comment.created_at DESC LIMIT 500`;
+        creatorRows = (await pool.query(creatorQuery, creatorParams)).rows;
+      }
       res.json({
         galleryId: gallery.id,
-        comments: result.rows.map((r: any) => ({
+        comments: [...result.rows.map((r: any) => ({
           id: r.id,
           imageId: r.image_id,
           clientName: r.client_name,
@@ -1582,7 +1612,21 @@ export function setupClientGalleryRoutes(
           respondedAt: r.responded_at,
           createdAt: r.created_at,
           updatedAt: r.updated_at,
-        })),
+          source: "client_gallery",
+        })), ...creatorRows.map((r: any) => ({
+          id: r.id,
+          imageId: r.image_id,
+          clientName: r.author_name || "Fotograf",
+          comment: r.comment,
+          commentType: "photographer",
+          status: r.status,
+          photographerResponse: null,
+          respondedAt: null,
+          parentId: r.parent_id,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+          source: "photo_room",
+        }))].sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()),
       });
     } catch (error) {
       console.error("[client-gallery] comment list failed", error);

@@ -3076,6 +3076,7 @@ export default function CreatorHubPhotoEnhancer({ profession: professionProp }: 
           session.state.exportPresets.find((p) => p.id === session.state.activeExportPresetId) ?? null
         }
         images={session.state.images}
+        projectId={selectedProjectId || undefined}
         projectName={projects.find((p) => p.id === selectedProjectId)?.name}
         clientName={undefined}
         photographerId={

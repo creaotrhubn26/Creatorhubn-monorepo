@@ -59,6 +59,7 @@ JWT_SECRET=your-jwt-secret
 CREATORHUB_GOOGLE_CLIENT_ID=your-creatorhub-google-client-id
 CREATORHUB_GOOGLE_CLIENT_SECRET=your-creatorhub-google-client-secret
 CREATORHUB_GOOGLE_REDIRECT_URI=http://localhost:5050/api/creatorhub/google/oauth/callback
+CAPTUREAPP_GOOGLE_CLIENT_ID=your-creatorhub-ios-client-id
 ROLE_ROOM_GOOGLE_CLIENT_ID=your-role-room-google-client-id
 ROLE_ROOM_GOOGLE_CLIENT_SECRET=your-role-room-google-client-secret
 ROLE_ROOM_GOOGLE_REDIRECT_URI=http://localhost:5050/api/role-room/google/oauth/callback

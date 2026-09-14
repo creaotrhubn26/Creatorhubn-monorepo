@@ -229,6 +229,37 @@ const applyMentionSuggestion = (sourceText: string | undefined, name: string): s
   return replaced !== current ? replaced : `${current.trimEnd()} ${name}`;
 };
 
+/**
+ * Kartverkets offentlige adresseoppslag bekrefter gateadressen og koordinatene,
+ * men returnerer ikke alltid en matrikkel-ID. Det skal ikke gjøre en gyldig
+ * adresse til en feiltilstand. Vi åpner i stedet analysen med et eksplisitt
+ * uverifisert operativt datagrunnlag som brukeren kan fylle ut etter scout.
+ */
+const buildVerifiedAddressAnalysis = (): Location['propertyAnalysis'] => ({
+  photographySpots: [],
+  droneRestrictions: {
+    allowed: false,
+    restrictions: [],
+    noFlyZones: [],
+  },
+  weatherExposure: {
+    shelterOptions: [],
+  },
+  accessAnalysis: {
+    publicTransport: [],
+    parkingSpots: [],
+    evParkingSpots: [],
+    evChargingSpots: [],
+  },
+  analysisMeta: {
+    operationalStatus: 'unverified',
+    propertySource: 'kartverket',
+    warnings: [
+      'Kartverket bekrefter adressen, men tekniske opptaksforhold må dokumenteres under scout.',
+    ],
+  },
+});
+
 const createManualDraft = (
   analysis: Location['propertyAnalysis'],
   locationAccessNotes?: string
@@ -718,7 +749,16 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
       } else if (addressData.propertyId) {
         await loadAnalysisForProperty(addressData.propertyId);
       } else {
-        setError('Kunne ikke finne lokasjons-ID for denne adressen');
+        const addressAnalysis = buildVerifiedAddressAnalysis();
+        setAnalysis(addressAnalysis);
+        roleRoomAnalytics.locationAnalyzed({
+          project_id: (location as { projectId?: string })?.projectId ?? 'unknown',
+          location_id: location?.id,
+          analysis_type: 'address',
+        });
+        if (onAnalysisComplete) {
+          await Promise.resolve(onAnalysisComplete(addressAnalysis));
+        }
         setLoading(false);
       }
     } catch (err) {
@@ -726,7 +766,7 @@ export function LocationAnalysisDialog({ open, location, onClose, onAnalysisComp
       setError('Kunne ikke laste lokasjonsdata');
       setLoading(false);
     }
-  }, [loadAnalysisForProperty]);
+  }, [loadAnalysisForProperty, location, onAnalysisComplete]);
 
   // Load analysis when dialog opens - use stable location identifier to prevent repeated loads
   useEffect(() => {

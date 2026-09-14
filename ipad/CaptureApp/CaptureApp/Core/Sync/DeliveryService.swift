@@ -226,7 +226,7 @@ actor DeliveryService {
         }
     }
 
-    /// Resolve which on-disk file's bytes go up to R2 for this pick.
+    /// Resolve which on-disk file's bytes go to CreatorHub S3 for this pick.
     /// Phase 2C: prefer RAW-rendered JPEG when both `renderRecipe` and a
     /// `RAWExportService` are present. Falls back to `previewPath` for
     /// JPEG-only shoots, render failure, or callsites that didn't opt in
@@ -343,9 +343,9 @@ actor DeliveryService {
         return assetUUID
     }
 
-    // MARK: - Card backup (originals → B2)
+    // MARK: - Card backup (originals → CreatorHub S3)
 
-    /// One ORIGINAL file from a memory card to back up to B2 — the RAW (.raw)
+    /// One ORIGINAL file from a memory card to back up to CreatorHub S3 — the RAW (.raw)
     /// and/or the JPEG (.full). Unlike ``DeliverableAsset`` (which ships a
     /// client preview), this carries the camera-original bytes so the card is
     /// safely archived, not just delivered.
@@ -358,10 +358,10 @@ actor DeliveryService {
         let kind: BackendUploadKind
     }
 
-    /// Back up original card files to B2 under a freshly-mirrored backend
+    /// Back up original card files to CreatorHub S3 under a freshly-mirrored backend
     /// session, optionally linked to a project. Reuses the same chunked
     /// register→sign→put→complete path as ``deliver`` so the originals land in
-    /// B2 exactly like delivered assets — only the bytes (originals, not
+    /// S3 exactly like delivered assets — only the bytes (originals, not
     /// previews) and the upload `kind` differ. `onProgress(done, total)` fires
     /// after each item so the UI can show a real progress bar.
     func backupCard(
@@ -500,7 +500,7 @@ private func splitIntoParts(data: Data, partSize: Int64, partCount: Int) throws 
 }
 
 /// Lower-case hex SHA-256 of the full payload — the backend matches this
-/// against R2's stored checksum during completeUpload.
+/// against S3's stored checksum during completeUpload.
 private func sha256Hex(of data: Data) -> String {
     let digest = SHA256.hash(data: data)
     return digest.map { String(format: "%02x", $0) }.joined()

@@ -9,6 +9,7 @@ import {
   S3Client,
   UploadPartCommand,
 } from '@aws-sdk/client-s3';
+import crypto from 'node:crypto';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { and, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -17,6 +18,13 @@ import {
   captureSessions,
   type InsertCaptureAsset,
 } from '../migrations/capture-schema.js';
+import { getCreatorHubObjectStorage } from './creatorhub-object-storage.js';
+import type { PrivateObjectStorage } from './private-object-storage.js';
+import {
+  buildPhotoRoomCaptureAssetPrefix,
+  buildPhotoRoomCaptureKey,
+  isCreatorHubPhotoRoomKey,
+} from './photo-room-storage-contract.js';
 
 type Db = NodePgDatabase<Record<string, never>>;
 
@@ -95,30 +103,43 @@ function getClient(cfg: CaptureR2Config): S3Client | null {
   return cachedClient;
 }
 
+function getLegacyStorage(): PrivateObjectStorage | null {
+  const cfg = buildCaptureR2Config();
+  const client = getClient(cfg);
+  if (!client || !cfg.bucket) return null;
+  return {
+    client,
+    bucket: cfg.bucket,
+    region: 'auto',
+    provider: 'backblaze_b2',
+    authentication: 'legacy_capture_r2_access_key',
+  };
+}
+
+/** New Photo Room keys always use CreatorHub S3; only legacy keys use R2. */
+function storageForKey(key: string): PrivateObjectStorage | null {
+  return isCreatorHubPhotoRoomKey(key)
+    ? getCreatorHubObjectStorage()
+    : getLegacyStorage();
+}
+
+/** Provider descriptor for internal consumers such as Capture → Photo Enhancer. */
+export function describeCaptureStorageKey(key: string): {
+  bucket: string;
+  storage: 'creatorhub_s3' | 'r2';
+} | null {
+  const storage = storageForKey(key);
+  if (!storage) return null;
+  return {
+    bucket: storage.bucket,
+    storage: isCreatorHubPhotoRoomKey(key) ? 'creatorhub_s3' : 'r2',
+  };
+}
+
 function computePartSize(totalSize: number, preferredPartSize?: number): number {
   const preferred = Math.max(preferredPartSize ?? MIN_PART_SIZE, MIN_PART_SIZE);
   const needed = Math.ceil(totalSize / MAX_PARTS);
   return Math.min(Math.max(preferred, needed), MAX_PART_SIZE);
-}
-
-function sanitizeFilename(input: string, fallback: string): string {
-  const cleaned = input
-    .replace(/[^a-zA-Z0-9._-]/g, '_')
-    .replace(/^[._]+/, '')
-    .slice(0, 160);
-  return cleaned || fallback;
-}
-
-function buildObjectKey(params: {
-  prefix: string;
-  ownerUserId: string;
-  sessionId: string;
-  assetId: string;
-  kind: UploadKind;
-  filename: string;
-}): string {
-  const name = sanitizeFilename(params.filename, 'file.bin');
-  return `${params.prefix}${params.ownerUserId}/${params.sessionId}/${params.assetId}/${params.kind}/${name}`;
 }
 
 function expectedKeyPrefix(
@@ -134,11 +155,12 @@ async function fetchOwnedAsset(
   db: Db,
   ownerUserId: string,
   assetId: string,
-): Promise<{ sessionId: string; originalFilename: string } | null> {
+): Promise<{ sessionId: string; originalFilename: string; projectId: string | null } | null> {
   const rows = await db
     .select({
       sessionId: captureAssets.sessionId,
       originalFilename: captureAssets.originalFilename,
+      projectId: captureSessions.projectId,
     })
     .from(captureAssets)
     .innerJoin(captureSessions, eq(captureAssets.sessionId, captureSessions.id))
@@ -172,26 +194,25 @@ export async function startMultipartUpload(
   if (!Number.isInteger(sizeBytes) || sizeBytes <= 0) {
     return { ok: false, error: 'invalid' };
   }
-  const cfg = buildCaptureR2Config();
-  const client = getClient(cfg);
-  if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
-
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
   if (!asset) return { ok: false, error: 'not_found' };
 
-  const key = buildObjectKey({
-    prefix: cfg.prefix,
-    ownerUserId,
+  const storage = getCreatorHubObjectStorage();
+  if (!storage) return { ok: false, error: 'not_configured' };
+
+  const key = buildPhotoRoomCaptureKey({
+    userId: ownerUserId,
+    projectId: asset.projectId,
     sessionId: asset.sessionId,
     assetId,
     kind,
-    filename: asset.originalFilename,
+    fileName: asset.originalFilename,
   });
   const partSize = computePartSize(sizeBytes, preferredPartSize);
   const partCount = Math.ceil(sizeBytes / partSize);
-  const created = await client.send(
+  const created = await storage.client.send(
     new CreateMultipartUploadCommand({
-      Bucket: cfg.bucket,
+      Bucket: storage.bucket,
       Key: key,
       ContentType: mime,
       Metadata: {
@@ -208,7 +229,7 @@ export async function startMultipartUpload(
   return {
     ok: true,
     result: {
-      bucket: cfg.bucket,
+      bucket: storage.bucket,
       key,
       uploadId: created.UploadId,
       partSize,
@@ -233,21 +254,23 @@ export async function signPartUrls(
   partNumbers: number[],
 ): Promise<Result<{ parts: SignedPart[]; expiresInSeconds: number }>> {
   if (partNumbers.length === 0) return { ok: false, error: 'invalid' };
-  const cfg = buildCaptureR2Config();
-  const client = getClient(cfg);
-  if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
   if (!asset) return { ok: false, error: 'not_found' };
-  if (!key.startsWith(expectedKeyPrefix(cfg, ownerUserId, asset.sessionId, assetId))) {
+  const storage = storageForKey(key);
+  if (!storage) return { ok: false, error: 'not_configured' };
+  const allowedPrefix = isCreatorHubPhotoRoomKey(key)
+    ? buildPhotoRoomCaptureAssetPrefix({ userId: ownerUserId, projectId: asset.projectId, sessionId: asset.sessionId, assetId })
+    : expectedKeyPrefix(buildCaptureR2Config(), ownerUserId, asset.sessionId, assetId);
+  if (!key.startsWith(allowedPrefix)) {
     return { ok: false, error: 'not_found' };
   }
   const parts: SignedPart[] = await Promise.all(
     partNumbers.slice(0, PART_URL_BATCH_MAX).map(async (partNumber) => ({
       partNumber,
       url: await getSignedUrl(
-        client,
+        storage.client,
         new UploadPartCommand({
-          Bucket: cfg.bucket,
+          Bucket: storage.bucket,
           Key: key,
           UploadId: uploadId,
           PartNumber: partNumber,
@@ -283,20 +306,21 @@ export async function completeMultipartUpload(
   if (parts.length === 0 || checksumSha256.length !== 64 || sizeBytes <= 0) {
     return { ok: false, error: 'invalid' };
   }
-  const cfg = buildCaptureR2Config();
-  const client = getClient(cfg);
-  if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
-
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
   if (!asset) return { ok: false, error: 'not_found' };
-  if (!key.startsWith(expectedKeyPrefix(cfg, ownerUserId, asset.sessionId, assetId))) {
+  const storage = storageForKey(key);
+  if (!storage) return { ok: false, error: 'not_configured' };
+  const allowedPrefix = isCreatorHubPhotoRoomKey(key)
+    ? buildPhotoRoomCaptureAssetPrefix({ userId: ownerUserId, projectId: asset.projectId, sessionId: asset.sessionId, assetId })
+    : expectedKeyPrefix(buildCaptureR2Config(), ownerUserId, asset.sessionId, assetId);
+  if (!key.startsWith(allowedPrefix)) {
     return { ok: false, error: 'not_found' };
   }
 
   const sorted = [...parts].sort((a, b) => a.partNumber - b.partNumber);
-  await client.send(
+  await storage.client.send(
     new CompleteMultipartUploadCommand({
-      Bucket: cfg.bucket,
+      Bucket: storage.bucket,
       Key: key,
       UploadId: uploadId,
       MultipartUpload: {
@@ -304,7 +328,7 @@ export async function completeMultipartUpload(
       },
     }),
   );
-  const head = await client.send(new HeadObjectCommand({ Bucket: cfg.bucket, Key: key }));
+  const head = await storage.client.send(new HeadObjectCommand({ Bucket: storage.bucket, Key: key }));
   const verifiedSize = Number(head.ContentLength ?? sizeBytes);
 
   const patch: Partial<InsertCaptureAsset> = {
@@ -330,7 +354,7 @@ export async function completeMultipartUpload(
   return {
     ok: true,
     result: {
-      bucket: cfg.bucket,
+      bucket: storage.bucket,
       key,
       sizeBytes: verifiedSize,
       etag: head.ETag ?? null,
@@ -339,7 +363,7 @@ export async function completeMultipartUpload(
 }
 
 const READ_URL_TTL_SECONDS = 5 * 60;
-/// 7 days is the AWS / Cloudflare R2 hard ceiling on presigned URL TTL.
+/// Seven days is the AWS SigV4 ceiling used for persisted delivery URLs.
 /// Used when the URL needs to live in a database row for delivery
 /// galleries — the client gallery viewer should re-sign on render once
 /// the longer-term signing strategy lands, but this gets us through the
@@ -349,7 +373,7 @@ const DELIVERY_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
 /**
  * Generate a short-lived signed GET URL for a previously-uploaded asset key.
  * Used by client review mode so browsers can render thumbnails without
- * direct R2 credentials.
+ * direct private-storage credentials.
  */
 /// Phase 5.1 — direct put for non-multipart objects (voice-memo
 /// reply audio uploads bypass the deliver/multipart pipeline because
@@ -357,23 +381,21 @@ const DELIVERY_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
 /// each reply). The key follows a reviews-scoped prefix so audio
 /// blobs live alongside review rows logically:
 ///   reviews/<reviewId>/audio.m4a
-/// Returns the full R2 key on success or null when capture R2 isn't
-/// configured (env vars missing — same path as other capture R2
-/// failure modes).
+/// Returns the private object key on success, or null when its provider is
+/// unavailable. New calls use CreatorHub S3 keys.
 export async function uploadCaptureObject(params: {
   key: string;
   buffer: Buffer;
   contentType: string;
 }): Promise<string | null> {
-  const cfg = buildCaptureR2Config();
-  const client = getClient(cfg);
-  if (!cfg.enabled || !cfg.bucket || !client) {
+  const storage = storageForKey(params.key);
+  if (!storage) {
     return null;
   }
   try {
-    await client.send(
+    await storage.client.send(
       new PutObjectCommand({
-        Bucket: cfg.bucket,
+        Bucket: storage.bucket,
         Key: params.key,
         Body: params.buffer,
         ContentType: params.contentType,
@@ -404,12 +426,11 @@ async function signAssetReadUrlWithTtl(
   ttlSeconds: number,
 ): Promise<string | null> {
   if (!key) return null;
-  const cfg = buildCaptureR2Config();
-  const client = getClient(cfg);
-  if (!client || !cfg.bucket) return null;
+  const storage = storageForKey(key);
+  if (!storage) return null;
   return getSignedUrl(
-    client,
-    new GetObjectCommand({ Bucket: cfg.bucket, Key: key }),
+    storage.client,
+    new GetObjectCommand({ Bucket: storage.bucket, Key: key }),
     { expiresIn: ttlSeconds },
   );
 }
@@ -421,17 +442,19 @@ export async function abortMultipartUpload(
   uploadId: string,
   key: string,
 ): Promise<{ ok: true } | { ok: false; error: UploadError }> {
-  const cfg = buildCaptureR2Config();
-  const client = getClient(cfg);
-  if (!client || !cfg.bucket) return { ok: false, error: 'not_configured' };
   const asset = await fetchOwnedAsset(db, ownerUserId, assetId);
   if (!asset) return { ok: false, error: 'not_found' };
-  if (!key.startsWith(expectedKeyPrefix(cfg, ownerUserId, asset.sessionId, assetId))) {
+  const storage = storageForKey(key);
+  if (!storage) return { ok: false, error: 'not_configured' };
+  const allowedPrefix = isCreatorHubPhotoRoomKey(key)
+    ? buildPhotoRoomCaptureAssetPrefix({ userId: ownerUserId, projectId: asset.projectId, sessionId: asset.sessionId, assetId })
+    : expectedKeyPrefix(buildCaptureR2Config(), ownerUserId, asset.sessionId, assetId);
+  if (!key.startsWith(allowedPrefix)) {
     return { ok: false, error: 'not_found' };
   }
-  await client.send(
+  await storage.client.send(
     new AbortMultipartUploadCommand({
-      Bucket: cfg.bucket,
+      Bucket: storage.bucket,
       Key: key,
       UploadId: uploadId,
     }),
@@ -439,29 +462,88 @@ export async function abortMultipartUpload(
   return { ok: true };
 }
 
-/// Best-effort fysisk sletting av R2-objekter for en asset (inkl. ev. orphende
+/// Best-effort fysisk sletting av lagringsobjekter for en asset (inkl. ev. orphende
 /// parts under asset-prefix). Feil er tolerert per nøkkel — DB-raden er
 /// autoritativ; objektopprydding er sekundær. Alltid trygg å kalle med tom liste.
 export async function deleteCaptureObjects(
   keys: string[],
 ): Promise<{ deleted: number; failed: number }> {
-  const cfg = buildCaptureR2Config();
-  const client = getClient(cfg);
-  if (!client || !cfg.bucket) {
-    console.error('[capture] R2 delete: ikke konfigurert — hoppet over', keys.length, 'nøkler');
-    return { deleted: 0, failed: keys.length };
-  }
   let deleted = 0;
   let failed = 0;
   for (const key of keys) {
     if (!key) continue;
+    const storage = storageForKey(key);
+    if (!storage) {
+      failed += 1;
+      continue;
+    }
     try {
-      await client.send(new DeleteObjectCommand({ Bucket: cfg.bucket, Key: key }));
+      await storage.client.send(new DeleteObjectCommand({ Bucket: storage.bucket, Key: key }));
       deleted += 1;
     } catch (e: any) {
       failed += 1;
-      console.error('[capture] R2 delete feilet', key, e?.message || e);
+      console.error('[capture] object delete feilet', key, e?.message || e);
     }
   }
   return { deleted, failed };
+}
+
+/** Read either a canonical CreatorHub object or a legacy R2 object during migration. */
+export async function getCaptureObject(key: string | null): Promise<{
+  body: Buffer;
+  contentType: string | null;
+  sizeBytes: number;
+  etag: string | null;
+} | null> {
+  if (!key) return null;
+  const storage = storageForKey(key);
+  if (!storage) return null;
+  try {
+    const object = await storage.client.send(new GetObjectCommand({ Bucket: storage.bucket, Key: key }));
+    if (!object.Body) return null;
+    const bytes = await object.Body.transformToByteArray();
+    return {
+      body: Buffer.from(bytes),
+      contentType: object.ContentType || null,
+      sizeBytes: Number(object.ContentLength ?? bytes.byteLength),
+      etag: object.ETag || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Non-destructive legacy migration primitive. It verifies source bytes and the
+ * uploaded CreatorHub copy. Deleting the old R2 object is deliberately not
+ * part of this API.
+ */
+export async function migrateLegacyCaptureObject(input: {
+  legacyKey: string;
+  creatorHubKey: string;
+  expectedSha256?: string | null;
+}): Promise<{ sizeBytes: number; sha256: string }> {
+  if (isCreatorHubPhotoRoomKey(input.legacyKey) || !isCreatorHubPhotoRoomKey(input.creatorHubKey)) {
+    throw new Error('invalid_migration_keys');
+  }
+  const source = await getCaptureObject(input.legacyKey);
+  if (!source) throw new Error('legacy_source_unavailable');
+  const sourceSha256 = crypto.createHash('sha256').update(source.body).digest('hex');
+  if (input.expectedSha256 && sourceSha256 !== input.expectedSha256.toLowerCase()) {
+    throw new Error('legacy_checksum_mismatch');
+  }
+  const targetStorage = getCreatorHubObjectStorage();
+  if (!targetStorage) throw new Error('creatorhub_storage_not_configured');
+  await targetStorage.client.send(new PutObjectCommand({
+    Bucket: targetStorage.bucket,
+    Key: input.creatorHubKey,
+    Body: source.body,
+    ContentType: source.contentType || 'application/octet-stream',
+    Metadata: { migratedFrom: 'legacy-capture-r2', sha256: sourceSha256 },
+  }));
+  const target = await getCaptureObject(input.creatorHubKey);
+  if (!target || target.sizeBytes !== source.sizeBytes) throw new Error('creatorhub_size_verification_failed');
+  const targetSha256 = crypto.createHash('sha256').update(target.body).digest('hex');
+  if (targetSha256 !== sourceSha256) throw new Error('creatorhub_checksum_verification_failed');
+  return { sizeBytes: target.sizeBytes, sha256: targetSha256 };
 }

@@ -1222,6 +1222,7 @@ export const clientImageSelections = pgTable("client_image_selections", {
 export const photographerClientGalleries = pgTable("photographer_client_galleries", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	photographerId: varchar("photographer_id").notNull(),
+	projectId: varchar("project_id"),
 	clientName: varchar("client_name").notNull(),
 	clientEmail: varchar("client_email").notNull(),
 	projectTitle: varchar("project_title").notNull(),

@@ -90,6 +90,10 @@ services:
         sync: false
       - key: CREATORHUB_GOOGLE_CLIENT_ID
         sync: false
+      # Dedicated public iOS client for com.creatorhubn.capture. The native
+      # CreatorHub sign-in route never falls back to Role Room credentials.
+      - key: CAPTUREAPP_GOOGLE_CLIENT_ID
+        sync: false
       - key: CREATORHUB_GOOGLE_CLIENT_SECRET
         sync: false
       - key: CREATORHUB_GOOGLE_REDIRECT_URI

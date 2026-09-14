@@ -349,7 +349,7 @@ const MoodboardTab: React.FC<{ projectId: string; profession?: string }> = ({ pr
   const [conceptBusy, setConceptBusy] = useState(false);
   const [conceptStatus, setConceptStatus] = useState('');
   const loadCredits = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits`).then((r: any) => setCredits(r || null)).catch(() => {}); };
-  const buyPack = async (id: string) => { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId: id } }); if (r?.url) window.location.href = r.url; } catch (e: any) { wsAlert(e?.message || t('error')); } };
+  const buyPack = async (id: string) => { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId: id, returnPath: `/workspace/${projectId}/moodboard` } }); if (r?.url) window.location.href = r.url; } catch (e: any) { wsAlert(e?.message || t('error')); } };
   useEffect(() => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/config`).then((r: any) => setAiCfg(r || null)).catch(() => {});

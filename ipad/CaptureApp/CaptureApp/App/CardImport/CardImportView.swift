@@ -1,7 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Memory-card import flow: pick → review → import + back up to B2 → cull.
+/// Memory-card import flow: pick → review → import + back up to CreatorHub S3 → cull.
 struct CardImportView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var model = CardImportModel()
@@ -62,7 +62,7 @@ struct CardImportView: View {
                 .foregroundStyle(.secondary)
             Text("Importer bilder fra minnekort")
                 .font(.title2.bold())
-            Text("Koble til kortleseren, velg så kortet (eller DCIM-mappen). Vi parer RAW + JPEG, hopper over det du allerede har, kobler til prosjekt og sikkerhetskopierer originalene til skyen (B2).")
+            Text("Koble til kortleseren, velg så kortet (eller DCIM-mappen). Vi parer RAW + JPEG, hopper over det du allerede har, kobler til prosjekt og sikkerhetskopierer originalene til CreatorHub S3.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -159,7 +159,7 @@ struct CardImportView: View {
             Text("Importert og sikkerhetskopiert")
                 .font(.title2.bold())
             VStack(spacing: 4) {
-                Text("\(model.groups.count - model.duplicateCount) importert til skyen (B2).")
+                Text("\(model.groups.count - model.duplicateCount) importert til CreatorHub S3.")
                 if model.duplicateCount > 0 {
                     Text("\(model.duplicateCount) hoppet over (allerede inne).")
                         .foregroundStyle(.secondary)

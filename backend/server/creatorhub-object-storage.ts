@@ -1,4 +1,10 @@
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import type { PrivateObjectStorage } from "./private-object-storage.js";
@@ -72,6 +78,92 @@ export async function presignCreatorHubObjectDownload(
       error: error instanceof Error ? error.name : "unknown",
     });
     return null;
+  }
+}
+
+export interface CreatorHubObject {
+  body: Buffer;
+  contentType: string | null;
+  sizeBytes: number;
+  etag: string | null;
+  checksumSha256: string | null;
+}
+
+/** Store private product media in CreatorHub's dedicated AWS bucket. */
+export async function putCreatorHubObject(
+  key: string,
+  body: Buffer,
+  contentType: string,
+  metadata?: Record<string, string>,
+): Promise<boolean> {
+  const storage = getCreatorHubObjectStorage();
+  if (!storage) return false;
+  await storage.client.send(new PutObjectCommand({
+    Bucket: storage.bucket,
+    Key: key,
+    Body: body,
+    ContentType: contentType,
+    Metadata: metadata,
+  }));
+  return true;
+}
+
+/** Read an object without ever falling back to Role Room credentials. */
+export async function getCreatorHubObject(key: string): Promise<CreatorHubObject | null> {
+  const storage = getCreatorHubObjectStorage();
+  if (!storage) return null;
+  try {
+    const object = await storage.client.send(new GetObjectCommand({
+      Bucket: storage.bucket,
+      Key: key,
+    }));
+    if (!object.Body) return null;
+    const bytes = await object.Body.transformToByteArray();
+    return {
+      body: Buffer.from(bytes),
+      contentType: object.ContentType || null,
+      sizeBytes: Number(object.ContentLength ?? bytes.byteLength),
+      etag: object.ETag || null,
+      checksumSha256: object.ChecksumSHA256 || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function headCreatorHubObject(key: string): Promise<{
+  sizeBytes: number;
+  etag: string | null;
+  checksumSha256: string | null;
+} | null> {
+  const storage = getCreatorHubObjectStorage();
+  if (!storage) return null;
+  try {
+    const object = await storage.client.send(new HeadObjectCommand({
+      Bucket: storage.bucket,
+      Key: key,
+    }));
+    return {
+      sizeBytes: Number(object.ContentLength ?? 0),
+      etag: object.ETag || null,
+      checksumSha256: object.ChecksumSHA256 || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteCreatorHubObject(key: string): Promise<boolean> {
+  const storage = getCreatorHubObjectStorage();
+  if (!storage) return false;
+  try {
+    await storage.client.send(new DeleteObjectCommand({
+      Bucket: storage.bucket,
+      Key: key,
+    }));
+    return true;
+  } catch {
+    return false;
   }
 }
 

@@ -318,6 +318,7 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
   test('kjører kildebevisst lokasjonsanalyse, lagrer resultatet og viser det igjen', async ({ page }) => {
     const runtimeErrors: string[] = [];
     const analysisRequests: string[] = [];
+    const propertyRequests: string[] = [];
     const targetedApiFailures: string[] = [];
     page.on('pageerror', (error) => runtimeErrors.push(error.message));
     page.on('console', (message) => {
@@ -356,6 +357,7 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
     await page.route('**/api/external-data/kartverket/**', async (route) => {
       const path = new URL(route.request().url()).pathname;
       if (path.includes('/property/')) {
+        propertyRequests.push(path);
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: {
           propertyId: '0301-1-1', address: 'Skogveien 1, Oslo', coordinates: { lat: 59.91, lng: 10.75 }, area: 1200,
           boundaries: [], elevation: 42, landUse: 'skog', restrictions: [], accessRights: [], ownership: { owner: '', ownershipType: 'ukjent', registrationDate: '' }, source: 'kartverket',
@@ -367,7 +369,7 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
         return;
       }
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: {
-        address: 'Skogveien 1, Oslo', coordinates: { lat: 59.91, lng: 10.75 }, municipality: 'Oslo', county: 'Oslo', postalCode: '0001', propertyId: '0301-1-1', source: 'kartverket',
+        address: 'Skogveien 1, Oslo', coordinates: { lat: 59.91, lng: 10.75 }, municipality: 'Oslo', county: 'Oslo', postalCode: '0001', propertyId: '', source: 'kartverket',
       } }) });
     });
 
@@ -383,6 +385,7 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
     await expect(page.getByRole('heading', { name: 'Lokasjonsanalyse', exact: true })).toBeVisible();
     await expect(page.getByTestId('location-analysis-evidence')).toContainText('Adressetreff bekreftet: Skogveien 1, Oslo');
     await expect(page.getByTestId('location-analysis-evidence')).toContainText('ikke bekreftet før en kilde eller scout har dokumentert dem');
+    await expect(page.getByText('Kunne ikke finne lokasjons-ID for denne adressen')).toBeHidden();
     await expect.poll(() => api.projectWrites.length).toBeGreaterThan(1);
     await expect.poll(() => {
       const locations = api.project?.locations as Array<{ id: string; propertyAnalysis?: unknown }> | undefined;
@@ -400,6 +403,7 @@ test.describe('Autentisert Troll-flyt · location manager', () => {
     // or overwrite the result with another external request.
     await expect.poll(() => analysisRequests.length).toBe(1);
     expect(analysisRequests).toEqual(['Bearer dev-admin-local-session']);
+    expect(propertyRequests).toEqual([]);
     expect(runtimeErrors).toEqual([]);
     expect(targetedApiFailures).toEqual([]);
   });
