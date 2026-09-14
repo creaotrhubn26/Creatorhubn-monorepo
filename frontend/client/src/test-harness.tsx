@@ -16,6 +16,8 @@
  *                                project-creation-modalen. Brukes av dance-*-
  *                                specs. I produksjon lastes dance bare etter at
  *                                project-creation-modalen har valgt et prosjekt.
+ *   ?harness=game_studio         Mounter NarrativeWorkspace (Story Graph) med
+ *                                seedet projectId. Brukes av narrative-*-specs.
  *   ?harness=content_producer    Mounter RoleRoomDashboardPanel som
  *                                innholdsprodusent (Creative Space Sync /
  *                                klient-brief, producer-timeline, osv.).
@@ -30,6 +32,7 @@ import { ToastProvider } from './components/role-room/components/ToastStack';
 import { AuthProvider } from './contexts/AuthContext';
 import { EnhancedMasterIntegrationProvider } from './integration/EnhancedMasterIntegrationProvider';
 import { DanceWorkspace } from './components/role-room/dance';
+import { NarrativeWorkspace } from './components/role-room/narrative';
 
 const theme = createTheme({
   palette: { mode: 'dark' },
@@ -59,6 +62,15 @@ function TestHarness() {
     panel = (
       <DanceWorkspace
         modeOverride={harnessMode}
+        projectId={seededProjectId}
+      />
+    );
+  } else if (harnessMode === 'game_studio') {
+    // Story Graph (spillstudio) — mounter NarrativeWorkspace direkte med
+    // seedet projectId, som dans. Brukes av narrative-*-specs.
+    panel = (
+      <NarrativeWorkspace
+        modeOverride="game_studio"
         projectId={seededProjectId}
       />
     );

@@ -10,7 +10,14 @@ on:
       - 'frontend/e2e/role-room-production-coordinator-troll.spec.ts'
       - 'frontend/e2e/role-room-continuity-troll.spec.ts'
       - 'frontend/e2e/role-room-location-manager-troll.spec.ts'
+      - 'frontend/e2e/narrative-board.spec.ts'
+      - 'frontend/e2e/helpers/narrativeMocks.ts'
+      - 'frontend/client/src/test-harness.tsx'
       - 'frontend/package.json'
+      - 'backend/server/role-room-narrative-routes.ts'
+      - 'backend/server/role-room-narrative-routes.test.ts'
+      - 'backend/server/role-room-narrative-service.ts'
+      - 'backend/migrations/0605_role_room_narrative_graph.sql'
       - 'backend/server/role-room-call-sheet-routes.ts'
       - 'backend/server/casting-production-routes.ts'
       - 'backend/server/casting-production-routes.test.ts'
@@ -67,6 +74,9 @@ jobs:
 
       - name: Run authenticated Troll workflow
         run: npm run test:e2e:role-room-troll
+
+      - name: Run Story Graph (game_studio) workflow
+        run: npm run test:e2e:narrative
 
       - name: Upload Playwright report
         if: always()

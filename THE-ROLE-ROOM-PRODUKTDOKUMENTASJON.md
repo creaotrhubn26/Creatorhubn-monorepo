@@ -160,6 +160,7 @@ app/Talent Registry er den nyeste vertikalen og tjener byrå- og talent-siden av
 | **Innholdsprodusent-løsning** (uten Agent) | Innholdsprodusent (495 kr/sete, min. 1) | ✅ Live |
 | **Dansestudio-vertikal** | Profesjonelle dansere / dansestudio | ✅ Live |
 | **Talents-app + Talent Registry** | Skuespillere + casting-byrå + produsenter | ✅ Live (ny — BankID + per-org B2 i pipeline) |
+| **Spillstudio / Story Graph** | Spillstudioer, narrative designere | 🟡 Beta — bak `?mode=game_studio` (Fase 1 av 4) |
 | **The Role Room Agent** (AI-lag) | Begge — særlig innholdsprodusent | 🟡 Beta — ikke skipet, testes internt |
 
 ### 2.2 Kjernemoduler — Produksjons-OS (LIVE)
@@ -259,7 +260,27 @@ Bygget rundt fire prinsipper:
 **BankID** for full identitets-tillit og **per-org B2-bucket** for skalerbar lagring.
 Tre under-tasker (L3a/b/c) sporet for storage-arkitekturen.
 
-### 2.7 AI-lag — The Role Room Agent (BETA — ikke skipet)
+### 2.7 Kjernevertikal — Spillstudio / Story Graph (BETA — bak `?mode=game_studio`)
+
+Narrativ design for spillstudioer og narrative designere. Målet er å komme nærmere eller
+bedre enn **Arcweave**: samme objektmodell (tapsfri import/eksport, virker med Arcweaves
+MIT-lisensierte Unity/Unreal/Godot-plugins) pluss det Arcweave mangler eller gater bak
+Team-plan. Produktplan: `docs/role-room/STORY_GRAPH_PRODUCT_PLAN.md`.
+
+| Funksjon | Hva den gjør | Status |
+|---|---|---|
+| Brett + elementer + koblinger | Fritt lerret med elementer, forgreninger, jumpere og notater; brett i mapper; søk | ✅ Fase 1 |
+| Komponenter + attributter | Karakterer, steder, gjenstander med typede attributter, festes på elementer | ✅ Fase 1 |
+| Variabler | Globale variabler (bool/int/float/string) | ✅ Fase 1 |
+| Prosjekthistorikk | Snapshot av hele grafen + ikke-destruktiv gjenoppretting (Arcweave: kun Team) | ✅ Fase 1 |
+| Grafvalidator | Startelement, uoppnåelige elementer, ukoblede utganger, jumper uten mål | ✅ Fase 1 |
+| Skript + Play Mode | arcscript-kompatibel tolk, debugger, TTS per karakter | 🟡 Fase 2 |
+| Eksport/import + deling | Arcweave-JSON, Markdown, delbare spill-lenker, AI-elementgenerator | 🟡 Fase 3 |
+
+**Status:** beta, ingen egen pris-tier ennå (tilgang som Produksjons-OS). Ikke synlig på
+landingssiden.
+
+### 2.8 AI-lag — The Role Room Agent (BETA — ikke skipet)
 
 Drevet av Claude. Testes internt og er under utvikling — **ikke et live kundeprodukt
 ennå**. Når den skipes, er den ment særlig for **innholdsprodusenter**, og skal levere:
@@ -273,7 +294,7 @@ ennå**. Når den skipes, er den ment særlig for **innholdsprodusenter**, og sk
 Merk: flere av disse motorene finnes allerede internt (se 2.9). Det nye i Agenten er at
 de pekes mot **kundens** virksomhet, ikke selskapets egen.
 
-### 2.8 Tverrgående: kommunikasjon (LIVE)
+### 2.9 Tverrgående: kommunikasjon (LIVE)
 
 Brukt på tvers av alle vertikaler.
 
@@ -283,7 +304,7 @@ Brukt på tvers av alle vertikaler.
 | **SMS (Twilio)** | Kandidat-/team-påminnelser | Fakturert per melding (2,00 kr eks. mva) |
 | **E-post / nyhetsbrev** | Bekreftelser, «Norwegian Casting Brief» | Double-opt-in |
 
-### 2.9 Integrasjoner
+### 2.10 Integrasjoner
 
 | Integrasjon | Rolle | Status |
 |---|---|---|
@@ -302,7 +323,7 @@ Brukt på tvers av alle vertikaler.
 | **A-melding / Altinn** | Lønnsrapportering | ✖️ Irrelevant — TheRoleRoom er ikke et lønnssystem |
 | **Arbeidstilsynet** | Trivsel og trygghet i bransjen | 🤝 Ønsket *samarbeid* (ikke teknisk integrasjon) |
 
-### 2.10 Interne vekst-/ops-verktøy (IKKE kundeprodukt)
+### 2.11 Interne vekst-/ops-verktøy (IKKE kundeprodukt)
 
 Disse `role-room-*`-modulene finnes i koden, men er verktøy selskapet bruker for å vokse
 og drive forretning — ikke kundefunksjoner: merch-partner-discovery, investor-deck-
@@ -310,7 +331,7 @@ generering, education-outreach/inquiries, website-analyzer, creator-discovery og
 nyhetsbrevet «Norwegian Casting Brief». Noen deler motor med planlagte Agent-funksjoner
 (2.6), men i kundeproduktet pekes motoren mot kundens egen virksomhet.
 
-### 2.11 Oppsummering: kjerne vs. støttende
+### 2.12 Oppsummering: kjerne vs. støttende
 
 - **Kjerne (live):** Produksjons-OS (casting + produksjon + manus + klient/økonomi),
   innholdsprodusent-løsning, dansestudio-vertikal, **Talents-app + Talent Registry**.
@@ -318,6 +339,7 @@ nyhetsbrevet «Norwegian Casting Brief». Noen deler motor med planlagte Agent-f
 - **Støttende infrastruktur (live):** kommunikasjon (WhatsApp/SMS/e-post), integrasjoner,
   åpen plattform-API.
 - **Fremtidig kjerne-differensiator (beta):** The Role Room Agent.
+- **Ny vertikal (beta):** Spillstudio / Story Graph — narrativ design, mål: nærmere/bedre enn Arcweave.
 - **Ikke kundeprodukt:** interne vekst-/ops-verktøy.
 
 ---

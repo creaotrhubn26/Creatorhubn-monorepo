@@ -59,6 +59,14 @@ describe("listCapabilitiesFor (scope + modus-filter)", () => {
     expect(names).not.toContain("rr_list_cohorts");
     expect(names).not.toContain("rr_list_assignments");
     expect(names).not.toContain("rr_list_dance_pieces");
+    expect(names).not.toContain("rr_get_story_graph");
+  });
+  it("modus-filter «game_studio» → Story Graph-verktøy + globale, ikke casting/dans", () => {
+    const names = listCapabilitiesFor(["projects.read"], "game_studio").map((c) => c.name);
+    expect(names).toEqual(expect.arrayContaining(["rr_get_story_graph", "rr_list_story_components", "rr_list_projects"]));
+    expect(names).not.toContain("rr_list_auditions");
+    expect(names).not.toContain("rr_list_dance_pieces");
+    expect(names).not.toContain("rr_list_cohorts");
   });
   it("modus-filter «dance_studio» → dans-verktøy, ikke casting/utdanning", () => {
     const names = listCapabilitiesFor(["projects.read"], "dance_studio").map((c) => c.name);

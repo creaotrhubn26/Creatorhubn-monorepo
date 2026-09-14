@@ -89,6 +89,23 @@ export const DANCE_FREELANCE_TABS: readonly TabConfig[] = [
   { id: 'admin_settings',labelToken: 'danceTabAdminSettings',                                                            feature: 'finance' },
 ] as const;
 
+// ─── SPILLSTUDIO — STORY GRAPH ──────────────────────────────────────────────
+//
+// Narrativ design for spill: brett med elementer/koblinger (Fase 1),
+// komponenter + variabler + spillmodus (Fase 2), eksport/deling (Fase 3).
+// Fanene finnes fra dag én så URL-kontrakten (?tab=) er stabil; ubygde
+// faner rendrer et ærlig «kommer»-kort i NarrativeWorkspace.
+
+export const GAME_STUDIO_TABS: readonly TabConfig[] = [
+  { id: 'boards',     labelToken: 'gameTabBoards',     descriptionToken: 'gameTabBoardsDescription',     requiresProject: true, feature: 'core' },
+  { id: 'components', labelToken: 'gameTabComponents', descriptionToken: 'gameTabComponentsDescription', requiresProject: true, feature: 'core' },
+  { id: 'variables',  labelToken: 'gameTabVariables',  descriptionToken: 'gameTabVariablesDescription',  requiresProject: true, feature: 'core' },
+  { id: 'assets',     labelToken: 'gameTabAssets',     descriptionToken: 'gameTabAssetsDescription',     requiresProject: true, feature: 'resources' },
+  { id: 'play',       labelToken: 'gameTabPlay',       descriptionToken: 'gameTabPlayDescription',       requiresProject: true, feature: 'production' },
+  { id: 'exports',    labelToken: 'gameTabExports',    descriptionToken: 'gameTabExportsDescription',    requiresProject: true, feature: 'production' },
+  { id: 'history',    labelToken: 'gameTabHistory',    descriptionToken: 'gameTabHistoryDescription',    requiresProject: true, feature: 'resources' },
+] as const;
+
 /**
  * Hovedoppslag — gir den korrekte fane-listen for en gitt mode.
  * Returnerer en TOM liste for ikke-dans-moder. Kalleren er ansvarlig
@@ -102,6 +119,8 @@ export function getTabsForProfession(mode: ProfessionMode): readonly TabConfig[]
       return DANCE_STUDIO_TABS;
     case 'dance_freelance':
       return DANCE_FREELANCE_TABS;
+    case 'game_studio':
+      return GAME_STUDIO_TABS;
     case 'production':
     case 'photographer':
     case 'content_producer':

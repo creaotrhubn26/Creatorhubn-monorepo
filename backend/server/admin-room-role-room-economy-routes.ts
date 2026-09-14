@@ -32,6 +32,7 @@ const ROLE_ROOM_PROFESSIONS = [
   "content_creator",
   "dance_studio",
   "dance_freelance",
+  "game_studio",
 ] as const;
 
 const NOK_USD = Number.parseFloat(process.env.ROLE_ROOM_NOK_PER_USD ?? "10.7");

@@ -80,6 +80,7 @@ const WELCOME_SUBTITLE_BY_MODE: Record<ProfessionMode, string> = {
   dance_freelance: 'Dans (frilans) — her holder du oversikt over oppdrag, tilgjengelighet og produksjonene du er med i. Vi tar deg gjennom 3 viktige snarveier.',
   education: 'Utdanningsmodus — her underviser du: kull, studentproduksjoner, oppgaver og vurdering. Vi tar deg gjennom 3 viktige snarveier.',
   student: 'Studentmodus — her ser du produksjonene, oppgavene og tilbakemeldingene dine. Vi tar deg gjennom 3 viktige snarveier.',
+  game_studio: 'Spillstudio — her designer du historien som en graf: brett, elementer, forgreninger, komponenter og variabler, og spiller den gjennom. Vi tar deg gjennom 3 viktige snarveier.',
 };
 import { ROLE_CHROME_VAR } from './hooks/useRoleRoomBrand';
 import { useElementEdits, detectDesignWorkspace } from '@/components/workspace/elementEdits';

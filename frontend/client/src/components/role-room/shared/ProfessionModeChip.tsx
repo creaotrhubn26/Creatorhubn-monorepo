@@ -17,6 +17,7 @@ import {
   School as EducationIcon,
   Movie as ProductionIcon,
   Mic as ContentIcon,
+  SportsEsports as GameIcon,
   ExpandMore as ExpandIcon,
 } from '@mui/icons-material';
 import type { ProfessionMode } from '../config/professionMode';
@@ -52,6 +53,12 @@ const MODE_META: Record<string, { label: string; icon: React.ReactNode; descript
     icon: <EducationIcon />,
     description: 'Utdanningsinstitusjon — studenter, kurs og portfolio.',
     color: '#8B5CF6',
+  },
+  game_studio: {
+    label: 'Spillstudio-modus',
+    icon: <GameIcon />,
+    description: 'Story Graph — brett, elementer, forgreninger og spillmodus.',
+    color: '#22C55E',
   },
   production: {
     label: 'Produksjons-modus',

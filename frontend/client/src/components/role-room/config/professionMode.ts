@@ -24,7 +24,8 @@ export type ProfessionMode =
   | 'dance_studio'      // dans — studioeier (PR #2)
   | 'dance_freelance'   // dans — frilanser (PR #2)
   | 'education'         // utdanningsinstitusjon — kull, studentproduksjoner, faglærer-oversikt
-  | 'student';          // student ved utdanningsinstitusjon — «Min side» (foreløpig super-admin-preview)
+  | 'student'           // student ved utdanningsinstitusjon — «Min side» (foreløpig super-admin-preview)
+  | 'game_studio';      // spillstudio — Story Graph: forgrenet narrativ design (beta, ?mode=game_studio)
 
 export const ALL_PROFESSION_MODES: readonly ProfessionMode[] = [
   'production',
@@ -35,6 +36,7 @@ export const ALL_PROFESSION_MODES: readonly ProfessionMode[] = [
   'dance_freelance',
   'education',
   'student',
+  'game_studio',
 ] as const;
 
 export const DEFAULT_PROFESSION_MODE: ProfessionMode = 'production';
@@ -71,6 +73,10 @@ const URL_ALIASES: Record<string, ProfessionMode> = {
   skole: 'education',
   student: 'student',
   elev: 'student',
+  game: 'game_studio',
+  gamedev: 'game_studio',
+  spill: 'game_studio',
+  spillstudio: 'game_studio',
 };
 
 /**
@@ -138,6 +144,10 @@ export const isEducationMode = (mode: ProfessionMode): boolean =>
 /** Student-modus — «Min side» (StudentWorkspace), foreløpig super-admin-preview. */
 export const isStudentMode = (mode: ProfessionMode): boolean =>
   mode === 'student';
+
+/** Spillstudio-modus — Story Graph (NarrativeWorkspace), beta bak ?mode=game_studio. */
+export const isGameMode = (mode: ProfessionMode): boolean =>
+  mode === 'game_studio';
 
 /**
  * Bro fra bruker-profesjon/rolle (server-side `users.profession` / onboarding-

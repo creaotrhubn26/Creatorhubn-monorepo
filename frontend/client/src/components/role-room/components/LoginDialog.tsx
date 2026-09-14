@@ -1799,6 +1799,7 @@ const PROFESSION_PICKER_META: Record<ProfessionMode, ProfessionPickerMeta> = {
   dance_freelance:  { label: 'Dans — frilans',   glyph: '💫', accent: '#8b5cf6', beta: true },
   education:        { label: 'Utdanningsinstitusjon', glyph: '🏫', accent: '#8b5cf6', beta: true },
   student:          { label: 'Student', glyph: '🎓', accent: '#8b5cf6', beta: true },
+  game_studio:      { label: 'Spillstudio', glyph: '🎮', accent: '#22c55e', beta: true },
 };
 
 // Landing-velgeren viser kun profesjoner som IKKE allerede dekkes av

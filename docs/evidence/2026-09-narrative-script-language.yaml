@@ -1,0 +1,49 @@
+claim: >
+  Story Graph (game_studio) uses an arcscript-compatible scripting syntax and a
+  data model that mirrors Arcweave's project.json 1:1, implemented with our own
+  TypeScript interpreter (no dependency on the @arcweave/arcscript package) so
+  Arcweave projects import losslessly and our JSON export works with Arcweave's
+  MIT-licensed Unity/Unreal/Godot plugins.
+source_type: api_reference
+source: "https://github.com/arcweave/arcscript-interpreters (grammar/ArcscriptLexer.g4, ArcscriptParser.g4), https://github.com/arcweave/arcweave-unity-example (Assets/Arcweave/project.json), https://github.com/arcweave/arcweave-unity-plugin v3.0.0, https://github.com/arcweave/arcweave-godot-plugin v3.0.0, https://github.com/arcweave/arcweave-unreal-plugin v2.0.0"
+authority_tier: 1
+vendor: Arcweave
+product: Arcweave (arcscript + JSON export + engine plugins)
+version_scope: "Arcweave 5.11.0 (2026-09-02); plugins Unity 3.0.0 / Godot 3.0.0 / Unreal 2.0.0 (2026-09-02)"
+publication_date: "2026-09-14"
+valid_from: "2026-09"
+valid_to: "until Arcweave changes project.json shape or arcscript grammar (watch arcweave/* releases monthly)"
+evidence_summary: >
+  Grammar fetched in full: keywords if/elseif/else/endif, assignment = += -= *= /= %=,
+  comparison == != < > <= >=, is / is not, arithmetic + - * / %, logical && || !,
+  built-ins abs max min random roll round sqr sqrt visits show resetVisits reset resetAll;
+  code lives in <pre><code> inside element HTML. project.json keys: boards, elements,
+  jumpers, branches, connections, conditions, components, attributes, assets, variables,
+  notes; startingElement on project. 5.11.0 added component-scoped variables modelled as
+  typed attributes; loaders must read both `variables` and `attributes`.
+  arcweave.com / docs.arcweave.com were blocked by the egress proxy; docs claims come
+  from search-index snippets only.
+interpretation: >
+  Matching the JSON shape buys interop with three maintained MIT engine plugins for free,
+  and matching the script syntax makes import lossless. Writing our own interpreter keeps
+  the runtime dependency-free and shareable between frontend Play Mode, backend
+  validation/export and standalone HTML export.
+project_impact: >
+  backend/migrations/0605_role_room_narrative_graph.sql mirrors the model;
+  frontend/shared/narrative-script/ (Fase 2) must be verified against the ANTLR grammar
+  and Arcweave's example projects; any grammar/schema change upstream is a breaking
+  change for import/export.
+confidence: verified
+decision: >
+  Mirror Arcweave's project.json 1:1 and adopt arcscript syntax; implement our own
+  TypeScript interpreter (no @arcweave/arcscript dependency).
+affected:
+  - backend/migrations/0605_role_room_narrative_graph.sql
+  - backend/server/role-room-narrative-service.ts
+  - frontend/client/src/components/role-room/narrative/
+  - frontend/shared/narrative-script/ (Fase 2)
+  - frontend/shared/narrative-format/ (Fase 3)
+lesson: >
+  Interop with a competitor's ecosystem is cheapest when the data model is adopted
+  verbatim before the first table is created; retrofitting a mapping layer later is
+  where lossy imports come from.

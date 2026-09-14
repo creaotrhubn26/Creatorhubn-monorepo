@@ -119,13 +119,15 @@ import {
   Paid as PaidIcon,
   Instagram as InstagramIcon,
 } from '@mui/icons-material';
-import { getActiveProfessionMode, isDanceMode, isProductionMode, applyProfessionModeFromRole, hasStoredProfessionMode } from './config/professionMode';
+import { getActiveProfessionMode, isDanceMode, isGameMode, isProductionMode, applyProfessionModeFromRole, hasStoredProfessionMode } from './config/professionMode';
 import { PostAgentReadyCard } from './components/PostAgentReadyCard';
 import { PostAgentCrewWelcomeBanner } from './components/PostAgentCrewWelcomeBanner';
 import { PostAgentErrorBoundary } from './components/PostAgentErrorBoundary';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
 import { DanceWorkspace } from './dance';
+// Spillstudio (Story Graph) — lazy så film/foto-bundelen ikke drar inn reactflow/tiptap.
+const NarrativeWorkspace = React.lazy(() => import('./narrative/NarrativeWorkspace').then((m) => ({ default: m.NarrativeWorkspace })));
 
 import {
   useRoleRoomProjects,
@@ -776,6 +778,16 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
       <Box sx={{ p: 3 }}>
         <Skeleton variant="rectangular" height={120} sx={{ mb: 2, borderRadius: 2 }} />
         <Skeleton variant="rectangular" height={300} sx={{ borderRadius: 2 }} />
+      </Box>
+    );
+  }
+
+  if (isGameMode(activeProfessionMode)) {
+    return (
+      <Box className="role-room-route role-room-route--game" sx={{ position: 'relative', minHeight: '100vh' }}>
+        <React.Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster spillstudio…</Box>}>
+          <NarrativeWorkspace projectId={selectedProjectId ?? undefined} />
+        </React.Suspense>
       </Box>
     );
   }

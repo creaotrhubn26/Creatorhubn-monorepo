@@ -1356,6 +1356,23 @@ export type BrandingTextTokenKey =
   | 'danceTabGrantsDescription'
   | 'danceTabUnionDescription'
 
+  // Spillstudio — Story Graph (narrativ design). Faner definert i
+  // professionTabs.ts GAME_STUDIO_TABS.
+  | 'gameTabBoards'               // 'Brett'
+  | 'gameTabBoardsDescription'
+  | 'gameTabComponents'           // 'Komponenter'
+  | 'gameTabComponentsDescription'
+  | 'gameTabVariables'            // 'Variabler'
+  | 'gameTabVariablesDescription'
+  | 'gameTabAssets'               // 'Ressurser'
+  | 'gameTabAssetsDescription'
+  | 'gameTabPlay'                 // 'Spill'
+  | 'gameTabPlayDescription'
+  | 'gameTabExports'              // 'Eksport'
+  | 'gameTabExportsDescription'
+  | 'gameTabHistory'              // 'Historikk'
+  | 'gameTabHistoryDescription'
+
   // Read Through-modulen — for dans bytter den fra TTS-dialog til musikk-count-in
   | 'danceReadThroughHeader'      // 'Musikk-gjennomgang' (vs 'Read Through')
   | 'danceReadThroughStartButton' // 'Start gjennomgang'
@@ -2993,6 +3010,21 @@ const DEFAULT_TOKENS: BrandingTokens = {
     danceTabInjuriesDescription: 'Logg skader og rehab — dokumentasjon klar for NAV-søknader.',
     danceTabGrantsDescription: 'Søknadsmaler for Kulturrådet, Fond for lyd og bilde, og kommunale midler.',
     danceTabUnionDescription: 'Status i Skuda/NoDa, tariff-anvendelse og automatisk arbeidsdags-loggføring.',
+
+    gameTabBoards: 'Brett',
+    gameTabBoardsDescription: 'Tegn historien som noder og koblinger: elementer, forgreninger, jumpere og notater på et fritt lerret.',
+    gameTabComponents: 'Komponenter',
+    gameTabComponentsDescription: 'Karakterer, steder og gjenstander med egne attributter som kan festes på elementer.',
+    gameTabVariables: 'Variabler',
+    gameTabVariablesDescription: 'Globale variabler (bool, heltall, desimal, tekst) som forgreninger og skript leser og skriver.',
+    gameTabAssets: 'Ressurser',
+    gameTabAssetsDescription: 'Bilder, lyd og video som kan brukes som cover eller festes på elementer.',
+    gameTabPlay: 'Spill',
+    gameTabPlayDescription: 'Spill gjennom historien som en spiller, med debugger som viser brett, element og variabler live.',
+    gameTabExports: 'Eksport',
+    gameTabExportsDescription: 'JSON kompatibel med Arcweave-plugins for Unity, Unreal og Godot, samt import fra Arcweave.',
+    gameTabHistory: 'Historikk',
+    gameTabHistoryDescription: 'Versjoner av hele grafen med ikke-destruktiv gjenoppretting.',
 
     danceReadThroughHeader: 'Musikk-gjennomgang',
     danceReadThroughStartButton: 'Start gjennomgang',

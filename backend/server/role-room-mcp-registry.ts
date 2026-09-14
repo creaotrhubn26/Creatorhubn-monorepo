@@ -27,7 +27,7 @@ import {
 /** Dokumentert speil av frontendens ProfessionMode + utdannings-modus. */
 export const ROLE_ROOM_MODES = [
   "production", "photographer", "content_producer", "content_creator",
-  "dance_studio", "dance_freelance", "education",
+  "dance_studio", "dance_freelance", "education", "game_studio",
 ] as const;
 export type RoleRoomMode = (typeof ROLE_ROOM_MODES)[number];
 
@@ -35,6 +35,8 @@ export type RoleRoomMode = (typeof ROLE_ROOM_MODES)[number];
 const PROD_MODES: RoleRoomMode[] = ["production", "photographer", "content_producer", "content_creator"];
 /** Dans-modusene (eget dans-domene: koreografi, klasser, forestillinger). */
 const DANCE_MODES: RoleRoomMode[] = ["dance_studio", "dance_freelance"];
+/** Spillstudio (Story Graph: narrativ graf — brett, elementer, komponenter, variabler). */
+const GAME_MODES: RoleRoomMode[] = ["game_studio"];
 
 export interface McpCallContext {
   userId: string;
@@ -519,6 +521,68 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
         `SELECT id, display_name, styles, contract_kind, hours_logged FROM dance_instructor
           WHERE owner_user_id = $1 ORDER BY display_name LIMIT 300`, [ctx.userId]);
       return { instructors: r.rows };
+    },
+  },
+
+  // ── Spillstudio (game_studio) — Story Graph, prosjekt-skopet ───────────
+  {
+    name: "rr_get_story_graph",
+    description: "Hent Story Graph-oversikt for et prosjekt: brett med antall elementer/koblinger, startelement og variabler. Dekker Brett-fanen (spillstudio). Bruk boardId for å få elementene (tittel, type, posisjon) og koblingene på ett brett.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjekt-ID"), boardId: STR("Valgfritt: brett-ID for å hente elementer og koblinger") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const boardId = typeof args.boardId === "string" && args.boardId.trim() ? args.boardId.trim() : null;
+      const [settings, boards, variables] = await Promise.all([
+        pool.query(`SELECT title, starting_element_id FROM narrative_settings WHERE project_id = $1 LIMIT 1`, [projectId]),
+        pool.query(
+          `SELECT b.id, b.name, b.folder_path, b.custom_id,
+                  (SELECT count(*)::int FROM narrative_elements e WHERE e.board_id = b.id) AS element_count,
+                  (SELECT count(*)::int FROM narrative_connections c WHERE c.board_id = b.id) AS connection_count
+             FROM narrative_boards b WHERE b.project_id = $1 ORDER BY b.folder_path, b.sort_order LIMIT 300`, [projectId]),
+        pool.query(`SELECT id, name, type, default_value FROM narrative_variables WHERE project_id = $1 ORDER BY sort_order, name LIMIT 300`, [projectId]),
+      ]);
+      const out: Record<string, unknown> = {
+        title: settings.rows[0]?.title ?? null,
+        startingElementId: settings.rows[0]?.starting_element_id ?? null,
+        boards: boards.rows,
+        variables: variables.rows,
+      };
+      if (boardId) {
+        const [elements, connections] = await Promise.all([
+          pool.query(
+            `SELECT id, kind, title_html, content_html, x, y, custom_id, jumper_target_id, branch_conditions
+               FROM narrative_elements WHERE project_id = $1 AND board_id = $2 ORDER BY sort_order LIMIT 2000`, [projectId, boardId]),
+          pool.query(
+            `SELECT id, source_id, target_id, source_output_key, label_html
+               FROM narrative_connections WHERE project_id = $1 AND board_id = $2 ORDER BY sort_order LIMIT 5000`, [projectId, boardId]),
+        ]);
+        out.elements = elements.rows;
+        out.connections = connections.rows;
+      }
+      return out;
+    },
+  },
+  {
+    name: "rr_list_story_components",
+    description: "List komponenter (karakterer, steder, gjenstander) med attributter i et Story Graph-prosjekt. Dekker Komponenter-fanen (spillstudio).",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjekt-ID") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const [components, attributes] = await Promise.all([
+        pool.query(`SELECT id, name, folder_path, custom_id FROM narrative_components WHERE project_id = $1 ORDER BY folder_path, sort_order LIMIT 1000`, [projectId]),
+        pool.query(`SELECT owner_id, name, type, value FROM narrative_attributes WHERE project_id = $1 AND owner_kind = 'component' ORDER BY owner_id, sort_order LIMIT 5000`, [projectId]),
+      ]);
+      const byOwner = new Map<string, unknown[]>();
+      for (const a of attributes.rows as Array<{ owner_id: string }>) {
+        const list = byOwner.get(a.owner_id) ?? [];
+        list.push(a);
+        byOwner.set(a.owner_id, list);
+      }
+      return {
+        components: (components.rows as Array<{ id: string }>).map((c) => ({ ...c, attributes: byOwner.get(c.id) ?? [] })),
+      };
     },
   },
 

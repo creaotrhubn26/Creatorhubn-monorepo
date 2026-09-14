@@ -7,7 +7,7 @@ import { TOUCH_TARGET_SIZE, MOBILE_TOUCH_TARGET_SIZE } from '../constants/access
 import { useToast } from './ToastStack';
 import { resolveInboxCategory } from '../inboxCategories';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
-import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck, isEducationMode as isEducationModeCheck, isStudentMode as isStudentModeCheck } from '../config/professionMode';
+import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck, isEducationMode as isEducationModeCheck, isStudentMode as isStudentModeCheck, isGameMode as isGameModeCheck } from '../config/professionMode';
 import { getRoleRoomCanonicalPath, shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import {
   Box,
@@ -273,6 +273,8 @@ const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ def
 const DanceWorkspace = lazy(() => import('../dance/DanceWorkspace').then(m => ({ default: m.DanceWorkspace })));
 const EducationWorkspace = lazy(() => import('../education/EducationWorkspace').then(m => ({ default: m.EducationWorkspace })));
 const StudentWorkspace = lazy(() => import('../education/StudentWorkspace').then(m => ({ default: m.StudentWorkspace })));
+// Spillstudio (Story Graph) — parallelt workspace når professionMode = game_studio.
+const NarrativeWorkspace = lazy(() => import('../narrative/NarrativeWorkspace').then(m => ({ default: m.NarrativeWorkspace })));
 // Student-ankomststripe i produksjons-modus (edu=1 + assignment=<id>) — se
 // EduAssignmentArrivalStripe.tsx for detaljer. Lazy som søsknene over.
 const EduAssignmentArrivalStripe = lazy(() => import('../education/EduAssignmentArrivalStripe').then(m => ({ default: m.EduAssignmentArrivalStripe })));
@@ -738,6 +740,17 @@ export function CastingPlannerPanel({
       <ErrorBoundary>
       <Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster dans-modus…</Box>}>
         <DanceWorkspace />
+      </Suspense>
+      </ErrorBoundary>
+    );
+  }
+  // Spillstudio-modus (Story Graph) — samme parallell-workspace-mønster som
+  // dans: render NarrativeWorkspace og avslutt før produksjons-hooks kjører.
+  if (isGameModeCheck(__activeProfessionMode)) {
+    return (
+      <ErrorBoundary>
+      <Suspense fallback={<Box sx={{ p: 4, color: '#fff', bgcolor: '#0a0a0a', minHeight: '100vh' }}>Laster spillstudio…</Box>}>
+        <NarrativeWorkspace />
       </Suspense>
       </ErrorBoundary>
     );

@@ -226,7 +226,7 @@ async function checkStripe(stripe: Stripe | null): Promise<ProviderStatus> {
 
 const ROLE_ROOM_PROFESSIONS = [
   'production', 'photographer', 'content_producer', 'content_creator',
-  'dance_studio', 'dance_freelance',
+  'dance_studio', 'dance_freelance', 'game_studio',
 ];
 
 interface ActiveUser {

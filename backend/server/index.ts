@@ -201,6 +201,7 @@ import {
   createDanceInviteAcceptRouter,
 } from "./dance-team-routes.js";
 import { createDanceAddonRouter } from "./dance-addon-routes.js";
+import { createRoleRoomNarrativeRouter } from "./role-room-narrative-routes.js";
 import { createStoryboardRouter } from "./storyboard-routes.js";
 import { createStoryboardReviewRouter } from "./storyboard-review-routes.js";
 import { createStoryboardAiRouter } from "./storyboard-ai-routes.js";
@@ -2854,6 +2855,11 @@ app.use(
 app.use(
   "/api/dance/addons",
   createDanceAddonRouter(pool, { activeSessions }),
+);
+// Spillstudio (game_studio) — Story Graph: narrativ graf, prosjekt-skopet.
+app.use(
+  "/api/role-room/narrative",
+  createRoleRoomNarrativeRouter(pool, { activeSessions }),
 );
 app.use(
   "/api/role-room",
