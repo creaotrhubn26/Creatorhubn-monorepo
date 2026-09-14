@@ -485,6 +485,30 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     }
   };
 
+  const scopedLegacyCompanionObjectKey = (
+    value: unknown,
+    ownerUserId: string,
+    audioReviewProjectId: string,
+  ): string | null => {
+    const key = String(value || "").trim();
+    if (!key || key.length > 1024 || /[\\\x00-\x1f]/.test(key)) return null;
+    const parts = key.split("/");
+    if (parts.some((part) => !part || part === "." || part === "..")) return null;
+    if (
+      parts.length < 13 ||
+      parts[0] !== "organizations" ||
+      parts[2] !== "users" ||
+      parts[3] !== ownerUserId ||
+      parts[4] !== "projects" ||
+      parts[6] !== "sound-room" ||
+      parts[7] !== audioReviewProjectId ||
+      parts[8] !== "protools" ||
+      parts[9] !== "sessions" ||
+      parts[11] !== "bounces"
+    ) return null;
+    return key;
+  };
+
   // Companion-bounces ligger i privat R2. API-et eksponerer derfor en
   // same-origin, tilgangskontrollert stream i stedet for den rå objekt-URL-en.
   const playableVersion = (row: any, shareToken?: string): any => {
@@ -2051,27 +2075,32 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       const result = await pool.query(
         `SELECT version.id::text AS version_id,version.file_name,version.duration,
                 COALESCE(stored.content_type,version.content_type,'application/octet-stream') AS content_type,
-                stored.object_key
+                stored.object_key AS stored_object_key,companion.storage_key AS legacy_object_key
            FROM audio_review_projects project
            JOIN audio_review_versions version ON version.project_id=project.id
            LEFT JOIN LATERAL (
-             SELECT bounce.storage_object_id
+             SELECT bounce.storage_object_id,bounce.storage_key
                FROM protools_companion_bounces bounce
-              WHERE bounce.review_version_id=version.id AND bounce.storage_object_id IS NOT NULL
+              WHERE bounce.review_version_id=version.id
+                AND (bounce.storage_object_id IS NOT NULL OR bounce.storage_key IS NOT NULL)
               ORDER BY bounce.completed_at DESC,bounce.created_at DESC LIMIT 1
            ) companion ON TRUE
-           JOIN role_room_storage_objects stored
+           LEFT JOIN role_room_storage_objects stored
              ON stored.id=COALESCE(version.storage_object_id,companion.storage_object_id)
             AND stored.status='active' AND stored.deleted_at IS NULL
           WHERE project.id=$1::uuid AND project.owner_user_id=$2
             AND project.status<>'archived' AND version.status='approved'
+            AND (stored.object_key IS NOT NULL OR companion.storage_key IS NOT NULL)
           ORDER BY version.version_number DESC,version.created_at DESC LIMIT 1`,
         [audioReviewProjectId, ownerUserId],
       );
       const reference = result.rows[0];
-      if (!reference?.object_key) return res.status(404).json({ error: "approved_reference_not_found" });
+      const objectKey = reference?.stored_object_key
+        ? String(reference.stored_object_key)
+        : scopedLegacyCompanionObjectKey(reference?.legacy_object_key, ownerUserId, audioReviewProjectId);
+      if (!objectKey) return res.status(404).json({ error: "approved_reference_not_found" });
       const expiresInSeconds = 60 * 60;
-      const url = await signSoundRoomDownloadUrl(String(reference.object_key), expiresInSeconds);
+      const url = await signSoundRoomDownloadUrl(objectKey, expiresInSeconds);
       if (!secureAudioUrl(url)) throw new Error("invalid_signed_url");
       return res.status(200).json({
         url,
