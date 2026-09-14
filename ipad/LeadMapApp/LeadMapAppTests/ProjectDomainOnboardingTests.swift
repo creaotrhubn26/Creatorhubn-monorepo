@@ -678,4 +678,60 @@ final class DentumLeadOutreachTests: XCTestCase {
         XCTAssertEqual(kit(category: "Omsorg", status: .interested).recommendedTemplateID, "tidum-next-step")
         XCTAssertEqual(kit(category: "Omsorg", status: .warm).recommendedTemplateID, "tidum-next-step")
     }
+
+    func testCreatorHubProjectProvidesLeadAdaptedCreativeOutreachKit() {
+        let kit = LeadOutreachTemplateEngine.makeKit(context: .init(
+            lead: lead(
+                company: "Lys Studio AS",
+                contactName: "Mina Berg",
+                category: "Fotograf og fotostudio",
+                projectId: "creatorhub"
+            ),
+            projectName: "Creatorhub",
+            senderName: "Daniel Qazi"
+        ))
+
+        XCTAssertTrue(kit.isCreatorHub)
+        XCTAssertFalse(kit.isDentum)
+        XCTAssertFalse(kit.isTidum)
+        XCTAssertEqual(kit.title, "Creatorhub-oppsett")
+        XCTAssertEqual(kit.templates.count, 8)
+        XCTAssertEqual(kit.recommendedTemplateID, "creatorhub-photographer")
+        XCTAssertEqual(Set(kit.templates.map(\.id)).count, kit.templates.count)
+
+        for template in kit.templates {
+            XCTAssertTrue(template.subject.contains("Lys Studio AS"))
+            XCTAssertTrue(template.body.contains("Hei Mina,"))
+            XCTAssertTrue(template.body.contains("Lys Studio AS"))
+            XCTAssertTrue(template.body.contains("Oslo"))
+            XCTAssertTrue(template.body.contains("Daniel Qazi\nCreatorhub"))
+            XCTAssertFalse(template.body.contains("Dentum"))
+            XCTAssertFalse(template.body.contains("Tidum"))
+            XCTAssertFalse(template.body.contains("{{"))
+        }
+    }
+
+    func testCreatorHubRecommendationFollowsVerticalAndLeadStatus() {
+        func kit(category: String, status: LeadRow.LeadStatus = .notContacted) -> LeadOutreachKit {
+            LeadOutreachTemplateEngine.makeKit(context: .init(
+                lead: lead(
+                    company: "Eksempel Kreativ AS",
+                    status: status,
+                    category: category,
+                    projectId: "creatorhub"
+                ),
+                projectName: "CreatorHub prosjekt",
+                senderName: "Daniel"
+            ))
+        }
+
+        XCTAssertEqual(kit(category: "Fotografi").recommendedTemplateID, "creatorhub-photographer")
+        XCTAssertEqual(kit(category: "Film- og videoproduksjon").recommendedTemplateID, "creatorhub-video")
+        XCTAssertEqual(kit(category: "Musikkstudio og lyd").recommendedTemplateID, "creatorhub-audio")
+        XCTAssertEqual(kit(category: "Kreativt reklamebyrå").recommendedTemplateID, "creatorhub-agency")
+        XCTAssertEqual(kit(category: "Kreativ virksomhet").recommendedTemplateID, "creatorhub-introduction")
+        XCTAssertEqual(kit(category: "Kreativ virksomhet", status: .contacted).recommendedTemplateID, "creatorhub-follow-up")
+        XCTAssertEqual(kit(category: "Kreativ virksomhet", status: .interested).recommendedTemplateID, "creatorhub-next-step")
+        XCTAssertEqual(kit(category: "Kreativ virksomhet", status: .warm).recommendedTemplateID, "creatorhub-short-call")
+    }
 }

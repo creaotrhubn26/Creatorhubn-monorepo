@@ -685,12 +685,14 @@ struct LeadOutreachKit: Hashable {
     enum ProjectKind: Hashable {
         case dentum
         case tidum
+        case creatorHub
         case generic
 
         var icon: String {
             switch self {
             case .dentum: return "cross.case.fill"
             case .tidum: return "clock.badge.checkmark.fill"
+            case .creatorHub: return "sparkles.rectangle.stack.fill"
             case .generic: return "wand.and.stars"
             }
         }
@@ -705,6 +707,7 @@ struct LeadOutreachKit: Hashable {
 
     var isDentum: Bool { projectKind == .dentum }
     var isTidum: Bool { projectKind == .tidum }
+    var isCreatorHub: Bool { projectKind == .creatorHub }
 }
 
 enum LeadOutreachTemplateEngine {
@@ -728,6 +731,17 @@ enum LeadOutreachTemplateEngine {
                 projectKind: .tidum,
                 recommendedTemplateID: tidumRecommendation(for: c),
                 templates: tidumTemplates(c),
+                personalizationFacts: facts(c)
+            )
+        }
+        let isCreatorHub = c.projectName.localizedCaseInsensitiveContains("creatorhub")
+        if isCreatorHub {
+            return LeadOutreachKit(
+                title: "Creatorhub-oppsett",
+                audience: "8 maler for kreative virksomheter",
+                projectKind: .creatorHub,
+                recommendedTemplateID: creatorHubRecommendation(for: c),
+                templates: creatorHubTemplates(c),
                 personalizationFacts: facts(c)
             )
         }
@@ -784,6 +798,27 @@ enum LeadOutreachTemplateEngine {
                 return "tidum-residential-care"
             }
             return "tidum-introduction"
+        }
+    }
+
+    private static func creatorHubRecommendation(for context: LeadOutreachContext) -> String {
+        switch context.status {
+        case .contacted: return "creatorhub-follow-up"
+        case .interested: return "creatorhub-next-step"
+        case .hot, .warm: return "creatorhub-short-call"
+        case .newLead, .notContacted:
+            let category = context.category.lowercased()
+            if category.contains("foto") { return "creatorhub-photographer" }
+            if category.contains("video") || category.contains("film") || category.contains("innhold") {
+                return "creatorhub-video"
+            }
+            if category.contains("musikk") || category.contains("lyd") || category.contains("studio") {
+                return "creatorhub-audio"
+            }
+            if category.contains("byrå") || category.contains("design") || category.contains("reklame") {
+                return "creatorhub-agency"
+            }
+            return "creatorhub-introduction"
         }
     }
 
@@ -1038,6 +1073,148 @@ enum LeadOutreachTemplateEngine {
                 Takk for interessen fra \(c.company) i \(c.location). I neste samtale foreslår jeg at vi avklarer hvilke team og tiltak som omfattes, hvordan timer registreres og godkjennes i dag, hvilke rapporter dere trenger, og hvem som skal eie en eventuell pilot.
 
                 Deretter kan vi vise et avgrenset Tidum-oppsett og bli enige om deltakere, datagrunnlag og tydelige kriterier for en pilot. Hvilket tidspunkt passer best?
+
+                \(signoff)
+                """
+            ),
+        ]
+    }
+
+    private static func creatorHubTemplates(_ c: LeadOutreachContext) -> [LeadOutreachTemplate] {
+        let signoff = "Med vennlig hilsen,\n\(c.senderName)\nCreatorhub"
+        return [
+            .init(
+                id: "creatorhub-introduction",
+                title: "Kort introduksjon",
+                description: "Første kontakt med en kreativ virksomhet.",
+                icon: "sparkles.rectangle.stack.fill",
+                accent: .purpleLight,
+                subject: "En ryddigere kundereise for \(c.company)",
+                body: """
+                \(c.greeting)
+
+                Jeg tar kontakt fra Creatorhub fordi \(c.company) arbeider innen \(c.category.lowercased()) i \(c.location). Creatorhub samler kundeoppfølging, avtaler, prosjektarbeid og leveranser i én arbeidsflyt for kreative virksomheter.
+
+                Kan vi bruke 15 minutter på å se hvordan dere arbeider i dag, og om et avgrenset oppsett kan være relevant?
+
+                \(signoff)
+                """
+            ),
+            .init(
+                id: "creatorhub-photographer",
+                title: "Foto",
+                description: "Tilpasset fotografer og fotostudioer.",
+                icon: "camera.fill",
+                accent: .blue,
+                subject: "Fra forespørsel til bildeleveranse hos \(c.company)",
+                body: """
+                \(c.greeting)
+
+                Creatorhub kan gi \(c.company) i \(c.location) én oversikt fra kundeforespørsel og avtale til opptak, utvalg, galleri og ferdig levering. Målet er mindre administrasjon og en tydelig opplevelse for både fotograf og kunde.
+
+                Hvordan håndterer dere denne flyten i dag? Jeg viser gjerne et oppsett tilpasset fotoarbeidet deres.
+
+                \(signoff)
+                """
+            ),
+            .init(
+                id: "creatorhub-video",
+                title: "Film og video",
+                description: "Tilpasset produksjon, tilbakemeldinger og levering.",
+                icon: "video.fill",
+                accent: .orange,
+                subject: "Bedre prosjektflyt for \(c.company)",
+                body: """
+                \(c.greeting)
+
+                Creatorhub kan samle brief, avtaler, preproduksjon, team, kundetilbakemeldinger og leveranser for \(c.company) i \(c.location). Dere får en tydelig prosjektflyt uten å spre viktig informasjon på mange verktøy.
+
+                Kan vi kartlegge én typisk produksjon og se om Creatorhub passer måten dere arbeider på?
+
+                \(signoff)
+                """
+            ),
+            .init(
+                id: "creatorhub-audio",
+                title: "Musikk og lyd",
+                description: "Tilpasset studioer, produsenter og lydleveranser.",
+                icon: "waveform",
+                accent: .green,
+                subject: "Samlet arbeidsflyt for lydprosjektene til \(c.company)",
+                body: """
+                \(c.greeting)
+
+                Creatorhub kan hjelpe \(c.company) i \(c.location) med å samle kundeavtaler, prosjektfiler, revisjoner, godkjenninger og leveranser for musikk- og lydarbeid.
+
+                Hvordan følger dere opp kunde og versjoner i dag? Jeg kan vise en kort, relevant arbeidsflyt uten å anta at dere må bytte alt på én gang.
+
+                \(signoff)
+                """
+            ),
+            .init(
+                id: "creatorhub-agency",
+                title: "Kreativt byrå",
+                description: "Tilpasset byråer med flere kunder og leveranser.",
+                icon: "person.3.fill",
+                accent: .yellow,
+                subject: "Kunder, prosjekter og godkjenninger hos \(c.company)",
+                body: """
+                \(c.greeting)
+
+                For et kreativt byrå som \(c.company) i \(c.location) kan Creatorhub samle salgsdialog, prosjektansvar, kundegodkjenninger og leveranser i én oversikt.
+
+                Har dere tid til en kort behovsavklaring? Da kan vi demonstrere bare de delene som passer teamet og kundereisen deres.
+
+                \(signoff)
+                """
+            ),
+            .init(
+                id: "creatorhub-short-call",
+                title: "Kort behovsavklaring",
+                description: "For et varmt lead som er klart for en konkret prat.",
+                icon: "bubble.left.and.bubble.right.fill",
+                accent: .purple,
+                subject: "15 minutter om arbeidsflyten til \(c.company)?",
+                body: """
+                \(c.greeting)
+
+                Kan vi bruke 15 minutter på arbeidsflyten til \(c.company) i \(c.location)? Jeg vil gjerne forstå hva som tar mest tid i kundeoppfølging, prosjektarbeid og levering før vi vurderer om Creatorhub er relevant.
+
+                Hvilket tidspunkt passer best?
+
+                \(signoff)
+                """
+            ),
+            .init(
+                id: "creatorhub-follow-up",
+                title: "Vennlig oppfølging",
+                description: "Følger opp uten å anta interesse eller samtykke.",
+                icon: "hand.wave.fill",
+                accent: .purpleLight,
+                subject: "Følger opp Creatorhub for \(c.company)",
+                body: """
+                \(c.greeting)
+
+                Jeg følger kort opp henvendelsen om arbeidsflyten til \(c.company) i \(c.location). Er dette noe dere vurderer nå, eller passer det bedre at jeg avslutter oppfølgingen?
+
+                Hvis det er relevant, starter vi med en kort behovsavklaring.
+
+                \(signoff)
+                """
+            ),
+            .init(
+                id: "creatorhub-next-step",
+                title: "Neste steg",
+                description: "Avgrenser demonstrasjon eller pilot for et interessert lead.",
+                icon: "checkmark.seal.fill",
+                accent: .green,
+                subject: "Neste steg for \(c.company) og Creatorhub",
+                body: """
+                \(c.greeting)
+
+                Takk for interessen fra \(c.company) i \(c.location). I neste samtale foreslår jeg at vi velger én konkret kundereise, avklarer hvem som skal delta, og blir enige om hva et nyttig Creatorhub-oppsett skal løse.
+
+                Deretter kan vi vise et avgrenset oppsett og eventuelt avtale en pilot med tydelige kriterier. Hvilket tidspunkt passer best?
 
                 \(signoff)
                 """

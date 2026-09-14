@@ -1909,6 +1909,58 @@ final class QASweepTests: XCTestCase {
         app.terminate()
     }
 
+    /// Verifiserer at det autoritative Creatorhub-prosjektet åpner i den
+    /// native Discovery-flaten med alle fire spesialiserte profiler.
+    func testStagingCreatorHubProjectOpensAllDiscoveryProfiles() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let stagingURL = environment["LEADGRID_STAGING_BASE_URL"],
+              let token = environment["LEADGRID_STAGING_BEARER_TOKEN"],
+              let organizationID = environment["LEADGRID_STAGING_ORG_ID"],
+              let projectID = environment["LEADGRID_STAGING_CREATORHUB_PROJECT_ID"],
+              !stagingURL.isEmpty,
+              !token.isEmpty,
+              !organizationID.isEmpty,
+              !projectID.isEmpty
+        else {
+            throw XCTSkip("Krever verifisert Creatorhub staging-prosjekt")
+        }
+        guard let baseURL = URL(string: stagingURL),
+              baseURL.scheme == "https",
+              baseURL.host != "creatorhub-backend-rtbl.onrender.com"
+        else {
+            XCTFail("Creatorhub-E2E nekter ugyldig eller produksjons-URL")
+            return
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_BEARER_TOKEN"] = token
+        app.launchEnvironment["LEADGRID_API_BASE_URL"] = stagingURL
+        app.launchEnvironment["QA_ORGANIZATION_ID"] = organizationID
+        app.launchEnvironment["QA_PROJECT_ID"] = projectID
+        app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "12" : "11"
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Verktøy"].waitForExistence(timeout: 45))
+        let discovery = app.buttons["Profiler, kandidater og markedsinnsikt"]
+        XCTAssertTrue(discovery.waitForExistence(timeout: 10))
+        discovery.tap()
+
+        XCTAssertTrue(app.buttons["discovery.close"].waitForExistence(timeout: 12))
+        XCTAssertTrue(
+            app.staticTexts["Creatorhub"].waitForExistence(timeout: 12),
+            "Det autoritative Creatorhub-prosjektet skal være aktivt i Discovery"
+        )
+        let profilesSection = app.buttons["discovery.workspace.profiles"]
+        XCTAssertTrue(profilesSection.waitForExistence(timeout: 12))
+        profilesSection.tap()
+        XCTAssertTrue(app.scrollViews["discovery.profiles.workspace"].waitForExistence(timeout: 12))
+        let profileCount = app.staticTexts["discovery.profile.count"]
+        XCTAssertTrue(profileCount.waitForExistence(timeout: 12))
+        XCTAssertEqual(profileCount.label, "4 profiler")
+        XCTAssertTrue(app.buttons["discovery.campaign.start"].exists)
+        app.terminate()
+    }
+
     /// Ekte Pondus-infrastrukturtest: staging-auth, publisert PostgreSQL-mal,
     /// offline-kø, reconnect og serververifisert usage_session_id.
     func testStagingPondusUsageOfflineReconnect() async throws {

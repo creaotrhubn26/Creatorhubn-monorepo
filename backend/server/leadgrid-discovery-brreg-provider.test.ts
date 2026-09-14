@@ -165,6 +165,54 @@ describe("Discovery BRREG provider", () => {
     expect(dentalBrregUrl).toBeDefined();
   });
 
+  it("rejects upstream industry matches whose primary NACE is outside the requested codes", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        _embedded: {
+          enheter: [
+            brregUnit("999999994", {
+              navn: "KREATIVT BYRÅ AS",
+              naeringskode1: {
+                kode: "73.110",
+                beskrivelse: "Reklamebyråvirksomhet",
+              },
+            }),
+            brregUnit("999999993", {
+              navn: "JORDBRUK MED SIDEVIRKSOMHET AS",
+              naeringskode1: {
+                kode: "01.110",
+                beskrivelse: "Dyrking av korn",
+              },
+            }),
+          ],
+        },
+        page: { totalPages: 1 },
+      }),
+    );
+    const provider = createDiscoveryRegistryProvider({
+      fetchImpl: fetchImpl as typeof fetch,
+      maxAttempts: 1,
+    });
+
+    const result = await provider.search({
+      query: "73.110",
+      queryMode: "industry",
+      countryCode: "NO",
+      maxResults: 20,
+    });
+
+    expect(result.resolvedNaceCodes).toEqual(["73.110"]);
+    expect(
+      result.candidates.map((candidate) => candidate.organizationNumber),
+    ).toEqual(["999999994"]);
+    expect(result.companyFilteredResults).toBe(1);
+    expect(
+      new URL(String(fetchImpl.mock.calls[0][0])).searchParams.get(
+        "naeringskode",
+      ),
+    ).toBe("73.110");
+  });
+
   it("searches named public service sites through BRREG subunits", async () => {
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
       const url = new URL(String(input));
