@@ -261,8 +261,12 @@ struct DiscoveryProfileManagerView: View {
                 }
                 .accessibilityElement(children: .combine)
             } else {
+                // Telling a user to activate a profile that is already active
+                // sends them looking for a switch that would not help.
                 Label(
-                    "Aktiver minst én Discovery-profil før kampanjen kan startes.",
+                    coordinator.profiles.contains { $0.isActive && !$0.isRunnable }
+                        ? "Ingen av profilene kan kjøre ennå. Datakilden de bruker er ikke satt opp for denne installasjonen."
+                        : "Aktiver minst én Discovery-profil før kampanjen kan startes.",
                     systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(LeadgridDiscoveryTheme.warning)
@@ -512,14 +516,8 @@ struct DiscoveryProfileManagerView: View {
                     if let badge = profile.blockedBadgeTitle {
                         Text(badge.uppercased())
                             .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(LeadgridDiscoveryTheme.warning)
+                            .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
                     }
-                }
-                if let explanation = profile.blockedExplanation {
-                    Text(explanation)
-                        .font(.caption2)
-                        .foregroundStyle(LeadgridDiscoveryTheme.warning)
-                        .lineLimit(3)
                 }
                 Label(profile.brief.areaSummary, systemImage: "mappin.and.ellipse")
                     .font(.caption)
@@ -545,9 +543,14 @@ struct DiscoveryProfileManagerView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(selected ? LeadgridDiscoveryTheme.accentSoft.opacity(0.7) : LeadgridDiscoveryTheme.stroke))
+            // A profile whose registry this deployment cannot reach reads as
+            // dimmed and inert. It comes back on its own once the registry is
+            // configured, so it stays listed instead of disappearing.
+            .opacity(profile.isRunnable ? 1 : 0.45)
         }
         .buttonStyle(.plain)
-        .disabled(isLockedByOpenRun)
+        .disabled(isLockedByOpenRun || !profile.isRunnable)
+        .accessibilityHint(profile.blockedExplanation ?? "")
         .contextMenu {
             if !profile.isActive {
                 Button {

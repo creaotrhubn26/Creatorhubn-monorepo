@@ -168,6 +168,47 @@ final class DiscoveryV2Tests: XCTestCase {
         XCTAssertFalse(selected.contains { $0.blockedReason != nil })
     }
 
+    func testWorkspaceNeverOpensOnABlockedProfile() throws {
+        func decode(_ json: String) throws -> DiscoveryV2Profile {
+            try JSONDecoder().decode(DiscoveryV2Profile.self, from: Data(json.utf8))
+        }
+        let briefJSON = """
+        "brief": {
+          "registry_source": "brreg_open_data",
+          "industry_queries": ["86.210"],
+          "country_code": "NO",
+          "target_count": 60,
+          "enrichment_count": 30,
+          "minimum_fit_score": 70
+        }
+        """
+        let blockedDefault = try decode("""
+        {"id":"1","name":"Fastlegekontor – Norge","is_default":true,"version":1,
+         "status":"active","blocked_reason":"flr_not_configured",\(briefJSON)}
+        """)
+        let runnable = try decode("""
+        {"id":"2","name":"Legekontor (Enhetsregisteret) – Norge","is_default":false,
+         "version":1,"status":"active",\(briefJSON)}
+        """)
+
+        // A blocked default must not become the profile the workspace opens on.
+        XCTAssertEqual(
+            DiscoveryRunCoordinator.openingProfile(from: [blockedDefault, runnable])?.id,
+            "2")
+        // A runnable default still wins.
+        let runnableDefault = try decode("""
+        {"id":"3","name":"Psykologtjenester – Norge","is_default":true,"version":1,
+         "status":"active",\(briefJSON)}
+        """)
+        XCTAssertEqual(
+            DiscoveryRunCoordinator.openingProfile(from: [runnable, runnableDefault])?.id,
+            "3")
+        // When nothing can run, the project still opens on something.
+        XCTAssertEqual(
+            DiscoveryRunCoordinator.openingProfile(from: [blockedDefault])?.id, "1")
+        XCTAssertNil(DiscoveryRunCoordinator.openingProfile(from: []))
+    }
+
     func testBriefRequestPreservesZeroCoordinatesAndSnakeCase() throws {
         let brief = DiscoveryV2Brief(
             industryQueries: ["hotell"],
