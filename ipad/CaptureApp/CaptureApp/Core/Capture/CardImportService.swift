@@ -29,7 +29,7 @@ struct CardMediaGroup: Sendable, Identifiable {
 /// Result of importing one group into the local store.
 struct ImportedAsset: Sendable {
     let asset: Asset
-    /// Originals to back up to B2 (JPEG as `.full`, RAW as `.raw`).
+    /// Originals to back up to CreatorHub S3 (JPEG as `.full`, RAW as `.raw`).
     let backupItems: [DeliveryService.CardBackupItem]
 }
 
@@ -42,7 +42,7 @@ enum CardImportError: Error, Sendable, Equatable {
 /// Imports memory-card files into the local capture store: scans + pairs
 /// RAW/JPEG, de-duplicates against everything already imported (by SHA-256),
 /// copies the originals into app storage, and creates the `asset` rows. The
-/// B2 backup itself is then driven by ``DeliveryService/backupCard`` using the
+/// CreatorHub S3 backup is then driven by ``DeliveryService/backupCard`` using the
 /// `backupItems` this produces.
 actor CardImportService {
     static let rawExtensions: Set<String> = [

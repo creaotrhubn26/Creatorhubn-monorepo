@@ -55,7 +55,13 @@ struct EnhancerLut: Decodable, Sendable, Identifiable, Hashable {
 struct PhotoEnhancerClient: Sendable {
     let baseURL: URL
     let authHeaders: [String: String]
-    private let session: URLSession = .shared
+    private let session: URLSession
+
+    init(baseURL: URL, authHeaders: [String: String], session: URLSession = .shared) {
+        self.baseURL = baseURL
+        self.authHeaders = authHeaders
+        self.session = session
+    }
 
     @MainActor
     static func make() -> PhotoEnhancerClient? {
@@ -158,19 +164,19 @@ struct PhotoEnhancerClient: Sendable {
         _ = try? await postJSON("feedback", body: body)
     }
 
-    // MARK: - Async enhance (B2 source + job queue)
+    // MARK: - Async enhance (CreatorHub S3 source + job queue)
 
-    /// One async enhance: upload the source to B2, enqueue a job, poll to
+    /// One async enhance: upload the source to CreatorHub S3, enqueue a job, poll to
     /// completion, fetch the result. Non-blocking (short requests + polling),
-    /// honours Task cancellation, reports progress 0…1. Keeps the source on B2
-    /// (same provider as the rest of the photographer pipeline — no R2).
+    /// honours Task cancellation, reports progress 0…1. The source remains in
+    /// CreatorHub's private bucket and never crosses into Role Room storage.
     func enhanceAsync(imageData: Data, fileName: String, mime: String,
                       preset: String, settings: EnhanceSettings,
                       projectId: String? = nil,
                       onProgress: @MainActor @escaping (Double, String) -> Void) async throws -> EnhanceResult {
-        // 1. presign + upload to B2
-        await onProgress(0.05, "Laster opp til B2…")
-        let target = try await b2Presign(fileName: fileName, contentType: mime, projectId: projectId)
+        // 1. presign + upload to CreatorHub S3
+        await onProgress(0.05, "Laster opp til CreatorHub…")
+        let target = try await creatorHubPresign(fileName: fileName, contentType: mime, projectId: projectId)
         try await putToURL(target.uploadUrl, data: imageData, contentType: mime)
         try Task.checkCancellation()
 
@@ -201,13 +207,22 @@ struct PhotoEnhancerClient: Sendable {
         throw EnhancerError.transport("timed out waiting for enhance job")
     }
 
-    struct B2PresignTarget: Decodable, Sendable { let bucket: String; let key: String; let uploadUrl: String }
+    struct CreatorHubPresignTarget: Decodable, Sendable {
+        let storage: String
+        let bucket: String
+        let key: String
+        let uploadUrl: String
+    }
 
-    func b2Presign(fileName: String, contentType: String, projectId: String?) async throws -> B2PresignTarget {
+    func creatorHubPresign(fileName: String, contentType: String, projectId: String?) async throws -> CreatorHubPresignTarget {
         struct Body: Encodable { let fileName: String; let contentType: String; let projectId: String? }
-        let (data, _) = try await postJSONReturning("uploads/b2-presign",
+        let (data, _) = try await postJSONReturning("uploads/creatorhub-presign",
             body: try JSONEncoder().encode(Body(fileName: fileName, contentType: contentType, projectId: projectId)))
-        return try decode(B2PresignTarget.self, from: data)
+        let target = try decode(CreatorHubPresignTarget.self, from: data)
+        guard target.storage == "creatorhub_s3" else {
+            throw EnhancerError.decode("unexpected storage provider")
+        }
+        return target
     }
 
     func putToURL(_ urlString: String, data: Data, contentType: String) async throws {
@@ -219,7 +234,7 @@ struct PhotoEnhancerClient: Sendable {
         req.httpBody = data
         let (_, resp) = try await session.data(for: req)
         if let http = resp as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw EnhancerError.http(http.statusCode, "B2 upload failed")
+            throw EnhancerError.http(http.statusCode, "CreatorHub S3 upload failed")
         }
     }
 
@@ -227,7 +242,7 @@ struct PhotoEnhancerClient: Sendable {
                           preset: String, settings: EnhanceSettings, projectId: String?) async throws -> String {
         struct Source: Encodable { let bucket, key, storage, fileName, mimeType: String; let size: Int }
         struct Body: Encodable { let source: Source; let preset: String; let settings: EnhanceSettings; let projectId: String? }
-        let body = Body(source: Source(bucket: bucket, key: key, storage: "b2", fileName: fileName, mimeType: mime, size: size),
+        let body = Body(source: Source(bucket: bucket, key: key, storage: "creatorhub_s3", fileName: fileName, mimeType: mime, size: size),
                         preset: preset, settings: settings, projectId: projectId)
         let (data, _) = try await postJSONReturning("jobs", body: try JSONEncoder().encode(body))
         struct Resp: Decodable { struct JobRef: Decodable { let id: String? }; let job: JobRef? }

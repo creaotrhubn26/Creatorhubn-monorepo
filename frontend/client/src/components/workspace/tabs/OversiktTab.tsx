@@ -66,7 +66,7 @@ const T: WsDict = {
   shootingNow: { no: 'SKYTER NÅ', en: 'SHOOTING NOW' },
   captureSession: { no: 'Capture-session', en: 'Capture session' },
   photosWord: { no: 'bilder', en: 'photos' },
-  securedB2: { no: 'Sikret i B2 (One Desk)', en: 'Secured in B2 (One Desk)' },
+  securedCreatorHub: { no: 'Sikret i CreatorHub S3', en: 'Secured in CreatorHub S3' },
   originalsVerified: { no: 'originaler verifisert', en: 'originals verified' },
   oneDeskMirror: { no: 'One Desk-speiling', en: 'One Desk mirroring' },
   backupHelper: { no: 'Backup-helper', en: 'Backup helper' },
@@ -330,7 +330,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
-  // One Desk DIT-backup — RAID/B2-speiling + hash-verifiserte kopier (poll 30s).
+  // One Desk DIT-backup — lokale/særskilte speil + hash-verifiserte kopier (poll 30s).
   const [dit, setDit] = useState<any | null>(null);
   const loadDit = () => { if (!isReal) return; apiRequest(`/api/projects/${encodeURIComponent(projectId)}/dit-status`).then((r: any) => setDit(r || null)).catch(() => {}); };
   useEffect(() => {
@@ -354,7 +354,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
       setActivity((p) => [{ id: payload.id, type: payload.event_type, assetId: payload.asset_id || null, filename: null, actorName: null, metadata: payload.metadata || null, createdAt: payload.created_at || new Date().toISOString() }, ...p.filter((x) => x.id !== payload.id)].slice(0, 40));
     } else { loadActivity(); }
   });
-  const cap = isReal ? capture : { hasSession: true, shootingNow: true, session: { name: 'EOS R5 — Vielse' }, assets: { total: 842, securedToB2: 842, securedPct: 100, lastCaptureAt: new Date().toISOString() } };
+  const cap = isReal ? capture : { hasSession: true, shootingNow: true, session: { name: 'EOS R5 — Vielse' }, assets: { total: 842, securedToCreatorHubS3: 842, securedPct: 100, lastCaptureAt: new Date().toISOString() } };
 
   // Tri-state: todo → in_progress → done → todo (optimistisk, PATCH bak).
   const toggleTask = async (id: string, status: string) => {
@@ -586,9 +586,9 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                 <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{t('photosWord')}</Typography>
               </Box>
               <Box sx={{ flex: 1, minWidth: 160 }}>
-                <Stack direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 11.5, color: ws.textDim, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('CloudDone', { fontSize: 13 })}{t('securedB2')}</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 700, color: (cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber }}>{cap.assets?.securedPct ?? 0}%</Typography></Stack>
+                <Stack direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 11.5, color: ws.textDim, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('CloudDone', { fontSize: 13 })}{t('securedCreatorHub')}</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 700, color: (cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber }}>{cap.assets?.securedPct ?? 0}%</Typography></Stack>
                 <WsBar value={cap.assets?.securedPct ?? 0} color={(cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber} height={5} />
-                <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 0.25 }}>{cap.assets?.securedToB2 ?? 0} {t('ofWord')} {cap.assets?.total ?? 0} {t('originalsVerified')}</Typography>
+                <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 0.25 }}>{cap.assets?.securedToCreatorHubS3 ?? cap.assets?.securedToB2 ?? 0} {t('ofWord')} {cap.assets?.total ?? 0} {t('originalsVerified')}</Typography>
               </Box>
             </Stack>
 

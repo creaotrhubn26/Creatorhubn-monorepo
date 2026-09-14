@@ -17,7 +17,7 @@ import UIKit
 ///   * The preview image passed in is displayed as the canvas
 ///     background at its natural aspect ratio.
 ///   * If we only have metadata (filename + capture time — which is
-///     the simulator-drive-by state until signed R2 URLs land), we
+///     the simulator-drive-by state until signed S3 URLs land), we
 ///     show a photo-shaped placeholder so the surface still works.
 ///   * PKToolPicker is attached so the photographer has the full
 ///     Apple inking palette.
