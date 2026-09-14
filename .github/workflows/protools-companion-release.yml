@@ -467,40 +467,65 @@ jobs:
             throw "Expected an unsigned pre-signing binary, got $($signature.Status): $app"
           }
 
-      - name: Authenticode-sign Windows application
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
-        with:
-          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files: ${{ github.workspace }}\apps\creatorhub-protools-companion\src-tauri\target\release\creatorhub-protools-companion.exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-          description: CreatorHub Pro Tools Companion
-          description-url: https://www.creatorhubn.com
+      - name: Configure pinned Microsoft Sign CLI for Tauri bundling
+        env:
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $signToolDir = Join-Path $env:RUNNER_TEMP 'dotnet-sign'
+          dotnet tool install --tool-path $signToolDir --version 0.9.1-beta.26227.3 sign
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to install the pinned Microsoft Sign CLI' }
+          $signCli = Join-Path $signToolDir 'sign.exe'
+          if (-not (Test-Path $signCli)) { throw "Microsoft Sign CLI not found: $signCli" }
+          & $signCli --version
+          if ($LASTEXITCODE -ne 0) { throw 'Microsoft Sign CLI version check failed' }
 
-      - name: Bundle Windows MSI and NSIS installers
+          # Tauri patches the application binary independently for MSI and NSIS.
+          # Signing before `tauri bundle` would therefore leave an invalid signature
+          # inside the installers. Run Artifact Signing through Tauri's supported
+          # signCommand hook after each patch and before each package is assembled.
+          $signingConfigPath = Join-Path $env:RUNNER_TEMP 'tauri.windows.artifact-signing.json'
+          $signingConfig = @{
+            bundle = @{
+              windows = @{
+                signCommand = @{
+                  cmd = $signCli
+                  args = @(
+                    'code', 'artifact-signing',
+                    '--artifact-signing-endpoint', $env:ARTIFACT_SIGNING_ENDPOINT,
+                    '--artifact-signing-account', $env:ARTIFACT_SIGNING_ACCOUNT,
+                    '--artifact-signing-certificate-profile', $env:ARTIFACT_SIGNING_PROFILE,
+                    '--azure-credential-type', 'azure-cli',
+                    '--file-digest', 'SHA256',
+                    '--timestamp-url', 'http://timestamp.acs.microsoft.com',
+                    '--timestamp-digest', 'SHA256',
+                    '--description', 'CreatorHub Pro Tools Companion',
+                    '--description-url', 'https://www.creatorhubn.com',
+                    '%1'
+                  )
+                }
+              }
+            }
+          }
+          $signingConfig | ConvertTo-Json -Depth 6 | Set-Content -Path $signingConfigPath -Encoding utf8
+          "TAURI_WINDOWS_SIGNING_CONFIG=$signingConfigPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Bundle and Authenticode-sign Windows MSI and NSIS installers
         working-directory: apps/creatorhub-protools-companion
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PROTOOLS }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PROTOOLS_PASSWORD }}
-        run: npm run tauri -- bundle --bundles msi nsis --ci
-
-      - name: Authenticode-sign Windows installers
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
-        with:
-          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\apps\creatorhub-protools-companion\src-tauri\target\release\bundle
-          files-folder-filter: '*.exe,*.msi'
-          files-folder-recurse: true
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-          description: CreatorHub Pro Tools Companion
-          description-url: https://www.creatorhubn.com
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_WINDOWS_SIGNING_CONFIG) -or -not (Test-Path $env:TAURI_WINDOWS_SIGNING_CONFIG)) {
+            throw 'Tauri Artifact Signing configuration is missing'
+          }
+          npm run tauri -- bundle --bundles msi nsis --ci --config $env:TAURI_WINDOWS_SIGNING_CONFIG
+          if ($LASTEXITCODE -ne 0) { throw 'Signed Tauri Windows bundling failed' }
 
       - name: Package and sign Windows updater
         working-directory: apps/creatorhub-protools-companion
@@ -550,8 +575,9 @@ jobs:
           if ($extractedApps.Count -ne 1) {
             throw "Expected one Companion executable in extracted MSI; found $($extractedApps.Count)"
           }
-          if ((Get-AuthenticodeSignature $extractedApps[0].FullName).Status -ne 'Valid') {
-            throw 'The Companion executable embedded in the MSI is not Authenticode-valid'
+          $extractedSignature = Get-AuthenticodeSignature $extractedApps[0].FullName
+          if ($extractedSignature.Status -ne 'Valid') {
+            throw "The Companion executable embedded in the MSI is not Authenticode-valid: $($extractedSignature.Status) — $($extractedSignature.StatusMessage)"
           }
 
           $installProcess = Start-Process $nsis[0].FullName -ArgumentList '/S' -Wait -PassThru
@@ -576,8 +602,9 @@ jobs:
           if ($installedApps.Count -ne 1) {
             throw "Expected one installed Companion executable; found $($installedApps.Count) in $installLocation"
           }
-          if ((Get-AuthenticodeSignature $installedApps[0].FullName).Status -ne 'Valid') {
-            throw 'Installed Companion executable is not Authenticode-valid'
+          $installedSignature = Get-AuthenticodeSignature $installedApps[0].FullName
+          if ($installedSignature.Status -ne 'Valid') {
+            throw "Installed Companion executable is not Authenticode-valid: $($installedSignature.Status) — $($installedSignature.StatusMessage)"
           }
           $appProcess = Start-Process $installedApps[0].FullName -PassThru
           Start-Sleep -Seconds 8
