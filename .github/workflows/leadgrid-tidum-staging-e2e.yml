@@ -84,6 +84,8 @@ jobs:
           LEADGRID_RUN_TIDUM_CAMPAIGN_E2E: "1"
           LEADGRID_RUN_CREATORHUB_E2E: "1"
           LEADGRID_RUN_CREATORHUB_CAMPAIGN_E2E: "1"
+          LEADGRID_RUN_MEDSIDE_E2E: "1"
+          LEADGRID_RUN_MEDSIDE_CAMPAIGN_E2E: "1"
           LEADGRID_RUN_SIMULATOR_E2E: ${{ inputs.run_simulator_e2e && '1' || '0' }}
           LEADGRID_STAGING_SIMULATOR_DESTINATION: "platform=iOS Simulator,name=iPad mini (A17 Pro),OS=26.5"
         run: ./scripts/staging-testflight-e2e.sh

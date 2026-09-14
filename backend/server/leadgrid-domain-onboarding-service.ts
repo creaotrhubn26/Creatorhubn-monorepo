@@ -5,8 +5,10 @@ import type { Pool, PoolClient } from "pg";
 
 import {
   discoveryBriefSchema,
+  storedDiscoveryBriefInput,
   type DiscoveryBrief,
 } from "./leadgrid-discovery-contract.js";
+import { isDiscoveryFlrConfigured } from "./leadgrid-discovery-flr-provider.js";
 import {
   TIDUM_ANBUD_PROFILE,
   type LeadgridAnbudProfileTemplate,
@@ -1744,7 +1746,7 @@ async function loadActiveProfiles(
       name: row.name,
       is_default: row.is_default,
       version: row.version,
-      brief: discoveryBriefSchema.parse(row.brief),
+      brief: discoveryBriefSchema.parse(storedDiscoveryBriefInput(row.brief)),
       places_details_enabled:
         googlePlaces.enabled === true &&
         googlePlaces.mode === "transient_details_only",
@@ -1753,6 +1755,105 @@ async function loadActiveProfiles(
       template_version: row.template_version,
     };
   });
+}
+
+const MEDSIDE_TEMPLATE_PREFIX = "medside.";
+const MEDSIDE_LEGACY_INDUSTRY_QUERY = "legekontor";
+
+/**
+ * The first profile a user meets has to be able to run. When a plan leads with
+ * a registry this deployment is not authorized for, pick an operational profile
+ * instead of handing the project a default that fails on every start.
+ */
+function preferredDefaultProfilePlan(
+  plans: ProjectOnboardingProfilePlan[],
+): ProjectOnboardingProfilePlan | undefined {
+  const preferred = plans.find((plan) => plan.is_default) ?? plans[0];
+  if (!preferred) return undefined;
+  if (preferred.brief.registry_source !== "nhn_flr_public") return preferred;
+  if (isDiscoveryFlrConfigured()) return preferred;
+  return (
+    plans.find((plan) => plan.brief.registry_source !== "nhn_flr_public") ??
+    preferred
+  );
+}
+
+/**
+ * MedSide still carries one machine-migrated profile whose `legekontor`
+ * free-text query cannot be resolved to an official industry code, so every run
+ * fails before a single candidate is fetched. Retire exactly that row once the
+ * authoritative templates exist. All marks of the known legacy shape must
+ * match, so a user-authored profile is never touched.
+ */
+async function retireMigratedLegacyProfiles(
+  client: Queryable,
+  args: {
+    organizationId: string;
+    projectId: string;
+    userId: string;
+    industryQuery: string;
+  },
+): Promise<void> {
+  await client.query(
+    `UPDATE leadgrid_discovery_profiles
+        SET status = 'archived',
+            is_default = FALSE,
+            updated_by = $3,
+            updated_at = NOW()
+      WHERE organization_id = $1::uuid
+        AND project_id = $2
+        AND status <> 'archived'
+        AND template_key IS NULL
+        AND template_version IS NULL
+        AND brief->>'migrated_from' = 'leadgrid_project_discovery_config'
+        AND COALESCE(
+          jsonb_array_length(brief->'organization_name_queries'), 0) = 0
+        AND COALESCE(jsonb_array_length(brief->'industry_queries'), 0) = 1
+        AND LOWER(TRIM(brief->'industry_queries'->>0)) = $4`,
+    [args.organizationId, args.projectId, args.userId, args.industryQuery],
+  );
+}
+
+/**
+ * A project without a default profile opens on nothing, and archiving the old
+ * default can leave it that way. Restore one deterministically. An existing
+ * default is authoritative and is never overridden.
+ */
+async function ensureDefaultProfile(
+  client: Queryable,
+  args: {
+    organizationId: string;
+    projectId: string;
+    preferredTemplateKey: string | null;
+  },
+): Promise<void> {
+  await client.query(
+    `UPDATE leadgrid_discovery_profiles
+        SET is_default = TRUE,
+            updated_at = NOW()
+      WHERE organization_id = $1::uuid
+        AND project_id = $2
+        AND id = (
+          SELECT id
+            FROM leadgrid_discovery_profiles
+           WHERE organization_id = $1::uuid
+             AND project_id = $2
+             AND status <> 'archived'
+           ORDER BY ($3::text IS NOT NULL AND template_key = $3::text) DESC,
+                    created_at ASC,
+                    id ASC
+           LIMIT 1
+        )
+        AND NOT EXISTS (
+          SELECT 1
+            FROM leadgrid_discovery_profiles
+           WHERE organization_id = $1::uuid
+             AND project_id = $2
+             AND status <> 'archived'
+             AND is_default
+        )`,
+    [args.organizationId, args.projectId, args.preferredTemplateKey],
+  );
 }
 
 async function ensureRecommendedProfiles(
@@ -1772,6 +1873,7 @@ async function ensureRecommendedProfiles(
   if (current.length > 0 && args.plans.every((plan) => !plan.template_key))
     return;
   const hasDefault = current.some((profile) => profile.is_default);
+  const defaultPlan = preferredDefaultProfilePlan(args.plans);
   for (const [index, plan] of args.plans.entries()) {
     const brief = discoveryBriefSchema.parse(plan.brief);
     const values = profilePersistenceValues(brief);
@@ -1995,7 +2097,8 @@ async function ensureRecommendedProfiles(
         plan.template_key ?? null,
         plan.template_key ? (plan.template_version ?? 1) : null,
         plan.name,
-        !hasDefault && (plan.is_default || index === 0),
+        !hasDefault &&
+          (defaultPlan ? plan === defaultPlan : plan.is_default || index === 0),
         values.targetCustomerTypes,
         values.cityFilters,
         values.latitude,
@@ -2025,6 +2128,23 @@ async function ensureRecommendedProfiles(
       ],
     );
   }
+  if (
+    args.plans.some((plan) =>
+      plan.template_key?.startsWith(MEDSIDE_TEMPLATE_PREFIX),
+    )
+  ) {
+    await retireMigratedLegacyProfiles(client, {
+      organizationId: args.organizationId,
+      projectId: args.projectId,
+      userId: args.userId,
+      industryQuery: MEDSIDE_LEGACY_INDUSTRY_QUERY,
+    });
+  }
+  await ensureDefaultProfile(client, {
+    organizationId: args.organizationId,
+    projectId: args.projectId,
+    preferredTemplateKey: defaultPlan?.template_key ?? null,
+  });
 }
 
 function slug(value: string): string {

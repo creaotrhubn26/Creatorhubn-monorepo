@@ -1961,6 +1961,58 @@ final class QASweepTests: XCTestCase {
         app.terminate()
     }
 
+    func testStagingMedSideProjectOpensAllDiscoveryProfiles() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let stagingURL = environment["LEADGRID_STAGING_BASE_URL"],
+              let token = environment["LEADGRID_STAGING_BEARER_TOKEN"],
+              let organizationID = environment["LEADGRID_STAGING_ORG_ID"],
+              let projectID = environment["LEADGRID_STAGING_MEDSIDE_PROJECT_ID"],
+              !stagingURL.isEmpty,
+              !token.isEmpty,
+              !organizationID.isEmpty,
+              !projectID.isEmpty
+        else {
+            throw XCTSkip("Krever verifisert MedSide staging-prosjekt")
+        }
+        guard let baseURL = URL(string: stagingURL),
+              baseURL.scheme == "https",
+              baseURL.host != "creatorhub-backend-rtbl.onrender.com"
+        else {
+            XCTFail("MedSide-E2E nekter ugyldig eller produksjons-URL")
+            return
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_BEARER_TOKEN"] = token
+        app.launchEnvironment["LEADGRID_API_BASE_URL"] = stagingURL
+        app.launchEnvironment["QA_ORGANIZATION_ID"] = organizationID
+        app.launchEnvironment["QA_PROJECT_ID"] = projectID
+        app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "12" : "11"
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Verktøy"].waitForExistence(timeout: 45))
+        let discovery = app.buttons["Profiler, kandidater og markedsinnsikt"]
+        XCTAssertTrue(discovery.waitForExistence(timeout: 10))
+        discovery.tap()
+
+        XCTAssertTrue(app.buttons["discovery.close"].waitForExistence(timeout: 12))
+        XCTAssertTrue(
+            app.staticTexts["MedSide"].waitForExistence(timeout: 12),
+            "Det autoritative MedSide-prosjektet skal være aktivt i Discovery"
+        )
+        let profilesSection = app.buttons["discovery.workspace.profiles"]
+        XCTAssertTrue(profilesSection.waitForExistence(timeout: 12))
+        profilesSection.tap()
+        XCTAssertTrue(app.scrollViews["discovery.profiles.workspace"].waitForExistence(timeout: 12))
+        let profileCount = app.staticTexts["discovery.profile.count"]
+        XCTAssertTrue(profileCount.waitForExistence(timeout: 12))
+        XCTAssertEqual(profileCount.label, "5 profiler")
+        // Den migrerte legacyprofilen skal være borte, ikke bare skjøvet ned.
+        XCTAssertFalse(app.staticTexts["Standard"].exists)
+        XCTAssertTrue(app.buttons["discovery.campaign.start"].exists)
+        app.terminate()
+    }
+
     /// Ekte Pondus-infrastrukturtest: staging-auth, publisert PostgreSQL-mal,
     /// offline-kø, reconnect og serververifisert usage_session_id.
     func testStagingPondusUsageOfflineReconnect() async throws {

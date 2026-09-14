@@ -81,76 +81,72 @@ export const discoveryGeoSchema = z
   })
   .strict();
 
-export const discoveryBriefSchema = z
-  .object({
-    registry_source: z
-      .enum(["brreg_open_data", "nhn_flr_public"])
-      .default("brreg_open_data"),
-    industry_queries: z.array(nonEmpty(120)).max(8).default([]),
-    organization_name_queries: z.array(nonEmpty(120)).max(8).default([]),
-    exclusion_terms: z.array(nonEmpty(80)).max(30).default([]),
-    country_code: z.literal("NO").nullable().optional(),
-    city: nonEmpty(120).nullable().optional(),
-    geo: discoveryGeoSchema.nullable().optional(),
-    territory_code: z
-      .string()
-      .trim()
-      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
-      .max(48)
-      .nullable()
-      .optional(),
-    municipality_numbers: z
-      .array(municipalityNumberSchema)
-      .max(30)
-      .default([])
-      .transform((values) => [...new Set(values)]),
-    municipality_names: z
-      .array(nonEmpty(120))
-      .max(30)
-      .default([])
-      .transform((values) => [...new Set(values)]),
-    target_count: z
-      .number()
-      .int()
-      .min(1)
-      .max(DISCOVERY_MAX_RESULTS)
-      .default(20),
-    enrichment_count: z
-      .number()
-      .int()
-      .min(1)
-      .max(DISCOVERY_MAX_RESULTS)
-      .default(10),
-    minimum_fit_score: z.number().int().min(0).max(100).default(50),
-    ideal_customer: nonEmpty(1_500).nullable().optional(),
-    goal: nonEmpty(500).nullable().optional(),
-    organization_forms: z
-      .array(organizationFormCodeSchema)
-      .max(20)
-      .default([])
-      .transform((values) => [...new Set(values)].sort()),
-    employee_count: discoveryEmployeeCountSchema.nullable().default(null),
-    organization_structure: z
-      .enum(["any", "independent", "chain"])
-      .default("any"),
-    website_requirement: z.enum(["any", "present", "missing"]).default("any"),
-    website_quality: discoveryWebsiteQualitySchema.default({
-      minimum_score: null,
-    }),
-    subject_kind: z.enum(["organization", "person"]).default("organization"),
-    qualification_terms: z
-      .array(nonEmpty(80))
-      .max(30)
-      .default([])
-      .transform((values) => [...new Set(values)]),
-    qualification_requirement: z
-      .enum(["preferred", "required"])
-      .default("preferred"),
-    commercial_signals: discoveryCommercialSignalsSchema.default({
-      registered_in_vat_register: null,
-      registered_in_business_register: null,
-    }),
-  })
+const discoveryBriefObjectSchema = z.object({
+  registry_source: z
+    .enum(["brreg_open_data", "nhn_flr_public"])
+    .default("brreg_open_data"),
+  industry_queries: z.array(nonEmpty(120)).max(8).default([]),
+  organization_name_queries: z.array(nonEmpty(120)).max(8).default([]),
+  exclusion_terms: z.array(nonEmpty(80)).max(30).default([]),
+  country_code: z.literal("NO").nullable().optional(),
+  city: nonEmpty(120).nullable().optional(),
+  geo: discoveryGeoSchema.nullable().optional(),
+  territory_code: z
+    .string()
+    .trim()
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+    .max(48)
+    .nullable()
+    .optional(),
+  municipality_numbers: z
+    .array(municipalityNumberSchema)
+    .max(30)
+    .default([])
+    .transform((values) => [...new Set(values)]),
+  municipality_names: z
+    .array(nonEmpty(120))
+    .max(30)
+    .default([])
+    .transform((values) => [...new Set(values)]),
+  target_count: z.number().int().min(1).max(DISCOVERY_MAX_RESULTS).default(20),
+  enrichment_count: z
+    .number()
+    .int()
+    .min(1)
+    .max(DISCOVERY_MAX_RESULTS)
+    .default(10),
+  minimum_fit_score: z.number().int().min(0).max(100).default(50),
+  ideal_customer: nonEmpty(1_500).nullable().optional(),
+  goal: nonEmpty(500).nullable().optional(),
+  organization_forms: z
+    .array(organizationFormCodeSchema)
+    .max(20)
+    .default([])
+    .transform((values) => [...new Set(values)].sort()),
+  employee_count: discoveryEmployeeCountSchema.nullable().default(null),
+  organization_structure: z
+    .enum(["any", "independent", "chain"])
+    .default("any"),
+  website_requirement: z.enum(["any", "present", "missing"]).default("any"),
+  website_quality: discoveryWebsiteQualitySchema.default({
+    minimum_score: null,
+  }),
+  subject_kind: z.enum(["organization", "person"]).default("organization"),
+  qualification_terms: z
+    .array(nonEmpty(80))
+    .max(30)
+    .default([])
+    .transform((values) => [...new Set(values)]),
+  qualification_requirement: z
+    .enum(["preferred", "required"])
+    .default("preferred"),
+  commercial_signals: discoveryCommercialSignalsSchema.default({
+    registered_in_vat_register: null,
+    registered_in_business_register: null,
+  }),
+});
+
+export const discoveryBriefSchema = discoveryBriefObjectSchema
   .strict()
   .superRefine((brief, ctx) => {
     const queryCount =
@@ -299,6 +295,24 @@ export const discoveryBriefSchema = z
   });
 
 export type DiscoveryBrief = z.infer<typeof discoveryBriefSchema>;
+
+const DISCOVERY_BRIEF_KEYS = new Set<string>(
+  discoveryBriefObjectSchema.keyof().options,
+);
+
+/**
+ * Stored briefs predate the strict wire contract and can still carry migration
+ * markers such as `migrated_from` and `migration_audit`. Drop keys the contract
+ * does not define so a legacy row can be validated instead of throwing.
+ */
+export function storedDiscoveryBriefInput(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(([key]) =>
+      DISCOVERY_BRIEF_KEYS.has(key),
+    ),
+  );
+}
 
 export const discoveryPreviewSchema = z
   .object({ brief: discoveryBriefSchema })

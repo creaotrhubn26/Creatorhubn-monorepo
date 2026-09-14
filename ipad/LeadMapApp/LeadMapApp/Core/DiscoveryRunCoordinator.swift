@@ -224,7 +224,23 @@ final class DiscoveryRunCoordinator {
             isStartingRun: isStartingRun)
     }
     var hasMoreCandidates: Bool { nextCursor != nil }
-    var canStart: Bool { preview != nil && !isBusy && networkMonitor.isOnline }
+    /// The server marks a profile as blocked when its registry is not
+    /// configured for this deployment. Say so before the user presses start,
+    /// instead of letting the run fail with a generic server error.
+    var startBlockedExplanation: String? {
+        guard brief.normalized.registrySource == "nhn_flr_public" else {
+            return nil
+        }
+        return profiles
+            .first { $0.brief.normalized.registrySource == "nhn_flr_public"
+                && $0.blockedExplanation != nil }?
+            .blockedExplanation
+    }
+
+    var canStart: Bool {
+        preview != nil && !isBusy && networkMonitor.isOnline
+            && startBlockedExplanation == nil
+    }
     var hasUnsavedProfileChanges: Bool {
         guard let selectedProfile else { return true }
         return brief.normalized != selectedProfile.brief.normalized

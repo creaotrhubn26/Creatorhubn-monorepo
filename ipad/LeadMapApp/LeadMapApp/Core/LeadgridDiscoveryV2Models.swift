@@ -1642,10 +1642,35 @@ struct DiscoveryV2Profile: Codable, Hashable, Sendable, Identifiable {
     var status: DiscoveryV2ProfileStatus? = nil
     var templateKey: String? = nil
     var templateVersion: Int? = nil
+    /// Set by the server when the profile's registry is not configured for this
+    /// deployment. A profile with a reason cannot start a run.
+    var blockedReason: String? = nil
 
     /// Cached profiles written by older clients have no status. Treat those
     /// as active locally; the authoritative list is reloaded before start.
     var isActive: Bool { status == nil || status == .active }
+
+    var isRunnable: Bool { blockedReason == nil }
+
+    /// Explains a blocked profile in the user's language instead of letting the
+    /// run fail with a generic server error after the user presses start.
+    var blockedExplanation: String? {
+        switch blockedReason {
+        case nil: return nil
+        case "flr_not_configured":
+            return "Fastlegeregisteret er ikke satt opp for denne installasjonen ennå. Profilen kan ikke søke før Maskinporten-tilgangen er på plass."
+        default:
+            return "Datakilden for denne profilen er ikke tilgjengelig ennå."
+        }
+    }
+
+    var blockedBadgeTitle: String? {
+        switch blockedReason {
+        case nil: return nil
+        case "flr_not_configured": return "Krever FLR-oppsett"
+        default: return "Krever oppsett"
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, name, version, brief, status
@@ -1653,6 +1678,7 @@ struct DiscoveryV2Profile: Codable, Hashable, Sendable, Identifiable {
         case placesDetailsEnabled = "places_details_enabled"
         case templateKey = "template_key"
         case templateVersion = "template_version"
+        case blockedReason = "blocked_reason"
     }
 }
 

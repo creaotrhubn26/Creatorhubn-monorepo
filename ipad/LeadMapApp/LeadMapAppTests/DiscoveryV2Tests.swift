@@ -71,6 +71,61 @@ final class DiscoveryV2Tests: XCTestCase {
         XCTAssertEqual(decoded.registrySource, "nhn_flr_public")
     }
 
+    func testProfileDecodesBlockedRegistryReasonAndExplainsIt() throws {
+        let json = Data("""
+        {
+          "id": "profile-1",
+          "name": "Fastlegekontor – Norge",
+          "is_default": false,
+          "version": 1,
+          "template_key": "medside.gp_offices",
+          "blocked_reason": "flr_not_configured",
+          "brief": {
+            "registry_source": "nhn_flr_public",
+            "industry_queries": ["86.210"],
+            "country_code": "NO",
+            "target_count": 60,
+            "enrichment_count": 30,
+            "minimum_fit_score": 70
+          }
+        }
+        """.utf8)
+
+        let profile = try JSONDecoder().decode(DiscoveryV2Profile.self, from: json)
+
+        XCTAssertEqual(profile.blockedReason, "flr_not_configured")
+        XCTAssertFalse(profile.isRunnable)
+        XCTAssertEqual(profile.blockedBadgeTitle, "Krever FLR-oppsett")
+        XCTAssertNotNil(profile.blockedExplanation)
+    }
+
+    func testProfileWithoutBlockedReasonStaysRunnable() throws {
+        let json = Data("""
+        {
+          "id": "profile-2",
+          "name": "Private spesialistklinikker – Norge",
+          "is_default": true,
+          "version": 1,
+          "template_key": "medside.medical_specialists",
+          "brief": {
+            "registry_source": "brreg_open_data",
+            "industry_queries": ["86.221"],
+            "country_code": "NO",
+            "target_count": 60,
+            "enrichment_count": 30,
+            "minimum_fit_score": 70
+          }
+        }
+        """.utf8)
+
+        let profile = try JSONDecoder().decode(DiscoveryV2Profile.self, from: json)
+
+        XCTAssertNil(profile.blockedReason)
+        XCTAssertTrue(profile.isRunnable)
+        XCTAssertNil(profile.blockedBadgeTitle)
+        XCTAssertNil(profile.blockedExplanation)
+    }
+
     func testBriefRequestPreservesZeroCoordinatesAndSnakeCase() throws {
         let brief = DiscoveryV2Brief(
             industryQueries: ["hotell"],

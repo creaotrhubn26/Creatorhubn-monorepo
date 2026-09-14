@@ -509,6 +509,17 @@ struct DiscoveryProfileManagerView: View {
                             .font(.system(size: 8, weight: .bold))
                             .foregroundStyle(LeadgridDiscoveryTheme.warning)
                     }
+                    if let badge = profile.blockedBadgeTitle {
+                        Text(badge.uppercased())
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(LeadgridDiscoveryTheme.warning)
+                    }
+                }
+                if let explanation = profile.blockedExplanation {
+                    Text(explanation)
+                        .font(.caption2)
+                        .foregroundStyle(LeadgridDiscoveryTheme.warning)
+                        .lineLimit(3)
                 }
                 Label(profile.brief.areaSummary, systemImage: "mappin.and.ellipse")
                     .font(.caption)
