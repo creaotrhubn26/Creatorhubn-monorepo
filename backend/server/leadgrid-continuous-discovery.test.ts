@@ -588,3 +588,71 @@ describe("continuous Discovery v2 adapter", () => {
     expect(workflow).toContain("run_id: result.runId");
   });
 });
+
+describe("Fastlegeregister supersedes the BRREG stand-in", () => {
+  const flrEnvironment = {
+    LEADGRID_DISCOVERY_FLR_ENABLED: "true",
+    LEADGRID_FLR_MASKINPORTEN_CLIENT_ID: "client",
+    LEADGRID_FLR_MASKINPORTEN_KEY_ID: "key",
+    LEADGRID_FLR_MASKINPORTEN_PRIVATE_KEY: "private-key",
+  } as const;
+
+  function withFlrEnvironment<T>(
+    configured: boolean,
+    body: () => Promise<T>,
+  ): Promise<T> {
+    const previous = new Map(
+      Object.keys(flrEnvironment).map((key) => [key, process.env[key]]),
+    );
+    for (const [key, value] of Object.entries(flrEnvironment)) {
+      if (configured) process.env[key] = value;
+      else delete process.env[key];
+    }
+    return body().finally(() => {
+      for (const [key, value] of previous) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    });
+  }
+
+  it("does nothing while Maskinporten is unconfigured", async () => {
+    const query = vi.fn(async () => ({ rows: [], rowCount: 0 }));
+    await withFlrEnvironment(false, () =>
+      __test.pauseProfilesSupersededByFlr({ query } as unknown as Pool),
+    );
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("pauses the stand-in and hands the default to the authoritative profile", async () => {
+    const query = vi.fn(async () => ({ rows: [], rowCount: 1 }));
+    await withFlrEnvironment(true, () =>
+      __test.pauseProfilesSupersededByFlr({ query } as unknown as Pool),
+    );
+
+    expect(query).toHaveBeenCalledOnce();
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(params).toEqual(["medside.gp_offices", "medside.gp_offices_brreg"]);
+    expect(sql).toContain("SET status = 'paused'");
+    expect(sql).toContain("'auto_paused_by', 'nhn_flr_public'");
+    // The stand-in is paused only where the authoritative profile is actually
+    // present and active, so a project is never left without GP coverage.
+    expect(sql).toContain("authoritative.template_key = $1");
+    expect(sql).toContain("authoritative.status = 'active'");
+    // A user who re-activates it keeps it: the marker blocks a second pause.
+    expect(sql).toContain("fallback.source_config->>'auto_paused_by' IS NULL");
+    // The default only moves when the stand-in actually held it.
+    expect(sql).toContain("paused.was_default");
+  });
+
+  it("never fails the poller tick when the reconcile query errors", async () => {
+    const query = vi.fn(async () => {
+      throw new Error("connection terminated");
+    });
+    await expect(
+      withFlrEnvironment(true, () =>
+        __test.pauseProfilesSupersededByFlr({ query } as unknown as Pool),
+      ),
+    ).resolves.toBeUndefined();
+  });
+});

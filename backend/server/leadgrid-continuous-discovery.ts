@@ -12,6 +12,7 @@ import {
   type DiscoveryRunStatus,
   type DiscoveryTriggerKind,
 } from "./leadgrid-discovery-service.js";
+import { isDiscoveryFlrConfigured } from "./leadgrid-discovery-flr-provider.js";
 import type { LeadgridAccessibleProject } from "./leadgrid-project-access.js";
 
 const { parseExpression } = cronParser;
@@ -172,7 +173,8 @@ function buildBrief(
   const organizationNameQueries = opts.industryQueryOverride?.trim()
     ? []
     : cleanStrings(stored.organization_name_queries);
-  if (industryQueries.length + organizationNameQueries.length === 0) return null;
+  if (industryQueries.length + organizationNameQueries.length === 0)
+    return null;
 
   const cities =
     cleanStrings(source.city_filters).length > 0
@@ -840,8 +842,74 @@ async function processDueSource(
   }
 }
 
+// The BRREG stand-in for MedSide GP offices exists only while the public
+// Fastlegeregister is unreachable. Once Maskinporten is configured the
+// authoritative profile covers the same offices with contract data the stand-in
+// cannot see, so the stand-in is paused instead of quietly producing a second,
+// weaker copy of every office. A user who re-activates it keeps it: the marker
+// left behind means this never pauses the same profile twice.
+const FLR_AUTHORITATIVE_TEMPLATE_KEY = "medside.gp_offices";
+const FLR_SUPERSEDED_TEMPLATE_KEY = "medside.gp_offices_brreg";
+
+async function pauseProfilesSupersededByFlr(pool: Pool): Promise<void> {
+  if (!isDiscoveryFlrConfigured()) return;
+  try {
+    // One statement, so the project is never left with two defaults or with a
+    // paused profile as its default.
+    const result = await pool.query(
+      `WITH superseded AS (
+         SELECT fallback.id, fallback.organization_id, fallback.project_id,
+                fallback.is_default
+           FROM leadgrid_discovery_profiles fallback
+           JOIN leadgrid_discovery_profiles authoritative
+             ON authoritative.organization_id = fallback.organization_id
+            AND authoritative.project_id = fallback.project_id
+            AND authoritative.template_key = $1
+            AND authoritative.status = 'active'
+          WHERE fallback.template_key = $2
+            AND fallback.status = 'active'
+            AND fallback.source_config->>'auto_paused_by' IS NULL
+       ),
+       paused AS (
+         UPDATE leadgrid_discovery_profiles fallback
+            SET status = 'paused',
+                is_default = FALSE,
+                source_config = COALESCE(fallback.source_config, '{}'::jsonb)
+                  || jsonb_build_object('auto_paused_by', 'nhn_flr_public'),
+                updated_at = NOW()
+           FROM superseded
+          WHERE fallback.id = superseded.id
+          RETURNING fallback.organization_id, fallback.project_id,
+                    superseded.is_default AS was_default
+       )
+       UPDATE leadgrid_discovery_profiles authoritative
+          SET is_default = TRUE,
+              updated_at = NOW()
+         FROM paused
+        WHERE authoritative.organization_id = paused.organization_id
+          AND authoritative.project_id = paused.project_id
+          AND authoritative.template_key = $1
+          AND authoritative.status = 'active'
+          AND paused.was_default
+          AND authoritative.is_default = FALSE`,
+      [FLR_AUTHORITATIVE_TEMPLATE_KEY, FLR_SUPERSEDED_TEMPLATE_KEY],
+    );
+    if ((result.rowCount ?? 0) > 0) {
+      console.log(
+        `[continuous-discovery] default moved to ${FLR_AUTHORITATIVE_TEMPLATE_KEY} for ${result.rowCount} project(s)`,
+      );
+    }
+  } catch (error) {
+    console.warn(
+      "[continuous-discovery] pausing FLR-superseded profiles failed",
+      error,
+    );
+  }
+}
+
 async function runPollerTick(pool: Pool, now = new Date()): Promise<void> {
   if (!isLeadgridDiscoveryEnabled()) return;
+  await pauseProfilesSupersededByFlr(pool);
   if (pollerRunning) return;
   pollerRunning = true;
   try {
@@ -898,6 +966,7 @@ export const __test = {
   loadDueSources,
   isValidDiscoverySchedule,
   nextDiscoveryScheduledAt,
+  pauseProfilesSupersededByFlr,
   nextScheduledAt,
   pauseDueSource,
   processDueSource,
