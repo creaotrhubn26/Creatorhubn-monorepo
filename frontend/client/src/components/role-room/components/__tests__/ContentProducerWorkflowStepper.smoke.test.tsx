@@ -51,7 +51,7 @@ describe('Sprint 3.1 — ContentProducerWorkflowStepper', () => {
         onSelectStep={() => {}}
       />,
     );
-    expect(screen.getByText('Venter klient')).toBeInTheDocument();
+    expect(screen.getByText('Sendt til klient')).toBeInTheDocument();
   });
 
   it('renders no approval badge when approvalStatus is null', () => {
@@ -62,7 +62,7 @@ describe('Sprint 3.1 — ContentProducerWorkflowStepper', () => {
         onSelectStep={() => {}}
       />,
     );
-    expect(screen.queryByText('Venter klient')).toBeNull();
+    expect(screen.queryByText('Sendt til klient')).toBeNull();
     expect(screen.queryByText('Godkjent')).toBeNull();
   });
 
