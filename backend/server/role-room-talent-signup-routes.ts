@@ -175,6 +175,10 @@ export function setupRoleRoomTalentSignupRoutes(
         if (result.reason === "email_not_configured") {
           return res.status(503).json({ error: "email_not_configured" });
         }
+        if (result.reason === "send_failed") {
+          // Ikke brukerens feil — ikke lyv og si «ugyldig e-post».
+          return res.status(502).json({ error: "email_send_failed" });
+        }
         return res.status(400).json({ error: "invalid_email" });
       }
 

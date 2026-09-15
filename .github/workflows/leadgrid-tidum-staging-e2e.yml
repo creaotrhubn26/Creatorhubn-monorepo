@@ -22,7 +22,12 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment: Staging
     runs-on: macos-26
-    timeout-minutes: 40
+    # Each domain campaign waits up to ten minutes for its profiles to finish.
+    # MedSide added a third campaign (five runnable profiles) and a fourth
+    # simulator test on top of the Render deploy wait and the build-for-testing
+    # step, so 40 minutes no longer covers a slow-but-healthy run. A timeout
+    # reads as a failure that explains nothing.
+    timeout-minutes: 60
     steps:
       - name: Checkout current main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,6 +89,8 @@ jobs:
           LEADGRID_RUN_TIDUM_CAMPAIGN_E2E: "1"
           LEADGRID_RUN_CREATORHUB_E2E: "1"
           LEADGRID_RUN_CREATORHUB_CAMPAIGN_E2E: "1"
+          LEADGRID_RUN_MEDSIDE_E2E: "1"
+          LEADGRID_RUN_MEDSIDE_CAMPAIGN_E2E: "1"
           LEADGRID_RUN_SIMULATOR_E2E: ${{ inputs.run_simulator_e2e && '1' || '0' }}
           LEADGRID_STAGING_SIMULATOR_DESTINATION: "platform=iOS Simulator,name=iPad mini (A17 Pro),OS=26.5"
         run: ./scripts/staging-testflight-e2e.sh

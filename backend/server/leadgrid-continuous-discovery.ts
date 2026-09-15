@@ -12,6 +12,7 @@ import {
   type DiscoveryRunStatus,
   type DiscoveryTriggerKind,
 } from "./leadgrid-discovery-service.js";
+import { isDiscoveryFlrConfigured } from "./leadgrid-discovery-flr-provider.js";
 import type { LeadgridAccessibleProject } from "./leadgrid-project-access.js";
 
 const { parseExpression } = cronParser;
@@ -172,7 +173,8 @@ function buildBrief(
   const organizationNameQueries = opts.industryQueryOverride?.trim()
     ? []
     : cleanStrings(stored.organization_name_queries);
-  if (industryQueries.length + organizationNameQueries.length === 0) return null;
+  if (industryQueries.length + organizationNameQueries.length === 0)
+    return null;
 
   const cities =
     cleanStrings(source.city_filters).length > 0
@@ -840,8 +842,158 @@ async function processDueSource(
   }
 }
 
+// The BRREG stand-in for MedSide GP offices exists only while the public
+// Fastlegeregister is unreachable. It follows FLR readiness in both
+// directions: paused when Maskinporten is authorized, because the
+// authoritative profile then covers the same offices with contract data the
+// stand-in cannot see, and restored when that authorization goes away, because
+// otherwise the project is left with a default it cannot run.
+//
+// Only profiles this reconcile itself paused are ever restored, and only
+// profiles it has not already paused once are ever paused. The marker written
+// on pause carries both facts, so a user who re-activates the stand-in keeps
+// it, and a user who chose a different default keeps that too.
+const FLR_AUTHORITATIVE_TEMPLATE_KEY = "medside.gp_offices";
+const FLR_SUPERSEDED_TEMPLATE_KEY = "medside.gp_offices_brreg";
+const FLR_AUTO_PAUSE_MARKER = "nhn_flr_public";
+
+async function pauseProfilesSupersededByFlr(pool: Pool): Promise<number> {
+  // One statement, so the project is never left with two defaults or with a
+  // paused profile as its default.
+  const result = await pool.query(
+    `WITH superseded AS (
+       SELECT fallback.id, fallback.organization_id, fallback.project_id,
+              fallback.is_default
+         FROM leadgrid_discovery_profiles fallback
+         JOIN leadgrid_discovery_profiles authoritative
+           ON authoritative.organization_id = fallback.organization_id
+          AND authoritative.project_id = fallback.project_id
+          AND authoritative.template_key = $1
+          AND authoritative.status = 'active'
+        WHERE fallback.template_key = $2
+          AND fallback.status = 'active'
+          AND fallback.source_config->>'auto_paused_by' IS NULL
+     ),
+     paused AS (
+       UPDATE leadgrid_discovery_profiles fallback
+          SET status = 'paused',
+              is_default = FALSE,
+              source_config = COALESCE(fallback.source_config, '{}'::jsonb)
+                || jsonb_build_object(
+                     'auto_paused_by', $3::text,
+                     'auto_paused_held_default', superseded.is_default
+                   ),
+              updated_at = NOW()
+         FROM superseded
+        WHERE fallback.id = superseded.id
+        RETURNING fallback.organization_id, fallback.project_id,
+                  superseded.is_default AS was_default
+     )
+     UPDATE leadgrid_discovery_profiles authoritative
+        SET is_default = TRUE,
+            updated_at = NOW()
+       FROM paused
+      WHERE authoritative.organization_id = paused.organization_id
+        AND authoritative.project_id = paused.project_id
+        AND authoritative.template_key = $1
+        AND authoritative.status = 'active'
+        AND paused.was_default
+        AND authoritative.is_default = FALSE`,
+    [
+      FLR_AUTHORITATIVE_TEMPLATE_KEY,
+      FLR_SUPERSEDED_TEMPLATE_KEY,
+      FLR_AUTO_PAUSE_MARKER,
+    ],
+  );
+  return result.rowCount ?? 0;
+}
+
+async function restoreProfilesSupersededByFlr(pool: Pool): Promise<number> {
+  // `released` is a data-modifying CTE and runs to completion even though the
+  // primary query does not read it. Status and default are set in the same
+  // UPDATE on the stand-in row, because two CTEs cannot both modify one row.
+  const result = await pool.query(
+    `WITH candidates AS (
+       SELECT fallback.id, fallback.organization_id, fallback.project_id,
+              COALESCE(
+                fallback.source_config->>'auto_paused_held_default', 'false'
+              )::boolean
+              AND EXISTS (
+                SELECT 1
+                  FROM leadgrid_discovery_profiles authoritative
+                 WHERE authoritative.organization_id = fallback.organization_id
+                   AND authoritative.project_id = fallback.project_id
+                   AND authoritative.template_key = $1
+                   AND authoritative.is_default
+              )
+              -- A project that lost its default entirely gets one back here
+              -- rather than opening on nothing.
+              OR NOT EXISTS (
+                SELECT 1
+                  FROM leadgrid_discovery_profiles sibling
+                 WHERE sibling.organization_id = fallback.organization_id
+                   AND sibling.project_id = fallback.project_id
+                   AND sibling.status <> 'archived'
+                   AND sibling.is_default
+              ) AS reclaims_default
+         FROM leadgrid_discovery_profiles fallback
+        WHERE fallback.template_key = $2
+          AND fallback.status = 'paused'
+          AND fallback.source_config->>'auto_paused_by' = $3::text
+     ),
+     released AS (
+       UPDATE leadgrid_discovery_profiles authoritative
+          SET is_default = FALSE,
+              updated_at = NOW()
+         FROM candidates
+        WHERE authoritative.organization_id = candidates.organization_id
+          AND authoritative.project_id = candidates.project_id
+          AND authoritative.template_key = $1
+          AND authoritative.is_default
+          AND candidates.reclaims_default
+        RETURNING authoritative.id
+     )
+     UPDATE leadgrid_discovery_profiles fallback
+        SET status = 'active',
+            is_default = candidates.reclaims_default,
+            source_config = COALESCE(fallback.source_config, '{}'::jsonb)
+              - 'auto_paused_by' - 'auto_paused_held_default',
+            updated_at = NOW()
+       FROM candidates
+      WHERE fallback.id = candidates.id`,
+    [
+      FLR_AUTHORITATIVE_TEMPLATE_KEY,
+      FLR_SUPERSEDED_TEMPLATE_KEY,
+      FLR_AUTO_PAUSE_MARKER,
+    ],
+  );
+  return result.rowCount ?? 0;
+}
+
+async function reconcileFlrSupersededProfiles(pool: Pool): Promise<void> {
+  const configured = isDiscoveryFlrConfigured();
+  try {
+    const changed = configured
+      ? await pauseProfilesSupersededByFlr(pool)
+      : await restoreProfilesSupersededByFlr(pool);
+    if (changed > 0) {
+      console.log(
+        `[continuous-discovery] ${FLR_SUPERSEDED_TEMPLATE_KEY} ${
+          configured ? "paused" : "restored"
+        } for ${changed} project(s)`,
+      );
+    }
+  } catch (error) {
+    console.warn(
+      "[continuous-discovery] reconciling FLR-superseded profiles failed",
+      error,
+    );
+  }
+}
+
 async function runPollerTick(pool: Pool, now = new Date()): Promise<void> {
   if (!isLeadgridDiscoveryEnabled()) return;
+  await reconcileFlrSupersededProfiles(pool);
   if (pollerRunning) return;
   pollerRunning = true;
   try {
@@ -898,6 +1050,9 @@ export const __test = {
   loadDueSources,
   isValidDiscoverySchedule,
   nextDiscoveryScheduledAt,
+  pauseProfilesSupersededByFlr,
+  restoreProfilesSupersededByFlr,
+  reconcileFlrSupersededProfiles,
   nextScheduledAt,
   pauseDueSource,
   processDueSource,
