@@ -220,7 +220,7 @@ abonnement gjennom `provisionTesterAccount`. Den skal derfor ikke åpnes for
 selvbetjening: admin-godkjenningen blir stående som port, og det eneste som
 fjernes er org.nr-kravet.
 
-- Migrasjon `0608_invite_requests_private_person_applicants.sql` dropper
+- Migrasjon `0609_invite_requests_private_person_applicants.sql` dropper
   `NOT NULL` på `company_name` og `organization_number` (idempotent).
 - `POST /api/invite-requests` hopper over firmakrav, org.nr-validering,
   Brreg-oppslag og Proff-screening når søknaden er en tester-søknad **og**

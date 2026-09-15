@@ -462,7 +462,7 @@ export function setupInviteRequestsRoutes(
       }
 
       // Privatperson: ingen firmaverdier lagres. Kolonnene er nullable fra
-      // migrasjon 0608, og admin-flatene viser «Privatperson» for tomt firma.
+      // migrasjon 0609, og admin-flatene viser «Privatperson» for tomt firma.
       const persistedCompanyName = privatePersonTester
         ? null
         : brregLookup?.company?.name?.trim() || trimmedCompanyName;
