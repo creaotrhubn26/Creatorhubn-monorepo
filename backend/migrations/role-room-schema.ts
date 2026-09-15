@@ -112,7 +112,13 @@ export const castingSchedules = pgTable('casting_schedules', {
 export const castingCrew = pgTable('casting_crew', {
   id: varchar('id', { length: 255 }).primaryKey().notNull(),
   projectId: varchar('project_id', { length: 255 }).notNull().references(() => castingProjects.id, { onDelete: 'cascade' }),
+  /**
+   * The account this credit belongs to, when there is one. A credit is not
+   * access: `casting_user_roles` stays the only source of project permissions.
+   */
+  userId: varchar('user_id', { length: 255 }),
   name: varchar('name', { length: 255 }).notNull(),
+  /** Crew credit — the job on this production, not the membership role. */
   role: varchar('role', { length: 100 }).notNull(),
   email: varchar('email', { length: 255 }),
   phone: varchar('phone', { length: 50 }),
@@ -124,6 +130,7 @@ export const castingCrew = pgTable('casting_crew', {
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
   index('casting_crew_project_id_idx').using('btree', table.projectId),
+  index('idx_casting_crew_project_user').using('btree', table.projectId, table.userId),
 ]);
 
 export const castingLocations = pgTable('casting_locations', {

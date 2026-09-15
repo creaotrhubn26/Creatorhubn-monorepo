@@ -549,6 +549,12 @@ export interface Candidate {
 }
 
 export interface CrewMember {
+  /**
+   * Account this crew credit belongs to, when there is one. Explicit link that
+   * replaces matching by email. A credit is not access — project permissions
+   * come from the membership row, never from here.
+   */
+  userId?: string | null;
   id: string;
   projectId?: string;
   project_id?: string;
