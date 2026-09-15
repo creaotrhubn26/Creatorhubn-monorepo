@@ -41,6 +41,7 @@ import { useCallback, useEffect, useState } from 'react';
 import roleRoomTalentsService, { type RoleRoomTalent, type TalentAvailabilityWindow } from '../../services/roleRoomTalentsService';
 import MediaUploader from '../components/MediaUploader';
 import { palette, radius } from '../theme';
+import { OPEN_WIZARD_KEY } from '../components/TalentsHowItWorksCard';
 import SelfTapeSharedList from '../components/selftape/SelfTapeSharedList';
 
 interface ProfilePageProps {
@@ -112,6 +113,19 @@ export default function ProfilePage({ demoMode }: ProfilePageProps) {
   }, []);
 
   useEffect(() => { void reload(); }, [reload]);
+
+  // Kom hen hit fra «Sett opp profilen» på Hjem, skal wizarden åpne seg selv —
+  // ellers måtte skuespilleren finne den samme knappen om igjen.
+  useEffect(() => {
+    if (loading || talent || demoMode) return;
+    try {
+      if (window.sessionStorage.getItem(OPEN_WIZARD_KEY) !== '1') return;
+      window.sessionStorage.removeItem(OPEN_WIZARD_KEY);
+      setWizardOpen(true);
+    } catch {
+      // Ingen sessionStorage — knappen på siden fungerer fortsatt.
+    }
+  }, [demoMode, loading, talent]);
 
   if (loading) {
     return (

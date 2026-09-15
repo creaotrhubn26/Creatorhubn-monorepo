@@ -1045,6 +1045,13 @@ struct DiscoveryWorkspaceView: View {
                             .foregroundStyle(LeadgridDiscoveryTheme.warning)
                             .discoverySurface()
                     }
+                    if let blocked = coordinator.startBlockedExplanation {
+                        Label(blocked, systemImage: "exclamationmark.triangle.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(LeadgridDiscoveryTheme.warning)
+                            .discoverySurface()
+                            .accessibilityIdentifier("discovery.start.blocked")
+                    }
                     HStack {
                         Button("Tilbake og rediger") { coordinator.editBrief() }
                             .buttonStyle(.bordered)

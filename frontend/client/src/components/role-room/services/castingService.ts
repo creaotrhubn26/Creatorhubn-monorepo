@@ -3288,6 +3288,7 @@ export const castingService = {
         return {
           projectId,
           role: null,
+          roles: [],
           isOwner: false,
           isMember: false,
           permissions: {},
@@ -3301,6 +3302,9 @@ export const castingService = {
       return {
         projectId,
         role: typeof access.role === 'string' && access.role ? access.role : null,
+        roles: Array.isArray(access.roles)
+          ? access.roles.filter((role: unknown): role is string => typeof role === 'string' && role.length > 0)
+          : [],
         isOwner: access.isOwner === true,
         isMember: access.isMember === true,
         permissions: access.permissions && typeof access.permissions === 'object' ? access.permissions : {},

@@ -42,6 +42,15 @@ import authSessionService from '../../services/authSessionService';
 
 const API_BASE = '/api/role-room/admin/b2-archive';
 
+export interface ArchiveTabProps {
+  /** Rute-prefiks for bøtta som skal vises. Default: The Role Room sin B2-bøtte. */
+  apiBase?: string;
+  /** Navn i overskrift/feilmeldinger, f.eks. «S3 (privat)». */
+  bucketLabel?: string;
+  /** Skjul opplasting og sletting for bøtter appflytene eier. */
+  readOnly?: boolean;
+}
+
 interface HealthResponse {
   connected: boolean;
   configured: boolean;
@@ -119,7 +128,11 @@ function formatDate(iso: string): string {
   }
 }
 
-export function B2ArchiveTab(): JSX.Element {
+export function B2ArchiveTab({
+  apiBase = API_BASE,
+  bucketLabel = 'The Role Room B2 (the-role-room-prod)',
+  readOnly = false,
+}: ArchiveTabProps = {}): JSX.Element {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [files, setFiles] = useState<FileItem[]>([]);
@@ -135,24 +148,24 @@ export function B2ArchiveTab(): JSX.Element {
 
   const loadHealth = useCallback(async () => {
     try {
-      const data = await fetchJson<HealthResponse>(`${API_BASE}/health`);
+      const data = await fetchJson<HealthResponse>(`${apiBase}/health`);
       setHealth(data);
     } catch (e: any) {
       setError(`Health-feil: ${e.message}`);
     }
-  }, []);
+  }, [apiBase]);
 
   const loadUsage = useCallback(async (force = false) => {
     setRefreshingUsage(true);
     try {
-      const data = await fetchJson<UsageResponse>(`${API_BASE}/usage${force ? '?force=1' : ''}`);
+      const data = await fetchJson<UsageResponse>(`${apiBase}/usage${force ? '?force=1' : ''}`);
       setUsage(data);
     } catch (e: any) {
       setError(`Usage-feil: ${e.message}`);
     } finally {
       setRefreshingUsage(false);
     }
-  }, []);
+  }, [apiBase]);
 
   const loadFiles = useCallback(
     async (resetPagination = true) => {
@@ -162,7 +175,7 @@ export function B2ArchiveTab(): JSX.Element {
         const params = new URLSearchParams();
         if (prefix) params.set('prefix', prefix);
         if (!resetPagination && continuationToken) params.set('continuationToken', continuationToken);
-        const data = await fetchJson<FilesResponse>(`${API_BASE}/files?${params.toString()}`);
+        const data = await fetchJson<FilesResponse>(`${apiBase}/files?${params.toString()}`);
         setFiles((prev) => (resetPagination ? data.files : [...prev, ...data.files]));
         setTruncated(data.truncated);
         setContinuationToken(data.nextContinuationToken);
@@ -172,7 +185,7 @@ export function B2ArchiveTab(): JSX.Element {
         setLoading(false);
       }
     },
-    [prefix, continuationToken],
+    [apiBase, prefix, continuationToken],
   );
 
   useEffect(() => {
@@ -190,26 +203,26 @@ export function B2ArchiveTab(): JSX.Element {
   const handleDownload = useCallback(async (key: string) => {
     try {
       const data = await fetchJson<{ downloadUrl: string }>(
-        `${API_BASE}/download-url?key=${encodeURIComponent(key)}`,
+        `${apiBase}/download-url?key=${encodeURIComponent(key)}`,
       );
       window.open(data.downloadUrl, '_blank');
     } catch (e: any) {
       setError(`Download-feil: ${e.message}`);
     }
-  }, []);
+  }, [apiBase]);
 
   const handleDelete = useCallback(
     async (key: string) => {
       if (!window.confirm(`Slette ${key}? Kan ikke angres.`)) return;
       try {
-        await fetchJson(`${API_BASE}/files/${encodeURIComponent(key)}`, { method: 'DELETE' });
+        await fetchJson(`${apiBase}/files/${encodeURIComponent(key)}`, { method: 'DELETE' });
         setInfo(`Slettet ${key}`);
         await Promise.all([loadFiles(true), loadUsage(true)]);
       } catch (e: any) {
         setError(`Delete-feil: ${e.message}`);
       }
     },
-    [loadFiles, loadUsage],
+    [apiBase, loadFiles, loadUsage],
   );
 
   const handleUploadClick = useCallback(() => {
@@ -227,7 +240,7 @@ export function B2ArchiveTab(): JSX.Element {
       setError(null);
       setInfo(null);
       try {
-        const presign = await fetchJson<{ uploadUrl: string; key: string }>(`${API_BASE}/upload-url`, {
+        const presign = await fetchJson<{ uploadUrl: string; key: string }>(`${apiBase}/upload-url`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -254,7 +267,7 @@ export function B2ArchiveTab(): JSX.Element {
         setUploading(false);
       }
     },
-    [prefix, loadFiles, loadUsage],
+    [apiBase, prefix, loadFiles, loadUsage],
   );
 
   const prefixCrumbs = useMemo(() => {
@@ -299,7 +312,10 @@ export function B2ArchiveTab(): JSX.Element {
                 {health?.bucketName || 'Ukjent bucket'}
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.7)' }}>
-                {health?.region || ''} {health?.error ? `· ${health.error}` : ''}
+                {bucketLabel}
+                {readOnly ? ' · lesetilgang' : ''}
+                {health?.region ? ` · ${health.region}` : ''}
+                {health?.error ? ` · ${health.error}` : ''}
               </Typography>
             </Box>
           </Stack>
@@ -358,6 +374,7 @@ export function B2ArchiveTab(): JSX.Element {
         </Button>
         <Box sx={{ flex: 1 }} />
         <input ref={fileInputRef} type="file" hidden onChange={handleFileSelected} />
+        {!readOnly && (
         <Button
           variant="contained"
           startIcon={uploading ? <CircularProgress size={16} /> : <CloudUploadIcon />}
@@ -366,6 +383,7 @@ export function B2ArchiveTab(): JSX.Element {
         >
           {uploading ? 'Laster opp…' : 'Last opp fil'}
         </Button>
+        )}
       </Stack>
 
       {prefixCrumbs.length > 0 && (
@@ -444,11 +462,13 @@ export function B2ArchiveTab(): JSX.Element {
                         <DownloadIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
+                    {!readOnly && (
                     <Tooltip title="Slett">
                       <IconButton size="small" onClick={() => void handleDelete(file.key)} sx={{ color: '#f87171' }}>
                         <DeleteOutlineIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

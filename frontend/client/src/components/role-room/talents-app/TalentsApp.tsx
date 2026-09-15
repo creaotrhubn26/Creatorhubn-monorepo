@@ -15,6 +15,7 @@
 import { Box, Typography } from '@mui/material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import TalentsAppShell, { type TalentsAppPage } from './TalentsAppShell';
+import authSessionService from '../services/authSessionService';
 import PartnersCollaborationPage from './pages/PartnersCollaborationPage';
 import PartnerInviteAcceptPage from './pages/PartnerInviteAcceptPage';
 import DashboardPage from './pages/DashboardPage';
@@ -23,6 +24,7 @@ import AuditPage from './pages/AuditPage';
 import SettingsPage from './pages/SettingsPage';
 import TalentRegistryPage from './pages/TalentRegistryPage';
 import TalentProposalAcceptPage from './pages/TalentProposalAcceptPage';
+import TalentSignupPage from './pages/TalentSignupPage';
 import AgencyPartnershipsPage from './pages/AgencyPartnershipsPage';
 import SelfTapeStudioPage from './pages/SelfTapeStudioPage';
 import { palette } from './theme';
@@ -68,6 +70,8 @@ export function parseTalentsAppPage(): TalentsAppPage | null {
   const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
   if (!path.startsWith('/talents')) return null;
   const segment = path.substring('/talents'.length).replace(/^\//, '');
+  // Registrering og accept-sidene rendres uten shell og er ikke app-sider.
+  if (segment === 'registrer' || segment === 'signup') return null;
   return ROUTE_TO_PAGE[segment] ?? 'dashboard';
 }
 
@@ -78,6 +82,13 @@ export function isPartnerInviteAcceptPath(): boolean {
   return path === '/talents/partner-invite';
 }
 
+/** Åpen selvregistrering — eneste siden her som vises UTEN innlogging. */
+export function isTalentSignupPath(): boolean {
+  if (typeof window === 'undefined') return false;
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  return path === '/talents/registrer' || path === '/talents/signup';
+}
+
 /** Reverse-consent: agency foreslår talent → talent åpner lenke. */
 export function isTalentProposalAcceptPath(): boolean {
   if (typeof window === 'undefined') return false;
@@ -85,7 +96,7 @@ export function isTalentProposalAcceptPath(): boolean {
   return path === '/talents/registry-invite';
 }
 
-export { PartnerInviteAcceptPage, TalentProposalAcceptPage };
+export { PartnerInviteAcceptPage, TalentProposalAcceptPage, TalentSignupPage };
 
 interface TalentsAppProps {
   initialPage?: TalentsAppPage;
@@ -122,8 +133,33 @@ function useTalentsBrand() {
   }, []);
 }
 
+/** Navnet i brukerbrikken. Uten dette faller shell-en tilbake på
+ *  mockup-plassholderen «Ingrid Nilsen», så hvert ekte talent så en fremmed
+ *  manns navn i sin egen app. */
+function useSessionUser(): { name: string; role: string } | undefined {
+  const [user, setUser] = useState<{ name: string; role: string } | undefined>();
+
+  useEffect(() => {
+    const read = () => {
+      const admin = authSessionService.getSessionSync().adminUser;
+      if (!admin) return;
+      const name = admin.display_name || admin.name || admin.email;
+      if (!name) return;
+      setUser({ name, role: admin.role === 'talent' ? 'Talent' : (admin.role ?? 'Talent') });
+    };
+    read();
+    // Sesjonen hydreres asynkront fra localStorage ved første last.
+    void authSessionService.loadSession().then(read).catch(() => {});
+    window.addEventListener('auth-session-updated', read);
+    return () => window.removeEventListener('auth-session-updated', read);
+  }, []);
+
+  return user;
+}
+
 export default function TalentsApp({ initialPage, onLogout }: TalentsAppProps) {
   const [page, setPage] = useState<TalentsAppPage>(initialPage ?? 'dashboard');
+  const sessionUser = useSessionUser();
   useTalentsBrand(); // CreatorHub Design: Role Room-aksent fra design-tokens
 
   // Demo-modus: leses fra URL én gang ved mount + persisteres ved navigasjon
@@ -154,7 +190,12 @@ export default function TalentsApp({ initialPage, onLogout }: TalentsAppProps) {
   }, [demoMode]);
 
   return (
-    <TalentsAppShell active={page} onNavigate={handleNavigate} onLogout={demoMode ? undefined : onLogout}>
+    <TalentsAppShell
+      active={page}
+      onNavigate={handleNavigate}
+      user={demoMode ? undefined : sessionUser}
+      onLogout={demoMode ? undefined : onLogout}
+    >
       {page === 'dashboard' ? (
         <DashboardPage demoMode={demoMode} onNavigate={handleNavigate} />
       ) : page === 'registry' ? (

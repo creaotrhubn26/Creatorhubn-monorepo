@@ -20,6 +20,7 @@ import {
   parseIdempotencyKey,
 } from "./leadgrid-discovery-contract.js";
 import { canonicalDiscoveryProfileBrief } from "./leadgrid-discovery-profile-brief.js";
+import { isDiscoveryFlrConfigured } from "./leadgrid-discovery-flr-provider.js";
 import {
   appendDiscoveryFeedback,
   cancelDiscoveryRun,
@@ -317,9 +318,40 @@ function profileSourceConfig(
   };
 }
 
+/**
+ * A profile bound to a registry this deployment is not authorized for cannot
+ * run. Say so up front so the client can block the start instead of letting the
+ * user trigger a generic server error.
+ */
+function profileBlockedReason(brief: {
+  registry_source: string;
+}): string | null {
+  return brief.registry_source === "nhn_flr_public" &&
+    !isDiscoveryFlrConfigured()
+    ? "flr_not_configured"
+    : null;
+}
+
+/**
+ * A profile the product paused on the user's behalf must say so. Without this
+ * the row is indistinguishable from one the user paused themselves.
+ */
+function profilePausedReason(row: ProfileRow): string | null {
+  if (row.status !== "paused") return null;
+  const config =
+    row.source_config && typeof row.source_config === "object"
+      ? (row.source_config as Record<string, unknown>)
+      : {};
+  return config.auto_paused_by === "nhn_flr_public"
+    ? "superseded_by_flr"
+    : null;
+}
+
 function profileDto(row: ProfileRow) {
   const canonicalBrief = canonicalDiscoveryProfileBrief(row);
   return {
+    blocked_reason: profileBlockedReason(canonicalBrief),
+    paused_reason: profilePausedReason(row),
     id: row.id,
     organization_id: row.organization_id,
     project_id: row.project_id,

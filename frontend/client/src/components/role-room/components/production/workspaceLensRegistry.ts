@@ -28,8 +28,11 @@ export type LensSurfaceSource = 'own' | 'none' | 'planner';
 
 export interface WorkspaceLensEntry {
   readonly lens: RoleWorkspaceLens;
-  /** Bridge to `PRODUCTION_ROLES[].workspace` in the role catalogue. */
-  readonly workspaceKind: ProductionWorkspaceKind;
+  /**
+   * Bridge to `PRODUCTION_ROLES[].workspace` in the role catalogue. Absent for
+   * a lens that is a platform surface rather than a production role.
+   */
+  readonly workspaceKind?: ProductionWorkspaceKind;
   /**
    * Normalised project roles that make this lens the default for a member.
    * Persisted aliases are included so historic rows keep resolving.
@@ -103,6 +106,16 @@ export const WORKSPACE_LENS_REGISTRY = [
     workspaceKind: 'continuity',
     projectRoles: ['script_supervisor'],
     surfaceSource: 'planner',
+    usesSceneParam: false,
+  },
+  {
+    // The Admin Room as a lens. No project role selects it — `projectRoles` is
+    // empty on purpose — so it opens only on an explicit choice, and only for a
+    // caller the panel considers super admin. It is also the one lens that does
+    // not need an open project.
+    lens: 'admin',
+    projectRoles: [],
+    surfaceSource: 'none',
     usesSceneParam: false,
   },
 ] as const satisfies readonly WorkspaceLensEntry[];

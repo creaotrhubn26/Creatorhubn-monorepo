@@ -740,6 +740,200 @@ describe("Leadgrid Discovery HTTP contract", () => {
     ).not.toHaveProperty("approval_rules");
   });
 
+  it("marks a Fastlegeregister profile blocked until Maskinporten is configured", async () => {
+    const flrProfileRow = {
+      id: profileId,
+      organization_id: organizationId,
+      project_id: "project-a",
+      name: "Fastlegekontor – Norge",
+      is_default: false,
+      status: "active",
+      template_key: "medside.gp_offices",
+      template_version: 1,
+      target_customer_types: ["86.210"],
+      city_filters: [],
+      geography_lat: null,
+      geography_lng: null,
+      geography_radius_km: 25,
+      country_code: "NO",
+      brief: {
+        registry_source: "nhn_flr_public",
+        industry_queries: ["86.210"],
+        country_code: "NO",
+      },
+      source_config: {
+        google_places: { enabled: false, mode: "transient_details_only" },
+      },
+      approval_mode: "manual",
+      max_candidates_per_run: 60,
+      enrichment_count: 30,
+      auto_discover_enabled: false,
+      schedule_cron: "0 6 * * *",
+      schedule_timezone: "Europe/Oslo",
+      last_run_at: null,
+      next_run_at: null,
+      version: 1,
+      created_at: "2026-09-14T00:00:00.000Z",
+      updated_at: "2026-09-14T00:00:00.000Z",
+    };
+    const call = async () =>
+      makeHarness({
+        query: vi.fn(async () => ({ rows: [flrProfileRow] })),
+      } as unknown as Pool).call("GET", `${base}/profiles`, {
+        params: { projectId: "project-a" },
+      });
+
+    const previous = {
+      enabled: process.env.LEADGRID_DISCOVERY_FLR_ENABLED,
+      clientId: process.env.LEADGRID_FLR_MASKINPORTEN_CLIENT_ID,
+      keyId: process.env.LEADGRID_FLR_MASKINPORTEN_KEY_ID,
+      privateKey: process.env.LEADGRID_FLR_MASKINPORTEN_PRIVATE_KEY,
+    };
+    delete process.env.LEADGRID_DISCOVERY_FLR_ENABLED;
+    delete process.env.LEADGRID_FLR_MASKINPORTEN_CLIENT_ID;
+    delete process.env.LEADGRID_FLR_MASKINPORTEN_KEY_ID;
+    delete process.env.LEADGRID_FLR_MASKINPORTEN_PRIVATE_KEY;
+    try {
+      const blocked = await call();
+      expect(blocked.status).toBe(200);
+      expect(
+        (blocked.body as { profiles: Record<string, unknown>[] }).profiles[0]
+          .blocked_reason,
+      ).toBe("flr_not_configured");
+
+      process.env.LEADGRID_DISCOVERY_FLR_ENABLED = "true";
+      process.env.LEADGRID_FLR_MASKINPORTEN_CLIENT_ID = "client";
+      process.env.LEADGRID_FLR_MASKINPORTEN_KEY_ID = "key";
+      process.env.LEADGRID_FLR_MASKINPORTEN_PRIVATE_KEY = "private-key";
+      const ready = await call();
+      expect(
+        (ready.body as { profiles: Record<string, unknown>[] }).profiles[0]
+          .blocked_reason,
+      ).toBeNull();
+    } finally {
+      for (const [key, value] of [
+        ["LEADGRID_DISCOVERY_FLR_ENABLED", previous.enabled],
+        ["LEADGRID_FLR_MASKINPORTEN_CLIENT_ID", previous.clientId],
+        ["LEADGRID_FLR_MASKINPORTEN_KEY_ID", previous.keyId],
+        ["LEADGRID_FLR_MASKINPORTEN_PRIVATE_KEY", previous.privateKey],
+      ] as const) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  it("says the product paused the stand-in, not the user", async () => {
+    const row = (
+      status: "active" | "paused",
+      sourceConfig: Record<string, unknown>,
+    ) => ({
+      id: profileId,
+      organization_id: organizationId,
+      project_id: "project-a",
+      name: "Legekontor (Enhetsregisteret) – Norge",
+      is_default: false,
+      status,
+      template_key: "medside.gp_offices_brreg",
+      template_version: 1,
+      target_customer_types: ["86.210"],
+      city_filters: [],
+      geography_lat: null,
+      geography_lng: null,
+      geography_radius_km: 25,
+      country_code: "NO",
+      brief: {
+        registry_source: "brreg_open_data",
+        industry_queries: ["86.210"],
+      },
+      source_config: sourceConfig,
+      approval_mode: "manual",
+      max_candidates_per_run: 60,
+      enrichment_count: 30,
+      auto_discover_enabled: false,
+      schedule_cron: "0 6 * * *",
+      schedule_timezone: "Europe/Oslo",
+      last_run_at: null,
+      next_run_at: null,
+      version: 1,
+      created_at: "2026-09-14T00:00:00.000Z",
+      updated_at: "2026-09-14T00:00:00.000Z",
+    });
+    const read = async (profileRow: Record<string, unknown>) =>
+      (
+        await makeHarness({
+          query: vi.fn(async () => ({ rows: [profileRow] })),
+        } as unknown as Pool).call("GET", `${base}/profiles`, {
+          params: { projectId: "project-a" },
+        })
+      ).body as { profiles: Record<string, unknown>[] };
+
+    expect(
+      (await read(row("paused", { auto_paused_by: "nhn_flr_public" })))
+        .profiles[0].paused_reason,
+    ).toBe("superseded_by_flr");
+    // A profile the user paused carries no marker and claims no reason.
+    expect(
+      (await read(row("paused", {}))).profiles[0].paused_reason,
+    ).toBeNull();
+    // An active profile is never reported as paused, marker or not.
+    expect(
+      (await read(row("active", { auto_paused_by: "nhn_flr_public" })))
+        .profiles[0].paused_reason,
+    ).toBeNull();
+  });
+
+  it("keeps a BRREG profile runnable when Fastlegeregisteret is unconfigured", async () => {
+    const response = await makeHarness({
+      query: vi.fn(async () => ({
+        rows: [
+          {
+            id: profileId,
+            organization_id: organizationId,
+            project_id: "project-a",
+            name: "Private spesialistklinikker – Norge",
+            is_default: true,
+            status: "active",
+            template_key: "medside.medical_specialists",
+            template_version: 1,
+            target_customer_types: ["86.221"],
+            city_filters: [],
+            geography_lat: null,
+            geography_lng: null,
+            geography_radius_km: 25,
+            country_code: "NO",
+            brief: {
+              registry_source: "brreg_open_data",
+              industry_queries: ["86.221"],
+              country_code: "NO",
+            },
+            source_config: {
+              google_places: { enabled: false, mode: "transient_details_only" },
+            },
+            approval_mode: "manual",
+            max_candidates_per_run: 60,
+            enrichment_count: 30,
+            auto_discover_enabled: false,
+            schedule_cron: "0 6 * * *",
+            schedule_timezone: "Europe/Oslo",
+            last_run_at: null,
+            next_run_at: null,
+            version: 1,
+            created_at: "2026-09-14T00:00:00.000Z",
+            updated_at: "2026-09-14T00:00:00.000Z",
+          },
+        ],
+      })),
+    } as unknown as Pool).call("GET", `${base}/profiles`, {
+      params: { projectId: "project-a" },
+    });
+
+    expect(
+      (response.body as { profiles: Record<string, unknown>[] }).profiles[0]
+        .blocked_reason,
+    ).toBeNull();
+  });
+
   it("rejects unsupported rules approval input before persistence", async () => {
     const pool = { query: vi.fn(), connect: vi.fn() } as unknown as Pool;
     const harness = makeHarness(pool);
