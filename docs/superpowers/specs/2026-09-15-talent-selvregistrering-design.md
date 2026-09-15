@@ -208,6 +208,32 @@ Manuell verifisering før ferdig: registrer en talent mot staging, bekreft at
 profilen ikke dukker opp i byrå-søk, gi så ett samtykke og bekreft at den gjør
 det.
 
+## Tillegg: prototype-testere som privatpersoner
+
+Samme vegg, annen dør. `POST /api/invite-requests` krevde firmanavn og et
+org.nr som slår opp i Brønnøysund, og begge kolonnene var `NOT NULL`. En
+prototype-tester uten firma — skuespiller, frilanser, student — kunne ikke
+sende søknad i det hele tatt.
+
+Forskjellen fra talents er at en tester får en ekte konto med `solo_pro`-
+abonnement gjennom `provisionTesterAccount`. Den skal derfor ikke åpnes for
+selvbetjening: admin-godkjenningen blir stående som port, og det eneste som
+fjernes er org.nr-kravet.
+
+- Migrasjon `0608_invite_requests_private_person_applicants.sql` dropper
+  `NOT NULL` på `company_name` og `organization_number` (idempotent).
+- `POST /api/invite-requests` hopper over firmakrav, org.nr-validering,
+  Brreg-oppslag og Proff-screening når søknaden er en tester-søknad **og**
+  `applicantType: 'private'` er satt. Alle andre søknader er uendret.
+- `InviteRequestForm.tsx` får valget «Privatperson» i tester-blokken, som
+  erstatter firmasteget med en kort forklaring.
+- `provisionTesterAccount` sender allerede `businessName: undefined` når
+  firma mangler, så en tom firmaverdi skriver aldri over noe.
+
+Tester: privatperson slipper gjennom uten firmaverdier, Brreg og Proff kjøres
+ikke, tester-profesjon er fortsatt påkrevd, en vanlig søknad med samme flagg
+avvises, og en tester som søker for et firma beholder Brreg + screening.
+
 ## Utenfor omfang
 
 - Google-innlogging som registreringsvei. Kan legges til senere uten
