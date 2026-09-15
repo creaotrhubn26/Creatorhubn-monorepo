@@ -587,6 +587,7 @@ import { setupRoleRoomDataSourcesRoutes } from "./role-room-data-sources-routes"
 import { setupRoleRoomClientRequestsRoutes } from "./role-room-client-requests-routes";
 import { setupRoleRoomAgentFeedPlanRoutes } from "./role-room-agent-feed-plan-routes";
 import { setupRoleRoomTalentsRoutes } from "./role-room-talents-routes";
+import { setupRoleRoomTalentSignupRoutes } from "./role-room-talent-signup-routes";
 import { setupRoleRoomAgenciesRoutes } from "./role-room-agencies-routes";
 import { setupRoleRoomTalentPartnersRoutes } from "./role-room-talent-partners-routes";
 import { setupRoleRoomTalentUploadsRoutes } from "./role-room-talent-uploads-routes";
@@ -25621,6 +25622,16 @@ setupRoleRoomTalentsRoutes({
   pool,
   getActiveSession: getActiveSessionFromRequest,
 });
+// Åpen selvregistrering for skuespillere. Uten denne finnes ingen vei til en
+// konto for et talent: invite-requests krever org.nr med Brreg-oppslag, og
+// både byrå-forslag og skole-claim krever en konto som allerede eksisterer.
+setupRoleRoomTalentSignupRoutes({
+  app,
+  pool,
+  activeSessions,
+  normalizeMailConfigValue,
+  getDefaultRoleRoomPublicOrigin,
+});
 // B2B2Talent Phase 7 — Talent Registry (search + saved searches + overview).
 // Migrasjon 217 (agency_saved_searches). Stellas hovedverdi.
 // VIKTIG: Må registreres FØR setupRoleRoomAgenciesRoutes, fordi sistnevnte
@@ -44798,6 +44809,16 @@ const ADMIN_ROLE_CATALOG: AdminRoleCatalogEntry[] = [
     id: "user",
     name: "Bruker",
     description: "Standard CreatorHub-bruker med tilgang til egen arbeidsflate.",
+    permissions: ["dashboard:read"],
+  },
+  {
+    // Skuespiller/talent med egen konto i The Role Room Talents. Ingen
+    // adminrettigheter — den MÅ likevel stå her, fordi normalizeAdminRoleId()
+    // returnerer "user" for id-er som ikke finnes i katalogen, og rollen ville
+    // da bli vasket bort i sesjonsoppbyggingen.
+    id: "talent",
+    name: "Talent",
+    description: "Skuespiller med egen profil, samtykke-styring og self-tapes i Talents-appen.",
     permissions: ["dashboard:read"],
   },
   {

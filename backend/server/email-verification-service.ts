@@ -20,6 +20,7 @@
  *   - "login_2fa_email"           — hvis bruker har valgt e-post som 2FA
  *   - "account_delete"            — step-up ved sletting
  *   - "prototype_tester_sign"     — kontroll av invitert e-post før signering
+ *   - "talent_signup"              — verifiser e-post før talent-konto opprettes
  */
 
 import bcrypt from "bcrypt";
@@ -40,7 +41,9 @@ export type VerificationPurpose =
   // Step-up auth ved reveal av vault-secrets (fallback hvis bruker
   // ikke har TOTP aktivert).
   | "vault_reveal"
-  | "prototype_tester_sign";
+  | "prototype_tester_sign"
+  // Åpen selvregistrering for skuespillere i The Role Room Talents.
+  | "talent_signup";
 
 let schemaReady = false;
 
@@ -95,6 +98,7 @@ function purposeSubject(purpose: VerificationPurpose): string {
     case "account_delete": return "Bekreftelseskode — slett konto";
     case "vault_reveal": return "Bekreftelseskode — vis vault-passord";
     case "prototype_tester_sign": return "Bekreft signeringen i CreatorHub";
+    case "talent_signup": return "Bekreftelseskode — ny skuespillerprofil";
   }
 }
 
@@ -106,6 +110,7 @@ function purposeHumanLabel(purpose: VerificationPurpose): string {
     case "account_delete": return "for å bekrefte sletting av kontoen";
     case "vault_reveal": return "for å se et passord fra vault-en";
     case "prototype_tester_sign": return "for å signere prototype-testeravtalene";
+    case "talent_signup": return "for å bekrefte e-posten din før skuespillerprofilen opprettes";
   }
 }
 
