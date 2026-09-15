@@ -17,6 +17,7 @@ import {
   StickyNote2 as NoteIcon,
   Flag as StartIcon,
 } from '@mui/icons-material';
+import { hasScript } from '@shared/narrative-script';
 import { htmlToText, type NarrativeElement } from '../narrativeTypes';
 import { narrativeColors, themeColors } from '../narrativeTheme';
 
@@ -106,6 +107,9 @@ export const ElementNode = React.memo(function ElementNode({ data, selected }: N
       <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
       <ContentPreview html={data.element.contentHtml} />
       <ComponentChips names={data.componentNames} />
+      {hasScript(data.element.contentHtml) ? (
+        <Chip label="⟨/⟩ skript" size="small" data-testid="narrative-node-script-chip" sx={{ mt: 0.75, height: 18, fontSize: 10, fontFamily: 'monospace', bgcolor: narrativeColors.accentSoft, color: narrativeColors.accent }} />
+      ) : null}
       <Handle type="source" position={Position.Right} id="default" style={HANDLE_STYLE} />
     </NodeFrame>
   );

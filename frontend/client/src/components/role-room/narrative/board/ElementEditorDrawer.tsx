@@ -31,7 +31,10 @@ import {
   ArrowUpward as UpIcon,
   ArrowDownward as DownIcon,
 } from '@mui/icons-material';
+import { parseExpression } from '@shared/narrative-script';
 import { RichTextEditor } from '../../components/RichTextEditor';
+import { NARRATIVE_EDITOR_EXTENSIONS } from '../editor/MentionSpan';
+import { InsertReferenceButton } from '../editor/InsertReferenceButton';
 import {
   ELEMENT_KIND_LABELS,
   NARRATIVE_THEMES,
@@ -67,6 +70,18 @@ const fieldSx = {
   '& .MuiInputLabel-root': { color: narrativeColors.textDim },
   '& .MuiOutlinedInput-notchedOutline': { borderColor: narrativeColors.borderStrong },
 };
+
+/** Syntaks-sjekk av en betingelse (tom = else-gren, alltid gyldig). */
+function conditionError(script: string | null): string | null {
+  const s = (script ?? '').trim();
+  if (!s) return null;
+  try {
+    parseExpression(s);
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : 'Ugyldig betingelse.';
+  }
+}
 
 export function ElementEditorDrawer({ open, element, graph, store, onClose, onDeleted }: ElementEditorDrawerProps) {
   const [title, setTitle] = useState('');
@@ -117,6 +132,7 @@ export function ElementEditorDrawer({ open, element, graph, store, onClose, onDe
     () => graph.elements.filter((e) => e.kind !== 'note' && e.id !== element?.id),
     [graph.elements, element?.id],
   );
+  const variableNames = useMemo(() => graph.variables.map((v) => v.name), [graph.variables]);
   const boardName = (boardId: string) => graph.boards.find((b) => b.id === boardId)?.name ?? '';
 
   const save = async () => {
@@ -260,13 +276,36 @@ export function ElementEditorDrawer({ open, element, graph, store, onClose, onDe
                           {i === 0 ? 'if' : c.script ? 'elif' : 'else'}
                         </Typography>
                         <Stack spacing={0.5} sx={{ flex: 1 }}>
-                          <TextField
+                          <Autocomplete
+                            freeSolo
                             size="small"
-                            placeholder={i === 0 ? 'gold >= 10' : 'tomt = else'}
-                            value={c.script ?? ''}
-                            onChange={(e) => setConditions((cs) => cs.map((x) => (x.id === c.id ? { ...x, script: e.target.value || null } : x)))}
-                            sx={{ ...fieldSx, '& input': { fontFamily: 'monospace', fontSize: 12 } }}
-                            fullWidth
+                            options={variableNames}
+                            inputValue={c.script ?? ''}
+                            onInputChange={(_e, value) => setConditions((cs) => cs.map((x) => (x.id === c.id ? { ...x, script: value || null } : x)))}
+                            filterOptions={(opts, state) => {
+                              const tail = state.inputValue.split(/[^A-Za-z0-9_$.]+/).pop() ?? '';
+                              return tail ? opts.filter((o) => o.toLowerCase().startsWith(tail.toLowerCase())) : [];
+                            }}
+                            onChange={(_e, value) => {
+                              if (typeof value !== 'string') return;
+                              // Erstatt siste ord med valgt variabelnavn.
+                              setConditions((cs) => cs.map((x) => {
+                                if (x.id !== c.id) return x;
+                                const current = x.script ?? '';
+                                const replaced = current.replace(/[A-Za-z0-9_$.]*$/, value);
+                                return { ...x, script: replaced || null };
+                              }));
+                            }}
+                            renderInput={(params) => (
+                              <TextField
+                                {...params}
+                                placeholder={i === 0 ? 'gold >= 10' : 'tomt = else'}
+                                error={!!conditionError(c.script)}
+                                helperText={conditionError(c.script) ?? undefined}
+                                sx={{ ...fieldSx, '& input': { fontFamily: 'monospace', fontSize: 12 } }}
+                                inputProps={{ ...params.inputProps, 'data-testid': `narrative-condition-${i}` }}
+                              />
+                            )}
                           />
                           <TextField
                             size="small"
@@ -302,9 +341,19 @@ export function ElementEditorDrawer({ open, element, graph, store, onClose, onDe
                   key={`${element.id}:${element.version}`}
                   value={contentHtml}
                   onChange={setContentHtml}
-                  placeholder={element.kind === 'note' ? 'Skriv notatet…' : 'Skriv dialog, beskrivelse eller arcscript i en kodeblokk…'}
+                  placeholder={element.kind === 'note' ? 'Skriv notatet…' : 'Skriv dialog, beskrivelse eller skript i en kodeblokk (```)…'}
                   minHeight={160}
                   accentColor={narrativeColors.accent}
+                  showCodeBlock={element.kind !== 'note'}
+                  extraExtensions={NARRATIVE_EDITOR_EXTENSIONS}
+                  extraToolbar={(editor) => (
+                    <InsertReferenceButton
+                      editor={editor}
+                      graph={graph}
+                      currentElementId={element.id}
+                      buttonSx={{ color: 'rgba(255,255,255,0.87)', minWidth: { xs: 40, sm: 44 }, minHeight: { xs: 40, sm: 44 } }}
+                    />
+                  )}
                 />
               </Box>
 

@@ -41,7 +41,10 @@ affected:
   - backend/migrations/0605_role_room_narrative_graph.sql
   - backend/server/role-room-narrative-service.ts
   - frontend/client/src/components/role-room/narrative/
-  - frontend/shared/narrative-script/ (Fase 2)
+  - frontend/shared/narrative-script/ (lexer, parser, evaluator, interpreter — Fase 2, levert)
+  - frontend/shared/narrative-runtime/ (spillmotor + validator — Fase 2, levert)
+  - frontend/client/src/components/role-room/narrative/play/ (Play Mode)
+  - backend/server/role-room-narrative-routes.ts (GET /validate) og role-room-mcp-registry.ts (rr_validate_story_graph)
   - frontend/shared/narrative-format/ (Fase 3)
 lesson: >
   Interop with a competitor's ecosystem is cheapest when the data model is adopted

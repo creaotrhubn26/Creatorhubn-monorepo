@@ -70,11 +70,26 @@ AI-substrat på Claude med kreditt/rate-limit; MCP-server for Role Room.
 
 ## Leveranseplan mot markedsledende arbeidsflyt
 
-### Fase 2 — Skript, forgreninger og Play Mode
-`frontend/shared/narrative-script/` (arcscript-kompatibel lexer/parser/evaluator, ren TS,
-delt med backend) og `frontend/shared/narrative-runtime/` (tilstand, visits, evaluering av
-forgreninger, jumpere). `NarrativePlayPanel` med debugger, restart og TTS per karakter
-(voice-mapping fra `TableReadPanel`). Tiptap-mention for `@komponent` / `#brett`.
+### Fase 2 — Skript, forgreninger og Play Mode (LEVERT)
+- `frontend/shared/narrative-script/`: arcscript-kompatibel lexer, parser (presedensklatring,
+  `if/elseif/else/endif` på tvers av kodeblokker), evaluator (typede variabler, koersjon,
+  `abs max min random roll round sqr sqrt visits show resetVisits reset resetAll`, nodebudsjett)
+  og tolk (`createInterpreter` → `runScript`/`evaluateCondition`, kaster aldri). Ren TS, delt
+  med backend. Testkorpus speiler Arcweaves eksempelprosjekt.
+- `frontend/shared/narrative-runtime/`: `createPlaySession` (start/choose/back/restart/
+  setVariable, jumper med sløyfevakt, auto-ruting i forgrening via `sourceOutputKey`,
+  etikett-skript ved valg, komponent-/brett-attributter som skopede variabler) og
+  `validateScripts`/`validateStoryGraph` (parse-feil, ukjente variabler, døde referanser).
+- Play Mode (`narrative/play/`): rendret element (DOMPurify), valg, Fortsett/Tilbake/Restart,
+  debugger (variabler redigerbare, besøk, logg med feil), TTS per komponent via
+  `ttsService` (nettleser-stemme standard, AI-stemmer valgfritt), «Rediger element».
+- Editor: kodeblokk-knapp, `MentionSpan`-node + «Sett inn referanse» (element/variabel/
+  komponent), betingelsesfelt med live syntaks-sjekk og variabel-autocomplete; skript-chip
+  på noder; merknader-chip inkluderer nå skriptfeil.
+- Backend: `GET /projects/:projectId/validate` og MCP `rr_validate_story_graph` bruker samme
+  validator som frontend.
+- Utsatt: `@`-autocomplete i editoren (krever `@tiptap/suggestion`), spillsesjon som
+  overlever fane-bytte.
 
 ### Fase 3 — Interop, deling, AI, MCP-skriving
 Arcweave-JSON-eksport/-import (`frontend/shared/narrative-format/`), Markdown-eksport,

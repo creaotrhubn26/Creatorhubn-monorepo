@@ -53,6 +53,26 @@ export function getMockGraph(page: Page): MockGraph | undefined {
   return STATE.get(page);
 }
 
+/**
+ * Utvid standard-seed med et spillbart scenario (Play Mode-specs):
+ *  start (gold += 10) → «Gå til markedet» → forgrening (gold >= 10) → rik / fattig.
+ * Standard-seed endres ikke for andre specs (narrative-board.spec teller 1 kant).
+ */
+export function seedPlayScenario(g: MockGraph): void {
+  const projectId = String(g.settings.projectId);
+  const start = g.elements.find((e) => e.id === 'nel_start');
+  if (start) start.contentHtml = '<p>Du finner en pung på veien.</p><pre><code>gold += 10</code></pre>';
+  g.elements.push(
+    { id: 'nel_rich', projectId, boardId: 'nbd_1', kind: 'element', titleHtml: '<p>Rik</p>', contentHtml: '<p>Kjøpmannen smiler. </p><pre><code>show("Du har ", gold, " gull.")</code></pre>', x: 760, y: 20, width: 260, height: 120, theme: 'green', coverAssetId: null, customId: null, jumperTargetId: null, branchConditions: [], version: 1, sortOrder: 2, createdAt: now(), updatedAt: now() },
+    { id: 'nel_poor', projectId, boardId: 'nbd_1', kind: 'element', titleHtml: '<p>Fattig</p>', contentHtml: '<p>Kjøpmannen snur ryggen til.</p>', x: 760, y: 200, width: 260, height: 120, theme: 'red', coverAssetId: null, customId: null, jumperTargetId: null, branchConditions: [], version: 1, sortOrder: 3, createdAt: now(), updatedAt: now() },
+  );
+  g.connections.push(
+    { id: 'ncn_yes', projectId, boardId: 'nbd_1', sourceId: 'nel_choice', targetId: 'nel_rich', sourceOutputKey: 'c_yes', labelHtml: '', sortOrder: 0, createdAt: now(), updatedAt: now() },
+    { id: 'ncn_no', projectId, boardId: 'nbd_1', sourceId: 'nel_choice', targetId: 'nel_poor', sourceOutputKey: 'c_no', labelHtml: '', sortOrder: 1, createdAt: now(), updatedAt: now() },
+  );
+  g.elementComponents.push({ elementId: 'nel_rich', componentId: 'ncp_1', sortOrder: 0 });
+}
+
 export async function installNarrativeMocks(page: Page, opts: { projectId?: string; empty?: boolean } = {}): Promise<void> {
   const projectId = opts.projectId ?? 'proj-game-2026';
   const g: MockGraph = opts.empty

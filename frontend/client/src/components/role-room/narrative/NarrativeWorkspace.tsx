@@ -55,6 +55,7 @@ import { VariablesPanel } from './panels/VariablesPanel';
 import { AssetsPanel } from './panels/AssetsPanel';
 import { HistoryPanel } from './panels/HistoryPanel';
 import { ComingSoonCard } from './panels/ComingSoonCard';
+import { NarrativePlayPanel } from './play/NarrativePlayPanel';
 import { narrativeColors } from './narrativeTheme';
 import { htmlToText, type NarrativeElementKind } from './narrativeTypes';
 
@@ -68,10 +69,6 @@ export interface NarrativeWorkspaceProps {
 const PROJECT_STORAGE_KEY = 'role_room_narrative_project';
 
 const PLACEHOLDER_BODIES: Record<string, { body: string; phase: string }> = {
-  play: {
-    body: 'Spill gjennom historien som en spiller, med debugger som viser brett, element og variabler live. Krever skriptmotoren (arcscript-kompatibel).',
-    phase: 'Fase 2',
-  },
   exports: {
     body: 'JSON-eksport i Arcweave-kompatibelt format (virker med deres Unity/Unreal/Godot-plugins), import fra Arcweave, Markdown-eksport og delbare spill-lenker.',
     phase: 'Fase 3',
@@ -349,6 +346,8 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
         return <VariablesPanel graph={graph} store={store} />;
       case 'assets':
         return <AssetsPanel graph={graph} store={store} />;
+      case 'play':
+        return <NarrativePlayPanel graph={graph} onEditElement={jumpToElement} />;
       case 'history':
         return (
           <HistoryPanel

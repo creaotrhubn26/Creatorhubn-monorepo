@@ -74,6 +74,33 @@ describe('narrative routes — auth og prosjekt-tilgang', () => {
   });
 });
 
+describe('narrative routes — validering', () => {
+  it('GET validate → struktur- og skriptmerknader fra den delte validatoren', async () => {
+    const pool = makePool([
+      { match: /FROM narrative_settings WHERE project_id/, rows: [{ project_id: PROJECT_ID, title: null, starting_element_id: 'nel_1', cover_asset_id: null, schema_version: 1, updated_at: null }] },
+      { match: /FROM narrative_boards WHERE project_id/, rows: [{ id: 'nbd_1', project_id: PROJECT_ID, name: 'Akt 1', custom_id: null, folder_path: '', sort_order: 0, viewport: {}, created_at: new Date(), updated_at: new Date() }] },
+      { match: /FROM narrative_elements WHERE project_id/, rows: [
+        elementRow({ id: 'nel_1', content_html: '<p>Hei</p><pre><code>gold += 1</code></pre>' }),
+        elementRow({ id: 'nel_2', content_html: '<pre><code>if gold ></code></pre>' }),
+        elementRow({ id: 'nel_3', content_html: '<pre><code>mana = 3</code></pre>' }),
+      ] },
+      { match: /FROM narrative_variables WHERE project_id/, rows: [{ id: 'nvr_1', project_id: PROJECT_ID, name: 'gold', type: 'int', default_value: 0, sort_order: 0, created_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const app = createApp(pool);
+    const res = await request(app)
+      .get(`/api/role-room/narrative/projects/${PROJECT_ID}/validate`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`);
+    expect(res.status).toBe(200);
+    const messages = (res.body.data.issues as Array<{ elementId: string | null; level: string; message: string }>);
+    expect(messages.some((i) => i.elementId === 'nel_2' && i.level === 'error' && /skriptfeil/.test(i.message))).toBe(true);
+    expect(messages.some((i) => i.elementId === 'nel_3' && /ukjent variabel «mana»/.test(i.message))).toBe(true);
+    expect(messages.some((i) => i.elementId === 'nel_1' && /skript/.test(i.message))).toBe(false);
+    // nel_2 og nel_3 har ingen innganger → strukturmerknad
+    expect(messages.some((i) => i.elementId === 'nel_2' && /kan ikke nås/.test(i.message))).toBe(true);
+    expect(res.body.data.summary.errors).toBeGreaterThanOrEqual(2);
+  });
+});
+
 describe('narrative routes — elementer', () => {
   it('POST elements med ugyldig kind → 400', async () => {
     const app = createApp(makePool());

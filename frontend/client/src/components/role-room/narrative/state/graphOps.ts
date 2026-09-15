@@ -3,6 +3,7 @@
  * Brukes av useNarrativeGraph (optimistiske oppdateringer) og av tester.
  */
 
+import { validateScripts } from '@shared/narrative-runtime/validate';
 import type {
   NarrativeAsset,
   NarrativeAttribute,
@@ -198,5 +199,6 @@ export function validateGraph(graph: NarrativeGraph): GraphIssue[] {
       issues.push({ level: 'warning', elementId: e.id, message: 'Elementet kan ikke nås (ingen innganger).' });
     }
   }
-  return issues;
+  // Skriptvalidering (delt med backend): parse-feil, ukjente variabler, døde referanser.
+  return issues.concat(validateScripts(graph));
 }

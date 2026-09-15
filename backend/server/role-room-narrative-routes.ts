@@ -21,6 +21,8 @@ import { z } from 'zod';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import { canAccessRoleRoomProject } from './role-room-projects-routes.js';
 import * as svc from './role-room-narrative-service.js';
+// Delt validator (struktur + skript) — samme kode som frontendens merknader-chip.
+import { validateStoryGraph } from '../../frontend/shared/narrative-runtime/validate.ts';
 
 interface SessionData {
   userId: string;
@@ -210,6 +212,23 @@ export function createRoleRoomNarrativeRouter(
   // ─── Hele grafen + innstillinger ───────────────────────────────────
   router.get('/projects/:projectId/graph', ...guard, wrap(async (req, res) => {
     res.json({ success: true, data: await svc.getGraph(pool, req.projectId) });
+  }));
+
+  // Validering av hele grafen: struktur (startelement, uoppnåelige elementer,
+  // ukoblede utganger) + skript (parse-feil, ukjente variabler, døde referanser).
+  router.get('/projects/:projectId/validate', ...guard, wrap(async (req, res) => {
+    const graph = await svc.getGraph(pool, req.projectId);
+    const issues = validateStoryGraph(graph);
+    res.json({
+      success: true,
+      data: {
+        issues,
+        summary: {
+          errors: issues.filter((i) => i.level === 'error').length,
+          warnings: issues.filter((i) => i.level === 'warning').length,
+        },
+      },
+    });
   }));
 
   router.put('/projects/:projectId/settings', ...guard, wrap(async (req, res) => {

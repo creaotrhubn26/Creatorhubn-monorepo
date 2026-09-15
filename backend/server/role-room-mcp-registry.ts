@@ -23,6 +23,9 @@ import { newEntityId } from "./_shared-ids.js";
 import {
   fetchAgencyForUser, parseFilters, buildSearchSql, maskByScopes,
 } from "./role-room-agency-search-routes.js";
+// Story Graph (game_studio): graf + delt validator (samme kode som frontend).
+import { getGraph as getNarrativeGraph } from "./role-room-narrative-service.js";
+import { validateStoryGraph } from "../../frontend/shared/narrative-runtime/validate.ts";
 
 /** Dokumentert speil av frontendens ProfessionMode + utdannings-modus. */
 export const ROLE_ROOM_MODES = [
@@ -582,6 +585,24 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
       }
       return {
         components: (components.rows as Array<{ id: string }>).map((c) => ({ ...c, attributes: byOwner.get(c.id) ?? [] })),
+      };
+    },
+  },
+  {
+    name: "rr_validate_story_graph",
+    description: "Valider Story Graph-prosjektet: struktur (startelement, uoppnåelige elementer, ukoblede forgreningsutganger, jumper uten mål) og skript (parse-feil, ukjente variabler, døde referanser). Returnerer merknader med nivå og element-ID. Read-only.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({ projectId: STR("Prosjekt-ID") }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const graph = await getNarrativeGraph(pool, projectId);
+      const issues = validateStoryGraph(graph);
+      return {
+        issues,
+        summary: {
+          errors: issues.filter((i) => i.level === "error").length,
+          warnings: issues.filter((i) => i.level === "warning").length,
+        },
       };
     },
   },

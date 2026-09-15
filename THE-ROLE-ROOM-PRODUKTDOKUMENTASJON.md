@@ -274,7 +274,7 @@ Team-plan. Produktplan: `docs/role-room/STORY_GRAPH_PRODUCT_PLAN.md`.
 | Variabler | Globale variabler (bool/int/float/string) | ✅ Fase 1 |
 | Prosjekthistorikk | Snapshot av hele grafen + ikke-destruktiv gjenoppretting (Arcweave: kun Team) | ✅ Fase 1 |
 | Grafvalidator | Startelement, uoppnåelige elementer, ukoblede utganger, jumper uten mål | ✅ Fase 1 |
-| Skript + Play Mode | arcscript-kompatibel tolk, debugger, TTS per karakter | 🟡 Fase 2 |
+| Skript + Play Mode | arcscript-kompatibel tolk (delt frontend/backend), forgreninger, Play Mode med debugger, TTS per karakter, skriptvalidering, referanser i editoren | ✅ Fase 2 |
 | Eksport/import + deling | Arcweave-JSON, Markdown, delbare spill-lenker, AI-elementgenerator | 🟡 Fase 3 |
 
 **Status:** beta, ingen egen pris-tier ennå (tilgang som Produksjons-OS). Ikke synlig på
