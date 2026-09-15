@@ -93,4 +93,22 @@ jobs:
           LEADGRID_RUN_MEDSIDE_CAMPAIGN_E2E: "1"
           LEADGRID_RUN_SIMULATOR_E2E: ${{ inputs.run_simulator_e2e && '1' || '0' }}
           LEADGRID_STAGING_SIMULATOR_DESTINATION: "platform=iOS Simulator,name=iPad mini (A17 Pro),OS=26.5"
+          # Pinned so the upload step below knows where to look. The script
+          # otherwise defaults to a path under /private/tmp.
+          LEADGRID_STAGING_DERIVED_DATA: ${{ runner.temp }}/leadgrid-staging-e2e
         run: ./scripts/staging-testflight-e2e.sh
+
+      # Twelve consecutive failures were debugged without evidence: the run kept
+      # nothing, so every theory stayed a theory and three fixes in a row treated
+      # the wrong layer. Keep the xcresult, the crash reports and the app log so
+      # the next failure can be read instead of guessed at.
+      - name: Keep simulator diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-e2e-simulator-diagnostics
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/leadgrid-staging-e2e/diagnostics/**
+            ${{ runner.temp }}/leadgrid-staging-e2e/Logs/Test/*.xcresult
