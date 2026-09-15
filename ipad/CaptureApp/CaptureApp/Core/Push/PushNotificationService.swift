@@ -9,6 +9,7 @@
 // mottar APNs-token → send til backend (knyttes til innlogget fotograf).
 
 import Foundation
+import GoogleSignIn
 import UIKit
 import UserNotifications
 
@@ -84,6 +85,15 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
         // Stille — simulator/uten nett gir ingen token; ingen degradering.
+    }
+
+    /// Route Google Sign-In's registered callback scheme back to the SDK.
+    func application(
+        _ application: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        GIDSignIn.sharedInstance.handle(url)
     }
 
     // Vis varsel også når appen er i forgrunn.

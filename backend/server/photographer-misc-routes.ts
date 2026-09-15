@@ -60,7 +60,7 @@ export function setupPhotographerMiscRoutes(
           `SELECT COUNT(*)::int AS c
            FROM print_orders
            WHERE photographer_id = $1
-             AND payment_status = 'paid'
+             AND payment_status IN ('paid', 'succeeded')
              AND COALESCE(fulfillment_status, 'pending') = 'pending'`,
           [photographerId],
         );
