@@ -96,6 +96,7 @@ import {
 // prosjekt er åpent. /admin-room-ruten åpner AdminRoom direkte uten å
 // gå via dashboard-subtab (som var begravd bak email-gate + project-state).
 import SuperAdminOverlay from './components/admin/SuperAdminOverlay';
+import { useSuperAdminGate } from './components/admin/useSuperAdminGate';
 import SuperAdminAdminRoomShell, {
   isSuperAdminAdminRoomPath,
 } from './components/admin/SuperAdminAdminRoomShell';
@@ -520,6 +521,14 @@ function CastingStandaloneRuntimeContent() {
   // Check if user is logged in - determines which view to show
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authResolved, setAuthResolved] = useState(false);
+  // Admin Room-linsen bor i CastingPlannerPanel. På en talent- eller
+  // agentur-sesjon rendres panelet aldri, så ?lens=admin ville satt URL-en
+  // uten at noe leste den. Super admin skal nå linsen uansett hvilken portal
+  // kontoen ellers lander på.
+  const { isSuperAdmin: isSuperAdminSession } = useSuperAdminGate();
+  const adminLensRequested = isSuperAdminSession
+    && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search || '').get('lens') === 'admin';
 
   // Presence-heartbeat: pinger /api/presence/heartbeat hvert 30s mens innlogget
   usePresenceHeartbeat(isAuthenticated);
@@ -813,12 +822,13 @@ function CastingStandaloneRuntimeContent() {
   // spesifikk og sjekkes først, slik at invitasjonslenker som allerede er
   // sendt ut fortsetter å åpne kandidatflaten.
   const shouldRenderTalentsApp = !guestMode
+    && !adminLensRequested
     && !isInviteAcceptPath
     && !isProposalAcceptPath
     && !isSignupPath
     && (talentsAppPage !== null || (normalizedRole === 'talent' && !talentPortalIntent));
-  const shouldRenderAgencyPortal = !guestMode && !shouldRenderTalentsApp && normalizedRole === 'agency';
-  const shouldRenderTalentPortal = !guestMode && !shouldRenderTalentsApp && !shouldRenderAgencyPortal && (
+  const shouldRenderAgencyPortal = !guestMode && !adminLensRequested && !shouldRenderTalentsApp && normalizedRole === 'agency';
+  const shouldRenderTalentPortal = !guestMode && !adminLensRequested && !shouldRenderTalentsApp && !shouldRenderAgencyPortal && (
     Boolean(talentPortalIntent)
     || normalizedRole === 'talent'
     || normalizedRequestedRole === 'talent'
