@@ -1,0 +1,82 @@
+# Gullsett for semantisk søk. `expect` er en delstreng av forventet filsti.
+# Kjør: notes-index eval --file gullsett.toml --k 5
+
+[[question]]
+question = "hvor beregnes prisingen for lead map"
+expect = "backend/server/admin-lead-map-pricing-routes.ts"
+
+[[question]]
+question = "service worker som mellomlagrer frontend-filer"
+expect = "frontend/client/public/sw.js"
+
+[[question]]
+question = "fanen som viser utstyr i prosjektarbeidsflaten"
+expect = "frontend/client/src/components/workspace/tabs/UtstyrTab.tsx"
+
+[[question]]
+question = "oppslag mot matrikkel og eiendomsdata på serveren"
+expect = "backend/server/leadgrid-kartverket-routes.ts"
+
+[[question]]
+question = "eiendomsoppslag på iPad"
+expect = "ipad/LeadMapApp/LeadMapApp/Core/KartverketService.swift"
+
+[[question]]
+question = "rett opp skjeve bilder automatisk"
+expect = "ipad/CaptureApp/CaptureApp/Core/Capture/AutoStraightenFilter.swift"
+
+[[question]]
+question = "last opp store filer i biter til serveren"
+expect = "backend/server/chunked-upload-routes.ts"
+
+[[question]]
+question = "betalingsvarsel fra Stripe for akademiet"
+expect = "backend/server/academy-stripe-webhook-routes.ts"
+
+[[question]]
+question = "koble kundeportalen til Google Ads med OAuth"
+expect = "backend/server/client-portal-google-ads-oauth.ts"
+
+[[question]]
+question = "send invitasjon til casting-team over WhatsApp"
+expect = "backend/server/casting-team-whatsapp-invite-service.ts"
+
+[[question]]
+question = "hent nye e-poster inn i chatten"
+expect = "backend/server/chat-gmail-poller.ts"
+
+[[question]]
+question = "agent som utvikler historien videre"
+expect = "backend/server/ai-story-development-agent.ts"
+
+[[question]]
+question = "render mockup i Tauri-appen"
+expect = "apps/resolve-script-manager/src-tauri/src/mockup_render.rs"
+
+[[question]]
+question = "last opp filer til Backblaze"
+expect = "apps/creatorhub-one-desk/src-tauri/src/b2_uploader.rs"
+
+[[question]]
+question = "autentisering av enhet i one-desk"
+expect = "apps/creatorhub-one-desk/src-tauri/src/device_auth.rs"
+
+[[question]]
+question = "trekk ut miniatyrbilder fra klipp"
+expect = "apps/resolve-script-manager/python/scripts/cull/extract_thumbnails.py"
+
+[[question]]
+question = "legg klippene på takten i musikken"
+expect = "apps/resolve-script-manager/python/scripts/timeline/assign_clips_to_beats.py"
+
+[[question]]
+question = "finn stille partier i tidslinjen"
+expect = "apps/resolve-script-manager/python/scripts/qc/detect_silent_sections_in_timeline.py"
+
+[[question]]
+question = "hindre at samme forespørsel behandles to ganger"
+expect = "backend/server/_shared-idempotency.ts"
+
+[[question]]
+question = "database-endring for garanti på utstyr"
+expect = "backend/migrations/0095_user_equipment_warranty.sql"

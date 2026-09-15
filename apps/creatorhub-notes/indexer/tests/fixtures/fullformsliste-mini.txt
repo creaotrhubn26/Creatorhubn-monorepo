@@ -1,0 +1,6 @@
+LOPENR	LEMMA_ID	OPPSLAG	TAG
+1	101	hus	subst mask appell ent ub
+2	101	huset	subst mask appell ent be
+3	101	husene	subst mask appell fl be
+4	205	skrive	verb inf
+5	205	skriver	verb pres

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="nb">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Notater — e2e</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Stubben må stå før appen monteres, ellers kaster første `invoke()`.
+         `?scenario=tomt|tomtNotat` og `?lesning=1` velger tilstand. -->
+    <script type="module">
+      import { installTauriMock } from "/e2e/fixtures/tauri-mock.ts";
+      const p = new URLSearchParams(location.search);
+      installTauriMock({
+        scenario: p.get("scenario") ?? "standard",
+        lesning: p.get("lesning") === "1",
+      });
+      if (p.get("tema")) localStorage.setItem("tema", p.get("tema"));
+      else localStorage.removeItem("tema");
+      if (p.get("panel") === "skjult") localStorage.setItem("forstaelse", "skjult");
+      else localStorage.removeItem("forstaelse");
+      await import("/src/main.tsx");
+    </script>
+  </body>
+</html>

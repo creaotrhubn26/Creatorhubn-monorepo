@@ -1,0 +1,1273 @@
+/* Notater — én skriveflate, ett register, ingen komponentbibliotek.
+   To krav styrer alt her: teksten skal være behagelig å lese i en time, og
+   ingenting skal være skjult. Derfor ingen liten skrift, ingen handling som
+   først dukker opp ved hover, og ingen ikoner uten ord.
+
+   Alle skriftstørrelser er `rem`. Var de px, gjorde brukerens egen innstilling
+   for større tekst i nettleseren og i systemet ingenting, og eneste utvei var
+   full sidezoom — som spaltene ikke tålte. `rem` er en andel av den
+   innstillingen, så teksten følger den. */
+
+:root {
+  color-scheme: light dark;
+
+  --ground: #eaedeb;
+  --paper: #fbfcfb;
+  --ink: #171b19;
+  --ink-soft: #525c59;
+  /* 4,51:1 mot `--ground` og 5,17:1 mot `--paper`. Den sto på `#7c8683`, som
+     er 3,18:1 — under kravet på 4,5:1 — og den bærer klokkeslettet i lista,
+     plassholderen i søket, framdriftslinja, detaljfeltene og lenkefargen inne
+     i notatteksten. */
+  --ink-faint: #656d6a;
+  /* Streken mellom ting. Dekorasjon, ikke kant rundt en kontroll. */
+  --rule: #d7dcd9;
+  /* Kanten rundt noe man skal trykke på eller skrive i. WCAG 1.4.11 krever
+     3:1 for den; `--rule` gir 1,18–1,37:1, og knappene så ut som flater uten
+     kant for den som ser dårlig. 3,55:1 mot `--paper`, 3,10:1 mot
+     `--ground`. */
+  --kant: #7e8885;
+  --accent: #1c6b59;
+  --sel: rgba(28, 107, 89, 0.15);
+  --mark: rgba(28, 107, 89, 0.18);
+  --skygge: 0 1px 0 rgba(23, 27, 25, 0.05);
+
+  /* Merkene i panelet. Fargen er et tillegg til formen, aldri det eneste
+     skillet: hake, spørsmålstegn, pil og rombe er fire forskjellige tegn, og
+     hver linje står med ord ved siden av seg.
+
+     Målt mot `--ground`, som er bakgrunnen i panelet: 5,40 (forstått), 5,90
+     (uavklart), 5,35 (oppgave), 6,31 (idé), 5,38 (motsier) i lyst tema, og
+     7,5–8,9 i mørkt. Alle over 4,5:1. Her sto det før at alle fire holder
+     «minst 6:1», og det stemte ikke — en kommentar som lover mer enn koden
+     gjør blir brukt som dekning senere. */
+  --merke-forstått: #1c6b59;
+  --merke-uavklart: #1b5c96;
+  --merke-oppgave: #8a5312;
+  --merke-idé: #5b4a8f;
+  --merke-motsier: #a3401f;
+
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --serif: "Iowan Old Style", "Charter", "Palatino Linotype", Palatino, Georgia, serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+}
+
+/* Mørkt tema. Verdiene står to ganger med vilje: én gang for maskinens
+   innstilling, én gang for brukerens eget valg. CSS kan ikke slå sammen en
+   media-spørring og en attributtvelger i én regel, og et valg som bare gjaldt
+   halve appen ville vært verre enn en gjentakelse. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="lyst"]) {
+    --ground: #121514;
+    --paper: #191d1c;
+    --ink: #e3e8e6;
+    --ink-soft: #a3ada9;
+    --ink-faint: #7d8784;
+    --rule: #2a302e;
+    --kant: #646c68;
+    --accent: #6bc4ae;
+    --sel: rgba(107, 196, 174, 0.2);
+    --mark: rgba(107, 196, 174, 0.24);
+    --skygge: 0 1px 0 rgba(0, 0, 0, 0.4);
+
+    --merke-forstått: #6bc4ae;
+    --merke-uavklart: #7db4e8;
+    --merke-oppgave: #d9a55c;
+    --merke-idé: #ac9ce0;
+    --merke-motsier: #e8977a;
+  }
+}
+
+:root[data-tema="mørkt"] {
+    --ground: #121514;
+    --paper: #191d1c;
+    --ink: #e3e8e6;
+    --ink-soft: #a3ada9;
+    --ink-faint: #7d8784;
+    --rule: #2a302e;
+    --kant: #646c68;
+    --accent: #6bc4ae;
+    --sel: rgba(107, 196, 174, 0.2);
+    --mark: rgba(107, 196, 174, 0.24);
+    --skygge: 0 1px 0 rgba(0, 0, 0, 0.4);
+
+    --merke-forstått: #6bc4ae;
+    --merke-uavklart: #7db4e8;
+    --merke-oppgave: #d9a55c;
+    --merke-idé: #ac9ce0;
+    --merke-motsier: #e8977a;
+}
+
+:root[data-tema="lyst"] {
+  color-scheme: light;
+}
+
+:root[data-tema="mørkt"] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Grunnstørrelsen er brukerens egen. Ingen `font-size` i px her: setter man
+   den, overstyrer man innstillingen «større tekst» i nettleseren og i OS-et. */
+html {
+  font-size: 100%;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 0.9375rem;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Elementer som fyller bredden av en rullecontainer får ringen innenfor
+   kanten. Med `outline-offset: 2px` lå venstre og høyre side av ringen
+   utenfor containeren og ble klippet bort. */
+.rad:focus-visible,
+.linje:focus-visible,
+.tidligere button:focus-visible,
+.mer:focus-visible {
+  outline-offset: -2px;
+}
+
+kbd {
+  font-family: var(--mono);
+  font-size: 0.9375rem;
+  color: var(--ink-faint);
+}
+
+/* Bare for skjermleseren. Det som står her er noe hun trenger å få vite —
+   treffantall, hva panelet fant, hvilket notat som er åpent — men som allerede
+   er synlig et annet sted, eller som bæres av oppsettet for den som ser. */
+.skjult {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Første fokuserbare element. Uten den måtte man shift-tabbe gjennom hvert
+   eneste notat for å komme fra panelet til søket. Den vises når den får
+   fokus — den er en tastaturvei, og den som bruker mus har allerede en. */
+.hopp {
+  position: absolute;
+  top: -100px;
+  left: 12px;
+  z-index: 10;
+  min-height: 44px;
+  padding: 0 16px;
+  color: var(--paper);
+  background: var(--accent);
+  border-radius: 0 0 8px 8px;
+}
+
+.hopp:focus {
+  top: 0;
+}
+
+.skall {
+  display: grid;
+  /* `auto`, ikke 68px: øker hun tekststørrelsen, skal raden vokse i stedet
+     for å presse søkefeltet og knappene ut av vinduet. */
+  grid-template-rows: auto 1fr;
+  height: 100%;
+}
+
+/* ---- toppen: søk og nytt notat, begge alltid synlige ------------------ */
+
+.topp {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 11px 18px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--ground);
+}
+
+.søk {
+  position: relative;
+  display: flex;
+  flex: 1 1 16rem;
+  gap: 8px;
+  align-items: center;
+  max-width: 620px;
+}
+
+.søkfelt {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.søk input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 3.6rem 0 14px;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--kant);
+  border-radius: 8px;
+  box-shadow: var(--skygge);
+  appearance: none;
+}
+
+.søk input::placeholder {
+  color: var(--ink-faint);
+}
+
+/* Ringen sto før på `outline: none` med en 1px kantfarge og en nesten
+   gjennomsiktig skygge som eneste tegn — fokus båret av farge alene. */
+.søk input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.søkfelt kbd {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.søk .tøm,
+.bryter,
+.nytt {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--kant);
+  border-radius: 8px;
+  box-shadow: var(--skygge);
+}
+
+.søk .tøm:hover,
+.bryter:hover,
+.nytt:hover {
+  border-color: var(--ink-soft);
+}
+
+/* Temavalget er navngitt og sier hva det gjør. Tre tilstander, ikke to: noen
+   vil ha lyst tema om kvelden uansett hva maskinen mener. */
+.tema {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.9375rem;
+  color: var(--ink-soft);
+}
+
+.tema select {
+  min-height: 44px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 0.9375rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--kant);
+  border-radius: 8px;
+  box-shadow: var(--skygge);
+}
+
+.tema select:hover {
+  border-color: var(--ink-soft);
+}
+
+/* Bryteren er navngitt og sier hva den gjør, ikke hva den er. Er panelet
+   skjult, skjer det ingen lesning i det hele tatt. Tilstanden er en klasse og
+   ikke `aria-pressed`: etiketten bytter allerede, og «Skjul forståelse,
+   veksleknapp, aktivert» er en dobbel negasjon. */
+.bryter.på {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--kant));
+}
+
+/* ---- kroppen ---------------------------------------------------------- */
+
+.kropp {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: 0;
+}
+
+.kropp.med-panel {
+  grid-template-columns: 320px 1fr 336px;
+}
+
+/* I et smalt vindu er det skriveflaten som skal ha plassen. Registeret og
+   panelet gir fra seg noen piksler heller enn å presse teksten ned i en
+   spalte man ikke kan lese. */
+@media (max-width: 1180px) {
+  .kropp {
+    grid-template-columns: 250px 1fr;
+  }
+
+  .kropp.med-panel {
+    grid-template-columns: 250px 1fr 300px;
+  }
+}
+
+/* Under dette er tre spalter ikke lenger tre spalter, det er tre striper.
+   Ved 200 % zoom på en vanlig skjerm satt skriveflaten igjen med rundt 66px
+   tekstbredde — seks tegn per linje. Da stables de i stedet, og siden
+   ruller. Dette er også det som gjør at appen kan brukes ved 320px bredde.
+
+   Terskelen er målt, ikke gjettet. I tre spalter er skriveflaten `vindu −
+   565px` (250 + 300 til register og panel, resten padding), og skriften i
+   flata måler 7,80px per tegn i ekte norsk brødtekst. Terskelen sto på 900px,
+   der skriveflaten er 336px — 43 tegn, altså under de 45 som er nedre grense
+   for lesbar brødtekst i det hele tatt. 55 tegn er der linja slutter å være
+   en stripe: 55 × 7,80 = 429px, som er 994px vindu. Rundet opp til 1000, så
+   den første bredden med tre spalter gir 435px og 56 tegn.
+
+   `height: auto` på skallet er selve knepet: uten den holder rutenettet seg
+   i vinduet og stripene rulles hver for seg. */
+@media (max-width: 1000px) {
+  .skall {
+    height: auto;
+    min-height: 100%;
+  }
+
+  .kropp,
+  .kropp.med-panel {
+    display: block;
+  }
+
+  .spalte {
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  /* Lista ruller for seg selv også her. Uten taket la alle 16 notatene —
+     1 335px — seg i sin helhet over notatet, og skriveflaten begynte på
+     y=1 402 (y=1 666 ved 200 % zoom): halvannen skjerm med rulling før
+     første tegn av teksten. Rekkefølgen står som den er — register, notat,
+     panel, som i spaltene og i tabbrekkefølgen — men lista tar ikke lenger
+     mer enn sin del av skjermen. */
+  .liste {
+    max-height: 45vh;
+    overflow-y: auto;
+  }
+
+  .panel {
+    overflow-y: visible;
+  }
+
+  .panel {
+    border-top: 1px solid var(--rule);
+    border-left: 0;
+  }
+
+  .ark {
+    min-height: 70vh;
+    overflow: visible;
+  }
+}
+
+/* Registerspalten: lista som ruller, og under den — utenfor rullingen — hva
+   søket kan akkurat nå. */
+.spalte {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-height: 0;
+  border-right: 1px solid var(--rule);
+}
+
+/* Registeret: én linje per notat, dagen som eneste inndeling. Rekkefølgen er
+   informasjonen, så ingen nummerering og ingen ikoner. */
+.liste {
+  /* `min-height: 0` er ikke pynt: uten den nekter rutenettraden å krympe under
+     innholdet, og lista ruller ikke — den dytter ordbanklinja ut av vinduet. */
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 0 32px;
+}
+
+.dag {
+  margin: 20px 0 4px;
+  padding: 0 20px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.liste section:first-child .dag {
+  margin-top: 10px;
+}
+
+/* Radene er en liste, ikke en rekke knapper. Uten `ul`/`li` sier VoiceOver
+   verken «liste» eller «3 av 24». */
+.rader {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rad {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 20px;
+  text-align: left;
+  border-left: 3px solid transparent;
+}
+
+.rad:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+/* Det åpne notatet. Kanten er det sterkeste signalet — flaten bak er en tone,
+   og en tone er ikke nok alene. Derfor bærer raden også `aria-current`, og
+   tittelen står med vekt. */
+.rad.valgt {
+  border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.rad.valgt .tittel {
+  font-weight: 600;
+}
+
+/* Klokkeslettet på den raden brukeren faktisk ser på. `--ink-faint` holder
+   4,51:1 mot `--ground`, men ikke mot `--ground` med en tone over: den valgte
+   raden målte 3,72:1 i lyst tema og 3,85:1 i mørkt, og hover 3,85:1. En
+   variabel sier ikke hva som vises. `--ink-soft` måler 4,85 og 6,22 mot de
+   samme flatene. */
+.rad.valgt .tid,
+.rad:hover .tid {
+  color: var(--ink-soft);
+}
+
+/* Titler brytes over flere linjer heller enn å kuttes. En avkortet tittel er
+   en tittel du må gjette deg til — og `-webkit-line-clamp` klipper enda mer
+   bort så snart linjeavstanden økes, som er nøyaktig det den som trenger
+   større tekst gjør. */
+.tittel {
+  font-size: 1rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.tid {
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.utdrag {
+  grid-column: 1 / -1;
+  margin: 5px 0 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.utdrag mark {
+  padding: 0 2px;
+  color: inherit;
+  background: var(--mark);
+  border-radius: 3px;
+}
+
+.tomt {
+  margin: 24px 20px;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.tomt span {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink-faint);
+}
+
+/* Hva søket kan akkurat nå. Uten ordlista finner ikke «utstyret» ordet
+   «utstyr», og det skal stå et sted hun ser det uten å lete — ikke i en
+   README, og ikke bare når et søk allerede har bommet. */
+.ordbank {
+  display: grid;
+  gap: 8px;
+  padding: 12px 20px 14px;
+  border-top: 1px solid var(--rule);
+  background: var(--ground);
+}
+
+.ordbank p {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.ordbank button {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 0.9375rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--kant);
+  border-radius: 8px;
+}
+
+.ordbank button[disabled] {
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+/* ---- arket ------------------------------------------------------------ */
+
+/* min-height: 0 er ikke pynt: uten den vokser arket etter innholdet i
+   editoren i stedet for å holde seg i vinduet, og lagringsmerket havner
+   under skjermkanten der ingen ser det. */
+.ark {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.editor {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Toppfeltene er skjult i teksten. Denne linja er det de sier, lest høyt:
+   «Beslutning · 10. september». De rå feltene er ett klikk unna, for den som
+   vil se dem. Bredden følger tekstspalta, så den hører til notatet. */
+.notatinfo {
+  width: 100%;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 14px 32px 0;
+}
+
+.notatlinje {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  align-items: center;
+  color: var(--ink-soft);
+}
+
+.notatlinje button {
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--ink-soft);
+  border: 1px solid var(--kant);
+  border-radius: 8px;
+}
+
+/* `auto` var ment for den første knappen — den som skyver hele knapperaden
+   mot høyre kant. Sto den på hver knapp, dyttet den første knappen på en ny
+   linje seg selv helt til høyre, og raden ble stående med et hull i midten:
+   «Aldri les dette notatet ——————— Vis feltene slik de står i fila». */
+.notatlinje > button:first-of-type {
+  margin-left: auto;
+}
+
+.notatlinje button:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.detaljer {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 0.9375rem;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border-radius: 8px;
+}
+
+.detaljer dt {
+  color: var(--ink-faint);
+}
+
+.detaljer dd {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.velkomst {
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 20vh 32px 0;
+}
+
+.velkomst h1 {
+  margin: 0 0 12px;
+  font-family: var(--serif);
+  font-size: 1.75rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.velkomst p {
+  margin: 0 0 22px;
+  font-family: var(--serif);
+  font-size: 1.09375rem;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
+.velkomst button {
+  min-height: 44px;
+  padding: 0 18px;
+  font-size: 1rem;
+  color: var(--paper);
+  background: var(--accent);
+  border-radius: 8px;
+}
+
+/* Lagringen sier fra av seg selv, i metalinja øverst i notatet. Nede i
+   hjørnet fant ingen den — og et lagringsmerke ingen finner gjør ingen
+   trygge. Diskré, men lesbar: samme størrelse som resten av linja.
+
+   Ingen `::before`-prikk lenger: den ble lest opp sammen med teksten. */
+.status {
+  margin-left: 4px;
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+/* «Hvor mye har jeg skrevet i dag». Tabulære tall så bredden ikke rykker
+   mens hun skriver — et tall som hopper i øyekroken er det motsatte av det
+   denne linja er til for. */
+.ordtall {
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+/* Beskjedene står under skriveflaten. Over den dyttet de hele teksten nedover
+   idet de dukket opp, og linja hoppet under fingeren midt i en setning. */
+.beskjeder:empty {
+  display: none;
+}
+
+.feil {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: center;
+  margin: 0;
+  padding: 12px 18px;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 12%, var(--paper));
+  border-top: 1px solid var(--rule);
+}
+
+.feil button {
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 12px;
+  color: var(--ink);
+  border: 1px solid var(--kant);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+/* ---- hva vi har forstått ---------------------------------------------- */
+
+/* Panelet er notatets egne setninger, kortet ned. Derfor står kortformene i
+   samme skrift som teksten de kom fra, mens overskrifter og merknader står i
+   grensesnittskriften — det som er brukerens, ser ut som brukerens. */
+.panel {
+  overflow-y: auto;
+  padding: 6px 0 40px;
+  border-left: 1px solid var(--rule);
+}
+
+.panel h2 {
+  margin: 20px 0 2px;
+  padding: 0 20px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.panel h2:first-child {
+  margin-top: 10px;
+}
+
+.panel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Det uavklarte står i samme liste som det bestemte, men skilt fra det: én
+   strek, ikke en ny overskrift. Det er samme spørsmål — hva har appen lest —
+   med to forskjellige svar. */
+.panel li:not(.åpen) + li.åpen {
+  margin-top: 8px;
+  border-top: 1px solid var(--rule);
+  padding-top: 8px;
+}
+
+/* «Endre» står alltid der, med ord. Skjult bak hover ville den vært usynlig
+   for den som trenger den mest — og uten kant ser den ut som tekst.
+   `--kant` finnes nettopp fordi «knappene så ut som flater uten kant for den
+   som ser dårlig», og den sto bare i toppraden. */
+/* To knapper på én linje tar 185px av et panel på 336, og da får kortformen
+   109px: samme feil som i «Tidligere om dette», bare mindre. `flex: 1 1 60%`
+   gjør at knappene blir stående ved siden av teksten når det er én av dem, og
+   går ned under den når det er to. */
+.linjerad {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  align-items: center;
+}
+
+.linjeknapper {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.linje {
+  display: grid;
+  flex: 1 1 60%;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 4px 10px 20px;
+  text-align: left;
+}
+
+.endre {
+  flex: none;
+  min-height: 44px;
+  margin-right: 12px;
+  padding: 0 12px;
+  font-size: 0.9375rem;
+  color: var(--ink-soft);
+  border: 1px solid var(--kant);
+  border-radius: 8px;
+}
+
+.linje:hover,
+.endre:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.endre:hover {
+  color: var(--ink);
+}
+
+.tegn {
+  font-size: 1rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.tegn-forstått {
+  color: var(--merke-forstått);
+}
+
+.tegn-uavklart {
+  color: var(--merke-uavklart);
+}
+
+.tegn-oppgave {
+  color: var(--merke-oppgave);
+}
+
+.tegn-idé {
+  color: var(--merke-idé);
+}
+
+/* Et avsnitt et senere avsnitt motsier. Ingen hake — den ville sagt at det
+   fortsatt gjelder — og ingen farge, fordi prikken ikke påstår noe. Ordene
+   ved siden av sier hva som skjedde. */
+.tegn-endret {
+  color: var(--ink-faint);
+}
+
+.kort {
+  font-family: var(--serif);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+/* Hvem som sa det, i en importert samtale. Navnet skal leses først og så tre
+   til side — det er kortformen som bærer linja. */
+.avsender {
+  margin-right: 6px;
+  font-family: var(--sans);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+/* Det oppgaven venter på hører til oppgaven, og står i samme linje som den. */
+.venter {
+  color: var(--ink-soft);
+}
+
+.merknad {
+  margin-left: 8px;
+  font-family: var(--sans);
+  font-size: 0.9375rem;
+  color: var(--ink-soft);
+}
+
+.panel .av,
+.panel .ingenting,
+.panel .framdrift {
+  margin: 6px 20px 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+/* Spørsmålet hun aldri ble stilt: hva som sendes, hvor det havner, og at det
+   blir liggende. Den står der panellinjene ellers ville stått, fordi det er
+   det den erstatter. */
+.panel .av h2 {
+  margin: 4px 20px 8px;
+}
+
+.panel .av p {
+  margin: 0 20px 10px;
+}
+
+/* «Slå på lesning» er den ene handlingen i den tomtilstanden brukeren møter
+   først, og den sto som ren tekst uten noe som sa at den var en knapp. */
+.panel .av button,
+.panel .lesningsvalg button {
+  margin: 2px 20px 0;
+  min-height: 44px;
+  padding: 0 14px;
+  font-family: var(--sans);
+  font-size: 0.9375rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--kant);
+  border-radius: 8px;
+}
+
+.panel .lesningsvalg {
+  margin: 28px 20px 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--sans);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.panel .lesningsvalg button {
+  display: block;
+  margin: 6px 0 0;
+  font-size: 0.9375rem;
+}
+
+/* En lang kilde tar minutter. Linja sier hvor langt det er kommet, og
+   forsvinner når den er ferdig. Ingenting som krever oppmerksomhet — men
+   fortsatt lesbar: den sto på 14px, under gulvet på 15. */
+.panel .framdrift {
+  font-size: 0.9375rem;
+  color: var(--ink-faint);
+}
+
+
+/* Rettingen står der linja sto. Ingen dialog, ingenting som legger seg over
+   noe annet: det er den samme linja, åpnet. */
+.retting {
+  display: grid;
+  gap: 12px;
+  padding: 12px 20px 16px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.rettefelt {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9375rem;
+  color: var(--ink-soft);
+}
+
+.rettefelt input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  font-family: var(--serif);
+  font-size: 1rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--kant);
+  border-radius: 8px;
+}
+
+.rettefelt input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.plassvalg {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.plassvalg legend {
+  padding: 0 0 2px;
+  font-size: 0.9375rem;
+  color: var(--ink-soft);
+}
+
+.plassvalg label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  font-size: 0.9375rem;
+}
+
+.plassvalg input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.plassvalg .tegn {
+  width: 18px;
+}
+
+.retteknapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.retteknapper button {
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 0.9375rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--kant);
+  border-radius: 8px;
+}
+
+.retteknapper .lagre {
+  color: var(--paper);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.retteknapper .fjern {
+  margin-left: auto;
+  color: var(--ink-soft);
+}
+
+.retteknapper .fjern:hover {
+  color: var(--ink);
+}
+
+/* Angre og «lest på nytt» er de to gangene panelet snakker til brukeren.
+   Begge er rolige, begge står til de er lest, og ingen av dem gjør noe selv. */
+.angre,
+.påNytt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 14px 0;
+  padding: 10px 12px;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  border-radius: 8px;
+}
+
+.angre span,
+.påNytt span {
+  flex: 1 1 60%;
+}
+
+.angre button,
+.påNytt button {
+  flex: none;
+  min-height: 44px;
+  padding: 0 14px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--kant);
+  border-radius: 8px;
+}
+
+/* Det hun har tenkt om det samme før. Setningen står med ord — «du forkastet
+   dette 10. september» — og under den hennes egen kortform, slik at hun kan
+   se hva koblingen bygger på før hun klikker seg videre. */
+/* Setningen og avvisningen står over hverandre, ikke ved siden av. Side om
+   side fikk «Henger ikke sammen» hele sin 168px — den er `flex: none` — og
+   setningen satt igjen med 140px i et 336px panel: ett til to ord per linje,
+   305px høyde per kobling, 1 678px for fem. Knappen som bærer linja fikk
+   mindre plass enn knappen som avviser den. */
+.tidligere li {
+  display: grid;
+  justify-items: start;
+}
+
+.tidligere li > button:first-child {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 20px;
+  text-align: left;
+  border-left: 3px solid transparent;
+}
+
+.tidligere li > .endre {
+  margin: 0 0 6px 20px;
+}
+
+.tidligere button:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.tidligere .forhold {
+  display: block;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.tidligere .kilde {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--serif);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+/* Motsigelsen er den ene av de tre som er verdt å stoppe for, og den eneste
+   som får farge og vekt. Fargen er et tillegg til ordene, aldri det eneste:
+   setningen sier selv hva den er. */
+.tidligere li.mot button {
+  border-left-color: var(--merke-motsier);
+}
+
+.tidligere li.mot .forhold {
+  font-weight: 600;
+  color: var(--merke-motsier);
+}
+
+/* Linja uten retning. Den bæres ellers utelukkende av ordlyden, og skillet
+   som ble bygget for å slutte å påstå retning overlevde ikke et raskt blikk:
+   7–8 % av linjene er denne, og en leser kunne ikke se hvilke. Stiplet, ikke
+   farget — den sier mindre enn de andre, ikke noe annet. */
+.tidligere li.nøytral > button:first-child {
+  border-left: 3px dashed var(--kant);
+}
+
+.tidligere li.nøytral .forhold {
+  color: var(--ink-soft);
+}
+
+/* Hvilken setning hun nettopp skrev som utløste koblingen, og hva appen ikke
+   vet om den. Uten det er linja en påstand hun ikke kan etterprøve. */
+.omLinja {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  color: var(--ink-faint);
+}
+
+/* «Vis de N andre». Uten et tak skyves «Hva vi har forstått» ut av synsfeltet
+   av en historikk hun ikke ba om. */
+.mer {
+  min-height: 44px;
+  padding: 0 20px;
+  font-size: 0.9375rem;
+  color: var(--ink-soft);
+  text-decoration: underline;
+}
+
+/* Oppgaver hun har krysset av. De blir stående — ingenting går tapt uten vei
+   tilbake — men de blekner, og «Endre» tar dem tilbake. */
+.gjort .kort {
+  color: var(--ink-faint);
+}
+
+/* Svaret på et spørsmål om det som er lest, over de vanlige søketreffene og
+   skilt fra dem med en strek. Fritekstsøket står uendret under. */
+.spurt {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.spurtOm {
+  margin: 0 20px 2px;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.fra {
+  grid-column: 1 / -1;
+  margin-top: 3px;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rad,
+  .linje,
+  .tidligere button,
+  .endre,
+  .bryter,
+  .nytt,
+  .søk .tøm {
+    transition: background-color 120ms ease, border-color 120ms ease;
+  }
+}
+
+/* Søkesyntaksen står der hun leter når hun ikke fant det hun så etter. To
+   spalter, ingen overskrift: den skal kunne leses på et blikk og ellers
+   ignoreres. */
+.søkesyntaks {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 14px 0 0;
+  font-family: var(--sans);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.søkesyntaks dt {
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+.søkesyntaks dd {
+  margin: 0;
+}
+
+/* macOS «Øk kontrast» og Windows høykontrast bytter ut hele paletten med
+   systemets egen. Da forsvinner alt som er `color-mix(…, transparent)` — valgt
+   rad, hover, panelmerket — og alt som er en 1px `--rule`. Her får de en form
+   i stedet for en farge. */
+@media (forced-colors: active) {
+  .rad.valgt,
+  .rad:hover,
+  .linje:hover,
+  .endre:hover,
+  .tidligere button:hover {
+    background: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+
+  .rad.valgt {
+    border-left-color: Highlight;
+    outline: 2px solid CanvasText;
+    outline-offset: -2px;
+  }
+
+  .søk input,
+  .søk .tøm,
+  .bryter,
+  .nytt,
+  .tema select,
+  .rettefelt input,
+  .retteknapper button,
+  .angre button,
+  .påNytt button,
+  .feil button,
+  .ordbank button,
+  .notatlinje button,
+  .endre,
+  .panel .av button,
+  .panel .lesningsvalg button {
+    border: 1px solid ButtonBorder;
+  }
+
+  .spalte,
+  .panel,
+  .topp,
+  .feil,
+  .spurt,
+  .panel .lesningsvalg {
+    border-color: CanvasText;
+  }
+
+  .utdrag mark {
+    background: Mark;
+    color: MarkText;
+  }
+
+  .retting {
+    outline: 1px solid CanvasText;
+  }
+}
