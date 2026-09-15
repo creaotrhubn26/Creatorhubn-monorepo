@@ -7,15 +7,10 @@ import Security
 /// storage. `LiveCaptureModel.actorUserId` and `BackendClient.authHeaders`
 /// both flow from here.
 ///
-/// **Sign-in flow today (MVP):** the user pastes a Google ID token (or a
-/// CreatorHub-issued bearer) into the SignInView; we POST it to
-/// `/api/auth/google/token` to upgrade an ID token into a session bearer
-/// (or store an already-issued bearer directly), then save in Keychain.
-///
-/// **Follow-up:** swap the paste field for the GoogleSignIn-Swift SDK so
-/// the user just taps "Sign in with Google". The endpoint contract is
-/// already designed for both — the SDK gives an `idToken` that POSTs to
-/// the same route. Tracked as task #73.
+/// The official Google Sign-In SDK supplies a verified ID token. We POST it
+/// to `/api/auth/google/token` to upgrade it into a CreatorHub session bearer,
+/// then persist that session in Keychain. Manual token/bearer entry remains
+/// available only as a hidden staging and troubleshooting fallback.
 @MainActor
 @Observable
 final class SignInService {

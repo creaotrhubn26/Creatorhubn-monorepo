@@ -24,6 +24,212 @@ interface QueryablePool {
 }
 
 /**
+ * Every operational grant the canonical project surface knows about.
+ *
+ * A grant is held when the member's project role carries it by default, or
+ * when the membership row lists it explicitly in `permissions`. The project
+ * creator holds all of them. Keeping the rules here — rather than repeated in
+ * one hand-written SQL predicate per grant — means a route asks for effective
+ * access once and every API answers from the same resolution.
+ */
+export const CASTING_GRANT_RULES = {
+  canEditProduction: {
+    roles: [
+      "director",
+      "producer",
+      "production_manager",
+      "content_producer",
+      "first_ad",
+      "first_assistant_director",
+      "1st_ad",
+      "second_ad",
+      "second_assistant_director",
+      "2nd_ad",
+    ],
+    permissionKeys: ["canEditProduction"],
+  },
+  canManageProduction: {
+    roles: ["producer", "production_manager"],
+    permissionKeys: ["canManageProduction"],
+  },
+  canCoordinateProduction: {
+    roles: ["producer", "production_manager", "production_coordinator"],
+    permissionKeys: ["canCoordinateProduction"],
+  },
+  canManageLocations: {
+    roles: ["producer", "production_manager", "location_manager", "location_scout"],
+    permissionKeys: ["canManageLocations"],
+  },
+  canManageContinuity: {
+    roles: ["script_supervisor"],
+    permissionKeys: ["canManageContinuity"],
+  },
+  canCommentContinuity: {
+    roles: [
+      "script_supervisor",
+      "director",
+      "producer",
+      "first_ad",
+      "first_assistant_director",
+      "1st_ad",
+      "second_ad",
+      "second_assistant_director",
+      "2nd_ad",
+    ],
+    permissionKeys: ["canManageContinuity", "canComment"],
+  },
+} as const satisfies Record<string, { roles: readonly string[]; permissionKeys: readonly string[] }>;
+
+export type CastingGrant = keyof typeof CASTING_GRANT_RULES;
+
+export const CASTING_GRANTS = Object.keys(CASTING_GRANT_RULES) as CastingGrant[];
+
+export interface CastingProjectAccess {
+  /** The project exists in the canonical `casting_projects` table. */
+  readonly projectExists: boolean;
+  /** Resolved through the legacy compat store instead of the canonical table. */
+  readonly legacyFallback: boolean;
+  readonly isOwner: boolean;
+  /** Has an active, unexpired membership row. */
+  readonly isMember: boolean;
+  /** Effective project role, lowercased. `null` for owners without a row. */
+  readonly role: string | null;
+  /** Explicit grants from the membership row, verbatim. */
+  readonly permissions: Record<string, unknown>;
+  readonly canAccess: boolean;
+  readonly grants: Readonly<Record<CastingGrant, boolean>>;
+}
+
+const DENIED_ACCESS: CastingProjectAccess = {
+  projectExists: false,
+  legacyFallback: false,
+  isOwner: false,
+  isMember: false,
+  role: null,
+  permissions: {},
+  canAccess: false,
+  grants: Object.freeze(
+    Object.fromEntries(CASTING_GRANTS.map((grant) => [grant, false])),
+  ) as Record<CastingGrant, boolean>,
+};
+
+function hasExplicitGrant(
+  permissions: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  return keys.some((key) => permissions[key] === true);
+}
+
+function deriveGrants(
+  isOwner: boolean,
+  role: string | null,
+  permissions: Record<string, unknown>,
+): Record<CastingGrant, boolean> {
+  const grants = {} as Record<CastingGrant, boolean>;
+  for (const grant of CASTING_GRANTS) {
+    const rule = CASTING_GRANT_RULES[grant];
+    grants[grant] = isOwner
+      || (role !== null && (rule.roles as readonly string[]).includes(role))
+      || hasExplicitGrant(permissions, rule.permissionKeys);
+  }
+  return grants;
+}
+
+function readPermissions(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+/**
+ * Resolve the caller's effective role and every operational grant in a single
+ * round trip.
+ *
+ * Routes used to ask one question per grant, each its own query with its own
+ * copy of the role list. This is the one resolver they all share: the same
+ * membership row decides every answer, so a route can no longer see a member
+ * as a coordinator for one check and a stranger for the next.
+ *
+ * Fail-closed. A canonical project that denies access never falls back to
+ * legacy ownership; only a project missing from `casting_projects` does.
+ */
+export async function resolveCastingProjectAccess(
+  pool: QueryablePool,
+  projectId: string,
+  userId: string | null | undefined,
+): Promise<CastingProjectAccess> {
+  if (!projectId || !userId) return DENIED_ACCESS;
+  try {
+    const result = await pool.query(
+      `SELECT
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+            WHERE cp.id = $1
+         ) AS project_exists,
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+            WHERE cp.id = $1
+              AND cp.created_by = $2
+         ) AS is_owner,
+         (
+           SELECT LOWER(TRIM(cur.role))
+             FROM casting_user_roles cur
+            WHERE cur.project_id = $1
+              AND cur.user_id = $2
+              AND cur.deactivated_at IS NULL
+              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
+            LIMIT 1
+         ) AS member_role,
+         (
+           SELECT cur.permissions
+             FROM casting_user_roles cur
+            WHERE cur.project_id = $1
+              AND cur.user_id = $2
+              AND cur.deactivated_at IS NULL
+              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
+            LIMIT 1
+         ) AS member_permissions`,
+      [projectId, userId],
+    );
+    const row = result.rows[0];
+    if (row?.project_exists === true) {
+      const isOwner = row.is_owner === true;
+      const rawRole = row.member_role;
+      const role = typeof rawRole === "string" && rawRole.length > 0 ? rawRole : null;
+      const isMember = role !== null;
+      const permissions = readPermissions(row.member_permissions);
+      return {
+        projectExists: true,
+        legacyFallback: false,
+        isOwner,
+        isMember,
+        role,
+        permissions,
+        canAccess: isOwner || isMember,
+        grants: deriveGrants(isOwner, role, permissions),
+      };
+    }
+  } catch {
+    // A legacy-only install may not have the canonical tables yet. The
+    // compat-store check below remains fail-closed and owner-only.
+  }
+
+  const ownsLegacy = await userOwnsCastingProject(pool, projectId, userId);
+  if (!ownsLegacy) return DENIED_ACCESS;
+  return {
+    projectExists: false,
+    legacyFallback: true,
+    isOwner: true,
+    isMember: false,
+    role: null,
+    permissions: {},
+    canAccess: true,
+    grants: deriveGrants(true, null, {}),
+  };
+}
+
+/**
  * True when the user can open a canonical Role Room project, either as its
  * creator or through an explicit project-role membership. Storyboard Room
  * reads manuscripts from the legacy casting surface, but its project browser
@@ -38,42 +244,8 @@ export async function userCanAccessCastingProject(
   projectId: string,
   userId: string | null | undefined,
 ): Promise<boolean> {
-  if (!projectId || !userId) return false;
-  try {
-    const result = await pool.query(
-      `SELECT
-         EXISTS (
-           SELECT 1
-             FROM casting_projects cp
-            WHERE cp.id = $1
-         ) AS project_exists,
-         EXISTS (
-           SELECT 1
-             FROM casting_projects cp
-            WHERE cp.id = $1
-              AND (
-                cp.created_by = $2
-                OR EXISTS (
-                  SELECT 1
-                    FROM casting_user_roles cur
-                   WHERE cur.project_id = cp.id
-                     AND cur.user_id = $2
-                     AND cur.deactivated_at IS NULL
-                     AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
-                )
-              )
-         ) AS can_access`,
-      [projectId, userId],
-    );
-    const status = result.rows[0];
-    if (status?.project_exists === true) {
-      return status.can_access === true;
-    }
-  } catch {
-    // A legacy-only install may not have the canonical tables yet. The
-    // compat-store check below remains fail-closed and owner-only.
-  }
-  return userOwnsCastingProject(pool, projectId, userId);
+  const access = await resolveCastingProjectAccess(pool, projectId, userId);
+  return access.canAccess;
 }
 
 /**
@@ -89,56 +261,8 @@ export async function userCanEditCastingProduction(
   projectId: string,
   userId: string | null | undefined,
 ): Promise<boolean> {
-  if (!projectId || !userId) return false;
-  try {
-    const result = await pool.query(
-      `SELECT
-         EXISTS (
-           SELECT 1
-             FROM casting_projects cp
-            WHERE cp.id = $1
-         ) AS project_exists,
-         EXISTS (
-           SELECT 1
-             FROM casting_projects cp
-             LEFT JOIN casting_user_roles cur
-               ON cur.project_id = cp.id
-              AND cur.user_id = $2
-              AND cur.deactivated_at IS NULL
-              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
-            WHERE cp.id = $1
-              AND (
-                cp.created_by = $2
-                OR (
-                  cur.user_id IS NOT NULL
-                  AND (
-                    cur.role IN (
-                      'director',
-                      'producer',
-                      'production_manager',
-                      'content_producer',
-                      'first_ad',
-                      'first_assistant_director',
-                      '1st_ad',
-                      'second_ad',
-                      'second_assistant_director',
-                      '2nd_ad'
-                    )
-                    OR cur.permissions -> 'canEditProduction' = 'true'::jsonb
-                  )
-                )
-              )
-         ) AS can_edit_production`,
-      [projectId, userId],
-    );
-    const status = result.rows[0];
-    if (status?.project_exists === true) {
-      return status.can_edit_production === true;
-    }
-  } catch {
-    // Legacy-only installs fall back to the strict owner check below.
-  }
-  return userOwnsCastingProject(pool, projectId, userId);
+  const access = await resolveCastingProjectAccess(pool, projectId, userId);
+  return access.grants.canEditProduction;
 }
 
 /**
@@ -151,249 +275,60 @@ export async function userCanManageCastingProduction(
   projectId: string,
   userId: string | null | undefined,
 ): Promise<boolean> {
-  if (!projectId || !userId) return false;
-  try {
-    const result = await pool.query(
-      `SELECT
-         EXISTS (
-           SELECT 1 FROM casting_projects cp WHERE cp.id = $1
-         ) AS project_exists,
-         EXISTS (
-           SELECT 1
-             FROM casting_projects cp
-             LEFT JOIN casting_user_roles cur
-               ON cur.project_id = cp.id
-              AND cur.user_id = $2
-              AND cur.deactivated_at IS NULL
-              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
-            WHERE cp.id = $1
-              AND (
-                cp.created_by = $2
-                OR (
-                  cur.user_id IS NOT NULL
-                  AND (
-                    cur.role IN ('producer', 'production_manager')
-                    OR cur.permissions -> 'canManageProduction' = 'true'::jsonb
-                  )
-                )
-              )
-         ) AS can_manage_production`,
-      [projectId, userId],
-    );
-    const status = result.rows[0];
-    if (status?.project_exists === true) {
-      return status.can_manage_production === true;
-    }
-  } catch {
-    // Legacy-only installs remain owner-only.
-  }
-  return userOwnsCastingProject(pool, projectId, userId);
+  const access = await resolveCastingProjectAccess(pool, projectId, userId);
+  return access.grants.canManageProduction;
 }
 
 /**
- * True when the user may update the production-coordination lane. This is
- * deliberately separate from production management: coordinators can prepare
- * and follow up the day, but cannot alter approvals, costs or PM audit data.
+ * True when the user owns the coordination lane. The coordinator keeps its own
+ * version and audit trail, so production editors do not implicitly inherit it.
  */
 export async function userCanCoordinateCastingProduction(
   pool: QueryablePool,
   projectId: string,
   userId: string | null | undefined,
 ): Promise<boolean> {
-  if (!projectId || !userId) return false;
-  try {
-    const result = await pool.query(
-      `SELECT
-         EXISTS (
-           SELECT 1 FROM casting_projects cp WHERE cp.id = $1
-         ) AS project_exists,
-         EXISTS (
-           SELECT 1
-             FROM casting_projects cp
-             LEFT JOIN casting_user_roles cur
-               ON cur.project_id = cp.id
-              AND cur.user_id = $2
-              AND cur.deactivated_at IS NULL
-              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
-            WHERE cp.id = $1
-              AND (
-                cp.created_by = $2
-                OR (
-                  cur.user_id IS NOT NULL
-                  AND (
-                    cur.role IN ('producer', 'production_manager', 'production_coordinator')
-                    OR cur.permissions -> 'canCoordinateProduction' = 'true'::jsonb
-                  )
-                )
-              )
-         ) AS can_coordinate_production`,
-      [projectId, userId],
-    );
-    const status = result.rows[0];
-    if (status?.project_exists === true) {
-      return status.can_coordinate_production === true;
-    }
-  } catch {
-    // Legacy-only installs remain owner-only.
-  }
-  return userOwnsCastingProject(pool, projectId, userId);
+  const access = await resolveCastingProjectAccess(pool, projectId, userId);
+  return access.grants.canCoordinateProduction;
 }
 
 /**
- * True when the user owns the operational location lane. Location scouts may
- * prepare and update candidates, while location security remains read-only
- * unless it receives an explicit canManageLocations grant.
+ * True when the user may mutate location operations. Location security is
+ * deliberately absent: that role reads the location lane without writing it.
  */
 export async function userCanManageCastingLocations(
   pool: QueryablePool,
   projectId: string,
   userId: string | null | undefined,
 ): Promise<boolean> {
-  if (!projectId || !userId) return false;
-  try {
-    const result = await pool.query(
-      `SELECT
-         EXISTS (
-           SELECT 1 FROM casting_projects cp WHERE cp.id = $1
-         ) AS project_exists,
-         EXISTS (
-           SELECT 1
-             FROM casting_projects cp
-             LEFT JOIN casting_user_roles cur
-               ON cur.project_id = cp.id
-              AND cur.user_id = $2
-              AND cur.deactivated_at IS NULL
-              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
-            WHERE cp.id = $1
-              AND (
-                cp.created_by = $2
-                OR (
-                  cur.user_id IS NOT NULL
-                  AND (
-                    cur.role IN ('producer', 'production_manager', 'location_manager', 'location_scout')
-                    OR cur.permissions -> 'canManageLocations' = 'true'::jsonb
-                  )
-                )
-              )
-         ) AS can_manage_locations`,
-      [projectId, userId],
-    );
-    const status = result.rows[0];
-    if (status?.project_exists === true) {
-      return status.can_manage_locations === true;
-    }
-  } catch {
-    // Legacy-only installs remain owner-only.
-  }
-  return userOwnsCastingProject(pool, projectId, userId);
+  const access = await resolveCastingProjectAccess(pool, projectId, userId);
+  return access.grants.canManageLocations;
 }
 
 /**
- * True when the user owns the script-supervisor continuity lane. General
- * production edit access is intentionally insufficient because take logs,
- * lined-script deviations and continuity history must have one clear owner.
+ * True when the user may write the continuity lane: take logs, lined-script
+ * discrepancies and revisions.
  */
 export async function userCanManageCastingContinuity(
   pool: QueryablePool,
   projectId: string,
   userId: string | null | undefined,
 ): Promise<boolean> {
-  if (!projectId || !userId) return false;
-  try {
-    const result = await pool.query(
-      `SELECT
-         EXISTS (
-           SELECT 1 FROM casting_projects cp WHERE cp.id = $1
-         ) AS project_exists,
-         EXISTS (
-           SELECT 1
-             FROM casting_projects cp
-             LEFT JOIN casting_user_roles cur
-               ON cur.project_id = cp.id
-              AND cur.user_id = $2
-              AND cur.deactivated_at IS NULL
-              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
-            WHERE cp.id = $1
-              AND (
-                cp.created_by = $2
-                OR (
-                  cur.user_id IS NOT NULL
-                  AND (
-                    cur.role = 'script_supervisor'
-                    OR cur.permissions -> 'canManageContinuity' = 'true'::jsonb
-                  )
-                )
-              )
-         ) AS can_manage_continuity`,
-      [projectId, userId],
-    );
-    const status = result.rows[0];
-    if (status?.project_exists === true) {
-      return status.can_manage_continuity === true;
-    }
-  } catch {
-    // Legacy-only installs remain owner-only.
-  }
-  return userOwnsCastingProject(pool, projectId, userId);
+  const access = await resolveCastingProjectAccess(pool, projectId, userId);
+  return access.grants.canManageContinuity;
 }
 
 /**
- * Directors and ADs may add scoped comments without gaining write access to
- * the canonical take log. Producers can comment and consume reports.
+ * True when the user may comment on the continuity lane. Commenting is broader
+ * than managing: directors and ADs discuss continuity without owning it.
  */
 export async function userCanCommentCastingContinuity(
   pool: QueryablePool,
   projectId: string,
   userId: string | null | undefined,
 ): Promise<boolean> {
-  if (!projectId || !userId) return false;
-  try {
-    const result = await pool.query(
-      `SELECT
-         EXISTS (
-           SELECT 1 FROM casting_projects cp WHERE cp.id = $1
-         ) AS project_exists,
-         EXISTS (
-           SELECT 1
-             FROM casting_projects cp
-             LEFT JOIN casting_user_roles cur
-               ON cur.project_id = cp.id
-              AND cur.user_id = $2
-              AND cur.deactivated_at IS NULL
-              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
-            WHERE cp.id = $1
-              AND (
-                cp.created_by = $2
-                OR (
-                  cur.user_id IS NOT NULL
-                  AND (
-                    cur.role IN (
-                      'script_supervisor',
-                      'director',
-                      'producer',
-                      'first_ad',
-                      'first_assistant_director',
-                      '1st_ad',
-                      'second_ad',
-                      'second_assistant_director',
-                      '2nd_ad'
-                    )
-                    OR cur.permissions -> 'canManageContinuity' = 'true'::jsonb
-                    OR cur.permissions -> 'canComment' = 'true'::jsonb
-                  )
-                )
-              )
-         ) AS can_comment_continuity`,
-      [projectId, userId],
-    );
-    const status = result.rows[0];
-    if (status?.project_exists === true) {
-      return status.can_comment_continuity === true;
-    }
-  } catch {
-    // Legacy-only installs remain owner-only.
-  }
-  return userOwnsCastingProject(pool, projectId, userId);
+  const access = await resolveCastingProjectAccess(pool, projectId, userId);
+  return access.grants.canCommentContinuity;
 }
 
 /** Returns the owning user id for a casting project, or null if unknown. */

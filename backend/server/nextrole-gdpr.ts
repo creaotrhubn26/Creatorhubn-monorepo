@@ -101,7 +101,7 @@ export function setupNextRoleGdprRoutes(deps: NextRoleGdprDeps): void {
           [session.userId],
         ),
         pool.query(
-          `SELECT * FROM cover_letters WHERE user_id = $1 ORDER BY created_at DESC`,
+          `SELECT * FROM resume_cover_letters WHERE user_id = $1 ORDER BY created_at DESC`,
           [session.userId],
         ),
         pool.query(
@@ -258,7 +258,7 @@ export function setupNextRoleGdprRoutes(deps: NextRoleGdprDeps): void {
       }>(
         `SELECT
            (SELECT COUNT(*) FROM resumes WHERE user_id = $1)::text AS cvs,
-           (SELECT COUNT(*) FROM cover_letters WHERE user_id = $1)::text AS cover_letters,
+           (SELECT COUNT(*) FROM resume_cover_letters WHERE user_id = $1)::text AS cover_letters,
            (SELECT COUNT(*) FROM job_applications WHERE user_id = $1)::text AS apps,
            (SELECT COUNT(*) FROM job_application_milestones WHERE user_id = $1)::text AS milestones,
            (SELECT COUNT(*) FROM interview_sessions WHERE user_id = $1)::text AS sessions,
@@ -317,7 +317,7 @@ export function setupNextRoleGdprRoutes(deps: NextRoleGdprDeps): void {
         [session.userId],
       );
       await client.query(
-        `DELETE FROM cover_letters WHERE user_id = $1`,
+        `DELETE FROM resume_cover_letters WHERE user_id = $1`,
         [session.userId],
       );
       // Resume children (skills, experiences, education, etc) bør ha

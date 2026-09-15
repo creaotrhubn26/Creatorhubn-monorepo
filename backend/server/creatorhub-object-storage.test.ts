@@ -30,6 +30,14 @@ describe("CreatorHub object storage", () => {
     expect(objects.Resource).toContain(
       "arn:aws:s3:::creatorhubn-prod-745600963362-eu-north-1/organizations/*",
     );
+    const applicationReleases = policy.Statement.find(
+      (statement: any) => statement.Sid === "CreatorHubApplicationReleaseReadOnly",
+    );
+    expect(applicationReleases.Action).toEqual(["s3:GetObject", "s3:GetObjectVersion"]);
+    expect(applicationReleases.Resource).toBe(
+      "arn:aws:s3:::creatorhubn-prod-745600963362-eu-north-1/platform/releases/*",
+    );
+    expect(applicationReleases.Action).not.toContain("s3:PutObject");
     expect(cors.CORSRules[0]).toMatchObject({
       AllowedOrigins: ["*"],
       AllowedMethods: expect.arrayContaining(["GET", "HEAD", "PUT"]),

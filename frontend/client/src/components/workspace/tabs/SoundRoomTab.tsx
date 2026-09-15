@@ -26,9 +26,9 @@ import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag, wsAlert, wsConfirm } from '../ui';
 import { useWorkspaceUpdate } from '../WorkspaceContext';
+import { detectDesktopPlatform, detectDesktopPlatformSync, isRecommendedDesktopDownload } from '@/lib/desktopPlatform';
 
 const fmtTime = (s: number) => { const n = Math.max(0, Math.floor(Number(s) || 0)); const m = Math.floor(n / 60); const sec = n % 60; return `${m}:${String(sec).padStart(2, '0')}`; };
-const detectOS = (): 'Windows' | 'macOS' => { const p = ((navigator as any).userAgent + ' ' + (navigator as any).platform).toLowerCase(); if (p.includes('win')) return 'Windows'; return 'macOS'; };
 const fmtMB = (b: number) => b ? `${(b / 1048576).toFixed(1)} MB` : '';
 const VERSION_PREVIEW_LIMIT = 4;
 
@@ -52,6 +52,8 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [ptBusy, setPtBusy] = useState(false);
   const [ptDialog, setPtDialog] = useState(false);
   const [ptRelease, setPtRelease] = useState<any | null>(null);
+  const [ptReleaseError, setPtReleaseError] = useState<string | null>(null);
+  const [desktopPlatform, setDesktopPlatform] = useState(() => detectDesktopPlatformSync());
   const [openingEaseVerse, setOpeningEaseVerse] = useState(false);
   const [release, setRelease] = useState<any | null>(null);      // audio_releases (utgivelse/distribusjon)
   const [validation, setValidation] = useState<any | null>(null); // pre-flight-sjekkliste
@@ -65,7 +67,18 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     return () => window.clearInterval(timer);
   }, [ptCode?.expiresAt]);
 
-  const loadRelease = () => { apiRequest(`/api/protools/companion/release`).then((r: any) => setPtRelease(r || null)).catch(() => {}); };
+  useEffect(() => {
+    let active = true;
+    void detectDesktopPlatform().then((detected) => { if (active) setDesktopPlatform(detected); });
+    return () => { active = false; };
+  }, []);
+
+  const loadRelease = () => {
+    setPtReleaseError(null);
+    apiRequest(`/api/protools/companion/release`)
+      .then((r: any) => setPtRelease(r || null))
+      .catch(() => setPtReleaseError('Nedlastingen er midlertidig utilgjengelig. Prøv igjen om litt.'));
+  };
   const openPtDialog = () => { setPtDialog(true); if (!ptRelease) loadRelease(); if (!ptCode) makePtCode(); };
 
   // ── Utgivelse / distribusjons-prep (audio_releases) ──────────────────────────
@@ -672,22 +685,46 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
             {/* Last ned pr plattform */}
             <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.textDim, textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>Last ned</Typography>
+            {desktopPlatform.os === 'macOS' && desktopPlatform.architectureConfidence === 'unknown' && (
+              <Typography sx={{ fontSize: 11.5, color: ws.textDim, mb: 1.25, lineHeight: 1.45 }}>
+                Vi fant macOS, men nettleseren skjuler prosessortypen. Apple Silicon er valgt for de fleste nyere Mac-er; velg Intel hvis Mac-en din har Intel-prosessor.
+              </Typography>
+            )}
+            {!['macOS', 'Windows'].includes(desktopPlatform.os) && (
+              <Typography sx={{ fontSize: 11.5, color: ws.textDim, mb: 1.25, lineHeight: 1.45 }}>
+                Du bruker {desktopPlatform.os === 'Unknown' ? 'en ukjent plattform' : desktopPlatform.os}. Companion installeres på Mac- eller Windows-maskinen der Pro Tools kjører.
+              </Typography>
+            )}
+            {ptReleaseError && (
+              <Box sx={{ p: 1.25, mb: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                <Typography sx={{ fontSize: 12, color: ws.text }}>{ptReleaseError}</Typography>
+                <Button size="small" onClick={loadRelease} sx={{ mt: 0.5, px: 0, color: ws.accent, textTransform: 'none' }}>Prøv igjen</Button>
+              </Box>
+            )}
+            {!ptRelease && !ptReleaseError && (
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ py: 1.5, color: ws.textDim }}>
+                <CircularProgress size={16} color="inherit" />
+                <Typography sx={{ fontSize: 12 }}>Henter riktig installer…</Typography>
+              </Stack>
+            )}
             <Stack spacing={1} sx={{ mb: 2 }}>
-              {['macOS', 'Windows'].map((osName) => {
-                const dls = (ptRelease?.downloads || []).filter((d: any) => d.os === osName);
-                const isMine = detectOS() === osName;
+              {(desktopPlatform.os === 'Windows' ? ['Windows', 'macOS'] : ['macOS', 'Windows']).map((osName) => {
+                const dls = (ptRelease?.downloads || [])
+                  .filter((d: any) => d.os === osName)
+                  .sort((a: any, b: any) => Number(isRecommendedDesktopDownload(b, desktopPlatform)) - Number(isRecommendedDesktopDownload(a, desktopPlatform)));
                 if (!dls.length) {
+                  if (!ptRelease) return null;
                   return (
                     <Box key={osName} sx={{ p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px dashed ${ws.borderSoft}`, opacity: 0.75 }}>
-                      <Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>{osName} {osName === 'Windows' ? '🪟' : ''}<Box component="span" sx={{ color: ws.textFaint, fontWeight: 400 }}> — bygges, kommer snart</Box></Typography>
+                      <Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>{osName} {osName === 'Windows' ? '🪟' : ''}<Box component="span" sx={{ color: ws.textFaint, fontWeight: 400 }}> — ikke tilgjengelig i denne releasen</Box></Typography>
                     </Box>
                   );
                 }
                 return dls.map((d: any, i: number) => {
-                  const isRecommended = isMine && (osName !== 'Windows' || d.format === 'EXE');
+                  const isRecommended = isRecommendedDesktopDownload(d, desktopPlatform);
                   return (
                   <Button key={osName + i} variant={isRecommended ? 'contained' : 'outlined'} startIcon={<Download sx={{ fontSize: 17 }} />}
-                    href={d.url} target="_blank" rel="noopener" fullWidth
+                    href={d.url} fullWidth data-testid={`companion-download-${String(d.id || `${osName}-${i}`)}`}
                     sx={isRecommended
                       ? { bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, justifyContent: 'flex-start', '&:hover': { bgcolor: ws.accentHover } }
                       : { color: ws.text, borderColor: ws.borderSoft, textTransform: 'none', fontWeight: 600, justifyContent: 'flex-start' }}>
@@ -697,6 +734,12 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 });
               })}
             </Stack>
+            {ptRelease?.source === 'creatorhub-s3' && (
+              <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 2 }}>
+                <Check sx={{ fontSize: 14, color: '#34d399' }} />
+                <Typography sx={{ fontSize: 11, color: ws.textFaint }}>Signert og levert sikkert fra CreatorHub</Typography>
+              </Stack>
+            )}
             {(ptRelease?.downloads || []).some((d: any) => d.os === 'macOS' && d.signed === false) && (
               <Typography sx={{ fontSize: 11, color: ws.textFaint, mb: 2 }}>
                 macOS-bygget er ikke signert. Første gang: høyreklikk appen → <b>Åpne</b>.

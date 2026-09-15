@@ -43,7 +43,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/creaotrhubn26/Creatorhubn-monorepo/releases/latest/download/protools-companion-latest.json"
+        "https://www.creatorhubn.com/api/protools/companion/updater/latest"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUxMDJGRkUyQjJGREY3NUQKUldSZDkvMnk0djhDVWV1SmxuSFplRWlISjZybXFZY25QRVErQjQ3a0k5cnJNNHFhUFNGWkJjLzMK",
       "windows": {

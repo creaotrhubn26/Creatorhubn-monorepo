@@ -418,7 +418,15 @@ test('music producer sees EaseVerse marketing and can start the Pro Tools Compan
     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
   );
   await page.route('**/api/protools/companion/release', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '0.1.1', downloads: [], icon: '/protools-companion-icon.png' }) }),
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      version: '0.3.1', source: 'creatorhub-s3', icon: '/protools-companion-icon.png',
+      downloads: [
+        { id: 'mac-arm-dmg', os: 'macOS', arch: 'Apple Silicon', format: 'DMG', signed: true, sizeBytes: 1048576, url: '/api/protools/companion/download/0.3.1/mac-arm-dmg' },
+        { id: 'mac-intel-dmg', os: 'macOS', arch: 'Intel', format: 'DMG', signed: true, sizeBytes: 1048576, url: '/api/protools/companion/download/0.3.1/mac-intel-dmg' },
+        { id: 'windows-exe', os: 'Windows', arch: 'x64', format: 'EXE', signed: true, sizeBytes: 1048576, url: '/api/protools/companion/download/0.3.1/windows-exe' },
+        { id: 'windows-msi', os: 'Windows', arch: 'x64', format: 'MSI', signed: true, sizeBytes: 1048576, url: '/api/protools/companion/download/0.3.1/windows-msi' },
+      ],
+    }) }),
   );
   await page.route('**/api/protools/pair/start', (route) => {
     pairingPayload = route.request().postDataJSON();
@@ -446,6 +454,10 @@ test('music producer sees EaseVerse marketing and can start the Pro Tools Compan
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('Pro Tools Companion', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Signert og levert sikkert fra CreatorHub', { exact: true })).toBeVisible();
+  const companionLinks = await dialog.locator('[data-testid^="companion-download-"]').evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+  expect(companionLinks).toContain('/api/protools/companion/download/0.3.1/mac-arm-dmg');
+  expect(companionLinks.join(' ')).not.toContain('github.com');
   await expect(dialog.getByText('246810', { exact: true })).toBeVisible();
   await expect.poll(() => pairingPayload).toEqual({ workspaceProjectId: 'p1', audioRoomId: 'room-1', easeverseTrackId: 'track-1', projectName: 'Smoke Project p1' });
   const soundRoomHref = await page.locator('a[href*="/integrations/creatorhub"]').last().getAttribute('href');
