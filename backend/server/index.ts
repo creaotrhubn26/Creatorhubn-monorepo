@@ -494,6 +494,10 @@ import { configureAIUsageTracker } from "./ai-usage-tracker.js";
 import { registerDesignTokensRoutes } from "./design-tokens-routes.js";
 import { registerStripePriceDriftRoutes } from "./stripe-price-drift-routes.js";
 import { registerB2CompanyArchiveRoutes } from "./b2-company-archive-routes.js";
+import {
+  readRoleRoomContinuityS3Config,
+  roleRoomS3Client,
+} from "./casting-production-continuity-s3.js";
 import { registerCastingPosterArchiveRoutes } from "./role-room-casting-poster-archive-routes.js";
 import { registerB2ArchiveCronRoutes } from "./b2-archive-cron-routes.js";
 import { setupRoleNavConfigRoutes } from "./admin-room-role-nav-routes";
@@ -2681,6 +2685,26 @@ registerB2CompanyArchiveRoutes({
   requireAdminSession,
   routePrefix: "/api/role-room/admin/b2-archive",
   envPrefix: "B2_ROLE_ROOM_",
+});
+// The Role Room sin private AWS-bøtte — der produksjonsmedia (scout,
+// continuity) faktisk ligger etter flyttingen fra B2. Samme browser, egen
+// klient, og lesetilgang alene: appflytene eier livssyklusen til disse
+// objektene, ikke admin-browseren.
+registerB2CompanyArchiveRoutes({
+  app,
+  requireAdminSession,
+  routePrefix: "/api/role-room/admin/s3-archive",
+  readOnly: true,
+  resolveConfig: () => {
+    let config;
+    try {
+      config = readRoleRoomContinuityS3Config();
+    } catch {
+      return null;
+    }
+    if (!config) return null;
+    return { bucketName: config.bucket, client: roleRoomS3Client(config) };
+  },
 });
 registerCastingPosterArchiveRoutes({ app, requireAdminSession });
 registerB2ArchiveCronRoutes({ app, pool });
