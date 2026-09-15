@@ -178,6 +178,10 @@ export function InviteRequestForm({
   // NB: navngitt 'testerTeamSize' for å unngå kollisjon med eksisterende
   // 'teamSize' lenger ned (brukt for Enterprise-pricing-kalkulator).
   const [isTesterTeamApplication, setIsTesterTeamApplication] = useState<boolean>(false);
+  // Prototype-testere er ofte privatpersoner uten firma — skuespillere,
+  // frilansere, studenter. Org.nr-kravet stengte dem ute av skjemaet helt.
+  // Gjelder KUN tester-søknader; bedriftssøknader er uendret.
+  const [isPrivatePersonTester, setIsPrivatePersonTester] = useState<boolean>(false);
   const [testerTeamSize, setTesterTeamSize] = useState<number>(2);
 
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -288,6 +292,8 @@ export function InviteRequestForm({
   const organizationNumberIsValid = isValidNorwegianOrganizationNumber(
     normalizedOrganizationNumber,
   );
+  const isPrivatePersonTesterApplication =
+    formData.profession === 'prototype_tester' && isPrivatePersonTester;
 
   const submitMutation = useMutation({
     mutationFn: async (data: InviteRequestData) => {
@@ -486,6 +492,9 @@ export function InviteRequestForm({
       ...(formData.profession === 'prototype_tester'
         ? { testerProfession }
         : {}),
+      ...(isPrivatePersonTesterApplication
+        ? { applicantType: 'private', companyName: '', organizationNumber: '' }
+        : {}),
       selectedPlan: selectedPlan?.id || null,
       planName: selectedPlan?.name || null,
       planPrice: selectedPlan?.price || null,
@@ -538,6 +547,7 @@ export function InviteRequestForm({
       );
     }
     if (step === 1) {
+      if (isPrivatePersonTesterApplication) return true;
       return formData.companyName && organizationNumberIsValid;
     }
     if (isEnterprisePlan && step === 2) {
@@ -818,6 +828,48 @@ export function InviteRequestForm({
                         </Typography>
                       </FormControl>
 
+                      {/* Privatperson eller firma — org.nr er ikke relevant for
+                          en skuespiller eller frilanser uten ENK. */}
+                      <Box sx={{ mt: 2, p: 2, border: '1px dashed rgba(255,186,108,0.32)', borderRadius: '12px' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700, mb: 1, color: '#ffba6c' }}>
+                          Søker du som privatperson eller for et firma?
+                        </Typography>
+                        <Box
+                          component="label"
+                          sx={{ display: 'flex', gap: 1.5, alignItems: 'center', cursor: 'pointer', py: 0.5 }}
+                        >
+                          <input
+                            type="radio"
+                            name="tester-applicant-type"
+                            checked={!isPrivatePersonTester}
+                            onChange={() => setIsPrivatePersonTester(false)}
+                          />
+                          <Box>
+                            <Typography variant="body2">Firma</Typography>
+                            <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.6)' }}>
+                              Du oppgir organisasjonsnummer i neste steg.
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <Box
+                          component="label"
+                          sx={{ display: 'flex', gap: 1.5, alignItems: 'center', cursor: 'pointer', py: 0.5 }}
+                        >
+                          <input
+                            type="radio"
+                            name="tester-applicant-type"
+                            checked={isPrivatePersonTester}
+                            onChange={() => setIsPrivatePersonTester(true)}
+                          />
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="body2">Privatperson</Typography>
+                            <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.6)' }}>
+                              Du tester uten firma. Da hopper vi over firmasteget.
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Box>
+
                       {/* Slice 9X.56 — Team-valg */}
                       <Box sx={{ mt: 2, p: 2, border: '1px dashed rgba(255,186,108,0.32)', borderRadius: '12px' }}>
                         <Typography variant="body2" sx={{ fontWeight: 700, mb: 1, color: '#ffba6c' }}>
@@ -880,7 +932,19 @@ export function InviteRequestForm({
               )}
 
               {/* STEP 1: Company Information */}
-              {activeStep === 1 && (
+              {activeStep === 1 && isPrivatePersonTesterApplication && (
+                <Box>
+                  <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
+                    Firmainformasjon
+                  </Typography>
+                  <Alert severity="info">
+                    Du søker som privatperson, så vi trenger ikke firmanavn eller
+                    organisasjonsnummer. Gå videre til neste steg.
+                  </Alert>
+                </Box>
+              )}
+
+              {activeStep === 1 && !isPrivatePersonTesterApplication && (
                 <Box>
                   <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600}}>
                     Bedriftsinformasjon (obligatorisk)

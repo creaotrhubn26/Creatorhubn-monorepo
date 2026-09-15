@@ -173,12 +173,29 @@ final class DiscoveryRunCoordinator {
         hasCampaigns && !isBusy && !isStartingRun
     }
 
+    /// A profile bound to a registry this deployment cannot reach can never
+    /// start a run, so it is never the profile the workspace opens on. The
+    /// default still wins whenever it can run.
+    nonisolated static func openingProfile(
+        from profiles: [DiscoveryV2Profile]
+    ) -> DiscoveryV2Profile? {
+        let runnable = profiles.filter(\.isRunnable)
+        return runnable.first(where: \.isDefault)
+            ?? runnable.first
+            ?? profiles.first(where: \.isDefault)
+            ?? profiles.first
+    }
+
     nonisolated static func campaignProfiles(
         from profiles: [DiscoveryV2Profile]
     ) -> [DiscoveryV2Profile] {
         var observedIds: Set<String> = []
+        // A profile the server reports as blocked cannot run. Including it
+        // would fail that leg of the campaign after the user confirmed it.
         return profiles
-            .filter { $0.isActive && observedIds.insert($0.id).inserted }
+            .filter {
+                $0.isActive && $0.isRunnable && observedIds.insert($0.id).inserted
+            }
             .sorted { left, right in
                 if left.isDefault != right.isDefault { return left.isDefault }
                 return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
@@ -224,7 +241,23 @@ final class DiscoveryRunCoordinator {
             isStartingRun: isStartingRun)
     }
     var hasMoreCandidates: Bool { nextCursor != nil }
-    var canStart: Bool { preview != nil && !isBusy && networkMonitor.isOnline }
+    /// The server marks a profile as blocked when its registry is not
+    /// configured for this deployment. Say so before the user presses start,
+    /// instead of letting the run fail with a generic server error.
+    var startBlockedExplanation: String? {
+        guard brief.normalized.registrySource == "nhn_flr_public" else {
+            return nil
+        }
+        return profiles
+            .first { $0.brief.normalized.registrySource == "nhn_flr_public"
+                && $0.blockedExplanation != nil }?
+            .blockedExplanation
+    }
+
+    var canStart: Bool {
+        preview != nil && !isBusy && networkMonitor.isOnline
+            && startBlockedExplanation == nil
+    }
     var hasUnsavedProfileChanges: Bool {
         guard let selectedProfile else { return true }
         return brief.normalized != selectedProfile.brief.normalized
@@ -854,7 +887,7 @@ final class DiscoveryRunCoordinator {
               !committedProfiles.isEmpty
         else { return }
         profiles = committedProfiles
-        selectedProfile = committedProfiles.first(where: \.isDefault)
+        selectedProfile = Self.openingProfile(from: committedProfiles)
             ?? committedProfiles.first
         if let selectedProfile {
             brief = selectedProfile.brief
@@ -996,7 +1029,7 @@ final class DiscoveryRunCoordinator {
     ) -> [DiscoveryV2Profile] {
         preset.drafts(copying: baseBrief).compactMap { draft in
             profiles.first(where: {
-                $0.isActive && Self.profile(draft, matches: $0)
+                $0.isActive && $0.isRunnable && Self.profile(draft, matches: $0)
             })
         }
     }
@@ -1545,7 +1578,7 @@ final class DiscoveryRunCoordinator {
             guard isCurrent(binding) else { return }
             profiles.removeAll { $0.id == profile.id }
             if selectedProfile?.id == profile.id {
-                selectedProfile = profiles.first(where: \.isDefault) ?? profiles.first
+                selectedProfile = Self.openingProfile(from: profiles)
                 if let selectedProfile {
                     brief = selectedProfile.brief
                     placesDetailsEnabled = selectedProfile.placesDetailsEnabled == true
@@ -1708,7 +1741,7 @@ final class DiscoveryRunCoordinator {
                     placesDetailsEnabled = refreshedSelection.placesDetailsEnabled == true
                 }
             } else if useDefaultWhenDraftIsEmpty {
-                selectedProfile = profiles.first(where: \.isDefault) ?? profiles.first
+                selectedProfile = Self.openingProfile(from: profiles)
                 placesDetailsEnabled = selectedProfile?.placesDetailsEnabled == true
             } else {
                 // Keep the restored/ad-hoc draft even if no server profile is selected.

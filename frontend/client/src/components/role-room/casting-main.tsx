@@ -41,6 +41,7 @@ import TalentsApp, {
   parseTalentsAppPage,
   isPartnerInviteAcceptPath, PartnerInviteAcceptPage,
   isTalentProposalAcceptPath, TalentProposalAcceptPage,
+  isTalentSignupPath, TalentSignupPage,
 } from './talents-app/TalentsApp';
 import CompetitorComparisonPage, { parseCompetitorFromPath } from './components/CompetitorComparisonPage';
 import StudentSEOPage, { parseStudentPageFromPath } from './components/StudentSEOPage';
@@ -806,7 +807,16 @@ function CastingStandaloneRuntimeContent() {
   const talentsAppPage = useMemo(() => parseTalentsAppPage(), []);
   const isInviteAcceptPath = useMemo(() => isPartnerInviteAcceptPath(), []);
   const isProposalAcceptPath = useMemo(() => isTalentProposalAcceptPath(), []);
-  const shouldRenderTalentsApp = !guestMode && talentsAppPage !== null && !isInviteAcceptPath && !isProposalAcceptPath;
+  const isSignupPath = useMemo(() => isTalentSignupPath(), []);
+  // Talents-appen er hjemmet for et innlogget talent: både /talents-stiene og
+  // rot-flaten. Talentportalen (?portal=talent / /talentportal) er prosjekt-
+  // spesifikk og sjekkes først, slik at invitasjonslenker som allerede er
+  // sendt ut fortsetter å åpne kandidatflaten.
+  const shouldRenderTalentsApp = !guestMode
+    && !isInviteAcceptPath
+    && !isProposalAcceptPath
+    && !isSignupPath
+    && (talentsAppPage !== null || (normalizedRole === 'talent' && !talentPortalIntent));
   const shouldRenderAgencyPortal = !guestMode && !shouldRenderTalentsApp && normalizedRole === 'agency';
   const shouldRenderTalentPortal = !guestMode && !shouldRenderTalentsApp && !shouldRenderAgencyPortal && (
     Boolean(talentPortalIntent)
@@ -856,7 +866,9 @@ function CastingStandaloneRuntimeContent() {
                 : 'Laster Role Room…'}
           </Typography>
         </Box>
-      ) : isInviteAcceptPath ? (
+      ) : isSignupPath ? (
+          <TalentSignupPage />
+        ) : isInviteAcceptPath ? (
           <PartnerInviteAcceptPage />
         ) : isProposalAcceptPath ? (
           <TalentProposalAcceptPage />

@@ -23,6 +23,7 @@ import AuditPage from './pages/AuditPage';
 import SettingsPage from './pages/SettingsPage';
 import TalentRegistryPage from './pages/TalentRegistryPage';
 import TalentProposalAcceptPage from './pages/TalentProposalAcceptPage';
+import TalentSignupPage from './pages/TalentSignupPage';
 import AgencyPartnershipsPage from './pages/AgencyPartnershipsPage';
 import SelfTapeStudioPage from './pages/SelfTapeStudioPage';
 import { palette } from './theme';
@@ -68,6 +69,8 @@ export function parseTalentsAppPage(): TalentsAppPage | null {
   const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
   if (!path.startsWith('/talents')) return null;
   const segment = path.substring('/talents'.length).replace(/^\//, '');
+  // Registrering og accept-sidene rendres uten shell og er ikke app-sider.
+  if (segment === 'registrer' || segment === 'signup') return null;
   return ROUTE_TO_PAGE[segment] ?? 'dashboard';
 }
 
@@ -78,6 +81,13 @@ export function isPartnerInviteAcceptPath(): boolean {
   return path === '/talents/partner-invite';
 }
 
+/** Åpen selvregistrering — eneste siden her som vises UTEN innlogging. */
+export function isTalentSignupPath(): boolean {
+  if (typeof window === 'undefined') return false;
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  return path === '/talents/registrer' || path === '/talents/signup';
+}
+
 /** Reverse-consent: agency foreslår talent → talent åpner lenke. */
 export function isTalentProposalAcceptPath(): boolean {
   if (typeof window === 'undefined') return false;
@@ -85,7 +95,7 @@ export function isTalentProposalAcceptPath(): boolean {
   return path === '/talents/registry-invite';
 }
 
-export { PartnerInviteAcceptPage, TalentProposalAcceptPage };
+export { PartnerInviteAcceptPage, TalentProposalAcceptPage, TalentSignupPage };
 
 interface TalentsAppProps {
   initialPage?: TalentsAppPage;

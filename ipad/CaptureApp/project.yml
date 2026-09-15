@@ -31,8 +31,10 @@ settings:
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     # Apple Generic Versioning — kreves av fastlane increment_build_number
     VERSIONING_SYSTEM: apple-generic
+    # Settes per utgivelse før `xcodegen generate`; TestFlight krever at
+    # buildnummeret stiger innenfor samme MARKETING_VERSION-tog.
     CURRENT_PROJECT_VERSION: "1"
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "1.0"
 
 targets:
   CaptureApp:
@@ -51,6 +53,12 @@ targets:
       path: CaptureApp/Generated/Info.plist
       properties:
         CFBundleDisplayName: CreatorHub One
+        # XcodeGen skriver ellers sine egne defaults (1.0 / 1) og ignorerer
+        # MARKETING_VERSION/CURRENT_PROJECT_VERSION. Da havner hvert TestFlight-
+        # bygg på «1.0 (1)» uansett hva man bumper. Koble nøklene til
+        # build-settings så bumpen faktisk får effekt.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # Appen bruker kun standard HTTPS-kryptering (eksemptert). Setter dette
         # så TestFlight-bygg ikke blokkeres på «Missing Compliance» — uten det
         # er bygget VALID men «not in internally testable state» til noen svarer
@@ -143,6 +151,9 @@ targets:
       path: CaptureWidgets/Generated/Info.plist
       properties:
         CFBundleDisplayName: CreatorHub Widgets
+        # Extension må ha samme versjon som app-target-et.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:

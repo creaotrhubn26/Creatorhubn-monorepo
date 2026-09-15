@@ -20,6 +20,7 @@
  *   - "login_2fa_email"           — hvis bruker har valgt e-post som 2FA
  *   - "account_delete"            — step-up ved sletting
  *   - "prototype_tester_sign"     — kontroll av invitert e-post før signering
+ *   - "talent_signup"              — verifiser e-post før talent-konto opprettes
  */
 
 import bcrypt from "bcrypt";
@@ -40,7 +41,9 @@ export type VerificationPurpose =
   // Step-up auth ved reveal av vault-secrets (fallback hvis bruker
   // ikke har TOTP aktivert).
   | "vault_reveal"
-  | "prototype_tester_sign";
+  | "prototype_tester_sign"
+  // Åpen selvregistrering for skuespillere i The Role Room Talents.
+  | "talent_signup";
 
 let schemaReady = false;
 
@@ -95,6 +98,7 @@ function purposeSubject(purpose: VerificationPurpose): string {
     case "account_delete": return "Bekreftelseskode — slett konto";
     case "vault_reveal": return "Bekreftelseskode — vis vault-passord";
     case "prototype_tester_sign": return "Bekreft signeringen i CreatorHub";
+    case "talent_signup": return "Bekreftelseskode — ny skuespillerprofil";
   }
 }
 
@@ -106,6 +110,7 @@ function purposeHumanLabel(purpose: VerificationPurpose): string {
     case "account_delete": return "for å bekrefte sletting av kontoen";
     case "vault_reveal": return "for å se et passord fra vault-en";
     case "prototype_tester_sign": return "for å signere prototype-testeravtalene";
+    case "talent_signup": return "for å bekrefte e-posten din før skuespillerprofilen opprettes";
   }
 }
 
@@ -230,17 +235,6 @@ export async function sendVerificationCode(
     return { ok: false, expiresAt: expiresAt.toISOString(), reason: "send_failed" };
   }
 
-  // Send e-post
-  const cfg = readGmailConfig();
-  if (!cfg) {
-    // Dev-mode: returner koden så utvikler kan teste uten SMTP
-    if (process.env.NODE_ENV !== "production") {
-      console.warn(`[email-verification] DEV MODE — kode for ${email} (${input.purpose}): ${code}`);
-      return { ok: true, expiresAt: expiresAt.toISOString(), devCode: code, reason: "email_not_configured" };
-    }
-    return { ok: false, expiresAt: expiresAt.toISOString(), reason: "email_not_configured" };
-  }
-
   const subject = purposeSubject(input.purpose);
   const humanContext = purposeHumanLabel(input.purpose);
   const text = [
@@ -268,6 +262,43 @@ export async function sendVerificationCode(
       <p style="font-size:12px;color:#666;">Koden er gyldig i ${CODE_TTL_MINUTES} minutter. Hvis du ikke ba om denne koden, kan du trygt ignorere e-posten.</p>
       <p>Mvh,<br>Creatorhub-teamet</p>
     </div>`;
+
+  // Kanonisk vei først: transactional-email-service (Resend → SMTP-fallback →
+  // logging i transactional_email_log). Den gamle direkte Gmail-veien under
+  // sto igjen som eneste transport her, og da Gmail-passordet ble avvist
+  // (535-5.7.8 BadCredentials) kunne INGEN verifiseringskode leveres i
+  // produksjon — klientportal-registrering, e-post-2FA, vault-reveal,
+  // testersignering og talent-registrering stoppet alle på samme feil.
+  try {
+    const { sendTransactionalEmail } = await import("./transactional-email-service.js");
+    const delivery = await sendTransactionalEmail({
+      to: email,
+      subject,
+      html,
+      text,
+      fromLabel: "CreatorHub",
+      kind: `verification_${input.purpose}`,
+      pool,
+    });
+    if (delivery.sent) {
+      return { ok: true, expiresAt: expiresAt.toISOString() };
+    }
+    console.warn(
+      `[email-verification] transactional-send ikke levert (${delivery.reason ?? "ukjent"}) — prøver Gmail-fallback`,
+    );
+  } catch (error) {
+    console.error("[email-verification] transactional-send feilet", error);
+  }
+
+  const cfg = readGmailConfig();
+  if (!cfg) {
+    // Dev-mode: returner koden så utvikler kan teste uten SMTP
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(`[email-verification] DEV MODE — kode for ${email} (${input.purpose}): ${code}`);
+      return { ok: true, expiresAt: expiresAt.toISOString(), devCode: code, reason: "email_not_configured" };
+    }
+    return { ok: false, expiresAt: expiresAt.toISOString(), reason: "email_not_configured" };
+  }
 
   try {
     const transporter = nodemailer.createTransport({

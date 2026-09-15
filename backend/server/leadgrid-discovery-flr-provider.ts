@@ -161,30 +161,47 @@ function normalizedPrivateKey(value: string): string {
   return value.includes("\\n") ? value.replaceAll("\\n", "\n") : value;
 }
 
+/**
+ * The public Fastlegeregister needs an authorized Maskinporten client. Without
+ * one the provider is fail-closed, so product surfaces must be able to ask
+ * whether a run can even start instead of only learning it from a failed run.
+ */
+export function isDiscoveryFlrConfigured(
+  env: FlrEnvironment = process.env as FlrEnvironment,
+): boolean {
+  return (
+    env.LEADGRID_DISCOVERY_FLR_ENABLED === "true" &&
+    Boolean(env.LEADGRID_FLR_MASKINPORTEN_CLIENT_ID?.trim()) &&
+    Boolean(env.LEADGRID_FLR_MASKINPORTEN_KEY_ID?.trim()) &&
+    Boolean(
+      normalizedPrivateKey(
+        env.LEADGRID_FLR_MASKINPORTEN_PRIVATE_KEY ?? "",
+      ).trim(),
+    )
+  );
+}
+
 function environmentConfig(env: FlrEnvironment): {
   endpoint: (typeof FLR_ENDPOINTS)[keyof typeof FLR_ENDPOINTS];
   clientId: string;
   keyId: string;
   privateKey: string;
 } {
-  if (env.LEADGRID_DISCOVERY_FLR_ENABLED !== "true") {
+  if (!isDiscoveryFlrConfigured(env)) {
     throw new DiscoveryRegistryError("upstream_unavailable", {
       retryable: false,
     });
   }
   const environment =
     env.LEADGRID_FLR_ENVIRONMENT === "production" ? "production" : "test";
-  const clientId = env.LEADGRID_FLR_MASKINPORTEN_CLIENT_ID?.trim() ?? "";
-  const keyId = env.LEADGRID_FLR_MASKINPORTEN_KEY_ID?.trim() ?? "";
-  const privateKey = normalizedPrivateKey(
-    env.LEADGRID_FLR_MASKINPORTEN_PRIVATE_KEY ?? "",
-  ).trim();
-  if (!clientId || !keyId || !privateKey) {
-    throw new DiscoveryRegistryError("upstream_unavailable", {
-      retryable: false,
-    });
-  }
-  return { endpoint: FLR_ENDPOINTS[environment], clientId, keyId, privateKey };
+  return {
+    endpoint: FLR_ENDPOINTS[environment],
+    clientId: env.LEADGRID_FLR_MASKINPORTEN_CLIENT_ID!.trim(),
+    keyId: env.LEADGRID_FLR_MASKINPORTEN_KEY_ID!.trim(),
+    privateKey: normalizedPrivateKey(
+      env.LEADGRID_FLR_MASKINPORTEN_PRIVATE_KEY ?? "",
+    ).trim(),
+  };
 }
 
 function activePeriod(

@@ -18,6 +18,10 @@ struct DiscoveryProfileManagerView: View {
     @State private var showingRegionPreset = false
     @State private var showingCampaignStartConfirmation = false
     @State private var pendingCampaignCancellation: DiscoveryV2CampaignRun?
+    /// Profile cards carry names that must stay distinguishable. A fixed width
+    /// collapses every one of them to "Fas…", "Leg…", "Priv…" at accessibility
+    /// text sizes, so the card grows with the text instead.
+    @ScaledMetric(relativeTo: .subheadline) private var profileCardWidth: CGFloat = 230
 
     private var isLockedByOpenRun: Bool {
         coordinator.run != nil
@@ -261,8 +265,12 @@ struct DiscoveryProfileManagerView: View {
                 }
                 .accessibilityElement(children: .combine)
             } else {
+                // Telling a user to activate a profile that is already active
+                // sends them looking for a switch that would not help.
                 Label(
-                    "Aktiver minst én Discovery-profil før kampanjen kan startes.",
+                    coordinator.profiles.contains { $0.isActive && !$0.isRunnable }
+                        ? "Ingen av profilene kan kjøre ennå. Datakilden de bruker er ikke satt opp for denne installasjonen."
+                        : "Aktiver minst én Discovery-profil før kampanjen kan startes.",
                     systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(LeadgridDiscoveryTheme.warning)
@@ -509,6 +517,17 @@ struct DiscoveryProfileManagerView: View {
                             .font(.system(size: 8, weight: .bold))
                             .foregroundStyle(LeadgridDiscoveryTheme.warning)
                     }
+                    if let badge = profile.blockedBadgeTitle {
+                        Text(badge.uppercased())
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                    }
+                }
+                if let pausedExplanation = profile.pausedExplanation {
+                    Text(pausedExplanation)
+                        .font(.caption2)
+                        .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                        .lineLimit(2)
                 }
                 Label(profile.brief.areaSummary, systemImage: "mappin.and.ellipse")
                     .font(.caption)
@@ -526,7 +545,7 @@ struct DiscoveryProfileManagerView: View {
                     .lineLimit(2)
             }
             .foregroundStyle(.primary)
-            .frame(width: 230, alignment: .leading)
+            .frame(width: min(profileCardWidth, 460), alignment: .leading)
             .padding(12)
             .background(
                 selected ? LeadgridDiscoveryTheme.accent.opacity(0.14) : Color.white.opacity(0.035),
@@ -534,9 +553,14 @@ struct DiscoveryProfileManagerView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(selected ? LeadgridDiscoveryTheme.accentSoft.opacity(0.7) : LeadgridDiscoveryTheme.stroke))
+            // A profile whose registry this deployment cannot reach reads as
+            // dimmed and inert. It comes back on its own once the registry is
+            // configured, so it stays listed instead of disappearing.
+            .opacity(profile.isRunnable ? 1 : 0.45)
         }
         .buttonStyle(.plain)
-        .disabled(isLockedByOpenRun)
+        .disabled(isLockedByOpenRun || !profile.isRunnable)
+        .accessibilityHint(profile.blockedExplanation ?? "")
         .contextMenu {
             if !profile.isActive {
                 Button {

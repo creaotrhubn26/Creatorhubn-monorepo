@@ -71,6 +71,180 @@ final class DiscoveryV2Tests: XCTestCase {
         XCTAssertEqual(decoded.registrySource, "nhn_flr_public")
     }
 
+    func testProfileDecodesBlockedRegistryReasonAndExplainsIt() throws {
+        let json = Data("""
+        {
+          "id": "profile-1",
+          "name": "Fastlegekontor – Norge",
+          "is_default": false,
+          "version": 1,
+          "template_key": "medside.gp_offices",
+          "blocked_reason": "flr_not_configured",
+          "brief": {
+            "registry_source": "nhn_flr_public",
+            "industry_queries": ["86.210"],
+            "country_code": "NO",
+            "target_count": 60,
+            "enrichment_count": 30,
+            "minimum_fit_score": 70
+          }
+        }
+        """.utf8)
+
+        let profile = try JSONDecoder().decode(DiscoveryV2Profile.self, from: json)
+
+        XCTAssertEqual(profile.blockedReason, "flr_not_configured")
+        XCTAssertFalse(profile.isRunnable)
+        XCTAssertEqual(profile.blockedBadgeTitle, "Krever FLR-oppsett")
+        XCTAssertNotNil(profile.blockedExplanation)
+    }
+
+    func testProfileWithoutBlockedReasonStaysRunnable() throws {
+        let json = Data("""
+        {
+          "id": "profile-2",
+          "name": "Private spesialistklinikker – Norge",
+          "is_default": true,
+          "version": 1,
+          "template_key": "medside.medical_specialists",
+          "brief": {
+            "registry_source": "brreg_open_data",
+            "industry_queries": ["86.221"],
+            "country_code": "NO",
+            "target_count": 60,
+            "enrichment_count": 30,
+            "minimum_fit_score": 70
+          }
+        }
+        """.utf8)
+
+        let profile = try JSONDecoder().decode(DiscoveryV2Profile.self, from: json)
+
+        XCTAssertNil(profile.blockedReason)
+        XCTAssertTrue(profile.isRunnable)
+        XCTAssertNil(profile.blockedBadgeTitle)
+        XCTAssertNil(profile.blockedExplanation)
+    }
+
+    func testCampaignSkipsProfilesTheServerReportsAsBlocked() throws {
+        func profile(
+            _ id: String,
+            _ name: String,
+            blocked: String? = nil,
+            isDefault: Bool = false
+        ) throws -> DiscoveryV2Profile {
+            let blockedField = blocked.map { "\"blocked_reason\": \"\($0)\"," } ?? ""
+            return try JSONDecoder().decode(
+                DiscoveryV2Profile.self,
+                from: Data("""
+                {
+                  "id": "\(id)",
+                  "name": "\(name)",
+                  "is_default": \(isDefault),
+                  "version": 1,
+                  "status": "active",
+                  \(blockedField)
+                  "brief": {
+                    "registry_source": "brreg_open_data",
+                    "industry_queries": ["86.210"],
+                    "country_code": "NO",
+                    "target_count": 60,
+                    "enrichment_count": 30,
+                    "minimum_fit_score": 70
+                  }
+                }
+                """.utf8))
+        }
+
+        let profiles = [
+            try profile("1", "Fastlegekontor – Norge", blocked: "flr_not_configured"),
+            try profile("2", "Legekontor (Enhetsregisteret) – Norge", isDefault: true),
+            try profile("3", "Psykolog- og psykoterapitjenester – Norge"),
+        ]
+
+        let selected = DiscoveryRunCoordinator.campaignProfiles(from: profiles)
+
+        XCTAssertEqual(selected.map(\.id), ["2", "3"])
+        XCTAssertFalse(selected.contains { $0.blockedReason != nil })
+    }
+
+    func testWorkspaceNeverOpensOnABlockedProfile() throws {
+        func decode(_ json: String) throws -> DiscoveryV2Profile {
+            try JSONDecoder().decode(DiscoveryV2Profile.self, from: Data(json.utf8))
+        }
+        let briefJSON = """
+        "brief": {
+          "registry_source": "brreg_open_data",
+          "industry_queries": ["86.210"],
+          "country_code": "NO",
+          "target_count": 60,
+          "enrichment_count": 30,
+          "minimum_fit_score": 70
+        }
+        """
+        let blockedDefault = try decode("""
+        {"id":"1","name":"Fastlegekontor – Norge","is_default":true,"version":1,
+         "status":"active","blocked_reason":"flr_not_configured",\(briefJSON)}
+        """)
+        let runnable = try decode("""
+        {"id":"2","name":"Legekontor (Enhetsregisteret) – Norge","is_default":false,
+         "version":1,"status":"active",\(briefJSON)}
+        """)
+
+        // A blocked default must not become the profile the workspace opens on.
+        XCTAssertEqual(
+            DiscoveryRunCoordinator.openingProfile(from: [blockedDefault, runnable])?.id,
+            "2")
+        // A runnable default still wins.
+        let runnableDefault = try decode("""
+        {"id":"3","name":"Psykologtjenester – Norge","is_default":true,"version":1,
+         "status":"active",\(briefJSON)}
+        """)
+        XCTAssertEqual(
+            DiscoveryRunCoordinator.openingProfile(from: [runnable, runnableDefault])?.id,
+            "3")
+        // When nothing can run, the project still opens on something.
+        XCTAssertEqual(
+            DiscoveryRunCoordinator.openingProfile(from: [blockedDefault])?.id, "1")
+        XCTAssertNil(DiscoveryRunCoordinator.openingProfile(from: []))
+    }
+
+    func testAutomaticPauseIsDistinguishedFromAUserPause() throws {
+        func decode(_ extra: String) throws -> DiscoveryV2Profile {
+            try JSONDecoder().decode(DiscoveryV2Profile.self, from: Data("""
+            {
+              "id": "1",
+              "name": "Legekontor (Enhetsregisteret) – Norge",
+              "is_default": false,
+              "version": 1,
+              "status": "paused",
+              \(extra)
+              "brief": {
+                "registry_source": "brreg_open_data",
+                "industry_queries": ["86.210"],
+                "country_code": "NO",
+                "target_count": 60,
+                "enrichment_count": 30,
+                "minimum_fit_score": 70
+              }
+            }
+            """.utf8))
+        }
+
+        let automatic = try decode("\"paused_reason\": \"superseded_by_flr\",")
+        XCTAssertEqual(automatic.pausedReason, "superseded_by_flr")
+        XCTAssertEqual(
+            automatic.pausedExplanation,
+            "Pauset automatisk — Fastlegeregisteret dekker disse nå.")
+        // A pause the user chose stays silent about a reason it does not know.
+        let manual = try decode("")
+        XCTAssertNil(manual.pausedReason)
+        XCTAssertNil(manual.pausedExplanation)
+        // An automatic pause is still just a pause: reactivatable, not blocked.
+        XCTAssertTrue(automatic.isRunnable)
+        XCTAssertFalse(automatic.isActive)
+    }
+
     func testBriefRequestPreservesZeroCoordinatesAndSnakeCase() throws {
         let brief = DiscoveryV2Brief(
             industryQueries: ["hotell"],
