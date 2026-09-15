@@ -19,7 +19,10 @@ import {
 const canonicalMember = (
   role: string | null,
   permissions: Record<string, unknown> | null = null,
-  { isOwner = false }: { isOwner?: boolean } = {},
+  { isOwner = false, additionalRoles = null }: {
+    isOwner?: boolean;
+    additionalRoles?: string[] | null;
+  } = {},
 ) => vi.fn(async (text: string) => {
   if (text.includes("FROM casting_projects cp")) {
     return {
@@ -28,6 +31,7 @@ const canonicalMember = (
         is_owner: isOwner,
         member_role: role,
         member_permissions: permissions,
+        member_additional_roles: additionalRoles,
       }],
     };
   }
@@ -319,5 +323,69 @@ describe("continuity ownership", () => {
     await expect(userCanCommentCastingContinuity(
       { query: canonicalMember("grip") }, "project-1", "grip-1",
     )).resolves.toBe(false);
+  });
+});
+
+describe("several project roles on one membership", () => {
+  it("unions grants across the primary and additional roles", async () => {
+    const query = canonicalMember("director", null, { additionalRoles: ["producer"] });
+
+    const access = await resolveCastingProjectAccess({ query }, "project-1", "user-1");
+
+    expect(access.role).toBe("director");
+    expect(access.roles).toEqual(["director", "producer"]);
+    // director alone never carried the management lane; producer does.
+    expect(access.grants.canManageProduction).toBe(true);
+    expect(access.grants.canEditProduction).toBe(true);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a single-role member unchanged", async () => {
+    const access = await resolveCastingProjectAccess(
+      { query: canonicalMember("director") }, "project-1", "user-1",
+    );
+
+    expect(access.roles).toEqual(["director"]);
+    expect(access.grants.canManageProduction).toBe(false);
+  });
+
+  it("normalises and dedupes stored role values", async () => {
+    const access = await resolveCastingProjectAccess(
+      { query: canonicalMember("director", null, {
+        additionalRoles: ["  PRODUCER ", "director", "", "location_scout"],
+      }) },
+      "project-1",
+      "user-1",
+    );
+
+    expect(access.roles).toEqual(["director", "producer", "location_scout"]);
+  });
+
+  it("ignores additional roles when the membership itself is gone", async () => {
+    const access = await resolveCastingProjectAccess(
+      { query: canonicalMember(null, null, { additionalRoles: ["producer"] }) },
+      "project-1",
+      "user-1",
+    );
+
+    expect(access.isMember).toBe(false);
+    expect(access.canAccess).toBe(false);
+    expect(access.grants.canManageProduction).toBe(false);
+  });
+
+  it("survives a database that has not run the migration yet", async () => {
+    const query = vi.fn(async () => ({
+      rows: [{
+        project_exists: true,
+        is_owner: false,
+        member_role: "producer",
+        member_permissions: null,
+      }],
+    }));
+
+    const access = await resolveCastingProjectAccess({ query }, "project-1", "user-1");
+
+    expect(access.roles).toEqual(["producer"]);
+    expect(access.grants.canManageProduction).toBe(true);
   });
 });

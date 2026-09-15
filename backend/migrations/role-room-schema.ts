@@ -318,6 +318,8 @@ export const castingUserRoles = pgTable('casting_user_roles', {
   userId: varchar('user_id', { length: 255 }).notNull(),
   email: varchar('email', { length: 255 }),
   role: varchar('role', { length: 50 }).notNull(),
+  /** Extra crew roles the same member holds on this project. `role` stays primary. */
+  additionalRoles: text('additional_roles').array().notNull().default([]),
   permissions: jsonb('permissions').default({}),
   addedBy: varchar('added_by', { length: 255 }),
   expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }),
