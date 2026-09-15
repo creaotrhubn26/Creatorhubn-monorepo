@@ -325,6 +325,77 @@ function mapPropRow(row: Record<string, any>) {
   };
 }
 
+/**
+ * Optimistic-concurrency lanes on the production surface.
+ *
+ * Every lane already keeps its own monotonic version, actor and timestamp, but
+ * each 409 named them differently and wrapped the current state under its own
+ * key — so a client had to know which lane it was talking to before it could
+ * read the conflict. The lane table below is the one place that mapping lives.
+ */
+const CONFLICT_LANES = {
+  location_operations: {
+    payloadKey: 'locationOperation',
+    versionField: 'version',
+    updatedByField: 'updatedBy',
+    updatedAtField: 'updatedAt',
+  },
+  production_management: {
+    payloadKey: 'productionDay',
+    versionField: 'managementVersion',
+    updatedByField: 'managementUpdatedBy',
+    updatedAtField: 'managementUpdatedAt',
+  },
+  production_coordination: {
+    payloadKey: 'productionDay',
+    versionField: 'coordinationVersion',
+    updatedByField: 'coordinationUpdatedBy',
+    updatedAtField: 'coordinationUpdatedAt',
+  },
+  continuity: {
+    payloadKey: 'productionDay',
+    versionField: 'continuityVersion',
+    updatedByField: 'continuityUpdatedBy',
+    updatedAtField: 'continuityUpdatedAt',
+  },
+} as const satisfies Record<string, {
+  payloadKey: string;
+  versionField: string;
+  updatedByField: string;
+  updatedAtField: string;
+}>;
+
+type ConflictLane = keyof typeof CONFLICT_LANES;
+
+/**
+ * Answer a lost optimistic-concurrency race the same way in every lane.
+ *
+ * `conflict` is the uniform part a client can read without knowing the lane:
+ * which lane lost, the version it must resend, and who moved it last. The
+ * lane's own key still carries the full current state, so existing callers
+ * keep working.
+ */
+function sendVersionConflict(
+  res: Response,
+  lane: ConflictLane,
+  message: string,
+  current: Record<string, unknown> | undefined,
+): void {
+  const spec = CONFLICT_LANES[lane];
+  const version = current ? Number(current[spec.versionField] ?? 0) : undefined;
+  res.status(409).json({
+    error: 'version_conflict',
+    message,
+    conflict: {
+      lane,
+      currentVersion: Number.isFinite(version) ? version : undefined,
+      updatedBy: current?.[spec.updatedByField] ?? undefined,
+      updatedAt: current?.[spec.updatedAtField] ?? undefined,
+    },
+    [spec.payloadKey]: current,
+  });
+}
+
 function mapDayRow(row: Record<string, any>) {
   const base = {
     id: row.id,
@@ -1358,11 +1429,7 @@ export function createCastingProductionRouter(
       const currentRow = currentResult.rows[0] as Record<string, any> | undefined;
       const currentVersion = Number(currentRow?.version ?? 0);
       if (currentVersion !== expectedVersion) {
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Lokasjonen er endret av en annen bruker.',
-          locationOperation: currentRow ? mapLocationOperationsRow(currentRow) : undefined,
-        });
+        sendVersionConflict(res, 'location_operations', 'Lokasjonen er endret av en annen bruker.', currentRow ? mapLocationOperationsRow(currentRow) : undefined);
         return;
       }
 
@@ -1441,11 +1508,7 @@ export function createCastingProductionRouter(
             WHERE project_id = $1 AND location_id = $2`,
           [projectId, locationId],
         );
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Lokasjonen er endret av en annen bruker.',
-          locationOperation: latest.rows[0] ? mapLocationOperationsRow(latest.rows[0]) : undefined,
-        });
+        sendVersionConflict(res, 'location_operations', 'Lokasjonen er endret av en annen bruker.', latest.rows[0] ? mapLocationOperationsRow(latest.rows[0]) : undefined);
         return;
       }
       res.json({ locationOperation: mapLocationOperationsRow(saveResult.rows[0]) });
@@ -1513,11 +1576,7 @@ export function createCastingProductionRouter(
         }
         const currentVersion = Number(currentRow.version ?? 0);
         if (currentVersion !== expectedVersion) {
-          res.status(409).json({
-            error: 'version_conflict',
-            message: 'Beslutningen er endret av en annen bruker.',
-            locationOperation: mapLocationOperationsRow(currentRow),
-          });
+          sendVersionConflict(res, 'location_operations', 'Beslutningen er endret av en annen bruker.', mapLocationOperationsRow(currentRow));
           return;
         }
 
@@ -1644,11 +1703,7 @@ export function createCastingProductionRouter(
               WHERE project_id = $1 AND location_id = $2`,
             [projectId, locationId],
           );
-          res.status(409).json({
-            error: 'version_conflict',
-            message: 'Beslutningen er endret av en annen bruker.',
-            locationOperation: latest.rows[0] ? mapLocationOperationsRow(latest.rows[0]) : undefined,
-          });
+          sendVersionConflict(res, 'location_operations', 'Beslutningen er endret av en annen bruker.', latest.rows[0] ? mapLocationOperationsRow(latest.rows[0]) : undefined);
           return;
         }
         res.json({ locationOperation: mapLocationOperationsRow(updateResult.rows[0]) });
@@ -1936,11 +1991,7 @@ export function createCastingProductionRouter(
       const currentRow = currentResult.rows[0] as Record<string, any>;
       const currentVersion = Number(currentRow.management_version ?? 0);
       if (currentVersion !== expectedVersion) {
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Dagskontrollen er endret av en annen bruker.',
-          productionDay: mapDayRow(currentRow),
-        });
+        sendVersionConflict(res, 'production_management', 'Dagskontrollen er endret av en annen bruker.', mapDayRow(currentRow));
         return;
       }
 
@@ -2004,11 +2055,7 @@ export function createCastingProductionRouter(
           res.status(404).json({ error: 'Produksjonsdag ikke funnet' });
           return;
         }
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Dagskontrollen er endret av en annen bruker.',
-          productionDay: mapDayRow(latest.rows[0]),
-        });
+        sendVersionConflict(res, 'production_management', 'Dagskontrollen er endret av en annen bruker.', mapDayRow(latest.rows[0]));
         return;
       }
       res.json({ productionDay: mapDayRow(updateResult.rows[0]) });
@@ -2050,11 +2097,7 @@ export function createCastingProductionRouter(
       const currentRow = currentResult.rows[0] as Record<string, any>;
       const currentVersion = Number(currentRow.coordination_version ?? 0);
       if (currentVersion !== expectedVersion) {
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Koordinatorflaten er endret av en annen bruker.',
-          productionDay: mapDayRow(currentRow),
-        });
+        sendVersionConflict(res, 'production_coordination', 'Koordinatorflaten er endret av en annen bruker.', mapDayRow(currentRow));
         return;
       }
 
@@ -2118,11 +2161,7 @@ export function createCastingProductionRouter(
           res.status(404).json({ error: 'Produksjonsdag ikke funnet' });
           return;
         }
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Koordinatorflaten er endret av en annen bruker.',
-          productionDay: mapDayRow(latest.rows[0]),
-        });
+        sendVersionConflict(res, 'production_coordination', 'Koordinatorflaten er endret av en annen bruker.', mapDayRow(latest.rows[0]));
         return;
       }
       res.json({ productionDay: mapDayRow(updateResult.rows[0]) });
@@ -2164,11 +2203,7 @@ export function createCastingProductionRouter(
       const currentRow = currentResult.rows[0] as Record<string, any>;
       const currentVersion = Number(currentRow.continuity_version ?? 0);
       if (currentVersion !== expectedVersion) {
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Kontinuitetsloggen er endret av en annen bruker.',
-          productionDay: mapDayRow(currentRow),
-        });
+        sendVersionConflict(res, 'continuity', 'Kontinuitetsloggen er endret av en annen bruker.', mapDayRow(currentRow));
         return;
       }
 
@@ -2294,11 +2329,7 @@ export function createCastingProductionRouter(
           res.status(404).json({ error: 'Produksjonsdag ikke funnet' });
           return;
         }
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Kontinuitetsloggen er endret av en annen bruker.',
-          productionDay: mapDayRow(latest.rows[0]),
-        });
+        sendVersionConflict(res, 'continuity', 'Kontinuitetsloggen er endret av en annen bruker.', mapDayRow(latest.rows[0]));
         return;
       }
       res.json({ productionDay: mapDayRow(updateResult.rows[0]) });
@@ -2338,11 +2369,7 @@ export function createCastingProductionRouter(
       const currentRow = currentResult.rows[0] as Record<string, any>;
       const currentVersion = Number(currentRow.continuity_version ?? 0);
       if (currentVersion !== expectedVersion) {
-        res.status(409).json({
-          error: 'version_conflict',
-          message: 'Kontinuitetsloggen er endret av en annen bruker.',
-          productionDay: mapDayRow(currentRow),
-        });
+        sendVersionConflict(res, 'continuity', 'Kontinuitetsloggen er endret av en annen bruker.', mapDayRow(currentRow));
         return;
       }
       const assignedSceneIds = new Set(asArray(currentRow.scene_ids).map((sceneId) => String(sceneId)));
@@ -2410,7 +2437,7 @@ export function createCastingProductionRouter(
           res.status(404).json({ error: 'Produksjonsdag ikke funnet' });
           return;
         }
-        res.status(409).json({ error: 'version_conflict', message: 'Kontinuitetsloggen er endret av en annen bruker.', productionDay: mapDayRow(latest.rows[0]) });
+        sendVersionConflict(res, 'continuity', 'Kontinuitetsloggen er endret av en annen bruker.', mapDayRow(latest.rows[0]));
         return;
       }
       res.status(201).json({ productionDay: mapDayRow(updateResult.rows[0]), comment });

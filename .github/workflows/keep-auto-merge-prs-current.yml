@@ -1,0 +1,93 @@
+name: Keep auto-merge PRs current
+
+# GitHub's merge queue needs an organization-owned repository. This one is
+# owned by a personal account, so the queue's one job we can reproduce lives
+# here instead: keep a waiting pull request's branch up to date with main so
+# its gates re-run and auto-merge can land it.
+#
+# Why this is needed at all: main takes a commit every six minutes on a busy
+# day, while the required gates need roughly six and a half. "Require branches
+# to be up to date" then turns every merge into a race the author loses about
+# two times in three.
+#
+# Only pull requests that already have auto-merge enabled are touched. That
+# flag is the author saying "this should land", and gating on it keeps a single
+# main commit from re-running the gates on every open pull request.
+#
+# The token must NOT be GITHUB_TOKEN. Pushes made with it do not trigger new
+# workflow runs, so the branch would update, no gate would re-run, the required
+# checks would be missing on the new head, and auto-merge would wait forever —
+# a bot that looks busy while it quietly locks the pull request.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keep-auto-merge-prs-current
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update branches behind main
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Update every auto-merge pull request that fell behind
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_QUEUE_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::MERGE_QUEUE_PAT is missing — skipping. GITHUB_TOKEN cannot be used here: its pushes do not trigger the gates."
+            exit 0
+          fi
+
+          # mergeStateStatus is computed lazily; a push to main leaves it
+          # UNKNOWN for a moment. Ask once, wait, then ask again rather than
+          # reading "not behind" off a value GitHub has not worked out yet.
+          for attempt in 1 2 3; do
+            unknown="$(gh pr list --repo "$REPO" --state open --limit 100 \
+              --json number,mergeStateStatus \
+              --jq '[.[] | select(.mergeStateStatus == "UNKNOWN")] | length')"
+            [ "$unknown" = "0" ] && break
+            echo "$unknown pull request(s) still computing mergeability (attempt $attempt)"
+            sleep 15
+          done
+
+          behind="$(gh pr list --repo "$REPO" --state open --limit 100 \
+            --json number,autoMergeRequest,mergeStateStatus,isDraft,title \
+            --jq '[.[]
+                   | select(.isDraft == false)
+                   | select(.autoMergeRequest != null)
+                   | select(.mergeStateStatus == "BEHIND")]')"
+
+          count="$(jq 'length' <<<"$behind")"
+          if [ "$count" = "0" ]; then
+            echo "No auto-merge pull request is behind main."
+            exit 0
+          fi
+
+          echo "$count auto-merge pull request(s) behind main:"
+          jq -r '.[] | "  #\(.number) \(.title)"' <<<"$behind"
+
+          failed=0
+          while read -r number; do
+            [ -n "$number" ] || continue
+            if gh pr update-branch "$number" --repo "$REPO"; then
+              echo "  updated #$number"
+            else
+              # A conflict is the author's to resolve — report it, do not fail
+              # the run, and leave the remaining pull requests to be updated.
+              echo "::warning::Could not update #$number — likely a conflict the author must resolve."
+              failed=$((failed + 1))
+            fi
+          done < <(jq -r '.[].number' <<<"$behind")
+
+          echo "Updated $((count - failed)) of $count."

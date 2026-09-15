@@ -189,6 +189,7 @@ import {
   isRoleRoomWorkspaceLens,
   type RoleRoomWorkspaceLens,
 } from './production/productionWorkspaceLens';
+import { useSuperAdminGate } from './admin/useSuperAdminGate';
 import {
   FIRST_ASSISTANT_DIRECTOR_PROJECT_ROLES,
   SECOND_ASSISTANT_DIRECTOR_PROJECT_ROLES,
@@ -279,6 +280,10 @@ const SharingPanel = lazyWithRetry(() => import('./SharingPanel').then(m => ({ d
 const LiveSetMode = lazyWithRetry(() => import('./LiveSetMode').then(m => ({ default: m.LiveSetMode })));
 
 // Dance vertical opt-in — full workspace replacement when professionMode = dance_*.
+// Admin Room som linse. Tung side (CMS-editor, ~24 faner), så den lastes
+// først når super admin faktisk åpner linsen.
+const AdminRoomWorkspace = lazy(() => import('../../../pages/AdminRoom'));
+
 const DanceWorkspace = lazy(() => import('../dance/DanceWorkspace').then(m => ({ default: m.DanceWorkspace })));
 const EducationWorkspace = lazy(() => import('../education/EducationWorkspace').then(m => ({ default: m.EducationWorkspace })));
 const StudentWorkspace = lazy(() => import('../education/StudentWorkspace').then(m => ({ default: m.StudentWorkspace })));
@@ -3354,6 +3359,9 @@ type RoleRoomProjectWorkspaceState = {
   const canUseContinuityWorkspace = canEditContinuityWorkspace
     || canCommentContinuityWorkspace
     || ['director', 'producer', 'first_ad', 'second_ad'].includes(normalizedCurrentProjectRole);
+  // Admin-linsen er den eneste som ikke følger av prosjektrollen. Klientporten
+  // skjuler UI; hver Admin Room-rute er e-postlåst på serveren i tillegg.
+  const { isSuperAdmin: isSuperAdminSession } = useSuperAdminGate();
   // Rene oppslag, ikke hooks: de leses av både lenseoppløsningen og
   // URL-synkroniseringen, som fortsatt lister de underliggende
   // boolean-verdiene i sin dependency-array.
@@ -3367,6 +3375,8 @@ type RoleRoomProjectWorkspaceState = {
       case 'production-coordination': return isAssignedProductionCoordinatorProjectRole;
       case 'location-management': return isAssignedLocationDepartmentProjectRole;
       case 'continuity': return isAssignedScriptSupervisorProjectRole;
+      // Ingen prosjektrolle velger admin-linsen; den åpnes bare eksplisitt.
+      case 'admin': return false;
     }
   };
   const isAllowedLens = (lens: RoleWorkspaceLens): boolean => {
@@ -3378,6 +3388,7 @@ type RoleRoomProjectWorkspaceState = {
       case 'production-coordination': return canUseProductionCoordinationWorkspace;
       case 'location-management': return canUseLocationManagerWorkspace;
       case 'continuity': return canUseContinuityWorkspace;
+      case 'admin': return isSuperAdminSession;
     }
   };
   const effectiveWorkspaceLens: RoleRoomWorkspaceLens = resolveWorkspaceLens({
@@ -11053,7 +11064,9 @@ type RoleRoomProjectWorkspaceState = {
           <ErrorBoundary key={displayedActiveTab}>
           <Suspense fallback={<PanelSkeleton variant="panel" />}>
         <TabPanel value={activeTab} index={0}>
-          {!currentProject && projects.length === 0 ? (
+          {effectiveWorkspaceLens === 'admin' ? (
+            <AdminRoomWorkspace />
+          ) : !currentProject && projects.length === 0 ? (
             <EmptyProjectsHero
               workspaceName={branding.appName}
               onCreateProject={() => setProjectCreationModalOpen(true)}

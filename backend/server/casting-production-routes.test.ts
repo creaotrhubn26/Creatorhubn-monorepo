@@ -314,6 +314,13 @@ describe('casting production-day access', () => {
       locationId: 'location-1', version: 3,
       operations: expect.objectContaining({ stage: 'cleared' }),
     }));
+    // Uniform envelope: readable without knowing which lane lost the race.
+    expect(response.body.conflict).toEqual({
+      lane: 'location_operations',
+      currentVersion: 3,
+      updatedBy: 'location-manager-2',
+      updatedAt: undefined,
+    });
     expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO role_room_location_operations'))).toBe(false);
   });
 

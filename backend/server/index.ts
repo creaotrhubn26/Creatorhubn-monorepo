@@ -494,6 +494,10 @@ import { configureAIUsageTracker } from "./ai-usage-tracker.js";
 import { registerDesignTokensRoutes } from "./design-tokens-routes.js";
 import { registerStripePriceDriftRoutes } from "./stripe-price-drift-routes.js";
 import { registerB2CompanyArchiveRoutes } from "./b2-company-archive-routes.js";
+import {
+  readRoleRoomContinuityS3Config,
+  roleRoomS3Client,
+} from "./casting-production-continuity-s3.js";
 import { registerCastingPosterArchiveRoutes } from "./role-room-casting-poster-archive-routes.js";
 import { registerB2ArchiveCronRoutes } from "./b2-archive-cron-routes.js";
 import { setupRoleNavConfigRoutes } from "./admin-room-role-nav-routes";
@@ -2681,6 +2685,40 @@ registerB2CompanyArchiveRoutes({
   requireAdminSession,
   routePrefix: "/api/role-room/admin/b2-archive",
   envPrefix: "B2_ROLE_ROOM_",
+});
+// The Role Room sin private AWS-bøtte — der produksjonsmedia (scout,
+// continuity) faktisk ligger etter flyttingen fra B2. Samme browser, egen
+// klient, og lesetilgang alene: appflytene eier livssyklusen til disse
+// objektene, ikke admin-browseren.
+registerB2CompanyArchiveRoutes({
+  app,
+  requireAdminSession,
+  routePrefix: "/api/role-room/admin/s3-archive",
+  readOnly: true,
+  resolveConfig: () => {
+    let config;
+    try {
+      config = readRoleRoomContinuityS3Config();
+    } catch {
+      return null;
+    }
+    if (!config) return null;
+    // Runtime-rollen (TheRoleRoomStorageRuntimeProd) har ikke s3:ListBucket —
+    // verifisert mot prod 2026-09-15: både ListBucket og GetObject svarte
+    // AccessDenied. Den er bygget for at appen skal lese og skrive sine egne
+    // objekter, ikke for å bla i bøtta. Arkiv-browseren bruker derfor den
+    // statiske adminnøkkelen når den finnes, og faller tilbake til
+    // runtime-klienten bare hvis den ikke gjør det.
+    const accessKeyId = process.env.AWS_ROLE_ROOM_ACCESS_KEY_ID?.trim();
+    const secretAccessKey = process.env.AWS_ROLE_ROOM_SECRET_ACCESS_KEY?.trim();
+    const client = accessKeyId && secretAccessKey
+      ? new S3Client({
+          region: config.region,
+          credentials: { accessKeyId, secretAccessKey },
+        })
+      : roleRoomS3Client(config);
+    return { bucketName: config.bucket, client };
+  },
 });
 registerCastingPosterArchiveRoutes({ app, requireAdminSession });
 registerB2ArchiveCronRoutes({ app, pool });

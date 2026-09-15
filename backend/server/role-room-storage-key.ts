@@ -28,6 +28,25 @@ export function canonicalizeRoleRoomStorageKey(key: string): string {
     if (normalized.startsWith('workspaces/')) return normalized;
   }
 
+  // Arkivhierarkiet fra b2-archive-helper. Uten egne regler faller disse til
+  // platform/archives/<område>/<hash>/original.<ext>, som er deterministisk,
+  // men gjør arkivet uleselig i Admin Room-browseren. Stiene er allerede
+  // strukturerte, så de flyttes hele under platform/archives/.
+  const ARCHIVE_PREFIXES = [
+    'newsletters/',
+    'funding-apps/',
+    'decks/',
+    'business-plans/',
+    'casting-call-posters/',
+    'marketing-reports/',
+    'ad-hoc/',
+  ];
+  for (const prefix of ARCHIVE_PREFIXES) {
+    if (normalized.startsWith(prefix)) {
+      return `platform/archives/${normalized}`;
+    }
+  }
+
   if (normalized.startsWith('models/')) {
     return `platform/models/legacy-b2/${normalized.slice('models/'.length)}`;
   }

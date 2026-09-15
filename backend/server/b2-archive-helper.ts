@@ -24,27 +24,22 @@
 
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import {
+  getRoleRoomObjectStorage,
+  resolveRoleRoomObjectKey,
+} from "./role-room-object-storage.js";
 
-// NB: the-role-room-prod-bøtta ligger i eu-central-003 (verifisert via B2
-// b2_authorize_account 2026-06-08). Defaulten var feil (us-west-001) → all
-// role-room-B2-lesing/-skriving feilet stille i prod. B2_REGION er nå satt på
-// Render, men defaulten her må også være riktig så koden er korrekt uten env.
-const B2_REGION = process.env.B2_REGION || "eu-central-003";
-const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
-
+/**
+ * Delt Role Room-lagring. Modulen bygde tidligere sin egen B2-klient og skrev
+ * derfor til den gamle bøtta uansett hva ROLE_ROOM_STORAGE_PROVIDER sto på.
+ *
+ * Nøklene under beholder sin lesbare form; role-room-storage-key flytter dem
+ * hele under platform/archives/, så hierarkiet i doc-en fortsatt kan navigeres
+ * i Admin Room-browseren.
+ */
 function getRoleRoomB2Client(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-
-  const client = new S3Client({
-    region: B2_REGION,
-    endpoint: B2_ENDPOINT,
-    credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-    forcePathStyle: true,
-  });
-  return { client, bucket };
+  const storage = getRoleRoomObjectStorage();
+  return storage ? { client: storage.client, bucket: storage.bucket } : null;
 }
 
 /**
@@ -89,7 +84,7 @@ export async function archiveToRoleRoomB2(
     await config.client.send(
       new PutObjectCommand({
         Bucket: config.bucket,
-        Key: key,
+        Key: resolveRoleRoomObjectKey(key),
         Body: buf,
         ContentType: contentType,
       }),
@@ -116,7 +111,7 @@ export async function getFromRoleRoomB2(
   if (!config) return null;
   try {
     const out = await config.client.send(
-      new GetObjectCommand({ Bucket: config.bucket, Key: key }),
+      new GetObjectCommand({ Bucket: config.bucket, Key: resolveRoleRoomObjectKey(key) }),
     );
     const bytes = await (out.Body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined)
       ?.transformToByteArray?.();
@@ -146,7 +141,7 @@ export async function presignRoleRoomB2Download(
   try {
     const command = new GetObjectCommand({
       Bucket: config.bucket,
-      Key: key,
+      Key: resolveRoleRoomObjectKey(key),
       ...(downloadFilename
         ? { ResponseContentDisposition: `attachment; filename="${downloadFilename}"` }
         : {}),
@@ -173,7 +168,7 @@ export async function presignRoleRoomB2Upload(
   try {
     const command = new PutObjectCommand({
       Bucket: config.bucket,
-      Key: key,
+      Key: resolveRoleRoomObjectKey(key),
       ContentType: contentType || "application/octet-stream",
     });
     return await getSignedUrl(config.client, command, { expiresIn: expiresInSeconds });
@@ -188,7 +183,7 @@ export async function deleteFromRoleRoomB2(key: string): Promise<boolean> {
   const config = getRoleRoomB2Client();
   if (!config) return false;
   try {
-    await config.client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }));
+    await config.client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: resolveRoleRoomObjectKey(key) }));
     return true;
   } catch (err) {
     console.warn("[b2-archive] delete failed", { key, err: (err as Error).message });

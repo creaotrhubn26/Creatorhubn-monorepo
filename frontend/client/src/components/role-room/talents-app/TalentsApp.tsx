@@ -15,6 +15,7 @@
 import { Box, Typography } from '@mui/material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import TalentsAppShell, { type TalentsAppPage } from './TalentsAppShell';
+import authSessionService from '../services/authSessionService';
 import PartnersCollaborationPage from './pages/PartnersCollaborationPage';
 import PartnerInviteAcceptPage from './pages/PartnerInviteAcceptPage';
 import DashboardPage from './pages/DashboardPage';
@@ -132,8 +133,33 @@ function useTalentsBrand() {
   }, []);
 }
 
+/** Navnet i brukerbrikken. Uten dette faller shell-en tilbake på
+ *  mockup-plassholderen «Ingrid Nilsen», så hvert ekte talent så en fremmed
+ *  manns navn i sin egen app. */
+function useSessionUser(): { name: string; role: string } | undefined {
+  const [user, setUser] = useState<{ name: string; role: string } | undefined>();
+
+  useEffect(() => {
+    const read = () => {
+      const admin = authSessionService.getSessionSync().adminUser;
+      if (!admin) return;
+      const name = admin.display_name || admin.name || admin.email;
+      if (!name) return;
+      setUser({ name, role: admin.role === 'talent' ? 'Talent' : (admin.role ?? 'Talent') });
+    };
+    read();
+    // Sesjonen hydreres asynkront fra localStorage ved første last.
+    void authSessionService.loadSession().then(read).catch(() => {});
+    window.addEventListener('auth-session-updated', read);
+    return () => window.removeEventListener('auth-session-updated', read);
+  }, []);
+
+  return user;
+}
+
 export default function TalentsApp({ initialPage, onLogout }: TalentsAppProps) {
   const [page, setPage] = useState<TalentsAppPage>(initialPage ?? 'dashboard');
+  const sessionUser = useSessionUser();
   useTalentsBrand(); // CreatorHub Design: Role Room-aksent fra design-tokens
 
   // Demo-modus: leses fra URL én gang ved mount + persisteres ved navigasjon
@@ -164,7 +190,12 @@ export default function TalentsApp({ initialPage, onLogout }: TalentsAppProps) {
   }, [demoMode]);
 
   return (
-    <TalentsAppShell active={page} onNavigate={handleNavigate} onLogout={demoMode ? undefined : onLogout}>
+    <TalentsAppShell
+      active={page}
+      onNavigate={handleNavigate}
+      user={demoMode ? undefined : sessionUser}
+      onLogout={demoMode ? undefined : onLogout}
+    >
       {page === 'dashboard' ? (
         <DashboardPage demoMode={demoMode} onNavigate={handleNavigate} />
       ) : page === 'registry' ? (
