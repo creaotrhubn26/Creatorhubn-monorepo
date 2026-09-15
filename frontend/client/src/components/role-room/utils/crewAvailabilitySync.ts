@@ -48,8 +48,8 @@ export interface CrewAvailabilityOverlay {
 }
 
 export interface CrewConflictLookupContext {
-  /** Crew-radene i planleggeren, med e-post-koblingen til medlem. */
-  crew: Array<{ id: string; email?: string | null }>;
+  /** Crew-radene i planleggeren. `userId` er den eksplisitte koblingen; e-post er fallback. */
+  crew: Array<{ id: string; email?: string | null; userId?: string | null }>;
   /** userId → tilgjengelighets-overlay (fra useProjectMemberAvailability). */
   availabilityByUser: Map<string, CrewAvailabilityOverlay>;
   /** lowercased e-post → userId. */
@@ -60,8 +60,8 @@ export interface CrewConflictLookupContext {
  * Beregn crew-tilgjengelighetskonflikter for et datointervall UT FRA allerede-
  * lastet medlems-tilgjengelighet — INGEN server-kall. En konflikt = en dag i
  * [startDate, endDate] der crew-medlemmets celle er 'unavailable' (opptatt) eller
- * 'hold' (tentativ). Crew mappes til medlem via e-post (samme kobling som resten
- * av crew↔medlem-synkingen). Returnerer kun crew med >=1 konflikt.
+ * 'hold' (tentativ). Crew mappes til medlem via radens `user_id` når den finnes,
+ * ellers via e-post. Returnerer kun crew med >=1 konflikt.
  *
  * Erstatter det aldri-bygde `/crew/:id/conflicts`-endepunktet: dataene finnes
  * allerede i klienten (role_room_member_availability via profil-endepunktene),
@@ -80,8 +80,8 @@ export function computeCrewConflictsFromAvailability(
   for (const crewId of crewIds) {
     const member = ctx.crew.find((m) => m.id === crewId);
     const email = (member?.email || '').toLowerCase().trim();
-    if (!email) continue;
-    const userId = ctx.emailToUser.get(email);
+    // Eksplisitt konto-kobling vinner: e-post kan endres, mangle eller deles.
+    const userId = (member?.userId || '').trim() || (email ? ctx.emailToUser.get(email) : undefined);
     if (!userId) continue;
     const overlay = ctx.availabilityByUser.get(userId);
     if (!overlay || overlay.cells.length === 0) continue;
@@ -244,6 +244,7 @@ export function memberToVirtualCrew(
 ): CrewMember {
   return {
     id: virtualCrewId(member.userId),
+    userId: member.userId,
     name: member.displayName || member.email || 'Medlem',
     role: professionToCrewRole(member.professions),
     status: 'confirmed',
