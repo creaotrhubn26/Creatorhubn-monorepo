@@ -92,8 +92,13 @@ export interface CastingProjectAccess {
   readonly isOwner: boolean;
   /** Has an active, unexpired membership row. */
   readonly isMember: boolean;
-  /** Effective project role, lowercased. `null` for owners without a row. */
+  /** Primary project role, lowercased. `null` for owners without a row. */
   readonly role: string | null;
+  /**
+   * Every crew role the member holds on this project: the primary role first,
+   * then `additional_roles`. Grants are the union across all of them.
+   */
+  readonly roles: readonly string[];
   /** Explicit grants from the membership row, verbatim. */
   readonly permissions: Record<string, unknown>;
   readonly canAccess: boolean;
@@ -106,6 +111,7 @@ const DENIED_ACCESS: CastingProjectAccess = {
   isOwner: false,
   isMember: false,
   role: null,
+  roles: Object.freeze([]) as readonly string[],
   permissions: {},
   canAccess: false,
   grants: Object.freeze(
@@ -122,17 +128,43 @@ function hasExplicitGrant(
 
 function deriveGrants(
   isOwner: boolean,
-  role: string | null,
+  roles: readonly string[],
   permissions: Record<string, unknown>,
 ): Record<CastingGrant, boolean> {
   const grants = {} as Record<CastingGrant, boolean>;
   for (const grant of CASTING_GRANTS) {
     const rule = CASTING_GRANT_RULES[grant];
     grants[grant] = isOwner
-      || (role !== null && (rule.roles as readonly string[]).includes(role))
+      || roles.some((role) => (rule.roles as readonly string[]).includes(role))
       || hasExplicitGrant(permissions, rule.permissionKeys);
   }
   return grants;
+}
+
+/** Normalise one stored role value; returns null for anything unusable. */
+function readRole(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalised = value.trim().toLowerCase();
+  return normalised.length > 0 ? normalised : null;
+}
+
+/**
+ * The member's full role set: primary first, then additional_roles, deduped.
+ *
+ * Without a primary role there is no active membership row, so additional
+ * roles are ignored — otherwise a lapsed member's leftover array would still
+ * grant access.
+ */
+function readRoles(primary: string | null, additional: unknown): string[] {
+  if (!primary) return [];
+  const roles = [primary];
+  if (Array.isArray(additional)) {
+    for (const entry of additional) {
+      const role = readRole(entry);
+      if (role && !roles.includes(role)) roles.push(role);
+    }
+  }
+  return roles;
 }
 
 function readPermissions(value: unknown): Record<string, unknown> {
@@ -189,14 +221,23 @@ export async function resolveCastingProjectAccess(
               AND cur.deactivated_at IS NULL
               AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
             LIMIT 1
-         ) AS member_permissions`,
+         ) AS member_permissions,
+         (
+           SELECT cur.additional_roles
+             FROM casting_user_roles cur
+            WHERE cur.project_id = $1
+              AND cur.user_id = $2
+              AND cur.deactivated_at IS NULL
+              AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
+            LIMIT 1
+         ) AS member_additional_roles`,
       [projectId, userId],
     );
     const row = result.rows[0];
     if (row?.project_exists === true) {
       const isOwner = row.is_owner === true;
-      const rawRole = row.member_role;
-      const role = typeof rawRole === "string" && rawRole.length > 0 ? rawRole : null;
+      const role = readRole(row.member_role);
+      const roles = readRoles(role, row.member_additional_roles);
       const isMember = role !== null;
       const permissions = readPermissions(row.member_permissions);
       return {
@@ -205,9 +246,10 @@ export async function resolveCastingProjectAccess(
         isOwner,
         isMember,
         role,
+        roles,
         permissions,
         canAccess: isOwner || isMember,
-        grants: deriveGrants(isOwner, role, permissions),
+        grants: deriveGrants(isOwner, roles, permissions),
       };
     }
   } catch {
@@ -223,9 +265,10 @@ export async function resolveCastingProjectAccess(
     isOwner: true,
     isMember: false,
     role: null,
+    roles: [],
     permissions: {},
     canAccess: true,
-    grants: deriveGrants(true, null, {}),
+    grants: deriveGrants(true, [], {}),
   };
 }
 

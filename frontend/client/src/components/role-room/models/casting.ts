@@ -54,6 +54,8 @@ export interface UserRolePermissions {
 export interface CastingProjectAccess {
   projectId: string;
   role: string | null;
+  /** Every crew role the member holds here; primary first. Grants are the union. */
+  roles: string[];
   isOwner: boolean;
   isMember: boolean;
   permissions: Record<string, unknown>;
