@@ -161,3 +161,56 @@ describe('resolveLensUrlState', () => {
     })).toEqual({ lens: '', surface: '', scene: '' });
   });
 });
+
+describe('admin lens', () => {
+  it('is registered but selected by no project role', () => {
+    const entry = WORKSPACE_LENS_REGISTRY.find((item) => item.lens === 'admin');
+    expect(entry?.projectRoles).toEqual([]);
+    expect(matchesLensProjectRole('admin', 'director')).toBe(false);
+    expect(matchesLensProjectRole('admin', 'admin')).toBe(false);
+  });
+
+  it('never opens on its own, even for an owner with no other lens', () => {
+    expect(resolveWorkspaceLens({
+      preference: null,
+      isAssigned: none,
+      isAllowed: all,
+    })).toBe('full');
+  });
+
+  it('opens only on an explicit choice by a permitted caller', () => {
+    expect(resolveWorkspaceLens({
+      preference: 'admin',
+      isAssigned: none,
+      isAllowed: only('admin'),
+    })).toBe('admin');
+  });
+
+  it('stays shut for a caller who is not super admin', () => {
+    expect(resolveWorkspaceLens({
+      preference: 'admin',
+      isAssigned: none,
+      isAllowed: (lens) => lens !== 'admin',
+    })).toBe('full');
+  });
+
+  it('does not take a role lens away from the member who asked for admin', () => {
+    // En produsent som ikke er super admin faller tilbake til sin egen linse.
+    expect(resolveWorkspaceLens({
+      preference: null,
+      isAssigned: only('director'),
+      isAllowed: (lens) => lens !== 'admin',
+    })).toBe('director');
+  });
+
+  it('writes no surface or scene parameter', () => {
+    expect(resolveLensUrlState({
+      lens: 'admin',
+      preference: 'admin',
+      hasAssignedLensRole: false,
+      surfaces: {},
+      plannerSurface: 'roles',
+      scenes: {},
+    })).toEqual({ lens: 'admin', surface: '', scene: '' });
+  });
+});
