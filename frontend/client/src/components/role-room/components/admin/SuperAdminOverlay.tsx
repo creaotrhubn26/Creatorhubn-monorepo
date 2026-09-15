@@ -212,6 +212,25 @@ export const SuperAdminOverlay: React.FC<SuperAdminOverlayProps> = ({ forceOpen 
     window.location.href = target;
   }, []);
 
+  // Åpne Admin Room som linse i Role Room-skallet i stedet for å forlate
+  // Role Room. Panelet leser `lens` fra URL ved mount, og admin-linsen er den
+  // eneste som ikke krever et åpent prosjekt.
+  const openAdminLensInRoleRoom = useCallback((adminTab?: string) => {
+    try {
+      if (adminTab) sessionStorage.setItem(SUPER_ADMIN_TARGET_TAB_KEY, adminTab);
+    } catch {
+      // Ignore storage failures.
+    }
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('lens', 'admin');
+      if (adminTab) url.searchParams.set('adminTab', adminTab);
+      window.location.href = `${url.pathname}${url.search}${url.hash}`;
+    } catch {
+      window.location.href = '/?lens=admin';
+    }
+  }, []);
+
   const handleCloseProject = useCallback(() => {
     // Rydd lokale "sist åpnet prosjekt"-nøkler.
     try {
@@ -347,6 +366,23 @@ export const SuperAdminOverlay: React.FC<SuperAdminOverlayProps> = ({ forceOpen 
               {statusMessage}
             </Box>
           )}
+
+          <Button
+            fullWidth
+            onClick={() => openAdminLensInRoleRoom()}
+            startIcon={<AdminPanelSettingsIcon />}
+            sx={{
+              mb: 2,
+              justifyContent: 'flex-start',
+              color: GOLD,
+              borderColor: 'rgba(251,191,36,0.42)',
+              border: '1px solid',
+              textTransform: 'none',
+              fontWeight: 700,
+            }}
+          >
+            Åpne Admin Room i Role Room
+          </Button>
 
           <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.72)', mb: 1 }}>
             Admin Room-faner
