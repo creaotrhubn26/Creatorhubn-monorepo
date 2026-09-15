@@ -126,6 +126,64 @@ export function seedPlayScenario(g: MockGraph): void {
   g.elementComponents.push({ elementId: 'nel_rich', componentId: 'ncp_1', sortOrder: 0 });
 }
 
+/**
+ * Minimal Twee/Ink-konvertering for mocken (passasjer/knots → elementer,
+ * [[lenker]]/valg → koblinger). Den fulle konverteringen testes i vitest.
+ */
+function mockImportText(format: 'twee' | 'ink', source: string, projectId: string, title: string | null): { graph: MockGraph; warnings: Array<{ message: string; ref?: string }> } {
+  const warnings: Array<{ message: string; ref?: string }> = [];
+  const boardId = nextId('nbd');
+  const elements: Rec[] = [];
+  const connections: Rec[] = [];
+  const byName = new Map<string, string>();
+  const addEl = (name: string, content: string) => {
+    const id = nextId('nel');
+    elements.push({ id, projectId, boardId, kind: 'element', titleHtml: `<p>${name}</p>`, contentHtml: content ? `<p>${content}</p>` : '', x: 40 + elements.length * 320, y: 40, width: 260, height: 120, theme: 'default', coverAssetId: null, customId: null, jumperTargetId: null, branchConditions: [], version: 1, sortOrder: elements.length, createdAt: now(), updatedAt: now() });
+    byName.set(name, id);
+    return id;
+  };
+  const pending: Array<[string, string, string]> = [];
+  if (format === 'twee') {
+    const chunks = source.split(/^::\s*/m).slice(1);
+    for (const chunk of chunks) {
+      const [header, ...rest] = chunk.split('\n');
+      const name = header.replace(/\s*[\[{].*$/, '').trim();
+      if (name === 'StoryTitle' || name === 'StoryData') continue;
+      const body = rest.join('\n');
+      const id = addEl(name, body.replace(/\[\[[^\]]*\]\]/g, '').replace(/<<[^>]*>>/g, '').trim());
+      for (const lm of body.matchAll(/\[\[([^\]]*)\]\]/g)) {
+        const inner = lm[1];
+        const arrow = inner.indexOf('->'); const pipe = inner.indexOf('|');
+        const [text, target] = arrow >= 0 ? [inner.slice(0, arrow), inner.slice(arrow + 2)] : pipe >= 0 ? [inner.slice(0, pipe), inner.slice(pipe + 1)] : [inner, inner];
+        pending.push([id, text.trim(), target.trim()]);
+      }
+    }
+  } else {
+    const parts = source.split(/^={2,}\s*([A-Za-z_]\w*)\s*=*\s*$/m);
+    const top = parts[0].trim();
+    if (top) addEl('Start', top.replace(/->.*$/gm, '').trim());
+    for (let i = 1; i < parts.length; i += 2) addEl(parts[i], parts[i + 1].replace(/^[*+-].*$|->.*$|~.*$/gm, '').trim());
+    for (const dm of source.matchAll(/->\s*([A-Za-z_]\w*)/g)) {
+      if (dm[1] === 'END' || dm[1] === 'DONE') continue;
+      const src = elements[0]?.id as string | undefined;
+      if (src && byName.has(dm[1]) && !pending.some((p) => p[2] === dm[1])) pending.push([src, '', dm[1]]);
+    }
+  }
+  for (const [src, label, target] of pending) {
+    const targetId = byName.get(target);
+    if (!targetId) { warnings.push({ message: `Lenken «${label || target}» peker på «${target}» som ikke finnes.`, ref: target }); continue; }
+    connections.push({ id: nextId('ncn'), projectId, boardId, sourceId: src, targetId, sourceOutputKey: 'default', labelHtml: label ? `<p>${label}</p>` : '', sortOrder: connections.length, createdAt: now(), updatedAt: now() });
+  }
+  return {
+    graph: {
+      settings: { projectId, title: title ?? (format === 'twee' ? 'Twee' : 'Ink'), startingElementId: elements[0]?.id ?? null, coverAssetId: null, schemaVersion: 1, updatedAt: now() },
+      boards: [{ id: boardId, projectId, name: title ?? format, customId: null, folderPath: '', sortOrder: 0, viewport: {}, createdAt: now(), updatedAt: now() }],
+      elements, connections, components: [], elementComponents: [], attributes: [], variables: [], assets: [],
+    },
+    warnings,
+  };
+}
+
 export async function installNarrativeMocks(page: Page, opts: { projectId?: string; empty?: boolean } = {}): Promise<void> {
   const projectId = opts.projectId ?? 'proj-game-2026';
   const g: MockGraph = opts.empty
@@ -310,14 +368,24 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
 
     // ── Fase 3: import, delingslenker, offentlig spill ─────────────────
     if (m(/\/projects\/[^/]+\/import$/) && method === 'POST') {
-      const project = body.project;
-      if (!project || typeof project !== 'object' || !(project as Rec).boards) {
-        return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_project', message: 'Ikke et Arcweave-prosjekt.' }) });
+      const format = (body.format as string | undefined) ?? 'arcweave';
+      let imported: { graph: MockGraph; warnings: Array<{ message: string; ref?: string }> };
+      if (format === 'twee' || format === 'ink') {
+        if (typeof body.source !== 'string' || !body.source.trim()) {
+          return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_project', message: 'Tom kilde.' }) });
+        }
+        imported = mockImportText(format, body.source, projectId, (body.title as string | null) ?? null);
+      } else {
+        const project = body.project;
+        if (!project || typeof project !== 'object' || !(project as Rec).boards) {
+          return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_project', message: 'Ikke et Arcweave-prosjekt.' }) });
+        }
+        imported = mockImportArcweave(project as Rec, projectId);
       }
-      const { graph, warnings } = mockImportArcweave(project as Rec, projectId);
-      Object.assign(g, graph);
+      Object.assign(g, imported.graph);
       const backup = { id: nextId('nrv'), projectId, label: 'Før import', createdBy: 'u1', createdAt: now(), counts: { boards: 1, elements: 2, connections: 1, components: 1 } };
-      return route.fulfill(ok({ graph: g, warnings, backup }));
+      const stats = { elements: g.elements.length, connections: g.connections.length, variables: g.variables.length, unsupported: imported.warnings.length };
+      return route.fulfill(ok({ graph: g, warnings: imported.warnings, backup, format, stats }));
     }
     if (m(/\/projects\/[^/]+\/share-links$/) && method === 'GET') return route.fulfill(ok(shareLinks));
     if (m(/\/projects\/[^/]+\/share-links$/) && method === 'POST') {

@@ -24,7 +24,7 @@ function makePool(handlers: Handler[] = []) {
 
 function createApp(pool: Pool, opts: { access?: boolean } = {}) {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' })); // prod: 50mb i index.ts — zod-grensen (5 MB) skal gi 400, ikke 413
   app.use(
     '/api/role-room/narrative',
     createRoleRoomNarrativeRouter(pool, {
@@ -320,6 +320,39 @@ describe('narrative routes — Fase 3: eksport, import, deling', () => {
     const elementInserts = (pool.query as any).mock.calls.filter((c: unknown[]) => /INSERT INTO narrative_elements/.test(String(c[0])));
     expect(elementInserts).toHaveLength(2); // element + jumper, med prosjekt-id fra ruten
     expect(elementInserts[0][1][1]).toBe(PROJECT_ID);
+  });
+
+  it('POST import format=twee → parser Twee 3, lagrer revisjon og returnerer stats', async () => {
+    const pool = makePool([
+      ...graphRows,
+      { match: /INSERT INTO narrative_revisions/, rows: (p) => [{ id: p[0], project_id: p[1], label: p[2], snapshot: p[3], created_by: p[4], created_at: new Date() }] },
+    ]);
+    const source = ':: StoryTitle\nTwee-test\n\n:: Start\nHei [[Videre->Slutt]]\n\n:: Slutt\nFerdig.\n';
+    const res = await request(createApp(pool))
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/import`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ format: 'twee', source });
+    expect(res.status).toBe(200);
+    expect(res.body.data.format).toBe('twee');
+    expect(res.body.data.stats).toMatchObject({ elements: 2, connections: 1 });
+    const elementInserts = (pool.query as any).mock.calls.filter((c: unknown[]) => /INSERT INTO narrative_elements/.test(String(c[0])));
+    expect(elementInserts).toHaveLength(2);
+    expect(elementInserts[0][1][4]).toBe('<p>Start</p>');
+  });
+
+  it('POST import format=ink med ugyldig innhold → 400; for stor kilde → 400', async () => {
+    const bad = await request(createApp(makePool(graphRows)))
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/import`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ format: 'ink', source: 'bare prosa uten ink' });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toBe('invalid_project');
+    const big = await request(createApp(makePool(graphRows)))
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/import`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ format: 'twee', source: ':: Start\n' + 'x'.repeat(5 * 1024 * 1024 + 1) });
+    expect(big.status).toBe(400);
+    expect(big.body.error).toBe('invalid_request');
   });
 
   it('POST share-links → 201 med råtoken én gang; kun sha256-hash i INSERT', async () => {

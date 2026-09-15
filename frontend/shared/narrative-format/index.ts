@@ -13,3 +13,7 @@ export { toMarkdown } from './markdown';
 export {
   buildStandaloneHtml, toRuntimeSubset, jsonForScriptTag, exportFileStem, STANDALONE_CSS, type StandaloneHtmlOptions,
 } from './standalone';
+export { fromTwee, TweeImportError, convertTwineExpression } from './twee';
+export { fromInk, InkImportError, convertInkExpression } from './ink';
+export { sniffImportFormat, IMPORT_FORMAT_LABELS, type ImportFormat } from './sniff';
+export type { FromTextResult, TextImportOptions, TextImportStats } from './text-import-common';

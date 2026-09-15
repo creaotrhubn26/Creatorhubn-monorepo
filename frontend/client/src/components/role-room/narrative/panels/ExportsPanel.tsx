@@ -22,7 +22,8 @@ import {
   UploadFile as ImportIcon,
 } from '@mui/icons-material';
 import {
-  ArcweaveImportError, buildStandaloneHtml, exportFileStem, fromArcweaveProject, toArcweaveProject, toMarkdown,
+  ArcweaveImportError, InkImportError, TweeImportError, IMPORT_FORMAT_LABELS, buildStandaloneHtml, exportFileStem,
+  fromArcweaveProject, fromInk, fromTwee, sniffImportFormat, toArcweaveProject, toMarkdown, type ImportFormat,
 } from '@shared/narrative-format';
 import * as api from '../narrativeService';
 import {
@@ -87,7 +88,8 @@ const Section: React.FC<{ title: string; hint: string; children: React.ReactNode
 
 interface ImportPreview {
   fileName: string;
-  project: Record<string, unknown>;
+  format: ImportFormat;
+  body: api.ImportBody;
   counts: { boards: number; elements: number; connections: number; components: number; variables: number };
   warnings: NarrativeImportWarning[];
 }
@@ -151,14 +153,26 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
     setImportWarnings([]);
     try {
       const text = await file.text();
-      const parsed = JSON.parse(text) as unknown;
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new ArcweaveImportError('Fila er ikke et JSON-objekt.');
-      const project = parsed as Record<string, unknown>;
+      const format = sniffImportFormat(file.name, text);
+      if (!format) throw new ArcweaveImportError('Kjenner ikke igjen formatet — bruk Arcweave project.json, Twine .twee eller Ink .ink.');
+      const title = file.name.replace(/\.[^.]+$/, '');
+      let body: api.ImportBody;
+      let local: { graph: NarrativeGraph; warnings: NarrativeImportWarning[] };
       // Forhåndsvisning lokalt (samme kode som serveren bruker) — viser hva som kommer.
-      const local = fromArcweaveProject(project, { projectId });
+      if (format === 'arcweave') {
+        const parsed = JSON.parse(text) as unknown;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new ArcweaveImportError('Fila er ikke et JSON-objekt.');
+        const project = parsed as Record<string, unknown>;
+        body = { format, project };
+        local = fromArcweaveProject(project, { projectId }) as typeof local;
+      } else {
+        body = { format, source: text, title };
+        local = (format === 'twee' ? fromTwee(text, { projectId, title }) : fromInk(text, { projectId, title })) as typeof local;
+      }
       setPreview({
         fileName: file.name,
-        project,
+        format,
+        body,
         counts: {
           boards: local.graph.boards.length, elements: local.graph.elements.length, connections: local.graph.connections.length,
           components: local.graph.components.length, variables: local.graph.variables.length,
@@ -166,7 +180,7 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
         warnings: local.warnings,
       });
     } catch (err) {
-      const message = err instanceof ArcweaveImportError ? err.message
+      const message = err instanceof ArcweaveImportError || err instanceof TweeImportError || err instanceof InkImportError ? err.message
         : err instanceof SyntaxError ? 'Fila er ikke gyldig JSON.'
           : err instanceof Error ? err.message : 'Kunne ikke lese fila.';
       onNotice(message, 'error');
@@ -179,7 +193,7 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
     if (!preview) return;
     setBusy('import');
     try {
-      const result = await api.importArcweave(projectId, preview.project);
+      const result = await api.importProject(projectId, preview.body);
       onImported(result.graph);
       setImportWarnings(result.warnings);
       onNotice(`Importert «${preview.fileName}». Forrige versjon er lagret i Historikk.`, 'success');
@@ -255,19 +269,19 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
 
         <Section
           testId="narrative-exports-import"
-          title="Importer fra Arcweave"
-          hint="Last opp en project.json eksportert fra Arcweave. Hele grafen erstattes; nåværende versjon lagres først i Historikk."
+          title="Importer fra Arcweave, Twine eller Ink"
+          hint="Last opp Arcweave project.json, Twine Twee 3 (.twee — SugarCube fullt, Harlowe delvis) eller Ink (.ink, delsett). Hele grafen erstattes; nåværende versjon lagres først i Historikk. Det som ikke kan oversettes beholdes som tekst og listes som merknader."
         >
           <input
             ref={fileInputRef}
             type="file"
-            accept=".json,application/json"
+            accept=".json,.twee,.tw,.ink,.txt,application/json,text/plain"
             style={{ display: 'none' }}
             onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
             data-testid="narrative-import-file"
           />
           <Button variant="outlined" startIcon={<ImportIcon />} onClick={() => fileInputRef.current?.click()} sx={{ color: narrativeColors.text, borderColor: narrativeColors.borderStrong }} data-testid="narrative-import-pick">
-            Velg project.json
+            Velg fil (Arcweave JSON, Twine .twee, Ink .ink)
           </Button>
           {importWarnings.length > 0 ? (
             <Alert severity="warning" sx={{ mt: 1.5 }} data-testid="narrative-import-warnings">
@@ -356,7 +370,7 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
       </Stack>
 
       <Dialog open={!!preview} onClose={() => (busy === 'import' ? undefined : setPreview(null))} PaperProps={{ 'data-testid': 'narrative-import-dialog', sx: { bgcolor: narrativeColors.bgPanel, color: narrativeColors.text, border: `1px solid ${narrativeColors.borderStrong}` } } as never}>
-        <DialogTitle sx={{ fontSize: 16 }}>Importere «{preview?.fileName}»?</DialogTitle>
+        <DialogTitle sx={{ fontSize: 16 }}>Importere «{preview?.fileName}»{preview ? ` (${IMPORT_FORMAT_LABELS[preview.format]})` : ''}?</DialogTitle>
         <DialogContent>
           <Typography sx={{ fontSize: 13, mb: 1 }}>
             Hele grafen erstattes med {preview?.counts.boards} brett, {preview?.counts.elements} elementer, {preview?.counts.connections} koblinger,{' '}

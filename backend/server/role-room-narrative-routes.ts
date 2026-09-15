@@ -25,7 +25,7 @@ import * as svc from './role-room-narrative-service.js';
 import { validateStoryGraph } from '../../frontend/shared/narrative-runtime/validate.ts';
 // Delt format-lag (Fase 3): Arcweave JSON, Markdown, filnavn.
 import {
-  ArcweaveImportError, exportFileStem, toArcweaveProject, toMarkdown,
+  ArcweaveImportError, InkImportError, TweeImportError, exportFileStem, toArcweaveProject, toMarkdown,
 } from '../../frontend/shared/narrative-format/index.ts';
 
 interface SessionData {
@@ -170,9 +170,16 @@ const revisionBody = z.object({
   label: z.string().max(200).nullable().optional(),
 });
 
-const importBody = z.object({
-  project: z.record(z.unknown()),
-});
+// Import: Arcweave-JSON (bakoverkompatibelt uten `format`), Twee 3 eller Ink som tekst (≤ 5 MB).
+const MAX_IMPORT_SOURCE = 5 * 1024 * 1024;
+const importBody = z.preprocess(
+  (raw) => (raw && typeof raw === 'object' && !('format' in (raw as object)) && 'project' in (raw as object) ? { ...(raw as object), format: 'arcweave' } : raw),
+  z.discriminatedUnion('format', [
+    z.object({ format: z.literal('arcweave'), project: z.record(z.unknown()) }),
+    z.object({ format: z.literal('twee'), source: z.string().min(1).max(MAX_IMPORT_SOURCE), title: nullableStr(300) }),
+    z.object({ format: z.literal('ink'), source: z.string().min(1).max(MAX_IMPORT_SOURCE), title: nullableStr(300) }),
+  ]),
+);
 
 const shareLinkBody = z.object({
   mode: z.enum(['view_play', 'play_only']).optional(),
@@ -447,10 +454,13 @@ export function createRoleRoomNarrativeRouter(
     const parsed = importBody.safeParse(req.body);
     if (!parsed.success) { invalid(res, parsed.error); return; }
     try {
-      const result = await svc.importArcweaveProject(pool, req.projectId, req.userId, parsed.data.project);
+      const result = await svc.importProject(pool, req.projectId, req.userId, parsed.data);
       res.json({ success: true, data: result });
     } catch (err) {
-      if (err instanceof ArcweaveImportError) { res.status(400).json({ error: 'invalid_project', message: err.message }); return; }
+      if (err instanceof ArcweaveImportError || err instanceof TweeImportError || err instanceof InkImportError) {
+        res.status(400).json({ error: 'invalid_project', message: err.message });
+        return;
+      }
       throw err;
     }
   }));

@@ -14,6 +14,7 @@ on:
       - 'frontend/e2e/narrative-play.spec.ts'
       - 'frontend/e2e/narrative-exports.spec.ts'
       - 'frontend/e2e/narrative-story-play.spec.ts'
+      - 'frontend/e2e/narrative-import-formats.spec.ts'
       - 'frontend/e2e/helpers/narrativeMocks.ts'
       - 'frontend/shared/narrative-script/**'
       - 'frontend/shared/narrative-runtime/**'

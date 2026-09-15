@@ -293,11 +293,22 @@ export interface ImportResult {
   graph: NarrativeGraph;
   warnings: NarrativeImportWarning[];
   backup: NarrativeRevisionMeta;
+  format: 'arcweave' | 'twee' | 'ink';
+  stats?: { elements: number; connections: number; variables: number; unsupported: number };
 }
 
-/** Erstatter hele grafen med et Arcweave-prosjekt (server tar revisjon først). */
+export type ImportBody =
+  | { format: 'arcweave'; project: Record<string, unknown> }
+  | { format: 'twee' | 'ink'; source: string; title?: string | null };
+
+/** Erstatter hele grafen med et importert prosjekt (server tar revisjon først). */
+export function importProject(projectId: string, body: ImportBody): Promise<ImportResult> {
+  return request(p(projectId, '/import'), { method: 'POST', body: json(body) });
+}
+
+/** Bakoverkompatibel innpakning for Arcweave-JSON. */
 export function importArcweave(projectId: string, project: Record<string, unknown>): Promise<ImportResult> {
-  return request(p(projectId, '/import'), { method: 'POST', body: json({ project }) });
+  return importProject(projectId, { format: 'arcweave', project });
 }
 
 export function listShareLinks(projectId: string): Promise<NarrativeShareLink[]> {

@@ -13,7 +13,9 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 // Delt format-lag (Fase 3): Arcweave-import + runtime-delsett til offentlige spill-lenker.
-import { fromArcweaveProject, toRuntimeSubset, type FormatWarning } from '../../frontend/shared/narrative-format/index.ts';
+import {
+  fromArcweaveProject, fromInk, fromTwee, toRuntimeSubset, type FormatWarning, type ImportFormat,
+} from '../../frontend/shared/narrative-format/index.ts';
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Typer (speiles i frontend/client/src/components/role-room/narrative/narrativeTypes.ts)
@@ -1085,13 +1087,41 @@ export async function restoreRevision(pool: Pool, projectId: string, userId: str
  * revisjon («Før import»), deretter erstattes hele grafen. Kaster
  * `ArcweaveImportError` (fra format-laget) ved ugyldig dokument.
  */
+export type ImportInput =
+  | { format: 'arcweave'; project: unknown }
+  | { format: 'twee' | 'ink'; source: string; title?: string | null };
+
+export interface ImportOutcome {
+  graph: NarrativeGraph;
+  warnings: FormatWarning[];
+  backup: NarrativeRevisionMeta;
+  format: ImportFormat;
+  stats?: { elements: number; connections: number; variables: number; unsupported: number };
+}
+
+/**
+ * Importer fra Arcweave-JSON, Twine (Twee 3) eller Ink. Alle formatene går
+ * gjennom det delte format-laget; ugyldige dokumenter kaster format-lagets
+ * egne feilklasser (Arcweave/Twee/InkImportError) som ruten svarer 400 på.
+ */
+export async function importProject(pool: Pool, projectId: string, userId: string, input: ImportInput): Promise<ImportOutcome> {
+  const parsed = input.format === 'twee'
+    ? fromTwee(input.source, { projectId, title: input.title ?? undefined })
+    : input.format === 'ink'
+      ? fromInk(input.source, { projectId, title: input.title ?? undefined })
+      : fromArcweaveProject(input.project, { projectId });
+  const backup = await createRevision(pool, projectId, userId, `Før import ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`);
+  await replaceGraph(pool, projectId, userId, parsed.graph as NarrativeGraph);
+  return {
+    graph: await getGraph(pool, projectId), warnings: parsed.warnings, backup, format: input.format,
+    stats: 'stats' in parsed ? parsed.stats : undefined,
+  };
+}
+
 export async function importArcweaveProject(
   pool: Pool, projectId: string, userId: string, project: unknown,
 ): Promise<{ graph: NarrativeGraph; warnings: FormatWarning[]; backup: NarrativeRevisionMeta }> {
-  const { graph, warnings } = fromArcweaveProject(project, { projectId });
-  const backup = await createRevision(pool, projectId, userId, `Før import ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`);
-  await replaceGraph(pool, projectId, userId, graph as NarrativeGraph);
-  return { graph: await getGraph(pool, projectId), warnings, backup };
+  return importProject(pool, projectId, userId, { format: 'arcweave', project });
 }
 
 export type NarrativeShareMode = 'view_play' | 'play_only';
