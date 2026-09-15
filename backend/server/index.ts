@@ -640,6 +640,8 @@ import { registerLeadgridRetentionCron } from "./leadgrid-retention-cron.js";
 import { registerLeadgridBackfillCron } from "./leadgrid-backfill-cron.js";
 import { registerLeadgridAIUsageRoutes } from "./leadgrid-ai-usage-routes.js";
 import { registerLeadgridForecastingRoutes } from "./leadgrid-forecasting-routes.js";
+import { registerLeadgridMarketingRoutes } from "./leadgrid-marketing-routes.js";
+import { createLeadgridMarketingBridge } from "./leadgrid-marketing-bridge.js";
 import { registerLeadgridMomentumRoutes } from "./leadgrid-momentum-routes.js";
 import { registerLeadgridImportRoutes } from "./leadgrid-import-routes.js";
 import { registerLeadgridContinuousDiscoveryCron } from "./leadgrid-continuous-discovery.js";
@@ -2817,6 +2819,14 @@ registerRoleRoomContentPlanRoutes(app, { pool, activeSessions });
 registerRoleRoomDeadlineReminderRoutes(app, { pool });
 registerRoleRoomMarketingPreviewVideoRoutes(app, { pool, activeSessions });
 registerRoleRoomIntakeVersionsRoutes(app, { pool, activeSessions });
+// Leadgrid Markedssjef-modus — bro som autoriserer `lg-<leadgrid-prosjekt>`-
+// nøkler via Leadgrids egne regler (prosjekt + marketing.content.brief +
+// modul leadgrid:marketing) FØR Role Rooms markedsplan-ruter. No-op for alle
+// andre nøkler. MÅ monteres før versions-/activity-feed-/marketing-plan-rutene.
+app.use(
+  "/api/role-room/marketing-plan",
+  createLeadgridMarketingBridge({ pool, activeSessions }),
+);
 registerRoleRoomPlanVersionsRoutes(app, { pool, activeSessions });
 registerRoleRoomMarketingActivityFeedRoutes(app, { pool, activeSessions });
 app.use("/api/capture", createCaptureRouter(pool, activeSessions));
@@ -25844,6 +25854,11 @@ registerLeadgridAIUsageRoutes({ app, pool, activeSessions });
 // POST /forecasting/pipeline/refresh, GET /forecasting/attribution.
 // Gated på forecasting.view (admin/salgssjef/teamleder).
 registerLeadgridForecastingRoutes({ app, pool, activeSessions });
+// Markedssjef-modus (vertikal, opt-in via module_feature_entitlements
+// leadgrid:marketing) — bootstrap av egen org + status. Selve planen går
+// via Role Rooms /api/role-room/marketing-plan/* med `lg-`-nøkkel.
+// Gated på marketing.content.brief (mig 302) + modulen.
+registerLeadgridMarketingRoutes({ app, pool, activeSessions });
 // Momentum Engine — sales-goal + daglig activity-target + momentum-score
 // 0-100 + neste-handling-anbefaling (mig 327).
 // 3 endepunkter: GET /momentum/today, GET /momentum/goal, POST /momentum/goal
