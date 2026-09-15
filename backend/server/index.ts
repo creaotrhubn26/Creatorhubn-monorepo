@@ -2703,7 +2703,21 @@ registerB2CompanyArchiveRoutes({
       return null;
     }
     if (!config) return null;
-    return { bucketName: config.bucket, client: roleRoomS3Client(config) };
+    // Runtime-rollen (TheRoleRoomStorageRuntimeProd) har ikke s3:ListBucket —
+    // verifisert mot prod 2026-09-15: både ListBucket og GetObject svarte
+    // AccessDenied. Den er bygget for at appen skal lese og skrive sine egne
+    // objekter, ikke for å bla i bøtta. Arkiv-browseren bruker derfor den
+    // statiske adminnøkkelen når den finnes, og faller tilbake til
+    // runtime-klienten bare hvis den ikke gjør det.
+    const accessKeyId = process.env.AWS_ROLE_ROOM_ACCESS_KEY_ID?.trim();
+    const secretAccessKey = process.env.AWS_ROLE_ROOM_SECRET_ACCESS_KEY?.trim();
+    const client = accessKeyId && secretAccessKey
+      ? new S3Client({
+          region: config.region,
+          credentials: { accessKeyId, secretAccessKey },
+        })
+      : roleRoomS3Client(config);
+    return { bucketName: config.bucket, client };
   },
 });
 registerCastingPosterArchiveRoutes({ app, requireAdminSession });
