@@ -119,7 +119,7 @@ import { apiRequest, clearClientAuthState } from '../lib/queryClient';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 'migrations' | 'observability' | 'integrations' | 'infographic-templates';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 's3-archive' | 'migrations' | 'observability' | 'integrations' | 'infographic-templates';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -4462,7 +4462,7 @@ function resolveInitialAdminTab(): AdminRoomTab {
     'content-marketing', 'industry-crm', 'role-room-economy',
     'newsletter-studio', 'ai-citation', 'whats-new', 'resend',
     'marketing-cockpit', 'role-room-agent', 'content-calendar',
-    'b2-archive', 'migrations', 'observability', 'integrations',
+    'b2-archive', 's3-archive', 'migrations', 'observability', 'integrations',
   ];
   try {
     const fromUrl = new URLSearchParams(window.location.search).get('adminTab');
@@ -4638,6 +4638,15 @@ export default function AdminRoom() {
   else if (tab === 'role-room-agent') content = <RoleRoomAgentTab />;
   else if (tab === 'content-calendar') content = <ContentCalendarTab />;
   else if (tab === 'b2-archive') content = <B2ArchiveTab />;
+  // The Role Room sin private AWS-bøtte — der produksjonsmedia faktisk ligger.
+  // Lesetilgang: appflytene eier livssyklusen til disse objektene.
+  else if (tab === 's3-archive') content = (
+    <B2ArchiveTab
+      apiBase="/api/role-room/admin/s3-archive"
+      bucketLabel="The Role Room S3 (privat)"
+      readOnly
+    />
+  );
   else if (tab === 'migrations') content = <MigrationsTab />;
 
   return (
@@ -4711,6 +4720,7 @@ export default function AdminRoom() {
           <Tab value="role-room-agent" label="🤖 Role Room Agent" />
           <Tab value="content-calendar" label="Content-kalender" />
           <Tab value="b2-archive" label="B2-arkiv" />
+          <Tab value="s3-archive" label="Role Room S3" />
           <Tab value="migrations" label="Migrasjoner" />
           <Tab value="integrations" label="🔌 Integrasjoner" />
         </Tabs>
