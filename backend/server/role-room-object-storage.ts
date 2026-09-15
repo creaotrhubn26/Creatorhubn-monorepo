@@ -29,13 +29,25 @@ function getCachedClient(
   return client;
 }
 
+/** Only these opt in to the retired Backblaze bucket. */
+const LEGACY_B2_PROVIDER_VALUES = new Set(["backblaze_b2", "backblaze", "b2"]);
+
+/**
+ * S3 is the default, and the fallback for anything unrecognised.
+ *
+ * The switch used to work the other way round: only "aws_s3", "aws" or "s3"
+ * chose S3, and every other value — a typo, a stray quote, an empty string
+ * that survived trimming — silently selected Backblaze. That is the retired
+ * bucket, so a misspelling in one environment variable was enough to send
+ * writes somewhere nothing reads.
+ *
+ * Now B2 has to be asked for by name.
+ */
 export function getConfiguredRoleRoomStorageProvider(): RoleRoomStorageProvider {
-  const requested = (process.env.ROLE_ROOM_STORAGE_PROVIDER || "aws_s3")
+  const requested = (process.env.ROLE_ROOM_STORAGE_PROVIDER || "")
     .trim()
     .toLowerCase();
-  return requested === "aws_s3" || requested === "aws" || requested === "s3"
-    ? "aws_s3"
-    : "backblaze_b2";
+  return LEGACY_B2_PROVIDER_VALUES.has(requested) ? "backblaze_b2" : "aws_s3";
 }
 
 function getAwsStorage(): RoleRoomObjectStorage | null {

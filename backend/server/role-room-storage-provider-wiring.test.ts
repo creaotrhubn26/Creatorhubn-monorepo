@@ -87,3 +87,35 @@ describe("Role Room storage provider", () => {
     expect(resolveRoleRoomObjectKey(legacy)).toBe(legacy);
   });
 });
+
+describe("S3 is the default, B2 must be asked for", () => {
+  const set = (value: string | undefined) => {
+    if (value === undefined) delete process.env.ROLE_ROOM_STORAGE_PROVIDER;
+    else process.env.ROLE_ROOM_STORAGE_PROVIDER = value;
+    return getConfiguredRoleRoomStorageProvider();
+  };
+
+  it("picks S3 when the variable is unset, empty or whitespace", () => {
+    expect(set(undefined)).toBe("aws_s3");
+    expect(set("")).toBe("aws_s3");
+    expect(set("   ")).toBe("aws_s3");
+  });
+
+  it("picks S3 for every spelling of it", () => {
+    for (const value of ["aws_s3", "AWS_S3", " s3 ", "aws", "S3"]) {
+      expect(set(value)).toBe("aws_s3");
+    }
+  });
+
+  it("falls back to S3 on a typo instead of reaching for the retired bucket", () => {
+    for (const value of ["awss3", "aws-s3", "amazon", "sss3", "'aws_s3'", "true"]) {
+      expect(set(value)).toBe("aws_s3");
+    }
+  });
+
+  it("still uses B2 when it is named explicitly", () => {
+    for (const value of ["backblaze_b2", "BACKBLAZE", " b2 "]) {
+      expect(set(value)).toBe("backblaze_b2");
+    }
+  });
+});
