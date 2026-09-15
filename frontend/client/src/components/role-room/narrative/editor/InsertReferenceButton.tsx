@@ -26,10 +26,10 @@ export function InsertReferenceButton({ editor, graph, currentElementId, buttonS
   const groups = useMemo(() => {
     const elements: RefOption[] = graph.elements
       .filter((e) => e.kind !== 'note' && e.id !== currentElementId)
-      .map((e) => ({ id: e.id, kind: 'element', label: htmlToText(e.titleHtml) || 'Uten tittel', hint: graph.boards.find((b) => b.id === e.boardId)?.name }))
+      .map((e): RefOption => ({ id: e.id, kind: 'element', label: htmlToText(e.titleHtml) || 'Uten tittel', hint: graph.boards.find((b) => b.id === e.boardId)?.name }))
       .slice(0, 200);
-    const variables: RefOption[] = graph.variables.map((v) => ({ id: v.id, kind: 'variable', label: v.name, hint: v.type }));
-    const components: RefOption[] = graph.components.map((c) => ({ id: c.id, kind: 'component', label: c.name, hint: c.folderPath || undefined }));
+    const variables: RefOption[] = graph.variables.map((v): RefOption => ({ id: v.id, kind: 'variable', label: v.name, hint: v.type }));
+    const components: RefOption[] = graph.components.map((c): RefOption => ({ id: c.id, kind: 'component', label: c.name, hint: c.folderPath || undefined }));
     return { elements, variables, components };
   }, [graph, currentElementId]);
 
