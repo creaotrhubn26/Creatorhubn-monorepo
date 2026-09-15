@@ -43,7 +43,7 @@ Den kanoniske flyten er:
 | Desktop hardening | ✅ lokalt | Device-token og separat AAX-IPC-hemmelighet ligger i OS-nøkkelring, CSP er låst, appen har tray/autostart, offline feedback-cache, sanitert diagnostikk og Companion-spesifikk signert updater. |
 | Realtime-sikkerhet | ✅ | Web-klienten henter en tilfeldig 30-sekunders engangsticket før WebSocket-oppkobling; OAuth-token legges ikke i URL-en. |
 | Legacy EaseVerse-paring | ✅ | Gamle Clerk-/lokale Companion-kort er fjernet fra aktiv EaseVerse-UI. Paring administreres i Workspace/Sound Room. |
-| Desktop-distribusjon | 🟡 | Companion 0.3 er implementert og lokalt bygget/testet, men ikke publisert ennå. Forrige v0.2-utkast har Developer ID-signerte/notariserte macOS-assets; Windows/publisering er fortsatt fail-closed til den konfigurerte Azure Public Trust-profilen finnes og native smoke passerer. |
+| Desktop-distribusjon | ✅ | Companion 0.3.1 har Developer ID-signerte/notariserte macOS-installerere og Authenticode-signerte Windows EXE/MSI. Sound Room oppdager OS/arkitektur, og installere + Tauri-oppdateringer leveres fra CreatorHub sin private S3-distribusjon gjennom validerte, kortlivede URL-er. |
 
 ## 3. Systemkart og ansvar
 
@@ -231,6 +231,26 @@ organizations/{organizationId}/users/{userId}/projects/{workspaceProjectId}/
 ```
 
 Personlige brukere bruker `personal-{userId}` som tenant-segment. PostgreSQL er autoritativ for tilgang; en S3-prefix gir aldri tilgang alene. Render skal bruke den scoped IAM-brukeren `creatorhubn-production-storage`, aldri provisioning/root-profilen. Infrastrukturpolicy og runbook ligger i `infrastructure/aws/creatorhubn-storage/`.
+
+Desktop-applikasjoner ligger utenfor tenant-data i en egen, ryddig og
+versjonert produktstruktur:
+
+```text
+platform/releases/protools-companion/
+  latest.json
+  {version}/
+    CreatorHub-ProTools-Companion_{version}_aarch64_signed-notarized.dmg
+    CreatorHub-ProTools-Companion_{version}_x64_signed-notarized.dmg
+    CreatorHub-ProTools-Companion_{version}_x64_signed.exe
+    CreatorHub-ProTools-Companion_{version}_x64_signed.msi
+    creatorhub-s3-release.json
+    ...signerte updater-pakker og SHA256SUMS.txt
+```
+
+Release-pipelinen bruker en GitHub OIDC-rolle som bare kan skrive til denne
+produktprefixen. Backend kan bare lese den. `latest.json` valideres strengt og
+skrives sist; Sound Room og Tauri får CreatorHub API-lenker med versjon + en
+fast artifact-ID, aldri S3-nøkler eller GitHub-nedlastingsadresser.
 
 ## 9. Verifikasjonsmatrise
 

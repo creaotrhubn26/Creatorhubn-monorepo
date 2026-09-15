@@ -8,7 +8,7 @@
       "Resource": "arn:aws:s3:::creatorhubn-prod-745600963362-eu-north-1",
       "Condition": {
         "StringLike": {
-          "s3:prefix": ["organizations/*", "temporary/*", "exports/*", "quarantine/*"]
+          "s3:prefix": ["organizations/*", "temporary/*", "exports/*", "quarantine/*", "platform/releases/*"]
         }
       }
     },
@@ -29,6 +29,12 @@
         "arn:aws:s3:::creatorhubn-prod-745600963362-eu-north-1/exports/*",
         "arn:aws:s3:::creatorhubn-prod-745600963362-eu-north-1/quarantine/*"
       ]
+    },
+    {
+      "Sid": "CreatorHubApplicationReleaseReadOnly",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:GetObjectVersion"],
+      "Resource": "arn:aws:s3:::creatorhubn-prod-745600963362-eu-north-1/platform/releases/*"
     }
   ]
 }
