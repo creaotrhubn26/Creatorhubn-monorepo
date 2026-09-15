@@ -17460,14 +17460,16 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
     const body = req.body as Record<string, unknown>;
     const { name, role, email, phone, department, rate } = body;
+    // Eksplisitt konto-kobling når raden gjelder et medlem. Credit, ikke tilgang.
+    const crewUserId = readStringValue(body.userId) ?? readStringValue(body.user_id);
     // Klient kan opt-out via { sendEmail: false } — default ER å sende.
     const shouldSendEmail = body.sendEmail !== false;
     const id = makeId();
     try {
       await pool.query(
-        `INSERT INTO casting_crew (id, project_id, name, role, email, phone, department, rate)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [id, req.params.projectId, name, role, email ?? null, phone ?? null, department ?? null, rate ?? null]
+        `INSERT INTO casting_crew (id, project_id, user_id, name, role, email, phone, department, rate)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [id, req.params.projectId, crewUserId ?? null, name, role, email ?? null, phone ?? null, department ?? null, rate ?? null]
       );
 
       // ── Send invitasjons-email til crew-medlem (best-effort) ──
