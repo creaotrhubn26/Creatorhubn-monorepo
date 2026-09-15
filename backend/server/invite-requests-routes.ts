@@ -68,6 +68,19 @@ function isPrototypeTesterRequest(body: Record<string, unknown>): boolean {
   );
 }
 
+/**
+ * En prototype-tester er ofte en privatperson — skuespiller, frilanser eller
+ * student uten ENK. Firmanavn, organisasjonsnummer, Brreg-oppslag og
+ * Proff-screening gir ingen mening for dem, og kravet stengte dem ute av
+ * søknadsskjemaet helt. Gjelder KUN tester-søknader: en vanlig bedriftssøknad
+ * beholder org.nr-kravet uendret.
+ */
+function isPrivatePersonTesterRequest(body: Record<string, unknown>): boolean {
+  if (!isPrototypeTesterRequest(body)) return false;
+  const applicantType = String(body.applicantType || "").trim().toLowerCase();
+  return applicantType === "private" || applicantType === "privatperson";
+}
+
 function isDatabaseUnavailable(error: any): boolean {
   const code = String(error?.code || "");
   return ["28P01", "08001", "08003", "08006", "57P01", "ETIMEDOUT", "ECONNREFUSED"].includes(code);
@@ -405,13 +418,14 @@ export function setupInviteRequestsRoutes(
         ? withTesterProfessionTag(message, normalizedTesterProfession)
         : String(message || "").trim() || null;
 
+      const privatePersonTester = isPrivatePersonTesterRequest(req.body || {});
+
       if (
         !normalizedEmail ||
         !normalizedFirstName ||
         !normalizedLastName ||
         !profession ||
-        !trimmedCompanyName ||
-        !normalizedOrganizationNumber
+        (!privatePersonTester && (!trimmedCompanyName || !normalizedOrganizationNumber))
       ) {
         return res
           .status(400)
@@ -430,36 +444,43 @@ export function setupInviteRequestsRoutes(
       }
 
 
-      if (!isValidNorwegianOrgNumber(normalizedOrganizationNumber)) {
+      if (!privatePersonTester && !isValidNorwegianOrgNumber(normalizedOrganizationNumber)) {
         return res.status(400).json({
           error:
             "Organisasjonsnummer må være et gyldig norsk organisasjonsnummer.",
         });
       }
 
-      const brregLookup = await lookupInviteRequestBrregCompany(
-        normalizedOrganizationNumber,
-      );
-      if (brregLookup.lookupStatus === "not_found") {
+      const brregLookup = privatePersonTester
+        ? null
+        : await lookupInviteRequestBrregCompany(normalizedOrganizationNumber);
+      if (brregLookup && brregLookup.lookupStatus === "not_found") {
         return res.status(400).json({
           error:
             "Organisasjonsnummeret ble ikke funnet i Brønnøysundregistrene.",
         });
       }
 
-      const persistedCompanyName =
-        brregLookup.company?.name?.trim() || trimmedCompanyName;
-      const persistedBusinessAddress =
-        formatInviteRequestBrregAddress(
-          brregLookup.company?.businessAddress,
-        ) ||
-        String(businessAddress || "").trim() ||
-        null;
-      const proffAnalysis = await buildInviteRequestProffAnalysis({
-        organizationNumber: normalizedOrganizationNumber,
-        companyName: persistedCompanyName,
-        brregLookup,
-      });
+      // Privatperson: ingen firmaverdier lagres. Kolonnene er nullable fra
+      // migrasjon 0609, og admin-flatene viser «Privatperson» for tomt firma.
+      const persistedCompanyName = privatePersonTester
+        ? null
+        : brregLookup?.company?.name?.trim() || trimmedCompanyName;
+      const persistedOrganizationNumber = privatePersonTester
+        ? null
+        : normalizedOrganizationNumber;
+      const persistedBusinessAddress = privatePersonTester
+        ? String(businessAddress || "").trim() || null
+        : formatInviteRequestBrregAddress(brregLookup?.company?.businessAddress) ||
+          String(businessAddress || "").trim() ||
+          null;
+      const proffAnalysis = privatePersonTester || !brregLookup
+        ? null
+        : await buildInviteRequestProffAnalysis({
+            organizationNumber: normalizedOrganizationNumber,
+            companyName: persistedCompanyName || trimmedCompanyName,
+            brregLookup,
+          });
 
       const inviteColumns = await getTableColumns("invite_requests");
       const insertColumns: string[] = [];
@@ -477,7 +498,7 @@ export function setupInviteRequestsRoutes(
       pushInsert("last_name", normalizedLastName);
       pushInsert("profession", profession);
       pushInsert("company_name", persistedCompanyName);
-      pushInsert("organization_number", normalizedOrganizationNumber);
+      pushInsert("organization_number", persistedOrganizationNumber);
       pushInsert("business_address", persistedBusinessAddress);
       pushInsert("phone_number", phoneNumber || null);
       pushInsert("website", website || null);
@@ -507,24 +528,30 @@ export function setupInviteRequestsRoutes(
         values,
       );
 
-      try {
-        await upsertInviteRequestProffScreening(
-          String(result.rows[0].id),
-          normalizedOrganizationNumber,
-          proffAnalysis,
-        );
-      } catch (screeningError) {
-        console.warn("[invite-requests] screening could not be stored:", screeningError);
+      if (proffAnalysis) {
+        try {
+          await upsertInviteRequestProffScreening(
+            String(result.rows[0].id),
+            normalizedOrganizationNumber,
+            proffAnalysis,
+          );
+        } catch (screeningError) {
+          console.warn("[invite-requests] screening could not be stored:", screeningError);
+        }
       }
 
+      const proffLabel = proffAnalysis
+        ? `${proffAnalysis.approvalRecommendation}/${proffAnalysis.riskLevel}`
+        : "privatperson (ingen firmascreening)";
+      const applicantLabel = persistedCompanyName || "Privatperson";
       console.log(
-        `📨 New invite request from ${normalizedEmail} (${profession}) [${proffAnalysis.approvalRecommendation}/${proffAnalysis.riskLevel}]`,
+        `📨 New invite request from ${normalizedEmail} (${profession}) [${proffLabel}]`,
       );
       await notifyAdmins(pool, {
         type: "invite_request",
         source: `creatorhubn.com · ${source || "invite-request (landing)"}`,
-        title: `Ny tilgangsforespørsel: ${normalizedFirstName} ${normalizedLastName} (${persistedCompanyName})`,
-        summary: `${normalizedTesterProfession ? TESTER_PROFESSION_LABELS[normalizedTesterProfession] : profession} · ${normalizedEmail}${planName ? ` · Plan: ${planName}` : ""} · Proff: ${proffAnalysis.approvalRecommendation}/${proffAnalysis.riskLevel}`,
+        title: `Ny tilgangsforespørsel: ${normalizedFirstName} ${normalizedLastName} (${applicantLabel})`,
+        summary: `${normalizedTesterProfession ? TESTER_PROFESSION_LABELS[normalizedTesterProfession] : profession} · ${normalizedEmail}${planName ? ` · Plan: ${planName}` : ""} · Proff: ${proffLabel}`,
         link: "/admin",
         cta: (req.body && req.body.cta) || null,
         page: req.get("referer") || (req.body && req.body.page) || null,
@@ -545,7 +572,7 @@ export function setupInviteRequestsRoutes(
             recipientEmail: normalizedEmail,
             recipientName: `${normalizedFirstName} ${normalizedLastName}`.trim(),
             requestId: String(result.rows[0].id),
-            companyName: persistedCompanyName,
+            companyName: applicantLabel,
             professionName: normalizedTesterProfession
               ? TESTER_PROFESSION_LABELS[normalizedTesterProfession]
               : String(profession),
@@ -562,13 +589,15 @@ export function setupInviteRequestsRoutes(
         receiptEmailDelivery,
         message:
           "Forespørselen din er mottatt. Admin vil gjennomgå søknaden.",
-        proffAnalysis: {
-          recommendation: proffAnalysis.approvalRecommendation,
-          riskLevel: proffAnalysis.riskLevel,
-          riskScore: proffAnalysis.riskScore,
-          screeningSource: proffAnalysis.screeningSource,
-          summary: proffAnalysis.summary,
-        },
+        proffAnalysis: proffAnalysis
+          ? {
+              recommendation: proffAnalysis.approvalRecommendation,
+              riskLevel: proffAnalysis.riskLevel,
+              riskScore: proffAnalysis.riskScore,
+              screeningSource: proffAnalysis.screeningSource,
+              summary: proffAnalysis.summary,
+            }
+          : null,
       });
     } catch (error: any) {
       if (error.constraint === "invite_requests_email_unique") {
