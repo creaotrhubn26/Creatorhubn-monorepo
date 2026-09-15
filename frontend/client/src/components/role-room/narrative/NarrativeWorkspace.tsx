@@ -54,6 +54,7 @@ import { ComponentsPanel } from './panels/ComponentsPanel';
 import { VariablesPanel } from './panels/VariablesPanel';
 import { AssetsPanel } from './panels/AssetsPanel';
 import { HistoryPanel } from './panels/HistoryPanel';
+import { ExportsPanel } from './panels/ExportsPanel';
 import { ComingSoonCard } from './panels/ComingSoonCard';
 import { NarrativePlayPanel } from './play/NarrativePlayPanel';
 import { narrativeColors } from './narrativeTheme';
@@ -68,12 +69,8 @@ export interface NarrativeWorkspaceProps {
 
 const PROJECT_STORAGE_KEY = 'role_room_narrative_project';
 
-const PLACEHOLDER_BODIES: Record<string, { body: string; phase: string }> = {
-  exports: {
-    body: 'JSON-eksport i Arcweave-kompatibelt format (virker med deres Unity/Unreal/Godot-plugins), import fra Arcweave, Markdown-eksport og delbare spill-lenker.',
-    phase: 'Fase 3',
-  },
-};
+/** Faner som ennå ikke er bygd (alle Fase 0–3-faner er levert). */
+const PLACEHOLDER_BODIES: Record<string, { body: string; phase: string }> = {};
 
 function readUrlParam(name: string): string | null {
   if (typeof window === 'undefined') return null;
@@ -335,6 +332,7 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
                   store={store}
                   onClose={() => setEditorOpen(false)}
                   onDeleted={() => setSelectedElementId(null)}
+                  projectId={projectId}
                 />
               </Box>
             </Box>
@@ -348,6 +346,15 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
         return <AssetsPanel graph={graph} store={store} />;
       case 'play':
         return <NarrativePlayPanel graph={graph} onEditElement={jumpToElement} />;
+      case 'exports':
+        return (
+          <ExportsPanel
+            projectId={projectId}
+            graph={graph}
+            onImported={(next) => store.replaceGraph(next)}
+            onNotice={(message, severity) => setNotice({ message, severity })}
+          />
+        );
       case 'history':
         return (
           <HistoryPanel

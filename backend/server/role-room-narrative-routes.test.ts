@@ -247,3 +247,134 @@ describe('narrative routes — koblinger og variabler', () => {
     expect(res.body.data).toMatchObject({ name: 'gold', type: 'int', defaultValue: 0 });
   });
 });
+
+describe('narrative routes — Fase 3: eksport, import, deling', () => {
+  const graphRows = [
+    { match: /FROM narrative_settings WHERE project_id/, rows: [{ project_id: PROJECT_ID, title: 'Demo-spill', starting_element_id: 'nel_1', cover_asset_id: null, schema_version: 1, updated_at: null }] },
+    { match: /FROM narrative_boards WHERE project_id/, rows: [{ id: 'nbd_1', project_id: PROJECT_ID, name: 'Akt 1', custom_id: null, folder_path: '', sort_order: 0, viewport: {}, created_at: new Date(), updated_at: new Date() }] },
+    { match: /FROM narrative_elements WHERE project_id/, rows: [
+      elementRow({ id: 'nel_1', content_html: '<p>Hei</p>' }),
+      elementRow({ id: 'nel_note', kind: 'note', content_html: '<p>Designer-notat</p>' }),
+    ] },
+    { match: /FROM narrative_attributes WHERE project_id/, rows: [
+      { id: 'nat_1', project_id: PROJECT_ID, owner_kind: 'element', owner_id: 'nel_1', name: 'notat', type: 'rich_text', value: '<p>hemmelig</p>', custom_id: null, sort_order: 0, created_at: new Date(), updated_at: new Date() },
+    ] },
+  ];
+
+  it('GET export.json → Arcweave-format med vedleggs-header', async () => {
+    const res = await request(createApp(makePool(graphRows)))
+      .get(`/api/role-room/narrative/projects/${PROJECT_ID}/export.json`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toBe('attachment; filename="demo-spill.json"');
+    expect(res.body.name).toBe('Demo-spill');
+    const elementIds = Object.keys(res.body.elements);
+    expect(elementIds).toHaveLength(1);
+    expect(res.body.startingElement).toBe(elementIds[0]);
+    expect(res.body.elements[elementIds[0]].title).toBe('<p>Start</p>');
+    expect(Object.keys(res.body.notes)).toEqual(['note']);
+  });
+
+  it('GET export.md → Markdown', async () => {
+    const res = await request(createApp(makePool(graphRows)))
+      .get(`/api/role-room/narrative/projects/${PROJECT_ID}/export.md`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/markdown/);
+    expect(res.text).toContain('# Demo-spill');
+  });
+
+  it('POST import med ugyldig dokument → 400 invalid_project', async () => {
+    const res = await request(createApp(makePool(graphRows)))
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/import`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ project: { hello: 'world' } });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid_project');
+  });
+
+  it('POST import → lagrer revisjon først, erstatter grafen og returnerer advarsler', async () => {
+    const pool = makePool([
+      ...graphRows,
+      { match: /INSERT INTO narrative_revisions/, rows: (p) => [{ id: p[0], project_id: p[1], label: p[2], snapshot: p[3], created_by: p[4], created_at: new Date() }] },
+    ]);
+    const project = {
+      name: 'Fra Arcweave', startingElement: 'e1',
+      boards: { root: { name: 'Root', root: true, children: ['b1'] }, b1: { name: 'Start', notes: [], jumpers: ['j1'], branches: [], elements: ['e1'], connections: [] } },
+      elements: { e1: { x: 0, y: 0, theme: 'default', title: '<p>A</p>', content: '', outputs: [], components: [], attributes: [], assets: {} } },
+      jumpers: { j1: { x: 0, y: 0, elementId: 'mangler' } },
+      notes: {}, connections: {}, branches: {}, components: {}, attributes: {}, assets: {}, variables: {}, conditions: {},
+    };
+    const res = await request(createApp(pool))
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/import`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ project });
+    expect(res.status).toBe(200);
+    expect(res.body.data.backup.label).toMatch(/^Før import/);
+    expect(res.body.data.warnings.some((w: { message: string }) => /Jumperen peker/.test(w.message))).toBe(true);
+    const sql = (pool.query as any).mock.calls.map((c: unknown[]) => String(c[0]));
+    const revisionIdx = sql.findIndex((q: string) => /INSERT INTO narrative_revisions/.test(q));
+    const deleteIdx = sql.findIndex((q: string) => /DELETE FROM narrative_elements/.test(q));
+    expect(revisionIdx).toBeGreaterThan(-1);
+    expect(deleteIdx).toBeGreaterThan(revisionIdx);
+    const elementInserts = (pool.query as any).mock.calls.filter((c: unknown[]) => /INSERT INTO narrative_elements/.test(String(c[0])));
+    expect(elementInserts).toHaveLength(2); // element + jumper, med prosjekt-id fra ruten
+    expect(elementInserts[0][1][1]).toBe(PROJECT_ID);
+  });
+
+  it('POST share-links → 201 med råtoken én gang; kun sha256-hash i INSERT', async () => {
+    const pool = makePool([{ match: /INSERT INTO narrative_share_links/, rows: (p) => [{
+      id: p[0], project_id: p[1], token_hash: p[2], mode: p[3], expires_at: p[4], revoked_at: null, view_count: 0, created_by: p[5], created_at: new Date(),
+    }] }]);
+    const res = await request(createApp(pool))
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/share-links`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ mode: 'view_play', expiresInDays: 7 });
+    expect(res.status).toBe(201);
+    expect(res.body.data.token).toMatch(/^sgs_[0-9a-f]{48}$/);
+    expect(res.body.data.path).toBe(`/story/${res.body.data.token}`);
+    expect(res.body.data.link).toMatchObject({ mode: 'view_play', viewCount: 0 });
+    expect(res.body.data.link.expiresAt).toBeTruthy();
+    const insert = (pool.query as any).mock.calls.find((c: unknown[]) => /INSERT INTO narrative_share_links/.test(String(c[0])));
+    expect(insert[1][2]).toMatch(/^[0-9a-f]{64}$/);
+    expect(insert[1][2]).not.toContain(res.body.data.token);
+  });
+
+  it('POST share-links med ugyldig modus → 400', async () => {
+    const res = await request(createApp(makePool()))
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/share-links`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ mode: 'edit' });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST share-links/:id/revoke → 404 når lenka ikke finnes i prosjektet', async () => {
+    const res = await request(createApp(makePool()))
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/share-links/nsl_x/revoke`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('GET public/:token uten innlogging → renset graf (uten notater/element-attributter/prosjekt-id)', async () => {
+    const pool = makePool([
+      { match: /FROM narrative_share_links[\s\S]*token_hash = \$1 AND revoked_at IS NULL/, rows: [{ id: 'nsl_1', project_id: PROJECT_ID, token_hash: 'x', mode: 'play_only', expires_at: null, revoked_at: null, view_count: 3, created_by: 'u1', created_at: new Date() }] },
+      ...graphRows,
+    ]);
+    const res = await request(createApp(pool)).get('/api/role-room/narrative/public/sgs_abc');
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.body.data.title).toBe('Demo-spill');
+    expect(res.body.data.mode).toBe('play_only');
+    expect(res.body.data.graph.elements.map((e: { id: string }) => e.id)).toEqual(['nel_1']);
+    expect(res.body.data.graph.attributes).toEqual([]);
+    expect(res.body.data.graph.settings.projectId).toBe('');
+    // view_count telles opp (fire-and-forget)
+    await new Promise((r) => setTimeout(r, 0));
+    expect((pool.query as any).mock.calls.some((c: unknown[]) => /view_count = view_count \+ 1/.test(String(c[0])))).toBe(true);
+  });
+
+  it('GET public/:token ukjent/tilbakekalt → 404', async () => {
+    const res = await request(createApp(makePool())).get('/api/role-room/narrative/public/sgs_nope');
+    expect(res.status).toBe(404);
+  });
+});

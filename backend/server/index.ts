@@ -842,6 +842,11 @@ import {
   storySynopsisApplier,
   storyBeatOutlineApplier,
 } from "./ai-story-development-agent.js";
+// Story Graph (game_studio): KI-forslag for narrative elementer (next/enhance/branches).
+import {
+  createNarrativeElementAgent,
+  narrativeElementApplier,
+} from "./ai-narrative-element-agent.js";
 import {
   createCoverageGapAgent,
   coverageGapApplier,
@@ -15513,6 +15518,7 @@ aiSuggestionService.registerAgent(storyLogicAgent);
 aiSuggestionService.registerAgent(shotListAgent);
 aiSuggestionService.registerAgent(auditionSidesAgent);
 aiSuggestionService.registerAgent(storyDevelopmentAgent);
+aiSuggestionService.registerAgent(createNarrativeElementAgent(pool));
 aiSuggestionService.registerAgent(createCoverageGapAgent(pool));
 aiSuggestionService.registerAgent(createCoverageBestTakeAgent(pool));
 aiSuggestionService.registerAgent(createRoughCutAgent(pool));
@@ -15537,6 +15543,7 @@ aiSuggestionService.registerApplier(auditionSidesApplier);
 aiSuggestionService.registerApplier(storyLoglineApplier);
 aiSuggestionService.registerApplier(storySynopsisApplier);
 aiSuggestionService.registerApplier(storyBeatOutlineApplier);
+aiSuggestionService.registerApplier(narrativeElementApplier);
 aiSuggestionService.registerApplier(coverageGapApplier);
 aiSuggestionService.registerApplier(coverageBestTakeApplier);
 aiSuggestionService.registerApplier(roughCutApplier);

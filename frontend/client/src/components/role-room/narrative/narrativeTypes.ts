@@ -216,3 +216,34 @@ export const ATTRIBUTE_TYPE_LABELS: Record<NarrativeAttributeType, string> = {
   component_list: 'Komponentliste',
   asset_list: 'Ressursliste',
 };
+
+// ─── Fase 3: deling og import ───────────────────────────────────────────
+
+export type NarrativeShareMode = 'view_play' | 'play_only';
+export const NARRATIVE_SHARE_MODES: readonly NarrativeShareMode[] = ['view_play', 'play_only'];
+export const SHARE_MODE_LABELS: Record<NarrativeShareMode, string> = {
+  play_only: 'Kun spill',
+  view_play: 'Spill + debugger',
+};
+
+export interface NarrativeShareLink {
+  id: string;
+  projectId: string;
+  mode: NarrativeShareMode;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  viewCount: number;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+export interface NarrativeImportWarning {
+  message: string;
+  ref?: string;
+}
+
+export interface NarrativePublicStory {
+  title: string;
+  mode: NarrativeShareMode;
+  graph: NarrativeGraph;
+}

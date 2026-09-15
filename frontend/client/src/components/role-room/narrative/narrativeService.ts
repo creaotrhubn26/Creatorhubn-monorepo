@@ -21,7 +21,11 @@ import type {
   NarrativeElementComponent,
   NarrativeElementKind,
   NarrativeGraph,
+  NarrativeImportWarning,
+  NarrativePublicStory,
   NarrativeRevisionMeta,
+  NarrativeShareLink,
+  NarrativeShareMode,
   NarrativeSettings,
   NarrativeVariable,
   NarrativeVariableType,
@@ -281,4 +285,48 @@ export function restoreRevision(projectId: string, revisionId: string): Promise<
   return request<{ backup: NarrativeRevisionMeta; graph: NarrativeGraph }>(
     p(projectId, `/revisions/${id(revisionId)}/restore`), { method: 'POST', body: json({}) },
   );
+}
+
+// ─── Fase 3: import, delingslenker, offentlig spill ─────────────────────
+
+export interface ImportResult {
+  graph: NarrativeGraph;
+  warnings: NarrativeImportWarning[];
+  backup: NarrativeRevisionMeta;
+}
+
+/** Erstatter hele grafen med et Arcweave-prosjekt (server tar revisjon først). */
+export function importArcweave(projectId: string, project: Record<string, unknown>): Promise<ImportResult> {
+  return request(p(projectId, '/import'), { method: 'POST', body: json({ project }) });
+}
+
+export function listShareLinks(projectId: string): Promise<NarrativeShareLink[]> {
+  return request(p(projectId, '/share-links'));
+}
+
+export interface ShareLinkInput {
+  mode?: NarrativeShareMode;
+  expiresInDays?: number | null;
+}
+
+export function createShareLink(projectId: string, input: ShareLinkInput): Promise<{ link: NarrativeShareLink; token: string; path: string }> {
+  return request(p(projectId, '/share-links'), { method: 'POST', body: json(input) });
+}
+
+export function revokeShareLink(projectId: string, linkId: string): Promise<NarrativeShareLink> {
+  return request(p(projectId, `/share-links/${id(linkId)}/revoke`), { method: 'POST' });
+}
+
+/** Offentlig (ingen innlogging): grafen bak et delingstoken. null = ugyldig/utløpt/tilbakekalt. */
+export async function getPublicStory(token: string): Promise<NarrativePublicStory | null> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/public/${encodeURIComponent(token)}`, { credentials: 'omit' });
+  } catch {
+    throw new NarrativeNetworkError();
+  }
+  if (res.status === 404) return null;
+  if (!res.ok) throw new NarrativeApiError(`HTTP ${res.status}`, res.status);
+  const body = (await res.json()) as Envelope<NarrativePublicStory>;
+  return body.data;
 }

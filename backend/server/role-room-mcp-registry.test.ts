@@ -63,10 +63,12 @@ describe("listCapabilitiesFor (scope + modus-filter)", () => {
   });
   it("modus-filter «game_studio» → Story Graph-verktøy + globale, ikke casting/dans", () => {
     const names = listCapabilitiesFor(["projects.read"], "game_studio").map((c) => c.name);
-    expect(names).toEqual(expect.arrayContaining(["rr_get_story_graph", "rr_list_story_components", "rr_validate_story_graph", "rr_list_projects"]));
+    expect(names).toEqual(expect.arrayContaining(["rr_get_story_graph", "rr_list_story_components", "rr_validate_story_graph", "rr_export_story_graph", "rr_list_projects"]));
     expect(names).not.toContain("rr_list_auditions");
     expect(names).not.toContain("rr_list_dance_pieces");
     expect(names).not.toContain("rr_list_cohorts");
+    expect(names).not.toContain("rr_draft_element"); // krever projects.write
+    expect(listCapabilitiesFor(["projects.write"], "game_studio").map((c) => c.name)).toContain("rr_draft_element");
   });
   it("modus-filter «dance_studio» → dans-verktøy, ikke casting/utdanning", () => {
     const names = listCapabilitiesFor(["projects.read"], "dance_studio").map((c) => c.name);
@@ -168,5 +170,49 @@ describe("rr_search_talents (byrå-scopet, samtykke-gated PII)", () => {
     expect(out.talents[0].display_name).toBe("Kari");
     expect(out.talents[0].has_showreel).toBeUndefined();
     expect(out.talents[0].availability_visible).toBe(false);
+  });
+});
+
+describe("Fase 3 Story Graph-verktøy (eksport + utkast-element)", () => {
+  const WRITE_CTX: McpCallContext = { userId: "u1", scopes: ["projects.write"], apiKeyId: "k1" };
+  const access = { match: /UNION[\s\S]*casting_user_roles/, rows: [{ "?column?": 1 }] };
+  const graphRows = [
+    { match: /FROM narrative_settings WHERE project_id/, rows: [{ project_id: "p1", title: "Demo", starting_element_id: "nel_1", cover_asset_id: null, schema_version: 1, updated_at: null }] },
+    { match: /FROM narrative_boards WHERE project_id/, rows: [{ id: "nbd_1", project_id: "p1", name: "Akt 1", custom_id: null, folder_path: "", sort_order: 0, viewport: {}, created_at: new Date(), updated_at: new Date() }] },
+    { match: /FROM narrative_elements WHERE project_id/, rows: [{ id: "nel_1", project_id: "p1", board_id: "nbd_1", kind: "element", title_html: "<p>Start</p>", content_html: "<p>Hei</p>", x: 0, y: 0, width: 260, height: 120, theme: "default", cover_asset_id: null, custom_id: "start", jumper_target_id: null, branch_conditions: [], version: 1, sort_order: 0, created_at: new Date(), updated_at: new Date() }] },
+  ];
+  it("rr_export_story_graph → Arcweave project.json med strippede ider", async () => {
+    const out = await findCapability("rr_export_story_graph")!.handler(makePool([access, ...graphRows]), CTX, { projectId: "p1" }) as { format: string; project: { name: string; startingElement: string; elements: Record<string, { title: string }> } };
+    expect(out.format).toBe("arcweave");
+    expect(out.project.name).toBe("Demo");
+    const [eid] = Object.keys(out.project.elements);
+    expect(out.project.startingElement).toBe(eid);
+    expect(out.project.elements[eid].title).toBe("<p>Start</p>");
+  });
+  it("rr_export_story_graph format=markdown", async () => {
+    const out = await findCapability("rr_export_story_graph")!.handler(makePool([access, ...graphRows]), CTX, { projectId: "p1", format: "markdown" }) as { format: string; markdown: string };
+    expect(out.format).toBe("markdown");
+    expect(out.markdown).toContain("# Demo");
+    expect(out.markdown).toContain("### Start `start` ▶");
+  });
+  it("rr_draft_element er mutates og oppretter brettet «KI-utkast» ved behov + ukoblet element", async () => {
+    const cap = findCapability("rr_draft_element")!;
+    expect(cap.mutates).toBe(true);
+    expect(cap.modes).toEqual(["game_studio"]);
+    const pool = makePool([
+      access,
+      { match: /SELECT id FROM narrative_boards WHERE project_id = \$1 AND name = 'KI-utkast'/, rows: [] },
+      { match: /INSERT INTO narrative_boards/, rows: [{ id: "nbd_draft", project_id: "p1", name: "KI-utkast", custom_id: null, folder_path: "Utkast", sort_order: 0, viewport: {}, created_at: new Date(), updated_at: new Date() }] },
+      { match: /SELECT COUNT\(\*\)::int AS n FROM narrative_elements/, rows: [{ n: 2 }] },
+      { match: /INSERT INTO narrative_elements/, rows: [{ id: "nel_new", project_id: "p1", board_id: "nbd_draft", kind: "element", title_html: "<p>Utkast</p>", content_html: "<p>Tekst</p>", x: 680, y: 40, width: 260, height: 120, theme: "amber", cover_asset_id: null, custom_id: null, jumper_target_id: null, branch_conditions: [], version: 1, sort_order: 0, created_at: new Date(), updated_at: new Date() }] },
+    ]);
+    const out = await cap.handler(pool, WRITE_CTX, { projectId: "p1", title: "Utkast", content: "Tekst\n\n> gold += 1" }) as { ok: boolean; id: string; boardId: string; status: string };
+    expect(out).toMatchObject({ ok: true, id: "nel_new", boardId: "nbd_draft", status: "draft" });
+    const insertCall = (pool.query as any).mock.calls.find((c: unknown[]) => /INSERT INTO narrative_elements/.test(String(c[0])));
+    expect(insertCall[1][2]).toBe("nbd_draft");
+    expect(insertCall[1][5]).toBe("<p>Tekst</p><pre><code>gold += 1</code></pre>");
+  });
+  it("rr_draft_element uten title → -32602", async () => {
+    await expect(findCapability("rr_draft_element")!.handler(makePool([access]), WRITE_CTX, { projectId: "p1" })).rejects.toMatchObject({ code: -32602 });
   });
 });

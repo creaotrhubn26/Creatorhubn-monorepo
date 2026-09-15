@@ -22,6 +22,8 @@
  *                                innholdsprodusent (Creative Space Sync /
  *                                klient-brief, producer-timeline, osv.).
  *   ?harness-project=<id>        Override projectId (default: proj-spring-2026)
+ *   ?harness=story_play          Mounter StoryPlayView (offentlig /story/:token) med
+ *                                ?harness-token=<token> (default sgs_e2e_public)
  */
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -33,6 +35,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { EnhancedMasterIntegrationProvider } from './integration/EnhancedMasterIntegrationProvider';
 import { DanceWorkspace } from './components/role-room/dance';
 import { NarrativeWorkspace } from './components/role-room/narrative';
+import { StoryPlayView } from './pages/story-play';
 
 const theme = createTheme({
   palette: { mode: 'dark' },
@@ -74,6 +77,9 @@ function TestHarness() {
         projectId={seededProjectId}
       />
     );
+  } else if (harnessMode === 'story_play') {
+    // Offentlig spill-side (/story/:token) uten wouter/App-bootstrap.
+    panel = <StoryPlayView token={readUrlFlag('harness-token') ?? 'sgs_e2e_public'} />;
   } else if (harnessMode === 'content_producer') {
     panel = (
       <RoleRoomDashboardPanel userId="e2e-test-user" profession="content_producer" />

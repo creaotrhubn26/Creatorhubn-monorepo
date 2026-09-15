@@ -35,6 +35,7 @@ import { parseExpression } from '@shared/narrative-script';
 import { RichTextEditor } from '../../components/RichTextEditor';
 import { NARRATIVE_EDITOR_EXTENSIONS } from '../editor/MentionSpan';
 import { InsertReferenceButton } from '../editor/InsertReferenceButton';
+import { NarrativeAiAssist } from '../editor/NarrativeAiAssist';
 import {
   ELEMENT_KIND_LABELS,
   NARRATIVE_THEMES,
@@ -54,6 +55,8 @@ export interface ElementEditorDrawerProps {
   store: UseNarrativeGraphResult;
   onClose: () => void;
   onDeleted?: () => void;
+  /** Prosjekt-id for KI-forslag (Fase 3). Uten: KI-seksjonen skjules. */
+  projectId?: string;
 }
 
 function escapeHtml(text: string): string {
@@ -83,7 +86,7 @@ function conditionError(script: string | null): string | null {
   }
 }
 
-export function ElementEditorDrawer({ open, element, graph, store, onClose, onDeleted }: ElementEditorDrawerProps) {
+export function ElementEditorDrawer({ open, element, graph, store, onClose, onDeleted, projectId }: ElementEditorDrawerProps) {
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
   const [theme, setTheme] = useState('default');
@@ -441,6 +444,9 @@ export function ElementEditorDrawer({ open, element, graph, store, onClose, onDe
                       </Box>
                     </Stack>
                   </Box>
+                  {projectId ? (
+                    <NarrativeAiAssist projectId={projectId} element={element} onApplied={() => void store.reload()} />
+                  ) : null}
                 </>
               ) : null}
             </Stack>

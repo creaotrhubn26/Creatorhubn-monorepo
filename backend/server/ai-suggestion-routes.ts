@@ -65,6 +65,7 @@ const VALID_SOURCE_TYPES: AISuggestionSourceType[] = [
   "role",
   "manuscript",
   "project",
+  "narrative_element",
 ];
 
 const VALID_STATUSES: AISuggestionStatus[] = [

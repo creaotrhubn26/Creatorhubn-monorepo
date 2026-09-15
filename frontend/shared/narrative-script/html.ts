@@ -39,6 +39,11 @@ const TAG_RE = /<[^>]+>/g;
 
 const ENTITY_MAP: Record<string, string> = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'", '#x27': "'", '#x2F': '/', '#47': '/',
+  // Vanlige navngitte entiteter fra riktekst-editorer (norsk + typografi).
+  aring: 'å', Aring: 'Å', aelig: 'æ', AElig: 'Æ', oslash: 'ø', Oslash: 'Ø',
+  eacute: 'é', egrave: 'è', auml: 'ä', ouml: 'ö', uuml: 'ü', Auml: 'Ä', Ouml: 'Ö', Uuml: 'Ü', szlig: 'ß',
+  hellip: '…', mdash: '—', ndash: '–', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', laquo: '«', raquo: '»',
+  copy: '©', reg: '®', trade: '™', euro: '€', pound: '£', deg: '°', times: '×', middot: '·', bull: '•',
 };
 
 export function decodeEntities(input: string): string {

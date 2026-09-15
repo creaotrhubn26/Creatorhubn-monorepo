@@ -91,11 +91,32 @@ AI-substrat på Claude med kreditt/rate-limit; MCP-server for Role Room.
 - Utsatt: `@`-autocomplete i editoren (krever `@tiptap/suggestion`), spillsesjon som
   overlever fane-bytte.
 
-### Fase 3 — Interop, deling, AI, MCP-skriving
-Arcweave-JSON-eksport/-import (`frontend/shared/narrative-format/`), Markdown-eksport,
-`narrative_share_links` + offentlig `/play/:token` med inlinet runtime (mønster
-`role-room-review-routes.ts` og `demoStudioExports.ts`), `ai-narrative-element-agent.ts`
-(generer/forbedre element i karakterens stemme), MCP `rr_draft_element` (utkast-invariant).
+### Fase 3 — Interop, deling, AI, MCP-skriving (LEVERT)
+- `frontend/shared/narrative-format/`: Arcweave `project.json` 1:1 (`toArcweaveProject` /
+  `fromArcweaveProject` med advarsler, prefiks-frie ider, mappetrær, betingelser/`conditions`,
+  typede attributter), Markdown (`toMarkdown`), standalone HTML (`buildStandaloneHtml` +
+  `toRuntimeSubset`). Ren TS delt av frontend, backend og MCP; rundtur-test mot fixture.
+- `frontend/shared/narrative-player/`: vanilla-DOM-spiller over den delte motoren, bygget med
+  esbuild til `client/public/embed/narrative-player.js` (`npm run build:narrative-player`,
+  kjedet inn i `build`; artefakten er committet).
+- Backend: `GET …/export.json` (vedlegg), `GET …/export.md`, `POST …/import` (revisjon «Før import»
+  → `replaceGraph`), delingslenker (`POST/GET …/share-links`, `…/:id/revoke`; token lagres kun
+  som sha256-hash, råtoken vises én gang), offentlig `GET /public/:token` (renset runtime-graf:
+  ingen notater, element-/riktekst-attributter, lagringsnøkler eller prosjekt-id; `no-store`).
+- Frontend: Eksport-fanen (`panels/ExportsPanel.tsx`) med nedlasting bygd klient-side, Arcweave-
+  import med forhåndsvisning/bekreftelse/merknader, delingslenker; `play/StoryPlayer.tsx` delt
+  mellom Play-fanen og offentlig side `pages/story-play.tsx` på `/story/:token` (registrert i
+  både `App.tsx` og `casting-main.tsx`; debugger kun ved `view_play`).
+- KI: `backend/server/ai-narrative-element-agent.ts` (`narrative-element-agent`, modus
+  next/enhance/branches, `claude-opus-5`, effort medium, cachet system-prompt, tool_choice auto)
+  + applier som materialiserer i accept-transaksjonen; ny kildetype `narrative_element`
+  (migrasjon `0606_ai_suggestions_narrative_source_type.sql`); «Foreslå med KI» i element-skuffen
+  (`editor/NarrativeAiAssist.tsx`, mountes først ved åpning).
+- MCP: `rr_export_story_graph` (arcweave | markdown) og `rr_draft_element` (skriv: ukoblet
+  utkast på brettet «KI-utkast»/mappe «Utkast» — utkast-invarianten uten migrasjon).
+- Tester: vitest (format-lag, agent, ruter, MCP), Playwright `narrative-exports.spec.ts` og
+  `narrative-story-play.spec.ts` (harness `?harness=story_play`).
+- Utsatt: server-side standalone-HTML-endepunkt, embed-kode (iframe), PDF/CSV.
 
 ### Fase 4 — Forbi Arcweave
 Sanntids-markører (socket.io; `yjs@13` ligger ubrukt i backend), lokalisering med
@@ -110,4 +131,6 @@ Stripe-tier, login-persona og landingsside-kort, `@xyflow/react` v12.
 - Brukerintervjuer: 3 norske indie-studioer + 1 narrativ designer i AAA-outsourcing
   (Fase 2-prioritering: Play Mode vs. eksport først).
 - Import-korpus: Arcweaves eksempelprosjekter (unity-example, visual-novel-example,
-  godot-example) som gullstandard for tapsfri import/eksport i Fase 3.
+  godot-example) som gullstandard for tapsfri import/eksport (rundtur-testen i
+  `narrative-format.test.ts` speiler unity-eksempelets form; kjør de ekte filene gjennom
+  Eksport-fanen ved hver Arcweave-release).

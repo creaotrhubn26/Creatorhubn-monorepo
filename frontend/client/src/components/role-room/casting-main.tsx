@@ -167,12 +167,15 @@ const LeadgridTermsAndConditions = React.lazy(() => import('@/pages/terms-and-co
 // dedikerte bootstrapen i stedet for App.tsx, så ruten må finnes begge steder.
 const RrMockupReview = React.lazy(() => import('@/pages/mockup-review'));
 const RrStoryboardReview = React.lazy(() => import('@/pages/storyboard-review'));
+// Story Graph (game_studio): offentlig spill-lenke — samme rute finnes i App.tsx.
+const RrStoryPlay = React.lazy(() => import('@/pages/story-play'));
 
 const THEROLEROOM_APP_ROUTES: Array<{ test: RegExp; path: string; component: React.ComponentType<any> }> = [
   { test: /^\/privacy-policy$/, path: '/privacy-policy', component: RrPrivacyPolicy },
   { test: /^\/personvern$/, path: '/personvern', component: RrPrivacyPolicy },
   { test: /^\/mockup-review\/[^/]+$/, path: '/mockup-review/:token', component: RrMockupReview },
   { test: /^\/storyboard-review\/[^/]+$/, path: '/storyboard-review/:token', component: RrStoryboardReview },
+  { test: /^\/story\/[^/]+$/, path: '/story/:token', component: RrStoryPlay },
   { test: /^\/invite\/[^/]+$/, path: '/invite/:token', component: RrTesterInviteLanding },
   { test: /^\/dance\/invite\/[^/]+$/, path: '/dance/invite/:token', component: RrDanceInviteLanding },
   { test: /^\/role-room\/accept-invite$/, path: '/role-room/accept-invite', component: RrAcceptTesterInvite },

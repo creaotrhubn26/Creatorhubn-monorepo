@@ -160,7 +160,7 @@ app/Talent Registry er den nyeste vertikalen og tjener byrå- og talent-siden av
 | **Innholdsprodusent-løsning** (uten Agent) | Innholdsprodusent (495 kr/sete, min. 1) | ✅ Live |
 | **Dansestudio-vertikal** | Profesjonelle dansere / dansestudio | ✅ Live |
 | **Talents-app + Talent Registry** | Skuespillere + casting-byrå + produsenter | ✅ Live (ny — BankID + per-org B2 i pipeline) |
-| **Spillstudio / Story Graph** | Spillstudioer, narrative designere | 🟡 Beta — bak `?mode=game_studio` (Fase 1 av 4) |
+| **Spillstudio / Story Graph** | Spillstudioer, narrative designere | 🟡 Beta — bak `?mode=game_studio` (Fase 3 av 4) |
 | **The Role Room Agent** (AI-lag) | Begge — særlig innholdsprodusent | 🟡 Beta — ikke skipet, testes internt |
 
 ### 2.2 Kjernemoduler — Produksjons-OS (LIVE)
@@ -275,7 +275,7 @@ Team-plan. Produktplan: `docs/role-room/STORY_GRAPH_PRODUCT_PLAN.md`.
 | Prosjekthistorikk | Snapshot av hele grafen + ikke-destruktiv gjenoppretting (Arcweave: kun Team) | ✅ Fase 1 |
 | Grafvalidator | Startelement, uoppnåelige elementer, ukoblede utganger, jumper uten mål | ✅ Fase 1 |
 | Skript + Play Mode | arcscript-kompatibel tolk (delt frontend/backend), forgreninger, Play Mode med debugger, TTS per karakter, skriptvalidering, referanser i editoren | ✅ Fase 2 |
-| Eksport/import + deling | Arcweave-JSON, Markdown, delbare spill-lenker, AI-elementgenerator | 🟡 Fase 3 |
+| Eksport/import + deling | Arcweave-JSON (virker i Arcweaves Unity/Godot/Unreal-plugins), Arcweave-import, Markdown, spillbar HTML, delbare spill-lenker (`/story/:token`), KI-forslag per element (neste/forbedre/forgrening), MCP `rr_export_story_graph` + `rr_draft_element` | ✅ Fase 3 |
 
 **Status:** beta, ingen egen pris-tier ennå (tilgang som Produksjons-OS). Ikke synlig på
 landingssiden.

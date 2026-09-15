@@ -10,8 +10,10 @@
  * `getGraph` er samme form som eksporten og som revisjons-snapshots.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
+// Delt format-lag (Fase 3): Arcweave-import + runtime-delsett til offentlige spill-lenker.
+import { fromArcweaveProject, toRuntimeSubset, type FormatWarning } from '../../frontend/shared/narrative-format/index.ts';
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Typer (speiles i frontend/client/src/components/role-room/narrative/narrativeTypes.ts)
@@ -1072,4 +1074,152 @@ export async function restoreRevision(pool: Pool, projectId: string, userId: str
   const backup = await createRevision(pool, projectId, userId, `Før gjenoppretting av ${rev.meta.createdAt.slice(0, 16).replace('T', ' ')}`);
   await replaceGraph(pool, projectId, userId, rev.snapshot);
   return backup;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Fase 3 — Arcweave-import, delingslenker, offentlig spill-graf
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Importer et Arcweave `project.json`: nåværende graf lagres først som
+ * revisjon («Før import»), deretter erstattes hele grafen. Kaster
+ * `ArcweaveImportError` (fra format-laget) ved ugyldig dokument.
+ */
+export async function importArcweaveProject(
+  pool: Pool, projectId: string, userId: string, project: unknown,
+): Promise<{ graph: NarrativeGraph; warnings: FormatWarning[]; backup: NarrativeRevisionMeta }> {
+  const { graph, warnings } = fromArcweaveProject(project, { projectId });
+  const backup = await createRevision(pool, projectId, userId, `Før import ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`);
+  await replaceGraph(pool, projectId, userId, graph as NarrativeGraph);
+  return { graph: await getGraph(pool, projectId), warnings, backup };
+}
+
+export type NarrativeShareMode = 'view_play' | 'play_only';
+export const NARRATIVE_SHARE_MODES: readonly NarrativeShareMode[] = ['view_play', 'play_only'];
+
+export interface NarrativeShareLink {
+  id: string;
+  projectId: string;
+  mode: NarrativeShareMode;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  viewCount: number;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+/** Tokenet lagres kun som sha256-hash (mønster: desktop-auth-routes). */
+export function hashShareToken(rawToken: string): string {
+  return createHash('sha256').update(rawToken.trim()).digest('hex');
+}
+
+function mapShareLinkRow(row: Row): NarrativeShareLink {
+  return {
+    id: String(row.id),
+    projectId: String(row.project_id),
+    mode: (row.mode === 'view_play' ? 'view_play' : 'play_only'),
+    expiresAt: isoTsOrNull(row.expires_at),
+    revokedAt: isoTsOrNull(row.revoked_at),
+    viewCount: num(row.view_count, 0),
+    createdBy: strOrNull(row.created_by),
+    createdAt: isoTs(row.created_at),
+  };
+}
+
+export interface ShareLinkInput {
+  mode?: NarrativeShareMode;
+  /** null/undefined = utløper aldri. */
+  expiresInDays?: number | null;
+}
+
+/** Oppretter lenke; råtokenet returneres ÉN gang og lagres aldri. */
+export async function createShareLink(
+  db: Queryable, projectId: string, userId: string, input: ShareLinkInput = {},
+): Promise<{ link: NarrativeShareLink; token: string }> {
+  const token = `sgs_${randomBytes(24).toString('hex')}`;
+  const days = typeof input.expiresInDays === 'number' && input.expiresInDays > 0 ? Math.min(input.expiresInDays, 3650) : null;
+  const expiresAt = days ? new Date(Date.now() + days * 86_400_000).toISOString() : null;
+  const { rows } = await db.query(
+    `INSERT INTO narrative_share_links (id, project_id, token_hash, mode, expires_at, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [generateId('nsl'), projectId, hashShareToken(token), input.mode ?? 'play_only', expiresAt, userId],
+  );
+  return { link: mapShareLinkRow(rows[0] as Row), token };
+}
+
+export async function listShareLinks(db: Queryable, projectId: string): Promise<NarrativeShareLink[]> {
+  const { rows } = await db.query(
+    `SELECT * FROM narrative_share_links WHERE project_id = $1 ORDER BY created_at DESC LIMIT 200`,
+    [projectId],
+  );
+  return (rows as Row[]).map(mapShareLinkRow);
+}
+
+export async function revokeShareLink(db: Queryable, projectId: string, id: string): Promise<NarrativeShareLink | null> {
+  const { rows } = await db.query(
+    `UPDATE narrative_share_links SET revoked_at = COALESCE(revoked_at, now())
+       WHERE id = $1 AND project_id = $2 RETURNING *`,
+    [id, projectId],
+  );
+  return rows[0] ? mapShareLinkRow(rows[0] as Row) : null;
+}
+
+/** Ett-spørrings-verifisering: ikke tilbakekalt og ikke utløpt. */
+export async function resolveShareToken(db: Queryable, rawToken: string): Promise<NarrativeShareLink | null> {
+  const token = typeof rawToken === 'string' ? rawToken.trim() : '';
+  if (!token || token.length > 200) return null;
+  const { rows } = await db.query(
+    `SELECT * FROM narrative_share_links
+       WHERE token_hash = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
+       LIMIT 1`,
+    [hashShareToken(token)],
+  );
+  return rows[0] ? mapShareLinkRow(rows[0] as Row) : null;
+}
+
+/** Fire-and-forget visningsteller. */
+export function bumpShareViewCount(db: Queryable, linkId: string): void {
+  Promise.resolve(db.query(`UPDATE narrative_share_links SET view_count = view_count + 1 WHERE id = $1`, [linkId]))
+    .catch(() => undefined);
+}
+
+const PUBLIC_ATTRIBUTE_TYPES: ReadonlySet<string> = new Set(['bool', 'int', 'float', 'string']);
+
+/**
+ * Grafen slik en offentlig spill-lenke ser den: uten notater, uten
+ * element-attributter/riktekst-attributter (designer-notater), uten
+ * lagringsnøkler og uten prosjekt-id. Delsettet er det samme som
+ * standalone-eksporten bruker (`toRuntimeSubset`), her i full NarrativeGraph-form
+ * så frontendens spiller kan gjenbrukes uendret.
+ */
+export function toPublicGraph(graph: NarrativeGraph): NarrativeGraph {
+  const runtime = toRuntimeSubset(graph);
+  const keepElement = new Set(runtime.elements.map((e) => e.id));
+  return {
+    settings: { ...graph.settings, projectId: '' },
+    boards: graph.boards.map((b) => ({ ...b, projectId: '', viewport: {} })),
+    elements: graph.elements.filter((e) => keepElement.has(e.id)).map((e) => ({ ...e, projectId: '' })),
+    connections: graph.connections.map((c) => ({ ...c, projectId: '' })),
+    components: graph.components.map((c) => ({ ...c, projectId: '' })),
+    elementComponents: graph.elementComponents,
+    attributes: graph.attributes
+      .filter((a) => a.ownerKind !== 'element' && PUBLIC_ATTRIBUTE_TYPES.has(a.type))
+      .map((a) => ({ ...a, projectId: '' })),
+    variables: graph.variables.map((v) => ({ ...v, projectId: '' })),
+    assets: graph.assets.map((a) => ({ ...a, projectId: '', storageKey: null })),
+  };
+}
+
+export interface PublicStory {
+  title: string;
+  mode: NarrativeShareMode;
+  graph: NarrativeGraph;
+}
+
+export async function getPublicStory(db: Queryable, rawToken: string): Promise<PublicStory | null> {
+  const link = await resolveShareToken(db, rawToken);
+  if (!link) return null;
+  const graph = await getGraph(db, link.projectId);
+  bumpShareViewCount(db, link.id);
+  return { title: graph.settings.title?.trim() || 'Story Graph', mode: link.mode, graph: toPublicGraph(graph) };
 }

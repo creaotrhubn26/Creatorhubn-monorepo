@@ -24,8 +24,14 @@ import {
   fetchAgencyForUser, parseFilters, buildSearchSql, maskByScopes,
 } from "./role-room-agency-search-routes.js";
 // Story Graph (game_studio): graf + delt validator (samme kode som frontend).
-import { getGraph as getNarrativeGraph } from "./role-room-narrative-service.js";
+import {
+  getGraph as getNarrativeGraph,
+  createBoard as createNarrativeBoard,
+  createElement as createNarrativeElement,
+} from "./role-room-narrative-service.js";
 import { validateStoryGraph } from "../../frontend/shared/narrative-runtime/validate.ts";
+// Fase 3: Arcweave-kompatibel eksport + Markdown fra det delte format-laget.
+import { plainTextToHtml, toArcweaveProject, toMarkdown } from "../../frontend/shared/narrative-format/index.ts";
 
 /** Dokumentert speil av frontendens ProfessionMode + utdannings-modus. */
 export const ROLE_ROOM_MODES = [
@@ -607,8 +613,72 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
     },
   },
 
+  {
+    name: "rr_export_story_graph",
+    description: "Eksporter Story Graph-prosjektet. format=arcweave (default) gir Arcweave-kompatibel project.json (brett, elementer, koblinger, forgreninger/betingelser, jumpere, komponenter, attributter, variabler, ressurser) som lastes rett inn i Arcweaves Unity/Godot/Unreal-plugins; format=markdown gir en lesbar gjennomgang per brett. Read-only.",
+    scope: "projects.read", modes: GAME_MODES, projectScoped: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjekt-ID"),
+      format: { type: "string", description: "arcweave (default) | markdown" },
+    }, ["projectId"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const format = typeof args.format === "string" && args.format.trim().toLowerCase() === "markdown" ? "markdown" : "arcweave";
+      const graph = await getNarrativeGraph(pool, projectId);
+      if (format === "markdown") return { format, markdown: toMarkdown(graph) };
+      return { format, project: toArcweaveProject(graph) };
+    },
+  },
+
   // ── Fase 2: UTKAST-verktøy (skriver, men KUN upubliserte utkast som en
   // produsent må godkjenne/publisere i UI). Aldri auto-utsendelse utad. ──────
+  {
+    name: "rr_draft_element",
+    description: "Opprett et UTKASTS-element i Story Graph. Elementet legges ukoblet på brettet «KI-utkast» (mappe «Utkast», opprettes ved behov) og påvirker ikke spillflyten før en designer kobler det inn i UI-et. Krever projects.write.",
+    scope: "projects.write", modes: GAME_MODES, projectScoped: true, mutates: true,
+    inputSchema: OBJ({
+      projectId: STR("Prosjekt-ID"),
+      title: STR("Elementets tittel (ren tekst)"),
+      content: STR("Innhold som ren tekst; avsnitt skilles med tom linje. Kodeblokker (arcscript) kan gis som linjer som starter med «> »"),
+      customId: STR("Valgfri custom-ID (stabil referanse for skript/eksport)"),
+    }, ["projectId", "title"]),
+    handler: async (pool, ctx, args) => {
+      const projectId = await requireProject(pool, ctx, args);
+      const title = typeof args.title === "string" ? args.title.trim() : "";
+      if (!title) throw new McpToolError(-32602, "title er påkrevd.");
+      const content = typeof args.content === "string" ? args.content : "";
+      const customId = typeof args.customId === "string" && args.customId.trim() ? args.customId.trim().slice(0, 120) : null;
+
+      const existing = await pool.query(
+        `SELECT id FROM narrative_boards WHERE project_id = $1 AND name = 'KI-utkast' ORDER BY created_at ASC LIMIT 1`,
+        [projectId],
+      );
+      const boardId: string = existing.rows[0]?.id
+        ?? (await createNarrativeBoard(pool, projectId, ctx.userId, { name: "KI-utkast", folderPath: "Utkast" })).id;
+      const count = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM narrative_elements WHERE project_id = $1 AND board_id = $2`,
+        [projectId, boardId],
+      );
+      const n = Number(count.rows[0]?.n ?? 0);
+
+      // «> kode»-linjer blir kodeblokker; resten avsnitt.
+      const paragraphs = content.replace(/\r\n?/g, "\n").split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+      const contentHtml = paragraphs.map((p) => (
+        p.split("\n").every((line) => line.startsWith("> "))
+          ? `<pre><code>${p.split("\n").map((l) => l.slice(2)).join("\n").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</code></pre>`
+          : plainTextToHtml(p)
+      )).join("");
+
+      const element = await createNarrativeElement(pool, projectId, ctx.userId, {
+        boardId, kind: "element", titleHtml: plainTextToHtml(title), contentHtml, customId,
+        x: 40 + (n % 3) * 320, y: 40 + Math.floor(n / 3) * 180, theme: "amber",
+      });
+      return {
+        ok: true, id: element.id, boardId, status: "draft",
+        note: "Ukoblet utkast på brettet «KI-utkast» — kobles inn av en designer i Story Graph-UI-et.",
+      };
+    },
+  },
   {
     name: "rr_draft_task",
     description: "Opprett en UTKASTS-oppgave i prosjektets planlegger (tidslinje). Utkastet er upublisert (status=draft) og må godkjennes/publiseres av en produsent i UI-et — det sender ingenting utad. Krever projects.write.",

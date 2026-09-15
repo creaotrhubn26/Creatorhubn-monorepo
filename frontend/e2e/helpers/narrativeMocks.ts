@@ -7,6 +7,59 @@
  */
 import type { Page, Route } from '@playwright/test';
 
+/**
+ * Minimal Arcweave→graf-konvertering for mocken (elementer, jumpere,
+ * koblinger, brett). Playwrights spec-loader tåler ikke import av
+ * `shared/narrative-format` her, så mocken speiler serverens oppførsel
+ * i forenklet form; den fulle konverteringen testes i vitest.
+ */
+function mockImportArcweave(project: Rec, projectId: string): { graph: MockGraph; warnings: Array<{ message: string; ref?: string }> } {
+  const warnings: Array<{ message: string; ref?: string }> = [];
+  const idMap = new Map<string, string>();
+  const nid = (prefix: string, arcId: string) => { const e = idMap.get(arcId); if (e) return e; const n = nextId(prefix); idMap.set(arcId, n); return n; };
+  const boardsIn = (project.boards ?? {}) as Record<string, Rec>;
+  const elementsIn = (project.elements ?? {}) as Record<string, Rec>;
+  const jumpersIn = (project.jumpers ?? {}) as Record<string, Rec>;
+  const connectionsIn = (project.connections ?? {}) as Record<string, Rec>;
+  for (const id of Object.keys(elementsIn)) nid('nel', id);
+  for (const id of Object.keys(jumpersIn)) nid('nel', id);
+  const boards: Rec[] = [];
+  const boardOf = new Map<string, string>();
+  for (const [arcId, b] of Object.entries(boardsIn)) {
+    if (Array.isArray(b.children)) continue;
+    const id = nid('nbd', arcId);
+    boards.push({ id, projectId, name: b.name, customId: b.customId ?? null, folderPath: '', sortOrder: boards.length, viewport: {}, createdAt: now(), updatedAt: now() });
+    for (const list of [b.elements, b.branches, b.jumpers, b.notes]) for (const c of (Array.isArray(list) ? list : []) as string[]) boardOf.set(c, id);
+  }
+  const fallback = boards[0]?.id ?? nextId('nbd');
+  const elements: Rec[] = [];
+  for (const [arcId, e] of Object.entries(elementsIn)) {
+    elements.push({ id: nid('nel', arcId), projectId, boardId: boardOf.get(arcId) ?? fallback, kind: 'element', titleHtml: e.title ?? '', contentHtml: e.content ?? '', x: e.x ?? 0, y: e.y ?? 0, width: 260, height: 120, theme: e.theme ?? 'default', coverAssetId: null, customId: e.customId ?? null, jumperTargetId: null, branchConditions: [], version: 1, sortOrder: elements.length, createdAt: now(), updatedAt: now() });
+  }
+  for (const [arcId, j] of Object.entries(jumpersIn)) {
+    const target = typeof j.elementId === 'string' ? idMap.get(j.elementId) ?? null : null;
+    if (j.elementId && !target) warnings.push({ message: 'Jumperen peker på et element som ikke finnes.', ref: arcId });
+    if (!boardOf.get(arcId)) warnings.push({ message: `Jumperen lå ikke på noe brett — lagt på «${boards[0]?.name ?? 'Brett 1'}».`, ref: arcId });
+    elements.push({ id: nid('nel', arcId), projectId, boardId: boardOf.get(arcId) ?? fallback, kind: 'jumper', titleHtml: '', contentHtml: '', x: j.x ?? 0, y: j.y ?? 0, width: 160, height: 60, theme: 'default', coverAssetId: null, customId: null, jumperTargetId: target, branchConditions: [], version: 1, sortOrder: elements.length, createdAt: now(), updatedAt: now() });
+  }
+  const connections: Rec[] = [];
+  for (const [arcId, c] of Object.entries(connectionsIn)) {
+    const sourceId = idMap.get(String(c.sourceid));
+    const targetId = idMap.get(String(c.targetid));
+    if (!sourceId || !targetId) { warnings.push({ message: 'Koblingen peker på noe som ikke finnes og ble droppet.', ref: arcId }); continue; }
+    const source = elements.find((e) => e.id === sourceId)!;
+    connections.push({ id: nid('ncn', arcId), projectId, boardId: source.boardId, sourceId, targetId, sourceOutputKey: 'default', labelHtml: c.label ?? '', sortOrder: connections.length, createdAt: now(), updatedAt: now() });
+  }
+  const startingElementId = typeof project.startingElement === 'string' ? idMap.get(project.startingElement) ?? null : null;
+  return {
+    graph: {
+      settings: { projectId, title: (project.name as string) || null, startingElementId, coverAssetId: null, schemaVersion: 1, updatedAt: now() },
+      boards, elements, connections, components: [], elementComponents: [], attributes: [], variables: [], assets: [],
+    },
+    warnings,
+  };
+}
+
 type Rec = Record<string, unknown>;
 
 interface MockGraph {
@@ -79,6 +132,10 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     ? { settings: { projectId, title: null, startingElementId: null, coverAssetId: null, schemaVersion: 1, updatedAt: null }, boards: [], elements: [], connections: [], components: [], elementComponents: [], attributes: [], variables: [], assets: [] }
     : seedGraph(projectId);
   STATE.set(page, g);
+  // Fase 3: delingslenker (per page) + faste offentlige tokens for /story-specs.
+  const shareLinks: Rec[] = [];
+  const tokens = new Map<string, Rec>();
+  const publicFixed: Record<string, string> = { sgs_e2e_public: 'play_only', sgs_e2e_debug: 'view_play' };
 
   await page.route('**/api/casting/projects', (route) => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify({ projects: [{ id: projectId, name: 'Demo-spill' }] }),
@@ -249,6 +306,46 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     }
     if (m(/\/projects\/[^/]+\/revisions\/[^/]+\/restore$/) && method === 'POST') {
       return route.fulfill(ok({ backup: { id: nextId('nrv'), projectId, label: 'Før gjenoppretting', createdBy: 'u1', createdAt: now(), counts: { boards: 1, elements: 2, connections: 1, components: 1 } }, graph: g }));
+    }
+
+    // ── Fase 3: import, delingslenker, offentlig spill ─────────────────
+    if (m(/\/projects\/[^/]+\/import$/) && method === 'POST') {
+      const project = body.project;
+      if (!project || typeof project !== 'object' || !(project as Rec).boards) {
+        return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_project', message: 'Ikke et Arcweave-prosjekt.' }) });
+      }
+      const { graph, warnings } = mockImportArcweave(project as Rec, projectId);
+      Object.assign(g, graph);
+      const backup = { id: nextId('nrv'), projectId, label: 'Før import', createdBy: 'u1', createdAt: now(), counts: { boards: 1, elements: 2, connections: 1, components: 1 } };
+      return route.fulfill(ok({ graph: g, warnings, backup }));
+    }
+    if (m(/\/projects\/[^/]+\/share-links$/) && method === 'GET') return route.fulfill(ok(shareLinks));
+    if (m(/\/projects\/[^/]+\/share-links$/) && method === 'POST') {
+      const link = {
+        id: nextId('nsl'), projectId, mode: body.mode ?? 'play_only',
+        expiresAt: typeof body.expiresInDays === 'number' ? new Date(Date.now() + body.expiresInDays * 86_400_000).toISOString() : null,
+        revokedAt: null, viewCount: 0, createdBy: 'u1', createdAt: now(),
+      };
+      shareLinks.unshift(link);
+      const token = `sgs_e2e_${link.id}`;
+      tokens.set(token, link);
+      return route.fulfill(ok({ link, token, path: `/story/${token}` }, 201));
+    }
+    mm = m(/\/projects\/[^/]+\/share-links\/([^/]+)\/revoke$/);
+    if (mm && method === 'POST') {
+      const link = shareLinks.find((l) => l.id === mm![1]);
+      if (!link) return route.fulfill({ status: 404, body: '{"error":"not_found"}' });
+      link.revokedAt = now();
+      return route.fulfill(ok(link));
+    }
+    mm = m(/\/public\/([^/]+)$/);
+    if (mm && method === 'GET') {
+      const token = decodeURIComponent(mm[1]);
+      const link = tokens.get(token);
+      const mode = link && !link.revokedAt ? (link.mode as string) : publicFixed[token];
+      if (!mode) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not_found"}' });
+      const graph = { ...g, elements: g.elements.filter((e) => e.kind !== 'note') };
+      return route.fulfill(ok({ title: g.settings.title ?? 'Story Graph', mode, graph }));
     }
 
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found', path, method }) });

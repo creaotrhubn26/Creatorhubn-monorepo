@@ -23,6 +23,14 @@ evidence_summary: >
   typed attributes; loaders must read both `variables` and `attributes`.
   arcweave.com / docs.arcweave.com were blocked by the egress proxy; docs claims come
   from search-index snippets only.
+  Fase 3 (2026-09-15): project.json shape re-verified against arcweave-unity-example
+  (boards with folder nodes {name, children, root}, elements {x,y,width,height,theme,title,
+  content,outputs,components,attributes,assets.cover}, connections {sourceid,targetid,
+  sourceType elements|conditions, targetType elements|branches|jumpers, label}, branches
+  {conditions: ifCondition/elseIfConditions/elseCondition}, conditions {script?, output},
+  jumpers {elementId}, attributes {cId,cType,value:{data,type,plain}}, variables
+  {name,type integer|float|boolean|string,cType global,value}). Our exporter emits exactly
+  these keys with prefix-free ids; importer tolerates folder nodes in every collection.
 interpretation: >
   Matching the JSON shape buys interop with three maintained MIT engine plugins for free,
   and matching the script syntax makes import lossless. Writing our own interpreter keeps
@@ -45,7 +53,11 @@ affected:
   - frontend/shared/narrative-runtime/ (spillmotor + validator — Fase 2, levert)
   - frontend/client/src/components/role-room/narrative/play/ (Play Mode)
   - backend/server/role-room-narrative-routes.ts (GET /validate) og role-room-mcp-registry.ts (rr_validate_story_graph)
-  - frontend/shared/narrative-format/ (Fase 3)
+  - frontend/shared/narrative-format/ (eksport/import/Markdown/standalone — Fase 3, levert)
+  - frontend/shared/narrative-player/ + frontend/client/public/embed/narrative-player.js (Fase 3)
+  - backend/server/role-room-narrative-routes.ts (export.json, export.md, import, share-links, public/:token)
+  - backend/server/role-room-mcp-registry.ts (rr_export_story_graph, rr_draft_element)
+  - backend/server/ai-narrative-element-agent.ts + backend/migrations/0606_ai_suggestions_narrative_source_type.sql
 lesson: >
   Interop with a competitor's ecosystem is cheapest when the data model is adopted
   verbatim before the first table is created; retrofitting a mapping layer later is

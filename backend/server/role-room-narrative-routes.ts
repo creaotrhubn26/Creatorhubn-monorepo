@@ -23,6 +23,10 @@ import { canAccessRoleRoomProject } from './role-room-projects-routes.js';
 import * as svc from './role-room-narrative-service.js';
 // Delt validator (struktur + skript) — samme kode som frontendens merknader-chip.
 import { validateStoryGraph } from '../../frontend/shared/narrative-runtime/validate.ts';
+// Delt format-lag (Fase 3): Arcweave JSON, Markdown, filnavn.
+import {
+  ArcweaveImportError, exportFileStem, toArcweaveProject, toMarkdown,
+} from '../../frontend/shared/narrative-format/index.ts';
 
 interface SessionData {
   userId: string;
@@ -164,6 +168,15 @@ const assetBody = z.object({
 
 const revisionBody = z.object({
   label: z.string().max(200).nullable().optional(),
+});
+
+const importBody = z.object({
+  project: z.record(z.unknown()),
+});
+
+const shareLinkBody = z.object({
+  mode: z.enum(['view_play', 'play_only']).optional(),
+  expiresInDays: z.number().int().min(1).max(3650).nullable().optional(),
 });
 
 function readExpectedVersion(req: Request): number | null {
@@ -411,6 +424,66 @@ export function createRoleRoomNarrativeRouter(
     if (!backup) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: { backup, graph: await svc.getGraph(pool, req.projectId) } });
   }));
+
+  // ─── Fase 3: eksport, import, delingslenker ────────────────────────
+  // Arcweave-kompatibel project.json — lastes rett inn i Arcweaves
+  // Unity/Godot/Unreal-plugins. Frontend bygger samme fil klient-side fra
+  // det delte format-laget; dette endepunktet er for API-/verktøy-bruk.
+  router.get('/projects/:projectId/export.json', ...guard, wrap(async (req, res) => {
+    const graph = await svc.getGraph(pool, req.projectId);
+    res.setHeader('Content-Disposition', `attachment; filename="${exportFileStem(graph.settings.title)}.json"`);
+    res.json(toArcweaveProject(graph));
+  }));
+
+  router.get('/projects/:projectId/export.md', ...guard, wrap(async (req, res) => {
+    const graph = await svc.getGraph(pool, req.projectId);
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${exportFileStem(graph.settings.title)}.md"`);
+    res.send(toMarkdown(graph));
+  }));
+
+  // Import erstatter hele grafen; nåværende graf lagres først som revisjon.
+  router.post('/projects/:projectId/import', ...guard, wrap(async (req, res) => {
+    const parsed = importBody.safeParse(req.body);
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    try {
+      const result = await svc.importArcweaveProject(pool, req.projectId, req.userId, parsed.data.project);
+      res.json({ success: true, data: result });
+    } catch (err) {
+      if (err instanceof ArcweaveImportError) { res.status(400).json({ error: 'invalid_project', message: err.message }); return; }
+      throw err;
+    }
+  }));
+
+  router.get('/projects/:projectId/share-links', ...guard, wrap(async (req, res) => {
+    res.json({ success: true, data: await svc.listShareLinks(pool, req.projectId) });
+  }));
+  router.post('/projects/:projectId/share-links', ...guard, wrap(async (req, res) => {
+    const parsed = shareLinkBody.safeParse(req.body ?? {});
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    const { link, token } = await svc.createShareLink(pool, req.projectId, req.userId, parsed.data);
+    // Råtokenet vises én gang; kun hash lagres.
+    res.status(201).json({ success: true, data: { link, token, path: `/story/${token}` } });
+  }));
+  router.post('/projects/:projectId/share-links/:id/revoke', ...guard, wrap(async (req, res) => {
+    const link = await svc.revokeShareLink(pool, req.projectId, req.params.id);
+    if (!link) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ success: true, data: link });
+  }));
+
+  // Offentlig (uten innlogging): spill-grafen bak et delingstoken. Ugyldig,
+  // utløpt og tilbakekalt gir samme 404 (ingen lekkasje av hvilken).
+  router.get('/public/:token', async (req: Request, res: Response) => {
+    try {
+      const story = await svc.getPublicStory(pool, req.params.token);
+      res.setHeader('Cache-Control', 'no-store');
+      if (!story) { res.status(404).json({ error: 'not_found' }); return; }
+      res.json({ success: true, data: story });
+    } catch (err) {
+      console.error('[narrative] public route error', err);
+      if (!res.headersSent) res.status(500).json({ error: 'internal_error' });
+    }
+  });
 
   return router;
 }
