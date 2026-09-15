@@ -25,25 +25,27 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import {
+  getRoleRoomObjectStorage,
+  resolveRoleRoomObjectKey,
+} from "./role-room-object-storage.js";
 
-const B2_REGION = process.env.B2_REGION || "eu-central-003";
-const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
 const DEFAULT_FREE_QUOTA_BYTES = 1_073_741_824; // 1 GiB
 
-function getAdminB2Client(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-  return {
-    client: new S3Client({
-      region: B2_REGION,
-      endpoint: B2_ENDPOINT,
-      credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-      forcePathStyle: true,
-    }),
-    bucket,
-  };
+/**
+ * Bruker den delte Role Room-lagringen i stedet for en egen B2-klient.
+ * getRoleRoomObjectStorage følger ROLE_ROOM_STORAGE_PROVIDER, som er aws_s3 by
+ * default, og tar med OIDC-autentiseringen på Render. Denne tjenesten hadde
+ * sin egen hardkodede B2-klient og skrev derfor til den gamle bøtta selv etter
+ * at resten av Role Room var flyttet.
+ *
+ * `b2_key`-kolonnen beholder navnet sitt: den er nøkkelen i den private
+ * bøtta, uansett leverandør. Å døpe om en kolonne 6 tjenester leser er en
+ * egen jobb.
+ */
+function getStorage(): { client: S3Client; bucket: string } | null {
+  const storage = getRoleRoomObjectStorage();
+  return storage ? { client: storage.client, bucket: storage.bucket } : null;
 }
 
 export interface UserBucket {
@@ -211,7 +213,7 @@ export async function uploadUserFile(
     return { ok: false, reason: "quota_exceeded", stats };
   }
 
-  const config = getAdminB2Client();
+  const config = getStorage();
   if (!config) {
     return { ok: false, reason: "b2_not_configured" };
   }
@@ -223,7 +225,9 @@ export async function uploadUserFile(
       .replace(/[^a-zA-Z0-9._-]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 200) || "file";
-  const b2Key = `${bucket.bucketPrefix}${fileId}-${safeName}`;
+  // Kanonisk nøkkel i den private S3-hierarkiet. Lagres slik den skrives, så
+  // DB-raden og objektet aldri kan peke på hver sin form.
+  const b2Key = resolveRoleRoomObjectKey(`${bucket.bucketPrefix}${fileId}-${safeName}`);
 
   try {
     await config.client.send(
@@ -367,7 +371,7 @@ export async function listUserFiles(
     sourceModule: row.source_module,
     metadata: row.metadata,
     uploadedAt: row.uploaded_at.toISOString(),
-    b2Key: row.b2_key,
+    b2Key: resolveRoleRoomObjectKey(row.b2_key),
     projectId: row.project_id,
     sceneId: row.scene_id,
     attachedToEntityType: row.attached_to_entity_type,
@@ -470,11 +474,11 @@ export async function hardDeleteUserFile(
   if (!row) return { ok: false, freedBytes: 0, b2Deleted: false };
 
   let b2Deleted = false;
-  const config = getAdminB2Client();
+  const config = getStorage();
   if (config) {
     try {
       await config.client.send(
-        new DeleteObjectCommand({ Bucket: config.bucket, Key: row.b2_key }),
+        new DeleteObjectCommand({ Bucket: config.bucket, Key: resolveRoleRoomObjectKey(row.b2_key) }),
       );
       b2Deleted = true;
     } catch (err) {
@@ -515,7 +519,7 @@ export async function getUserFileDownloadUrl(
   const row = r.rows[0];
   if (!row) return { ok: false, reason: "not_found" };
 
-  const config = getAdminB2Client();
+  const config = getStorage();
   if (!config) return { ok: false, reason: "b2_not_configured" };
 
   // display_name is stored raw (the original upload filename); strip quotes and
@@ -532,7 +536,7 @@ export async function getUserFileDownloadUrl(
       config.client,
       new GetObjectCommand({
         Bucket: config.bucket,
-        Key: row.b2_key,
+        Key: resolveRoleRoomObjectKey(row.b2_key),
         ResponseContentDisposition: `attachment; filename="${safeDisposition}"`,
       }),
       { expiresIn: opts.expiresInSeconds ?? 300 },
@@ -566,12 +570,12 @@ export async function getUserFileContent(
   const row = r.rows[0];
   if (!row) return { ok: false, reason: "not_found" };
 
-  const config = getAdminB2Client();
+  const config = getStorage();
   if (!config) return { ok: false, reason: "b2_not_configured" };
 
   try {
     const object = await config.client.send(
-      new GetObjectCommand({ Bucket: config.bucket, Key: row.b2_key }),
+      new GetObjectCommand({ Bucket: config.bucket, Key: resolveRoleRoomObjectKey(row.b2_key) }),
     );
     if (!object.Body) return { ok: false, reason: "empty_object" };
     const body = await object.Body.transformToByteArray();
