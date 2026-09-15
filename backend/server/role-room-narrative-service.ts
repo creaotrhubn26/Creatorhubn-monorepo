@@ -42,6 +42,9 @@ export interface NarrativeSettings {
   coverAssetId: string | null;
   schemaVersion: number;
   updatedAt: string | null;
+  /** Aktiverte locale-koder; første er kildespråket (nb). */
+  locales: string[];
+  i18n: Record<string, { title?: string }>;
 }
 
 export interface NarrativeBoard {
@@ -83,6 +86,8 @@ export interface NarrativeElement {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  /** Per-locale overrides (kun prose; skript flettes fra kilden ved oppslag). */
+  i18n: Record<string, { titleHtml?: string; contentHtml?: string }>;
 }
 
 export interface NarrativeConnection {
@@ -96,6 +101,7 @@ export interface NarrativeConnection {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  i18n: Record<string, { labelHtml?: string }>;
 }
 
 export interface NarrativeComponent {
@@ -250,8 +256,9 @@ export function normalizeBranchConditions(value: unknown): NarrativeBranchCondit
 
 function mapSettingsRow(projectId: string, row: Row | undefined): NarrativeSettings {
   if (!row) {
-    return { projectId, title: null, startingElementId: null, coverAssetId: null, schemaVersion: 1, updatedAt: null };
+    return { projectId, title: null, startingElementId: null, coverAssetId: null, schemaVersion: 1, updatedAt: null, locales: ['nb'], i18n: {} };
   }
+  const locales = jsonValue(row.locales);
   return {
     projectId,
     title: strOrNull(row.title),
@@ -259,6 +266,8 @@ function mapSettingsRow(projectId: string, row: Row | undefined): NarrativeSetti
     coverAssetId: strOrNull(row.cover_asset_id),
     schemaVersion: num(row.schema_version, 1),
     updatedAt: isoTsOrNull(row.updated_at),
+    locales: Array.isArray(locales) && locales.length ? locales.filter((l): l is string => typeof l === 'string') : ['nb'],
+    i18n: jsonObject(row.i18n) as NarrativeSettings['i18n'],
   };
 }
 
@@ -297,6 +306,7 @@ export function mapElementRow(row: Row): NarrativeElement {
     sortOrder: num(row.sort_order),
     createdAt: isoTs(row.created_at),
     updatedAt: isoTs(row.updated_at),
+    i18n: jsonObject(row.i18n) as NarrativeElement['i18n'],
   };
 }
 
@@ -312,6 +322,7 @@ export function mapConnectionRow(row: Row): NarrativeConnection {
     sortOrder: num(row.sort_order),
     createdAt: isoTs(row.created_at),
     updatedAt: isoTs(row.updated_at),
+    i18n: jsonObject(row.i18n) as NarrativeConnection['i18n'],
   };
 }
 
@@ -421,18 +432,21 @@ export interface SettingsPatch {
   title?: string | null;
   startingElementId?: string | null;
   coverAssetId?: string | null;
+  /** Aktiverte locale-koder (første = kilde). */
+  locales?: string[];
 }
 
 export async function upsertSettings(
   db: Queryable, projectId: string, userId: string, patch: SettingsPatch,
 ): Promise<NarrativeSettings> {
   const { rows } = await db.query(
-    `INSERT INTO narrative_settings (project_id, title, starting_element_id, cover_asset_id, updated_by)
-       VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO narrative_settings (project_id, title, starting_element_id, cover_asset_id, updated_by, locales)
+       VALUES ($1, $2, $3, $4, $5, COALESCE($8::jsonb, '["nb"]'::jsonb))
      ON CONFLICT (project_id) DO UPDATE SET
        title = COALESCE($2, narrative_settings.title),
        starting_element_id = CASE WHEN $6::boolean THEN $3 ELSE narrative_settings.starting_element_id END,
        cover_asset_id = CASE WHEN $7::boolean THEN $4 ELSE narrative_settings.cover_asset_id END,
+       locales = COALESCE($8::jsonb, narrative_settings.locales),
        updated_by = $5,
        updated_at = now()
      RETURNING *`,
@@ -444,6 +458,7 @@ export async function upsertSettings(
       userId,
       patch.startingElementId !== undefined,
       patch.coverAssetId !== undefined,
+      patch.locales ? JSON.stringify(normalizeLocales(patch.locales)) : null,
     ],
   );
   return mapSettingsRow(projectId, rows[0] as Row | undefined);
@@ -522,6 +537,7 @@ export interface ElementInput {
   jumperTargetId?: string | null;
   branchConditions?: NarrativeBranchCondition[];
   sortOrder?: number;
+  i18n?: NarrativeElement['i18n'];
 }
 export type ElementPatch = Partial<Omit<ElementInput, 'boardId'>> & { boardId?: string };
 
@@ -529,8 +545,8 @@ export async function createElement(db: Queryable, projectId: string, userId: st
   const { rows } = await db.query(
     `INSERT INTO narrative_elements
        (id, project_id, board_id, kind, title_html, content_html, x, y, width, height, theme,
-        cover_asset_id, custom_id, jumper_target_id, branch_conditions, sort_order, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16, $17)
+        cover_asset_id, custom_id, jumper_target_id, branch_conditions, sort_order, created_by, i18n)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16, $17, $18::jsonb)
      RETURNING *`,
     [
       generateId('nel'), projectId, input.boardId, input.kind ?? 'element',
@@ -538,6 +554,7 @@ export async function createElement(db: Queryable, projectId: string, userId: st
       input.x ?? 0, input.y ?? 0, input.width ?? 260, input.height ?? 120, input.theme ?? 'default',
       input.coverAssetId ?? null, input.customId ?? null, input.jumperTargetId ?? null,
       JSON.stringify(normalizeBranchConditions(input.branchConditions ?? [])), input.sortOrder ?? 0, userId,
+      JSON.stringify(input.i18n ?? {}),
     ],
   );
   return mapElementRow(rows[0] as Row);
@@ -570,6 +587,7 @@ export async function patchElement(
        jumper_target_id = CASE WHEN $17::boolean THEN $18 ELSE jumper_target_id END,
        branch_conditions = COALESCE($19::jsonb, branch_conditions),
        sort_order = COALESCE($20, sort_order),
+       i18n = COALESCE($21::jsonb, i18n),
        version = version + 1,
        updated_at = now()
      WHERE id = $1 AND project_id = $2 AND ($3::int IS NULL OR version = $3::int)
@@ -583,6 +601,7 @@ export async function patchElement(
       patch.jumperTargetId !== undefined, patch.jumperTargetId ?? null,
       patch.branchConditions ? JSON.stringify(normalizeBranchConditions(patch.branchConditions)) : null,
       patch.sortOrder ?? null,
+      patch.i18n ? JSON.stringify(patch.i18n) : null,
     ],
   );
   if (rows[0]) return { ok: true, element: mapElementRow(rows[0] as Row) };
@@ -1013,21 +1032,22 @@ export async function replaceGraph(pool: Pool, projectId: string, userId: string
       await client.query(
         `INSERT INTO narrative_elements
            (id, project_id, board_id, kind, title_html, content_html, x, y, width, height, theme,
-            cover_asset_id, custom_id, jumper_target_id, branch_conditions, version, sort_order, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16, $17, $18)`,
+            cover_asset_id, custom_id, jumper_target_id, branch_conditions, version, sort_order, created_by, i18n)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16, $17, $18, $19::jsonb)`,
         [
           e.id, projectId, e.boardId, e.kind, e.titleHtml ?? '', e.contentHtml ?? '', e.x ?? 0, e.y ?? 0,
           e.width ?? 260, e.height ?? 120, e.theme ?? 'default', e.coverAssetId, e.customId, e.jumperTargetId,
           JSON.stringify(normalizeBranchConditions(e.branchConditions ?? [])), (e.version ?? 0) + 1, e.sortOrder ?? 0, userId,
+          JSON.stringify(e.i18n ?? {}),
         ],
       );
     }
     for (const c of graph.connections ?? []) {
       await client.query(
         `INSERT INTO narrative_connections
-           (id, project_id, board_id, source_id, target_id, source_output_key, label_html, sort_order, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [c.id, projectId, c.boardId, c.sourceId, c.targetId, c.sourceOutputKey ?? 'default', c.labelHtml ?? '', c.sortOrder ?? 0, userId],
+           (id, project_id, board_id, source_id, target_id, source_output_key, label_html, sort_order, created_by, i18n)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)`,
+        [c.id, projectId, c.boardId, c.sourceId, c.targetId, c.sourceOutputKey ?? 'default', c.labelHtml ?? '', c.sortOrder ?? 0, userId, JSON.stringify(c.i18n ?? {})],
       );
     }
     for (const ec of graph.elementComponents ?? []) {
@@ -1053,12 +1073,14 @@ export async function replaceGraph(pool: Pool, projectId: string, userId: string
     }
     const s = graph.settings;
     await client.query(
-      `INSERT INTO narrative_settings (project_id, title, starting_element_id, cover_asset_id, updated_by)
-         VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO narrative_settings (project_id, title, starting_element_id, cover_asset_id, updated_by, locales, i18n)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
        ON CONFLICT (project_id) DO UPDATE SET
          title = EXCLUDED.title, starting_element_id = EXCLUDED.starting_element_id,
-         cover_asset_id = EXCLUDED.cover_asset_id, updated_by = EXCLUDED.updated_by, updated_at = now()`,
-      [projectId, s?.title ?? null, s?.startingElementId ?? null, s?.coverAssetId ?? null, userId],
+         cover_asset_id = EXCLUDED.cover_asset_id, updated_by = EXCLUDED.updated_by,
+         locales = EXCLUDED.locales, i18n = EXCLUDED.i18n, updated_at = now()`,
+      [projectId, s?.title ?? null, s?.startingElementId ?? null, s?.coverAssetId ?? null, userId,
+        JSON.stringify(normalizeLocales(s?.locales ?? ['nb'])), JSON.stringify(s?.i18n ?? {})],
     );
     if (tx) await client.query('COMMIT');
   } catch (err) {
@@ -1122,6 +1144,66 @@ export async function importArcweaveProject(
   pool: Pool, projectId: string, userId: string, project: unknown,
 ): Promise<{ graph: NarrativeGraph; warnings: FormatWarning[]; backup: NarrativeRevisionMeta }> {
   return importProject(pool, projectId, userId, { format: 'arcweave', project });
+}
+
+/** Kildespråket først, unike, gyldige koder. */
+export function normalizeLocales(input: unknown): string[] {
+  const raw = Array.isArray(input) ? input.filter((l): l is string => typeof l === 'string') : [];
+  const out: string[] = ['nb'];
+  for (const l of raw) {
+    const code = l.trim();
+    if (!/^[a-z]{2,3}(-[A-Z]{2})?$/.test(code) || out.includes(code)) continue;
+    out.push(code);
+  }
+  return out.slice(0, 20);
+}
+
+export interface TranslationEntry {
+  ownerKind: 'element' | 'connection' | 'settings';
+  id: string;
+  field: 'titleHtml' | 'contentHtml' | 'labelHtml' | 'title';
+  /** Full HTML (med kildens kodeblokk-struktur) eller ren tittel-tekst. */
+  html: string;
+}
+
+/**
+ * Lagre oversettelser for ett språk: merger felt inn i `i18n[locale]` på hver
+ * rad (jsonb-merge, aldri overskriv andre felt/språk). Bumper ikke `version`
+ * — oversettelser konkurrerer ikke med redigering av kilden.
+ */
+export async function saveTranslations(db: Queryable, projectId: string, locale: string, entries: TranslationEntry[]): Promise<{ saved: number }> {
+  let saved = 0;
+  for (const entry of entries) {
+    if (entry.ownerKind === 'element' && (entry.field === 'titleHtml' || entry.field === 'contentHtml')) {
+      const r = await db.query(
+        `UPDATE narrative_elements
+           SET i18n = jsonb_set(COALESCE(i18n, '{}'::jsonb), ARRAY[$3::text], COALESCE(i18n -> $3, '{}'::jsonb) || $4::jsonb, true),
+               updated_at = now()
+         WHERE id = $1 AND project_id = $2`,
+        [entry.id, projectId, locale, JSON.stringify({ [entry.field]: entry.html })],
+      );
+      saved += r.rowCount ?? 0;
+    } else if (entry.ownerKind === 'connection' && entry.field === 'labelHtml') {
+      const r = await db.query(
+        `UPDATE narrative_connections
+           SET i18n = jsonb_set(COALESCE(i18n, '{}'::jsonb), ARRAY[$3::text], COALESCE(i18n -> $3, '{}'::jsonb) || $4::jsonb, true),
+               updated_at = now()
+         WHERE id = $1 AND project_id = $2`,
+        [entry.id, projectId, locale, JSON.stringify({ labelHtml: entry.html })],
+      );
+      saved += r.rowCount ?? 0;
+    } else if (entry.ownerKind === 'settings' && entry.field === 'title') {
+      const r = await db.query(
+        `UPDATE narrative_settings
+           SET i18n = jsonb_set(COALESCE(i18n, '{}'::jsonb), ARRAY[$2::text], COALESCE(i18n -> $2, '{}'::jsonb) || $3::jsonb, true),
+               updated_at = now()
+         WHERE project_id = $1`,
+        [projectId, locale, JSON.stringify({ title: entry.html })],
+      );
+      saved += r.rowCount ?? 0;
+    }
+  }
+  return { saved };
 }
 
 export type NarrativeShareMode = 'view_play' | 'play_only';

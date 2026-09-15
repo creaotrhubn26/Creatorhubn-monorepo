@@ -35,6 +35,10 @@ interface ConnectedClient {
   authUserId?: string;
   /** The server-verified email (from the session) — used for channel-name membership matching. */
   authEmail?: string;
+  /** Story Graph: siste presence-payload (navn/farge/brett) — sendes til nye klienter i rommet. */
+  narrativePresence?: Record<string, unknown> | null;
+  /** Story Graph: rate-limit for markør-relay (ms-tidsstempel). */
+  narrativeLastCursorAt?: number;
 }
 
 // Slice 9D.5.D — module-level handle slik at route-handlers kan
@@ -65,6 +69,11 @@ export function broadcastChatEventToUser(userId: string, message: unknown): void
  * Wedding-flyten bruker `room=wedding:${weddingId}` på connect.
  * Returnerer antall klienter som mottok meldingen.
  */
+/** Story Graph-romnøkkel for et prosjekt (brukes av narrative-rutene ved graf-push). */
+export function narrativeRoomKey(projectId: string): string {
+  return `narrative:${projectId}`;
+}
+
 export function broadcastEventToRoom(room: string, message: unknown): number {
   if (!activeChatClients) return 0;
   const data = JSON.stringify(message);
@@ -126,6 +135,16 @@ export function createWebSocketServer(
    */
   function parseLiveSetProjectId(roomKey?: string): string | null {
     if (!roomKey || !roomKey.startsWith('liveset:')) return null;
+    const parts = roomKey.split(':');
+    return parts[1] || null;
+  }
+
+  /**
+   * Story Graph (game_studio): rom 'narrative:<projectId>' — samme
+   * prosjekt-autorisasjon som Live Set. Returnerer null for andre rom.
+   */
+  function parseNarrativeProjectId(roomKey?: string): string | null {
+    if (!roomKey || !roomKey.startsWith('narrative:')) return null;
     const parts = roomKey.split(':');
     return parts[1] || null;
   }
@@ -343,7 +362,7 @@ export function createWebSocketServer(
       // is authorized (below): liveset requires an authenticated token; wedding
       // requires the couple's share token or authenticated photographer/team
       // access. Other room types keep their existing behavior.
-      room: (parseLiveSetProjectId(room) || parseWeddingId(room)) ? undefined : room,
+      room: (parseLiveSetProjectId(room) || parseWeddingId(room) || parseNarrativeProjectId(room)) ? undefined : room,
       role, connectedAt: new Date(),
       authenticated: false,
     };
@@ -388,6 +407,37 @@ export function createWebSocketServer(
                 code: authenticated ? 'liveset_forbidden' : 'auth_required',
                 room,
               },
+              timestamp: new Date().toISOString(),
+            }));
+          } catch { /* ignore */ }
+        }
+      }
+
+      // Story Graph-rom: autentisert + prosjektmedlem (samme predikat som
+      // narrative-REST-rutene). Ved suksess får klienten et øyeblikksbilde av
+      // hvem som allerede er i rommet, så avatarer/markører vises med én gang.
+      const nvProject = parseNarrativeProjectId(room);
+      if (nvProject) {
+        const nvAllowed = authenticated
+          && (await canAccessRoleRoomProject(pool, connectedUserId, nvProject));
+        if (nvAllowed) {
+          record.room = room;
+          const peers = [...clients.entries()]
+            .filter(([id, c]) => id !== clientId && c.room === room && c.authenticated)
+            .map(([id, c]) => ({ clientId: id, userId: c.authUserId ?? c.userId, presence: c.narrativePresence ?? null }));
+          try {
+            ws.send(JSON.stringify({
+              type: 'narrative:presence_snapshot',
+              payload: { peers },
+              timestamp: new Date().toISOString(),
+            }));
+          } catch { /* ignore */ }
+        } else {
+          record.room = undefined;
+          try {
+            ws.send(JSON.stringify({
+              type: 'error',
+              payload: { message: 'forbidden_room', code: authenticated ? 'narrative_forbidden' : 'auth_required', room },
               timestamp: new Date().toISOString(),
             }));
           } catch { /* ignore */ }
@@ -788,6 +838,32 @@ export function createWebSocketServer(
             break;
           }
 
+          // ── Story Graph (game_studio): presence, markører og valg. Relay
+          // kun fra autentisert socket inn i rommet den ble autorisert i.
+          case 'narrative:presence':
+          case 'narrative:cursor':
+          case 'narrative:selection': {
+            const rec = clients.get(clientId);
+            const senderRoom = rec?.room;
+            if (!authenticated || !rec || !senderRoom || !senderRoom.startsWith('narrative:')) break;
+            if (data.type === 'narrative:cursor') {
+              const now = Date.now();
+              if (rec.narrativeLastCursorAt && now - rec.narrativeLastCursorAt < 33) break;
+              rec.narrativeLastCursorAt = now;
+            }
+            if (data.type === 'narrative:presence' && data.payload && typeof data.payload === 'object') {
+              rec.narrativePresence = data.payload as Record<string, unknown>;
+            }
+            broadcastToRoom(clients, senderRoom, {
+              type:      data.type,
+              payload:   data.payload,
+              userId:    connectedUserId,
+              clientId,
+              timestamp: new Date().toISOString(),
+            }, clientId);
+            break;
+          }
+
           case 'liveset:roll':
           case 'liveset:cut':
           case 'liveset:circle':
@@ -820,8 +896,15 @@ export function createWebSocketServer(
     });
 
     ws.on('close', () => {
+      const leavingRoom = clients.get(clientId)?.room;
       clients.delete(clientId);
       console.log(`[WS] Client disconnected: ${connectedUserId} (${clientId}). Total: ${clients.size}`);
+      if (leavingRoom?.startsWith('narrative:')) {
+        broadcastToRoom(clients, leavingRoom, {
+          type: 'narrative:presence', payload: { left: true }, userId: connectedUserId, clientId,
+          timestamp: new Date().toISOString(),
+        });
+      }
 
       broadcast(clients, {
         type: 'presence_update',

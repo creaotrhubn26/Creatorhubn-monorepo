@@ -13,6 +13,7 @@ import type {
   ArcweaveProject, ArcweaveVariable, ArcweaveVariableType,
 } from './arcweave-types';
 import { createExportIdMapper, folderIdForPath, type IdMapper } from './ids';
+import { applyLocaleToGraph } from './locale';
 import type { ExportAttribute, ExportElement, ExportGraph } from './types';
 
 const VARIABLE_TYPE_OUT: Record<string, ArcweaveVariableType> = {
@@ -81,9 +82,12 @@ function attributeValue(a: ExportAttribute, id: (x: string) => string): Arcweave
 
 export interface ToArcweaveOptions {
   idMapper?: IdMapper;
+  /** Eksporter på et annet språk enn kilden (overrides + kildens kode). */
+  locale?: string | null;
 }
 
-export function toArcweaveProject(graph: ExportGraph, options: ToArcweaveOptions = {}): ArcweaveProject {
+export function toArcweaveProject(input: ExportGraph, options: ToArcweaveOptions = {}): ArcweaveProject {
+  const graph = applyLocaleToGraph(input, options.locale);
   const mapper = options.idMapper ?? createExportIdMapper();
   const id = (internal: string) => mapper.map(internal);
   const usedFolderIds = new Set<string>();

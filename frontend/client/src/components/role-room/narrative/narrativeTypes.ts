@@ -29,6 +29,9 @@ export interface NarrativeSettings {
   coverAssetId: string | null;
   schemaVersion: number;
   updatedAt: string | null;
+  /** Aktiverte locale-koder; første er kildespråket (nb). */
+  locales: string[];
+  i18n: Record<string, { title?: string }>;
 }
 
 export interface NarrativeBoard {
@@ -69,6 +72,8 @@ export interface NarrativeElement {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  /** Per-locale overrides (kun prose; skript flettes fra kilden ved oppslag). */
+  i18n: Record<string, { titleHtml?: string; contentHtml?: string }>;
 }
 
 export interface NarrativeConnection {
@@ -82,6 +87,7 @@ export interface NarrativeConnection {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  i18n: Record<string, { labelHtml?: string }>;
 }
 
 export interface NarrativeComponent {
@@ -164,7 +170,7 @@ export interface NarrativeGraph {
 
 export function emptyGraph(projectId: string): NarrativeGraph {
   return {
-    settings: { projectId, title: null, startingElementId: null, coverAssetId: null, schemaVersion: 1, updatedAt: null },
+    settings: { projectId, title: null, startingElementId: null, coverAssetId: null, schemaVersion: 1, updatedAt: null, locales: ['nb'], i18n: {} },
     boards: [],
     elements: [],
     connections: [],

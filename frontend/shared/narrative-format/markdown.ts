@@ -3,6 +3,7 @@
  * forgreninger, jumpere, notater, variabler, komponenter). DOM-fri.
  */
 
+import { applyLocaleToGraph } from './locale';
 import { contentHtmlToMarkdown, htmlToPlainText, htmlToTitle } from './text';
 import type { ExportElement, ExportGraph } from './types';
 
@@ -19,7 +20,8 @@ function elementLabel(e: ExportElement | undefined): string {
   return e.customId ? `#${e.customId}` : 'Uten tittel';
 }
 
-export function toMarkdown(graph: ExportGraph): string {
+export function toMarkdown(input: ExportGraph, options: { locale?: string | null } = {}): string {
+  const graph = applyLocaleToGraph(input, options.locale);
   const out: string[] = [];
   const elementById = new Map(graph.elements.map((e) => [e.id, e]));
   const componentById = new Map(graph.components.map((c) => [c.id, c]));

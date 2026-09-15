@@ -190,7 +190,7 @@ export function fromArcweaveProject(input: unknown, options: FromArcweaveOptions
     id: newId('element', arcId), projectId, boardId: boardFor(arcId, label), kind,
     titleHtml: '', contentHtml: '', x: 0, y: 0, width: 260, height: 120, theme: 'default',
     coverAssetId: null, customId: null, jumperTargetId: null, branchConditions: [],
-    version: 1, sortOrder: elementOrder++, createdAt: now, updatedAt: now,
+    version: 1, sortOrder: elementOrder++, createdAt: now, updatedAt: now, i18n: {},
   });
 
   for (const [arcId, e] of Object.entries(elementsIn)) {
@@ -279,7 +279,7 @@ export function fromArcweaveProject(input: unknown, options: FromArcweaveOptions
     }
     connections.push({
       id: newId('connection', arcId), projectId, boardId: source.boardId, sourceId: source.id, targetId: target.id,
-      sourceOutputKey, labelHtml: typeof c.label === 'string' ? c.label : '', sortOrder: connOrder++, createdAt: now, updatedAt: now,
+      sourceOutputKey, labelHtml: typeof c.label === 'string' ? c.label : '', sortOrder: connOrder++, createdAt: now, updatedAt: now, i18n: {},
     });
   }
 
@@ -356,7 +356,7 @@ export function fromArcweaveProject(input: unknown, options: FromArcweaveOptions
 
   return {
     graph: {
-      settings: { projectId, title: str(project.name) || null, startingElementId, coverAssetId, schemaVersion: 1, updatedAt: now },
+      settings: { projectId, title: str(project.name) || null, startingElementId, coverAssetId, schemaVersion: 1, updatedAt: now, locales: ['nb'], i18n: {} },
       boards, elements, connections, components, elementComponents, attributes, variables, assets,
     },
     warnings,

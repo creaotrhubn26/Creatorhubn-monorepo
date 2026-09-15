@@ -23,7 +23,7 @@ import {
 } from '@mui/icons-material';
 import {
   ArcweaveImportError, InkImportError, TweeImportError, IMPORT_FORMAT_LABELS, buildStandaloneHtml, exportFileStem,
-  fromArcweaveProject, fromInk, fromTwee, sniffImportFormat, toArcweaveProject, toMarkdown, type ImportFormat,
+  fromArcweaveProject, fromInk, fromTwee, sniffImportFormat, toArcweaveProject, toMarkdown, SUGGESTED_LOCALES, type ImportFormat,
 } from '@shared/narrative-format';
 import * as api from '../narrativeService';
 import {
@@ -106,6 +106,9 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
   const [mode, setMode] = useState<NarrativeShareMode>('play_only');
   const [expiry, setExpiry] = useState<'never' | '7' | '30' | '90'>('never');
   const [freshLink, setFreshLink] = useState<{ url: string; mode: NarrativeShareMode } | null>(null);
+  const locales = graph.settings.locales?.length ? graph.settings.locales : ['nb'];
+  const [exportLocale, setExportLocale] = useState<string>('nb');
+  const localeSuffix = exportLocale !== 'nb' ? `-${exportLocale}` : '';
 
   const loadLinks = useCallback(async () => {
     setLinksLoading(true);
@@ -122,11 +125,11 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
 
   // ── Eksport ─────────────────────────────────────────────────────────
   const exportJson = () => {
-    downloadText(JSON.stringify(toArcweaveProject(graph), null, 2), `${fileStem}.json`, 'application/json');
+    downloadText(JSON.stringify(toArcweaveProject(graph, { locale: exportLocale }), null, 2), `${fileStem}${localeSuffix}.json`, 'application/json');
     onNotice('Arcweave-JSON lastet ned.', 'success');
   };
   const exportMarkdown = () => {
-    downloadText(toMarkdown(graph), `${fileStem}.md`, 'text/markdown;charset=utf-8');
+    downloadText(toMarkdown(graph, { locale: exportLocale }), `${fileStem}${localeSuffix}.md`, 'text/markdown;charset=utf-8');
     onNotice('Markdown lastet ned.', 'success');
   };
   const exportHtml = async () => {
@@ -137,8 +140,8 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
         if (!res.ok) throw new Error('Fant ikke spiller-skriptet (embed/narrative-player.js).');
         playerJsRef.current = await res.text();
       }
-      const html = buildStandaloneHtml({ title: graph.settings.title, graph, playerJs: playerJsRef.current });
-      downloadText(html, `${fileStem}.html`, 'text/html;charset=utf-8');
+      const html = buildStandaloneHtml({ title: graph.settings.title, graph, playerJs: playerJsRef.current, locale: exportLocale });
+      downloadText(html, `${fileStem}${localeSuffix}.html`, 'text/html;charset=utf-8');
       onNotice('Spillbar HTML lastet ned — åpnes lokalt uten nett.', 'success');
     } catch (err) {
       onNotice(err instanceof Error ? err.message : 'Kunne ikke bygge HTML.', 'error');
@@ -253,7 +256,15 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
           title="Last ned"
           hint="Arcweave-kompatibel JSON virker rett i Arcweaves Unity-, Godot- og Unreal-plugins. HTML-fila er en spillbar versjon som åpnes lokalt."
         >
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+            {locales.length > 1 ? (
+              <FormControl size="small" sx={{ minWidth: 150, ...fieldSx }}>
+                <InputLabel id="narrative-export-locale-label">Språk</InputLabel>
+                <Select labelId="narrative-export-locale-label" label="Språk" value={exportLocale} onChange={(e) => setExportLocale(String(e.target.value))} data-testid="narrative-export-locale">
+                  {locales.map((code) => <MenuItem key={code} value={code}>{SUGGESTED_LOCALES.find((l) => l.code === code)?.label ?? code}</MenuItem>)}
+                </Select>
+              </FormControl>
+            ) : null}
             <Button variant="outlined" startIcon={<JsonIcon />} onClick={exportJson} disabled={empty} sx={{ color: narrativeColors.accent, borderColor: narrativeColors.borderStrong }} data-testid="narrative-export-json">
               JSON (Arcweave)
             </Button>

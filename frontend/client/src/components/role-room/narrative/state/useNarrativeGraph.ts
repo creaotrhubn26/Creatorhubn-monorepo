@@ -65,6 +65,12 @@ export interface UseNarrativeGraphResult {
   /** Siste 409-konflikt (for snackbar). */
   conflict: NarrativeElement | null;
   clearConflict: () => void;
+
+  /**
+   * Sanntid: en annen bruker endret grafen → debounced reload (300 ms), utsatt
+   * mens egne flyttinger/mutasjoner er underveis så de ikke overskrives.
+   */
+  applyRemoteChange: (evt: { actorUserId: string }, selfUserId: string | null) => void;
 }
 
 export function useNarrativeGraph(projectId: string | null): UseNarrativeGraphResult {
@@ -78,6 +84,9 @@ export function useNarrativeGraph(projectId: string | null): UseNarrativeGraphRe
 
   const pendingMoves = useRef<Map<string, ops.PositionMove>>(new Map());
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inflight = useRef(0);
+  const remoteDirty = useRef(false);
+  const remoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const undoStack = useRef<MoveHistoryEntry[]>([]);
   const redoStack = useRef<MoveHistoryEntry[]>([]);
   const [historyTick, setHistoryTick] = useState(0);
@@ -112,6 +121,31 @@ export function useNarrativeGraph(projectId: string | null): UseNarrativeGraphRe
     return projectId;
   };
 
+  // ─── Sanntid: reload når andre endrer grafen ─────────────────────────
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+  const flushRemote = useCallback(() => {
+    remoteTimer.current = null;
+    if (inflight.current > 0 || pendingMoves.current.size > 0 || flushTimer.current) { remoteDirty.current = true; return; }
+    remoteDirty.current = false;
+    void reloadRef.current();
+  }, []);
+  const applyRemoteChange = useCallback((evt: { actorUserId: string }, selfUserId: string | null) => {
+    if (selfUserId && evt.actorUserId === selfUserId) return;
+    if (remoteTimer.current) clearTimeout(remoteTimer.current);
+    remoteTimer.current = setTimeout(flushRemote, 300);
+  }, [flushRemote]);
+  /** Kjør en mutasjon med in-flight-teller; utsatt remote-reload kjøres når alt er ferdig. */
+  const track = useCallback(async <T,>(fn: () => Promise<T>): Promise<T> => {
+    inflight.current += 1;
+    try {
+      return await fn();
+    } finally {
+      inflight.current -= 1;
+      if (inflight.current === 0 && remoteDirty.current && !remoteTimer.current) remoteTimer.current = setTimeout(flushRemote, 50);
+    }
+  }, [flushRemote]);
+
   // ─── Flytting (batch + angre) ────────────────────────────────────────
 
   const flushMoves = useCallback(() => {
@@ -119,8 +153,12 @@ export function useNarrativeGraph(projectId: string | null): UseNarrativeGraphRe
     if (!projectId || pendingMoves.current.size === 0) return;
     const moves = Array.from(pendingMoves.current.values());
     pendingMoves.current.clear();
+    inflight.current += 1;
     void api.moveElements(projectId, moves).catch((err) => {
       setError(err instanceof Error ? err.message : 'Kunne ikke lagre posisjoner.');
+    }).finally(() => {
+      inflight.current -= 1;
+      if (inflight.current === 0 && remoteDirty.current && !remoteTimer.current) remoteTimer.current = setTimeout(flushRemote, 50);
     });
   }, [projectId]);
 
@@ -194,6 +232,7 @@ export function useNarrativeGraph(projectId: string | null): UseNarrativeGraphRe
     replaceGraph: (next) => setGraph(next),
     conflict,
     clearConflict: () => setConflict(null),
+    applyRemoteChange,
     canUndo: undoStack.current.length > 0,
     canRedo: redoStack.current.length > 0,
     undo,
@@ -387,6 +426,21 @@ export function useNarrativeGraph(projectId: string | null): UseNarrativeGraphRe
       } catch (err) { setGraph(before); fail(err, 'Kunne ikke slette ressurs.'); }
     },
   };
+
+  // Sanntid: alle async-mutasjoner telles som in-flight så en remote reload
+  // ikke overskriver et pågående lokalt kall.
+  const MUTATION_KEYS: ReadonlyArray<keyof UseNarrativeGraphResult> = [
+    'updateSettings', 'createBoard', 'patchBoard', 'deleteBoard', 'createElement', 'patchElement', 'deleteElement',
+    'setElementComponents', 'createConnection', 'patchConnection', 'deleteConnection', 'createComponent',
+    'patchComponent', 'deleteComponent', 'createAttribute', 'patchAttribute', 'deleteAttribute', 'createVariable',
+    'patchVariable', 'deleteVariable', 'createAsset', 'patchAsset', 'deleteAsset',
+  ];
+  for (const key of MUTATION_KEYS) {
+    const original = result[key] as unknown;
+    if (typeof original !== 'function') continue;
+    (result as unknown as Record<string, unknown>)[key] = (...args: unknown[]) =>
+      track(() => (original as (...a: unknown[]) => Promise<unknown>)(...args));
+  }
 
   // historyTick brukes kun for å re-rendre canUndo/canRedo etter stack-endringer.
   void historyTick;

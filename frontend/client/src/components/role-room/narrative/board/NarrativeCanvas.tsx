@@ -27,6 +27,8 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { Box } from '@mui/material';
 import { NARRATIVE_NODE_TYPES, type NarrativeNodeData } from './nodes';
+import { CursorLayer } from '../realtime/CursorLayer';
+import type { Peer } from '../realtime/presenceReducer';
 import { canConnect } from '../state/graphOps';
 import { htmlToText, type NarrativeConnection, type NarrativeElement, type NarrativeGraph } from '../narrativeTypes';
 import { narrativeColors } from '../narrativeTheme';
@@ -48,10 +50,16 @@ export interface NarrativeCanvasProps {
   initialViewport?: Viewport | null;
   /** Kalles med en funksjon som gir midtpunktet i lerretet (for «nytt element»). */
   registerCenterResolver?: (resolver: () => { x: number; y: number }) => void;
+  /** Sanntid: andre brukere på dette brettet (markører) og deres valg. */
+  peers?: Peer[];
+  peerSelectionColors?: Record<string, string[]>;
+  /** Sanntid: musposisjon i flow-koordinater (throttles av klienten). */
+  onCursorMove?: (pos: { x: number; y: number }) => void;
 }
 
 function toNodes(
   graph: NarrativeGraph, elements: NarrativeElement[], selectedElementId: string | null,
+  peerSelectionColors: Record<string, string[]> = {},
 ): Node<NarrativeNodeData>[] {
   const titleById = new Map(graph.elements.map((e) => [e.id, htmlToText(e.titleHtml) || 'Uten tittel']));
   const componentName = new Map(graph.components.map((c) => [c.id, c.name]));
@@ -70,6 +78,7 @@ function toNodes(
     data: {
       element,
       isStart: graph.settings.startingElementId === element.id,
+      peerColors: peerSelectionColors[element.id],
       jumperTargetTitle: element.jumperTargetId ? titleById.get(element.jumperTargetId) ?? null : null,
       componentNames: componentsByElement.get(element.id) ?? [],
     },
@@ -102,19 +111,25 @@ function CanvasInner(props: NarrativeCanvasProps) {
     graph, boardId, elements, connections, selectedElementId,
     onSelectElement, onOpenElement, onMoveElements, onConnect, onDeleteElements, onDeleteConnections,
     onSelectConnection, onViewportChange, initialViewport, registerCenterResolver,
+    peers, peerSelectionColors, onCursorMove,
   } = props;
 
   const flow = useReactFlow();
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const [nodes, setNodes] = useState<Node<NarrativeNodeData>[]>(() => toNodes(graph, elements, selectedElementId));
+  const [nodes, setNodes] = useState<Node<NarrativeNodeData>[]>(() => toNodes(graph, elements, selectedElementId, peerSelectionColors));
   const dragging = useRef(false);
 
   // Synk fra graf → noder, men ikke midt i et drag (ellers hopper noden tilbake).
   useEffect(() => {
     if (dragging.current) return;
-    setNodes(toNodes(graph, elements, selectedElementId));
-  }, [graph, elements, selectedElementId]);
+    setNodes(toNodes(graph, elements, selectedElementId, peerSelectionColors));
+  }, [graph, elements, selectedElementId, peerSelectionColors]);
+
+  const handlePaneMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!onCursorMove) return;
+    onCursorMove(flow.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+  }, [flow, onCursorMove]);
 
   const edges = useMemo(() => toEdges(connections), [connections]);
 
@@ -212,6 +227,7 @@ function CanvasInner(props: NarrativeCanvasProps) {
         onEdgesDelete={handleEdgesDelete}
         onEdgeClick={(_e, edge) => onSelectConnection(edge.id)}
         onPaneClick={() => { onSelectElement(null); onSelectConnection(null); }}
+        onPaneMouseMove={handlePaneMouseMove}
         onMoveEnd={(_e, viewport) => onViewportChange?.(viewport)}
         deleteKeyCode={['Backspace', 'Delete']}
         multiSelectionKeyCode={['Meta', 'Control']}
@@ -223,6 +239,7 @@ function CanvasInner(props: NarrativeCanvasProps) {
         fitView={!initialViewport}
       >
         <Background color="#1f2937" gap={24} size={1} />
+        {peers && peers.length > 0 ? <CursorLayer peers={peers} /> : null}
         <Controls showInteractive={false} />
         <MiniMap
           pannable

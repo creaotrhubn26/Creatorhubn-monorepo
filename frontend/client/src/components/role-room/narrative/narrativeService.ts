@@ -94,10 +94,33 @@ export function getGraph(projectId: string): Promise<NarrativeGraph> {
   return request<NarrativeGraph>(p(projectId, '/graph'));
 }
 
+export interface TranslationEntry {
+  ownerKind: 'element' | 'connection' | 'settings';
+  id: string;
+  field: 'titleHtml' | 'contentHtml' | 'labelHtml' | 'title';
+  html: string;
+}
+
+export function saveTranslations(projectId: string, locale: string, entries: TranslationEntry[]): Promise<{ saved: number }> {
+  return request(p(projectId, '/translations'), { method: 'PUT', body: json({ locale, entries }) });
+}
+
+export interface TranslateRequest {
+  sourceLocale?: string;
+  targetLocale: string;
+  storyContext?: string;
+  segments: Array<{ key: string; text: string; context?: string }>;
+}
+
+export function translateSegments(projectId: string, body: TranslateRequest): Promise<{ translations: Array<{ key: string; text: string }>; missing: string[]; model: string }> {
+  return request(p(projectId, '/translate'), { method: 'POST', body: json(body) });
+}
+
 export interface SettingsPatch {
   title?: string | null;
   startingElementId?: string | null;
   coverAssetId?: string | null;
+  locales?: string[];
 }
 export function updateSettings(projectId: string, patch: SettingsPatch): Promise<NarrativeSettings> {
   return request<NarrativeSettings>(p(projectId, '/settings'), { method: 'PUT', body: json(patch) });

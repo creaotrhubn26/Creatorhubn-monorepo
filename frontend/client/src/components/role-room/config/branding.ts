@@ -1368,6 +1368,8 @@ export type BrandingTextTokenKey =
   | 'gameTabAssetsDescription'
   | 'gameTabPlay'                 // 'Spill'
   | 'gameTabPlayDescription'
+  | 'gameTabTranslations'         // 'Oversettelser'
+  | 'gameTabTranslationsDescription'
   | 'gameTabExports'              // 'Eksport'
   | 'gameTabExportsDescription'
   | 'gameTabHistory'              // 'Historikk'
@@ -3021,8 +3023,10 @@ const DEFAULT_TOKENS: BrandingTokens = {
     gameTabAssetsDescription: 'Bilder, lyd og video som kan brukes som cover eller festes på elementer.',
     gameTabPlay: 'Spill',
     gameTabPlayDescription: 'Spill gjennom historien som en spiller, med debugger som viser brett, element og variabler live.',
+    gameTabTranslations: 'Oversettelser',
+    gameTabTranslationsDescription: 'Oversett historien til flere språk med KI-forslag; skript beholdes fra kilden.',
     gameTabExports: 'Eksport',
-    gameTabExportsDescription: 'JSON kompatibel med Arcweave-plugins for Unity, Unreal og Godot, samt import fra Arcweave.',
+    gameTabExportsDescription: 'JSON kompatibel med Arcweave-plugins for Unity, Unreal og Godot, samt import fra Arcweave, Twine og Ink.',
     gameTabHistory: 'Historikk',
     gameTabHistoryDescription: 'Versjoner av hele grafen med ikke-destruktiv gjenoppretting.',
 

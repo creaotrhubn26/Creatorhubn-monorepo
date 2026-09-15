@@ -6,7 +6,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert, Box, Button, Chip, FormControlLabel, IconButton, Stack, Switch, Tooltip, Typography,
+  Alert, Box, Button, Chip, FormControlLabel, IconButton, MenuItem, Select, Stack, Switch, Tooltip, Typography,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -16,6 +16,7 @@ import {
   VolumeUp as SpeakIcon,
   Stop as StopIcon,
 } from '@mui/icons-material';
+import { SUGGESTED_LOCALES } from '@shared/narrative-format';
 import { assignCharacterVoices, speak, stopTTS } from '../../services/ttsService';
 import { htmlToText, type NarrativeGraph } from '../narrativeTypes';
 import { narrativeColors } from '../narrativeTheme';
@@ -31,6 +32,8 @@ export interface StoryPlayerProps {
   showDebugger?: boolean;
   /** Full høyde i arbeidsflaten; `compact` for offentlig side. */
   minHeight?: string | number;
+  /** Startspråk (default kilde «nb»). Velger vises når grafen har flere locales. */
+  initialLocale?: string | null;
 }
 
 const AUTO_SPEAK_KEY = 'role_room_narrative_auto_speak';
@@ -43,8 +46,10 @@ function writeFlag(key: string, value: boolean): void {
   try { window.localStorage.setItem(key, value ? '1' : '0'); } catch { /* ignore */ }
 }
 
-export function StoryPlayer({ graph, onEditElement, showDebugger = true, minHeight = 'calc(100vh - 150px)' }: StoryPlayerProps) {
-  const play = usePlaySession(graph);
+export function StoryPlayer({ graph, onEditElement, showDebugger = true, minHeight = 'calc(100vh - 150px)', initialLocale = null }: StoryPlayerProps) {
+  const locales = graph.settings.locales?.length ? graph.settings.locales : ['nb'];
+  const [locale, setLocale] = useState<string>(() => (initialLocale && locales.includes(initialLocale) ? initialLocale : locales[0]));
+  const play = usePlaySession(graph, locale);
   const { view, state } = play;
   const [autoSpeak, setAutoSpeak] = useState<boolean>(() => readFlag(AUTO_SPEAK_KEY));
   const [aiVoices, setAiVoices] = useState<boolean>(() => readFlag(AI_VOICES_KEY));
@@ -87,6 +92,17 @@ export function StoryPlayer({ graph, onEditElement, showDebugger = true, minHeig
 
   useEffect(() => () => stopTTS(), []);
 
+  // Språkbytte gir ny (lokalisert) graf → bygg sesjonen på nytt fra start.
+  // Sammenligner mot forrige verdi (ikke «første render») så StrictModes
+  // doble effekt-kjøring ikke bygger en sesjon av den tomme start-grafen.
+  const prevLocale = useRef(locale);
+  useEffect(() => {
+    if (prevLocale.current === locale) return;
+    prevLocale.current = locale;
+    play.rebuild();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locale]);
+
   const errorsForView = useMemo(() => {
     const last = state.log.filter((l) => l.elementId === view?.elementId && l.errors.length > 0);
     return last.flatMap((l) => l.errors);
@@ -109,6 +125,18 @@ export function StoryPlayer({ graph, onEditElement, showDebugger = true, minHeig
           <Button size="small" startIcon={<RestartIcon />} onClick={() => { stopSpeaking(); play.restart(); }} sx={{ color: narrativeColors.accent }} data-testid="narrative-play-restart">Start på nytt</Button>
           <Button size="small" startIcon={<BackIcon />} disabled={!play.canBack} onClick={() => { stopSpeaking(); play.back(); }} sx={{ color: narrativeColors.textDim }} data-testid="narrative-play-back">Tilbake</Button>
           <Box sx={{ flex: 1 }} />
+          {locales.length > 1 ? (
+            <Select
+              size="small"
+              value={locale}
+              onChange={(e) => { stopSpeaking(); setLocale(String(e.target.value)); }}
+              sx={{ fontSize: 12, height: 30, color: narrativeColors.text, '& .MuiOutlinedInput-notchedOutline': { borderColor: narrativeColors.borderStrong }, '& .MuiSvgIcon-root': { color: narrativeColors.textDim } }}
+              inputProps={{ 'aria-label': 'Språk' }}
+              SelectDisplayProps={{ 'data-testid': 'narrative-play-locale' } as never}
+            >
+              {locales.map((code) => <MenuItem key={code} value={code}>{SUGGESTED_LOCALES.find((l) => l.code === code)?.label ?? code}</MenuItem>)}
+            </Select>
+          ) : null}
           <Tooltip title={speaking ? 'Stopp opplesning' : 'Les opp dette elementet'}>
             <span>
               <IconButton size="small" disabled={!contentText} onClick={() => (speaking ? stopSpeaking() : void speakCurrent())} sx={{ color: speaking ? narrativeColors.accent : narrativeColors.textDim }} aria-label="Les opp">

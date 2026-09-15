@@ -81,14 +81,14 @@ const now = () => new Date().toISOString();
 
 export function seedGraph(projectId: string): MockGraph {
   return {
-    settings: { projectId, title: 'Demo-spill', startingElementId: 'nel_start', coverAssetId: null, schemaVersion: 1, updatedAt: now() },
+    settings: { projectId, title: 'Demo-spill', startingElementId: 'nel_start', coverAssetId: null, schemaVersion: 1, updatedAt: now(), locales: ['nb', 'en'], i18n: {} },
     boards: [{ id: 'nbd_1', projectId, name: 'Akt 1', customId: null, folderPath: '', sortOrder: 0, viewport: {}, createdAt: now(), updatedAt: now() }],
     elements: [
-      { id: 'nel_start', projectId, boardId: 'nbd_1', kind: 'element', titleHtml: '<p>Landsbyen</p>', contentHtml: '<p>Du våkner i en stille landsby.</p>', x: 40, y: 80, width: 260, height: 120, theme: 'green', coverAssetId: null, customId: 'start', jumperTargetId: null, branchConditions: [], version: 1, sortOrder: 0, createdAt: now(), updatedAt: now() },
-      { id: 'nel_choice', projectId, boardId: 'nbd_1', kind: 'branch', titleHtml: '<p>Har du gull?</p>', contentHtml: '', x: 400, y: 80, width: 260, height: 120, theme: 'default', coverAssetId: null, customId: null, jumperTargetId: null, branchConditions: [{ id: 'c_yes', script: 'gold >= 10', label: 'Ja' }, { id: 'c_no', script: null, label: 'Ellers' }], version: 1, sortOrder: 1, createdAt: now(), updatedAt: now() },
+      { id: 'nel_start', projectId, boardId: 'nbd_1', kind: 'element', titleHtml: '<p>Landsbyen</p>', contentHtml: '<p>Du våkner i en stille landsby.</p>', x: 40, y: 80, width: 260, height: 120, theme: 'green', coverAssetId: null, customId: 'start', jumperTargetId: null, branchConditions: [], version: 1, sortOrder: 0, createdAt: now(), updatedAt: now(), i18n: {} },
+      { id: 'nel_choice', projectId, boardId: 'nbd_1', kind: 'branch', titleHtml: '<p>Har du gull?</p>', contentHtml: '', x: 400, y: 80, width: 260, height: 120, theme: 'default', coverAssetId: null, customId: null, jumperTargetId: null, branchConditions: [{ id: 'c_yes', script: 'gold >= 10', label: 'Ja' }, { id: 'c_no', script: null, label: 'Ellers' }], version: 1, sortOrder: 1, createdAt: now(), updatedAt: now(), i18n: {} },
     ],
     connections: [
-      { id: 'ncn_1', projectId, boardId: 'nbd_1', sourceId: 'nel_start', targetId: 'nel_choice', sourceOutputKey: 'default', labelHtml: '<p>Gå til markedet</p>', sortOrder: 0, createdAt: now(), updatedAt: now() },
+      { id: 'ncn_1', projectId, boardId: 'nbd_1', sourceId: 'nel_start', targetId: 'nel_choice', sourceOutputKey: 'default', labelHtml: '<p>Gå til markedet</p>', sortOrder: 0, createdAt: now(), updatedAt: now(), i18n: {} },
     ],
     components: [{ id: 'ncp_1', projectId, name: 'Kjøpmannen', folderPath: 'Karakterer', coverAssetId: null, customId: null, sortOrder: 0, createdAt: now(), updatedAt: now() }],
     elementComponents: [],
@@ -387,6 +387,33 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
       const stats = { elements: g.elements.length, connections: g.connections.length, variables: g.variables.length, unsupported: imported.warnings.length };
       return route.fulfill(ok({ graph: g, warnings: imported.warnings, backup, format, stats }));
     }
+    // ── Fase 4b: oversettelser ─────────────────────────────────────────
+    if (m(/\/projects\/[^/]+\/translations$/) && method === 'PUT') {
+      const locale = String(body.locale);
+      let saved = 0;
+      for (const entry of (body.entries as Array<Rec>) ?? []) {
+        const rows = entry.ownerKind === 'element' ? g.elements : entry.ownerKind === 'connection' ? g.connections : null;
+        if (rows) {
+          const row = rows.find((r) => r.id === entry.id);
+          if (!row) continue;
+          const i18n = (row.i18n as Record<string, Rec>) ?? {};
+          i18n[locale] = { ...(i18n[locale] ?? {}), [String(entry.field)]: entry.html };
+          row.i18n = i18n;
+          saved += 1;
+        } else if (entry.ownerKind === 'settings') {
+          const i18n = (g.settings.i18n as Record<string, Rec>) ?? {};
+          i18n[locale] = { ...(i18n[locale] ?? {}), title: entry.html };
+          g.settings.i18n = i18n;
+          saved += 1;
+        }
+      }
+      return route.fulfill(ok({ saved }));
+    }
+    if (m(/\/projects\/[^/]+\/translate$/) && method === 'POST') {
+      const segments = (body.segments as Array<{ key: string; text: string }>) ?? [];
+      return route.fulfill(ok({ translations: segments.map((s) => ({ key: s.key, text: `[${body.targetLocale}] ${s.text}` })), missing: [], model: 'mock' }));
+    }
+
     if (m(/\/projects\/[^/]+\/share-links$/) && method === 'GET') return route.fulfill(ok(shareLinks));
     if (m(/\/projects\/[^/]+\/share-links$/) && method === 'POST') {
       const link = {
@@ -418,4 +445,31 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
 
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found', path, method }) });
   });
+}
+
+/**
+ * Fase 4c: falsk /ws-server for Story Graph-rommet. Svarer med
+ * connection_established + presence_snapshot, og lar testen sende
+ * meldinger «fra serveren» (andre brukere) via returnert kontroll.
+ */
+export interface FakeWsPeer { clientId: string; userId: string; name: string; color: string; boardId: string | null }
+
+export async function installNarrativeWsMock(page: Page, opts: { peers?: FakeWsPeer[] } = {}) {
+  const peers = opts.peers ?? [];
+  let current: { send: (data: string) => void } | null = null;
+  const received: Array<Record<string, unknown>> = [];
+  await page.routeWebSocket(/\/ws(\?|$)/, (ws) => {
+    current = ws;
+    ws.onMessage((data) => {
+      try { received.push(JSON.parse(String(data)) as Record<string, unknown>); } catch { /* ignore */ }
+    });
+    const now = new Date().toISOString();
+    ws.send(JSON.stringify({ type: 'connection_established', payload: { clientId: 'me', userId: 'u-e2e', authenticated: true, connectedClients: 1 + peers.length }, timestamp: now }));
+    ws.send(JSON.stringify({ type: 'narrative:presence_snapshot', payload: { peers: peers.map((p) => ({ clientId: p.clientId, userId: p.userId, presence: { name: p.name, color: p.color, boardId: p.boardId } })) }, timestamp: now }));
+  });
+  return {
+    /** Send en melding som om den kom fra serveren (relay fra en annen bruker). */
+    serverSend: (msg: Record<string, unknown>) => { current?.send(JSON.stringify({ timestamp: new Date().toISOString(), ...msg })); },
+    received,
+  };
 }

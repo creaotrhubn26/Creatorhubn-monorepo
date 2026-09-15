@@ -21,6 +21,9 @@ export interface ExportSettings {
   title: string | null;
   startingElementId: string | null;
   coverAssetId?: string | null;
+  /** Aktiverte locale-koder; første = kildespråk (`nb`). */
+  locales?: string[];
+  i18n?: Record<string, { title?: string }>;
 }
 
 export interface ExportBoard {
@@ -53,6 +56,8 @@ export interface ExportElement {
   jumperTargetId: string | null;
   branchConditions: ExportBranchCondition[];
   sortOrder?: number;
+  /** Per-locale overrides (kun prose; kode flettes fra kilden). */
+  i18n?: Record<string, { titleHtml?: string; contentHtml?: string }>;
 }
 
 export interface ExportConnection {
@@ -63,6 +68,7 @@ export interface ExportConnection {
   sourceOutputKey: string;
   labelHtml: string;
   sortOrder?: number;
+  i18n?: Record<string, { labelHtml?: string }>;
 }
 
 export interface ExportComponent {
@@ -130,6 +136,8 @@ export interface FormatSettings {
   coverAssetId: string | null;
   schemaVersion: number;
   updatedAt: string | null;
+  locales: string[];
+  i18n: Record<string, { title?: string }>;
 }
 
 export interface FormatBoard {
@@ -164,6 +172,7 @@ export interface FormatElement {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  i18n: Record<string, { titleHtml?: string; contentHtml?: string }>;
 }
 
 export interface FormatConnection {
@@ -177,6 +186,7 @@ export interface FormatConnection {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  i18n: Record<string, { labelHtml?: string }>;
 }
 
 export interface FormatComponent {

@@ -55,8 +55,13 @@ import { VariablesPanel } from './panels/VariablesPanel';
 import { AssetsPanel } from './panels/AssetsPanel';
 import { HistoryPanel } from './panels/HistoryPanel';
 import { ExportsPanel } from './panels/ExportsPanel';
+import { TranslationsPanel } from './panels/TranslationsPanel';
 import { ComingSoonCard } from './panels/ComingSoonCard';
 import { NarrativePlayPanel } from './play/NarrativePlayPanel';
+import { useNarrativeRealtime } from './realtime/narrativeRealtimeClient';
+import { cursorsOnBoard, selectionColors, uniquePeersByUser } from './realtime/presenceReducer';
+import { PresenceAvatars } from './realtime/PresenceAvatars';
+import { authSessionService } from '../services/authSessionService';
 import { narrativeColors } from './narrativeTheme';
 import { htmlToText, type NarrativeElementKind } from './narrativeTypes';
 
@@ -194,6 +199,32 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
   const viewportByBoard = useRef<Map<string, Viewport>>(new Map());
 
   const slice = useMemo(() => boardSlice(graph, activeBoardId), [graph, activeBoardId]);
+
+  // ─── Sanntid: presence, markører, graf-push ────────────────────────
+  // Sesjonen hydreres asynkront; re-les ved oppdatering så sanntid kobler
+  // seg på når identiteten er kjent (uten identitet: ingen tilkobling).
+  const [authTick, setAuthTick] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    void authSessionService.loadSession().then(() => { if (!cancelled) setAuthTick((t) => t + 1); }).catch(() => undefined);
+    const onUpdate = () => setAuthTick((t) => t + 1);
+    window.addEventListener('auth-session-updated', onUpdate);
+    return () => { cancelled = true; window.removeEventListener('auth-session-updated', onUpdate); };
+  }, []);
+  void authTick;
+  const session = authSessionService.getSessionSync();
+  const selfUserId = session.currentUserId ?? (session.adminUser?.id != null ? String(session.adminUser.id) : null);
+  const selfName = session.adminUser?.name ?? session.adminUser?.display_name ?? session.adminUser?.email?.split('@')[0] ?? 'Du';
+  const realtime = useNarrativeRealtime({
+    projectId, userId: selfUserId, name: selfName, boardId: activeBoardId,
+    enabled: !!projectId && !!selfUserId,
+    onGraphChanged: (evt) => store.applyRemoteChange(evt, selfUserId),
+  });
+  const peersOnBoard = useMemo(() => (activeBoardId ? cursorsOnBoard(realtime.presence, activeBoardId) : []), [realtime.presence, activeBoardId]);
+  const peerSelectionColors = useMemo(() => selectionColors(realtime.presence), [realtime.presence]);
+  const uniquePeers = useMemo(() => uniquePeersByUser(realtime.presence), [realtime.presence]);
+  const boardNameById = useMemo(() => new Map(graph.boards.map((b) => [b.id, b.name])), [graph.boards]);
+  useEffect(() => { realtime.sendSelection(selectedElementId ? [selectedElementId] : []); }, [selectedElementId]); // eslint-disable-line react-hooks/exhaustive-deps
   const selectedElement = useMemo(
     () => graph.elements.find((e) => e.id === selectedElementId) ?? null,
     [graph.elements, selectedElementId],
@@ -323,7 +354,10 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
                     onViewportChange={(vp) => { viewportByBoard.current.set(activeBoardId, vp); }}
                     initialViewport={viewportByBoard.current.get(activeBoardId) ?? null}
                     registerCenterResolver={(fn) => { centerResolver.current = fn; }}
-                  />
+                  peers={peersOnBoard}
+                  peerSelectionColors={peerSelectionColors}
+                  onCursorMove={realtime.sendCursor}
+                />
                 )}
                 <ElementEditorDrawer
                   open={editorOpen}
@@ -346,6 +380,15 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
         return <AssetsPanel graph={graph} store={store} />;
       case 'play':
         return <NarrativePlayPanel graph={graph} onEditElement={jumpToElement} />;
+      case 'translations':
+        return (
+          <TranslationsPanel
+            projectId={projectId}
+            graph={graph}
+            store={store}
+            onNotice={(message, severity) => setNotice({ message, severity })}
+          />
+        );
       case 'exports':
         return (
           <ExportsPanel
@@ -391,6 +434,7 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
           <Typography sx={{ fontWeight: 800, fontSize: 14, letterSpacing: 0.3 }}>Story Graph</Typography>
           <Chip size="small" label="Beta" sx={{ height: 20, fontSize: 10, bgcolor: narrativeColors.accentSoft, color: narrativeColors.accent, fontWeight: 700 }} />
           <Box sx={{ flex: 1 }} />
+          {projectId && selfUserId ? <PresenceAvatars peers={uniquePeers} boardNameById={boardNameById} connected={realtime.connected} /> : null}
           {projectId ? (
             <Stack direction="row" spacing={0.5} alignItems="center">
               <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }} data-testid="narrative-project-label">

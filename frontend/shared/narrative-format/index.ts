@@ -17,3 +17,8 @@ export { fromTwee, TweeImportError, convertTwineExpression } from './twee';
 export { fromInk, InkImportError, convertInkExpression } from './ink';
 export { sniffImportFormat, IMPORT_FORMAT_LABELS, type ImportFormat } from './sniff';
 export type { FromTextResult, TextImportOptions, TextImportStats } from './text-import-common';
+export {
+  applyLocaleToGraph, listTranslatableSegments, translatedTextFor, translationProgress, mergeCodeBlocks, replaceProseChunk,
+  proseChunks, isLocaleCode, SOURCE_LOCALE, LOCALE_CODE_RE, SUGGESTED_LOCALES,
+  type TranslatableSegment, type ElementI18n, type ConnectionI18n, type SettingsI18n,
+} from './locale';

@@ -146,7 +146,7 @@ export function createGraphBuilder(options: TextImportOptions): GraphBuilder {
         height: spec.height ?? (kind === 'branch' ? 80 : kind === 'jumper' ? 60 : 120),
         theme: spec.theme ?? 'default', coverAssetId: null, customId: spec.customId ?? null,
         jumperTargetId: spec.jumperTargetId ?? null, branchConditions: spec.branchConditions ?? [],
-        version: 1, sortOrder: elements.length, createdAt: now, updatedAt: now,
+        version: 1, sortOrder: elements.length, createdAt: now, updatedAt: now, i18n: {},
       };
       if (hasPos) positioned.add(el.id);
       elements.push(el);
@@ -159,7 +159,7 @@ export function createGraphBuilder(options: TextImportOptions): GraphBuilder {
       const conn: FormatConnection = {
         id: factory('connection'), projectId, boardId: source.boardId, sourceId: source.id, targetId: target.id,
         sourceOutputKey: spec.sourceOutputKey ?? 'default', labelHtml: spec.labelHtml ?? '',
-        sortOrder: connections.filter((c) => c.sourceId === source.id).length, createdAt: now, updatedAt: now,
+        sortOrder: connections.filter((c) => c.sourceId === source.id).length, createdAt: now, updatedAt: now, i18n: {},
       };
       connections.push(conn);
       return conn;
@@ -207,7 +207,7 @@ export function createGraphBuilder(options: TextImportOptions): GraphBuilder {
     finish(settings) {
       return {
         graph: {
-          settings: { projectId, title: settings.title, startingElementId: settings.startingElementId, coverAssetId: null, schemaVersion: 1, updatedAt: now },
+          settings: { projectId, title: settings.title, startingElementId: settings.startingElementId, coverAssetId: null, schemaVersion: 1, updatedAt: now, locales: ['nb'], i18n: {} },
           boards, elements, connections, components: [], elementComponents: [], attributes: [], variables, assets: [],
         },
         warnings,

@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPlaySession, type PlaySession, type PlayState, type PlayView } from '@shared/narrative-runtime';
+import { applyLocaleToGraph } from '@shared/narrative-format';
 import type { ScriptValue } from '@shared/narrative-script';
 import type { NarrativeGraph } from '../narrativeTypes';
 
@@ -29,7 +30,9 @@ export interface UsePlaySessionResult {
 
 const EMPTY_STATE: PlayState = { variables: {}, visits: {}, historyDepth: 0, log: [] };
 
-export function usePlaySession(graph: NarrativeGraph): UsePlaySessionResult {
+export function usePlaySession(sourceGraph: NarrativeGraph, locale: string | null = null): UsePlaySessionResult {
+  // Spill på valgt språk: overrides + kildens skript (applyLocaleToGraph er identitet for nb).
+  const graph = useMemo(() => applyLocaleToGraph(sourceGraph, locale), [sourceGraph, locale]);
   const sessionRef = useRef<PlaySession | null>(null);
   const graphAtBuild = useRef<NarrativeGraph | null>(null);
   const [tick, setTick] = useState(0);

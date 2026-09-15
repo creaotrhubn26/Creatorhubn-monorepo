@@ -102,6 +102,7 @@ export const GAME_STUDIO_TABS: readonly TabConfig[] = [
   { id: 'variables',  labelToken: 'gameTabVariables',  descriptionToken: 'gameTabVariablesDescription',  requiresProject: true, feature: 'core' },
   { id: 'assets',     labelToken: 'gameTabAssets',     descriptionToken: 'gameTabAssetsDescription',     requiresProject: true, feature: 'resources' },
   { id: 'play',       labelToken: 'gameTabPlay',       descriptionToken: 'gameTabPlayDescription',       requiresProject: true, feature: 'production' },
+  { id: 'translations', labelToken: 'gameTabTranslations', descriptionToken: 'gameTabTranslationsDescription', requiresProject: true, feature: 'production' },
   { id: 'exports',    labelToken: 'gameTabExports',    descriptionToken: 'gameTabExportsDescription',    requiresProject: true, feature: 'production' },
   { id: 'history',    labelToken: 'gameTabHistory',    descriptionToken: 'gameTabHistoryDescription',    requiresProject: true, feature: 'resources' },
 ] as const;

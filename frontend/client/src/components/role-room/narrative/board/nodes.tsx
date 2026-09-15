@@ -28,6 +28,8 @@ export interface NarrativeNodeData {
   jumperTargetTitle?: string | null;
   /** Antall komponenter festet (vises som chip). */
   componentNames?: string[];
+  /** Sanntid: farger på andre brukere som har valgt elementet. */
+  peerColors?: string[];
 }
 
 const HANDLE_STYLE: React.CSSProperties = {
@@ -51,8 +53,10 @@ function NodeFrame({
         width: element.width,
         minHeight: element.height,
         borderRadius: 2,
-        border: `2px solid ${selected ? narrativeColors.accent : colors.border}`,
-        boxShadow: selected ? `0 0 0 3px ${narrativeColors.accentSoft}` : '0 6px 18px rgba(0,0,0,0.35)',
+        border: `2px solid ${selected ? narrativeColors.accent : data.peerColors?.[0] ?? colors.border}`,
+        boxShadow: selected
+          ? `0 0 0 3px ${narrativeColors.accentSoft}`
+          : data.peerColors?.length ? `0 0 0 3px ${data.peerColors[0]}55` : '0 6px 18px rgba(0,0,0,0.35)',
         bgcolor: narrativeColors.bgCard,
         color: narrativeColors.text,
         overflow: 'hidden',

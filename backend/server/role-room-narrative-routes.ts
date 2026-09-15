@@ -25,8 +25,10 @@ import * as svc from './role-room-narrative-service.js';
 import { validateStoryGraph } from '../../frontend/shared/narrative-runtime/validate.ts';
 // Delt format-lag (Fase 3): Arcweave JSON, Markdown, filnavn.
 import {
-  ArcweaveImportError, InkImportError, TweeImportError, exportFileStem, toArcweaveProject, toMarkdown,
+  ArcweaveImportError, InkImportError, TweeImportError, LOCALE_CODE_RE, exportFileStem, toArcweaveProject, toMarkdown,
 } from '../../frontend/shared/narrative-format/index.ts';
+import { MAX_TRANSLATE_SEGMENTS, translateSegments } from './narrative-translate.js';
+import { broadcastEventToRoom, narrativeRoomKey } from './websocket-chat.js';
 
 interface SessionData {
   userId: string;
@@ -62,7 +64,12 @@ export interface CreateRoleRoomNarrativeRouterDeps {
   activeSessions?: Map<string, SessionData>;
   /** Overstyrbar for tester. Default: canAccessRoleRoomProject. */
   canAccessProject?: (pool: Pool, userId: string, projectId: string) => Promise<boolean>;
+  /** Overstyrbar for tester. Default: websocket-chat broadcastEventToRoom. */
+  broadcast?: (room: string, message: unknown) => number;
 }
+
+export type GraphChangeKind =
+  | 'settings' | 'board' | 'element' | 'connection' | 'component' | 'attribute' | 'variable' | 'asset' | 'graph' | 'translation';
 
 const idSchema = z.string().min(1).max(200);
 const nullableStr = (max: number) => z.string().max(max).nullable().optional();
@@ -71,10 +78,31 @@ const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
   z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(jsonValueSchema), z.record(jsonValueSchema)]),
 );
 
+const localeCode = z.string().regex(LOCALE_CODE_RE, 'Locale-kode: f.eks. nb, en, sv, pt-BR');
+const elementI18n = z.record(localeCode, z.object({ titleHtml: html(20_000), contentHtml: html(200_000) }).partial()).optional();
+const connectionI18n = z.record(localeCode, z.object({ labelHtml: html(5000) }).partial()).optional();
+
 const settingsBody = z.object({
   title: nullableStr(300),
   startingElementId: nullableStr(200),
   coverAssetId: nullableStr(200),
+  locales: z.array(localeCode).min(1).max(20).optional(),
+});
+
+const translationsBody = z.object({
+  locale: localeCode,
+  entries: z.array(z.discriminatedUnion('ownerKind', [
+    z.object({ ownerKind: z.literal('element'), id: idSchema, field: z.enum(['titleHtml', 'contentHtml']), html: z.string().max(200_000) }),
+    z.object({ ownerKind: z.literal('connection'), id: idSchema, field: z.literal('labelHtml'), html: z.string().max(5000) }),
+    z.object({ ownerKind: z.literal('settings'), id: z.string().max(200), field: z.literal('title'), html: z.string().max(300) }),
+  ])).min(1).max(500),
+});
+
+const translateBody = z.object({
+  sourceLocale: localeCode.optional(),
+  targetLocale: localeCode,
+  storyContext: z.string().max(300).optional(),
+  segments: z.array(z.object({ key: z.string().min(1).max(200), text: z.string().min(1).max(4000), context: z.string().max(200).optional() })).min(1).max(MAX_TRANSLATE_SEGMENTS),
 });
 
 const boardBody = z.object({
@@ -106,6 +134,7 @@ const elementBody = z.object({
   jumperTargetId: nullableStr(200),
   branchConditions: z.array(branchConditionSchema).max(50).optional(),
   sortOrder: z.number().int().optional(),
+  i18n: elementI18n,
 });
 
 const movesBody = z.object({
@@ -125,6 +154,7 @@ const connectionBody = z.object({
   sourceOutputKey: z.string().max(200).optional(),
   labelHtml: html(5000),
   sortOrder: z.number().int().optional(),
+  i18n: connectionI18n,
 });
 
 const componentBody = z.object({
@@ -219,10 +249,50 @@ export function createRoleRoomNarrativeRouter(
   };
 
   const guard = [auth, requireProject];
+  const broadcast = deps.broadcast ?? broadcastEventToRoom;
+  /**
+   * Push «grafen er endret» til alle i prosjektets sanntidsrom (inkl. aktøren —
+   * klienten filtrerer på actorUserId). Klientene gjør en debounced reload.
+   */
+  const notifyGraphChanged = (req: AuthedRequest, kind: GraphChangeKind, ids: string[] = []) => {
+    try {
+      broadcast(narrativeRoomKey(req.projectId), {
+        type: 'narrative:graph_changed',
+        payload: { kind, ids, actorUserId: req.userId, at: new Date().toISOString() },
+        timestamp: new Date().toISOString(),
+      });
+    } catch { /* sanntid er best-effort */ }
+  };
+  /** Hvilken endringstype en mutasjons-URL under /projects/:id/ tilsvarer (null = ingen push). */
+  const changeKindFor = (req: Request): GraphChangeKind | null => {
+    if (req.method === 'GET') return null;
+    const seg = String(req.path).split('/').filter(Boolean);
+    const head = seg[2];
+    switch (head) {
+      case 'settings': return 'settings';
+      case 'boards': return 'board';
+      case 'elements': return 'element';
+      case 'connections': return 'connection';
+      case 'components': return 'component';
+      case 'attributes': return 'attribute';
+      case 'variables': return 'variable';
+      case 'assets': return 'asset';
+      case 'import': return 'graph';
+      case 'translations': return 'translation';
+      case 'revisions': return seg[4] === 'restore' ? 'graph' : null;
+      default: return null;
+    }
+  };
   const wrap = (fn: (req: AuthedRequest, res: Response) => Promise<void>) =>
     async (req: Request, res: Response) => {
       try {
         await fn(req as AuthedRequest, res);
+        // Sanntid: vellykket mutasjon → push til prosjektets rom (best-effort).
+        const kind = changeKindFor(req);
+        if (kind && res.statusCode < 400 && (req as AuthedRequest).projectId) {
+          const id = typeof req.params.id === 'string' ? [req.params.id] : [];
+          notifyGraphChanged(req as AuthedRequest, kind, id);
+        }
       } catch (err) {
         console.error('[narrative] route error', err);
         if (!res.headersSent) res.status(500).json({ error: 'internal_error' });
@@ -479,6 +549,32 @@ export function createRoleRoomNarrativeRouter(
     const link = await svc.revokeShareLink(pool, req.projectId, req.params.id);
     if (!link) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: link });
+  }));
+
+  // ─── Fase 4b: oversettelser ─────────────────────────────────────────
+  router.put('/projects/:projectId/translations', ...guard, wrap(async (req, res) => {
+    const parsed = translationsBody.safeParse(req.body);
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    if (parsed.data.locale === 'nb') { res.status(400).json({ error: 'source_locale', message: 'nb er kildespråket — rediger elementene direkte.' }); return; }
+    const result = await svc.saveTranslations(pool, req.projectId, parsed.data.locale, parsed.data.entries);
+    res.json({ success: true, data: result });
+  }));
+
+  // Statsløs KI-oversettelse av prose-segmenter (lagrer ingenting).
+  router.post('/projects/:projectId/translate', ...guard, wrap(async (req, res) => {
+    const parsed = translateBody.safeParse(req.body);
+    if (!parsed.success) { invalid(res, parsed.error); return; }
+    try {
+      const result = await translateSegments({
+        segments: parsed.data.segments, sourceLocale: parsed.data.sourceLocale ?? 'nb',
+        targetLocale: parsed.data.targetLocale, storyContext: parsed.data.storyContext,
+      });
+      res.json({ success: true, data: result });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/disabled|ANTHROPIC_API_KEY/i.test(message)) { res.status(503).json({ error: 'ai_unavailable', message: 'KI-oversettelse er ikke aktivert på denne serveren.' }); return; }
+      throw err;
+    }
   }));
 
   // Offentlig (uten innlogging): spill-grafen bak et delingstoken. Ugyldig,

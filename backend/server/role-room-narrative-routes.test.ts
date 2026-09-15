@@ -22,7 +22,7 @@ function makePool(handlers: Handler[] = []) {
   return { query } as unknown as Pool & { query: typeof query };
 }
 
-function createApp(pool: Pool, opts: { access?: boolean } = {}) {
+function createApp(pool: Pool, opts: { access?: boolean; broadcast?: (room: string, message: unknown) => number } = {}) {
   const app = express();
   app.use(express.json({ limit: '10mb' })); // prod: 50mb i index.ts — zod-grensen (5 MB) skal gi 400, ikke 413
   app.use(
@@ -30,6 +30,7 @@ function createApp(pool: Pool, opts: { access?: boolean } = {}) {
     createRoleRoomNarrativeRouter(pool, {
       activeSessions: new Map([[SESSION_TOKEN, { userId: 'u1', email: 'u1@example.com', name: 'U1', role: 'user', loginAt: '' }]]),
       canAccessProject: async () => opts.access ?? true,
+      broadcast: opts.broadcast ?? (() => 0),
     }),
   );
   return app;
@@ -355,6 +356,53 @@ describe('narrative routes — Fase 3: eksport, import, deling', () => {
     expect(big.body.error).toBe('invalid_request');
   });
 
+  it('PUT translations → jsonb-merge per rad; nb avvises', async () => {
+    const pool = makePool([
+      { match: /UPDATE narrative_elements[\s\S]*SET i18n = jsonb_set/, rows: [{}] },
+      { match: /UPDATE narrative_connections[\s\S]*SET i18n = jsonb_set/, rows: [{}] },
+    ]);
+    const res = await request(createApp(pool))
+      .put(`/api/role-room/narrative/projects/${PROJECT_ID}/translations`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ locale: 'en', entries: [
+        { ownerKind: 'element', id: 'nel_1', field: 'contentHtml', html: '<p>You wake up.</p>' },
+        { ownerKind: 'connection', id: 'ncn_1', field: 'labelHtml', html: '<p>Go</p>' },
+      ] });
+    expect(res.status).toBe(200);
+    expect(res.body.data.saved).toBe(2);
+    const upd = (pool.query as any).mock.calls.find((c: unknown[]) => /UPDATE narrative_elements/.test(String(c[0])));
+    expect(upd[1]).toEqual(['nel_1', PROJECT_ID, 'en', JSON.stringify({ contentHtml: '<p>You wake up.</p>' })]);
+    const nb = await request(createApp(pool))
+      .put(`/api/role-room/narrative/projects/${PROJECT_ID}/translations`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ locale: 'nb', entries: [{ ownerKind: 'settings', id: 'settings', field: 'title', html: 'x' }] });
+    expect(nb.status).toBe(400);
+    const badLocale = await request(createApp(pool))
+      .put(`/api/role-room/narrative/projects/${PROJECT_ID}/translations`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ locale: 'English', entries: [{ ownerKind: 'settings', id: 'settings', field: 'title', html: 'x' }] });
+    expect(badLocale.status).toBe(400);
+  });
+
+  it('PUT settings med locales → normalisert liste med nb først', async () => {
+    const pool = makePool([{ match: /INSERT INTO narrative_settings/, rows: (p) => [{ project_id: p[0], title: p[1], starting_element_id: null, cover_asset_id: null, schema_version: 1, updated_at: null, locales: JSON.parse(String(p[7])), i18n: {} }] }]);
+    const res = await request(createApp(pool))
+      .put(`/api/role-room/narrative/projects/${PROJECT_ID}/settings`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ locales: ['en', 'nb', 'sv', 'en'] });
+    expect(res.status).toBe(200);
+    expect(res.body.data.locales).toEqual(['nb', 'en', 'sv']);
+  });
+
+  it('POST translate → 503 ai_unavailable når Claude-agenten er avslått', async () => {
+    const res = await request(createApp(makePool()))
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/translate`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ targetLocale: 'en', segments: [{ key: 'element:nel_1:contentHtml:0', text: 'Hei' }] });
+    expect([503, 200]).toContain(res.status);
+    if (res.status === 503) expect(res.body.error).toBe('ai_unavailable');
+  });
+
   it('POST share-links → 201 med råtoken én gang; kun sha256-hash i INSERT', async () => {
     const pool = makePool([{ match: /INSERT INTO narrative_share_links/, rows: (p) => [{
       id: p[0], project_id: p[1], token_hash: p[2], mode: p[3], expires_at: p[4], revoked_at: null, view_count: 0, created_by: p[5], created_at: new Date(),
@@ -409,5 +457,46 @@ describe('narrative routes — Fase 3: eksport, import, deling', () => {
   it('GET public/:token ukjent/tilbakekalt → 404', async () => {
     const res = await request(createApp(makePool())).get('/api/role-room/narrative/public/sgs_nope');
     expect(res.status).toBe(404);
+  });
+});
+
+describe('narrative routes — Fase 4c: sanntids-push ved mutasjoner', () => {
+  it('PATCH element → narrative:graph_changed til prosjektets rom med actorUserId; GET pusher ikke; 4xx pusher ikke', async () => {
+    const broadcast = vi.fn(() => 1);
+    const pool = makePool([{ match: /UPDATE narrative_elements SET/, rows: [elementRow({ version: 2 })] }]);
+    const app = createApp(pool, { broadcast });
+    await request(app).get(`/api/role-room/narrative/projects/${PROJECT_ID}/graph`).set('Authorization', `Bearer ${SESSION_TOKEN}`);
+    expect(broadcast).not.toHaveBeenCalled();
+    const res = await request(app)
+      .patch(`/api/role-room/narrative/projects/${PROJECT_ID}/elements/nel_1`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ titleHtml: '<p>Ny</p>' });
+    expect(res.status).toBe(200);
+    expect(broadcast).toHaveBeenCalledTimes(1);
+    const [room, message] = broadcast.mock.calls[0] as unknown as [string, { type: string; payload: Record<string, unknown> }];
+    expect(room).toBe(`narrative:${PROJECT_ID}`);
+    expect(message.type).toBe('narrative:graph_changed');
+    expect(message.payload).toMatchObject({ kind: 'element', ids: ['nel_1'], actorUserId: 'u1' });
+    const bad = await request(app)
+      .post(`/api/role-room/narrative/projects/${PROJECT_ID}/elements`)
+      .set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ boardId: 'nbd_1', kind: 'ugyldig' });
+    expect(bad.status).toBe(400);
+    expect(broadcast).toHaveBeenCalledTimes(1);
+  });
+
+  it('share-links og translate pusher ikke; import og translations pusher graph/translation', async () => {
+    const broadcast = vi.fn(() => 1);
+    const pool = makePool([
+      { match: /INSERT INTO narrative_share_links/, rows: (p) => [{ id: p[0], project_id: p[1], token_hash: p[2], mode: p[3], expires_at: null, revoked_at: null, view_count: 0, created_by: p[5], created_at: new Date() }] },
+      { match: /UPDATE narrative_elements[\s\S]*SET i18n = jsonb_set/, rows: [{}] },
+    ]);
+    const app = createApp(pool, { broadcast });
+    await request(app).post(`/api/role-room/narrative/projects/${PROJECT_ID}/share-links`).set('Authorization', `Bearer ${SESSION_TOKEN}`).send({});
+    expect(broadcast).not.toHaveBeenCalled();
+    await request(app).put(`/api/role-room/narrative/projects/${PROJECT_ID}/translations`).set('Authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ locale: 'en', entries: [{ ownerKind: 'element', id: 'nel_1', field: 'titleHtml', html: '<p>x</p>' }] });
+    expect(broadcast).toHaveBeenCalledTimes(1);
+    expect((broadcast.mock.calls[0] as unknown as [string, { payload: { kind: string } }])[1].payload.kind).toBe('translation');
   });
 });

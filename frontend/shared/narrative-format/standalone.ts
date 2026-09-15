@@ -6,6 +6,7 @@
  */
 
 import type { RuntimeGraph } from '../narrative-runtime/types';
+import { applyLocaleToGraph } from './locale';
 import { htmlToTitle } from './text';
 import type { ExportGraph } from './types';
 
@@ -54,6 +55,8 @@ export interface StandaloneHtmlOptions {
   /** Vis debugger-panel (variabler/besøk) i den eksporterte spilleren. */
   debug?: boolean;
   lang?: string;
+  /** Eksporter på et annet språk enn kilden. */
+  locale?: string | null;
 }
 
 export const STANDALONE_CSS = `
@@ -91,13 +94,14 @@ body{margin:0;background:#0b0d0f;color:#e8ebe9;font:16px/1.65 system-ui,-apple-s
 `;
 
 export function buildStandaloneHtml(options: StandaloneHtmlOptions): string {
-  const title = options.title?.trim() || 'Story Graph';
-  const runtime = toRuntimeSubset(options.graph);
+  const localized = applyLocaleToGraph(options.graph, options.locale);
+  const title = (options.locale && options.locale !== 'nb' ? localized.settings.title : options.title)?.trim() || options.title?.trim() || 'Story Graph';
+  const runtime = toRuntimeSubset(localized);
   const playerJs = options.playerJs.replace(/<\/script/gi, '<\\/script');
   const config = jsonForScriptTag({ title, debug: !!options.debug, graph: runtime });
   return [
     '<!doctype html>',
-    `<html lang="${escapeHtmlText(options.lang ?? 'nb')}">`,
+    `<html lang="${escapeHtmlText(options.lang ?? options.locale ?? 'nb')}">`,
     '<head>',
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1">',

@@ -21,7 +21,7 @@ type LoadState =
   | { kind: 'error'; message: string }
   | { kind: 'ready'; story: NarrativePublicStory };
 
-export function StoryPlayView({ token }: { token: string }) {
+export function StoryPlayView({ token, locale = null }: { token: string; locale?: string | null }) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
 
   useEffect(() => {
@@ -69,7 +69,7 @@ export function StoryPlayView({ token }: { token: string }) {
         </Box>
       ) : null}
       {state.kind === 'ready' ? (
-        <StoryPlayer graph={state.story.graph} showDebugger={state.story.mode === 'view_play'} minHeight="calc(100vh - 42px)" />
+        <StoryPlayer graph={state.story.graph} showDebugger={state.story.mode === 'view_play'} minHeight="calc(100vh - 42px)" initialLocale={locale} />
       ) : null}
     </Box>
   );
@@ -78,5 +78,7 @@ export function StoryPlayView({ token }: { token: string }) {
 export default function StoryPlayPage() {
   const [, params] = useRoute('/story/:token');
   const token = (params as { token?: string } | null)?.token ?? '';
-  return <StoryPlayView token={token} />;
+  let locale: string | null = null;
+  try { locale = new URLSearchParams(window.location.search).get('locale'); } catch { /* ignore */ }
+  return <StoryPlayView token={token} locale={locale} />;
 }
