@@ -257,13 +257,7 @@ describe("Leadgrid domain onboarding classification", () => {
     expect(plan.recommended_anbud_profile).toMatchObject({
       template_key: "tidum.procurement",
       template_version: 1,
-      cpv_codes: [
-        "48450000",
-        "72212450",
-        "48332000",
-        "48311000",
-        "48311100",
-      ],
+      cpv_codes: ["48450000", "72212450", "48332000", "48311000", "48311100"],
       requires_admin_confirmation: true,
     });
     expect(plan.recommended_anbud_profile?.cpv_codes).not.toContain("85000000");
@@ -348,7 +342,7 @@ describe("Leadgrid domain onboarding classification", () => {
     );
   });
 
-  it("repairs MedSide metadata and creates five medical Discovery profiles", () => {
+  it("repairs MedSide metadata and creates six medical Discovery profiles", () => {
     const plan = buildProjectOnboardingPlan(
       "https://medside.no",
       "medside.no",
@@ -377,6 +371,7 @@ describe("Leadgrid domain onboarding classification", () => {
     });
     expect(plan.recommended_profiles.map((item) => item.template_key)).toEqual([
       "medside.gp_offices",
+      "medside.gp_offices_brreg",
       "medside.medical_specialists",
       "medside.physiotherapy",
       "medside.chiropractic",
@@ -384,12 +379,13 @@ describe("Leadgrid domain onboarding classification", () => {
     ]);
     expect(plan.recommended_profiles.map((item) => item.name)).toEqual([
       "Fastlegekontor – Norge",
+      "Legekontor (Enhetsregisteret) – Norge",
       "Private spesialistklinikker – Norge",
       "Fysioterapi og ergoterapi – Norge",
       "Kiropraktorer – Norge",
       "Psykolog- og psykoterapitjenester – Norge",
     ]);
-    expect(plan.recommended_profiles).toHaveLength(5);
+    expect(plan.recommended_profiles).toHaveLength(6);
     expect(
       plan.recommended_profiles.filter((item) => item.is_default),
     ).toHaveLength(1);
@@ -410,14 +406,32 @@ describe("Leadgrid domain onboarding classification", () => {
       target_count: 60,
       minimum_fit_score: 70,
     });
-    expect(plan.recommended_profiles[1].brief.industry_queries).toEqual([
+    // Samme målgruppe som fastlegeprofilen, men gjennom Enhetsregisteret og
+    // uten å påstå at fastlegeavtalen er bekreftet.
+    expect(plan.recommended_profiles[1].brief).toMatchObject({
+      registry_source: "brreg_open_data",
+      industry_queries: ["86.210"],
+      qualification_terms: [
+        "legekontor",
+        "legesenter",
+        "legepraksis",
+        "fastlege",
+      ],
+      qualification_requirement: "preferred",
+      target_count: 60,
+      minimum_fit_score: 70,
+    });
+    expect(plan.recommended_profiles[1].brief.exclusion_terms).toEqual(
+      expect.arrayContaining(["legevakt", "bedriftshelsetjeneste"]),
+    );
+    expect(plan.recommended_profiles[2].brief.industry_queries).toEqual([
       "86.221",
       "86.222",
     ]);
-    expect(plan.recommended_profiles[2].brief.industry_queries).toEqual([
+    expect(plan.recommended_profiles[3].brief.industry_queries).toEqual([
       "86.950",
     ]);
-    expect(plan.recommended_profiles[3].brief).toMatchObject({
+    expect(plan.recommended_profiles[4].brief).toMatchObject({
       organization_name_queries: [
         "kiropraktor",
         "kiropraktikk",
@@ -425,7 +439,7 @@ describe("Leadgrid domain onboarding classification", () => {
       ],
       qualification_requirement: "required",
     });
-    expect(plan.recommended_profiles[4].brief.industry_queries).toEqual([
+    expect(plan.recommended_profiles[5].brief.industry_queries).toEqual([
       "86.930",
     ]);
   });
@@ -1595,5 +1609,298 @@ describe("Leadgrid domain onboarding transaction", () => {
       "COMMIT",
     );
     expect(release).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Leadgrid MedSide legacy Discovery migration", () => {
+  const medSideOrganizationId = "d06f6c27-2704-4180-8735-be3696f4f130";
+  const medSideProjectId = "medside-9873ba5b2f66";
+  const legacyProfileId = "ae0b518b-da58-4fc3-ac23-9c1b610d9a82";
+
+  // Verified read-only in production on 14 September 2026: one machine
+  // migrated profile whose brief carries legacy markers the strict wire
+  // contract does not define.
+  function productionLegacyProfile(): Record<string, unknown> {
+    return {
+      id: legacyProfileId,
+      name: "Standard",
+      is_default: true,
+      version: 1,
+      status: "active",
+      source_config: {},
+      template_key: null,
+      template_version: null,
+      brief: {
+        geo: null,
+        city: "Oslo",
+        goal: null,
+        target_count: 10,
+        migrated_from: "leadgrid_project_discovery_config",
+        ideal_customer: null,
+        exclusion_terms: [],
+        migration_audit: {
+          legacy_next_run_at: "2026-09-01T14:30:09.917405+00:00",
+          legacy_auto_discover_enabled: true,
+        },
+        enrichment_count: 10,
+        industry_queries: ["legekontor"],
+        minimum_fit_score: 50,
+      },
+    };
+  }
+
+  function medSideHarness(profiles: Array<Record<string, unknown>>) {
+    const plan = buildProjectOnboardingPlan(
+      "https://medside.no",
+      "medside.no",
+      profile({ url: "https://medside.no", businessName: "MedSide" }),
+    );
+    let createdProjects = 0;
+    const query = vi.fn(async (sqlValue: string, params: unknown[] = []) => {
+      const sql = String(sqlValue);
+      if (sql.includes("FROM leadgrid_project_onboarding_previews")) {
+        return {
+          rows: [
+            {
+              id: previewId,
+              plan,
+              expires_at: "2099-01-01T00:00:00.000Z",
+              committed_at: null,
+              committed_organization_id: null,
+              committed_project_id: null,
+            },
+          ],
+        };
+      }
+      if (sql.includes("FROM organizations WHERE id")) {
+        return { rows: [{ id: medSideOrganizationId, name: "Creatorhub AS" }] };
+      }
+      // Reuse is resolved through the brand kit source_url, because the
+      // production project metadata is empty.
+      if (sql.includes("LEFT JOIN brand_kits bk")) {
+        return { rows: [{ id: medSideProjectId }] };
+      }
+      if (sql.includes("INSERT INTO leadgrid_projects")) {
+        createdProjects += 1;
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("SELECT overrides FROM brand_kits")) return { rows: [] };
+      if (
+        sql.includes("UPDATE leadgrid_discovery_profiles") &&
+        sql.includes("SET status = 'archived'")
+      ) {
+        let archived = 0;
+        for (const row of profiles) {
+          const brief = row.brief as Record<string, unknown>;
+          const industryQueries = Array.isArray(brief.industry_queries)
+            ? (brief.industry_queries as string[])
+            : [];
+          const nameQueries = Array.isArray(brief.organization_name_queries)
+            ? (brief.organization_name_queries as string[])
+            : [];
+          if (
+            row.status !== "archived" &&
+            row.template_key === null &&
+            row.template_version === null &&
+            brief.migrated_from === "leadgrid_project_discovery_config" &&
+            nameQueries.length === 0 &&
+            industryQueries.length === 1 &&
+            industryQueries[0]?.trim().toLowerCase() === String(params[3])
+          ) {
+            row.status = "archived";
+            row.is_default = false;
+            archived += 1;
+          }
+        }
+        return { rows: [], rowCount: archived };
+      }
+      if (
+        sql.includes("UPDATE leadgrid_discovery_profiles") &&
+        sql.includes("SET is_default = TRUE")
+      ) {
+        const active = profiles.filter((row) => row.status !== "archived");
+        if (active.some((row) => row.is_default))
+          return { rows: [], rowCount: 0 };
+        const preferred =
+          active.find(
+            (row) => params[2] !== null && row.template_key === params[2],
+          ) ?? active[0];
+        if (!preferred) return { rows: [], rowCount: 0 };
+        preferred.is_default = true;
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("INSERT INTO leadgrid_discovery_profiles")) {
+        profiles.push({
+          id: `medside-profile-${profiles.length + 1}`,
+          name: params[4],
+          is_default: params[5],
+          version: 1,
+          brief: JSON.parse(String(params[13])),
+          status: "active",
+          source_config: JSON.parse(String(params[16])),
+          template_key: params[2],
+          template_version: params[3],
+        });
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("FROM leadgrid_discovery_profiles")) {
+        return { rows: profiles.filter((row) => row.status !== "archived") };
+      }
+      if (sql.includes("SELECT p.id::text") && sql.includes("crm_customers")) {
+        return {
+          rows: [
+            {
+              id: medSideProjectId,
+              organization_id: medSideOrganizationId,
+              name: "MedSide",
+              description: plan.project_description,
+              status: "active",
+              lead_count: 0,
+              competitor_count: 0,
+            },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const pool = {
+      connect: vi.fn(async () => ({ query, release: vi.fn() })),
+    } as unknown as Pool;
+    return {
+      plan,
+      pool,
+      query,
+      profiles,
+      createdProjects: () => createdProjects,
+    };
+  }
+
+  it("builds five project-scoped MedSide profiles with unique template keys", () => {
+    const plan = buildProjectOnboardingPlan(
+      "https://medside.no",
+      "medside.no",
+      profile({ url: "https://medside.no", businessName: "MedSide" }),
+    );
+    expect(plan.website_domain).toBe("medside.no");
+    expect(plan.recommended_profiles.map((item) => item.template_key)).toEqual([
+      "medside.gp_offices",
+      "medside.gp_offices_brreg",
+      "medside.medical_specialists",
+      "medside.physiotherapy",
+      "medside.chiropractic",
+      "medside.psychology",
+    ]);
+    expect(
+      new Set(plan.recommended_profiles.map((item) => item.template_key)).size,
+    ).toBe(6);
+    expect(plan.recommended_profiles[0].brief.registry_source).toBe(
+      "nhn_flr_public",
+    );
+    // Det operative alternativet til FLR treffer samme målgruppe gjennom
+    // Enhetsregisteret, uten å påstå at fastlegeavtalen er bekreftet.
+    expect(plan.recommended_profiles[1]).toMatchObject({
+      template_key: "medside.gp_offices_brreg",
+      is_default: false,
+      brief: {
+        registry_source: "brreg_open_data",
+        industry_queries: ["86.210"],
+        qualification_requirement: "preferred",
+      },
+    });
+    expect(
+      plan.recommended_profiles.filter((item) => item.is_default),
+    ).toHaveLength(1);
+  });
+
+  it("retires the migrated legekontor profile and hands the default to a runnable BRREG profile", async () => {
+    const harness = medSideHarness([productionLegacyProfile()]);
+
+    const result = await commitProjectOnboarding(harness.pool, {
+      previewId,
+      organizationId: medSideOrganizationId,
+      userId,
+    });
+
+    expect(result.reused_project).toBe(true);
+    expect(result.project.id).toBe(medSideProjectId);
+    expect(harness.createdProjects()).toBe(0);
+
+    const active = harness.profiles.filter((row) => row.status !== "archived");
+    expect(active).toHaveLength(6);
+    expect(active.map((row) => row.template_key)).toEqual([
+      "medside.gp_offices",
+      "medside.gp_offices_brreg",
+      "medside.medical_specialists",
+      "medside.physiotherapy",
+      "medside.chiropractic",
+      "medside.psychology",
+    ]);
+
+    const legacy = harness.profiles.find((row) => row.id === legacyProfileId);
+    expect(legacy).toMatchObject({ status: "archived", is_default: false });
+
+    const defaults = active.filter((row) => row.is_default);
+    expect(defaults).toHaveLength(1);
+    // The Fastlegeregister profile cannot run without Maskinporten, so it must
+    // not be the entry point the project opens on. The BRREG variant covers the
+    // same audience and can actually run.
+    expect(defaults[0].template_key).toBe("medside.gp_offices_brreg");
+  });
+
+  it("creates nothing new when the same commit is replayed", async () => {
+    const harness = medSideHarness([productionLegacyProfile()]);
+    await commitProjectOnboarding(harness.pool, {
+      previewId,
+      organizationId: medSideOrganizationId,
+      userId,
+    });
+    const afterFirst = harness.profiles.map((row) => ({ ...row }));
+
+    const replay = medSideHarness(harness.profiles);
+    await commitProjectOnboarding(replay.pool, {
+      previewId,
+      organizationId: medSideOrganizationId,
+      userId,
+    });
+
+    expect(
+      replay.query.mock.calls.filter(([sql]) =>
+        String(sql).includes("INSERT INTO leadgrid_discovery_profiles"),
+      ),
+    ).toHaveLength(0);
+    expect(harness.profiles).toHaveLength(afterFirst.length);
+    const active = harness.profiles.filter((row) => row.status !== "archived");
+    expect(active).toHaveLength(6);
+    expect(active.filter((row) => row.is_default)).toHaveLength(1);
+    expect(
+      harness.profiles.find((row) => row.id === legacyProfileId),
+    ).toMatchObject({ status: "archived" });
+  });
+
+  it("never archives a user-authored profile that only looks similar", async () => {
+    const userAuthored = productionLegacyProfile();
+    userAuthored.id = "user-authored-profile";
+    userAuthored.name = "Standard";
+    (userAuthored.brief as Record<string, unknown>).migrated_from = undefined;
+    delete (userAuthored.brief as Record<string, unknown>).migrated_from;
+    const harness = medSideHarness([userAuthored]);
+
+    await commitProjectOnboarding(harness.pool, {
+      previewId,
+      organizationId: medSideOrganizationId,
+      userId,
+    });
+
+    const kept = harness.profiles.find(
+      (row) => row.id === "user-authored-profile",
+    );
+    expect(kept).toMatchObject({ status: "active" });
+    // The user already owns the default; onboarding must not move it.
+    expect(kept).toMatchObject({ is_default: true });
+    expect(
+      harness.profiles.filter(
+        (row) => row.status !== "archived" && row.is_default,
+      ),
+    ).toHaveLength(1);
   });
 });
