@@ -58,6 +58,8 @@ affected:
   - backend/server/role-room-narrative-routes.ts (export.json, export.md, import, share-links, public/:token)
   - backend/server/role-room-mcp-registry.ts (rr_export_story_graph, rr_draft_element)
   - backend/server/ai-narrative-element-agent.ts + backend/migrations/0606_ai_suggestions_narrative_source_type.sql
+  - frontend/shared/narrative-format/locale.ts + backend/migrations/0607_narrative_i18n.sql (Fase 4b: kodeblokker oversettes aldri)
+  - frontend/shared/narrative-runtime-pkg/ + packages/story-graph-runtime/ (Fase 4e: JS full tolk; C#/GDScript dokumentert delsett — se 2026-09-narrative-import-formats.yaml)
 lesson: >
   Interop with a competitor's ecosystem is cheapest when the data model is adopted
   verbatim before the first table is created; retrofitting a mapping layer later is

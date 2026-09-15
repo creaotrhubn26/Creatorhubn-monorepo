@@ -160,7 +160,7 @@ app/Talent Registry er den nyeste vertikalen og tjener byrå- og talent-siden av
 | **Innholdsprodusent-løsning** (uten Agent) | Innholdsprodusent (495 kr/sete, min. 1) | ✅ Live |
 | **Dansestudio-vertikal** | Profesjonelle dansere / dansestudio | ✅ Live |
 | **Talents-app + Talent Registry** | Skuespillere + casting-byrå + produsenter | ✅ Live (ny — BankID + per-org B2 i pipeline) |
-| **Spillstudio / Story Graph** | Spillstudioer, narrative designere | 🟡 Beta — bak `?mode=game_studio` (Fase 3 av 4) |
+| **Spillstudio / Story Graph** | Spillstudioer, narrative designere | 🟡 Beta — landingskort + login-persona, Solo gratis / Pro 149 / Studio 490 kr (plassholderpriser) |
 | **The Role Room Agent** (AI-lag) | Begge — særlig innholdsprodusent | 🟡 Beta — ikke skipet, testes internt |
 
 ### 2.2 Kjernemoduler — Produksjons-OS (LIVE)
@@ -276,9 +276,14 @@ Team-plan. Produktplan: `docs/role-room/STORY_GRAPH_PRODUCT_PLAN.md`.
 | Grafvalidator | Startelement, uoppnåelige elementer, ukoblede utganger, jumper uten mål | ✅ Fase 1 |
 | Skript + Play Mode | arcscript-kompatibel tolk (delt frontend/backend), forgreninger, Play Mode med debugger, TTS per karakter, skriptvalidering, referanser i editoren | ✅ Fase 2 |
 | Eksport/import + deling | Arcweave-JSON (virker i Arcweaves Unity/Godot/Unreal-plugins), Arcweave-import, Markdown, spillbar HTML, delbare spill-lenker (`/story/:token`), KI-forslag per element (neste/forbedre/forgrening), MCP `rr_export_story_graph` + `rr_draft_element` | ✅ Fase 3 |
+| Twine/Ink-import | Twee 3 (SugarCube fullt, Harlowe best-effort) og Ink-delsett → samme graf; lossy deler listes som merknader | ✅ Fase 4 |
+| Lokalisering | Translation Mode med KI-forslag, `nb` kanonisk, skript beholdes; locale i Play Mode, `/story`, alle eksporter | ✅ Fase 4 |
+| Sanntid | Avatarer, markører og valg-ring per kollega; grafendringer pushes og lastes på nytt | ✅ Fase 4 |
+| Billing | Solo (gratis) / Pro / Studio via Stripe; gating av deling, HTML, KI, oversettelser, import, elementgrense; tester-invites; admin-redigerbare planer | ✅ Fase 4 |
+| Runtime-pakker | `packages/story-graph-runtime`: JS (full motor), Unity C# og Godot 4 GDScript (dokumentert delsett) | ✅ Fase 4 (C#/GD manuelt verifisert) |
 
-**Status:** beta, ingen egen pris-tier ennå (tilgang som Produksjons-OS). Ikke synlig på
-landingssiden.
+**Status:** beta. Synlig på landingssiden (kort «Spillstudio — Story Graph») med egen
+login-persona. Priser er plassholdere satt i migrasjon 0608 og redigeres i «Admin · Planer».
 
 ### 2.8 AI-lag — The Role Room Agent (BETA — ikke skipet)
 

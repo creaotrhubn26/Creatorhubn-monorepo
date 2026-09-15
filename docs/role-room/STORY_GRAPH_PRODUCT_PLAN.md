@@ -118,10 +118,30 @@ AI-substrat på Claude med kreditt/rate-limit; MCP-server for Role Room.
   `narrative-story-play.spec.ts` (harness `?harness=story_play`).
 - Utsatt: server-side standalone-HTML-endepunkt, embed-kode (iframe), PDF/CSV.
 
-### Fase 4 — Forbi Arcweave
-Sanntids-markører (socket.io; `yjs@13` ligger ubrukt i backend), lokalisering med
-Translation Mode, Twine (`.twee`) og Ink-import, egne runtime-pakker for Unity/Godot,
-Stripe-tier, login-persona og landingsside-kort, `@xyflow/react` v12.
+### Fase 4 — Forbi Arcweave (LEVERT)
+- **Import fra Twine og Ink** (`narrative-format/twee.ts`, `ink.ts`, `sniff.ts`): Twee 3 med
+  SugarCube (fullt: `<<set/if/elseif/else/link/goto>>`, lenker `[[t|m]] [[t->m]] [[m<-t]]`) og
+  Harlowe (best-effort, uverifisert), Ink-delsett (knots/stitches, valg, gathers, diverts, VAR,
+  `~`, `{cond: a | b}`; once-only og sekvenser er lossy med advarsel). Samme `POST …/import`
+  (`format: arcweave | twee | ink`), filvelger i Eksport-fanen med sniff + forhåndsvisning.
+- **Lokalisering / Translation Mode** (migrasjon 0607, `narrative-format/locale.ts`): in-row
+  `i18n`-JSONB på elementer/koblinger/innstillinger, `nb` kanonisk, kodeblokker oversettes aldri
+  (`mergeCodeBlocks`). Fane «Oversettelser» med KI-forslag (`narrative-translate.ts`, statsløst),
+  locale-velger i Play Mode, `?locale=` på `/story/:token`, locale på alle eksporter.
+- **Sanntids-markører + presence** (`websocket-chat.ts` rom `narrative:<projectId>`): avatarer,
+  markører på lerretet, valg-ring i kollegaens farge, `narrative:graph_changed`-push etter
+  mutasjoner → debounced reload. Ingen CRDT.
+- **Lansering**: landingskort «Spillstudio — Story Graph» (beta), login-persona med rollekort
+  Spillstudio/Narrativ designer → `?mode=game_studio`, `?signup=game_studio`.
+- **Billing** (migrasjon 0608, `game-billing-*`, `game-plan-gate.ts`, `role-room/game/`): planer
+  Solo (gratis) / Pro / Studio (plassholderpriser, admin-redigerbare), Stripe checkout/portal/
+  webhook, tester-invites. Gating på prosjekteierens plan: delingslenker, spillbar HTML,
+  KI-forslag, oversettelser, Twine/Ink-import, elementgrense (402 `plan_required`/`plan_limit`).
+- **Runtime-pakker** (`packages/story-graph-runtime/`): JS-pakke med full motor (bygget fra
+  `shared/narrative-runtime-pkg`, paritetstest), Unity C# og Godot 4 GDScript for et dokumentert
+  arcscript-delsett, felles transkript-format + fixture for manuell paritetssjekk (CHECKLIST.md).
+- Ikke gjort (bevisst): `@xyflow/react` v12 (bruker valgte «kun runtime-pakker»), realtime-gating,
+  PDF/CSV-eksport, embed-kode.
 
 ## Researchprogram
 

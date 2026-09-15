@@ -106,7 +106,7 @@ export function fromArcweaveProject(input: unknown, options: FromArcweaveOptions
   const newId = (kind: IdKind, arcId: string): string => {
     const existing = idMap.get(arcId);
     if (existing) return existing;
-    const id = factory(kind);
+    const id = factory(kind, arcId);
     idMap.set(arcId, id);
     return id;
   };

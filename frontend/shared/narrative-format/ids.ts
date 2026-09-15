@@ -52,7 +52,11 @@ export function createExportIdMapper(): IdMapper {
   };
 }
 
-export type IdFactory = (kind: IdKind) => string;
+/**
+ * Id-fabrikk. `sourceId` er kildens id (f.eks. Arcweave-id) når importen kjenner den,
+ * så en fabrikk kan velge å bevare den (runtime-pakken gjør det).
+ */
+export type IdFactory = (kind: IdKind, sourceId?: string) => string;
 
 function randomUuid(): string {
   const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
