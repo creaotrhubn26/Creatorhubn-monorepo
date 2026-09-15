@@ -28,3 +28,25 @@ describe('casting_user_roles lifecycle contract', () => {
     expect(migration).toContain('CREATE INDEX IF NOT EXISTS idx_cur_project_active');
   });
 });
+
+const additionalRolesMigration = readFileSync(
+  new URL('../migrations/0608_casting_user_roles_additional_roles.sql', import.meta.url),
+  'utf8',
+);
+
+describe('casting_user_roles multi-role contract', () => {
+  it('keeps the Drizzle model aligned with the additional-roles column', () => {
+    expect(Object.keys(getTableColumns(castingUserRoles))).toEqual(
+      expect.arrayContaining(['role', 'additionalRoles']),
+    );
+  });
+
+  it('adds the column idempotently without touching existing rows', () => {
+    expect(additionalRolesMigration).toContain('ALTER TABLE casting_user_roles');
+    expect(additionalRolesMigration).toContain('ADD COLUMN IF NOT EXISTS additional_roles TEXT[]');
+    expect(additionalRolesMigration).toContain("DEFAULT '{}'");
+    // The unique index stays: no row moves, no backfill, no dual write.
+    expect(additionalRolesMigration).not.toContain('DROP INDEX');
+    expect(additionalRolesMigration).not.toContain('casting_user_roles_project_user_unique');
+  });
+});

@@ -1279,6 +1279,7 @@ export function createCastingProductionRouter(
         access: {
           projectId,
           role: access.role,
+          roles: access.roles,
           isOwner: access.isOwner,
           isMember: access.isMember,
           permissions: access.permissions,
