@@ -422,7 +422,7 @@ function roleLabelForRole(role: string): string {
     .join(' ');
 }
 
-async function resolveCreatorHubGoogleLoginUser(
+export async function resolveCreatorHubGoogleLoginUser(
   pool: Pool,
   googleEmail: string,
 ): Promise<CreatorHubResolvedUser | null> {
@@ -475,23 +475,24 @@ async function resolveCreatorHubGoogleLoginUser(
     )
     .catch(() => ({ rows: [], rowCount: 0 }));
 
-  let role = readStringValue(row.role)?.toLowerCase() ?? 'user';
-  if (role === 'super_admin') {
-    role = 'admin';
-  }
+  // super_admin beholdes som super_admin. Den gamle flatingen til 'admin'
+  // gjorde at Google-innloggede superadmins fikk en sesjon som aldri kunne
+  // passere super_admin-gatene (affiliate/utbetalinger, impersonering,
+  // Control Center) — requireAdminSession leser sesjonsrollen direkte.
+  const role = readStringValue(row.role)?.toLowerCase() ?? 'user';
   // An admin who ALSO has a couple/vendor profile (e.g. a test wedding, or a
   // vendor listing they own) must KEEP their admin role — otherwise the
   // marketplace profile silently demotes the Google session to 'couple'/
   // 'vendor' and locks them out of /admin. Only apply the marketplace role to
   // non-admin accounts.
   const isPrivilegedRole = role === 'admin' || role === 'super_admin';
-  if (!isPrivilegedRole) {
-    if (coupleCheck.rows.length > 0) {
-      role = 'couple';
-    } else if (vendorCheck.rows.length > 0) {
-      role = 'vendor';
-    }
-  }
+  const effectiveRole = isPrivilegedRole
+    ? role
+    : coupleCheck.rows.length > 0
+      ? 'couple'
+      : vendorCheck.rows.length > 0
+        ? 'vendor'
+        : role;
 
   const baseName =
     [
@@ -507,15 +508,18 @@ async function resolveCreatorHubGoogleLoginUser(
     email: readStringValue(row.email) ?? normalizedEmail,
     name: baseName,
     displayName: coupleCheck.rows[0]?.display_name || baseName,
-    role,
-    roleLabel: roleLabelForRole(role),
+    role: effectiveRole,
+    roleLabel: roleLabelForRole(effectiveRole),
     profession: readStringValue(row.profession) ?? undefined,
     vendorId: vendorCheck.rows[0]?.id ? String(vendorCheck.rows[0].id) : undefined,
     businessName: vendorCheck.rows[0]?.business_name
       ? String(vendorCheck.rows[0].business_name)
       : (readStringValue(row.company_name) ?? undefined),
     coupleProfileId: coupleCheck.rows[0]?.id ? String(coupleCheck.rows[0].id) : undefined,
-    isAdmin: role === 'admin' || role === 'super_admin' || role === 'academy_admin',
+    isAdmin:
+      effectiveRole === 'admin'
+      || effectiveRole === 'super_admin'
+      || effectiveRole === 'academy_admin',
   };
 }
 

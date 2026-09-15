@@ -108,6 +108,9 @@ alle støttede installere er bygget og kontrollert:
 Windows-releasen feiler lukket dersom app-binæren, EXE-installerens eller MSI-ens
 Authenticode-signatur/tidsstempel ikke er gyldig. Signering bruker GitHub OIDC;
 ingen privat kode-signeringnøkkel lagres i repoet eller på runneren.
+Workflowen installerer en pinnet Microsoft Sign CLI og gir den til Tauri som
+`bundle.windows.signCommand`. Dermed signeres hver MSI-/NSIS-patchet app-binær
+før den bygges inn i installasjonsfilen, i tillegg til selve installasjonsfilen.
 
 Følgende GitHub-konfigurasjon må finnes før en release-tag opprettes:
 

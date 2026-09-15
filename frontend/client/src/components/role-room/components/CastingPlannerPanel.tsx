@@ -189,6 +189,15 @@ import {
   isRoleRoomWorkspaceLens,
   type RoleRoomWorkspaceLens,
 } from './production/productionWorkspaceLens';
+import {
+  FIRST_ASSISTANT_DIRECTOR_PROJECT_ROLES,
+  SECOND_ASSISTANT_DIRECTOR_PROJECT_ROLES,
+  WORKSPACE_LENS_REGISTRY,
+  matchesLensProjectRole,
+  resolveLensUrlState,
+  resolveWorkspaceLens,
+  type RoleWorkspaceLens,
+} from './production/workspaceLensRegistry';
 import { useProducerAccess } from '../hooks/useProducerAccess';
 import { producerWorkflowService } from '../services/producerWorkflowService';
 import {
@@ -3276,35 +3285,28 @@ type RoleRoomProjectWorkspaceState = {
   // eksplisitt prosjektrolle lander i sin egen arbeidsflate; eier/admin kan
   // åpne rolleflatene som en bevisst forhåndsvisning.
   const normalizedCurrentProjectRole = String(currentUserRole?.role || '').trim().toLowerCase();
-  const isAssignedDirectorProjectRole = normalizedCurrentProjectRole === 'director'
+  // Hvilke prosjektroller som hører til hvilken linse eies av
+  // WORKSPACE_LENS_REGISTRY. Persona- og adminsjekkene under er
+  // sesjonsavhengige og blir derfor liggende her.
+  const isAssignedDirectorProjectRole = matchesLensProjectRole('director', normalizedCurrentProjectRole)
     && (!isRoleRoomAdminSession || mappedSessionProjectRole === 'director');
   const isAssignedCinematographerProjectRole = (
-    ['cinematographer', 'director_of_photography', 'dop', 'dp'].includes(normalizedCurrentProjectRole)
+    matchesLensProjectRole('cinematography', normalizedCurrentProjectRole)
     || (normalizedCurrentProjectRole === 'camera_team' && hasCinematographerPersona)
   ) && (!isRoleRoomAdminSession || hasCinematographerPersona);
-  const isAssignedFirstAssistantDirectorProjectRole = [
-    'first_ad',
-    'first_assistant_director',
-    '1st_ad',
-  ].includes(normalizedCurrentProjectRole)
+  const isAssignedFirstAssistantDirectorProjectRole = FIRST_ASSISTANT_DIRECTOR_PROJECT_ROLES
+    .includes(normalizedCurrentProjectRole)
     && (!isRoleRoomAdminSession || hasFirstAssistantDirectorPersona);
-  const isAssignedSecondAssistantDirectorProjectRole = [
-    'second_ad',
-    'second_assistant_director',
-    '2nd_ad',
-  ].includes(normalizedCurrentProjectRole)
+  const isAssignedSecondAssistantDirectorProjectRole = SECOND_ASSISTANT_DIRECTOR_PROJECT_ROLES
+    .includes(normalizedCurrentProjectRole)
     && (!isRoleRoomAdminSession || hasSecondAssistantDirectorPersona);
-  const isAssignedProductionManagerProjectRole = normalizedCurrentProjectRole === 'production_manager'
+  const isAssignedProductionManagerProjectRole = matchesLensProjectRole('production-management', normalizedCurrentProjectRole)
     && (!isRoleRoomAdminSession || hasProductionManagerPersona || mappedSessionProjectRole === 'production_manager');
-  const isAssignedProductionCoordinatorProjectRole = normalizedCurrentProjectRole === 'production_coordinator'
+  const isAssignedProductionCoordinatorProjectRole = matchesLensProjectRole('production-coordination', normalizedCurrentProjectRole)
     && (!isRoleRoomAdminSession || hasProductionCoordinatorPersona || mappedSessionProjectRole === 'production_coordinator');
-  const isAssignedLocationDepartmentProjectRole = [
-    'location_manager',
-    'location_scout',
-    'location_security',
-  ].includes(normalizedCurrentProjectRole)
+  const isAssignedLocationDepartmentProjectRole = matchesLensProjectRole('location-management', normalizedCurrentProjectRole)
     && (!isRoleRoomAdminSession || hasLocationDepartmentPersona);
-  const isAssignedScriptSupervisorProjectRole = normalizedCurrentProjectRole === 'script_supervisor'
+  const isAssignedScriptSupervisorProjectRole = matchesLensProjectRole('continuity', normalizedCurrentProjectRole)
     && (!isRoleRoomAdminSession || hasScriptSupervisorPersona || mappedSessionProjectRole === 'script_supervisor');
   const canUseDirectorWorkspace = isAssignedDirectorProjectRole || isRoleRoomAdminSession;
   const canUseCinematographerWorkspace = isAssignedCinematographerProjectRole || isRoleRoomAdminSession;
@@ -3352,48 +3354,37 @@ type RoleRoomProjectWorkspaceState = {
   const canUseContinuityWorkspace = canEditContinuityWorkspace
     || canCommentContinuityWorkspace
     || ['director', 'producer', 'first_ad', 'second_ad'].includes(normalizedCurrentProjectRole);
-  const effectiveWorkspaceLens: RoleRoomWorkspaceLens = (
-    canUseDirectorWorkspace
-    && (workspaceLensPreference === 'director' || (workspaceLensPreference === null && isAssignedDirectorProjectRole))
-  )
-    ? 'director'
-    : canUseCinematographerWorkspace
-      && (
-        workspaceLensPreference === 'cinematography'
-        || (workspaceLensPreference === null && isAssignedCinematographerProjectRole)
-      )
-      ? 'cinematography'
-      : canUseAssistantDirectorWorkspace
-        && (
-          workspaceLensPreference === 'assistant-direction'
-          || (workspaceLensPreference === null && (isAssignedFirstAssistantDirectorProjectRole || isAssignedSecondAssistantDirectorProjectRole))
-        )
-        ? 'assistant-direction'
-        : canUseProductionManagementWorkspace
-          && (
-            workspaceLensPreference === 'production-management'
-            || (workspaceLensPreference === null && isAssignedProductionManagerProjectRole)
-          )
-          ? 'production-management'
-          : canUseProductionCoordinationWorkspace
-            && (
-              workspaceLensPreference === 'production-coordination'
-              || (workspaceLensPreference === null && isAssignedProductionCoordinatorProjectRole)
-            )
-            ? 'production-coordination'
-            : canUseLocationManagerWorkspace
-              && (
-                workspaceLensPreference === 'location-management'
-                || (workspaceLensPreference === null && isAssignedLocationDepartmentProjectRole)
-              )
-              ? 'location-management'
-              : canUseContinuityWorkspace
-                && (
-                  workspaceLensPreference === 'continuity'
-                  || (workspaceLensPreference === null && isAssignedScriptSupervisorProjectRole)
-                )
-                ? 'continuity'
-                : 'full';
+  // Rene oppslag, ikke hooks: de leses av både lenseoppløsningen og
+  // URL-synkroniseringen, som fortsatt lister de underliggende
+  // boolean-verdiene i sin dependency-array.
+  const isAssignedLensProjectRole = (lens: RoleWorkspaceLens): boolean => {
+    switch (lens) {
+      case 'director': return isAssignedDirectorProjectRole;
+      case 'cinematography': return isAssignedCinematographerProjectRole;
+      case 'assistant-direction':
+        return isAssignedFirstAssistantDirectorProjectRole || isAssignedSecondAssistantDirectorProjectRole;
+      case 'production-management': return isAssignedProductionManagerProjectRole;
+      case 'production-coordination': return isAssignedProductionCoordinatorProjectRole;
+      case 'location-management': return isAssignedLocationDepartmentProjectRole;
+      case 'continuity': return isAssignedScriptSupervisorProjectRole;
+    }
+  };
+  const isAllowedLens = (lens: RoleWorkspaceLens): boolean => {
+    switch (lens) {
+      case 'director': return canUseDirectorWorkspace;
+      case 'cinematography': return canUseCinematographerWorkspace;
+      case 'assistant-direction': return canUseAssistantDirectorWorkspace;
+      case 'production-management': return canUseProductionManagementWorkspace;
+      case 'production-coordination': return canUseProductionCoordinationWorkspace;
+      case 'location-management': return canUseLocationManagerWorkspace;
+      case 'continuity': return canUseContinuityWorkspace;
+    }
+  };
+  const effectiveWorkspaceLens: RoleRoomWorkspaceLens = resolveWorkspaceLens({
+    preference: workspaceLensPreference,
+    isAssigned: isAssignedLensProjectRole,
+    isAllowed: isAllowedLens,
+  });
   const getProjectRoleDetails = useCallback((project: CastingProject): {
     roleLabel: string;
     accessLabel: string;
@@ -5391,51 +5382,23 @@ type RoleRoomProjectWorkspaceState = {
     const desiredTabSlug = tabId ? tabId.replace(/^tabpanel-/, '') : String(activeTab);
     const desiredProject = currentProject?.id ?? '';
     const desiredView = storyArcView !== 'main' ? storyArcView : '';
-    const desiredLens = effectiveWorkspaceLens === 'director'
-      ? 'director'
-      : effectiveWorkspaceLens === 'cinematography'
-        ? 'cinematography'
-      : effectiveWorkspaceLens === 'assistant-direction'
-          ? 'assistant-direction'
-          : effectiveWorkspaceLens === 'production-management'
-            ? 'production-management'
-          : effectiveWorkspaceLens === 'production-coordination'
-            ? 'production-coordination'
-          : effectiveWorkspaceLens === 'location-management'
-            ? 'location-management'
-          : effectiveWorkspaceLens === 'continuity'
-            ? 'continuity'
-          : workspaceLensPreference === 'full'
-            && (
-              isAssignedDirectorProjectRole
-              || isAssignedCinematographerProjectRole
-              || isAssignedFirstAssistantDirectorProjectRole
-              || isAssignedSecondAssistantDirectorProjectRole
-              || isAssignedProductionManagerProjectRole
-              || isAssignedProductionCoordinatorProjectRole
-              || isAssignedLocationDepartmentProjectRole
-              || isAssignedScriptSupervisorProjectRole
-            )
-            ? 'full'
-            : '';
-    const desiredSurface = effectiveWorkspaceLens === 'director'
-      ? directorSurface
-      : effectiveWorkspaceLens === 'cinematography'
-        ? cinematographerSurface
-      : effectiveWorkspaceLens === 'assistant-direction'
-          ? firstAssistantDirectorSurface
-          : effectiveWorkspaceLens === 'production-management'
-            ? ''
-          : effectiveWorkspaceLens === 'production-coordination'
-            ? ''
-          : effectiveWorkspaceLens === 'location-management'
-            ? ''
-          : contentProducerPlannerSurface !== 'overview'
-            ? contentProducerPlannerSurface
-            : '';
-    const desiredScene = effectiveWorkspaceLens === 'director'
-      ? directorSceneId ?? ''
-      : '';
+    const {
+      lens: desiredLens,
+      surface: desiredSurface,
+      scene: desiredScene,
+    } = resolveLensUrlState({
+      lens: effectiveWorkspaceLens,
+      preference: workspaceLensPreference,
+      hasAssignedLensRole: WORKSPACE_LENS_REGISTRY
+        .some((entry) => isAssignedLensProjectRole(entry.lens)),
+      surfaces: {
+        director: directorSurface,
+        cinematography: cinematographerSurface,
+        'assistant-direction': firstAssistantDirectorSurface,
+      },
+      plannerSurface: contentProducerPlannerSurface !== 'overview' ? contentProducerPlannerSurface : '',
+      scenes: { director: directorSceneId ?? '' },
+    });
     const currentTabParam = params.get('tab') ?? '';
     const currentProjectParam = params.get('project') ?? '';
     const currentViewParam = params.get('view') ?? '';
@@ -5480,6 +5443,7 @@ type RoleRoomProjectWorkspaceState = {
     isAssignedCinematographerProjectRole,
     isAssignedDirectorProjectRole,
     isAssignedFirstAssistantDirectorProjectRole,
+    isAssignedLocationDepartmentProjectRole,
     isAssignedProductionManagerProjectRole,
     isAssignedProductionCoordinatorProjectRole,
     isAssignedScriptSupervisorProjectRole,

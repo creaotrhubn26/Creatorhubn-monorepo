@@ -44751,6 +44751,25 @@ type AdminRoleCatalogEntry = {
 
 const ADMIN_ROLE_CATALOG: AdminRoleCatalogEntry[] = [
   {
+    // Høyeste tier. MÅ ligge i katalogen: normalizeAdminRoleId() faller
+    // tilbake til "user" for ukjente id-er, så uten denne ble en DB-rolle
+    // 'super_admin' vasket til 'user' og sesjonen endte på 'admin' —
+    // super_admin-gatede flater (affiliate/utbetalinger, Control Center)
+    // ble da usynlige for faktiske superadmins.
+    id: "super_admin",
+    name: "Super Admin",
+    description:
+      "Full plattformkontroll, inkludert affiliate/utbetalinger og andre super_admin-gatede flater.",
+    permissions: [
+      "users:read",
+      "users:write",
+      "roles:write",
+      "academy:admin",
+      "billing:admin",
+      "impersonate",
+    ],
+  },
+  {
     id: "admin",
     name: "Admin",
     description: "Full tilgang til admin-dashboard, brukere, roller og innstillinger.",
@@ -45782,6 +45801,13 @@ async function buildSessionUserFromActiveSession(session: ActiveSessionData) {
         : sessionRoleId === "user" && accountRoleId !== "user"
           ? accountRoleId
           : sessionRoleId || accountRoleId;
+  // Sesjonssnapshotet minter rollen ved login og blir stående. requireAdminSession
+  // leser dette snapshotet direkte, så en sesjon som sier 'admin' mens DB sier
+  // 'super_admin' ville fått panelet vist i UI-et og 403 fra API-et. Løft
+  // snapshotet i minnet når DB er kilden som sier super_admin — aldri nedover.
+  if (roleId === "super_admin" && session.role !== "super_admin") {
+    session.role = "super_admin";
+  }
   const roleEntry = buildAdminRoleEntry(roleId);
   const permissions = (() => {
     const normalized = normalizeSessionPermissions(session.permissions);

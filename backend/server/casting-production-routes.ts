@@ -38,14 +38,9 @@ import multer from 'multer';
 import { rateLimit } from 'express-rate-limit';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import {
-  userCanAccessCastingProject,
-  userCanCommentCastingContinuity,
-  userCanCoordinateCastingProduction,
-  userCanEditCastingProduction,
-  userCanManageCastingLocations,
-  userCanManageCastingContinuity,
-  userCanManageCastingProduction,
+  resolveCastingProjectAccess,
   userOwnsCastingProject,
+  type CastingGrant,
 } from './casting-project-ownership.js';
 import {
   continuityObject,
@@ -1173,130 +1168,83 @@ export function createCastingProductionRouter(
     return true;
   }
 
-  async function ensureProductionAccess(
+  /**
+   * Single gate for every production route. `resolveCastingProjectAccess`
+   * answers membership and all grants from one query, so a request can no
+   * longer see the caller as a coordinator for one check and a stranger for
+   * the next. A denial always reads as 404 to keep project existence private
+   * across tenants.
+   */
+  async function ensureProjectGrant(
+    req: Request,
+    res: Response,
+    projectId: unknown,
+    grant: CastingGrant | 'access',
+  ): Promise<boolean> {
+    const userId = (req as AuthedRequest).userId;
+    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
+    const access = normalizedProjectId
+      ? await resolveCastingProjectAccess(pool, normalizedProjectId, userId)
+      : null;
+    const allowed = access
+      ? (grant === 'access' ? access.canAccess : access.grants[grant])
+      : false;
+    if (!allowed) {
+      res.status(404).json({ error: 'not_found' });
+      return false;
+    }
+    return true;
+  }
+
+  const ensureProductionAccess = (
     req: Request,
     res: Response,
     projectId: unknown,
     mode: 'read' | 'write',
-  ): Promise<boolean> {
-    const userId = (req as AuthedRequest).userId;
-    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
-    const allowed = normalizedProjectId
-      ? mode === 'write'
-        ? await userCanEditCastingProduction(pool, normalizedProjectId, userId)
-        : await userCanAccessCastingProject(pool, normalizedProjectId, userId)
-      : false;
-    if (!allowed) {
-      // Keep project existence private across tenants.
-      res.status(404).json({ error: 'not_found' });
-      return false;
-    }
-    return true;
-  }
+  ) => ensureProjectGrant(req, res, projectId, mode === 'write' ? 'canEditProduction' : 'access');
 
-  async function ensureProductionManagementAccess(
-    req: Request,
-    res: Response,
-    projectId: unknown,
-  ): Promise<boolean> {
-    const userId = (req as AuthedRequest).userId;
-    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
-    const allowed = normalizedProjectId
-      ? await userCanManageCastingProduction(pool, normalizedProjectId, userId)
-      : false;
-    if (!allowed) {
-      res.status(404).json({ error: 'not_found' });
-      return false;
-    }
-    return true;
-  }
+  const ensureProductionManagementAccess = (req: Request, res: Response, projectId: unknown) =>
+    ensureProjectGrant(req, res, projectId, 'canManageProduction');
 
-  async function ensureProductionCoordinationAccess(
-    req: Request,
-    res: Response,
-    projectId: unknown,
-  ): Promise<boolean> {
-    const userId = (req as AuthedRequest).userId;
-    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
-    const allowed = normalizedProjectId
-      ? await userCanCoordinateCastingProduction(pool, normalizedProjectId, userId)
-      : false;
-    if (!allowed) {
-      res.status(404).json({ error: 'not_found' });
-      return false;
-    }
-    return true;
-  }
+  const ensureProductionCoordinationAccess = (req: Request, res: Response, projectId: unknown) =>
+    ensureProjectGrant(req, res, projectId, 'canCoordinateProduction');
 
-  async function ensureLocationManagementAccess(
-    req: Request,
-    res: Response,
-    projectId: unknown,
-  ): Promise<boolean> {
-    const userId = (req as AuthedRequest).userId;
-    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
-    const allowed = normalizedProjectId
-      ? await userCanManageCastingLocations(pool, normalizedProjectId, userId)
-      : false;
-    if (!allowed) {
-      res.status(404).json({ error: 'not_found' });
-      return false;
-    }
-    return true;
-  }
+  const ensureLocationManagementAccess = (req: Request, res: Response, projectId: unknown) =>
+    ensureProjectGrant(req, res, projectId, 'canManageLocations');
 
-  async function ensureContinuityAccess(
+  const ensureContinuityAccess = (
     req: Request,
     res: Response,
     projectId: unknown,
     mode: 'manage' | 'comment',
-  ): Promise<boolean> {
-    const userId = (req as AuthedRequest).userId;
-    const normalizedProjectId = typeof projectId === 'string' ? projectId.trim() : '';
-    const allowed = normalizedProjectId
-      ? mode === 'manage'
-        ? await userCanManageCastingContinuity(pool, normalizedProjectId, userId)
-        : await userCanCommentCastingContinuity(pool, normalizedProjectId, userId)
-      : false;
-    if (!allowed) {
-      res.status(404).json({ error: 'not_found' });
-      return false;
-    }
-    return true;
-  }
+  ) => ensureProjectGrant(
+    req,
+    res,
+    projectId,
+    mode === 'manage' ? 'canManageContinuity' : 'canCommentContinuity',
+  );
 
   async function resolveLocationDecisionAuthority(projectId: string, userId: string) {
-    const result = await pool.query(
-      `SELECT
-         cp.created_by = $2 AS is_owner,
-         cur.role,
-         COALESCE(cur.permissions, '{}'::jsonb) AS permissions
-       FROM casting_projects cp
-       LEFT JOIN casting_user_roles cur
-         ON cur.project_id = cp.id
-        AND cur.user_id = $2
-        AND cur.deactivated_at IS NULL
-        AND (cur.expires_at IS NULL OR cur.expires_at > NOW())
-       WHERE cp.id = $1
-       LIMIT 1`,
-      [projectId, userId],
-    );
-    const row = result.rows[0] as Record<string, unknown> | undefined;
-    if (!row) return null;
-    const projectRole = String(row.role ?? '').trim().toLowerCase().replace(/[ -]+/g, '_');
+    const access = await resolveCastingProjectAccess(pool, projectId, userId);
+    // A project missing from the canonical table has no decision authority,
+    // even when the legacy compat store still names an owner.
+    if (!access.projectExists) return null;
+    // Historic rows store the role with spaces or hyphens; the canonical
+    // resolver only lowercases and trims.
+    const projectRole = (access.role ?? '').replace(/[ -]+/g, '_');
     const approvalRole: LocationDecisionApprovalRole | null = projectRole === 'director'
       ? 'director'
       : ['cinematographer', 'director_of_photography', 'dop', 'dp', 'camera_team'].includes(projectRole)
         ? 'cinematographer'
         : projectRole === 'producer'
           ? 'producer'
-          : row.is_owner === true && !projectRole
+          : access.isOwner && !projectRole
             ? 'producer'
             : null;
     return {
       approvalRole,
-      canLock: row.is_owner === true || projectRole === 'producer',
-      canReopen: row.is_owner === true || ['producer', 'production_manager', 'location_manager'].includes(projectRole),
+      canLock: access.isOwner || projectRole === 'producer',
+      canReopen: access.isOwner || ['producer', 'production_manager', 'location_manager'].includes(projectRole),
     };
   }
 
@@ -1306,6 +1254,40 @@ export function createCastingProductionRouter(
     version: Number(row.version ?? 0),
     updatedBy: row.updated_by ?? undefined,
     updatedAt: row.updated_at ?? undefined,
+  });
+
+  // ────────────── PROJECT ACCESS ──────────────
+  /**
+   * The caller's effective role and grants for one project, resolved on the
+   * server. The client used to read the whole role roster and match itself by
+   * user id, which ignored deactivated and expired memberships; this answers
+   * for the authenticated caller only, from the same resolver every guard uses.
+   */
+  router.get('/projects/:projectId/access', auth, async (req, res) => {
+    try {
+      await schemaReady(pool);
+      const userId = (req as AuthedRequest).userId;
+      const projectId = typeof req.params.projectId === 'string' ? req.params.projectId.trim() : '';
+      const access = projectId
+        ? await resolveCastingProjectAccess(pool, projectId, userId)
+        : null;
+      if (!access?.canAccess) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      res.json({
+        access: {
+          projectId,
+          role: access.role,
+          isOwner: access.isOwner,
+          isMember: access.isMember,
+          permissions: access.permissions,
+          grants: access.grants,
+        },
+      });
+    } catch {
+      res.status(500).json({ error: 'Kunne ikke hente prosjekttilgang', detail: 'internal_error' });
+    }
   });
 
   // ────────────── LOCATION OPERATIONS ──────────────

@@ -24,17 +24,49 @@ export const castingAuthService = {
   },
 
   /**
-   * Get user role for a project
+   * Get user role for a project.
+   *
+   * For the signed-in user the server decides: it resolves the effective role
+   * from the membership row after filtering deactivated and expired rows, a
+   * filter the roster matching below never applied. The roster still supplies
+   * the row's id, timestamps and explicit permissions, and remains the answer
+   * for another user's role, for local fallback mode, and whenever the server
+   * cannot be reached.
    */
   async getUserRole(projectId: string, userId?: string): Promise<UserRole | null> {
     const targetUserId = userId || this.getCurrentUserId();
     const userRoles = await castingService.getUserRoles(projectId);
-    return (
-      userRoles.find((ur) => {
-        const roleUserId = String(ur.userId ?? ur.user_id ?? '');
-        return roleUserId === String(targetUserId);
-      }) || null
-    );
+    const matched = userRoles.find((ur) => {
+      const roleUserId = String(ur.userId ?? ur.user_id ?? '');
+      return roleUserId === String(targetUserId);
+    }) || null;
+
+    if (String(targetUserId) !== String(this.getCurrentUserId())) return matched;
+
+    const access = await castingService.getProjectAccess(projectId);
+    if (!access) return matched;
+
+    if (!access.role) {
+      // An owner without a membership row keeps whatever the roster held; the
+      // caller's admin fallback then fills in. A member the server no longer
+      // recognises loses the role the roster still lists.
+      return access.isOwner ? matched : null;
+    }
+    if (matched) {
+      return matched.role === access.role
+        ? matched
+        : { ...matched, role: access.role as UserRoleType };
+    }
+    const now = new Date().toISOString();
+    return {
+      id: `role-server-${projectId}-${targetUserId}`,
+      projectId,
+      userId: String(targetUserId),
+      role: access.role,
+      permissions: this.getDefaultPermissions(access.role as UserRoleType),
+      createdAt: now,
+      updatedAt: now,
+    } as UserRole;
   },
 
   /**
