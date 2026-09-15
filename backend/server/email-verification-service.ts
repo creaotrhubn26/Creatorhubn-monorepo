@@ -235,17 +235,6 @@ export async function sendVerificationCode(
     return { ok: false, expiresAt: expiresAt.toISOString(), reason: "send_failed" };
   }
 
-  // Send e-post
-  const cfg = readGmailConfig();
-  if (!cfg) {
-    // Dev-mode: returner koden så utvikler kan teste uten SMTP
-    if (process.env.NODE_ENV !== "production") {
-      console.warn(`[email-verification] DEV MODE — kode for ${email} (${input.purpose}): ${code}`);
-      return { ok: true, expiresAt: expiresAt.toISOString(), devCode: code, reason: "email_not_configured" };
-    }
-    return { ok: false, expiresAt: expiresAt.toISOString(), reason: "email_not_configured" };
-  }
-
   const subject = purposeSubject(input.purpose);
   const humanContext = purposeHumanLabel(input.purpose);
   const text = [
@@ -273,6 +262,43 @@ export async function sendVerificationCode(
       <p style="font-size:12px;color:#666;">Koden er gyldig i ${CODE_TTL_MINUTES} minutter. Hvis du ikke ba om denne koden, kan du trygt ignorere e-posten.</p>
       <p>Mvh,<br>Creatorhub-teamet</p>
     </div>`;
+
+  // Kanonisk vei først: transactional-email-service (Resend → SMTP-fallback →
+  // logging i transactional_email_log). Den gamle direkte Gmail-veien under
+  // sto igjen som eneste transport her, og da Gmail-passordet ble avvist
+  // (535-5.7.8 BadCredentials) kunne INGEN verifiseringskode leveres i
+  // produksjon — klientportal-registrering, e-post-2FA, vault-reveal,
+  // testersignering og talent-registrering stoppet alle på samme feil.
+  try {
+    const { sendTransactionalEmail } = await import("./transactional-email-service.js");
+    const delivery = await sendTransactionalEmail({
+      to: email,
+      subject,
+      html,
+      text,
+      fromLabel: "CreatorHub",
+      kind: `verification_${input.purpose}`,
+      pool,
+    });
+    if (delivery.sent) {
+      return { ok: true, expiresAt: expiresAt.toISOString() };
+    }
+    console.warn(
+      `[email-verification] transactional-send ikke levert (${delivery.reason ?? "ukjent"}) — prøver Gmail-fallback`,
+    );
+  } catch (error) {
+    console.error("[email-verification] transactional-send feilet", error);
+  }
+
+  const cfg = readGmailConfig();
+  if (!cfg) {
+    // Dev-mode: returner koden så utvikler kan teste uten SMTP
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(`[email-verification] DEV MODE — kode for ${email} (${input.purpose}): ${code}`);
+      return { ok: true, expiresAt: expiresAt.toISOString(), devCode: code, reason: "email_not_configured" };
+    }
+    return { ok: false, expiresAt: expiresAt.toISOString(), reason: "email_not_configured" };
+  }
 
   try {
     const transporter = nodemailer.createTransport({

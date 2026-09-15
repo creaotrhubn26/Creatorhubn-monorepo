@@ -45,6 +45,7 @@ const ERROR_TEXT: Record<string, string> = {
   missing_name: 'Skriv inn navnet ditt.',
   account_exists: 'Det finnes allerede en konto på denne e-posten. Logg inn i stedet.',
   email_not_configured: 'E-postutsending er ikke satt opp. Kontakt support@theroleroom.com.',
+  email_send_failed: 'Vi klarte ikke å sende koden akkurat nå. Prøv igjen om et par minutter.',
   code_send_failed: 'Vi klarte ikke å sende koden. Prøv igjen.',
   signup_failed: 'Registreringen kunne ikke fullføres. Prøv igjen.',
 };
