@@ -30,6 +30,10 @@ import {
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import {
+  getRoleRoomObjectStorage,
+  resolveRoleRoomObjectKey,
+} from "./role-room-object-storage.js";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import {
   getLeadgridObjectStorage,
@@ -46,8 +50,6 @@ interface Deps {
   activeSessions: Map<string, SessionData>;
 }
 
-const B2_REGION = process.env.B2_REGION || "eu-central-003";
-const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
 const SIGNED_URL_TTL_SEC = 600;          // 10 min — refreshes per request
 const MAX_UPLOAD_BYTES = 6 * 1024 * 1024; // 6 MB ferdig komprimert
 const ALLOWED_MIME = new Set([
@@ -77,20 +79,14 @@ export function matchesImageSignature(body: Buffer, mime: string): boolean {
   return false;
 }
 
+/**
+ * Delt Role Room-lagring i stedet for en egen B2-klient. Følger
+ * ROLE_ROOM_STORAGE_PROVIDER (aws_s3 by default) og OIDC-autentiseringen på
+ * Render, slik resten av Role Room gjør.
+ */
 function getB2(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-  return {
-    client: new S3Client({
-      region: B2_REGION,
-      endpoint: B2_ENDPOINT,
-      credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-      forcePathStyle: true,
-    }),
-    bucket,
-  };
+  const storage = getRoleRoomObjectStorage();
+  return storage ? { client: storage.client, bucket: storage.bucket } : null;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -171,7 +167,7 @@ export async function buildAssetUrlMap(
         : b2
           ? await getSignedUrl(
               b2.client,
-              new GetObjectCommand({ Bucket: b2.bucket, Key: row.b2_key }),
+              new GetObjectCommand({ Bucket: b2.bucket, Key: resolveRoleRoomObjectKey(row.b2_key) }),
               { expiresIn: SIGNED_URL_TTL_SEC },
             )
           : null;
@@ -449,7 +445,7 @@ export function registerPitchDeckAssetRoutes({
         try {
           await b2.client.send(new DeleteObjectCommand({
             Bucket: b2.bucket,
-            Key: asset.b2_key,
+            Key: resolveRoleRoomObjectKey(asset.b2_key),
           }));
         } catch {
           return res.status(502).json({ error: "b2_delete_failed" });
