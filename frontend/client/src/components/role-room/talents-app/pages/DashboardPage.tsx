@@ -34,6 +34,7 @@ import roleRoomTalentsService, {
   type RoleRoomTalent,
 } from '../../services/roleRoomTalentsService';
 import { palette, radius } from '../theme';
+import TalentsHowItWorksCard from '../components/TalentsHowItWorksCard';
 import type { TalentsAppPage } from '../TalentsAppShell';
 
 interface DashboardPageProps {
@@ -123,6 +124,15 @@ export default function DashboardPage({ demoMode, onNavigate }: DashboardPagePro
         >
           Du ser demo-data. Klikk <strong>Logg inn</strong> oppe til høyre for å bruke din egen profil.
         </Alert>
+      ) : null}
+
+      {/* Første møte med Talents: hva systemet er, og hva som skjer videre. */}
+      {!demoMode ? (
+        <TalentsHowItWorksCard
+          completeness={completeness.score}
+          activePartners={activePartners}
+          onNavigate={onNavigate}
+        />
       ) : null}
 
       {/* Profile completeness — hvis ikke 100% */}
