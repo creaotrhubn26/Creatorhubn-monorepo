@@ -31,6 +31,8 @@ import {
   type NarrativeGraph, type NarrativeImportWarning, type NarrativeShareLink, type NarrativeShareMode,
 } from '../narrativeTypes';
 import { narrativeColors } from '../narrativeTheme';
+import { PlanGateBanner } from '../../game/GameBillingPanels';
+import { useGamePlanGate } from '../../game/useGamePlanGate';
 
 export interface ExportsPanelProps {
   projectId: string;
@@ -108,6 +110,11 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
   const [freshLink, setFreshLink] = useState<{ url: string; mode: NarrativeShareMode } | null>(null);
   const locales = graph.settings.locales?.length ? graph.settings.locales : ['nb'];
   const [exportLocale, setExportLocale] = useState<string>('nb');
+  // Plan-gating (Fase 4d): serveren gater med 402; UI låser knappene og viser banner.
+  const gate = useGamePlanGate();
+  const canHtml = gate.has('export_html');
+  const canShare = gate.has('share_links');
+  const canTextImport = gate.has('import_twine_ink');
   const localeSuffix = exportLocale !== 'nb' ? `-${exportLocale}` : '';
 
   const loadLinks = useCallback(async () => {
@@ -271,10 +278,11 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
             <Button variant="outlined" startIcon={<MarkdownIcon />} onClick={exportMarkdown} disabled={empty} sx={{ color: narrativeColors.text, borderColor: narrativeColors.borderStrong }} data-testid="narrative-export-markdown">
               Markdown
             </Button>
-            <Button variant="outlined" startIcon={<HtmlIcon />} onClick={() => void exportHtml()} disabled={empty || busy === 'html'} sx={{ color: narrativeColors.text, borderColor: narrativeColors.borderStrong }} data-testid="narrative-export-html">
+            <Button variant="outlined" startIcon={<HtmlIcon />} onClick={() => void exportHtml()} disabled={empty || busy === 'html' || !canHtml} sx={{ color: narrativeColors.text, borderColor: narrativeColors.borderStrong }} data-testid="narrative-export-html" data-locked={canHtml ? undefined : 'plan'}>
               Spillbar HTML
             </Button>
           </Stack>
+          <Box sx={{ mt: 1.5 }}><PlanGateBanner feature="export_html" compact /></Box>
           {empty ? <Typography sx={{ fontSize: 12, color: narrativeColors.textDim, mt: 1 }}>Grafen er tom — legg til elementer før du eksporterer.</Typography> : null}
         </Section>
 
@@ -308,6 +316,7 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
           title="Delbare spill-lenker"
           hint="Alle med lenken kan spille historien uten innlogging. Lenken vises kun én gang — den lagres bare som hash hos oss."
         >
+          <PlanGateBanner feature="share_links" />
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} sx={{ mb: 1.5 }}>
             <FormControl size="small" sx={{ minWidth: 180, ...fieldSx }}>
               <InputLabel id="narrative-share-mode-label">Modus</InputLabel>
@@ -324,7 +333,7 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
                 <MenuItem value="90">Om 90 dager</MenuItem>
               </Select>
             </FormControl>
-            <Button variant="contained" startIcon={<ShareIcon />} onClick={() => void createLink()} disabled={empty || busy === 'share'} sx={{ bgcolor: narrativeColors.accent, color: '#04140a', fontWeight: 700 }} data-testid="narrative-share-create">
+            <Button variant="contained" startIcon={<ShareIcon />} onClick={() => void createLink()} disabled={empty || busy === 'share' || !canShare} sx={{ bgcolor: narrativeColors.accent, color: '#04140a', fontWeight: 700 }} data-testid="narrative-share-create" data-locked={canShare ? undefined : 'plan'}>
               Opprett lenke
             </Button>
           </Stack>
@@ -387,6 +396,7 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
             Hele grafen erstattes med {preview?.counts.boards} brett, {preview?.counts.elements} elementer, {preview?.counts.connections} koblinger,{' '}
             {preview?.counts.components} komponenter og {preview?.counts.variables} variabler. Nåværende versjon lagres først i Historikk.
           </Typography>
+          {preview && preview.format !== 'arcweave' && !canTextImport ? <PlanGateBanner feature="import_twine_ink" /> : null}
           {preview && preview.warnings.length > 0 ? (
             <Alert severity="warning" sx={{ fontSize: 12 }}>
               {preview.warnings.length} merknad{preview.warnings.length === 1 ? '' : 'er'} (f.eks. «{preview.warnings[0].message}»).
@@ -395,7 +405,7 @@ export function ExportsPanel({ projectId, graph, onImported, onNotice }: Exports
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPreview(null)} disabled={busy === 'import'} sx={{ color: narrativeColors.textDim }}>Avbryt</Button>
-          <Button onClick={() => void confirmImport()} disabled={busy === 'import'} variant="contained" sx={{ bgcolor: narrativeColors.accent, color: '#04140a', fontWeight: 700 }} data-testid="narrative-import-confirm">
+          <Button onClick={() => void confirmImport()} disabled={busy === 'import' || (!!preview && preview.format !== 'arcweave' && !canTextImport)} variant="contained" sx={{ bgcolor: narrativeColors.accent, color: '#04140a', fontWeight: 700 }} data-testid="narrative-import-confirm">
             Importer og erstatt
           </Button>
         </DialogActions>

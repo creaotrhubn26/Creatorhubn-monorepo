@@ -156,9 +156,9 @@ export const isGameMode = (mode: ProfessionMode): boolean =>
  * utdanningsinstitusjon (profession='education') skal lande i utdannings-
  * workspacet uten å måtte velge modus manuelt.
  *
- * FORELØPIG KUN education-signaler → 'education'. Andre profesjoner returnerer
- * null (uendret oppførsel) — bevisst, så broen ikke endrer modus for
- * eksisterende produksjons-/foto-brukere. Kan utvides senere.
+ * Kun education-signaler → 'education' og spillstudio-roller → 'game_studio'.
+ * Andre profesjoner returnerer null (uendret oppførsel) — bevisst, så broen
+ * ikke endrer modus for eksisterende produksjons-/foto-brukere.
  */
 const PROFESSION_ROLE_TO_MODE: Record<string, ProfessionMode> = {
   education: 'education',
@@ -167,6 +167,11 @@ const PROFESSION_ROLE_TO_MODE: Record<string, ProfessionMode> = {
   utdanning: 'education',
   utdanningsinstitusjon: 'education',
   skole: 'education',
+  // Spillstudio (Fase 4d): rollekortene i LoginDialog for persona game_studio.
+  game_studio: 'game_studio',
+  game_studio_owner: 'game_studio',
+  narrative_designer: 'game_studio',
+  spillstudio: 'game_studio',
 };
 
 export function professionRoleToMode(role: string | null | undefined): ProfessionMode | null {

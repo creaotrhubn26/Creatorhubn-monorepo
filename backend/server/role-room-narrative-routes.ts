@@ -29,6 +29,10 @@ import {
 } from '../../frontend/shared/narrative-format/index.ts';
 import { MAX_TRANSLATE_SEGMENTS, translateSegments } from './narrative-translate.js';
 import { broadcastEventToRoom, narrativeRoomKey } from './websocket-chat.js';
+import {
+  PlanLimitError, PlanRequiredError, assertGameFeature, assertGameLimit, resolveGamePlanForProject, sendPlanRequired,
+  type ResolveProjectPlan,
+} from './game-plan-gate.js';
 
 interface SessionData {
   userId: string;
@@ -66,6 +70,8 @@ export interface CreateRoleRoomNarrativeRouterDeps {
   canAccessProject?: (pool: Pool, userId: string, projectId: string) => Promise<boolean>;
   /** Overstyrbar for tester. Default: websocket-chat broadcastEventToRoom. */
   broadcast?: (room: string, message: unknown) => number;
+  /** Overstyrbar for tester. Default: prosjekteierens game_plan (solo uten abonnement). */
+  resolveProjectPlan?: ResolveProjectPlan;
 }
 
 export type GraphChangeKind =
@@ -250,6 +256,10 @@ export function createRoleRoomNarrativeRouter(
 
   const guard = [auth, requireProject];
   const broadcast = deps.broadcast ?? broadcastEventToRoom;
+  const resolvePlan = deps.resolveProjectPlan ?? resolveGamePlanForProject;
+  // Plan-gating (Fase 4d): 402 { error: 'plan_required' | 'plan_limit' } fra game-plan-gate.
+  const feature = (projectId: string, f: Parameters<typeof assertGameFeature>[2]) => assertGameFeature(pool, projectId, f, resolvePlan);
+  const limit = (projectId: string, key: string, current: number) => assertGameLimit(pool, projectId, key, current, resolvePlan);
   /**
    * Push «grafen er endret» til alle i prosjektets sanntidsrom (inkl. aktøren —
    * klienten filtrerer på actorUserId). Klientene gjør en debounced reload.
@@ -294,6 +304,10 @@ export function createRoleRoomNarrativeRouter(
           notifyGraphChanged(req as AuthedRequest, kind, id);
         }
       } catch (err) {
+        if (err instanceof PlanRequiredError || err instanceof PlanLimitError) {
+          if (!res.headersSent) sendPlanRequired(res, err);
+          return;
+        }
         console.error('[narrative] route error', err);
         if (!res.headersSent) res.status(500).json({ error: 'internal_error' });
       }
@@ -349,6 +363,9 @@ export function createRoleRoomNarrativeRouter(
   router.post('/projects/:projectId/elements', ...guard, wrap(async (req, res) => {
     const parsed = elementBody.safeParse(req.body);
     if (!parsed.success) { invalid(res, parsed.error); return; }
+    // Solo-planen har elementgrense; Pro/Studio ubegrenset (limits.maxElements mangler).
+    const count = await pool.query(`SELECT COUNT(*)::int AS n FROM narrative_elements WHERE project_id = $1`, [req.projectId]);
+    await limit(req.projectId, 'maxElements', Number(count.rows[0]?.n ?? 0));
     const input: svc.ElementInput = {
       ...parsed.data,
       branchConditions: parsed.data.branchConditions
@@ -523,6 +540,7 @@ export function createRoleRoomNarrativeRouter(
   router.post('/projects/:projectId/import', ...guard, wrap(async (req, res) => {
     const parsed = importBody.safeParse(req.body);
     if (!parsed.success) { invalid(res, parsed.error); return; }
+    if (parsed.data.format === 'twee' || parsed.data.format === 'ink') await feature(req.projectId, 'import_twine_ink');
     try {
       const result = await svc.importProject(pool, req.projectId, req.userId, parsed.data);
       res.json({ success: true, data: result });
@@ -541,6 +559,7 @@ export function createRoleRoomNarrativeRouter(
   router.post('/projects/:projectId/share-links', ...guard, wrap(async (req, res) => {
     const parsed = shareLinkBody.safeParse(req.body ?? {});
     if (!parsed.success) { invalid(res, parsed.error); return; }
+    await feature(req.projectId, 'share_links');
     const { link, token } = await svc.createShareLink(pool, req.projectId, req.userId, parsed.data);
     // Råtokenet vises én gang; kun hash lagres.
     res.status(201).json({ success: true, data: { link, token, path: `/story/${token}` } });
@@ -564,6 +583,7 @@ export function createRoleRoomNarrativeRouter(
   router.post('/projects/:projectId/translate', ...guard, wrap(async (req, res) => {
     const parsed = translateBody.safeParse(req.body);
     if (!parsed.success) { invalid(res, parsed.error); return; }
+    await feature(req.projectId, 'translations');
     try {
       const result = await translateSegments({
         segments: parsed.data.segments, sourceLocale: parsed.data.sourceLocale ?? 'nb',

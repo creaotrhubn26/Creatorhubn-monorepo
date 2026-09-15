@@ -61,6 +61,7 @@ import { NarrativePlayPanel } from './play/NarrativePlayPanel';
 import { useNarrativeRealtime } from './realtime/narrativeRealtimeClient';
 import { cursorsOnBoard, selectionColors, uniquePeersByUser } from './realtime/presenceReducer';
 import { PresenceAvatars } from './realtime/PresenceAvatars';
+import { GameAdminPanel, GamePricingPage, GameSubscriptionPanel, NARRATIVE_OPEN_TAB_EVENT } from '../game/GameBillingPanels';
 import { authSessionService } from '../services/authSessionService';
 import { narrativeColors } from './narrativeTheme';
 import { htmlToText, type NarrativeElementKind } from './narrativeTypes';
@@ -143,7 +144,11 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
   const branding = useBrandingSettings();
   const labels = branding.tokens.labels;
   const mode = modeOverride ?? getActiveProfessionMode();
-  const tabs = useMemo(() => getTabsForProfession(mode), [mode]);
+  const allTabs = useMemo(() => getTabsForProfession(mode), [mode]);
+  // Admin · Planer vises kun for admin-roller (samme regel som backend requireAdmin).
+  const sessionRole = String(authSessionService.getSessionSync().adminUser?.role ?? '');
+  const isAdmin = sessionRole === 'admin' || sessionRole === 'super_admin' || sessionRole === 'academy_admin';
+  const tabs = useMemo(() => allTabs.filter((t) => t.id !== 'admin_plans' || isAdmin), [allTabs, isAdmin]);
 
   const [projectId, setProjectId] = useState<string | null>(() => {
     if (projectIdProp) return projectIdProp;
@@ -170,6 +175,15 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
     React.startTransition(() => setActiveTabId(id));
   }, []);
   useEffect(() => { writeUrlParam('tab', activeTabId); }, [activeTabId]);
+  // Plan-bannere («Se planer») ber om fanebytte via window-event.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const tab = (e as CustomEvent<{ tab?: string }>).detail?.tab;
+      if (tab && tabs.some((t) => t.id === tab)) selectTab(tab);
+    };
+    window.addEventListener(NARRATIVE_OPEN_TAB_EVENT, onOpen);
+    return () => window.removeEventListener(NARRATIVE_OPEN_TAB_EVENT, onOpen);
+  }, [tabs, selectTab]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -398,6 +412,12 @@ const NarrativeWorkspaceInner: React.FC<NarrativeWorkspaceProps> = ({ modeOverri
             onNotice={(message, severity) => setNotice({ message, severity })}
           />
         );
+      case 'pricing':
+        return <GamePricingPage />;
+      case 'billing':
+        return <GameSubscriptionPanel />;
+      case 'admin_plans':
+        return <GameAdminPanel />;
       case 'history':
         return (
           <HistoryPanel

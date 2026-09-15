@@ -196,6 +196,7 @@ import { createDanceVideoRouter } from "./dance-video-routes.js";
 import { createDanceStudioOpsRouter } from "./dance-studio-ops-routes.js";
 import { createDanceAdminOpsRouter } from "./dance-admin-ops-routes.js";
 import { createDanceBillingRouter } from "./dance-billing-routes.js";
+import { createGameBillingRouter } from "./game-billing-routes.js";
 import {
   createDanceTeamRouter,
   createDanceInviteAcceptRouter,
@@ -2848,6 +2849,11 @@ app.use(
 app.use(
   "/api/dance/billing",
   createDanceBillingRouter(pool, { activeSessions }),
+);
+// Spillstudio (Story Graph) — plan-katalog, abonnement, Stripe. Se 0608_game_billing.sql.
+app.use(
+  "/api/game/billing",
+  createGameBillingRouter(pool, { activeSessions }),
 );
 app.use(
   "/api/dance/teams",

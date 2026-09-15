@@ -22,7 +22,13 @@ function makePool(handlers: Handler[] = []) {
   return { query } as unknown as Pool & { query: typeof query };
 }
 
-function createApp(pool: Pool, opts: { access?: boolean; broadcast?: (room: string, message: unknown) => number } = {}) {
+/** Testplaner: `studio` (alt) som standard så eksisterende tester er upåvirket; `solo` for gating-tester. */
+const TEST_PLANS = {
+  solo: { slug: 'solo', features: ['play', 'export_json', 'export_md'], limits: { maxProjects: 3, maxElements: 200 } },
+  studio: { slug: 'studio', features: ['play', 'export_json', 'export_md', 'share_links', 'export_html', 'ai_assist', 'translations', 'import_twine_ink', 'runtime_packages'], limits: {} },
+} as const;
+
+function createApp(pool: Pool, opts: { access?: boolean; broadcast?: (room: string, message: unknown) => number; plan?: keyof typeof TEST_PLANS } = {}) {
   const app = express();
   app.use(express.json({ limit: '10mb' })); // prod: 50mb i index.ts — zod-grensen (5 MB) skal gi 400, ikke 413
   app.use(
@@ -31,6 +37,16 @@ function createApp(pool: Pool, opts: { access?: boolean; broadcast?: (room: stri
       activeSessions: new Map([[SESSION_TOKEN, { userId: 'u1', email: 'u1@example.com', name: 'U1', role: 'user', loginAt: '' }]]),
       canAccessProject: async () => opts.access ?? true,
       broadcast: opts.broadcast ?? (() => 0),
+      resolveProjectPlan: async () => {
+        const tp = TEST_PLANS[opts.plan ?? 'studio'];
+        return {
+          ownerUserId: 'u1', active: opts.plan !== 'solo',
+          plan: {
+            slug: tp.slug, name: tp.slug, description: null, monthlyPriceKr: 0, yearlyPriceKr: 0, stripeMonthlyPriceId: null, stripeYearlyPriceId: null,
+            features: [...tp.features], limits: { ...tp.limits }, trialDays: 0, isActive: true, isFeatured: false, displayOrder: 0, createdAt: '', updatedAt: '',
+          },
+        };
+      },
     }),
   );
   return app;
@@ -498,5 +514,52 @@ describe('narrative routes — Fase 4c: sanntids-push ved mutasjoner', () => {
       .send({ locale: 'en', entries: [{ ownerKind: 'element', id: 'nel_1', field: 'titleHtml', html: '<p>x</p>' }] });
     expect(broadcast).toHaveBeenCalledTimes(1);
     expect((broadcast.mock.calls[0] as unknown as [string, { payload: { kind: string } }])[1].payload.kind).toBe('translation');
+  });
+});
+
+describe('narrative routes — Fase 4d: plan-gating (prosjekteierens game_plan)', () => {
+  const auth = (r: request.Test) => r.set('Authorization', `Bearer ${SESSION_TOKEN}`);
+
+  it('solo: POST share-links → 402 plan_required share_links; studio → 201', async () => {
+    const solo = createApp(makePool(), { plan: 'solo' });
+    const res = await auth(request(solo).post(`/api/role-room/narrative/projects/${PROJECT_ID}/share-links`)).send({ mode: 'play_only' });
+    expect(res.status).toBe(402);
+    expect(res.body).toMatchObject({ error: 'plan_required', feature: 'share_links', planSlug: 'solo' });
+
+    const pool = makePool([{ match: /INSERT INTO narrative_share_links/, rows: (p) => [{ id: p[0], project_id: PROJECT_ID, mode: 'play_only', expires_at: null, revoked_at: null, view_count: 0, created_by: 'u1', created_at: new Date() }] }]);
+    const studio = createApp(pool, { plan: 'studio' });
+    const ok = await auth(request(studio).post(`/api/role-room/narrative/projects/${PROJECT_ID}/share-links`)).send({ mode: 'play_only' });
+    expect(ok.status).toBe(201);
+  });
+
+  it('solo: POST import format=twee → 402 import_twine_ink; format=arcweave gates ikke', async () => {
+    const app = createApp(makePool(), { plan: 'solo' });
+    const twee = await auth(request(app).post(`/api/role-room/narrative/projects/${PROJECT_ID}/import`)).send({ format: 'twee', source: ':: Start\nHei' });
+    expect(twee.status).toBe(402);
+    expect(twee.body.feature).toBe('import_twine_ink');
+    const arc = await auth(request(app).post(`/api/role-room/narrative/projects/${PROJECT_ID}/import`)).send({ project: { name: 'x' } });
+    expect(arc.status).not.toBe(402);
+  });
+
+  it('solo: POST translate → 402 translations (før KI kalles)', async () => {
+    const app = createApp(makePool(), { plan: 'solo' });
+    const res = await auth(request(app).post(`/api/role-room/narrative/projects/${PROJECT_ID}/translate`))
+      .send({ targetLocale: 'en', segments: [{ key: 'element:nel_1:contentHtml:0', text: 'Hei' }] });
+    expect(res.status).toBe(402);
+    expect(res.body.feature).toBe('translations');
+  });
+
+  it('solo: POST elements over maxElements → 402 plan_limit; under grensen → 201', async () => {
+    const full = createApp(makePool([{ match: /COUNT\(\*\)::int AS n FROM narrative_elements/, rows: [{ n: 200 }] }]), { plan: 'solo' });
+    const res = await auth(request(full).post(`/api/role-room/narrative/projects/${PROJECT_ID}/elements`)).send({ boardId: 'nbd_1', kind: 'element', titleHtml: '<p>X</p>' });
+    expect(res.status).toBe(402);
+    expect(res.body).toMatchObject({ error: 'plan_limit', limit: 'maxElements', max: 200, planSlug: 'solo' });
+
+    const room = createApp(makePool([
+      { match: /COUNT\(\*\)::int AS n FROM narrative_elements/, rows: [{ n: 199 }] },
+      { match: /INSERT INTO narrative_elements/, rows: [elementRow()] },
+    ]), { plan: 'solo' });
+    const ok = await auth(request(room).post(`/api/role-room/narrative/projects/${PROJECT_ID}/elements`)).send({ boardId: 'nbd_1', kind: 'element', titleHtml: '<p>X</p>' });
+    expect(ok.status).toBe(201);
   });
 });

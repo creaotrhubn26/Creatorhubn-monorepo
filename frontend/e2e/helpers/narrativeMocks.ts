@@ -7,6 +7,45 @@
  */
 import type { Page, Route } from '@playwright/test';
 
+// ─── Fase 4d: /api/game/billing (plan-gating) ──────────────────────────
+// Fixture speiler seeden i 0608_game_billing.sql; standardplan i specs er
+// `studio` (alt åpent) så eksisterende specs er upåvirket.
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+const gamePlansFixture = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'game', 'plans.json'), 'utf8')) as unknown;
+
+export async function installGameBillingMocks(page: Page, plan: MockGamePlanSlug): Promise<void> {
+  const plans = gamePlansFixture as Array<Record<string, unknown> & { slug: string }>;
+  const current = plans.find((p) => p.slug === plan) ?? plans[0];
+  const subscription = plan === 'solo' ? null : {
+    userId: 'u-e2e', planSlug: plan, billingPeriod: 'monthly', status: 'active', stripeCustomerId: 'cus_e2e', stripeSubscriptionId: 'sub_e2e',
+    currentPeriodEnd: new Date(Date.now() + 20 * 86_400_000).toISOString(), trialEndAt: null, cancelAtPeriodEnd: false,
+    testerInviteToken: null, compGrantedByUserId: null, compExpiresAt: null, notes: null, createdAt: now(), updatedAt: now(),
+  };
+  const invites: Rec[] = [];
+  const settings: Rec[] = [{ key: 'beta_mode', value: { enabled: true, label: 'BETA' }, description: 'Beta-merke', updatedByUserId: null, updatedAt: now() }];
+  await page.route('**/api/game/billing/**', async (route: Route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname.replace(/^.*\/api\/game\/billing/, '');
+    const method = req.method();
+    const body = (method === 'POST' || method === 'PATCH' || method === 'PUT') ? (req.postDataJSON() as Rec | null) ?? {} : {};
+    if (path === '/plans' && method === 'GET') return route.fulfill(ok(plans));
+    if (path === '/admin/plans' && method === 'GET') return route.fulfill(ok(plans));
+    if (path === '/admin/plans' && method === 'POST') { const p = { ...body, createdAt: now(), updatedAt: now() }; plans.push(p as typeof plans[number]); return route.fulfill(ok(p, 201)); }
+    if (path.startsWith('/admin/plans/') && method === 'PATCH') { const slug = decodeURIComponent(path.split('/')[3]); const p = plans.find((x) => x.slug === slug); if (!p) return route.fulfill({ status: 404, body: '{"error":"not_found"}' }); Object.assign(p, body); return route.fulfill(ok(p)); }
+    if (path === '/subscription' && method === 'GET') return route.fulfill(ok(subscription));
+    if (path === '/me' && method === 'GET') return route.fulfill(ok({ subscription, plan: current, active: subscription !== null }));
+    if (path === '/checkout-session' && method === 'POST') return route.fulfill(ok({ sessionUrl: 'https://checkout.stripe.com/mock-session' }));
+    if (path === '/customer-portal' && method === 'POST') return route.fulfill(ok({ portalUrl: 'https://billing.stripe.com/mock-portal' }));
+    if (path === '/admin/tester-invites' && method === 'GET') return route.fulfill(ok(invites));
+    if (path === '/admin/tester-invites' && method === 'POST') { const inv = { token: `tok_${invites.length + 1}`, invitedByUserId: 'u-e2e', usedCount: 0, acceptedAt: null, acceptedUserId: null, validUntil: null, invitedEmail: null, invitedName: null, notes: null, trialDays: 90, maxUses: 1, ...body, createdAt: now(), updatedAt: now() }; invites.unshift(inv); return route.fulfill(ok(inv, 201)); }
+    if (path === '/admin/settings' && method === 'GET') return route.fulfill(ok(settings));
+    if (path.startsWith('/admin/settings/') && method === 'PUT') { const key = decodeURIComponent(path.split('/')[3]); const s = settings.find((x) => x.key === key) ?? (settings.push({ key }) && settings[settings.length - 1]); Object.assign(s, body, { updatedAt: now() }); return route.fulfill(ok(s)); }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found', path, method }) });
+  });
+}
+
 /**
  * Minimal Arcweave→graf-konvertering for mocken (elementer, jumpere,
  * koblinger, brett). Playwrights spec-loader tåler ikke import av
@@ -184,8 +223,11 @@ function mockImportText(format: 'twee' | 'ink', source: string, projectId: strin
   };
 }
 
-export async function installNarrativeMocks(page: Page, opts: { projectId?: string; empty?: boolean } = {}): Promise<void> {
+export type MockGamePlanSlug = 'solo' | 'pro' | 'studio';
+
+export async function installNarrativeMocks(page: Page, opts: { projectId?: string; empty?: boolean; gamePlan?: MockGamePlanSlug } = {}): Promise<void> {
   const projectId = opts.projectId ?? 'proj-game-2026';
+  await installGameBillingMocks(page, opts.gamePlan ?? 'studio');
   const g: MockGraph = opts.empty
     ? { settings: { projectId, title: null, startingElementId: null, coverAssetId: null, schemaVersion: 1, updatedAt: null }, boards: [], elements: [], connections: [], components: [], elementComponents: [], attributes: [], variables: [], assets: [] }
     : seedGraph(projectId);

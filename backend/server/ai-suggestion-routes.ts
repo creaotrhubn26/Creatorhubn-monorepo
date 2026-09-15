@@ -38,6 +38,9 @@ import type express from "express";
 import type { Request } from "express";
 import type { Pool } from "pg";
 import { canAccessRoleRoomProject } from "./role-room-projects-routes.js";
+import {
+  PlanRequiredError, assertGameFeature, resolveGamePlanForProject, sendPlanRequired, type ResolveProjectPlan,
+} from "./game-plan-gate.js";
 
 import type {
   AIAgentInput,
@@ -53,6 +56,8 @@ export interface AISuggestionRoutesDeps {
   requireUserSession: (req: any, res: any) => { userId: string } | null;
   aiSuggestionService: AISuggestionService;
   canAccessProject?: typeof canAccessRoleRoomProject;
+  /** Story Graph (sourceType narrative_element) gates KI-forslag på game_plan-feature `ai_assist`. */
+  resolveProjectPlan?: ResolveProjectPlan;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -153,6 +158,7 @@ export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
     aiSuggestionService,
     requireUserSession,
     canAccessProject = canAccessRoleRoomProject,
+    resolveProjectPlan = resolveGamePlanForProject,
   } = deps;
 
   async function requireProjectAccess(
@@ -228,6 +234,16 @@ export function setupAISuggestionRoutes(deps: AISuggestionRoutesDeps): void {
         if (!sourceId) {
           res.status(400).json({ error: "sourceId is required" });
           return;
+        }
+
+        // Fase 4d: Story Graph-forslag krever `ai_assist` i prosjekteierens plan (402 ellers).
+        if (sourceType === "narrative_element") {
+          try {
+            await assertGameFeature(pool, projectId, "ai_assist", resolveProjectPlan);
+          } catch (gateErr) {
+            if (gateErr instanceof PlanRequiredError) { sendPlanRequired(res, gateErr); return; }
+            throw gateErr;
+          }
         }
 
         const input: AIAgentInput = {

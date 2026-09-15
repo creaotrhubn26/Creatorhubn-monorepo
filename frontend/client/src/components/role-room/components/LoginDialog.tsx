@@ -35,6 +35,8 @@ import {
   AccessibilityNewOutlined as DanceFreelanceIcon,
   MailOutlineOutlined as DanceInviteHolderIcon,
   AssignmentTurnedInOutlined as FirstAdIcon,
+  SportsEsportsOutlined as GameStudioOwnerIcon,
+  AccountTreeOutlined as NarrativeDesignerIcon,
 } from '@mui/icons-material';
 import { ROLE_ROOM_BRAND_ASSETS } from '../config/branding';
 import { ROLE_ROOM_LANDING_CONFIG } from '../config/landing';
@@ -75,7 +77,7 @@ interface LoginDialogProps {
 // Per-persona-logikken (getMinimumSeatCount/getSeatPrice/etc) faller tilbake til
 // defaults når persona = 'talents' — TheRoleRoomLanding bruker det som
 // initialPersona-hint, og dialogen vil senere kunne få egen UI for talents.
-type LoginPersona = '' | 'production_team' | 'content_producer' | 'education_institution' | 'dance_studio' | 'talents';
+type LoginPersona = '' | 'production_team' | 'content_producer' | 'education_institution' | 'dance_studio' | 'talents' | 'game_studio';
 type EducationInstitutionType = '' | 'upper_secondary' | 'folk_high_school' | 'vocational_college' | 'higher_education' | 'private_school';
 type EducationSeatRange = '' | 'up_to_15' | 'up_to_30' | 'up_to_60' | 'up_to_120' | 'more_than_120';
 type EducationStartWindow = '' | 'this_semester' | 'next_semester' | 'next_academic_year' | 'exploring';
@@ -245,6 +247,10 @@ const ROLE_CARDS: Record<string, {
   dance_studio_owner:    { label: 'Studio-eier',    glyph: <DanceStudioOwnerIcon   sx={{ fontSize: 'inherit' }} /> },
   dance_freelance:       { label: 'Frilansdanser',  glyph: <DanceFreelanceIcon     sx={{ fontSize: 'inherit' }} /> },
   dance_invite_holder:   { label: 'Har invitasjon', glyph: <DanceInviteHolderIcon  sx={{ fontSize: 'inherit' }} /> },
+
+  // ── Spillstudio (Story Graph, beta) — 2 path-valg. Begge lander i ?mode=game_studio.
+  game_studio_owner:     { label: 'Spillstudio',        glyph: <GameStudioOwnerIcon    sx={{ fontSize: 'inherit' }} /> },
+  narrative_designer:    { label: 'Narrativ designer',  glyph: <NarrativeDesignerIcon  sx={{ fontSize: 'inherit' }} /> },
 
   // ── HOW TO ADD A NEW CARD ────────────────────────────────────────────
   // 1. Add an entry below (copy any line above as a template)
@@ -615,6 +621,10 @@ const DANCE_STUDIO_ROLE_IDS = [
   'dance_freelance',
   'dance_invite_holder',
 ] as const;
+const GAME_STUDIO_ROLE_IDS = [
+  'game_studio_owner',
+  'narrative_designer',
+] as const;
 const EDUCATION_INSTITUTION_TYPES: ReadonlyArray<{
   id: Exclude<EducationInstitutionType, ''>;
   label: string;
@@ -960,6 +970,15 @@ const danceStudioCategories = [
   },
 ] as const;
 
+const gameStudioCategories = [
+  {
+    id: 'velg_vei',
+    label: 'Velg din vei',
+    description: 'Driver du et studio, eller designer du historier på oppdrag? Begge får Story Graph — du kan endre senere.',
+    roleIds: ['game_studio_owner', 'narrative_designer'],
+  },
+] as const;
+
 const allRoles = Object.entries(ROLE_CARDS).map(([id, v]) => ({ id, label: v.label }));
 
 const LOGIN_PERSONA_OPTIONS: ReadonlyArray<{
@@ -986,6 +1005,11 @@ const LOGIN_PERSONA_OPTIONS: ReadonlyArray<{
     id: 'dance_studio',
     label: 'Dansestudio',
     description: 'For studioeier eller frilansdanser',
+  },
+  {
+    id: 'game_studio',
+    label: 'Spillstudio',
+    description: 'Story Graph — forgrenet narrativ design (beta)',
   },
 ];
 
@@ -1783,36 +1807,6 @@ function glassInputSx(focused?: boolean) {
 
 /* ─── Profession mode picker — kompakt meta brukt i landingens login-dialog ─── */
 
-interface ProfessionPickerMeta {
-  label: string;
-  glyph: string;
-  accent: string;
-  beta?: boolean;
-}
-
-const PROFESSION_PICKER_META: Record<ProfessionMode, ProfessionPickerMeta> = {
-  production:       { label: 'Film/video',       glyph: '🎬', accent: '#60a5fa' },
-  photographer:     { label: 'Fotograf',         glyph: '📷', accent: 'var(--role-cyan, #22d3ee)' },
-  content_producer: { label: 'Innholdsprodusent', glyph: '✍️', accent: '#a855f7' },
-  content_creator:  { label: 'Innholdsskaper',   glyph: '⚡', accent: '#f59e0b' },
-  dance_studio:     { label: 'Dansestudio',      glyph: '🎓', accent: '#8b5cf6', beta: true },
-  dance_freelance:  { label: 'Dans — frilans',   glyph: '💫', accent: '#8b5cf6', beta: true },
-  education:        { label: 'Utdanningsinstitusjon', glyph: '🏫', accent: '#8b5cf6', beta: true },
-  student:          { label: 'Student', glyph: '🎓', accent: '#8b5cf6', beta: true },
-  game_studio:      { label: 'Spillstudio', glyph: '🎮', accent: '#22c55e', beta: true },
-};
-
-// Landing-velgeren viser kun profesjoner som IKKE allerede dekkes av
-// persona-velgeren (production_team / content_producer / education_institution).
-// Det forhindrer dobbel-presentasjon av "produksjonsteam" og "innholds-
-// produsent" som allerede er kjernen av onboarding-flyten over.
-const LANDING_PROFESSION_PICKER_MODES: readonly ProfessionMode[] = [
-  'photographer',
-  'content_creator',
-  'dance_studio',
-  'dance_freelance',
-] as const;
-
 /* ════════════════════════ LoginDialog ═════════════════════════════ */
 
 export default function LoginDialog({
@@ -2076,7 +2070,10 @@ export default function LoginDialog({
     isLandingPage
     && !clientPortalIntent
     && !talentPortalIntent
-    && loginPersona !== 'dance_studio';
+    && loginPersona !== 'dance_studio'
+    // Spillstudio (beta) hopper også over commercial-setup: Solo-planen er gratis,
+    // Stripe-checkout skjer inne i workspacet (fane «Pris»).
+    && loginPersona !== 'game_studio';
   const isStepwiseContentProducerFlow = Boolean(
     isLandingPage
     && requiresCommercialSetup
@@ -2103,7 +2100,9 @@ export default function LoginDialog({
         )
       : effectiveLoginPersona === 'dance_studio'
         ? new Set<string>(DANCE_STUDIO_ROLE_IDS)
-        : null;
+        : effectiveLoginPersona === 'game_studio'
+          ? new Set<string>(GAME_STUDIO_ROLE_IDS)
+          : null;
   const visibleProfessionCategories = allowedRoleIds
     ? (
       isStepwiseContentProducerFlow
@@ -2112,7 +2111,9 @@ export default function LoginDialog({
           ? productionTeamCategories
           : effectiveLoginPersona === 'dance_studio'
             ? danceStudioCategories
-            : professionCategories
+            : effectiveLoginPersona === 'game_studio'
+              ? gameStudioCategories
+              : professionCategories
     )
         .map((category) => ({
           ...category,
@@ -2568,6 +2569,11 @@ export default function LoginDialog({
     }
     setLoginPersona(initialPersona);
     setSelectedRole(getDefaultRoleForPersona(initialPersona));
+    if (initialPersona === 'game_studio') {
+      // Landingskortet «Spillstudio» → Story Graph direkte etter innlogging.
+      setSelectedProfessionMode('game_studio');
+      setActiveProfessionMode('game_studio');
+    }
   }, [clientPortalIntent, initialPersona, open, talentPortalIntent]);
 
   useEffect(() => {
@@ -3720,6 +3726,11 @@ export default function LoginDialog({
                   // bytte til frilansdanser i undervalg-raden under.
                   setSelectedProfessionMode('dance_studio');
                   setActiveProfessionMode('dance_studio');
+                  setSelectedRole('');
+                } else if (option.id === 'game_studio') {
+                  // Spillstudio har ingen undervalg — begge rollekortene lander i Story Graph.
+                  setSelectedProfessionMode('game_studio');
+                  setActiveProfessionMode('game_studio');
                   setSelectedRole('');
                 } else if (option.id === 'content_producer' && !clientPortalIntent) {
                   // Tilbakestill til standard produksjon hvis brukeren

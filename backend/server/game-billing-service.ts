@@ -1,13 +1,13 @@
 /**
- * Dance billing service — plan-katalog, abonnement, tester-invites,
- * admin-settings, og Stripe-integrasjon.
+ * Game billing service — plan-katalog, abonnement, tester-invites,
+ * admin-settings og Stripe for spillstudio-vertikalen (Story Graph).
  *
- * Plan-config er DB-drevet så admin kan endre priser/features uten
- * deploy. Stripe-prisene oppdateres separat i Stripe-dashbordet og
- * kobles til via stripe_*_price_id-kolonner.
+ * Speiler dance-billing-service.ts (game_*-tabeller, ingen persona).
+ * Brukere uten abonnement får planen `solo` (server-side fallback,
+ * se resolveEffectivePlan) — det er slik gratis-tieren fungerer.
  */
 
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { Pool } from 'pg';
 import type Stripe from 'stripe';
 import { getStripe } from './vertical-billing-core.js';
@@ -42,20 +42,13 @@ function generateInviteToken(): string {
   return randomBytes(24).toString('base64url');
 }
 
-// Stripe-singleton er felles for vertikalene (vertical-billing-core.ts);
-// re-eksporteres her for bakoverkompatibilitet.
-export { getStripe };
-
 // ═══════════════════════════════════════════════════════════════════════
 //  PLANS
 // ═══════════════════════════════════════════════════════════════════════
 
-export type PlanPersona = 'dance_freelance' | 'dance_studio' | 'both';
-
-export interface DancePlan {
+export interface GamePlan {
   slug: string;
   name: string;
-  persona: PlanPersona;
   description: string | null;
   monthlyPriceKr: number | null;
   yearlyPriceKr: number | null;
@@ -76,11 +69,10 @@ function asStringArray(value: unknown): string[] {
   return value.filter((v): v is string => typeof v === 'string');
 }
 
-function mapPlanRow(row: Record<string, unknown>): DancePlan {
+function mapPlanRow(row: Record<string, unknown>): GamePlan {
   return {
     slug: String(row.slug),
     name: String(row.name),
-    persona: String(row.persona) as PlanPersona,
     description: row.description == null ? null : String(row.description),
     monthlyPriceKr: asNumberOrNull(row.monthly_price_kr),
     yearlyPriceKr: asNumberOrNull(row.yearly_price_kr),
@@ -100,7 +92,6 @@ function mapPlanRow(row: Record<string, unknown>): DancePlan {
 export interface PlanInput {
   slug: string;
   name: string;
-  persona?: PlanPersona;
   description?: string | null;
   monthlyPriceKr?: number | null;
   yearlyPriceKr?: number | null;
@@ -117,37 +108,33 @@ export type PlanPatch = Partial<Omit<PlanInput, 'slug'>>;
 
 export async function listPlans(
   pool: Pool,
-  options: { activeOnly?: boolean; persona?: PlanPersona | null } = {},
-): Promise<DancePlan[]> {
+  options: { activeOnly?: boolean } = {},
+): Promise<GamePlan[]> {
   const conditions: string[] = [];
   const params: unknown[] = [];
   if (options.activeOnly) conditions.push('is_active = TRUE');
-  if (options.persona && options.persona !== 'both') {
-    params.push(options.persona);
-    conditions.push(`(persona = $${params.length} OR persona = 'both')`);
-  }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const { rows } = await pool.query(
-    `SELECT * FROM dance_plan ${where} ORDER BY display_order ASC, slug ASC`,
+    `SELECT * FROM game_plan ${where} ORDER BY display_order ASC, slug ASC`,
     params,
   );
   return rows.map((r) => mapPlanRow(r));
 }
 
-export async function getPlan(pool: Pool, slug: string): Promise<DancePlan | null> {
-  const { rows } = await pool.query(`SELECT * FROM dance_plan WHERE slug = $1`, [slug]);
+export async function getPlan(pool: Pool, slug: string): Promise<GamePlan | null> {
+  const { rows } = await pool.query(`SELECT * FROM game_plan WHERE slug = $1`, [slug]);
   return rows.length ? mapPlanRow(rows[0]) : null;
 }
 
-export async function createPlan(pool: Pool, input: PlanInput): Promise<DancePlan> {
+export async function createPlan(pool: Pool, input: PlanInput): Promise<GamePlan> {
   const { rows } = await pool.query(
-    `INSERT INTO dance_plan (
-       slug, name, persona, description, monthly_price_kr, yearly_price_kr,
+    `INSERT INTO game_plan (
+       slug, name, description, monthly_price_kr, yearly_price_kr,
        stripe_monthly_price_id, stripe_yearly_price_id, features, limits,
        trial_days, is_active, is_featured, display_order
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
     [
-      input.slug, input.name, input.persona ?? 'both',
+      input.slug, input.name,
       input.description ?? null,
       input.monthlyPriceKr ?? null, input.yearlyPriceKr ?? null,
       input.stripeMonthlyPriceId ?? null, input.stripeYearlyPriceId ?? null,
@@ -162,12 +149,11 @@ export async function createPlan(pool: Pool, input: PlanInput): Promise<DancePla
   return mapPlanRow(rows[0]);
 }
 
-export async function patchPlan(pool: Pool, slug: string, patch: PlanPatch): Promise<DancePlan | null> {
+export async function patchPlan(pool: Pool, slug: string, patch: PlanPatch): Promise<GamePlan | null> {
   const sets: string[] = [];
   const params: unknown[] = [slug];
   const push = (col: string, v: unknown): void => { params.push(v); sets.push(`${col} = $${params.length}`); };
   if (patch.name !== undefined) push('name', patch.name);
-  if (patch.persona !== undefined) push('persona', patch.persona);
   if (patch.description !== undefined) push('description', patch.description);
   if (patch.monthlyPriceKr !== undefined) push('monthly_price_kr', patch.monthlyPriceKr);
   if (patch.yearlyPriceKr !== undefined) push('yearly_price_kr', patch.yearlyPriceKr);
@@ -184,7 +170,7 @@ export async function patchPlan(pool: Pool, slug: string, patch: PlanPatch): Pro
   }
   sets.push('updated_at = now()');
   const { rows } = await pool.query(
-    `UPDATE dance_plan SET ${sets.join(', ')} WHERE slug = $1 RETURNING *`,
+    `UPDATE game_plan SET ${sets.join(', ')} WHERE slug = $1 RETURNING *`,
     params,
   );
   return rows.length ? mapPlanRow(rows[0]) : null;
@@ -192,11 +178,11 @@ export async function patchPlan(pool: Pool, slug: string, patch: PlanPatch): Pro
 
 export async function deletePlan(pool: Pool, slug: string): Promise<boolean> {
   // Avvis hvis det finnes aktive abonnementer på planen.
-  const ref = await pool.query(`SELECT 1 FROM dance_subscription WHERE plan_slug = $1 LIMIT 1`, [slug]);
+  const ref = await pool.query(`SELECT 1 FROM game_subscription WHERE plan_slug = $1 LIMIT 1`, [slug]);
   if (ref.rowCount && ref.rowCount > 0) {
     throw new Error('Kan ikke slette plan med aktive abonnementer — sett is_active=false istedet.');
   }
-  const { rowCount } = await pool.query(`DELETE FROM dance_plan WHERE slug = $1`, [slug]);
+  const { rowCount } = await pool.query(`DELETE FROM game_plan WHERE slug = $1`, [slug]);
   return (rowCount ?? 0) > 0;
 }
 
@@ -207,7 +193,7 @@ export async function deletePlan(pool: Pool, slug: string): Promise<boolean> {
 export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'canceled' | 'incomplete' | 'comp';
 export type BillingPeriod = 'monthly' | 'yearly' | 'tester' | 'comp';
 
-export interface DanceSubscription {
+export interface GameSubscription {
   userId: string;
   planSlug: string;
   billingPeriod: BillingPeriod;
@@ -225,7 +211,7 @@ export interface DanceSubscription {
   updatedAt: string;
 }
 
-function mapSubscriptionRow(row: Record<string, unknown>): DanceSubscription {
+function mapSubscriptionRow(row: Record<string, unknown>): GameSubscription {
   return {
     userId: String(row.user_id),
     planSlug: String(row.plan_slug),
@@ -248,9 +234,9 @@ function mapSubscriptionRow(row: Record<string, unknown>): DanceSubscription {
 export async function getSubscription(
   pool: Pool,
   userId: string,
-): Promise<DanceSubscription | null> {
+): Promise<GameSubscription | null> {
   const { rows } = await pool.query(
-    `SELECT * FROM dance_subscription WHERE user_id = $1`,
+    `SELECT * FROM game_subscription WHERE user_id = $1`,
     [userId],
   );
   return rows.length ? mapSubscriptionRow(rows[0]) : null;
@@ -259,8 +245,8 @@ export async function getSubscription(
 export async function upsertSubscription(
   pool: Pool,
   userId: string,
-  patch: Partial<Omit<DanceSubscription, 'userId' | 'createdAt' | 'updatedAt'>> & { planSlug: string },
-): Promise<DanceSubscription> {
+  patch: Partial<Omit<GameSubscription, 'userId' | 'createdAt' | 'updatedAt'>> & { planSlug: string },
+): Promise<GameSubscription> {
   const existing = await getSubscription(pool, userId);
   if (existing) {
     const sets: string[] = [];
@@ -280,13 +266,13 @@ export async function upsertSubscription(
     if (patch.notes !== undefined) push('notes', patch.notes);
     sets.push('updated_at = now()');
     const { rows } = await pool.query(
-      `UPDATE dance_subscription SET ${sets.join(', ')} WHERE user_id = $1 RETURNING *`,
+      `UPDATE game_subscription SET ${sets.join(', ')} WHERE user_id = $1 RETURNING *`,
       params,
     );
     return mapSubscriptionRow(rows[0]);
   }
   const { rows } = await pool.query(
-    `INSERT INTO dance_subscription (
+    `INSERT INTO game_subscription (
        user_id, plan_slug, billing_period, status,
        stripe_customer_id, stripe_subscription_id,
        current_period_end, trial_end_at, cancel_at_period_end,
@@ -310,9 +296,9 @@ export async function upsertSubscription(
   return mapSubscriptionRow(rows[0]);
 }
 
-export async function listAllSubscriptions(pool: Pool): Promise<DanceSubscription[]> {
+export async function listAllSubscriptions(pool: Pool): Promise<GameSubscription[]> {
   const { rows } = await pool.query(
-    `SELECT * FROM dance_subscription ORDER BY updated_at DESC LIMIT 1000`,
+    `SELECT * FROM game_subscription ORDER BY updated_at DESC LIMIT 1000`,
   );
   return rows.map((r) => mapSubscriptionRow(r));
 }
@@ -374,7 +360,7 @@ export async function createInvite(
 ): Promise<TesterInvite> {
   const token = generateInviteToken();
   const { rows } = await pool.query(
-    `INSERT INTO dance_tester_invite (
+    `INSERT INTO game_tester_invite (
        token, invited_by_user_id, invited_email, invited_name,
        plan_slug, trial_days, max_uses, valid_until, notes
      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
@@ -393,14 +379,14 @@ export async function createInvite(
 
 export async function listInvites(pool: Pool): Promise<TesterInvite[]> {
   const { rows } = await pool.query(
-    `SELECT * FROM dance_tester_invite ORDER BY created_at DESC LIMIT 500`,
+    `SELECT * FROM game_tester_invite ORDER BY created_at DESC LIMIT 500`,
   );
   return rows.map((r) => mapInviteRow(r));
 }
 
 export async function getInvite(pool: Pool, token: string): Promise<TesterInvite | null> {
   const { rows } = await pool.query(
-    `SELECT * FROM dance_tester_invite WHERE token = $1`,
+    `SELECT * FROM game_tester_invite WHERE token = $1`,
     [token],
   );
   return rows.length ? mapInviteRow(rows[0]) : null;
@@ -424,14 +410,14 @@ export async function patchInvite(
   if (sets.length === 0) return getInvite(pool, token);
   sets.push('updated_at = now()');
   const { rows } = await pool.query(
-    `UPDATE dance_tester_invite SET ${sets.join(', ')} WHERE token = $1 RETURNING *`,
+    `UPDATE game_tester_invite SET ${sets.join(', ')} WHERE token = $1 RETURNING *`,
     params,
   );
   return rows.length ? mapInviteRow(rows[0]) : null;
 }
 
 export async function deleteInvite(pool: Pool, token: string): Promise<boolean> {
-  const { rowCount } = await pool.query(`DELETE FROM dance_tester_invite WHERE token = $1`, [token]);
+  const { rowCount } = await pool.query(`DELETE FROM game_tester_invite WHERE token = $1`, [token]);
   return (rowCount ?? 0) > 0;
 }
 
@@ -443,7 +429,7 @@ export async function acceptInvite(
   pool: Pool,
   token: string,
   userId: string,
-): Promise<{ ok: true; subscription: DanceSubscription } | { ok: false; error: string }> {
+): Promise<{ ok: true; subscription: GameSubscription } | { ok: false; error: string }> {
   const invite = await getInvite(pool, token);
   if (!invite) return { ok: false, error: 'invite_not_found' };
   if (invite.validUntil && new Date(invite.validUntil) < new Date()) {
@@ -462,7 +448,7 @@ export async function acceptInvite(
     currentPeriodEnd: expiresAt,
   });
   await pool.query(
-    `UPDATE dance_tester_invite
+    `UPDATE game_tester_invite
      SET used_count = used_count + 1,
          accepted_at = COALESCE(accepted_at, now()),
          accepted_user_id = COALESCE(accepted_user_id, $2),
@@ -496,12 +482,12 @@ function mapSettingRow(row: Record<string, unknown>): AdminSetting {
 }
 
 export async function listSettings(pool: Pool): Promise<AdminSetting[]> {
-  const { rows } = await pool.query(`SELECT * FROM dance_admin_settings ORDER BY key ASC`);
+  const { rows } = await pool.query(`SELECT * FROM game_admin_settings ORDER BY key ASC`);
   return rows.map((r) => mapSettingRow(r));
 }
 
 export async function getSetting(pool: Pool, key: string): Promise<AdminSetting | null> {
-  const { rows } = await pool.query(`SELECT * FROM dance_admin_settings WHERE key = $1`, [key]);
+  const { rows } = await pool.query(`SELECT * FROM game_admin_settings WHERE key = $1`, [key]);
   return rows.length ? mapSettingRow(rows[0]) : null;
 }
 
@@ -513,11 +499,11 @@ export async function upsertSetting(
   description?: string | null,
 ): Promise<AdminSetting> {
   const { rows } = await pool.query(
-    `INSERT INTO dance_admin_settings (key, value, description, updated_by_user_id, updated_at)
+    `INSERT INTO game_admin_settings (key, value, description, updated_by_user_id, updated_at)
      VALUES ($1,$2,$3,$4, now())
      ON CONFLICT (key) DO UPDATE
        SET value = EXCLUDED.value,
-           description = COALESCE(EXCLUDED.description, dance_admin_settings.description),
+           description = COALESCE(EXCLUDED.description, game_admin_settings.description),
            updated_by_user_id = EXCLUDED.updated_by_user_id,
            updated_at = now()
      RETURNING *`,
@@ -551,13 +537,13 @@ export async function createCheckoutSession(
   const priceId = billingPeriod === 'yearly' ? plan.stripeYearlyPriceId : plan.stripeMonthlyPriceId;
   if (!priceId) return { ok: false, error: 'price_not_configured' };
 
-  // Reuse stripe customer if vi har det fra før.
+  // Gjenbruk Stripe-kunde hvis vi har den fra før.
   const existing = await getSubscription(pool, userId);
   let customerId = existing?.stripeCustomerId ?? null;
   if (!customerId) {
     const customer = await stripe.customers.create({
       email: userEmail ?? undefined,
-      metadata: { creatorhubUserId: userId },
+      metadata: { creatorhubUserId: userId, vertical: 'game_studio' },
     });
     customerId = customer.id;
     await upsertSubscription(pool, userId, {
@@ -612,7 +598,7 @@ export async function createCustomerPortalSession(
 
 /**
  * Stripe webhook handler. Tar imot rå body + signature header,
- * verifiserer signaturen, og oppdaterer dance_subscription deretter.
+ * verifiserer signaturen, og oppdaterer game_subscription deretter.
  */
 export async function handleStripeWebhook(
   pool: Pool,
@@ -621,7 +607,7 @@ export async function handleStripeWebhook(
 ): Promise<{ received: true } | { received: false; error: string }> {
   const stripe = getStripe();
   if (!stripe) return { received: false, error: 'stripe_not_configured' };
-  const webhookSecret = process.env.DANCE_STRIPE_WEBHOOK_SECRET
+  const webhookSecret = process.env.GAME_STRIPE_WEBHOOK_SECRET
     || process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) return { received: false, error: 'webhook_secret_not_configured' };
 
@@ -665,36 +651,6 @@ export async function handleStripeWebhook(
       trialEndAt: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
       cancelAtPeriodEnd: sub.cancel_at_period_end === true,
     });
-
-    // Auto-attach storage-overage-meter for Pro/Premium/Enterprise.
-    // Idempotent: hopper over hvis allerede attachet, eller hvis planen
-    // ikke trenger overage. Trygt å kalle på hver subscription-event.
-    if (status === 'active' || status === 'trialing' || status === 'past_due') {
-      try {
-        const { ensureStorageMeterAttached } = await import('./storage-quota-service.js');
-        const meterRes = await ensureStorageMeterAttached(
-          pool,
-          userId,
-          planSlug,
-          sub.id,
-        );
-        if (meterRes.attached) {
-          console.log(
-            `[storage-meter] auto-attached for user ${userId} sub ${sub.id} → item ${meterRes.itemId}`,
-          );
-        } else if (
-          meterRes.reason !== 'plan_does_not_need_overage' &&
-          meterRes.reason !== 'overage_price_not_configured'
-        ) {
-          // Bare logg de "uventede" no-ops
-          console.warn(
-            `[storage-meter] not attached for user ${userId}: ${meterRes.reason}`,
-          );
-        }
-      } catch (err) {
-        console.error('[storage-meter] auto-attach threw:', err);
-      }
-    }
   };
 
   try {
@@ -727,4 +683,67 @@ export async function handleStripeWebhook(
   } catch (err) {
     return { received: false, error: `handler_failed: ${String(err)}` };
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  EFFEKTIV PLAN (gating)
+// ═══════════════════════════════════════════════════════════════════════
+
+export const GAME_DEFAULT_PLAN_SLUG = 'solo';
+
+/** Feature-nøkler Story Graph gater på (speiler seeden i 0608). */
+export type GameFeature =
+  | 'play' | 'export_json' | 'export_md' | 'share_links' | 'export_html'
+  | 'ai_assist' | 'translations' | 'import_twine_ink' | 'runtime_packages';
+
+/** Fallback hvis `solo`-raden mangler (før migrasjon/seed). Samme innhold som seeden. */
+export const SOLO_FALLBACK_PLAN: GamePlan = {
+  slug: GAME_DEFAULT_PLAN_SLUG, name: 'Solo', description: null,
+  monthlyPriceKr: 0, yearlyPriceKr: 0, stripeMonthlyPriceId: null, stripeYearlyPriceId: null,
+  features: ['play', 'export_json', 'export_md'],
+  limits: { maxProjects: 3, maxElements: 200 },
+  trialDays: 0, isActive: true, isFeatured: false, displayOrder: 10,
+  createdAt: '1970-01-01T00:00:00.000Z', updatedAt: '1970-01-01T00:00:00.000Z',
+};
+
+export interface EffectivePlan {
+  subscription: GameSubscription | null;
+  plan: GamePlan;
+  /** true når abonnementet gir planen; false = solo-fallback. */
+  active: boolean;
+}
+
+export function isSubscriptionActive(sub: GameSubscription | null): boolean {
+  if (!sub) return false;
+  if (sub.status !== 'active' && sub.status !== 'trialing' && sub.status !== 'comp') return false;
+  const end = sub.compExpiresAt ?? (sub.status === 'trialing' ? sub.trialEndAt : null);
+  if (end && new Date(end).getTime() < Date.now()) return false;
+  return true;
+}
+
+/**
+ * Brukerens gjeldende plan: aktivt abonnement → dets plan, ellers `solo`.
+ * Feiler aldri mot kalleren (manglende tabell/seed → solo-fallback).
+ */
+export async function resolveEffectivePlan(pool: Pool, userId: string): Promise<EffectivePlan> {
+  let subscription: GameSubscription | null = null;
+  try { subscription = await getSubscription(pool, userId); } catch { subscription = null; }
+  const active = isSubscriptionActive(subscription);
+  let plan: GamePlan | null = null;
+  try {
+    plan = active && subscription ? await getPlan(pool, subscription.planSlug) : null;
+    if (!plan) plan = await getPlan(pool, GAME_DEFAULT_PLAN_SLUG);
+  } catch { plan = null; }
+  return { subscription, plan: plan ?? SOLO_FALLBACK_PLAN, active: active && !!subscription && plan?.slug === subscription.planSlug };
+}
+
+export function planHasFeature(plan: GamePlan, feature: GameFeature | string): boolean {
+  return plan.features.includes(feature);
+}
+
+/** Tallgrense fra limits; null/0/manglende = ubegrenset. */
+export function planLimit(plan: GamePlan, key: string): number | null {
+  const v = plan.limits[key];
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
 }

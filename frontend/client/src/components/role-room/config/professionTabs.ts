@@ -105,6 +105,10 @@ export const GAME_STUDIO_TABS: readonly TabConfig[] = [
   { id: 'translations', labelToken: 'gameTabTranslations', descriptionToken: 'gameTabTranslationsDescription', requiresProject: true, feature: 'production' },
   { id: 'exports',    labelToken: 'gameTabExports',    descriptionToken: 'gameTabExportsDescription',    requiresProject: true, feature: 'production' },
   { id: 'history',    labelToken: 'gameTabHistory',    descriptionToken: 'gameTabHistoryDescription',    requiresProject: true, feature: 'resources' },
+  // Fase 4d — billing (ikke prosjekt-avhengige; admin_plans skjules for ikke-admin i NarrativeWorkspace)
+  { id: 'pricing',     labelToken: 'gameTabPricing',     descriptionToken: 'gameTabPricingDescription',     feature: 'finance' },
+  { id: 'billing',     labelToken: 'gameTabBilling',     descriptionToken: 'gameTabBillingDescription',     feature: 'finance' },
+  { id: 'admin_plans', labelToken: 'gameTabAdminPlans',  descriptionToken: 'gameTabAdminPlansDescription',  feature: 'finance' },
 ] as const;
 
 /**

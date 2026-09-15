@@ -1374,6 +1374,12 @@ export type BrandingTextTokenKey =
   | 'gameTabExportsDescription'
   | 'gameTabHistory'              // 'Historikk'
   | 'gameTabHistoryDescription'
+  | 'gameTabPricing'              // 'Pris'
+  | 'gameTabPricingDescription'
+  | 'gameTabBilling'              // 'Abonnement'
+  | 'gameTabBillingDescription'
+  | 'gameTabAdminPlans'           // 'Admin · Planer'
+  | 'gameTabAdminPlansDescription'
 
   // Read Through-modulen — for dans bytter den fra TTS-dialog til musikk-count-in
   | 'danceReadThroughHeader'      // 'Musikk-gjennomgang' (vs 'Read Through')
@@ -3029,6 +3035,12 @@ const DEFAULT_TOKENS: BrandingTokens = {
     gameTabExportsDescription: 'JSON kompatibel med Arcweave-plugins for Unity, Unreal og Godot, samt import fra Arcweave, Twine og Ink.',
     gameTabHistory: 'Historikk',
     gameTabHistoryDescription: 'Versjoner av hele grafen med ikke-destruktiv gjenoppretting.',
+    gameTabPricing: 'Pris',
+    gameTabPricingDescription: 'Solo gratis; Pro og Studio åpner deling, KI, oversettelser, import og runtime-pakker.',
+    gameTabBilling: 'Abonnement',
+    gameTabBillingDescription: 'Din plan, prøveperiode og Stripe-kundeportal.',
+    gameTabAdminPlans: 'Admin · Planer',
+    gameTabAdminPlansDescription: 'Planer, priser, Stripe-IDer, tester-invites og innstillinger for spillstudio.',
 
     danceReadThroughHeader: 'Musikk-gjennomgang',
     danceReadThroughStartButton: 'Start gjennomgang',

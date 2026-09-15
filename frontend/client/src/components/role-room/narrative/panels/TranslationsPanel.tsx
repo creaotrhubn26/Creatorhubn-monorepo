@@ -17,6 +17,8 @@ import {
 import * as api from '../narrativeService';
 import type { NarrativeGraph } from '../narrativeTypes';
 import { narrativeColors } from '../narrativeTheme';
+import { PlanGateBanner } from '../../game/GameBillingPanels';
+import { useGamePlanGate } from '../../game/useGamePlanGate';
 import type { UseNarrativeGraphResult } from '../state/useNarrativeGraph';
 
 export interface TranslationsPanelProps {
@@ -65,6 +67,8 @@ export function TranslationsPanel({ projectId, graph, store, onNotice }: Transla
   }, [targets, locale]);
 
   const segments = useMemo(() => listTranslatableSegments(graph), [graph]);
+  const gate = useGamePlanGate();
+  const canAi = gate.has('translations');
   const saved = useMemo(() => {
     const map: Record<string, string | null> = {};
     if (locale) for (const s of segments) map[s.key] = translatedTextFor(graph, s, locale);
@@ -201,12 +205,13 @@ export function TranslationsPanel({ projectId, graph, store, onNotice }: Transla
         <Alert severity="info">Legg til et målspråk (f.eks. «en») for å begynne å oversette. Norsk bokmål er kildespråket.</Alert>
       ) : (
         <>
+          <PlanGateBanner feature="translations" />
           <Box sx={{ mb: 1.5 }}>
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography sx={{ fontSize: 12, color: narrativeColors.textDim, flex: 1 }} data-testid="narrative-translations-progress">
                 {done} av {segments.length} tekster oversatt til {localeLabel(locale)}
               </Typography>
-              <Button size="small" startIcon={<AiIcon />} onClick={() => void translate(null)} disabled={busy !== null || done >= segments.length} sx={{ color: narrativeColors.accent }} data-testid="narrative-translations-ai-all">
+              <Button size="small" startIcon={<AiIcon />} onClick={() => void translate(null)} disabled={busy !== null || done >= segments.length || !canAi} sx={{ color: narrativeColors.accent }} data-testid="narrative-translations-ai-all" data-locked={canAi ? undefined : 'plan'}>
                 Oversett alle manglende med KI
               </Button>
               <Button size="small" variant="contained" startIcon={<SaveIcon />} onClick={() => void save()} disabled={busy !== null || dirtyKeys.length === 0} sx={{ bgcolor: narrativeColors.accent, color: '#04140a', fontWeight: 700 }} data-testid="narrative-translations-save">
