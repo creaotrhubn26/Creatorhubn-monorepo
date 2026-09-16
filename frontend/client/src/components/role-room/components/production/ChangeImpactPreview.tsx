@@ -7,12 +7,15 @@
  * stedet for å forklare den etterpå.
  *
  * Alle states er tegnet: laster, uendret dato, ingen påvirkning, funn,
- * og lesning som feiler. Den siste er viktigst — uten den ville en feilet
- * spørring sett ut som «ingen påvirkning».
+ * lesning som feiler, og dagen som ble flyttet av noen andre mens dialogen
+ * sto åpen. De to siste er viktigst — uten dem ville en feilet spørring sett
+ * ut som «ingen påvirkning», og et foreldet skjema ville overskrevet en
+ * kollegas endring.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Box, Chip, CircularProgress, Stack, Typography } from '@mui/material';
 import BlockIcon from '@mui/icons-material/Block';
+import UpdateIcon from '@mui/icons-material/Update';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
@@ -110,9 +113,16 @@ export function ChangeImpactPreview({
 
   useEffect(() => {
     // En feilet lesning teller som blokkerende: vi vet ikke hva som brekker,
-    // og da skal ingen kunne lagre i blinde.
-    onBlockingChange?.(failed || Boolean(data?.blocking));
-  }, [failed, data?.blocking, onBlockingChange]);
+    // og da skal ingen kunne lagre i blinde. Det samme gjelder en dag som har
+    // flyttet seg under føttene på oss — da bygger skjemaet på en dato som
+    // ikke lenger finnes.
+    const stale = Boolean(data && currentDate && data.from !== currentDate);
+    onBlockingChange?.(failed || stale || Boolean(data?.blocking));
+  }, [failed, data, currentDate, onBlockingChange]);
+
+  // Serveren svarer med datoen dagen faktisk har nå. Er den en annen enn den
+  // skjemaet ble åpnet med, har noen andre flyttet dagen i mellomtiden.
+  const staleFrom = data && currentDate && data.from !== currentDate ? data.from : null;
 
   if (!shouldAsk) return null;
 
@@ -132,6 +142,15 @@ export function ChangeImpactPreview({
       <Alert severity="error" icon={<BlockIcon fontSize="small" />} sx={{ mt: 1 }}>
         Kunne ikke sjekke hva flyttingen påvirker. Lagring er stengt til vi vet
         konsekvensen.
+      </Alert>
+    );
+  }
+
+  if (staleFrom) {
+    return (
+      <Alert severity="warning" icon={<UpdateIcon fontSize="small" />} sx={{ mt: 1 }}>
+        Dagen ble flyttet til {staleFrom} av noen andre mens dette skjemaet sto
+        åpent. Lukk og åpne dagen på nytt, så du ikke overskriver endringen.
       </Alert>
     );
   }
