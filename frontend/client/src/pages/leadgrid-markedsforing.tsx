@@ -50,6 +50,16 @@ import roleRoomAgentService, {
   type MarketingPlan,
 } from "@/components/role-room/services/roleRoomAgentService";
 import { MarketingPlanWorkspace } from "@/components/role-room/components/producer/MarketingPlanWorkspace";
+import { RoleRoomAgentChatPanel } from "@/components/role-room/components/ai/RoleRoomAgentChatPanel";
+import { useAuth } from "@/hooks/useAuth";
+import ChatIcon from "@mui/icons-material/Chat";
+
+const AGENT_SUGGESTED_PROMPTS: string[] = [
+  "Hvilke tre poster bør jeg starte med på LinkedIn?",
+  "Hva er utside-blikket på KPI-målene våre?",
+  "Skriv en premortem for kampanjen",
+  "Hvilket prinsipp passer best for pilaren om pris?",
+];
 
 interface ProjectOption {
   id: string;
@@ -120,6 +130,8 @@ async function readStatusError(response: Response): Promise<StatusError> {
 export default function LeadgridMarkedsforingPage(): JSX.Element {
   const queryClient = useQueryClient();
   const moduleFeature = useModuleFeature("leadgrid", "marketing");
+  const { user: authUser } = useAuth();
+  const currentUserId = authUser?.id ? String(authUser.id) : null;
   const [projectId, setProjectId] = useState<string | null>(() =>
     typeof window === "undefined"
       ? null
@@ -467,6 +479,38 @@ export default function LeadgridMarkedsforingPage(): JSX.Element {
                   Arbeidsflaten med pilarer, kalender og poster vises her når planen er generert.
                 </Typography>
               )}
+
+              <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />
+
+              {/* Steg 4 — markedssjef-agenten (Role Room-chatten i markedssjef-modus).
+                  Samtykke-gaten ligger inne i panelet; lg-nøkkelen autoriseres av
+                  leadgrid-agent-access.ts i backend. */}
+              <Card sx={{ border: "1px solid rgba(196,181,253,0.25)" }}>
+                <CardContent>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                    <ChatIcon sx={{ color: "#c4b5fd" }} />
+                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                      4. Spør markedssjef-agenten
+                    </Typography>
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Agenten kjenner organisasjonen, kartleggingen og den aktive planen. Den foreslår —
+                    du bekrefter. Ingen tall uten kilde, ingen enkeltpersoner.
+                  </Typography>
+                  {currentUserId ? (
+                    <Box sx={{ minHeight: 420, display: "flex", flexDirection: "column" }}>
+                      <RoleRoomAgentChatPanel
+                        projectId={status.project_key}
+                        currentUserId={currentUserId}
+                        entitlementExempt
+                        suggestedPrompts={AGENT_SUGGESTED_PROMPTS}
+                      />
+                    </Box>
+                  ) : (
+                    <Alert severity="info">Logg inn på nytt for å bruke agenten.</Alert>
+                  )}
+                </CardContent>
+              </Card>
             </Stack>
           ) : null}
         </Container>

@@ -98,6 +98,7 @@ import {
   RateLimitExceededError,
 } from './role-room-agent-ratelimit.js';
 import { handleAgentStream } from './role-room-agent-stream.js';
+import { resolveLeadgridAgentProject } from './leadgrid-agent-access.js';
 import { buildRoleRoomPublicStatsRelationCountQuery } from './role-room-public-stats.js';
 import {
   generateMerchMockup,
@@ -5102,6 +5103,28 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
 
     return roleRecord;
+  }
+
+  /**
+   * Agent-/AI-samtykke-ruter: casting-tilgang som før, ELLERS Leadgrid-
+   * vertikalen (leadgrid-agent-access.ts) — et Leadgrid-prosjekt (lg-nøkkel
+   * eller ren Leadgrid-id) autoriseres via Leadgrids egne regler. Brukes KUN av
+   * /agent/query|stream|tool-result og /ai-consent*; casting-rutene ellers er
+   * uendret.
+   */
+  async function canAccessAgentProject(
+    req: Request,
+    projectId: string,
+    access: 'read' | 'write',
+  ): Promise<boolean> {
+    const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
+    const castingOk = access === 'write'
+      ? canWriteProducerData(req, roleRecord)
+      : canReadProducerData(req, roleRecord);
+    if (castingOk) return true;
+    const userId = getUserId(req);
+    if (!userId || userId === 'anonymous') return false;
+    return (await resolveLeadgridAgentProject(pool, { projectId, userId })) !== null;
   }
 
   function canReadProducerData(req: Request, roleRecord: ProjectRoleRecord | null): boolean {
@@ -22747,11 +22770,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
-        {
-          const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-          if (!canReadProducerData(req, roleRecord)) {
-            return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
-          }
+        if (!(await canAccessAgentProject(req, req.params.projectId, 'read'))) {
+          return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
         }
         const processor = String(req.query.processor ?? 'anthropic') as RoleRoomAiProcessor;
         if (!VALID_PROCESSORS.includes(processor)) {
@@ -22771,11 +22791,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        {
-          const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-          if (!canWriteProducerData(req, roleRecord)) {
-            return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
-          }
+        if (!(await canAccessAgentProject(req, req.params.projectId, 'write'))) {
+          return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
         }
         const { scope, processor, note, excludedEntityIds, includedEntityIds } = req.body ?? {};
         if (!VALID_SCOPES.includes(scope)) {
@@ -22805,11 +22822,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
-        {
-          const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-          if (!canWriteProducerData(req, roleRecord)) {
-            return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
-          }
+        if (!(await canAccessAgentProject(req, req.params.projectId, 'write'))) {
+          return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
         }
         const processor = String(req.query.processor ?? 'anthropic') as RoleRoomAiProcessor;
         if (!VALID_PROCESSORS.includes(processor)) {
@@ -22828,11 +22842,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
-        {
-          const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-          if (!canWriteProducerData(req, roleRecord)) {
-            return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
-          }
+        if (!(await canAccessAgentProject(req, req.params.projectId, 'write'))) {
+          return res.status(403).json({ error: 'Mangler tilgang til AI-samtykke' });
         }
         const processor = String(req.query.processor ?? 'anthropic') as RoleRoomAiProcessor;
         if (!VALID_PROCESSORS.includes(processor)) {
@@ -22917,8 +22928,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           return res.status(400).json({ error: 'invalid requiredScope' });
         }
 
-        const agentQueryRole = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-        if (!canReadProducerData(req, agentQueryRole)) {
+        if (!(await canAccessAgentProject(req, req.params.projectId, 'read'))) {
           return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
         }
 
@@ -22982,8 +22992,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const agentStreamRole = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-        if (!canReadProducerData(req, agentStreamRole)) {
+        if (!(await canAccessAgentProject(req, req.params.projectId, 'read'))) {
           return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
         }
         await handleAgentStream(pool, req, res, userId, getSessionRole(req));
@@ -23006,8 +23015,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const toolResultRole = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
-        if (!canWriteProducerData(req, toolResultRole)) {
+        if (!(await canAccessAgentProject(req, req.params.projectId, 'write'))) {
           return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
         }
         const { toolName, toolUseId, status, errorMessage } = req.body ?? {};

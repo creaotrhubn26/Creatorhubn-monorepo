@@ -1,7 +1,7 @@
 # Leadgrid Markedssjef-modus — Role Room-agentens markedsplan i Leadgrid-skall
 
-**Status:** Fase 0 levert (denne PR-en). **Modul:** `leadgrid:marketing` (opt-in).
-**Eier:** Leadgrid. **Sist oppdatert:** 2026-09-15.
+**Status:** Fase 0 + fase 1 (chat-agent) levert. **Modul:** `leadgrid:marketing` (opt-in).
+**Eier:** Leadgrid. **Sist oppdatert:** 2026-09-16.
 
 ## Hva det er
 
@@ -90,11 +90,42 @@ Miljø: `ANTHROPIC_API_KEY` (bootstrap + plan), valgfritt `ROLE_ROOM_BOOTSTRAP_O
   403 `mangler_tillatelse`; uten entitlement → 403 `module_locked`; Role Room-produsent
   på casting-prosjekt → uendret.
 
-## Kjente hull (fase 1–2)
+## Fase 1 — chat-agent i Leadgrid-skall
 
-1. **Chat-agenten** (`RoleRoomAgentChatPanel`) er ikke montert ennå: agent-query/stream/
-   threads/consent-rutene i `role-room-routes.ts` sjekker `casting_user_roles` via
-   `getProjectRoleRecord` + `canReadProducerData` og trenger samme lg-gren.
+Role Room-agentens chat-runtime (tråder, SSE-stream, samtykke, pseudonymisering, audit) er
+åpnet for Leadgrid-prosjekter via `backend/server/leadgrid-agent-access.ts`. Casting-
+oppførsel er uendret: fallbacken kjører kun når casting-sjekken feiler, og bare i agent-
+inngangene (ikke i den generelle `canAccessRoleRoomProject`).
+
+| Prosjekt-nøkkel | Modus | Tilgang | Persona | Flate |
+|---|---|---|---|---|
+| `lg-<leadgrid_projects.id>` | `leadgrid_marketing` | prosjekt + `marketing.content.brief` + modul `leadgrid:marketing` | Markedssjef-agent (Kahneman-linse, kanaler, plan) | `/leadgrid/markedsforing` steg 4 (web) |
+| `<leadgrid_projects.id>` (ren id) | `leadgrid_sales` | `loadAccessibleLeadgridProject` + modul `leadgrid:core` | Leadgrid-assistent (pipeline, oppfølging) | iPad `LeadgridAgentChatView` (sender ren id) |
+| alt annet | `casting` | som før | The Role Room Agent | Role Room |
+
+Gating per endepunkt (Leadgrid-gren = «casting feiler → `resolveLeadgridAgentProject`»):
+- `POST /api/role-room/agent/threads` og `handleAgentStream` (`/threads/:id/messages`,
+  `/projects/:id/agent/stream`): `role-room-agent-threads-routes.ts`, `role-room-agent-stream.ts`.
+- `/projects/:id/agent/query|stream|tool-result` og `/projects/:id/ai-consent*`:
+  `canAccessAgentProject` i `role-room-routes.ts`.
+- Agent-entitlement (`checkAgentEntitlement`, userId-/abonnementsbasert) hoppes over for
+  Leadgrid-moduser — modul-entitlementen erstatter den. Samtykke (`role_room_ai_consent`,
+  nøklet på prosjekt-streng) og rate limit gjelder som før.
+
+Modus styrer (`role-room-agent-definition.ts`): system-prompt (`agentSystemPromptForMode`) og
+verktøy (`agentToolsForMode`: kun produktnøytrale — nettsted-audit, analytics, GEO, brand-scan,
+community-post; aldri casting-verktøyene). Kontekst (`leadgrid-agent-context.ts`, env-gate
+`LEADGRID_AGENT_CONTEXT=off`): markedssjef får org-profil + kartlegging + aktiv plan; salg får
+antall leads per status og forfalte oppfølginger. Kun aggregater, ingen navn.
+
+iPad: `/threads/:id/messages` sender nå klientens `context` og `surface` videre (ble kastet
+før). `context.leads` tas imot men rendres ikke i prompten ennå, og `leadgrid_*`-verktøyene
+appen forventer har ingen server-side skjema — begge er fase 1b.
+
+## Kjente hull (fase 1b–2)
+
+1. **iPad-verktøy** (`leadgrid_find_duplicates`, `_enrich_company`, `_log_visit`, …) mangler
+   Anthropic-verktøyskjema og server-side kjøring; `context.leads` rendres ikke i prompten.
 2. **Feed-planner + LinkedIn-publisering** (`RoleRoomFeedPlannerPanel`,
    `/api/role-room/agent/feed-plan/*`): trenger bootstrap-objektet fra fase 0 og lg-gren i
    `role-room-agent-feed-plan-routes.ts`. LinkedIn-tilkoblinger er `user_id`-nøklet og
