@@ -339,6 +339,7 @@ function maskTalentByScopes(row: Record<string, unknown>): Record<string, unknow
     masked.showreel_url = row.showreel_url;
     masked.showreel_url_2 = row.showreel_url_2;
     masked.about_video_url = row.about_video_url;
+    masked.casting_photos = row.casting_photos ?? {};
     masked.resume_url = row.resume_url;
   }
   if (has("contact_info")) {
@@ -352,10 +353,14 @@ function maskTalentByScopes(row: Record<string, unknown>): Record<string, unknow
     masked.playing_age_min = row.playing_age_min;
     masked.playing_age_max = row.playing_age_max;
     masked.gender = row.gender;
-    masked.ethnicity = row.ethnicity;
     masked.height_cm = row.height_cm;
     masked.hair_color = row.hair_color;
     masked.eye_color = row.eye_color;
+    masked.physical_attributes = row.physical_attributes ?? {};
+    // Speiler role-room-agency-search-routes: etnisk opprinnelse er særlig
+    // kategori (GDPR art. 9) og krever eget samtykke, ikke bare demographics.
+    masked.ethnicity = row.ethnicity_consent === true ? row.ethnicity : null;
+    masked.ethnicity_shared = row.ethnicity_consent === true;
   }
   masked.availability_visible = has("availability");
   if (has("availability")) {

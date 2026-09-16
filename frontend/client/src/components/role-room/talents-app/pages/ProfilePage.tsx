@@ -44,6 +44,7 @@ import roleRoomTalentsService, {
 import MediaUploader from '../components/MediaUploader';
 import { palette, radius } from '../theme';
 import { OPEN_WIZARD_KEY } from '../components/TalentsHowItWorksCard';
+import PhysicalAttributesSection, { type PhysicalForm } from '../components/PhysicalAttributesSection';
 import TalentProfileHero from '../components/TalentProfileHero';
 import SelfTapeSharedList from '../components/selftape/SelfTapeSharedList';
 
@@ -668,6 +669,14 @@ function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileE
     about_video_url: talent.about_video_url ?? '',
     drama_school: talent.drama_school ?? '',
     links: { ...(talent.profile_links ?? {}) } as Record<string, string>,
+    physical: {
+      height_cm: talent.height_cm ?? ('' as number | ''),
+      hair_color: talent.hair_color ?? '',
+      eye_color: talent.eye_color ?? '',
+      ethnicity: talent.ethnicity ?? '',
+      ethnicityConsent: talent.ethnicity_consent === true,
+      attributes: { ...(talent.physical_attributes ?? {}) },
+    } as PhysicalForm,
     availability_status: talent.availability_status,
     windows: (talent.availability_windows ?? []) as TalentAvailabilityWindow[],
     skills: (talent.skills ?? []).map((s) => (typeof s === 'string' ? s : s.label)).join(', '),
@@ -687,6 +696,12 @@ function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileE
       const [label, level] = s.split('|').map((p) => p.trim());
       return { code: label?.slice(0, 3).toLowerCase() ?? '', label: label ?? '', level };
     }).filter((l) => l.label);
+    // Samtykket til særlig kategori går gjennom sitt eget endepunkt, så det
+    // kan trekkes uten å røre resten av profilen — og verdien slettes
+    // server-side i samme spørring.
+    if (form.physical.ethnicityConsent !== (talent.ethnicity_consent === true)) {
+      await roleRoomTalentsService.setEthnicityConsent(form.physical.ethnicityConsent);
+    }
     const updated = await roleRoomTalentsService.updateMyTalent({
       display_name: form.display_name,
       city: form.city || undefined,
@@ -704,6 +719,13 @@ function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileE
       profile_links: Object.fromEntries(
         Object.entries(form.links).filter(([, url]) => url.trim()),
       ) as Record<string, string>,
+      height_cm: form.physical.height_cm || undefined,
+      hair_color: form.physical.hair_color || null,
+      eye_color: form.physical.eye_color || null,
+      // Etnisitet lagres kun når samtykket står på. Selve samtykke-flagget
+      // settes gjennom sitt eget endepunkt like over.
+      ethnicity: form.physical.ethnicityConsent ? form.physical.ethnicity || null : null,
+      physical_attributes: form.physical.attributes,
       availability_status: form.availability_status,
       // Behold kun gyldige vinduer (begge datoer satt, start ≤ slutt).
       availability_windows: form.windows
@@ -777,6 +799,12 @@ function ProfileEditDialog({ open, onClose, talent, onSaved, onError }: ProfileE
               Byrå-lenkene deles kun med partnere du har gitt kontaktinfo-tilgang. De øvrige følger profilen din.
             </Typography>
           </Box>
+
+          <PhysicalAttributesSection
+            locale={typeof window !== 'undefined' && window.location.pathname.startsWith('/en') ? 'en' : 'no'}
+            form={form.physical}
+            onChange={(next) => setForm({ ...form, physical: next })}
+          />
           <TextField select label="Tilgjengelighet" value={form.availability_status} onChange={(e) => setForm({ ...form, availability_status: e.target.value as RoleRoomTalent['availability_status'] })} fullWidth size="small">
             <MenuItem value="open">Tilgjengelig</MenuItem>
             <MenuItem value="limited">Begrenset</MenuItem>

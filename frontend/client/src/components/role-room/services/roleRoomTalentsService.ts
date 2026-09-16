@@ -61,6 +61,10 @@ export interface RoleRoomTalent {
   drama_school: string | null;
   /** Lenkene casting-byråer spør om. Byrå-nøklene deles kun under contact_info. */
   profile_links: Partial<Record<TalentProfileLinkKey, string>> | null;
+  physical_attributes: Record<string, string | number | boolean> | null;
+  casting_photos: Partial<Record<'face_front' | 'face_profile' | 'full_body_front', string>> | null;
+  /** Eget samtykke for etnisk opprinnelse — særlig kategori (GDPR art. 9). */
+  ethnicity_consent: boolean | null;
   profile_status: 'draft' | 'active' | 'pending_review' | 'archived';
   badges: string[];
   metadata: Record<string, unknown>;
@@ -183,6 +187,18 @@ async function authFetch(path: string, init?: RequestInit) {
 }
 
 const roleRoomTalentsService = {
+  /** Eget ja/nei for etnisk opprinnelse. Trekkes det, slettes verdien. */
+  async setEthnicityConsent(granted: boolean): Promise<RoleRoomTalent | { error: string }> {
+    const r = await authFetch(`${BASE}/me/ethnicity-consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ granted }),
+    });
+    const payload = await r.json().catch(() => null);
+    if (!r.ok) return { error: payload?.error || 'Klarte ikke å lagre samtykket' };
+    return payload.talent as RoleRoomTalent;
+  },
+
   async fetchMyCredits(): Promise<TalentCredit[]> {
     const r = await authFetch(`${BASE}/me/credits`);
     if (!r.ok) return [];
@@ -799,6 +815,11 @@ export interface TalentSearchHit {
   about_video_url?: string | null;
   drama_school?: string | null;
   profile_links?: Partial<Record<TalentProfileLinkKey, string>>;
+  physical_attributes?: Record<string, string | number | boolean>;
+  casting_photos?: Record<string, string>;
+  hair_color?: string | null;
+  eye_color?: string | null;
+  ethnicity?: string | null;
   has_showreel?: boolean;
   playing_age_min?: number | null;
   playing_age_max?: number | null;
