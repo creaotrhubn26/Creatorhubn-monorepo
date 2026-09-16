@@ -16,6 +16,8 @@ export type ImpactArea =
   | 'call_sheet'
   | 'equipment'
   | 'location'
+  | 'location_readiness'
+  | 'scout_media'
   | 'continuity'
   | 'schedule';
 
@@ -155,4 +157,99 @@ export async function collectProductionDayChangeImpact(
 /** True hvis noe må ryddes før flyttingen kan skje. */
 export function hasBlockingImpact(impacts: ChangeImpact[]): boolean {
   return impacts.some((impact) => impact.severity === 'blocking');
+}
+
+/**
+ * Hva brekker hvis dagen flyttes til en annen lokasjon.
+ *
+ * Bevisst strukturelt: vi sjekker om det finnes operativ status for gammel og
+ * ny lokasjon, ikke hva som står inni `operations`-bloben. Målt mot produksjon
+ * 2026-09-16 var role_room_location_operations tom, så innholdet kan ikke
+ * verifiseres — og en advarsel bygget på et felt ingen har fylt ut ville vært
+ * en gjetning med selvtillit.
+ */
+export async function collectProductionDayLocationImpact(
+  pool: QueryablePool,
+  input: {
+    projectId: string;
+    dayId: string;
+    fromLocationId: string | null;
+    toLocationId: string;
+  },
+): Promise<ChangeImpact[]> {
+  const { projectId, dayId, fromLocationId, toLocationId } = input;
+  const impacts: ChangeImpact[] = [];
+
+  // 1. Publisert call sheet oppgir den gamle lokasjonen.
+  const callSheets = await pool.query(
+    `SELECT count(*)::int AS count
+       FROM role_room_call_sheet_deliveries
+      WHERE project_id = $1 AND production_day_id = $2 AND status = 'published'`,
+    [projectId, dayId],
+  );
+  const publishedCallSheets = count(callSheets.rows);
+  if (publishedCallSheets > 0) {
+    impacts.push({
+      area: 'call_sheet',
+      severity: 'blocking',
+      summary: 'Call sheet er publisert med den gamle lokasjonen.',
+      action: 'Må republiseres etter byttet.',
+      count: publishedCallSheets,
+    });
+  }
+
+  // 2. Arbeidet som er lagt ned på den gamle lokasjonen.
+  if (fromLocationId) {
+    const oldOps = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM role_room_location_operations
+        WHERE project_id = $1 AND location_id = $2`,
+      [projectId, fromLocationId],
+    );
+    const oldCount = count(oldOps.rows);
+    if (oldCount > 0) {
+      impacts.push({
+        area: 'location',
+        severity: 'warning',
+        summary: 'Tilgang, tillatelser og recce er registrert på den gamle lokasjonen.',
+        action: 'Avklar om avtalen skal avbestilles.',
+        count: oldCount,
+      });
+    }
+
+    const scout = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM casting_location_scout_media
+        WHERE project_id = $1 AND location_id = $2`,
+      [projectId, fromLocationId],
+    );
+    const scoutCount = count(scout.rows);
+    if (scoutCount > 0) {
+      impacts.push({
+        area: 'scout_media',
+        severity: 'info',
+        summary: `${scoutCount} scout-fil${scoutCount === 1 ? '' : 'er'} hører til den gamle lokasjonen.`,
+        count: scoutCount,
+      });
+    }
+  }
+
+  // 3. Er det gjort noe arbeid på den nye i det hele tatt?
+  const newOps = await pool.query(
+    `SELECT count(*)::int AS count
+       FROM role_room_location_operations
+      WHERE project_id = $1 AND location_id = $2`,
+    [projectId, toLocationId],
+  );
+  if (count(newOps.rows) === 0) {
+    impacts.push({
+      area: 'location_readiness',
+      severity: 'warning',
+      summary: 'Den nye lokasjonen har ingen registrert tilgang eller tillatelse.',
+      action: 'Bekreft eier, adkomst og tillatelser før dagen låses.',
+      count: 0,
+    });
+  }
+
+  return impacts;
 }
