@@ -106,4 +106,36 @@ describe('ChangeImpactPreview', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('says the day moved under us and blocks, rather than overwriting a colleague', async () => {
+    // Skjemaet ble åpnet på 2026-09-20, men serveren svarer 2026-09-22.
+    respondWith({ from: '2026-09-22', to: '2026-09-24', impacts: [], blocking: false, unchanged: false });
+    const onBlockingChange = vi.fn();
+
+    render(<ChangeImpactPreview {...base} onBlockingChange={onBlockingChange} />);
+
+    await waitFor(() => expect(screen.getByText(/flyttet til 2026-09-22 av noen andre/)).toBeInTheDocument());
+    expect(onBlockingChange).toHaveBeenCalledWith(true);
+  });
+
+  it('does not cry stale when the server agrees with the form', async () => {
+    respondWith({ from: '2026-09-20', to: '2026-09-24', impacts: [], blocking: false, unchanged: false });
+
+    render(<ChangeImpactPreview {...base} />);
+
+    await waitFor(() => expect(screen.getByText(/Ingenting annet henger/)).toBeInTheDocument());
+    expect(screen.queryByText(/av noen andre/)).toBeNull();
+  });
+
+  it('hides the impact list while the form is stale — the old list is about a date that no longer applies', async () => {
+    respondWith({
+      from: '2026-09-22', to: '2026-09-24', unchanged: false, blocking: true,
+      impacts: [{ area: 'call_sheet', severity: 'blocking', summary: 'Call sheet er publisert.', count: 1 }],
+    });
+
+    render(<ChangeImpactPreview {...base} />);
+
+    await waitFor(() => expect(screen.getByText(/av noen andre/)).toBeInTheDocument());
+    expect(screen.queryByText('Call sheet er publisert.')).toBeNull();
+  });
 });
