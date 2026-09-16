@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useId, useCallback, type ReactNode } from 'react';
+import { ChangeImpactPreview } from './production/ChangeImpactPreview';
 import {
   Box,
   Typography,
@@ -407,6 +408,9 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingDay, setEditingDay] = useState<NormalizedProductionDay | null>(null);
+  // Satt av ChangeImpactPreview. Stenger lagring før feilen oppstår i stedet
+  // for å forklare den etterpå.
+  const [dateMoveBlocked, setDateMoveBlocked] = useState(false);
   // Profession-specific default timing templates
   const getDefaultTiming = () => {
     if (profession === 'photographer') {
@@ -5100,6 +5104,13 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
                 '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
               }}
             />
+            <ChangeImpactPreview
+              projectId={projectId}
+              dayId={editingDay?.id ?? null}
+              currentDate={editingDay?.date ?? null}
+              targetDate={formData.date || ''}
+              onBlockingChange={setDateMoveBlocked}
+            />
 
             <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
               <TextField
@@ -5364,6 +5375,7 @@ export function ProductionDayView({ projectId, onUpdate, profession }: Productio
           <Button
             onClick={() => handleSave()}
             variant="contained"
+            disabled={dateMoveBlocked}
             startIcon={<SaveIcon />}
             fullWidth={isMobile}
             sx={{
